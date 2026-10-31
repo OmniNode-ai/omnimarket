@@ -138,12 +138,23 @@ class DelegationBudgetReadingsProjectionWriter(BaseProjectionRunner):
         return self.subscribe_topics
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        return asyncio.run(self._project_one_message(dict(input_data)))
+        data = dict(input_data)
+        topics = self.subscribe_topics
+        topic = str(data.pop("_topic", topics[0] if topics else ""))
+        meta = MessageMeta(
+            partition=int(data.pop("_partition", 0)),
+            offset=int(data.pop("_offset", 0)),
+            fallback_id=str(data.pop("_fallback_id", "")),
+            topic=topic,
+        )
+        return asyncio.run(self._project_one_message({**data, "_topic": topic}, meta))
 
-    async def _project_one_message(self, data: dict[str, Any]) -> dict[str, Any]:
+    async def _project_one_message(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> dict[str, Any]:
         await self.db.connect()
         try:
-            written = await self._project_terminal(data)
+            written = await self._project_terminal(data, meta)
         finally:
             await self._stop_producer()
             await self.db.close()
@@ -152,10 +163,12 @@ class DelegationBudgetReadingsProjectionWriter(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        await self._project_terminal({**data, "_topic": topic})
+        await self._project_terminal({**data, "_topic": topic}, meta)
         return True
 
-    async def _project_terminal(self, data: dict[str, Any]) -> dict[str, Any] | None:
+    async def _project_terminal(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> dict[str, Any] | None:
         event = event_from_delivery(data)
         prior = await self.db.execute(_SELECT_PRIOR, event.correlation_id)
         result = self._fold.handle(

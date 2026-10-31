@@ -127,6 +127,31 @@ async def test_real_postgres_stores_the_terminal_and_reads_it_back() -> None:
 
 
 @pytest.mark.integration
+async def test_real_postgres_row_ignores_the_injected_source_coordinates() -> None:
+    conn, _ = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        delivery = {
+            **_delivery(T0),
+            "_partition": 3,
+            "_offset": 41,
+            "_fallback_id": "x",
+        }
+        event = event_from_delivery(delivery)
+        row = (
+            HandlerProjectionDelegationBudgetReadings()
+            .handle(ModelDelegationBudgetReadingProjectionRequest(event=event))
+            .row
+        )
+        assert await conn.fetch(_scoped(_UPSERT), *_bind(row))
+        prior = await conn.fetch(_scoped(_SELECT_PRIOR), row.correlation_id)
+        assert _prior_row(dict(prior[0])) == _row()
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
 async def test_real_postgres_refuses_an_older_terminal_of_the_same_id() -> None:
     conn, _ = await _connect_or_skip()
     try:
