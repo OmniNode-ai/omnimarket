@@ -43,7 +43,7 @@ from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summar
     ModelMeteringSummary,
 )
 from omnimarket.nodes.node_projection_metering_summary.newest_baseline import (
-    newest_folded_baseline,
+    served_baseline,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
@@ -63,7 +63,6 @@ from omnimarket.projection.sqlite_metering_reader import (
 )
 from omnimarket.projection.sqlite_metering_summary import (
     current_pricing_manifest_version,
-    resolve_metering_baseline_model,
 )
 
 WINDOWS = ("all", "today")
@@ -342,10 +341,7 @@ def _refusal(refusal: ModelMeteringRowRefusal, *, as_json: bool) -> NoReturn:
 @click.option(
     "--baseline",
     default=None,
-    help=(
-        "Read the row stored for this baseline model instead of the one the "
-        "delegation resolves (resolve_baseline_model)."
-    ),
+    help="Read this baseline model's row, not the newest delegation's baseline.",
 )
 @click.option(
     "--db",
@@ -404,7 +400,6 @@ def metering_command(
     )
     kind: Literal["day", "all"] = "day" if selected_day else "all"
     start = selected_day.isoformat() if selected_day else ""
-    baseline_model = baseline or ""
     try:
         if not resolved_db.exists():
             raise MeteringRecordsUnavailableError(
@@ -413,11 +408,7 @@ def metering_command(
         # OMN-17427: the summary row is keyed on this install's own minted
         # tenant identity (`onex local init`), never a literal.
         tenant_id = str(require_local_tenant_identity(db_path=resolved_db))
-        baseline_model = (  # OMN-20557: the newest run's baseline by default
-            baseline_model
-            or newest_folded_baseline(resolved_db, tenant_id, kind, start)
-            or resolve_metering_baseline_model().model
-        )
+        baseline_model = served_baseline(baseline, resolved_db, tenant_id, kind, start)
         row = read_served_row(resolved_db, tenant_id, kind, start, baseline_model)
         refusal = check_row_current(
             resolved_db,

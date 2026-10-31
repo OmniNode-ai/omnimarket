@@ -221,13 +221,12 @@ def refresh_metering_after_terminal(
     terminal changes no byte, and a late refresh for an earlier run folds the
     same snapshot as the latest one instead of an older one.
 
-    When the tenant's all row under the resolved baseline is missing or was
+    When the tenant's all row under the run's baseline is missing or was
     priced against another manifest version, the request covers the whole
     tenant (``days=None``): a baseline or pricing change recomputes every row
     (ruling D-A), and a first refresh backfills every recorded day.
 
-    Only real runs are folded: rows the dev seed wrote are never in a stored
-    figure (OMN-19970).
+    Only real runs are folded, never the dev seed's rows (OMN-19970).
     """
     if terminal_at.utcoffset() is None:
         raise ValueError("terminal_at must be timezone aware")

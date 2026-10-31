@@ -16,8 +16,11 @@ from pathlib import Path
 from typing import Literal
 
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from omnimarket.projection.sqlite_metering_summary import (
+    resolve_metering_baseline_model,
+)
 
-__all__ = ["newest_folded_baseline"]
+__all__ = ["newest_folded_baseline", "served_baseline"]
 
 
 def newest_folded_baseline(
@@ -43,3 +46,21 @@ def newest_folded_baseline(
         if row.get("as_of") and row.get("baseline_model")
     ]
     return max(folded)[1] if folded else None
+
+
+def served_baseline(
+    explicit: str | None,
+    db_path: Path,
+    tenant_id: str,
+    window_kind: Literal["day", "all"],
+    window_start: str,
+) -> str:
+    """The baseline ``onex metering`` reads: the named one, else the newest fold's.
+
+    With no row folded yet, the baseline a run with no session model resolves.
+    """
+    return (
+        explicit
+        or newest_folded_baseline(db_path, tenant_id, window_kind, window_start)
+        or resolve_metering_baseline_model().model
+    )
