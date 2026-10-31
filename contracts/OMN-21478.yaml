@@ -44,12 +44,48 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
-- id: dod-omn21478-core-pin-e3433152a2f6
-  description: pyproject.toml and uv.lock pin omnibase-core to the dev merge tag dev-20261031034124-e3433152a2f6.
+- id: dod-omn21478-pr4618-required-sibling-context
+  description: The required sibling-pins context remains registered after merging the core consumer migration from dev.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn21478-pr4618-core-tag-runtime
+  description: The sibling source and lock agree, dependency provenance accepts the declared sources, and the installed core runtime produces the generated-chain walker report. Market's overlay reader accepts machine principals and defaults legacy rows to developer without allowing inline grants.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/scripts/test_check_dep_provenance.py tests/chains/generated/test_generated_chains.py tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/test_core_pin_principal_roles_omn21478.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn21478-pr4618-hosted-package-deploy-readback
+  description: Hosted-runner package readback checks the installed core commit against this PR's dev tag, imports both migrated product consumers, and loads the installed provenance policy. It needs only the checkout and frozen dependencies, with no credentials or services. A different core commit or a missing runtime dependency fails. This does not attest a running service rollout.
   source: manual
   checks:
   - check_type: command
-    check_value: grep -q 'omnibase_core.git", tag = "dev-20261031034124-e3433152a2f6"' pyproject.toml && grep -q 'dev-20261031034124-e3433152a2f6' uv.lock
-    cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC2
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'PY'
+      import importlib
+      import importlib.metadata
+      import json
+      import tomllib
+      from pathlib import Path
+      source = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]["omnibase-core"]
+      assert source["tag"] == "dev-20261031034124-e3433152a2f6", source
+      installed = json.loads(importlib.metadata.distribution("omnibase-core").read_text("direct_url.json"))
+      assert installed["vcs_info"]["commit_id"] == "e3433152a2f616c7d47623f29c879fd8c082acb7", installed
+      for module in (
+          "omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate",
+          "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep",
+          "omnibase_core.nodes.node_contract_walker_check_compute.runtime_contract_walker_check",
+      ):
+          importlib.import_module(module)
+      from scripts.check_dep_provenance import load_policy
+      assert load_policy()["wrong_repo"].siblings
+      print("PR 4618 installed core and migrated runtime imports passed")
+      PY
+    cwd: .

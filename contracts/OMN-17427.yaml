@@ -1038,6 +1038,11 @@ requirements:
         statement: "AC1742727: every other concrete lane's broker is refused, including an aliased host with that lane's port, an undeclared broker is refused, and the declared broker is accepted -- falsifier: tests/test_bus_lane_guard_omn17427.py fails its broker-refusal or acceptance cases"
       - id: "AC1742728"
         statement: "AC1742728: the Kafka fixture refuses another lane's broker before constructing any producer -- falsifier: tests/test_bus_lane_guard_omn17427.py::test_kafka_probe_refuses_before_constructing_a_producer constructs a producer or does not raise BusLaneRefusalError"
+  - id: "req-core-infra-pins-move-together"
+    statement: "omnimarket pins omnibase_core at dev-20261031000524-fc6159b98026 and omnibase_infra at dev-20261031054837-4284f5bf5587, whose own omnibase-core pin is that same tag, so the sibling sources resolve to one core."
+    acceptance:
+      - id: "AC1742729"
+        statement: "AC1742729: pyproject.toml and uv.lock name the same infra and core dev merge tags, the locked core tag is the one recorded for the locked infra commit, and the lock pins the newest recorded pair (infra 4284f5bf5587, core fc6159b98026) -- falsifier: tests/ci/test_sibling_core_pin_pair_omn17427.py fails at the merge base, whose lock pins infra 091013fd7adb and core 66d35d2283c3"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4378,4 +4383,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_bus_lane_guard_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-core-infra-pin-pair"
+    description: "omnimarket moves its omnibase_core and omnibase_infra dev merge tags together: the locked core tag is the one omnibase_infra#5483 pins, pyproject.toml and uv.lock agree, and the lock pins the newest recorded infra and core pair. Fails at the merge base, which pins the older pair."
+    source: "manual"
+    binds_ac: ["AC1742729"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
