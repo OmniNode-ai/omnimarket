@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import yaml
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command import (
+
+from omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command import (
     ModelEvidencePipelineCommand,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result import (
     ModelEvidenceValidationResult,
 )
-
 from omnimarket.nodes.node_contract_matcher_compute import HandlerContractMatcherCompute
 from omnimarket.nodes.node_deployment_evidence_reducer import (
     HandlerDeploymentEvidenceReducer,

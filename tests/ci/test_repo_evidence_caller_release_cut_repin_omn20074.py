@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from omnimarket import occ_content_probe
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
 
 pytestmark = pytest.mark.unit
 
@@ -25,9 +26,7 @@ CALLER_PATH = (
 def test_caller_pins_the_reusable_that_derives_writer_release_cut_at_head() -> None:
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
     # The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
-    assert caller["jobs"]["repo-evidence"]["uses"].endswith(
-        "@dev-20261022114039-578228977721"
-    )
+    assert caller["jobs"]["repo-evidence"]["uses"].endswith(f"@{RECEIPT_GATE_PIN_TAG}")
 
 
 def test_pinned_verifier_ships_the_release_cut_classifiers() -> None:
