@@ -109,6 +109,88 @@ class ModelPublishTransport(BaseModel):
     transfer_timeout_seconds: int = Field(gt=0)
 
 
+def _checked_remote_name(value: str) -> str:
+    """A published name: relative, forward-slashed, no empty part, no ``..`` and no dot-named part (the server hides those)."""
+    parts = value.split("/")
+    if (
+        not value
+        or value.startswith("/")
+        or any(not part or part.startswith(".") for part in parts)
+        or "\n" in value
+        or "\\" in value
+    ):
+        raise ValueError(
+            f"a published name must be a relative path without empty or dot-named parts: {value!r}"
+        )
+    return value
+
+
+class ModelReportPage(BaseModel):
+    """One page packaged with the node and published as ``remote`` under the served directory."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    page_relpath: str = Field(min_length=1)
+    remote: str
+
+    @field_validator("remote")
+    @classmethod
+    def _remote(cls, value: str) -> str:
+        return _checked_remote_name(value)
+
+
+class ModelReportData(BaseModel):
+    """One data file a report reads: a file under the registry home that a node (or a lane) wrote.
+
+    ``publish`` false means the floor publish already copies it under ``remote``; it is listed so the index can
+    show its age. ``as_of_key`` names the top-level JSON key that holds the data's own time; without it the file's
+    modified time is the age and the manifest says so.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    remote: str
+    relpath: str = Field(min_length=1)
+    as_of_key: str | None = None
+    publish: bool = True
+
+    @field_validator("remote")
+    @classmethod
+    def _remote(cls, value: str) -> str:
+        return _checked_remote_name(value)
+
+
+class ModelReportEntry(BaseModel):
+    """One report on the site: where it is, what feeds it and how the feed is refreshed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    href: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_./-]+$")
+    refresh: Literal["tick", "snapshot"]
+    refresh_note: str = ""
+    pages: tuple[ModelReportPage, ...] = ()
+    data: tuple[ModelReportData, ...] = Field(min_length=1)
+
+
+class ModelReportsRuntime(BaseModel):
+    """The ``reports`` block of the ``runtime`` block: the reports site published beside the factory floor."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    index: ModelReportPage
+    manifest: str
+    entries: tuple[ModelReportEntry, ...] = Field(min_length=1)
+
+    @field_validator("manifest")
+    @classmethod
+    def _manifest(cls, value: str) -> str:
+        return _checked_remote_name(value)
+
+
 class ModelFactoryFloorPublishRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -123,6 +205,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
     names: ModelPublishNames
     transport: ModelPublishTransport
+    reports: ModelReportsRuntime
 
 
 class ModelFactoryFloorPublishContract(BaseModel):
@@ -156,3 +239,24 @@ class ModelFactoryFloorPublishResult(BaseModel):
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
     process_health_published: bool
+
+
+class ModelReportsPublishRequest(BaseModel):
+    """One reports-site publish. ``None`` takes the contract's environment names and the overlay."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    home: str | None = None
+    overlay: ModelFactoryFloorPublishOverlay | None = None
+    now: datetime | None = None
+
+
+class ModelReportsPublishResult(BaseModel):
+    """What one reports-site publish wrote and which data it found unread."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    published: tuple[str, ...]
+    unread: tuple[str, ...]
+    manifest_sha256: str
+    index_url: str

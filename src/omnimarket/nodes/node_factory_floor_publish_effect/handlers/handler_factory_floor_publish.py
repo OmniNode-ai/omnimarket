@@ -76,12 +76,13 @@ def load_runtime(contract_path: Path = OWN_CONTRACT) -> ModelFactoryFloorPublish
 def remote_write_command(remote_dir: str, name: str) -> str:
     """The remote shell command that stores stdin as ``remote_dir/name`` atomically.
 
-    The bytes go to a dot-named temporary file in the same directory and are renamed over the final name;
-    when the write fails the temporary file is removed and the previous final file is left as it was.
+    The bytes go to a dot-named temporary file in the final file's own directory (``name`` may carry
+    sub-directories, which are created) and are renamed over the final name; when the write fails the temporary
+    file is removed and the previous final file is left as it was.
     """
     final = PurePosixPath(remote_dir) / name
-    tmp = PurePosixPath(remote_dir) / f".{name}.tmp"
-    q_dir, q_final, q_tmp = (shlex.quote(str(p)) for p in (remote_dir, final, tmp))
+    tmp = final.parent / f".{final.name}.tmp"
+    q_dir, q_final, q_tmp = (shlex.quote(str(p)) for p in (final.parent, final, tmp))
     return (
         f"umask 022 && mkdir -p {q_dir} && "
         f"{{ cat > {q_tmp} && mv -f {q_tmp} {q_final}; }} || {{ rm -f {q_tmp}; exit 1; }}"
@@ -98,6 +99,32 @@ def write_atomic(path: Path, data: bytes) -> None:
 
 def _tail(raw: bytes) -> str:
     return " | ".join(raw.decode("utf-8", "replace").strip().splitlines()[-3:])
+
+
+def copy_to_server(
+    run: Runner,
+    rt: ModelFactoryFloorPublishRuntime,
+    overlay: ModelFactoryFloorPublishOverlay,
+    name: str,
+    payload: bytes,
+) -> None:
+    """Store ``payload`` as ``name`` under the serving host's directory over ssh; a failure leaves the old file."""
+    argv = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={rt.transport.connect_timeout_seconds}",
+        "--",
+        overlay.ssh_target,
+        remote_write_command(overlay.remote_dir, name),
+    ]
+    done = run(argv, payload, rt.transport.transfer_timeout_seconds)
+    if done.returncode != 0:
+        raise PublishRefusedError(
+            f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "
+            "the previous file on the server is untouched"
+        )
 
 
 class HandlerFactoryFloorPublish:
@@ -284,22 +311,7 @@ class HandlerFactoryFloorPublish:
         name: str,
         payload: bytes,
     ) -> None:
-        argv = [
-            "ssh",
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            f"ConnectTimeout={rt.transport.connect_timeout_seconds}",
-            "--",
-            overlay.ssh_target,
-            remote_write_command(overlay.remote_dir, name),
-        ]
-        done = self._run(argv, payload, rt.transport.transfer_timeout_seconds)
-        if done.returncode != 0:
-            raise PublishRefusedError(
-                f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "
-                "the previous file on the server is untouched"
-            )
+        copy_to_server(self._run, rt, overlay, name, payload)
 
     @staticmethod
     def _write_evidence(
@@ -327,8 +339,10 @@ class HandlerFactoryFloorPublish:
 
 
 __all__ = [
+    "NODE_DIR",
     "HandlerFactoryFloorPublish",
     "PublishRefusedError",
+    "copy_to_server",
     "load_runtime",
     "remote_write_command",
     "run_process",

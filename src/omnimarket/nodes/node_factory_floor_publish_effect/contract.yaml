@@ -35,6 +35,10 @@ handler_routing:
     handler:
       name: HandlerFactoryFloorPublish
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish
+  - operation: publish_reports
+    handler:
+      name: HandlerReportsPublish
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports_publish
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -50,6 +54,7 @@ descriptor:
   - runs the lab host reading, the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
   - reads the factory floor JSON and the packaged page
   - writes the page, the status, the process-health series and the record to the serving host's directory over ssh
+  - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
   - writes last-run.json into the tick's state directory
 
 # Where the record is, which input steps run before it is read, and what the served files are called. Paths are
@@ -103,6 +108,70 @@ runtime:
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
+  # The reports site (OMN-21733): an index at reports/index.html that reads reports/manifest.json, and one page per
+  # report. A report's data is a file under the registry home that a node (or, for a snapshot, a lane) wrote;
+  # as_of_key names the JSON key that holds the data's own time, else the file's modified time is the age and the
+  # manifest says so. publish: false is for the data the floor publish already copies (listed so the index shows
+  # its age). A data file that cannot be read is not published and is listed unread. Published names are relative
+  # to the serving directory.
+  reports:
+    index:
+      page_relpath: page/reports/index.html
+      remote: reports/index.html
+    manifest: reports/manifest.json
+    entries:
+    - id: factory_floor
+      title: Lean Factory Floor
+      summary: Every plan as a car on its assembly line, the lab bays, the shipping dock and the stoppages.
+      href: ../
+      refresh: tick
+      data:
+      - name: Factory record
+        remote: factory-floor.json
+        relpath: .claude_scratch/factory-floor/factory-floor.json
+        as_of_key: generated_at
+        publish: false
+    - id: process_health
+      title: Process before and after the factory reset
+      summary: Daily quality measures since 15 October with the reset marked, a before and after comparison and the read status of every source.
+      href: process-health/
+      refresh: tick
+      pages:
+      - page_relpath: page/reports/process-health/index.html
+        remote: reports/process-health/index.html
+      data:
+      - name: Process-health series
+        remote: process-health.json
+        relpath: .onex_state/process-health/process-health.json
+        as_of_key: generated_at
+        publish: false
+    - id: decision_map
+      title: October decision map
+      summary: Problems the system ran into, the decisions they led to, and whether each problem came back after the change.
+      href: decision-map/
+      refresh: snapshot
+      refresh_note: No node writes this data yet. It is the 30 October snapshot of the ledger rulings, consents and friction rows, cleaned of credentials and people.
+      pages:
+      - page_relpath: page/reports/decision-map/index.html
+        remote: reports/decision-map/index.html
+      data:
+      - name: Decision map data
+        remote: reports/decision-map/decisions.json
+        relpath: .claude_scratch/reports/decision-map/decisions.json
+        as_of_key: asof
+    - id: decision_quality
+      title: Decision quality, October
+      summary: How the operator's 465 October rulings held up, what was reversed or reshaped, and which directions had to be restated.
+      href: decision-quality/
+      refresh: snapshot
+      refresh_note: A lane's written report, not a node's output. The age is the report file's modified time.
+      pages:
+      - page_relpath: page/reports/decision-quality/index.html
+        remote: reports/decision-quality/index.html
+      data:
+      - name: Decision quality report
+        remote: reports/decision-quality/decision-quality.md
+        relpath: .claude_scratch/reports/decision-quality/decision-quality.md
 metadata:
   transport_type: local
   description: >-

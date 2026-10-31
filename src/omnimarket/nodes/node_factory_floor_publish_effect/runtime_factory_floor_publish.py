@@ -12,8 +12,12 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     HandlerFactoryFloorPublish,
     PublishRefusedError,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports_publish import (
+    HandlerReportsPublish,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishRequest,
+    ModelReportsPublishRequest,
 )
 
 
@@ -32,6 +36,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--skip-refresh",
         action="store_true",
         help="publish the record already on disk without running the factory floor effect",
+    )
+    ap.add_argument(
+        "--skip-reports",
+        action="store_true",
+        help="publish only the factory floor, not the reports site beside it",
     )
     return ap.parse_args(argv)
 
@@ -55,5 +64,19 @@ def main(argv: list[str] | None = None) -> int:
         f"factory-floor-publish: published={','.join(result.published)} "
         f"record={result.generated_at} sha256={result.data_sha256[:12]} "
         f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
+    )
+    if a.skip_reports:
+        return 0
+    try:
+        reports = HandlerReportsPublish().handle(
+            ModelReportsPublishRequest(home=a.registry_home)
+        )
+    except (PublishRefusedError, NodeOverlayError) as exc:
+        sys.stderr.write(f"REFUSED reports-site-publish: {exc}\n")
+        return 2
+    sys.stdout.write(
+        f"reports-site-publish: published={len(reports.published)} files "
+        f"unread={','.join(reports.unread) or 'none'} manifest={reports.manifest_sha256[:12]} "
+        f"index={reports.index_url}\n"
     )
     return 0

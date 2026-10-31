@@ -51,6 +51,9 @@ header{display:grid;gap:14px}
 .head-row{display:flex;flex-wrap:wrap;gap:18px 32px;align-items:end;justify-content:space-between}
 .head-row>div{min-width:0}
 .lede{max-width:66ch;color:var(--muted)}
+.sitenav{font-size:.86rem}
+.sitenav a{color:var(--car-edge)}
+.sitenav a:focus-visible{outline:2px solid var(--car-edge);outline-offset:2px}
 
 /* andon board */
 .andon{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:2px;background:var(--belt);border-radius:6px;overflow:hidden}
@@ -202,6 +205,7 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 <div class="wrap">
   <header>
     <div class="hazard" aria-hidden="true"></div>
+    <nav class="sitenav"><a href="reports/">All reports</a></nav>
     <div class="head-row">
       <div>
         <div class="eyebrow" id="stamp">Reading the factory record</div>
