@@ -318,7 +318,9 @@ async def test_a_quarantined_event_republishes_nothing(
     )
 
     assert ok is True
-    assert runner._dlq_routed is True, "positive control: the event was quarantined"
+    assert runner._dlq_routing.quarantined is True, (
+        "positive control: the event was quarantined"
+    )
     assert published.calls == []
 
 

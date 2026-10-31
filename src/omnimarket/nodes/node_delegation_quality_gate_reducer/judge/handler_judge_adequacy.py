@@ -189,10 +189,10 @@ class HandlerJudgeAdequacy:
         self._bridge: ModelInferenceAdapter = (
             inference_bridge or RoutingResolvedJudgeInferenceAdapter()
         )
-        # The concrete model id is resolved lazily on first ``score`` so import +
-        # construction stay I/O-free. ``routing-resolved`` is the placeholder until
-        # the first call resolves the concrete model id from the routing authority.
-        self._judge_model_key = _UNRESOLVED_JUDGE_MODEL
+        # The concrete model id is resolved on each ``score`` call and kept in
+        # that call's locals, so import + construction stay I/O-free and the
+        # handler holds no per-call state. ``routing-resolved`` is the
+        # placeholder when the routing authority cannot resolve one.
         self._judge_timeout_seconds = judge_timeout_seconds
         self._rubric_id = rubric_id
 
@@ -218,11 +218,11 @@ class HandlerJudgeAdequacy:
             except (
                 Exception
             ):  # pragma: no cover - provenance only; never blocks scoring
-                return self._judge_model_key
+                return _UNRESOLVED_JUDGE_MODEL
         try:
             return RoutingResolvedJudgeInferenceAdapter().resolved_model_id()
         except Exception:  # pragma: no cover - provenance only; never blocks scoring
-            return self._judge_model_key
+            return _UNRESOLVED_JUDGE_MODEL
 
     def _provider_quota_disabled(self) -> bool:
         """Return whether the bound bridge's provider is a spent quota domain.
@@ -279,8 +279,8 @@ class HandlerJudgeAdequacy:
         )
         # Resolve the CONCRETE model id provenance from the routing authority
         # (e.g. ``glm-5.2``) — never a tier name. Recorded on the verdict event.
-        self._judge_model_key = self._resolve_judge_model_key()
-        judge_model_version = self._judge_model_key
+        judge_model_key = self._resolve_judge_model_key()
+        judge_model_version = judge_model_key
 
         # OMN-16932: do not spend a metered call on a provider that has already
         # told us its quota is gone. The judge rides ``cloud-gemini-judge``, which
@@ -298,12 +298,12 @@ class HandlerJudgeAdequacy:
                 "gate proceeds on the deterministic acceptance floor",
                 task_type,
                 correlation_id,
-                self._judge_model_key,
+                judge_model_key,
             )
             return build_delegation_judge_verdict_event(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                judge_model=self._judge_model_key,
+                judge_model=judge_model_key,
                 judge_model_version=judge_model_version,
                 judge_provider=judge_provider,
                 rubric_id=self._rubric_id,
@@ -340,7 +340,7 @@ class HandlerJudgeAdequacy:
             return build_delegation_judge_verdict_event(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                judge_model=self._judge_model_key,
+                judge_model=judge_model_key,
                 judge_model_version=judge_model_version,
                 judge_provider=judge_provider,
                 rubric_id=self._rubric_id,
@@ -358,7 +358,7 @@ class HandlerJudgeAdequacy:
 
         try:
             raw = await self._bridge.infer(
-                model_key=self._judge_model_key,
+                model_key=judge_model_key,
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 timeout_seconds=self._judge_timeout_seconds,
@@ -374,7 +374,7 @@ class HandlerJudgeAdequacy:
             return build_delegation_judge_verdict_event(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                judge_model=self._judge_model_key,
+                judge_model=judge_model_key,
                 judge_model_version=judge_model_version,
                 judge_provider=judge_provider,
                 rubric_id=self._rubric_id,
@@ -400,7 +400,7 @@ class HandlerJudgeAdequacy:
             return build_delegation_judge_verdict_event(
                 correlation_id=correlation_id,
                 task_type=task_type,
-                judge_model=self._judge_model_key,
+                judge_model=judge_model_key,
                 judge_model_version=judge_model_version,
                 judge_provider=judge_provider,
                 rubric_id=self._rubric_id,
@@ -421,7 +421,7 @@ class HandlerJudgeAdequacy:
         return build_delegation_judge_verdict_event(
             correlation_id=correlation_id,
             task_type=task_type,
-            judge_model=self._judge_model_key,
+            judge_model=judge_model_key,
             judge_model_version=judge_model_version,
             judge_provider=judge_provider,
             rubric_id=self._rubric_id,

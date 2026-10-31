@@ -71,6 +71,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.handlers.github_quota_readings import GithubQuotaReadings
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.merge_control.hold_marker import evaluate_merge_hold
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -198,7 +199,7 @@ class _Exchange:
                 ) from None
         else:
             self.quota = reading
-            self._handler.record_reading(reading)
+            self._handler.quota_readings.record(reading)
         reason = classify_github_response(self.command.operation, response)
         if reason is not None:
             raise self.failed(
@@ -254,21 +255,21 @@ class HandlerPrLandingGithubEffect:
         *,
         quota_floor: ModelGithubQuotaFloor | None = None,
         clock: Callable[[], float] = time.time,
+        quota_readings: GithubQuotaReadings | None = None,
     ) -> None:
         self._transport = transport
         self._floor = quota_floor or ModelGithubQuotaFloor.from_contract(_CONTRACT_PATH)
         self._clock = clock
         self.identity = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
-        self._readings: dict[str, ModelGithubQuotaReading] = {}
+        self.quota_readings = (
+            GithubQuotaReadings() if quota_readings is None else quota_readings
+        )
 
     # --- quota ----------------------------------------------------------------
 
-    def record_reading(self, reading: ModelGithubQuotaReading) -> None:
-        self._readings[reading.resource] = reading
-
     def floor_refusal(self, resource: str) -> ModelGithubQuotaReading | None:
         """The last reading for ``resource`` when it is under the floor, in its window."""
-        reading = self._readings.get(resource)
+        reading = self.quota_readings.last(resource)
         if reading is None or self._clock() >= reading.reset:
             return None
         if self._floor.refusal(reading) is None:
