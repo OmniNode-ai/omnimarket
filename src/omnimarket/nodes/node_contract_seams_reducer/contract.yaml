@@ -1,0 +1,271 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Contract Seams Reducer (OMN-21627)
+#
+# Pure reducer: folds the step results of one contracts-and-seams run into its state. The
+# guards read counts the orchestrator's steps computed; the node takes facts and `now` and
+# declares no protocol_dependencies. Every gate is a pass edge at priority 2 and an
+# unconditional refusal edge at priority 1, so a step that does not pass refuses the run
+# instead of holding it. A step that raises moves every live state to failed by one edge per
+# state, not a '*' wildcard: core's executor fires a wildcard from a terminal state too, so a
+# connected run could be moved to failed, while the walker reads it as live states only.
+name: node_contract_seams_reducer
+contract_name: node_contract_seams_reducer
+node_name: node_contract_seams_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Lifecycle of one contracts-and-seams run over a design: drafted, contracts_written,
+  scaffolded, seams_matched, chains_generated, golden_chain_passed, connected, with
+  refused as the error state a revised design leaves and failed as the terminal error
+  state a step that raised enters. A run reaches seams_matched only with no mismatched
+  and no unmatched crossing, chains_generated only with a clean event-chain walk and every
+  chain path driven, and connected only when the tail event was delivered.
+
+handler:
+  module: omnimarket.nodes.node_contract_seams_reducer.handlers.handler_contract_seams
+  class: HandlerContractSeams
+  input_model: omnimarket.nodes.node_contract_seams_reducer.models.model_contract_seams.ModelContractSeamsTransitionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: contract_seams_transition
+      handler:
+        name: HandlerContractSeams
+        module: omnimarket.nodes.node_contract_seams_reducer.handlers.handler_contract_seams
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelContractSeamsTransitionRequest
+  module: omnimarket.nodes.node_contract_seams_reducer.models.model_contract_seams
+  description: The prior state, one trigger, the facts the guards read and `now`.
+output_model:
+  name: ModelContractSeamsTransitionResult
+  module: omnimarket.nodes.node_contract_seams_reducer.models.model_contract_seams
+  description: The next state, whether it moved, and the guards that held it.
+
+terminal_event: onex.evt.omnimarket.contract-seams-transitioned.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.contract-seams-transition-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.contract-seams-transitioned.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-seams-transition-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-seams-transitioned.v1
+
+# The orchestrator reads each fold's result from its step runner; the transitioned event
+# is the record of the fold for any other reader.
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-seams-transitioned.v1
+
+replay:
+  deterministic: true
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: contract_seams_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'One contracts-and-seams run: a design is connected only when its contracts are written, its nodes scaffolded, every crossing matches, its event chains walk and drive, and the golden chain sees the tail.'
+  initial_state: drafted
+  terminal_states: [connected, failed]
+  error_states: [refused, failed]
+  persistence_enabled: false
+  operations:
+  - {operation_name: contracts_emitted, operation_type: fold, description: The emit step wrote one contract per design node.}
+  - {operation_name: nodes_scaffolded, operation_type: fold, description: The scaffold step wrote one package per contract.}
+  - {operation_name: seams_read, operation_type: fold, description: The seam graph was read and every crossing was matched.}
+  - {operation_name: chains_walked, operation_type: fold, description: The event-chain walk ran and every chain path was driven.}
+  - {operation_name: golden_chain_swept, operation_type: fold, description: The golden chain sweep read the tail event.}
+  - {operation_name: chain_connected, operation_type: fold, description: The head event reached the tail on the bus.}
+  - {operation_name: design_revised, operation_type: fold, description: A refused design was revised and starts again.}
+  - {operation_name: step_failed, operation_type: fold, description: A step raised; the run cannot continue.}
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: drafted
+    state_type: operational
+    description: The design lists its nodes and crossings; no contract is written yet.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: contracts_written
+    state_type: operational
+    description: One contract per node carries its topics and the seams it declares.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: scaffolded
+    state_type: operational
+    description: Every node is a package built from its own contract, with no business logic.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: seams_matched
+    state_type: operational
+    description: Every crossing's producer and consumer declare the same wire projection.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: chains_generated
+    state_type: operational
+    description: The event-chain walk found no issue and every chain path was driven on the bus.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: golden_chain_passed
+    state_type: operational
+    description: The golden chain sweep found the tail event with its expected fields.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: connected
+    state_type: terminal
+    description: An event published at the head reached the tail through the contracts only.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: refused
+    state_type: error
+    description: A gate refused the design; it returns to drafted when the design is revised.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: failed
+    state_type: error
+    description: A step raised; the run stops and names the step.
+    is_terminal: true
+    is_recoverable: false
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: drafted_to_contracts_written_on_contracts_emitted
+    from_state: drafted
+    to_state: contracts_written
+    trigger: contracts_emitted
+    priority: 2
+    conditions:
+    - {condition_name: contracts_present, condition_type: expression, expression: contract_count > 0}
+    - {condition_name: design_complete, condition_type: expression, expression: design_issue_count == 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: drafted_to_refused_on_contracts_emitted
+    from_state: drafted
+    to_state: refused
+    trigger: contracts_emitted
+    priority: 1
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: contracts_written_to_scaffolded_on_nodes_scaffolded
+    from_state: contracts_written
+    to_state: scaffolded
+    trigger: nodes_scaffolded
+    priority: 2
+    conditions:
+    - {condition_name: every_node_scaffolded, condition_type: expression, expression: unscaffolded_count == 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: contracts_written_to_refused_on_nodes_scaffolded
+    from_state: contracts_written
+    to_state: refused
+    trigger: nodes_scaffolded
+    priority: 1
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: scaffolded_to_seams_matched_on_seams_read
+    from_state: scaffolded
+    to_state: seams_matched
+    trigger: seams_read
+    priority: 2
+    conditions:
+    - {condition_name: crossings_present, condition_type: expression, expression: seam_count > 0}
+    - {condition_name: no_mismatch, condition_type: expression, expression: seam_mismatch_count == 0}
+    - {condition_name: no_unmatched, condition_type: expression, expression: seam_unmatched_count == 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: scaffolded_to_refused_on_seams_read
+    from_state: scaffolded
+    to_state: refused
+    trigger: seams_read
+    priority: 1
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: seams_matched_to_chains_generated_on_chains_walked
+    from_state: seams_matched
+    to_state: chains_generated
+    trigger: chains_walked
+    priority: 2
+    conditions:
+    - {condition_name: walk_clean, condition_type: expression, expression: walk_issue_count == 0}
+    - {condition_name: chains_present, condition_type: expression, expression: chain_count > 0}
+    - {condition_name: every_path_driven, condition_type: expression, expression: undriven_path_count == 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: seams_matched_to_refused_on_chains_walked
+    from_state: seams_matched
+    to_state: refused
+    trigger: chains_walked
+    priority: 1
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: chains_generated_to_golden_chain_passed_on_golden_chain_swept
+    from_state: chains_generated
+    to_state: golden_chain_passed
+    trigger: golden_chain_swept
+    priority: 2
+    conditions:
+    - {condition_name: sweep_passed, condition_type: expression, expression: sweep_passed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: chains_generated_to_refused_on_golden_chain_swept
+    from_state: chains_generated
+    to_state: refused
+    trigger: golden_chain_swept
+    priority: 1
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: golden_chain_passed_to_connected_on_chain_connected
+    from_state: golden_chain_passed
+    to_state: connected
+    trigger: chain_connected
+    priority: 2
+    conditions:
+    - {condition_name: tail_delivered, condition_type: expression, expression: tail_delivered == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: golden_chain_passed_to_refused_on_chain_connected
+    from_state: golden_chain_passed
+    to_state: refused
+    trigger: chain_connected
+    priority: 1
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: refused_to_drafted_on_design_revised
+    from_state: refused
+    to_state: drafted
+    trigger: design_revised
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: drafted_to_failed_on_step_failed
+    from_state: drafted
+    to_state: failed
+    trigger: step_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: contracts_written_to_failed_on_step_failed
+    from_state: contracts_written
+    to_state: failed
+    trigger: step_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: scaffolded_to_failed_on_step_failed
+    from_state: scaffolded
+    to_state: failed
+    trigger: step_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: seams_matched_to_failed_on_step_failed
+    from_state: seams_matched
+    to_state: failed
+    trigger: step_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: chains_generated_to_failed_on_step_failed
+    from_state: chains_generated
+    to_state: failed
+    trigger: step_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: golden_chain_passed_to_failed_on_step_failed
+    from_state: golden_chain_passed
+    to_state: failed
+    trigger: step_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: refused_to_failed_on_step_failed
+    from_state: refused
+    to_state: failed
+    trigger: step_failed
+
+metadata:
+  ticket: OMN-21627
+  transport_type: inmemory
