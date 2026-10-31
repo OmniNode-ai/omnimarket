@@ -79,6 +79,19 @@ class ModelAskStateConfig(BaseModel):
     ask_term_limit: int = Field(ge=1)
     max_claim_frequency: float = Field(gt=0.0, le=1.0)
     common_min_claims: int = Field(ge=1)
+    restate_threshold: int = Field(ge=2)
+    restate_kinds: tuple[str, ...] = Field(min_length=1)
+    restate_min_shared: int = Field(ge=2)
+    restate_common_frequency: float = Field(gt=0.0, le=1.0)
+    restate_common_min_statements: int = Field(ge=1)
+    umbrella_lanes: int = Field(ge=1)
+    restate_lookback_days: int = Field(ge=0)
+    after_cell: str = Field(min_length=1)
+    pr_cells: tuple[str, ...] = Field(min_length=1)
+    reference_cells: tuple[str, ...] = Field(min_length=1)
+    blocked_outcomes: tuple[str, ...]
+    friction_kind: str = Field(min_length=1)
+    leverage_reason_edges: int = Field(ge=1)
     min_quote_chars: int = Field(ge=1)
     done_outcomes: tuple[str, ...]
     handoff_outcomes: tuple[str, ...]
@@ -140,6 +153,19 @@ class ModelAskEntry(BaseModel):
         default=(), description="the words an inferred link rests on"
     )
     age_minutes: float
+    restated: int = Field(
+        default=1,
+        ge=1,
+        description="distinct statements of this direction in captured prompts and rulings, itself included",
+    )
+    restated_flag: bool = Field(
+        default=False,
+        description="restated at least the configured threshold: needs its mechanism, not another reminder",
+    )
+    leverage: int = Field(
+        default=0, ge=0, description="dependency edges found that this ask unblocks"
+    )
+    leverage_reason: str = ""
 
 
 class ModelParkedAsk(BaseModel):
@@ -154,6 +180,14 @@ class ModelParkedAsk(BaseModel):
     seq: int | None
     said_at: datetime
     tickets: tuple[str, ...] = ()
+    restated: int = Field(default=1, ge=1)
+    restated_flag: bool = False
+    leverage: int = Field(default=0, ge=0)
+    leverage_reason: str = ""
+    within_wip: bool | None = Field(
+        default=None,
+        description="inside the free WIP slots at this position; None while the limit is UNKNOWN",
+    )
 
 
 class ModelAskCounts(BaseModel):
@@ -206,6 +240,7 @@ class ModelAskStateReport(BaseModel):
     asks: tuple[ModelAskEntry, ...] = ()
     parked_queue: tuple[ModelParkedAsk, ...] = ()
     dropped: tuple[str, ...] = ()
+    restated_asks: tuple[str, ...] = ()
     counts: ModelAskCounts = ModelAskCounts()
     wip: ModelAskWip = ModelAskWip()
     not_tracked: tuple[ModelKindCount, ...] = ()

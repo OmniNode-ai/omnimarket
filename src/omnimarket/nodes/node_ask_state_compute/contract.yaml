@@ -12,6 +12,13 @@
 # parked queue. It reuses node_operator_capture_compute's row parser, evidence rule and term
 # extraction. No clock, no file, no network: the caller supplies the prompts, the rows and the time.
 #
+# Queue order (operator scope additions 2026-10-31): the parked queue is ordered restated-3 first (a
+# direction stated at least restate_threshold times across captured prompts and rulings needs its
+# mechanism, not another reminder), then by leverage (dependency edges the ask unblocks: HOLD after=
+# rows citing its pull requests, and blocked TERMINAL or FRICTION rows of other lanes citing its tickets
+# in existing=, blocked-by= or related=), then by seq, then age. Each position shows its restatement
+# count and its leverage reason. Plan task manifests are not read by this node.
+#
 # Row grammar the node reads (no new row type): a lane that takes, parks or tickets an ask cites
 # it with ask=<id> on its CLAIM, TERMINAL, MSG or HOLD row, or on a STATUS row
 #   STATUS | lane=<lane> | ask=<id> | state=parked | reason=<why> | seq=<n>
@@ -79,6 +86,19 @@ config:
   ask_term_limit: 8
   max_claim_frequency: 0.2
   common_min_claims: 20
+  restate_threshold: 3
+  restate_kinds: [ask, idea, decision, preference]
+  restate_min_shared: 3
+  restate_common_frequency: 0.03
+  restate_common_min_statements: 50
+  umbrella_lanes: 10
+  restate_lookback_days: 14
+  after_cell: after
+  pr_cells: [pr, prs, handed-off]
+  reference_cells: [existing, blocked-by, blocked_by, related]
+  blocked_outcomes: [blocked, failed, partial]
+  friction_kind: FRICTION
+  leverage_reason_edges: 4
   min_quote_chars: 24
   done_outcomes: [done, merged]
   handoff_outcomes: [handed-off]

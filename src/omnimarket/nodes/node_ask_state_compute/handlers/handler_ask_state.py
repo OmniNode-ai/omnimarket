@@ -85,6 +85,7 @@ class _Ask:
     words: str
     subject: str
     confidence: float
+    capture_id: str = ""
 
 
 @dataclass
@@ -191,6 +192,7 @@ def _collect_asks(
                     words=item.quote,
                     subject=item.subject,
                     confidence=item.confidence,
+                    capture_id=prompt.capture_id,
                 ),
             )
     for row in rows:
@@ -218,6 +220,7 @@ def _collect_asks(
             words=quoted[-1] if quoted else "",
             subject=row.cells.get("subject", ""),
             confidence=min(max(confidence, 0.0), 1.0),
+            capture_id=row.cells.get("capture", ""),
         )
     kinds = [ModelKindCount(kind=k, count=n) for k, n in sorted(untracked.items())]
     return sorted(asks.values(), key=lambda a: a.said_at), kinds, unclassified
@@ -290,6 +293,7 @@ def _decide(
     events: list[_Event],
     terminals: dict[tuple[str, str], _Row],
     request: ModelAskStateRequest,
+    used: list[_Row],
 ) -> ModelAskEntry:
     config = request.config
     now = _aware(request.now)
@@ -316,6 +320,7 @@ def _decide(
         if row.at < ask.said_at:
             continue
         evidence.append(row.ref())
+        used.append(row)
         shared.extend(s for s in event.shared if s not in shared)
         for ticket in _tickets(row):
             if ticket not in tickets:
@@ -408,14 +413,173 @@ def _decide(
     )
 
 
+@dataclass(frozen=True)
+class _Statement:
+    at: datetime
+    stems: frozenset[str]
+    key: str
+
+
+def _statements(request: ModelAskStateRequest, rows: list[_Row]) -> list[_Statement]:
+    """Every statement of a direction: each captured prompt item of a restate kind, and each RULING."""
+    config = request.config
+    found: list[_Statement] = []
+    for prompt in request.prompts:
+        for item in prompt.items:
+            if item.kind in config.restate_kinds:
+                stems = frozenset(_stems(f"{item.quote} {item.subject}", config))
+                found.append(
+                    _Statement(_aware(prompt.said_at), stems, prompt.capture_id)
+                )
+    for row in rows:
+        if row.kind == "RULING":
+            words = " ".join(_QUOTED.findall(row.rest))
+            text = f"{row.cells.get('question', '')} {words}"
+            found.append(
+                _Statement(
+                    row.at, frozenset(_stems(text, config)), "RULING " + row.stamp
+                )
+            )
+    return found
+
+
+def _common_statement_stems(
+    statements: list[_Statement], config: ModelAskStateConfig
+) -> frozenset[str]:
+    """Stems so many statements carry that sharing them says nothing (only on a corpus big enough to judge)."""
+    if len(statements) < config.restate_common_min_statements:
+        return frozenset()
+    frequency: dict[str, int] = {}
+    for statement in statements:
+        for stem in statement.stems:
+            frequency[stem] = frequency.get(stem, 0) + 1
+    return frozenset(
+        stem
+        for stem, n in frequency.items()
+        if n / len(statements) >= config.restate_common_frequency
+    )
+
+
+def _restatements(
+    ask: _Ask,
+    statements: list[_Statement],
+    common: frozenset[str],
+    config: ModelAskStateConfig,
+) -> int:
+    """Distinct statements, itself included, that share enough content words with the ask."""
+    stems = tuple(
+        s
+        for s in _stems(f"{ask.words} {ask.subject}", config, config.ask_term_limit)
+        if s not in common
+    )
+    if len(stems) < config.restate_min_shared:
+        return 1
+    keys: set[str] = set()
+    for statement in statements:
+        if statement.key == ask.capture_id or statement.key in keys:
+            continue
+        shared = sum(1 for stem in stems if stem in statement.stems)
+        if (
+            shared >= config.restate_min_shared
+            and shared / len(stems) >= config.min_shared_fraction
+        ):
+            keys.add(statement.key)
+    return 1 + len(keys)
+
+
+@dataclass(frozen=True)
+class _EdgeIndex:
+    holds: tuple[tuple[frozenset[str], _Row], ...]
+    blocked: tuple[_Row, ...]
+    umbrellas: frozenset[str]
+
+
+def _pr_refs(row: _Row, cells: tuple[str, ...]) -> frozenset[str]:
+    refs: set[str] = set()
+    for key in cells:
+        refs.update(_ids(row.cells.get(key, "")))
+    return frozenset(refs)
+
+
+def _edge_index(rows: list[_Row], config: ModelAskStateConfig) -> _EdgeIndex:
+    holds = tuple(
+        (_pr_refs(r, (config.after_cell,)), r)
+        for r in rows
+        if r.kind == "HOLD" and r.cells.get(config.after_cell)
+    )
+    blocked = tuple(
+        r
+        for r in rows
+        if r.kind == config.friction_kind
+        or (r.kind == "TERMINAL" and r.cells.get("outcome") in config.blocked_outcomes)
+    )
+    lanes_by_ticket: dict[str, set[str]] = {}
+    for row in blocked:
+        for cell in config.reference_cells:
+            for ticket in _TICKET.findall(row.cells.get(cell, "")):
+                lanes_by_ticket.setdefault(ticket, set()).add(row.lane)
+    # A ticket that many lanes cite is a tracker for a whole area, not a dependency of one ask.
+    umbrellas = frozenset(
+        t for t, lanes in lanes_by_ticket.items() if len(lanes) > config.umbrella_lanes
+    )
+    return _EdgeIndex(holds, blocked, umbrellas)
+
+
+def _leverage(
+    used: list[_Row],
+    tickets: tuple[str, ...],
+    index: _EdgeIndex,
+    config: ModelAskStateConfig,
+) -> tuple[int, str]:
+    """Dependency edges the ask unblocks, with the reason, from rows only."""
+    prs: set[str] = set()
+    lanes = {r.lane for r in used}
+    for row in used:
+        prs.update(_pr_refs(row, config.pr_cells))
+    edges: dict[str, None] = {}
+    for after, hold in index.holds:
+        if prs & after and hold.lane not in lanes:
+            edges.setdefault(
+                f"hold {hold.lane} waits on {sorted(prs & after)[0]}", None
+            )
+    ticket_set = set(tickets) - index.umbrellas
+    for row in index.blocked:
+        if row.lane in lanes:
+            continue
+        cited = ticket_set & {
+            t
+            for cell in config.reference_cells
+            for t in _TICKET.findall(row.cells.get(cell, ""))
+        }
+        if cited:
+            edges.setdefault(
+                f"{row.lane} {row.kind.lower()} cites {sorted(cited)[0]}", None
+            )
+    if not edges:
+        return 0, "no dependency edge found in the ledger rows"
+    shown = list(edges)[: config.leverage_reason_edges]
+    more = len(edges) - len(shown)
+    return len(edges), "; ".join(shown) + (f"; and {more} more" if more else "")
+
+
 def _seq(value: str) -> int | None:
     return int(value) if value.strip().isdigit() else None
 
 
-def _parked_queue(entries: list[ModelAskEntry]) -> tuple[ModelParkedAsk, ...]:
+def _parked_queue(
+    entries: list[ModelAskEntry], free_slots: int | None
+) -> tuple[ModelParkedAsk, ...]:
+    """Restated-3 first, then leverage, then seq, then age."""
     parked = [e for e in entries if e.state is EnumAskState.PARKED]
     parked.sort(
-        key=lambda e: (e.park_seq is None, e.park_seq or 0, e.said_at, e.ask_id)
+        key=lambda e: (
+            not e.restated_flag,
+            -e.leverage,
+            e.park_seq is None,
+            e.park_seq or 0,
+            e.said_at,
+            e.ask_id,
+        )
     )
     return tuple(
         ModelParkedAsk(
@@ -426,6 +590,11 @@ def _parked_queue(entries: list[ModelAskEntry]) -> tuple[ModelParkedAsk, ...]:
             seq=e.park_seq,
             said_at=e.said_at,
             tickets=e.tickets,
+            restated=e.restated,
+            restated_flag=e.restated_flag,
+            leverage=e.leverage,
+            leverage_reason=e.leverage_reason,
+            within_wip=None if free_slots is None else i <= free_slots,
         )
         for i, e in enumerate(parked, start=1)
     )
@@ -488,6 +657,15 @@ def render_text(report: ModelAskStateReport, excerpt_chars: int) -> str:
         f"{c.dropped} DROPPED, {c.new} new, {c.parked} parked, {c.owned} owned, "
         f"{c.ticketed} ticketed, {c.done} done. {wip_text}."
     ]
+    flagged = [e for e in report.asks if e.restated_flag]
+    if flagged:
+        lines.append("")
+        lines.append(
+            f"RESTATED ({len(flagged)}): stated at least the threshold number of times; "
+            "name or open the mechanism and hold new work in the area, no further reminder"
+        )
+        for e in flagged:
+            lines.append(_entry_line(e, excerpt_chars))
     for state in _ORDER:
         group = [e for e in report.asks if e.state is state]
         if not group:
@@ -501,8 +679,13 @@ def render_text(report: ModelAskStateReport, excerpt_chars: int) -> str:
         lines.append("PARKED QUEUE (in order)")
         for p in report.parked_queue:
             seq = f"seq {p.seq}" if p.seq is not None else "no seq"
+            wip_mark = {True: "in WIP", False: "beyond WIP", None: "WIP UNKNOWN"}[
+                p.within_wip
+            ]
             lines.append(
-                f"{p.position}. {p.ask_id} ({seq}) {p.reason or 'no reason'}: "
+                f"{p.position}. {p.ask_id} ({seq}, stated x{p.restated}"
+                f"{' RESTATED' if p.restated_flag else ''}, leverage {p.leverage}: "
+                f"{p.leverage_reason}, {wip_mark}) {p.reason or 'no reason'}: "
                 f"{_clip(p.words, excerpt_chars)}"
             )
     if report.unclassified:
@@ -540,6 +723,9 @@ def _entry_line(e: ModelAskEntry, excerpt_chars: int) -> str:
         parts.append(f"seq={e.park_seq} reason={e.park_reason}")
     if e.link is EnumAskLink.INFERRED:
         parts.append("inferred[" + ",".join(e.shared_terms) + "]")
+    parts.append(f"stated x{e.restated}" + (" RESTATED" if e.restated_flag else ""))
+    if e.leverage:
+        parts.append(f"leverage {e.leverage} ({e.leverage_reason})")
     return "- " + " ".join(parts) + f": {_clip(e.words, excerpt_chars)}"
 
 
@@ -577,21 +763,40 @@ class HandlerAskState:
             if len(claim_stems) >= config.common_min_claims
             else frozenset()
         )
+        statements = _statements(request, rows)
+        common_statement = _common_statement_stems(statements, config)
+        edges = _edge_index(rows, config)
         entries: list[ModelAskEntry] = []
         for ask in asks:
             events = explicit[ask.ask_id]
             if not events:
                 events = _infer(ask, rows, claim_stems, common, config)
-            entries.append(_decide(ask, list(events), terminals, request))
+            used: list[_Row] = []
+            entry = _decide(ask, list(events), terminals, request, used)
+            count = _restatements(ask, statements, common_statement, config)
+            lev, why = _leverage(used, entry.tickets, edges, config)
+            entries.append(
+                entry.model_copy(
+                    update={
+                        "restated": count,
+                        "restated_flag": count >= config.restate_threshold,
+                        "leverage": lev,
+                        "leverage_reason": why,
+                    }
+                )
+            )
+        wip = _wip(entries, config.wip_limit)
+        free = None if wip.limit is None else max(wip.limit - len(wip.owned_lanes), 0)
         report = ModelAskStateReport(
             schema_id=config.schema_id,
             generated_at=_aware(request.now),
             since=_aware(request.since),
             asks=tuple(entries),
-            parked_queue=_parked_queue(entries),
+            parked_queue=_parked_queue(entries, free),
             dropped=tuple(e.ask_id for e in entries if e.state is EnumAskState.DROPPED),
+            restated_asks=tuple(e.ask_id for e in entries if e.restated_flag),
             counts=_counts(entries),
-            wip=_wip(entries, config.wip_limit),
+            wip=wip,
             not_tracked=tuple(not_tracked),
             unclassified=tuple(unclassified),
         )

@@ -353,3 +353,136 @@ def test_report_is_deterministic_and_round_trips() -> None:
     assert first == again
     assert ModelAskStateReport.model_validate_json(first.model_dump_json()) == first
     assert first.schema_id == "omni.ask-state/1"
+
+
+def _statement_prompt(n: int, quote: str, hour: int) -> ModelAskPrompt:
+    return _prompt(
+        n, quote, kind="decision", said=datetime(2026, 10, 31, hour, tzinfo=UTC)
+    )
+
+
+def test_third_statement_of_a_direction_flags_the_ask_restated() -> None:
+    words = "Sequence the tracked items by leverage within the work in progress limit"
+    ask = _prompt(30, words, said=datetime(2026, 10, 31, 9, tzinfo=UTC))
+    earlier = _statement_prompt(
+        31, "Order the tracked items by leverage inside the work in progress limit", 5
+    )
+    ruling = (
+        "2026-10-31T06:00:00Z | RULING | lane=orch | ticket=OMN-1 | question=ordering | "
+        '"sequence tracked items by leverage within the work in progress limit"'
+    )
+    two = _run((ask, earlier))
+    assert _entry(two, 30).restated == 2
+    assert not _entry(two, 30).restated_flag
+    three = _run((ask, earlier), (ruling,))
+    entry = _entry(three, 30)
+    assert entry.restated == 3
+    assert entry.restated_flag
+    assert three.restated_asks == (ask_id(30),)
+    assert "RESTATED (1)" in three.text
+    assert "stated x3 RESTATED" in three.text
+
+
+def test_two_items_of_one_prompt_are_one_statement_and_unrelated_words_do_not_count() -> (
+    None
+):
+    both = ModelAskPrompt(
+        capture_id="cap-both",
+        session_id="s",
+        said_at=SAID,
+        text="x",
+        items=(
+            ModelAskPromptItem(
+                item_id=f"cap-{40:010x}",
+                kind="ask",
+                quote="Rack the new host tomorrow",
+                subject="",
+                confidence=0.5,
+            ),
+            ModelAskPromptItem(
+                item_id=f"cap-{41:010x}",
+                kind="idea",
+                quote="Rack the new host tomorrow morning",
+                subject="",
+                confidence=0.5,
+            ),
+        ),
+    )
+    other = _statement_prompt(42, "Graph the factory floor with animations", 3)
+    report = _run((both, other))
+    assert _entry(report, 40).restated == 1
+
+
+def test_leverage_counts_holds_after_the_asks_pr_and_other_lanes_citing_its_ticket() -> (
+    None
+):
+    claim_row = (
+        "2026-10-31T08:05:00Z | CLAIM | lane=lane-a | ticket=OMN-77 | ask="
+        + ask_id(50)
+        + " | pr=omnimarket#900 | "
+        "worktree=none | est ~1 lane-hours; displaces nothing; (OMN-77)"
+    )
+    rows = (
+        claim_row,
+        "2026-10-31T08:10:00Z | HOLD | lane=lane-b | id=2026-10-31T08:10:00Z-lane-b | pr=omnimarket#901 | after=omnimarket#900 | reason=waits",
+        "2026-10-31T08:11:00Z | HOLD | lane=lane-c | id=2026-10-31T08:11:00Z-lane-c | pr=omnimarket#902 | after=omnimarket#900 | reason=waits",
+        "2026-10-31T08:12:00Z | FRICTION | lane=lane-d | existing=OMN-77 | cost=~5 lane-minutes | blocked on it",
+        "2026-10-31T08:13:00Z | TERMINAL | lane=lane-e | friction=none | outcome=blocked | blocked-by=OMN-77 | delegated=0",
+        "2026-10-31T08:14:00Z | HOLD | lane=lane-f | id=2026-10-31T08:14:00Z-lane-f | pr=omnimarket#903 | after=omnimarket#999 | reason=unrelated",
+    )
+    report = _run((_prompt(50, "Ship the shared parser"),), rows)
+    entry = _entry(report, 50)
+    assert entry.leverage == 4
+    assert "lane-b waits on omnimarket#900" in entry.leverage_reason
+    assert "lane-d friction cites OMN-77" in entry.leverage_reason
+    lonely = _run((_prompt(51, "Do a standalone thing"),))
+    assert _entry(lonely, 51).leverage == 0
+    assert "no dependency edge" in _entry(lonely, 51).leverage_reason
+
+
+def _parked(n: int, seq: int | None) -> str:
+    cell = f" | seq={seq}" if seq is not None else ""
+    return f"2026-10-31T09:{n:02d}:00Z | STATUS | lane=orch | ask={ask_id(n)} | state=parked | reason=r{n}{cell}"
+
+
+def test_parked_queue_orders_restated_then_leverage_then_seq_and_marks_wip() -> None:
+    words = {
+        60: "Rack hardware tomorrow morning",
+        61: "Calibrate telemetry exporters nightly",
+        62: "Migrate dashboard widgets gradually",
+        63: "Consolidate runtime containers aggressively",
+    }
+    prompts = tuple(
+        _prompt(n, text, said=datetime(2026, 10, 31, 1, tzinfo=UTC))
+        for n, text in words.items()
+    )
+    rows = (
+        _parked(60, 1),
+        _parked(61, 2),
+        _parked(62, 3),
+        _parked(63, 4),
+        "2026-10-31T09:20:00Z | HOLD | lane=lane-b | id=2026-10-31T09:20:00Z-lane-b | pr=omnimarket#901 | after=omnimarket#900 | reason=w",
+        f"2026-10-31T09:21:00Z | STATUS | lane=orch | ask={ask_id(62)} | pr=omnimarket#900",
+        # ask 63 is restated three times by two more prompts of the same direction
+    )
+    more = (
+        _statement_prompt(70, "Consolidate runtime containers aggressively again", 2),
+        _statement_prompt(
+            71, "Consolidate runtime containers aggressively once more", 3
+        ),
+    )
+    config = CONFIG.model_copy(update={"wip_limit": 3})
+    claims = (
+        claim("lane-1", "2026-10-31T09:30:00Z", ask_id(80)),
+        claim("lane-2", "2026-10-31T09:31:00Z", ask_id(81)),
+    )
+    owned = (_prompt(80, "Owned thing one"), _prompt(81, "Owned thing two"))
+    report = _run((*prompts, *more, *owned), (*rows, *claims), config=config)
+    order = [p.ask_id for p in report.parked_queue]
+    assert order == [ask_id(63), ask_id(62), ask_id(60), ask_id(61)]
+    assert report.parked_queue[0].restated_flag
+    assert report.parked_queue[1].leverage == 1
+    # three slots, two lanes owned: one free position
+    assert [p.within_wip for p in report.parked_queue] == [True, False, False, False]
+    unknown = _run((*prompts, *more), rows)
+    assert {p.within_wip for p in unknown.parked_queue} == {None}

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -138,21 +138,25 @@ class HandlerAskStateReport:
 
     def handle(self, request: ModelAskStateReadRequest) -> ModelAskStateReport:
         runtime = load_contract()["runtime"]
+        config = load_config()
+        # Restatements and dependency edges look back past the window; the compute node reports
+        # only the asks stated at or after ``since``.
+        floor = request.since - timedelta(days=config.restate_lookback_days)
         return HandlerAskState().handle(
             ModelAskStateRequest(
                 prompts=read_prompts(
-                    request.captures_dir / runtime["captures_file"], request.since
+                    request.captures_dir / runtime["captures_file"], floor
                 ),
                 rows=read_ledger_rows(
                     request.ledger_path,
-                    request.since,
+                    floor,
                     archive_glob=runtime["archive_glob"],
                     archive_dir=runtime["archive_dir"],
                     archives=request.archives,
                 ),
                 now=request.now,
                 since=request.since,
-                config=load_config(),
+                config=config,
             )
         )
 
