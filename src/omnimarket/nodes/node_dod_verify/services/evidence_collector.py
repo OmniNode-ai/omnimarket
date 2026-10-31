@@ -49,6 +49,7 @@ from omnibase_core.validation.validator_receipt_gate import (
 )
 from pydantic import ValidationError
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.delegated_test_loop.must_fail_control import (
     ProtocolMustFailTreeRunner,
     diff_derived_binding,
@@ -1123,7 +1124,10 @@ _EVIDENCE_ID_BINDING_RE = re.compile(
 # repo from one field paired with a number from another).
 _HARDCODED_PR_NUM_RE = re.compile(r"gh pr (?:view|checks|diff)\s+(\d+)\b")
 _REPO_FLAG_RE = re.compile(r"--repo(?:=|\s+)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
-_GH_PR_URL_RE = re.compile(r"https://github\.com/([^\s\"')]+/[^\s\"')]+)/pull/(\d+)")
+_GH_PR_URL_RE = re.compile(
+    re.escape(service_endpoint_url("github.web_url"))
+    + r"/([^\s\"')]+/[^\s\"')]+)/pull/(\d+)"
+)
 # OMN-15465: the two URL forms that carry repo AND number adjacent inside a
 # SINGLE token — the ``gh api`` REST path (``repos/<owner>/<repo>/pulls/<N>``)
 # and the github.com web URL (``.../<owner>/<repo>/pull/<N>``). These are a
@@ -1135,7 +1139,7 @@ _GH_PR_URL_RE = re.compile(r"https://github\.com/([^\s\"')]+/[^\s\"')]+)/pull/(\
 # perfectly and still fell through tier 2 to the receipt-carrier tier, because
 # the extractor only understood ``gh pr view|checks|diff``.
 _PR_PATH_URL_RE = re.compile(
-    r"(?:https://github\.com/|repos/)"
+    "(?:" + re.escape(service_endpoint_url("github.web_url")) + r"/|repos/)"
     r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)"
     r"/pulls?/(\d+)\b"
 )
