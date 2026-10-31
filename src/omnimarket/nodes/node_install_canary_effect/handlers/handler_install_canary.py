@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
+from omnimarket.handlers.runtime_paths import runtime_path
 
 CANARY_RECORD = "$ONEX_REGISTRY_ROOT/.claude_scratch/adoption/canary.json"
 CANARY_RECORD_REL = ".claude_scratch/adoption/canary.json"
@@ -481,7 +482,7 @@ class HandlerInstallCanary:
         )
         installed_file = self.runtime["expand"](
             target.spec.get(
-                "installed_plugins", "~/.claude/plugins/installed_plugins.json"
+                "installed_plugins", runtime_path("claude.installed_plugins_file")
             ),
             target.env,
         )
@@ -1032,7 +1033,8 @@ class HandlerInstallCanary:
                     if f.is_file():
                         rel = f.relative_to(root).as_posix()
                         if not self.runtime["ignored"](rel):
-                            destinations[self.source_path(target, strip, rel)] = f
+                            adopted_from = self.source_path(target, strip, rel)
+                            destinations[adopted_from] = f
             pairs = sorted(destinations.items())
         for src, dest in pairs:
             if only is not None and src not in only:

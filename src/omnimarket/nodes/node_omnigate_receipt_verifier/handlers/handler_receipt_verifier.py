@@ -7,7 +7,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.nodes.node_omnigate_receipt_verifier.models.model_receipt_verifier_input import (
     ModelReceiptVerifierInput,
@@ -61,11 +60,8 @@ class HandlerReceiptVerifier:
         return "compute"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        request: ModelReceiptVerifierInput,
+        self, request: ModelReceiptVerifierInput
     ) -> ModelReceiptVerifierResult:
-        _ = correlation_id
         decision = self._verifier(
             request.pr_body,
             Path(request.repo_path),

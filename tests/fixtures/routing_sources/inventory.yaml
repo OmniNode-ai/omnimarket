@@ -191,6 +191,8 @@ not_routing_configs:
     reason: loopback and wildcard addresses and fixed local ports that code binds or compares against; they select no delegation route
   - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
     reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
+  - path: src/omnimarket/configs/runtime_paths.yaml
+    reason: filesystem locations nodes fall back to when no setting names one; it selects no route
   - path: src/omnimarket/configs/seams.v1.yaml
     reason: seam declarations
   - path: src/omnimarket/configs/service_endpoints.yaml

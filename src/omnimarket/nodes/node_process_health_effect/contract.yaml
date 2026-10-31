@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Process Health Effect
+# Direct invocation: reads the sources, runs node_process_health_compute and writes its JSON.
+name: "node_process_health_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Reads the sources named under runtime_io (the rolling ledger and its archive, the landing
+  controller files, the throughput tick's repo-status log, the landing metrics history, the
+  Linear snapshot and each clone's default-branch history), hands them to the pure
+  node_process_health_compute, and writes the resulting JSON to the output path declared
+  below. A source it cannot read is passed as unread with the reason, never as an empty read.
+input_model:
+  name: "ModelProcessHealthRunRequest"
+  module: "omnimarket.nodes.node_process_health_effect.models.model_process_health_run"
+output_model:
+  name: "ModelProcessHealthRunResult"
+  module: "omnimarket.nodes.node_process_health_effect.models.model_process_health_run"
+handler:
+  module: "omnimarket.nodes.node_process_health_effect.handlers.handler_process_health_run"
+  class: "HandlerProcessHealthRun"
+  input_model: "omnimarket.nodes.node_process_health_effect.models.model_process_health_run.ModelProcessHealthRunRequest"
+  output_model: "omnimarket.nodes.node_process_health_effect.models.model_process_health_run.ModelProcessHealthRunResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_process_health_effect.handlers.handler_process_health_run:HandlerProcessHealthRun"
+  handlers:
+    - operation: "write_process_health"
+      handler:
+        name: "HandlerProcessHealthRun"
+        module: "omnimarket.nodes.node_process_health_effect.handlers.handler_process_health_run"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_process_health_effect.runtime_process_health"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 600000
+# The handler reads each path as env_var (when set) else default, then joins the file name. A path
+# whose directory is missing makes that source unread with the reason, never an empty read.
+runtime_io:
+  output:
+    env_var: "ONEX_PROCESS_HEALTH_OUTPUT"
+    default: "${ONEX_STATE_DIR}/process-health/process-health.json"
+  ledger:
+    live: "${ONEX_LEDGER_PATH}"
+    archive_dir_name: "archive"
+    archive_glob: "ROLLING_WORK_LEDGER_*-split.md"
+  landing:
+    dir_env_var: "LANDING_STATE_DIR"
+    dir_default: "~/.local/state/omni/landing"
+    max_gap_hours: 2
+    decisions_file: "decisions.jsonl"
+    cost_file: "cost.jsonl"
+    delegation_file: "delegation.jsonl"
+  repo_status:
+    env_var: "THROUGHPUT_TICK_REPO_STATUS_EVENTS"
+    default: "~/.local/state/omni/throughput-tick/throughput-tick.repo-status-events.jsonl"
+    max_gap_hours: 6
+  landing_metrics_history:
+    env_var: "LANDING_METRICS_HISTORY"
+    default: "${OMNI_HOME}/.claude_scratch/landing-metrics.jsonl"
+  linear_snapshot:
+    env_var: "PROCESS_HEALTH_LINEAR_SNAPSHOT"
+    default: "${ONEX_STATE_DIR}/process-health/linear-snapshot.json"
+  git:
+    clone_root_env_var: "OMNI_HOME"
+    default_branch_refs: ["origin/dev", "origin/main"]
+    since_days: 21
+    docs_suffixes: [".md", ".txt", ".rst"]
+    docs_dir_prefixes: ["docs/"]
+    docs_repo_markers: ["knowledge-base", "knowledge_base"]
+    ledger_path_markers: ["ROLLING_WORK_LEDGER"]
+metadata:
+  transport_type: local
+  description: "Process Health Effect - reads the process-health sources and writes the series JSON."
+  author: "OmniNode Team"
+  created: "2026-10-31"
+  tags: ['effect', 'process-health', 'factory-floor', 'OMN-21686']
+  related_tickets: ['OMN-21686', 'OMN-17427']

@@ -12,18 +12,23 @@ Covers scenarios not addressed in test_handoff_validation_gate.py:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect import (
     HandlerHandoffEffect,
     HandoffGateError,
     _parse_env_sync_log,
     validate_infra_sources,
+)
+from omnimarket.nodes.node_handoff_effect.models.model_handoff_request import (
+    ModelHandoffRequest,
 )
 from omnimarket.nodes.node_handoff_effect.service_catalog import (
     ServiceCatalogSnapshot,
@@ -47,7 +52,13 @@ _ALL_SERVICES = (
 
 
 def _git(args: list[str], cwd: Path) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env=scrub_git_location_env(os.environ),
+    )
 
 
 @pytest.fixture
@@ -195,9 +206,11 @@ class TestUnconfiguredSshTarget:
         handler = HandlerHandoffEffect()
         with pytest.raises(HandoffGateError) as exc_info:
             handler.handle(
-                session_id="sess-no-target",
-                correlation_id=uuid.uuid4(),
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id="sess-no-target",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(git_repo),
+                )
             )
 
         assert exc_info.value.exit_code == 2
@@ -293,9 +306,11 @@ class TestEnvSyncLogNoSuccessLine:
         ):
             handler = HandlerHandoffEffect()
             result = handler.handle(
-                session_id="sess-nosuccess",
-                correlation_id=uuid.uuid4(),
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id="sess-nosuccess",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(git_repo),
+                )
             )
 
         data = yaml.safe_load(Path(result["artifact_path"]).read_text())
@@ -469,9 +484,11 @@ class TestIntegrationUnreachableHost:
         handler = HandlerHandoffEffect()
         with pytest.raises(HandoffGateError):
             handler.handle(
-                session_id="sess-bad-host",
-                correlation_id=uuid.uuid4(),
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id="sess-bad-host",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(git_repo),
+                )
             )
 
         handoff_dir = state_dir / "session" / "handoff"
