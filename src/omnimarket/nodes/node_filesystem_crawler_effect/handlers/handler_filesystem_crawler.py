@@ -72,8 +72,6 @@ HANDLER_ID_FILESYSTEM_CRAWLER: str = "filesystem-crawler"
 
 DEFAULT_SCOPE_REF: str = "omninode/shared"
 
-_STATIC_STANDARDS_PREFIXES: tuple[str, ...] = (str(Path("~/.claude").expanduser()),)
-
 _SKIP_DIRS: frozenset[str] = frozenset({"src", "docs", "design", "plans", "handoffs"})
 
 
@@ -117,10 +115,11 @@ def _detect_doc_type(path: Path) -> EnumDetectedDocType:
     return EnumDetectedDocType.UNKNOWN_MD
 
 
-def _source_type_for_path(path: Path) -> EnumContextSourceType:
-    for prefix in _STATIC_STANDARDS_PREFIXES:
-        if path.is_relative_to(Path(prefix)):
-            return EnumContextSourceType.STATIC_STANDARDS
+def _source_type_for_path(
+    path: Path, config: ModelFilesystemCrawlerConfig
+) -> EnumContextSourceType:
+    if any(path.is_relative_to(prefix) for prefix in config.static_standards_prefixes):
+        return EnumContextSourceType.STATIC_STANDARDS
 
     if path.name == "CLAUDE.md":
         return EnumContextSourceType.STATIC_STANDARDS
@@ -128,11 +127,11 @@ def _source_type_for_path(path: Path) -> EnumContextSourceType:
     return EnumContextSourceType.REPO_DERIVED
 
 
-def _priority_hint_for_path(path: Path, path_prefixes: list[str]) -> int:
+def _priority_hint_for_path(path: Path, config: ModelFilesystemCrawlerConfig) -> int:
     name_upper = path.name.upper()
     parts_lower = [p.lower() for p in path.parts]
 
-    for prefix in _STATIC_STANDARDS_PREFIXES:
+    for prefix in config.static_standards_prefixes:
         if path.is_relative_to(Path(prefix)) and path.name == "CLAUDE.md":
             return 95
 
@@ -153,7 +152,7 @@ def _priority_hint_for_path(path: Path, path_prefixes: list[str]) -> int:
     if "handoffs" in parts_lower or "handoff" in parts_lower:
         return 60
 
-    if path.name.upper() == "README.MD" and str(path.parent) in path_prefixes:
+    if path.name.upper() == "README.MD" and str(path.parent) in config.path_prefixes:
         return 55
 
     if (
@@ -387,10 +386,8 @@ class HandlerFilesystemCrawler:
                 blob_ref = f"sha256:{fingerprint}"
                 token_estimate = len(content.decode("utf-8", errors="replace")) // 4
                 doc_type = _detect_doc_type(resolved_path)
-                source_type = _source_type_for_path(resolved_path)
-                priority = _priority_hint_for_path(
-                    resolved_path, self._config.path_prefixes
-                )
+                source_type = _source_type_for_path(resolved_path, self._config)
+                priority = _priority_hint_for_path(resolved_path, self._config)
                 tags = _extract_tags(resolved_path, doc_type)
 
                 if prior_state is None:
@@ -622,7 +619,9 @@ class HandlerFilesystemCrawler:
 
             for record in known_records:
                 if record.source_ref not in walked_paths:
-                    source_type = _source_type_for_path(Path(record.source_ref))
+                    source_type = _source_type_for_path(
+                        Path(record.source_ref), self._config
+                    )
                     removed_event = ModelDocumentRemovedEvent(
                         correlation_id=correlation_id,
                         emitted_at_utc=emitted_at_utc,

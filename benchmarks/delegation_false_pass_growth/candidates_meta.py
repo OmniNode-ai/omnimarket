@@ -6,14 +6,14 @@ import sys
 
 import asyncpg
 
-_DSN_ENV = "OMNIDASH_ANALYTICS_DB_URL"
+_DSN_ENV, WORK_DIR = "OMNIDASH_ANALYTICS_DB_URL", os.environ["OMN20032_WORK_DIR"]
 
 
 def _dsn() -> str:
     return os.environ[_DSN_ENV]  # url-authority-ok: lab one-shot
 
 
-SQL = open("/tmp/cands_meta_omn20032.sql").read()
+SQL = open(f"{WORK_DIR}/cands_meta.sql").read()
 
 
 async def main():

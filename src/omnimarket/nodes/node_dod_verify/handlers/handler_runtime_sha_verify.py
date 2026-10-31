@@ -39,8 +39,7 @@ class ModelRuntimeShaVerifyRequest(BaseModel):
         description="SSH host of the runtime server",
     )
     runtime_repo_path: str = Field(
-        default="/opt/omninode/runtime",
-        description="Absolute path to the deployed git repo on the runtime host",
+        ..., min_length=1, description="Deployed git repo path, bound by the caller"
     )
     runner: str = Field(default="integration-sweep-verifier", min_length=1)
     pr_number: int | None = Field(default=None, ge=1)

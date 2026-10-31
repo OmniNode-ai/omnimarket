@@ -160,17 +160,15 @@ def main(argv: list[str] | None = None) -> int:
     """Parse the filesystem operands and apply flag, then print the result as JSON."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin-root", required=True, type=Path)
-    parser.add_argument(
-        "--codex-home",
-        type=Path,
-        default=Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser(),
-    )
+    parser.add_argument("--codex-home", type=Path, default=os.environ.get("CODEX_HOME"))
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
+    if args.codex_home is None:
+        parser.error("--codex-home is required when CODEX_HOME is not set")
     result = HandlerCodexHookRegistration().handle(
         ModelCodexHookRegistrationRequest(
             plugin_root=args.plugin_root,
-            codex_home=args.codex_home,
+            codex_home=args.codex_home.expanduser(),
             apply=args.apply,
             now=datetime.now(UTC),
         )

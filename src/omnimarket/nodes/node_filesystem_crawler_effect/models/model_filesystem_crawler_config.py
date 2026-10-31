@@ -20,6 +20,13 @@ class ModelFilesystemCrawlerConfig(BaseModel):
     )
 
     path_prefixes: list[str] = Field(default_factory=list)
+    static_standards_prefixes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Absolute directories whose files are static standards; bound from "
+            "the node overlay by the caller, no directory is assumed here"
+        ),
+    )
     file_glob: str = Field(default="*.md")
     publish_topic_discovered: str = Field(default=TOPIC_DOCUMENT_DISCOVERED)
     publish_topic_changed: str = Field(default=TOPIC_DOCUMENT_CHANGED)

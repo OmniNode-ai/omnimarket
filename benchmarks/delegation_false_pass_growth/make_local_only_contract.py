@@ -1,10 +1,12 @@
-# ruff: noqa: SIM115, E402, T201
+# ruff: noqa: SIM115, T201
+
+import os
 
 import yaml
 
 src = "/app/.venv/lib/python3.12/site-packages/omnimarket/configs/task_class_contracts.v1.yaml"
 d = yaml.safe_load(open(src))
-n = 0
+n, WORK_DIR = 0, os.environ["OMN20032_WORK_DIR"]
 for name, c in d["task_classes"].items():
     ep = c.get("escalation_policy")
     if ep is not None and "tier_order" in ep:
@@ -13,10 +15,8 @@ for name, c in d["task_classes"].items():
         n += 1
     else:
         print(name, "NO tier_order", ep)
-import os
-
-os.makedirs("/tmp/omn20032", exist_ok=True)
+os.makedirs(WORK_DIR, exist_ok=True)
 yaml.safe_dump(
-    d, open("/tmp/omn20032/task_class_contracts.v1.yaml", "w"), sort_keys=False
+    d, open(f"{WORK_DIR}/task_class_contracts.v1.yaml", "w"), sort_keys=False
 )
 print("modified", n)
