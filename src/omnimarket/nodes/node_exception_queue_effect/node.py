@@ -33,21 +33,21 @@ class NodeExceptionQueueEffect:
         | ModelExceptionResolveResult
         | ModelExceptionQueueRead
     ):
-        from .handler import (
-            HandlerExceptionEmit,
-            HandlerExceptionQueue,
-            HandlerExceptionQueueRead,
-            HandlerExceptionResolve,
+        from .container.container_exception_queue_effect import (
+            create_handler_exception_emit,
+            create_handler_exception_queue,
+            create_handler_exception_queue_read,
+            create_handler_exception_resolve,
         )
 
         if isinstance(request, ModelExceptionEmitRequest):
-            return HandlerExceptionEmit().handle(request)
+            return create_handler_exception_emit().handle(request)
         if isinstance(request, ModelExceptionQueueRequest):
-            return HandlerExceptionQueue().handle(request)
+            return create_handler_exception_queue().handle(request)
         if isinstance(request, ModelExceptionQueueReadRequest):
-            return HandlerExceptionQueueRead().handle(request)
+            return create_handler_exception_queue_read().handle(request)
         if isinstance(request, ModelExceptionResolveRequest):
-            return HandlerExceptionResolve().handle(request)
+            return create_handler_exception_resolve().handle(request)
         raise TypeError(
             f"Unsupported exception queue request: {type(request).__name__}"
         )
