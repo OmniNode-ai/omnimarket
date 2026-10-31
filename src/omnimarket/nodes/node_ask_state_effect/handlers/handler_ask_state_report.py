@@ -17,15 +17,15 @@ from typing import Any
 import yaml
 
 import omnimarket.nodes.node_ask_state_compute as compute_node
-from omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state import (
-    HandlerAskState,
-)
-from omnimarket.nodes.node_ask_state_compute.models.model_ask_state import (
+from omnimarket.models.model_ask_state import (
     ModelAskPrompt,
     ModelAskPromptItem,
     ModelAskStateConfig,
     ModelAskStateReport,
     ModelAskStateRequest,
+)
+from omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state import (
+    HandlerAskState,
 )
 from omnimarket.nodes.node_ask_state_effect.models.model_ask_state_read import (
     ModelAskStateReadRequest,

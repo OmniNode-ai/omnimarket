@@ -36,7 +36,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_ask_state_compute.models.model_ask_state import (
+from omnimarket.models.model_ask_state import (
     EnumAskLink,
     EnumAskState,
     ModelAskCounts,

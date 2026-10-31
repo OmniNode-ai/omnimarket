@@ -35,17 +35,17 @@ lifecycle: experimental
 description: "Each operator ask or idea with its state: owned, ticketed, parked, done or dropped."
 input_model:
   name: "ModelAskStateRequest"
-  module: "omnimarket.nodes.node_ask_state_compute.models.model_ask_state"
+  module: "omnimarket.models.model_ask_state"
   description: "Captured operator prompts, ledger rows, the window start, the judging time and the config."
 output_model:
   name: "ModelAskStateReport"
-  module: "omnimarket.nodes.node_ask_state_compute.models.model_ask_state"
+  module: "omnimarket.models.model_ask_state"
   description: "Every tracked ask with its state, the parked queue, the dropped ids, counts and WIP."
 handler:
   module: "omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state"
   class: "HandlerAskState"
-  input_model: "omnimarket.nodes.node_ask_state_compute.models.model_ask_state.ModelAskStateRequest"
-  output_model: "omnimarket.nodes.node_ask_state_compute.models.model_ask_state.ModelAskStateReport"
+  input_model: "omnimarket.models.model_ask_state.ModelAskStateRequest"
+  output_model: "omnimarket.models.model_ask_state.ModelAskStateReport"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state:HandlerAskState"
