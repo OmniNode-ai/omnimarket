@@ -50,7 +50,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
-from omnimarket.handlers.models_first_command import first_model, models_text
+from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
@@ -945,7 +945,7 @@ models_group = click.Group(
         "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
-    commands=[first_model],  # OMN-21346: onex models first
+    commands=list(MODEL_COMMANDS),  # onex models first (OMN-21346), only
 )
 
 
@@ -1068,7 +1068,7 @@ def test_models(provider: str | None, as_json: bool) -> None:
 @_model_json
 def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
-    for row in model_keys.list_providers():
+    for row in listed(as_json):  # OMN-21267: the rule in force first
         if as_json:
             click.echo(row.model_dump_json())
             continue
