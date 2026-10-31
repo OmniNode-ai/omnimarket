@@ -201,8 +201,16 @@ def probe_local_url(base: str) -> str | None:
     return "GET /v1/models: no model list in the answer"
 
 
-def key_looks_like(value: str) -> str | None:
-    """The provider whose keys start like ``value``, or ``None`` when unknown."""
+def key_looks_like(value: str, for_provider: str | None = None) -> str | None:
+    """The provider whose keys start like ``value``, or ``None`` when unknown.
+
+    OMN-21263: ``None`` too when ``for_provider``'s catalogue row takes its
+    endpoint at registration: an endpoint the developer chose takes keys of any
+    shape, so a key there is never refused for looking like another provider's.
+    """
+    row = resolve_byok_provider_backend(for_provider) if for_provider else None
+    if row is not None and row.endpoint_from_registration:
+        return None
     for prefix, provider in _KEY_PREFIXES:
         if value.startswith(prefix):
             return provider

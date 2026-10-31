@@ -11,11 +11,11 @@ description: >
 
 input_model:
   name: ModelDashboardProjectionEvent
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_dashboard_projection_event
+  module: omnimarket.models.evidence_pipeline.wire.model_dashboard_projection_event
   description: "Normalized event emitted by node_evidence_dashboard_effect."
 output_model:
   name: ModelReadinessAggregateProjection
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_readiness_aggregate_projection
+  module: omnimarket.models.evidence_pipeline.wire.model_readiness_aggregate_projection
   description: "Projection state written by the reducer."
 
 handler:

@@ -25,16 +25,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
+
+from omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result import (
     ModelDeploymentReadinessResult,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command import (
     ModelEvidencePipelineCommand,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report import (
+from omnimarket.models.evidence_pipeline.wire.model_gap_report import (
     ModelGapReport,
 )
-
 from omnimarket.nodes.evidence_pipeline_native import (
     coerce_command,
     coerce_gap,

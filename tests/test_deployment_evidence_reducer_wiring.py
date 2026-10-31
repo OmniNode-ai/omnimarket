@@ -18,13 +18,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
-    ModelEvidenceValidationResult,
-)
 from omnibase_infra.enums import EnumConsumerGroupPurpose
 from omnibase_infra.models import ModelNodeIdentity
 from omnibase_infra.utils import compute_consumer_group_id
 
+from omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result import (
+    ModelEvidenceValidationResult,
+)
 from omnimarket.nodes.node_deployment_evidence_reducer import (
     HandlerDeploymentEvidenceReducer,
 )

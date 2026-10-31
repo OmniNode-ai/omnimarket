@@ -1,0 +1,183 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Receipt Gate Pin Advance Compute (OMN-20134)
+#
+# Every repository that runs the Repo Evidence Gate calls omnibase_core's
+# receipt-gate reusable at a pinned dev-merge tag. Nothing advanced those pins
+# when the reusable changed: the fix-parent control fallback landed in core and
+# no caller carried it, and seven callers pinned a full commit sha, which the
+# dev-merge-tag-only ruling (2026-10-29T01:50:26Z) forbids.
+#
+# This is the pure half of the mechanism. The callers' pin sites are declared
+# once, below, as contract data (receipt_gate_pin_policy); no repository name,
+# path or pin is written in code (ruling 2026-10-29T01:06:13Z). Given the source
+# repository's dev tags (each with the git blob id of the gate file at that
+# tag) and every caller's pin-site files, it returns one plan per caller: nothing
+# when the caller's pinned tag carries the newest gate, otherwise the full new
+# text of the files to edit, so the effect step makes one commit holding the pin
+# line and its test constant, and the pull request text.
+#
+# A pin site is a file and a regex with a named group 'ref' over the pinned ref
+# and, where a sha site names its dev tag beside it, a group 'tag'. ref_form says
+# what the site holds: the dev-merge tag itself, or the tag's commit sha.
+name: "node_receipt_gate_pin_advance_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Pure pin-advance planning: reads the callers' receipt-gate pin sites from this
+  contract, finds the newest source-repository dev tag whose gate file differs
+  from the one a caller's pin resolves to, and returns the edits that move the
+  pin line and its test constant together. A caller already on the newest gate
+  gets no plan; a pin that is not a dev-merge tag, names no known tag, or whose
+  pin sites disagree is a typed verdict; a site that does not match as declared
+  is a refusal with no edits.
+input_model:
+  name: "ModelReceiptGatePinAdvanceRequest"
+  module: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.models.model_receipt_gate_pin_advance"
+  description: "The source repository's dev tags with their gate blob ids, and each caller's pin-site files at its base branch head."
+output_model:
+  name: "ModelReceiptGatePinAdvanceResult"
+  module: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.models.model_receipt_gate_pin_advance"
+  description: "One plan per declared caller: verdict, target tag, the files' new text, branch, title, body and idempotency key."
+
+handler:
+  module: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.handlers.handler_receipt_gate_pin_advance"
+  class: "HandlerReceiptGatePinAdvance"
+  input_model: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.models.model_receipt_gate_pin_advance.ModelReceiptGatePinAdvanceRequest"
+  output_model: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.models.model_receipt_gate_pin_advance.ModelReceiptGatePinAdvanceResult"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.handlers.handler_receipt_gate_pin_advance:HandlerReceiptGatePinAdvance"
+  handlers:
+    - operation: "plan_receipt_gate_pin_advance"
+      handler:
+        name: "HandlerReceiptGatePinAdvance"
+        module: "omnimarket.nodes.node_receipt_gate_pin_advance_compute.handlers.handler_receipt_gate_pin_advance"
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "node_receipt_gate_pin_advance_effect calls this handler in process when the source repository's dev-merge tag event arrives; it declares empty event_bus topics and a typed local invocation."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+# The callers' pins, declared once. A repository that calls the gate and is not
+# advanced here is listed under excluded with the reason.
+receipt_gate_pin_policy:
+  source_repository: "OmniNode-ai/omnibase_core"
+  workflow_path: ".github/workflows/receipt-gate.yml"
+  ticket: "OMN-20134"
+  branch_prefix: "pin-advance/receipt-gate"
+  callers:
+    - repository: "OmniNode-ai/omnibase_infra"
+      base_branch: "dev"
+      # The caller is a pull_request_target workflow that the runner-routing
+      # audit holds to a full-SHA pin, so its sites hold the commit sha with the
+      # dev-merge tag named beside it.
+      pin_sites:
+        - path: ".github/workflows/call-repo-evidence-gate.yml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40}) # (?P<tag>dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "sha"
+        - path: ".github/required-checks.yaml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40})" # (?P<tag>dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "sha"
+      test_constants:
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_TAG = "(?P<ref>dev-\d{14}-[0-9a-f]{12})"$'
+          ref_form: "tag"
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_SHA = "(?P<ref>[0-9a-f]{40})"$'
+          ref_form: "sha"
+    - repository: "OmniNode-ai/omnibase_spi"
+      base_branch: "dev"
+      pin_sites:
+        - path: ".github/workflows/call-repo-evidence-gate.yml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40}|dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "tag"
+      test_constants:
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_TAG = "(?P<ref>dev-\d{14}-[0-9a-f]{12})"$'
+          ref_form: "tag"
+    - repository: "OmniNode-ai/omniclaude"
+      base_branch: "dev"
+      pin_sites:
+        - path: ".github/workflows/call-repo-evidence-gate.yml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40}|dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "tag"
+      test_constants:
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_TAG = "(?P<ref>dev-\d{14}-[0-9a-f]{12})"$'
+          ref_form: "tag"
+    - repository: "OmniNode-ai/omniintelligence"
+      base_branch: "dev"
+      pin_sites:
+        - path: ".github/workflows/call-repo-evidence-gate.yml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40}|dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "tag"
+      test_constants:
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_TAG = "(?P<ref>dev-\d{14}-[0-9a-f]{12})"$'
+          ref_form: "tag"
+    - repository: "OmniNode-ai/omnimemory"
+      base_branch: "dev"
+      pin_sites:
+        - path: ".github/workflows/call-repo-evidence-gate.yml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40}|dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "tag"
+      test_constants:
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_TAG = "(?P<ref>dev-\d{14}-[0-9a-f]{12})"$'
+          ref_form: "tag"
+    - repository: "OmniNode-ai/omnimarket"
+      base_branch: "dev"
+      pin_sites:
+        - path: ".github/workflows/call-repo-evidence-gate.yml"
+          pattern: 'omnibase_core/\.github/workflows/receipt-gate\.yml@(?P<ref>[0-9a-f]{40}|dev-\d{14}-[0-9a-f]{12})'
+          ref_form: "tag"
+      test_constants:
+        - path: "tests/ci/receipt_gate_pin.py"
+          pattern: '^RECEIPT_GATE_PIN_TAG = "(?P<ref>dev-\d{14}-[0-9a-f]{12})"$'
+          ref_form: "tag"
+        - path: "tests/ci/fixtures/omn20558_workflow_action_refs.json"
+          pattern: '"OmniNode-ai/omnibase_core/\.github/workflows/receipt-gate\.yml", "(?P<ref>dev-\d{14}-[0-9a-f]{12})"'
+          ref_form: "tag"
+  excluded:
+    - repository: "OmniNode-ai/omnidash"
+      reason: "The dashboard repository's caller stays as it is; this node never edits it."
+    - repository: "OmniNode-ai/omnibase_core"
+      reason: "Core's own caller was moved by its own pull request (omnibase_core#2174); declare it here once that pin shape is settled."
+
+metadata:
+  transport_type: local
+  description: "Receipt gate pin advance COMPUTE - plans the caller pin pull requests (OMN-20134, no external transport)"
+  author: "OmniNode Team"
+  created: "2026-10-30"
+  tags:
+    - "compute"
+    - "ci"
+    - "pin"
+    - "dev-tag"
+    - "receipt-gate"
+    - "OMN-20134"
+  related_tickets:
+    - "OMN-20134"

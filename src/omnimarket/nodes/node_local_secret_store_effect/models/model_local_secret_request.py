@@ -29,6 +29,9 @@ class ModelLocalSecretRequest(BaseModel):
     model: str | None = None
     models: tuple[str, ...] = ()
     model_chosen_by: Literal["customer", "catalogue"] | None = None
+    #: OMN-21263. The base URL of a generic OpenAI-compatible endpoint, stored
+    #: with its key. Required for that provider and refused for any other.
+    base_url: str | None = None
 
 
 __all__ = ["ModelLocalSecretRequest"]

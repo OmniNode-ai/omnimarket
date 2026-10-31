@@ -11,16 +11,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
+from omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result import (
     ModelDeploymentReadinessResult,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result import (
     ModelEvidenceValidationResult,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_occ_pr_reference import (
+from omnimarket.models.evidence_pipeline.wire.model_occ_pr_reference import (
     ModelOccPrReference,
 )
-
 from omnimarket.nodes.evidence_pipeline_native import (
     TypedEvidenceEvent,
     coerce_evidence_event,

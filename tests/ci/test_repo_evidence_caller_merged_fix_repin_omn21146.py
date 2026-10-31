@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
+
 pytestmark = pytest.mark.unit
 
 CALLER_PATH = (
@@ -24,7 +26,7 @@ CALLER_PATH = (
 # whose contract the base had since amended failed `git apply -R` and the
 # control refused with "do not revert cleanly at the merge base".
 # The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
-_MERGED_FIX_REUSABLE_TAG = "dev-20261022114039-578228977721"
+_MERGED_FIX_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 
 # omnibase_core#1932: the previous pin, whose control counts the contract as a
 # product path.

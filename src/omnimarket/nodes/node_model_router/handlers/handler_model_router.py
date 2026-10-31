@@ -41,9 +41,6 @@ from typing import Any, Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import httpx
-from omnibase_compat.routing.model_routing_degraded_event import (
-    ModelRoutingDegradedEvent,
-)
 from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
 from omnibase_core.models.routing.model_llm_route_rejected_event import (
     ModelLlmRouteRejectedEvent,
@@ -59,6 +56,9 @@ from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
     EscalationTier,
     ModelEscalationChain,
     ModelEscalationLevel,
+)
+from omnimarket.nodes.node_model_router.models.model_routing_degraded_event import (
+    ModelRoutingDegradedEvent,
 )
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
