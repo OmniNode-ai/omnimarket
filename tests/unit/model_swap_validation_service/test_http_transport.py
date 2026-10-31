@@ -10,13 +10,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import NamedTuple
+from uuid import uuid4
 
 import httpx
 import pytest
+from omnibase_core.models.model_swap_validation import ModelModelSwapValidationRequest
 
 from omnimarket.handlers.rightmodeler_validation.http_transport import (
     RightModelerHttpTransport,
     RightModelerServiceTransportError,
+)
+from omnimarket.handlers.rightmodeler_validation.validator import (
+    ValidatorRightModeler,
 )
 from omnimarket.models.model_swap_validation_service.model_model_swap_service_config import (
     ModelModelSwapServiceConfig,
@@ -303,3 +308,49 @@ async def test_async_cancellation_propagates_without_retry() -> None:
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(pending, timeout=5)
         assert len(requests) == 1
+
+
+@pytest.mark.parametrize("mismatch", [None, "correlation_id", "evidence_only"])
+async def test_real_service_round_trip_validates_terminal_evidence(
+    mismatch: str | None,
+) -> None:
+    request = ModelModelSwapValidationRequest(
+        correlation_id=uuid4(),
+        task_type="summarize",
+        reference_model="vendor/reference",
+        candidate_model="other/candidate",
+        judge_mode="stub",
+        answer_source="recorded",
+        replay_set_digest="a" * 64,
+        quality_floor=0.95,
+        max_cost_usd=1.0,
+        work_unit_repository="organization/repository",
+    )
+    body: dict[str, object] = {
+        "correlation_id": str(request.correlation_id),
+        "status": "completed",
+        "decision": "abstain",
+        "tool_commit": "b" * 40,
+        "image_digest": "sha256:" + "c" * 64,
+        "quality_floor": request.quality_floor,
+        "judge_mode": "stub",
+        "evidence_only": True,
+    }
+    if mismatch == "correlation_id":
+        body[mismatch] = str(uuid4())
+    elif mismatch == "evidence_only":
+        body[mismatch] = False
+    async with local_service(json.dumps(body).encode()) as (endpoint, requests, _):
+        result = await ValidatorRightModeler(
+            config(endpoint), secret_store=SecretStore()
+        ).validate(request)
+    assert len(requests) == 1
+    assert json.loads(requests[0].body) == request.model_dump(mode="json")
+    if mismatch is None:
+        assert result.status.value == "completed"
+        assert result.tool_commit == body["tool_commit"]
+        assert result.image_digest == body["image_digest"]
+    else:
+        assert result.failure_reason is not None
+        assert result.failure_reason.value == "schema_mismatch"
+        assert result.decision is None
