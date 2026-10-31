@@ -1,24 +1,32 @@
----
 schema_version: 1.0.0
 ticket_id: OMN-21536
-title: 'omnimarket: handler-shape debt burn-down, slice 5: multi-parameter handle signatures take one typed request'
-summary: The handler-shape validator of omnibase_core reports a handler class whose handle takes several positional
-  parameters (noncanonical_handle), which the shared runtime cannot adapt. Fourteen handlers did. Each now takes one
-  typed request model, passed as the one parameter of handle and built from the parameters it took, and its callers, the
-  build-loop sub-handler protocols and live adapters, and its tests follow. A correlation id the handler only ignored or
-  logged leaves the signature; one it forwards moves into the request model.
+title: 'omnimarket: handler-shape debt burn-down, slices 4 and 5: the pr-review FSM reducer stops naming the event envelope, and multi-parameter handle signatures take one typed request'
+summary: 'The handler-shape validator of omnibase_core reports a handler module that references the event envelope type (envelope_in_core): 25 modules. This change clears one, the pr-review FSM reducer, whose handler now takes the typed advance command the runtime adapter validates and emits only a projection. The other 24 modules either build or read an envelope in the handler (a bus publisher, a request and reply phase, an orchestrator emitting event envelopes, a handler that routes on the envelope''s event type) and cannot lose it without a change in the shared runtime or in each node''s contract; the lane stopped there on the operator''s instruction that the shared runtime is the only place an envelope is unwrapped and that no per-handler helper stands in for it.
+
+
+  Slice 5 (AC3 and AC4): The handler-shape validator of omnibase_core reports a handler class whose handle takes several positional parameters (noncanonical_handle), which the shared runtime cannot adapt. Fourteen handlers did. Each now takes one typed request model, passed as the one parameter of handle and built from the parameters it took, and its callers, the build-loop sub-handler protocols and live adapters, and its tests follow. A correlation id the handler only ignored or logged leaves the signature; one it forwards moves into the request model.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+- id: req-omn21536-s4-pr-review-fsm-reducer-names-no-envelope
+  statement: The pr-review FSM reducer's handler takes its typed advance command, references no event envelope type, and folds the same state as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the handler-shape validator of omnibase_core reports no envelope_in_core issue on the pr-review FSM reducer handler -- falsifier: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py exits non-zero'
+  - id: AC2
+    statement: 'AC2: the tests of the pr-review FSM reducer pass -- falsifier: the pytest command of the evidence below exits non-zero'
 - id: req-multiparam-handle-takes-one-request
   statement: No handler class of the fourteen takes more than one parameter in handle, every caller builds the typed request, and the nodes behave as before.
   acceptance:
-  - id: AC1
-    statement: 'AC1: the handler-shape validator of omnibase_core run over src reports no noncanonical_handle finding in the fourteen handler modules -- falsifier: `uv run pytest tests/test_handler_shape_multiparam_omn21536.py` fails for one of the fourteen modules'
-  - id: AC2
-    statement: 'AC2: the tests of every touched node pass -- falsifier: the pytest command of the evidence below exits non-zero'
+  - id: AC3
+    statement: 'AC3: the handler-shape validator of omnibase_core run over src reports no noncanonical_handle finding in the fourteen handler modules -- falsifier: `uv run pytest tests/test_handler_shape_multiparam_omn21536.py` fails for one of the fourteen modules'
+  - id: AC4
+    statement: 'AC4: the tests of every touched node pass -- falsifier: the pytest command of the evidence below exits non-zero'
 evidence_requirements:
+- kind: tests
+  description: The pr-review FSM reducer's tests and the envelope ratchet test, run on a lab host at the pushed head.
+  command: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly
 - kind: tests
   description: The tests of the nodes whose handle signature changed, run on a lab host at the pushed head.
   command: uv run pytest tests/test_golden_chain_build_dispatch_effect.py tests/test_golden_chain_closeout_effect.py tests/test_golden_chain_verify_effect.py tests/test_golden_chain_build_loop_orchestrator.py tests/test_golden_chain_build_loop_events.py tests/unit/nodes/node_build_loop_orchestrator tests/integration/node_verify_effect tests/test_golden_chain_design_to_plan.py tests/test_handler_handoff_effect.py tests/test_handoff_failure_modes.py tests/test_handoff_validation_gate.py tests/unit/nodes/node_monitor_alert_responder tests/nodes/node_omnigate_receipt_generator tests/nodes/node_omnigate_receipt_verifier tests/unit/nodes/node_persona_lifecycle_orchestrator tests/nodes/node_polish_task_classifier tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_golden_chain_state_persist_effect.py tests/nodes/node_thread_reply_effect tests/test_golden_chain_thread_reply_effect.py tests/test_golden_chain_ticket_query.py tests/unit/nodes/node_pr_lifecycle_orchestrator tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_market_node_runtime_dogfood.py tests/test_handler_routing_boot_resolvable.py src/omnimarket/nodes/node_projection_delegation/tests src/omnimarket/nodes/node_build_loop_orchestrator/tests tests/test_retry_loop.py tests/test_glm_reviewer.py tests/test_no_cross_node_reach_in.py tests/test_handler_shape_multiparam_omn21536.py -q --no-cov --tb=line
@@ -27,11 +35,75 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn21536-ac1-no-multiparam-handle
-  description: AC1 runs the handler-shape validator of omnibase_core over the fourteen handler modules at the committed head and asserts it reports no noncanonical_handle finding for any.
+- id: dod-omn21536-s4-ac1-no-envelope-in-core
+  description: AC1 runs the handler-shape validator on the pr-review FSM reducer handler and finds no envelope_in_core issue.
   source: manual
   binds_ac:
   - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-s4-ac2-pr-review-fsm-tests
+  description: AC2 runs the pr-review FSM reducer's tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-s4-deploy-handler-smoke
+  description: 'Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command, names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated checkout package, not a production rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'set -eu;
+
+      export PYTHONDONTWRITEBYTECODE=1;
+
+      uv run python -c ''
+
+      import asyncio
+
+      import inspect
+
+      from uuid import uuid4
+
+      from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
+
+      from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
+
+      src = inspect.getsource(mod)
+
+      assert "ModelEventEnvelope" not in src, "handler names the event envelope"
+
+      hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
+
+      assert list(hints) == ["self", "request"], list(hints)
+
+      assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
+
+      cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
+
+      out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
+
+      assert len(out.projections) == 1, out
+
+      print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
+
+      ''
+
+      '
+    cwd: .
+  - check_type: command
+    check_value: 'gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98 --jq ''.content'' | base64 -d | grep -c ''request: ModelPrReviewAdvanceCommand'''
+    cwd: .
+- id: dod-omn21536-ac3-no-multiparam-handle
+  description: AC3 runs the handler-shape validator of omnibase_core over the fourteen handler modules at the committed head and asserts it reports no noncanonical_handle finding for any.
+  source: manual
+  binds_ac:
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_handler_shape_multiparam_omn21536.py -q --no-cov --tb=line
@@ -41,79 +113,89 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: |-
-      curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_build_dispatch_effect/handlers/handler_build_dispatch.py" | python3 -c '
+    check_value: 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_build_dispatch_effect/handlers/handler_build_dispatch.py" | python3 -c ''
+
       import ast
+
       import sys
+
       module = ast.parse(sys.stdin.read())
+
       handler = next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == "HandlerBuildDispatch")
+
       method = next(node for node in handler.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle")
+
       assert [arg.arg for arg in method.args.posonlyargs + method.args.args] == ["self", "request"]
+
       assert not method.args.kwonlyargs and method.args.vararg is None and method.args.kwarg is None
+
       assert ast.unparse(method.args.args[1].annotation) == "ModelBuildDispatchInput"
+
       assert ast.unparse(method.returns) == "ModelBuildDispatchResult"
+
       print("Published build dispatch handler readback: single typed request PASS")
-      '
+
+      '''
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-dispatch-closeout-verify
-  description: AC2, part of the touched-node tests. Runs the tests of the build dispatch, closeout and verify effects, the build-loop golden chains, the retry loop and the GLM reviewer. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-dispatch-closeout-verify
+  description: AC4, part of the touched-node tests. Runs the tests of the build dispatch, closeout and verify effects, the build-loop golden chains, the retry loop and the GLM reviewer. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_golden_chain_build_dispatch_effect.py tests/test_golden_chain_closeout_effect.py tests/test_golden_chain_verify_effect.py tests/test_golden_chain_build_loop_orchestrator.py tests/test_golden_chain_build_loop_events.py tests/integration/node_verify_effect tests/test_retry_loop.py tests/test_glm_reviewer.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-build-loop-orchestrator
-  description: AC2, part of the touched-node tests. Runs the tests of the build-loop orchestrator, its unit tests and its node tests. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-build-loop-orchestrator
+  description: AC4, part of the touched-node tests. Runs the tests of the build-loop orchestrator, its unit tests and its node tests. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_build_loop_orchestrator/tests -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-handoff-alert-receipt-persona
-  description: AC2, part of the touched-node tests. Runs the tests of the design-to-plan launch, handoff, alert classify, both omnigate receipt handlers, persona rebuild and polish classifier. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-handoff-alert-receipt-persona
+  description: AC4, part of the touched-node tests. Runs the tests of the design-to-plan launch, handoff, alert classify, both omnigate receipt handlers, persona rebuild and polish classifier. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_golden_chain_design_to_plan.py tests/test_handler_handoff_effect.py tests/test_handoff_failure_modes.py tests/test_handoff_validation_gate.py tests/unit/nodes/node_monitor_alert_responder tests/nodes/node_omnigate_receipt_generator tests/nodes/node_omnigate_receipt_verifier tests/unit/nodes/node_persona_lifecycle_orchestrator tests/nodes/node_polish_task_classifier -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-state-thread-ticket
-  description: AC2, part of the touched-node tests. Runs the tests of the delegation data-source fold, state persist, thread reply and ticket query. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-state-thread-ticket
+  description: AC4, part of the touched-node tests. Runs the tests of the delegation data-source fold, state persist, thread reply and ticket query. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_golden_chain_state_persist_effect.py tests/nodes/node_thread_reply_effect tests/test_golden_chain_thread_reply_effect.py tests/test_golden_chain_ticket_query.py src/omnimarket/nodes/node_projection_delegation/tests -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-pr-lifecycle-ci-red
-  description: AC2, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator CI-red triage, runner and dev-head dispatch unit tests. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-pr-lifecycle-ci-red
+  description: AC4, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator CI-red triage, runner and dev-head dispatch unit tests. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_claim_lease_terminal_refused.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_dev_head_red_dispatch_omn20730.py tests/test_handler_shape_multiparam_omn21536.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-pr-lifecycle-unit
-  description: AC2, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator unit tests (the verify call and the phase transitions), without the contract walk. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-pr-lifecycle-unit
+  description: AC4, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator unit tests (the verify call and the phase transitions), without the contract walk. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_delegation_counters_aggregation.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_handler_pr_lifecycle_orchestrator_hotspots.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_omn_13859_prune_wiring.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_omn_13984_fail_fast_core_subhandlers.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_orchestrator_phase_transitions.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_pr_changed_files_fail_closed.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_pr_ledger_phase_separation.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_pr_ledger_projection.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_repo_health_fanout.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_sub_handler_protocol_conformance.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_verifying_phase_dispatch.py tests/test_handler_shape_multiparam_omn21536.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-pr-lifecycle-golden
-  description: AC2, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator golden chain and the cross-node reach-in guard. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
+- id: dod-omn21536-ac4-pr-lifecycle-golden
+  description: AC4, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator golden chain and the cross-node reach-in guard. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above. A check of the PR lifecycle orchestrator, whose tests pass at the merge base, also runs the handler-shape test, which fails there, so the check can fail.
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_no_cross_node_reach_in.py tests/test_handler_shape_multiparam_omn21536.py -q --no-cov --tb=line
