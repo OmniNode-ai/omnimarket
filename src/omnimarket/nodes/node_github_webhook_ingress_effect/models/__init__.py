@@ -8,6 +8,9 @@ from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_bra
 from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_check_run_observation import (
     ModelGitHubCheckRunObservation,
 )
+from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_dev_merge_tag_observation import (
+    ModelGitHubDevMergeTagObservation,
+)
 from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_pr_merged_observation import (
     ModelGitHubPrMergedObservation,
 )
@@ -21,6 +24,7 @@ from omnimarket.nodes.node_github_webhook_ingress_effect.models.model_github_wor
 __all__: list[str] = [
     "ModelGitHubBranchHeadObservation",
     "ModelGitHubCheckRunObservation",
+    "ModelGitHubDevMergeTagObservation",
     "ModelGitHubPrMergedObservation",
     "ModelGitHubWebhookDelivery",
     "ModelGitHubWorkflowRunObservation",
