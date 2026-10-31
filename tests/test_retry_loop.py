@@ -37,6 +37,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace i
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    DispatchRequest,
 )
 
 # ---------------------------------------------------------------------------
@@ -530,8 +531,10 @@ async def test_handle_wires_generate_with_review(tmp_path: Path) -> None:
     ) as mock_call:
         mock_call.return_value = _VALID_PYTHON
         result = await adapter.handle(
-            correlation_id=uuid.uuid4(),
-            targets=targets,
+            DispatchRequest(
+                correlation_id=uuid.uuid4(),
+                targets=targets,
+            )
         )
 
     assert result.total_dispatched == 2
@@ -562,8 +565,10 @@ async def test_handle_counts_only_accepted(tmp_path: Path) -> None:
     ):
         mock_call.return_value = _VALID_PYTHON
         result = await adapter.handle(
-            correlation_id=uuid.uuid4(),
-            targets=targets,
+            DispatchRequest(
+                correlation_id=uuid.uuid4(),
+                targets=targets,
+            )
         )
 
     assert result.total_dispatched == 0

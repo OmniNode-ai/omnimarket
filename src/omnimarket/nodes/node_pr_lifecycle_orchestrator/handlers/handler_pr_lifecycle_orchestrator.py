@@ -3124,8 +3124,9 @@ class HandlerPrLifecycleOrchestrator:
             )
 
         try:
-            from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
+            from omnimarket.nodes.node_verify_effect import (
                 HandlerVerify,
+                ModelVerifyInput,
             )
         except ImportError:
             logger.warning(
@@ -3138,7 +3139,7 @@ class HandlerPrLifecycleOrchestrator:
         verify_handler = HandlerVerify()
         try:
             result = await asyncio.wait_for(
-                verify_handler.handle(correlation_id=uuid4()),
+                verify_handler.handle(ModelVerifyInput(correlation_id=uuid4())),
                 timeout=timeout_seconds,
             )
         except TimeoutError:

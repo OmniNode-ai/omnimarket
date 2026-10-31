@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
+from omnimarket.nodes.node_closeout_effect.models.model_closeout_input import (
+    ModelCloseoutInput,
+)
 from omnimarket.nodes.node_closeout_effect.models.model_closeout_result import (
     ModelCloseoutResult,
 )
@@ -42,11 +44,7 @@ class HandlerCloseout:
         self._merge_sweeper = merge_sweeper
         self._quality_gate_checker = quality_gate_checker
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        dry_run: bool = False,
-    ) -> ModelCloseoutResult:
+    async def handle(self, request: ModelCloseoutInput) -> ModelCloseoutResult:
         """Execute close-out phase.
 
         Steps:
@@ -55,12 +53,13 @@ class HandlerCloseout:
             3. Verify release readiness
 
         Args:
-            correlation_id: Cycle correlation ID.
-            dry_run: Skip actual side effects.
+            request: Cycle correlation ID and the dry-run flag.
 
         Returns:
             ModelCloseoutResult with outcomes.
         """
+        correlation_id = request.correlation_id
+        dry_run = request.dry_run
         logger.info(
             "Closeout phase started (correlation_id=%s, dry_run=%s)",
             correlation_id,

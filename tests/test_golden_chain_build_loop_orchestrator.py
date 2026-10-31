@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -34,12 +34,15 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     BuildTarget,
     ClassifyRequest,
     ClassifyResult,
+    CloseoutRequest,
     CloseoutResult,
     DelegationPayload,
+    DispatchRequest,
     DispatchResult,
     RsdFillRequest,
     RsdFillResult,
     ScoredTicket,
+    VerifyRequest,
     VerifyResult,
 )
 
@@ -59,9 +62,7 @@ class MockCloseout:
         self._fail = fail
         self.call_count = 0
 
-    async def handle(
-        self, *, correlation_id: UUID, dry_run: bool = False
-    ) -> CloseoutResult:
+    async def handle(self, request: CloseoutRequest) -> CloseoutResult:
         self.call_count += 1
         if self._fail:
             msg = "Closeout failed"
@@ -76,9 +77,7 @@ class MockVerify:
         self._pass = pass_checks
         self.call_count = 0
 
-    async def handle(
-        self, *, correlation_id: UUID, dry_run: bool = False
-    ) -> VerifyResult:
+    async def handle(self, request: VerifyRequest) -> VerifyResult:
         self.call_count += 1
         return VerifyResult(all_critical_passed=self._pass)
 
@@ -127,10 +126,7 @@ class MockDispatch:
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        targets: tuple[BuildTarget, ...],
-        dry_run: bool = False,
+        request: DispatchRequest,
     ) -> DispatchResult:
         self.call_count += 1
         return DispatchResult(

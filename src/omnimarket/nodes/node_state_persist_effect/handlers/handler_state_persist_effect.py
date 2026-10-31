@@ -15,11 +15,12 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import Literal
-from uuid import UUID
 
-from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
 from omnibase_core.protocols.storage.protocol_state_store import ProtocolStateStore
 
+from omnimarket.nodes.node_state_persist_effect.models.model_state_persist_input import (
+    ModelStatePersistInput,
+)
 from omnimarket.nodes.node_state_persist_effect.models.model_state_persisted_event import (
     ModelStatePersistedEvent,
 )
@@ -52,25 +53,20 @@ class HandlerStatePersistEffect:
     ) -> None:
         self._state_store = state_store
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        intent_id: UUID,
-        envelope: ModelStateEnvelope,
-        emitted_at: datetime,
-    ) -> ModelStatePersistedEvent:
+    async def handle(self, request: ModelStatePersistInput) -> ModelStatePersistedEvent:
         """Persist the envelope and emit a confirmation event.
 
         Args:
-            correlation_id: Distributed tracing ID.
-            intent_id: Unique ID of the originating ModelPersistStateIntent.
-            envelope: The state snapshot to write.
-            emitted_at: Timezone-aware timestamp from the emitting reducer.
+            request: The persist request: distributed tracing ID, unique ID of
+                the originating ModelPersistStateIntent, the state snapshot to
+                write and the timezone-aware timestamp from the emitting reducer.
 
         Returns:
             ModelStatePersistedEvent with success=True and persisted_at set,
             or success=False with error message on failure.
         """
+        intent_id = request.intent_id
+        envelope = request.envelope
         if self._state_store is None:
             # No store injected — no-op success (allows dry-run / standalone use)
             logger.debug(
