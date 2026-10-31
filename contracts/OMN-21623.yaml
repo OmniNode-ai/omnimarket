@@ -37,21 +37,47 @@ dod_evidence:
         check_value: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-timeouts-check-clean"
-    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the sixteen node directories."
+    description: "The pinned contracts_and_di validator scans all sixteen node directories; its structured findings contain no literal_timeout rule. Import, scan and path errors fail the probe."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_ab_compare_orchestrator src/omnimarket/nodes/node_adr_decision_extraction_llm_effect src/omnimarket/nodes/node_adr_extraction_grader_llm_effect src/omnimarket/nodes/node_adr_segmentation_llm_effect src/omnimarket/nodes/node_antipattern_index_effect src/omnimarket/nodes/node_antipattern_match_effect src/omnimarket/nodes/node_architecture_graph_populate_effect src/omnimarket/nodes/node_auto_merge_effect src/omnimarket/nodes/node_automation_liveness_deadman_effect src/omnimarket/nodes/node_automation_liveness_watchdog_compute src/omnimarket/nodes/node_automation_liveness_watchdog_effect src/omnimarket/nodes/node_automation_run_observer_effect src/omnimarket/nodes/node_baseline_capture src/omnimarket/nodes/node_beacon_trace_capture_effect src/omnimarket/nodes/node_canonical_clone_refresh_effect src/omnimarket/nodes/node_captured_secret_store_effect 2>&1 | grep -q literal_timeout"
-        cwd: "."
+        check_value: |-
+          uv run --frozen python -c '
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          names = "node_ab_compare_orchestrator node_adr_decision_extraction_llm_effect node_adr_extraction_grader_llm_effect node_adr_segmentation_llm_effect node_antipattern_index_effect node_antipattern_match_effect node_architecture_graph_populate_effect node_auto_merge_effect node_automation_liveness_deadman_effect node_automation_liveness_watchdog_compute node_automation_liveness_watchdog_effect node_automation_run_observer_effect node_baseline_capture node_beacon_trace_capture_effect node_canonical_clone_refresh_effect node_captured_secret_store_effect".split()
+          paths = [Path("src/omnimarket/nodes") / name for name in names]
+          assert all(path.is_dir() for path in paths), "a target node is missing"
+          result = ValidatorContractsAndDi().validate(paths)
+          assert result.metadata.files_processed >= len(paths), "the validator did not scan the targets"
+          findings = [issue for issue in result.issues if issue.rule_name == "literal_timeout"]
+          print(f"files_processed={result.metadata.files_processed}; literal_timeout={len(findings)}")
+          assert not findings, findings
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-deploy-timeouts-source-readback"
     description: |-
-      Hosted-runner source readback: the checked-out commit carries the timeouts section in the
-      contract of node_auto_merge_effect and the loader adapter that reads it. grep -c exits
-      nonzero on a tree without them, so the command fails at the merge base. It reads the
-      source artifact and does not assert a live runtime rollout.
+      Hosted-runner container readback: execute the timeout loader against this tree in an
+      isolated Python container with a read-only source mount. Assert the contract-declared
+      auto-merge poll interval and secret-store timeout and the refusal of an undeclared name.
+      Missing code, missing declarations and changed values fail the running container.
+      This exercises the composition adapter; it does not assert a fleet rollout.
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "grep -c '^timeouts:' src/omnimarket/nodes/node_auto_merge_effect/contract.yaml && grep -c 'def load_node_timeouts' src/omnimarket/handlers/node_timeouts_reader.py"
-        cwd: "."
+        check_value: |-
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD/src:/product:ro" -w /tmp python:3.12-bookworm sh -ec '
+          python -m pip install --disable-pip-version-check --quiet pydantic==2.13.5 PyYAML==6.0.3
+          PYTHONPATH=/product python - <<"PY"
+          from unittest import TestCase
+          from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+          poll = load_node_timeouts("node_auto_merge_effect").get("poll_interval_s")
+          store = load_node_timeouts("node_captured_secret_store_effect").get("store_call_timeout_seconds")
+          assert poll == 60, poll
+          assert store == 5.0, store
+          TestCase().assertRaises(KeyError, load_node_timeouts("node_auto_merge_effect").get, "undeclared")
+          print(dict(poll_interval_s=poll, store_call_timeout_seconds=store, undeclared="refused"))
+          PY
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
