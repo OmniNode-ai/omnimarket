@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelDbRowCountSnapshot,
     ProbeSnapshotItem,
@@ -68,7 +69,12 @@ class ProbeDbRowCounts:
         tenant = resolve_rls_read_tenant(None, table="db_row_counts")
 
         try:
-            conn = await asyncpg.connect(db_url, timeout=5.0)
+            conn = await asyncpg.connect(
+                db_url,
+                timeout=load_node_timeouts("node_baseline_capture").get(
+                    "db_connect_timeout_seconds"
+                ),
+            )
         except Exception as exc:
             logger.warning("Could not connect to Postgres: %s", exc)
             return []

@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Literal
 
 from omnibase_infra.errors import InfraConnectionError
-from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     FocusedRunBusCaller,
@@ -34,6 +33,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolFocusedRunHandler,
     ProtocolLabRunBus,
 )
+from omnimarket.handlers.container.container_inmemory import bind_infra_event_bus
 from omnimarket.nodes.node_push_validation_effect import (
     ModelFocusedTestRunReceipt,
     ModelFocusedTestRunRequest,
@@ -79,7 +79,7 @@ async def open_lab_run_bus(
             raise LabRunBusError(
                 "--lane and --kafka-bootstrap name a broker; the in-memory bus has none"
             )
-        memory = EventBusInmemory(environment="local", group="delegated-test-loop")
+        memory = bind_infra_event_bus(environment="local", group="delegated-test-loop")
         await memory.start()
         try:
             yield memory
