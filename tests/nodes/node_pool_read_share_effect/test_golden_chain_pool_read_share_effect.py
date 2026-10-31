@@ -193,11 +193,11 @@ def test_the_pool_alarm_row_carries_the_step(tmp_path: Path) -> None:
     from datetime import UTC, datetime, timedelta
 
     from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+    from omnimarket.nodes.node_host_pool_alarm_effect.container.container_host_pool_alarm_effect import (
+        create_node_host_pool_alarm_effect,
+    )
     from omnimarket.nodes.node_host_pool_alarm_effect.models import (
         ModelHostPoolAlarmRequest,
-    )
-    from omnimarket.nodes.node_host_pool_alarm_effect.node import (
-        NodeHostPoolAlarmEffect,
     )
 
     done = share.capture_live(
@@ -209,7 +209,7 @@ def test_the_pool_alarm_row_carries_the_step(tmp_path: Path) -> None:
     found: list[tuple[str, str, str, str]] = []
     for minute in (0, 5):
         found = (
-            NodeHostPoolAlarmEffect()
+            create_node_host_pool_alarm_effect()
             .handle(
                 ModelHostPoolAlarmRequest(
                     [ModelHostPoolReading("h105", 16, error)],
