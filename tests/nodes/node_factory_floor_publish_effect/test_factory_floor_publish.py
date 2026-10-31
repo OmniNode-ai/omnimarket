@@ -476,7 +476,7 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
         "stalled", "pr_ci", "pr_ci_note", "pr_title", "pr_state", "started_at", "claim_full", "station",
         "station_id", "item_id", "accounts", "sessions", "lamps", "evidence", "open_sessions", "credit_remaining",
         "pool_read_at", "host_table_read", "placement_markers_read", "receipts_read", "cloud_accounts_read",
-        "runner_fleet_read",
+        "runner_fleet_read", "stall_minutes", "lane_window_minutes",
         "watcher_last_tick", "ledger_rows", "ledger_newest_row", "linear_issues", "placement_hosts",
         "stoppage_report", "lines_declared", "plan_path_contains", "plan_path", "improved", "worse", "flat",
         "unmeasured", "measured", "publish-status.json", "process-health.json", "reports/manifest.json",
@@ -714,6 +714,8 @@ BAYS_RECORD = {
             machine_cells(host="bay-y", label="bay-y", state="unread", note="rc=255 timed out after 20s", lanes=[], lanes_placed=0, cap=None, load_per_core=None, mem_free_gb=None, mem_total_gb=None),
             machine_cells(host="bay-z", label="bay-z", state="repair", note="down for repair", lanes=[], lanes_placed=0),
         ],
+        "stall_minutes": 45,
+        "lane_window_minutes": 180,
         "lanes": [
             lane_cells(),
             lane_cells(lane="lane-two", ticket="", title="", title_source="unread", engine="codex", status_text="", status_full="", status_source="claim", stalled=True, silent_minutes=90, pr="", pr_ci="", pr_state="", station=None),
@@ -743,6 +745,12 @@ def test_page_draws_a_bay_per_machine_with_its_lanes_against_the_cap() -> None:
     assert "unit work" in grid
     assert "1 placed beside the lanes" in grid
     assert "CI runners" in grid
+
+
+def test_page_states_the_stall_and_window_the_record_judged_lanes_by() -> None:
+    note = _run_floor({"factory-floor.json": BAYS_RECORD})["baysNote"]
+    assert "stalled after 45 minutes" in note
+    assert "no longer drawn after 180 minutes" in note
 
 
 def test_page_draws_a_machine_the_pool_could_not_read_as_unread_and_one_in_repair_as_repair() -> (

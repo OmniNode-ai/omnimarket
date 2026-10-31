@@ -754,7 +754,9 @@ function renderMachines(floor){
   const byId = {};
   lanes.forEach(l => { byId[l.lane] = l; });
   const unplaced = lanes.filter(l => l.placement === "unplaced");
-  el("baysNote").textContent = ms.length ? "" : "The record declares no machine bays: the deployment overlay lists none, or the record was written before the bays existed.";
+  el("baysNote").textContent = ms.length
+    ? (floor.stall_minutes ? `A lane is marked stalled after ${floor.stall_minutes} minutes without a row of any kind, and is no longer drawn after ${floor.lane_window_minutes} minutes.` : "")
+    : "The record declares no machine bays: the deployment overlay lists none, or the record was written before the bays existed.";
   const cards = ms.map(m => machineHTML(m, byId));
   cards.push(cloudHTML(floor.cloud, lanes));
   if (unplaced.length) cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} lane${unplaced.length === 1 ? "" : "s"}</span></div>
