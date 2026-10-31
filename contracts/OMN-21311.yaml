@@ -69,8 +69,8 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: [AC5]
   - id: dod-omn21311-deploy-source-readback
-    description: Published-source deploy check for a CLI-invoked node with no live consumer. Read the handler and pyproject.toml from omnimarket's dev branch and require the walk's handler class and the onex setup entry point; before the merge both are absent and the command fails. This reads back published source, not a deployed runtime.
+    description: Published-source deploy check for a CLI-invoked node with no live consumer. Read the handler and pyproject.toml as published on GitHub at the checkout's exact commit and require the walk's handler class and the onex setup entry point; a commit that is not published, or lacks either, fails the command. This reads back published source, not a deployed runtime.
     source: manual
     checks:
       - check_type: command
-        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_onex_setup_effect/handlers/handler_onex_setup.py?ref=dev' --jq .content | base64 -d | grep -q '^class HandlerOnexSetup' && gh api 'repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=dev' --jq .content | base64 -d | grep -q '^setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"'
+        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_onex_setup_effect/handlers/handler_onex_setup.py?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^class HandlerOnexSetup' && gh api 'repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"'
