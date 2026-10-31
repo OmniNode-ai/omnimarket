@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from fnmatch import fnmatch
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EnumDuplicateEvidence(StrEnum):
@@ -28,6 +29,51 @@ class EnumDuplicateEvidence(StrEnum):
         "cause_cited"  # the title or a Fix-Check marker cites the same check or cause
     )
     CLAIM = "claim"  # another lane holds a live CLAIM with the same cause= cell
+
+
+def _repo_key(repo: str) -> str:
+    """A repository in the one spelling rules are keyed by: short name, case folded, hyphens as underscores."""
+    return repo.strip().split("/")[-1].casefold().replace("-", "_")
+
+
+def keyed_by_repository(
+    paths: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[str, ...]]:
+    """A repository-to-paths mapping re-keyed by each repository's short name."""
+    return {_repo_key(name): files for name, files in paths.items()}
+
+
+class ModelDuplicateGuardRules(BaseModel):
+    """Which files say nothing about a shared fix, declared as data in the node's ``contract.yaml``.
+
+    ``generic_paths`` are glob patterns every kind of change touches in every repository (a lock file, a
+    changelog, a ticket contract, the ledger); each is matched against the whole path and against its last
+    segment. ``generated_paths`` maps a repository's short name to the paths that repository regenerates in
+    every pull request of a kind (a rendered index, whose count rows every plan pull request rewrites); each
+    is matched against the whole path only, so ``beta/plans/INDEX.md`` never names an ``INDEX.md`` elsewhere.
+    Overlap confined to these files is not duplication; overlap in an authored file still is.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    generic_paths: tuple[str, ...] = ()
+    generated_paths: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @field_validator("generated_paths")
+    @classmethod
+    def _repos_are_short_names(
+        cls, value: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        return keyed_by_repository(value)
+
+    def ignores(self, repo: str, path: str) -> bool:
+        """True when ``path`` is a generic file, or one ``repo`` declares generated."""
+        name = path.rsplit("/", 1)[-1]
+        if any(fnmatch(path, p) or fnmatch(name, p) for p in self.generic_paths):
+            return True
+        return any(
+            fnmatch(path, p) for p in self.generated_paths.get(_repo_key(repo), ())
+        )
 
 
 class ModelFileTouch(BaseModel):
@@ -82,6 +128,16 @@ class ModelPrDuplicateGuardRequest(BaseModel):
     touch: ModelPrTouch | None = None
     open_prs: tuple[ModelOpenPr, ...] = ()
     ledger_text: str = ""
+    #: Per-repository paths the deployment declares generated (a rendered index every pull request of a kind
+    #: regenerates), read from the node's deployment overlay by the caller; the guard is pure and reads no file.
+    generated_paths: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @field_validator("generated_paths")
+    @classmethod
+    def _repos_are_short_names(
+        cls, value: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        return keyed_by_repository(value)
 
 
 class ModelDuplicateEvidence(BaseModel):
