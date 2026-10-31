@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from functools import partial
 from importlib import resources
-from typing import Protocol
+from typing import Any, Protocol
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -32,6 +32,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.handlers.work_ledger_consume.writer_topics import take_writer_topics
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -66,32 +67,29 @@ WORK_LEDGER_DELEGATION_NODE = "node_work_ledger_delegation_mirror"
 WORK_LEDGER_LANDING_NODE = "node_work_ledger_landing_mirror"
 
 
-def load_work_ledger_mirror_topics() -> tuple[str, ...]:
-    contract = yaml.safe_load(
-        resources.files(f"omnimarket.nodes.{WORK_LEDGER_MIRROR_NODE}")
+def node_contract(node: str) -> dict[str, Any]:
+    """One packaged node's contract.yaml, parsed."""
+    contract: dict[str, Any] = yaml.safe_load(
+        resources.files(f"omnimarket.nodes.{node}")
         .joinpath("contract.yaml")
         .read_text()
     )
-    return tuple(contract["subscriptions"]["topics"])
+    return contract
+
+
+def load_work_ledger_mirror_topics() -> tuple[str, ...]:
+    return tuple(node_contract(WORK_LEDGER_MIRROR_NODE)["subscriptions"]["topics"])
 
 
 def load_work_ledger_delegation_topics() -> tuple[str, ...]:
     """Completed topic first, failed second, as the contract declares them."""
-    contract = yaml.safe_load(
-        resources.files(f"omnimarket.nodes.{WORK_LEDGER_DELEGATION_NODE}")
-        .joinpath("contract.yaml")
-        .read_text()
-    )
-    return tuple(contract["runtime_dispatch"]["subscribe_topics"])
+    dispatch = node_contract(WORK_LEDGER_DELEGATION_NODE)["runtime_dispatch"]
+    return tuple(dispatch["subscribe_topics"])
 
 
 def load_work_ledger_landing_topics() -> tuple[str, ...]:
-    contract = yaml.safe_load(
-        resources.files(f"omnimarket.nodes.{WORK_LEDGER_LANDING_NODE}")
-        .joinpath("contract.yaml")
-        .read_text()
-    )
-    return tuple(contract["runtime_dispatch"]["subscribe_topics"])
+    dispatch = node_contract(WORK_LEDGER_LANDING_NODE)["runtime_dispatch"]
+    return tuple(dispatch["subscribe_topics"])
 
 
 class ModelWorkLedgerAppendTopics(BaseModel):
@@ -132,12 +130,7 @@ class ProtocolLedgerAppendHandler(Protocol):
 
 
 def load_work_ledger_append_topics() -> ModelWorkLedgerAppendTopics:
-    text = (
-        resources.files(f"omnimarket.nodes.{WORK_LEDGER_APPEND_NODE}")
-        .joinpath("contract.yaml")
-        .read_text()
-    )
-    contract = yaml.safe_load(text)
+    contract = node_contract(WORK_LEDGER_APPEND_NODE)
     dispatch = contract["runtime_dispatch"]
     published = {
         entry["event_type"]: entry["topic"] for entry in contract["published_events"]
@@ -192,11 +185,29 @@ class WorkLedgerAppendHost:
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
+        self.unserved_writer_topics: tuple[str, ...] = ()
+        # One retake at a time: the consume watch and a writer-set change may both ask.
+        self._resubscribing = asyncio.Lock()
         self.processed = 0
 
     @property
     def topics(self) -> ModelWorkLedgerAppendTopics:
         return self._topics
+
+    # OMN-21622: serve exactly these writers' topics from now on; True when the set changed.
+    # Every name is checked against the declared writer pattern before anything changes. A
+    # running host retakes its subscriptions, and each group resumes from its committed offset,
+    # so a command a new writer published before it was known is delivered after this returns.
+    async def set_writer_principals(self, writer_principals: Iterable[str]) -> bool:
+        principals = frozenset(writer_principals)
+        for principal in principals:
+            self._topics.writer_command_topic(principal)
+        if principals == self._writer_principals:
+            return False
+        self._writer_principals = principals
+        if self._task is not None:
+            await self.resubscribe()
+        return True
 
     @property
     def delegation_topics(self) -> tuple[str, ...]:
@@ -237,12 +248,13 @@ class WorkLedgerAppendHost:
         while the consumers were gone is delivered after this returns (OMN-20275). A subscribe that fails
         leaves no half-built set behind: the ones already taken are released before the error escapes.
         """
-        await self._unsubscribe_all()
-        try:
-            await self._subscribe_all()
-        except BaseException:
+        async with self._resubscribing:
             await self._unsubscribe_all()
-            raise
+            try:
+                await self._subscribe_all()
+            except BaseException:
+                await self._unsubscribe_all()
+                raise
 
     async def _unsubscribe_all(self) -> None:
         unsubscribes, self._unsubscribes = self._unsubscribes, []
@@ -272,12 +284,10 @@ class WorkLedgerAppendHost:
             partial(self._enqueue, writer_principal=None),
             append_group,
         )
-        for principal in sorted(self._writer_principals):
-            await take(
-                self._topics.writer_command_topic(principal),
-                partial(self._enqueue, writer_principal=principal),
-                append_group,
-            )
+        # OMN-21288: a writer topic the broker cannot serve is logged and skipped, never fatal.
+        self.unserved_writer_topics = await take_writer_topics(
+            take, append_group, self._writer_principals, self._topics, self._enqueue
+        )
         if self._operator_principal is None:
             logger.warning(
                 "work-ledger host: no operator principal, terminals not mirrored"
@@ -306,9 +316,7 @@ class WorkLedgerAppendHost:
             )
 
     async def stop(self) -> None:
-        for unsubscribe in self._unsubscribes:
-            await unsubscribe()
-        self._unsubscribes.clear()
+        await self._unsubscribe_all()
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

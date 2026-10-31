@@ -13,7 +13,15 @@ from pydantic import BaseModel, ConfigDict
 #: ``glm`` (OMN-20157): z.ai's general API, the catalogue's customer GLM plan.
 #: ``local`` (OMN-21162): a model server on an OpenAI-compatible URL, no key.
 ModelProvider = Literal[
-    "gemini", "openrouter", "openai", "anthropic", "glm", "ollama", "local"
+    "gemini",
+    "openrouter",
+    "openai",
+    "anthropic",
+    "glm",
+    "ollama",
+    "local",
+    # OMN-21263: any other endpoint that speaks the OpenAI API, by URL, with a key.
+    "openai_compatible",
 ]
 
 
@@ -38,7 +46,11 @@ class ModelModelSetupRequest(BaseModel):
     OMN-21346: ``set_first`` makes the model in ``models`` (or, with none named,
     ``provider``'s own first model) the one every delegation tries first: it
     moves to the front of the provider's list and is recorded as the choice.
-    ``clear_first`` drops the choice, so runs keep their usual order."""
+    ``clear_first`` drops the choice, so runs keep their usual order.
+
+    OMN-21267: ``set_only`` records the rule ``only`` (``local`` or ``free``):
+    every delegation on this machine skips a model outside it. ``clear_only``
+    removes the rule, so routing is what it was."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -54,10 +66,14 @@ class ModelModelSetupRequest(BaseModel):
         "remove_local",
         "set_first",
         "clear_first",
+        "set_only",
+        "clear_only",
     ]
     provider: ModelProvider | None = None
     models: tuple[str, ...] = ()
     url: str | None = None
+    #: OMN-21267: the rule ``set_only`` records.
+    only: Literal["local", "free"] | None = None
 
 
 __all__ = ["ModelModelSetupRequest", "ModelProvider"]

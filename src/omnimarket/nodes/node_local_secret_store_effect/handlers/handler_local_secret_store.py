@@ -31,6 +31,7 @@ import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialError,
     LocalByokCredentialStore,
@@ -72,6 +73,26 @@ def offered_provider(secret_ref: str) -> str | None:
     if slug is None or resolve_byok_provider_backend(slug) is None:
         return None
     return slug
+
+
+def _require_base_url_fits(provider: str | None, base_url: str | None) -> None:
+    """A generic endpoint's key comes with its URL, and no other key does (OMN-21263).
+
+    Refused before anything is stored: a generic key stored with no URL would
+    route nowhere, and a URL on a catalogue key would be ignored.
+    """
+    generic = endpoints.is_generic(provider)
+    if generic and not base_url:
+        raise LocalSecretStoreRefusedError(
+            f"a {provider} key is stored with the endpoint it is for: run onex "
+            f"models add {provider} --url <base url> --model <id>. Nothing was "
+            "stored."
+        )
+    if base_url and not generic:
+        raise LocalSecretStoreRefusedError(
+            "a base URL is stored only with a generic OpenAI-compatible key. "
+            "Nothing was stored."
+        )
 
 
 def fingerprint_prefix(value: str) -> str:
@@ -143,6 +164,8 @@ class HandlerLocalSecretStore:
                 "from a command-line argument."
             )
         provider = offered_provider(ref)
+        base_url = request.base_url or endpoints.registering_base_url()
+        _require_base_url_fits(provider, base_url)
         asyncio.run(store.set_secret(ref, value))
         if provider is None:
             return ModelLocalSecretResult(operation="set", secret_ref=ref)
@@ -157,6 +180,8 @@ class HandlerLocalSecretStore:
             model_chosen_by=request.model_chosen_by,
             db_path=store.db_path,
         )
+        if base_url:
+            endpoints.record_base_url(route_ref, base_url, db_path=store.db_path)
         tenant_id = resolve_or_mint_local_deployment_tenant_id(None)
         events: list[ModelCredentialRevokedEvent | ModelCredentialRegisteredEvent] = []
         if replaced is not None and replaced != route_ref:

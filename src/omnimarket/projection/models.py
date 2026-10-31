@@ -7,14 +7,15 @@ for topics, columns, or ordering.
 
 from __future__ import annotations
 
-import json
 import re
-from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
+
+from omnimarket.handlers.projection_snapshot_serialization import (
+    snapshot_json_value as snapshot_json_value,
+)
 
 # The wire schema_version stamped on every snapshot delta message (Seam A,
 # OMN-15800). Bumping this is a breaking change to every SnapshotCache
@@ -214,6 +215,7 @@ class ProjectionTableConfig(BaseModel):
     # seconds; freshness degrades to "stale" only once the projection is behind
     # twice that interval.
     expected_event_interval_seconds: int | None = None
+    serve_time_judgement: str | None = None
     # Contract-owned backend surfaces that read this exposure. An absent
     # declaration remains an empty tuple for existing exposures; a present
     # declaration is fully validated at discovery, never inferred from source.
@@ -430,27 +432,6 @@ class ModelProjectionSnapshotDelta(BaseModel):
         if self.op == "delete" and self.row is not None:
             raise ValueError("row must be omitted when op == 'delete'")
         return self
-
-
-def snapshot_json_value(value: Any, *, decode_json_string: bool = False) -> Any:
-    """Serialize one row value for a snapshot delta / HTTP response.
-
-    Shared by the writer path (:mod:`omnimarket.projection.runner`) and the
-    serving path (:mod:`omnimarket.projection.api_server`) so both produce and
-    consume the identical JSON shape for the same column value.
-    """
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
-    if isinstance(value, UUID):
-        return str(value)
-    if isinstance(value, Decimal):
-        return str(value)
-    if decode_json_string and isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
-    return value
 
 
 __all__ = [

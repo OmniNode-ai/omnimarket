@@ -565,6 +565,48 @@ providers:
             per-model, per-organisation RPM/TPM/RPD by usage tier. Not a single
             published number.
 
+  # OMN-21263. Any other endpoint that speaks the OpenAI chat API and needs a
+  # key: a self-hosted vLLM or LM Studio behind auth, a company gateway, or a
+  # hosted OpenAI-compatible service. One generic row instead of one per
+  # provider: the developer names the base URL when they register the key
+  # (`onex models add openai_compatible --url <base> --model <id>`), it is
+  # stored with the credential, and chat and the model list go to the OpenAI
+  # API's own paths under it (`/v1/chat/completions`, `/v1/models`). The two
+  # URLs below are placeholders on the reserved `.invalid` domain, so nothing
+  # can route on them: `endpoint_from_registration: true` says the registered
+  # URL replaces them. A customer-only surface (`mirrors_house_rung: false`):
+  # the platform holds no key for it. A provider with a quirk this path cannot
+  # carry gets its own row instead.
+  #
+  # MODEL: the developer names every model; the pattern only says any id is a
+  # model this row may run, since the endpoint, not the catalogue, says which
+  # ids exist. The endpoint's own `/v1/models` checks each one at registration
+  # when it has that route.
+  - provider: openai_compatible
+    plan: by_url
+    mirrors_house_rung: false
+    endpoint_from_registration: true
+    backend_id: byok-openai-compatible
+    endpoint_url: "https://openai-compatible.invalid/v1/chat/completions"
+    models_url: "https://openai-compatible.invalid/v1/models"
+    customer_chooses_model: true
+    model_preference:
+      - pattern: '.+'
+        tags: [developer_named]
+    max_retries: 2
+    timeout_ms: 300000
+    max_tokens: 8192
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            The endpoint is the developer's own choice, so its limits are
+            whatever its operator sets; the catalogue cannot know them.
+
   # OMN-20990. A customer's own Anthropic key, offered by operator ruling
   # 2026-10-11T15:05:50Z, which lifted the rule that the provider list refuses
   # Anthropic keys. The platform holds no house Anthropic key and has no rung on

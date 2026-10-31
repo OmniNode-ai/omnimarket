@@ -111,6 +111,8 @@ projection_api:
   order_by: "mode ASC, service ASC"
   cursor_column: projection_cursor
   freshness_column: updated_at
+  expected_event_interval_seconds: 15
+  serve_time_judgement: omnimarket.handlers.handler_local_environment_judgement.judge_local_services
   limit: 500
   bus_backed: true
   key_columns: [tenant_id, mode, service]

@@ -50,7 +50,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
-from omnimarket.handlers.models_first_command import first_model, models_text
+from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
@@ -868,6 +868,7 @@ _KEY_PAGES: dict[str, str] = {
     "openai": "platform.openai.com/api-keys",
     "anthropic": "platform.claude.com/settings/keys",
     "glm": "z.ai/manage-apikey/apikey-list",
+    "openai_compatible": "the endpoint's own key page",
 }
 _OLLAMA_HOW = model_keys.OLLAMA_HOW
 _LOCAL_HOW = model_keys.LOCAL_HOW
@@ -922,7 +923,7 @@ def _read_model_key(provider: str) -> str:
         value = sys.stdin.read().strip()
     if not value:
         raise click.ClickException(f"no {label} key was entered; nothing was stored.")
-    looks = key_looks_like(value)
+    looks = key_looks_like(value, provider)
     if looks is not None and looks != provider:
         raise click.ClickException(
             f"that looks like a key for {_MODEL_LABELS[looks]}, not {label}. "
@@ -944,7 +945,7 @@ models_group = click.Group(
         "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
-    commands=[first_model],  # OMN-21346: onex models first
+    commands=list(MODEL_COMMANDS),  # onex models first (OMN-21346), only
 )
 
 
@@ -967,8 +968,8 @@ models_group = click.Group(
     "--url",
     default=None,
     help=(
-        "local only: the base URL of a model server that speaks the "
-        "OpenAI-compatible API and needs no key, such as http://<host>:<port>."
+        "local or openai_compatible: the base URL of a server speaking the "
+        "OpenAI-compatible API, such as http://<host>:<port>; local needs no key."
     ),
 )
 @_model_json
@@ -977,22 +978,22 @@ def add_model(
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
-    The key is read from stdin when piped, or asked for at a hidden prompt.
-    A key already stored for PROVIDER is replaced, with the models named here
-    as its ordered list. The test passes only when it answers on the first
-    model stored for the key. Add models to a stored key later with
-    ``onex models add-model``.
+    The key is read from stdin when piped, or asked for at a hidden prompt. A key
+    already stored for PROVIDER is replaced, with the models named here as its ordered
+    list. The test passes only when it answers on the first model stored for the key.
+    Add models to a stored key later with ``onex models add-model``.
+
+    ``openai_compatible`` is any endpoint that speaks the OpenAI API and needs a key:
+    ``--url`` names its base URL, and each ``--model`` is checked against /v1/models.
 
     ``local`` asks for no key: ``--url`` names a model server that speaks the
-    OpenAI-compatible API and each ``--model`` a model it runs. The URL must
-    answer before it is declared in the local routes, beside any routes already
-    there. Local models are kept in order, first tried first, and a run tries
-    them before any key; ``onex models reorder local`` and ``onex models remove
-    local --model`` change the list.
+    OpenAI-compatible API and each ``--model`` a model it runs. It must answer before
+    it is declared in the local routes. Local models are tried in order before any key;
+    ``onex models reorder local`` and ``onex models remove local --model`` change them.
     """
     name = provider.lower()
     handler = _model_handler()
-    if url is not None and name != "local":
+    if url is not None and name not in ("local", "openai_compatible"):
         raise click.ClickException(
             "--url is for a local model server: onex models add local --url "
             "<base url> --model <name>"
@@ -1028,7 +1029,7 @@ def add_model(
         # OMN-20816: the shared path; the dashboard's GET /models lists what it stores.
         try:
             result = model_keys.add_key(
-                name, key, model_options, ask_model=_ask_model, echo=click.echo
+                name, key, model_options, url=url, ask_model=_ask_model, echo=click.echo
             )
         except model_keys.ModelKeyRefusedError as refusal:
             raise _refused(refusal) from None
@@ -1067,7 +1068,7 @@ def test_models(provider: str | None, as_json: bool) -> None:
 @_model_json
 def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
-    for row in model_keys.list_providers():
+    for row in listed(as_json):  # OMN-21267: the rule in force first
         if as_json:
             click.echo(row.model_dump_json())
             continue
@@ -1126,7 +1127,7 @@ def _listed_default_model(provider: str) -> str:
     """The best match on the key's own model list, or a refusal naming the way out."""
     choose = f"Name one with onex models add {provider} --model <model id>"
     backend = resolve_byok_provider_backend(provider)
-    if backend is None:
+    if backend is None or backend.endpoint_from_registration:
         raise click.ClickException(
             f"{_MODEL_LABELS.get(provider, provider)} has no model list to read a "
             f"default from. {choose}"
