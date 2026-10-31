@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_local_alert_transition_compute
+version: "1.0.0"
+description: Raised and cleared local alert transitions from the environment rows around one write, and their fold into one row per tenant, code and subject
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, alerting, local, environment]
+node_role: compute
+pack: "data"
+display_name: "Local Alert Transition Compute"

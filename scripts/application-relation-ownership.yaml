@@ -1101,6 +1101,16 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_proof_receipts/migrations/0000_create_lab_proof_receipts.sql
       access: read_write
       role: lab_proof_receipts
+    # OMN-21326 AC3 (OMN-17427): the delegation budget readings, one row per
+    # delegate-skill terminal, created by
+    # node_projection_delegation_budget_readings' own node-owned migration. The
+    # AC3 readback reads it from any lab host.
+    - name: delegation_budget_readings
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_delegation_budget_readings/migrations/0000_create_delegation_budget_readings.sql
+      access: read_write
+      role: delegation_budget_readings
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
@@ -1437,6 +1447,13 @@ database_objects:
   # gate resolves each sequence as its own target, so the table declaration
   # above does not cover this sequence.
   - name: lab_proof_receipts_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: delegation_budget_readings_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

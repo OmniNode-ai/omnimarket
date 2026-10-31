@@ -122,3 +122,6 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.pr-merged.v1
+
+timeouts:
+  poll_interval_s: 60  # Bounds the wait between CI readiness polls.
