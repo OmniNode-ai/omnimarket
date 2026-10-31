@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Claude Pool Refill Effect (OMN-21626)
+#
+# Fills each lab host's Claude token pool from the one pool in the secret store (operator RULING
+# 2026-10-31T01:21:16Z), probes the credential the host's lane runner draws and moves the host past an
+# expired, revoked or refused token. Reached by the onex-claude-pool-refill console script on the
+# launching host (runtime_claude_pool_refill); it declares no bus topics, so no shared runtime attaches it.
+name: "node_claude_pool_refill_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  For a named lab host or every host the private pool overlay declares: add each secret-store pool token
+  the host's local pool is missing through a pipe from the reader host's store read, probe the label the
+  host's lane runner would draw with one headless Claude Code call, mark an expired, revoked or refused
+  label revoked (a usage limit limited) and probe the next, and return one summary line per host. No
+  result, refusal or log line carries a token value.
+input_model:
+  name: "ModelClaudePoolRefillRequest"
+  module: "omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill"
+  description: "The overlay path, the hosts to serve, and the dry-run and check-config switches."
+output_model:
+  name: "ModelClaudePoolRefillResult"
+  module: "omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill"
+  description: "One summary line per host (labels, counts, verdicts), the exit code and any refusal."
+handler:
+  module: "omnimarket.nodes.node_claude_pool_refill_effect.handlers.handler_claude_pool_refill"
+  class: "HandlerClaudePoolRefill"
+  input_model: "omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill.ModelClaudePoolRefillRequest"
+  output_model: "omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill.ModelClaudePoolRefillResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_claude_pool_refill_effect.handlers.handler_claude_pool_refill:HandlerClaudePoolRefill"
+  handlers:
+    - operation: "refill"
+      handler:
+        name: "HandlerClaudePoolRefill"
+        module: "omnimarket.nodes.node_claude_pool_refill_effect.handlers.handler_claude_pool_refill"
+      input_model: "omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill.ModelClaudePoolRefillRequest"
+      output_model: "omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill.ModelClaudePoolRefillResult"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The onex-claude-pool-refill console script (runtime_claude_pool_refill) on the launching host, or python -m omnimarket.nodes.node_claude_pool_refill_effect.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  runtime_profiles: []
+  timeout_ms: 900000
+  side_effects:
+    - reads the secret-store pool on the overlay's reader host through the lane secret resolver
+    - adds tokens to and marks labels in each served host's local Claude token pool over ssh
+    - sets the draw order of each served host's local Claude token pool over ssh
+    - asks node_llm_delegation_call_effect, on the served host, for one credential probe per probed label
+metadata:
+  transport_type: local
+  ticket: OMN-21626
+  description: "Fill each lab host's Claude token pool from the secret-store pool and move it past dead tokens"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "claude"
+    - "credentials"
+  related_tickets:
+    - "OMN-21626"
+    - "OMN-17427"
