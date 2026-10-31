@@ -114,7 +114,12 @@ def test_f3_an_existing_store_file_gains_the_columns_on_open(tmp_path: Path) -> 
 
 def test_f4_exposure_serves_the_fields_and_names_its_consumer() -> None:
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
-    api = contract["projection_api"]
+    # OMN-21217: the node declares two exposures; this is the served one.
+    api = next(
+        exposure
+        for exposure in contract["projection_api"]["exposures"]
+        if exposure["topic"] == "onex.snapshot.projection.tenant-credentials.v1"
+    )
     assert {"fingerprint", "set_at"} <= set(api["columns"])
     # The contract's own instruction: once a per-tenant surface (the local Credentials page) renders these rows,
     # both opt-out keys are deleted, so the exposure-reader gate checks the live reader.
@@ -154,6 +159,11 @@ def test_f6_duplicate_delivery_converges(tmp_path: Path) -> None:
     db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
     payload = _registered(fingerprint="0123abcd", set_at=_SET_AT)
     apply_credential_registered(dict(payload), db)
-    first = db.query(CREDENTIALS_TABLE, {"api_key_ref": _REF})
+    [first] = db.query(CREDENTIALS_TABLE, {"api_key_ref": _REF})
     apply_credential_registered(dict(payload), db)
-    assert db.query(CREDENTIALS_TABLE, {"api_key_ref": _REF}) == first
+    [again] = db.query(CREDENTIALS_TABLE, {"api_key_ref": _REF})
+    # OMN-21217: version counts writes, as the Postgres runner's does (pinned
+    # against it in test_omn19968_writer_store_parity), so a redelivery raises
+    # it; every fact about the key converges.
+    assert again["version"] > first["version"]
+    assert {**again, "version": None} == {**first, "version": None}

@@ -96,7 +96,6 @@ src/omnimarket/nodes/node_dispatch_watchdog_orchestrator/handlers/handler_watchd
 src/omnimarket/nodes/node_dispatch_worker/__main__.py
 src/omnimarket/nodes/node_dod_verify/__main__.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py
-src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_ticket_criteria_linear_effect.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_runtime_sha_verify.py
 src/omnimarket/nodes/node_duplication_sweep/__main__.py
@@ -218,8 +217,6 @@ src/omnimarket/nodes/node_projection_savings/handlers/handler_projection_savings
 src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
 src/omnimarket/nodes/node_projection_savings/handlers/handler_savings_run_identity_fold.py
 src/omnimarket/nodes/node_projection_skill_executions/handlers/handler_projection_skill_executions.py
-src/omnimarket/nodes/node_projection_tenant_credentials/handlers/handler_tenant_credentials_projection.py
-src/omnimarket/nodes/node_projection_tenant_credentials/handlers/handler_tenant_credentials_store.py
 src/omnimarket/nodes/node_projection_tenant_registry/handlers/handler_tenant_registry_projection.py
 src/omnimarket/nodes/node_projection_usage_by_model_day/handlers/handler_usage_by_model_day_store.py
 src/omnimarket/nodes/node_projection_work_ledger/handlers/handler_work_ledger_write_guard.py

@@ -429,6 +429,13 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # OMN-21336: compaction_receipts declares its BIGSERIAL
         # `projection_cursor` from its first commit.
         "node_projection_compaction_receipts::compaction_receipts#0",
+        # OMN-21217: the two compacted state-topic exposures of the tenant
+        # credentials node declare a member cursor from their first commit:
+        # `api_key_ref` (the credential table's primary key) and `id` (the
+        # overlay row's never-changing id). Exposure #0 of that node stays in
+        # the baseline, unchanged.
+        "node_projection_tenant_credentials::tenant_inference_credentials#1",
+        "node_projection_tenant_credentials::delegation_routing_tenant_overlay#2",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -452,7 +459,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 76 as of OMN-19988: local_environment declares its BIGSERIAL cursor in the
 # same change as the exposure, so the measured backlog remains unchanged.
 # 77 as of OMN-21336: compaction_receipts does the same.
-_AC3_TOTAL_EXPOSURES = 77
+# 79 as of OMN-21217: the tenant credentials node's two state-topic exposures
+# declare their cursors in the same change, so the measured backlog is unmoved.
+_AC3_TOTAL_EXPOSURES = 79
 _AC3_MEASURED_GAP = 55
 
 
