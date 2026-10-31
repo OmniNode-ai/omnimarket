@@ -91,6 +91,7 @@ from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
 from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
+from omnimarket.models.lane_brief.enum_lane_engine import EnumLaneEngine
 from omnimarket.models.model_backlog_item import (
     REPO_KINDS_CONTEXT_KEY,
     backlog_item_refusal,
@@ -895,7 +896,7 @@ class HandlerIdleSlotFill:
             pinned = required in (
                 "claude",
                 "sonnet",
-                "claude-sonnet",
+                EnumLaneEngine.CLAUDE_SONNET.value,
             ) or claude_required(item.get("brief", ""))
             if required == "codex":
                 if pinned:
