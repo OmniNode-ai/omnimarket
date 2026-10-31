@@ -117,7 +117,10 @@ class ModelAskStateConfig(BaseModel):
     owner_cell: str = Field(min_length=1)
     done_state: str = Field(min_length=1)
     answer_kinds: tuple[str, ...] = Field(
-        description="row kinds that deliver an answer: a send or a message; one citing an ask closes it",
+        description="row kinds that deliver an answer; one citing closes-ask= closes the ask by itself",
+    )
+    send_kinds: tuple[str, ...] = Field(
+        description="answer kinds that close an ask by citing it with ask= alone: a send is a delivery",
     )
     promote_rules: tuple[ModelAskPromoteRule, ...] = Field(
         description="wording that promotes an untracked item (a why-challenge, a directive) to an ask",

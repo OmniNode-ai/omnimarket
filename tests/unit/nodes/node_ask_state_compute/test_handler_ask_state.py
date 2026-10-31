@@ -515,7 +515,7 @@ def test_status_owned_row_names_the_owner() -> None:
 
 def test_sent_on_behalf_row_closes_the_ask_it_cites() -> None:
     rows = (
-        "2026-10-31T02:01:08Z | SENT-ON-BEHALF | lane=orchestrator-31d9 | ask="
+        "2026-10-31T08:01:08Z | SENT-ON-BEHALF | lane=orchestrator-31d9 | ask="
         + ask_id(1)
         + " | to=cloud-owner | via Slack DM",
     )
@@ -528,6 +528,8 @@ def test_sent_on_behalf_row_closes_the_ask_it_cites() -> None:
 def test_message_row_closes_but_a_pull_request_handoff_does_not() -> None:
     answer = (
         "2026-10-31T08:30:00Z | MSG | from=orchestrator-31d9 | to=operator | ask="
+        + ask_id(1)
+        + " | closes-ask="
         + ask_id(1)
         + " | Chat reply: items 2 and 4 explained"
     )

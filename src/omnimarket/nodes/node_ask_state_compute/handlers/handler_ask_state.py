@@ -10,7 +10,8 @@ the ledger rows tied to it, folded oldest first:
 
 * ``done``: a row cites ``closes-ask=<id>`` with evidence (a merged pull request, or a TERMINAL,
   RULING or answer row by stamp), a STATUS ``state=done`` cites the ask with the same evidence, a
-  send or message row (``answer_kinds``, not a pull-request handoff) cites the ask, the operator
+  send row (``send_kinds``) cites the ask or a message row (``answer_kinds``) cites it with
+  ``closes-ask=`` (neither one a pull-request handoff), the operator
   withdrew it (a capture row ``state=dropped``, or a CORRECTION citing it), a linked lane ended
   with a done outcome, or a RULING recorded it without a pending mechanism;
 * ``owned``: a linked CLAIM has no closing TERMINAL, the lane ended handed-off, or a STATUS
@@ -430,8 +431,8 @@ def _decide(
         )
         answers = (
             row.kind in config.answer_kinds
-            and cites
             and not _pr_refs(row, config.pr_cells)
+            and (closes_cell or (cites and row.kind in config.send_kinds))
         )
         if closes_cell or marks_done or answers:
             if row.kind == "CORRECTION" or (

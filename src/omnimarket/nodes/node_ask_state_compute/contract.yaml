@@ -115,6 +115,7 @@ config:
   owner_cell: owner
   done_state: done
   answer_kinds: [SENT-ON-BEHALF, MSG]
+  send_kinds: [SENT-ON-BEHALF]
   promote_unclassified: true
   promote_rules:
     # A why-question that challenges (still, not, nothing, why do we, why don't you) is a request to fix.
