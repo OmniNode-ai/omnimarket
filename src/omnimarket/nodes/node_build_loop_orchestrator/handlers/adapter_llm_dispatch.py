@@ -74,6 +74,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace i
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
     DelegationPayload,
+    DispatchRequest,
     DispatchResult,
 )
 
@@ -584,13 +585,7 @@ class AdapterLlmDispatch:
             return False
         return False
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        targets: tuple[BuildTarget, ...],
-        dry_run: bool = False,
-    ) -> DispatchResult:
+    async def handle(self, request: DispatchRequest) -> DispatchResult:
         """Generate implementation plans for each buildable ticket.
 
         For each target:
@@ -599,6 +594,9 @@ class AdapterLlmDispatch:
         3. Run generate-review-retry loop (up to max_attempts)
         4. Package as delegation payload
         """
+        correlation_id = request.correlation_id
+        targets = request.targets
+        dry_run = request.dry_run
         logger.info(
             "LLM dispatch: %d targets (correlation_id=%s, dry_run=%s)",
             len(targets),

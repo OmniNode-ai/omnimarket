@@ -8,6 +8,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 
 class ModelHostCommandOutcome(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -24,8 +26,14 @@ class ProtocolHostCommandRunner(Protocol):
 class SubprocessHostCommand:
     """Runs an argv with no shell; raises OSError when the binary is missing."""
 
-    def __init__(self, timeout_seconds: float = 20.0) -> None:
-        self._timeout = timeout_seconds
+    def __init__(self, timeout_seconds: float | None = None) -> None:
+        self._timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else load_node_timeouts("node_automation_run_observer_effect").get(
+                "host_command_timeout_seconds"
+            )
+        )
 
     def run(self, argv: Sequence[str]) -> ModelHostCommandOutcome:
         completed = subprocess.run(

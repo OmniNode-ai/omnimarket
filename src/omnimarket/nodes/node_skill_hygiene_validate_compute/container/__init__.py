@@ -1,0 +1,3 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Binding site of node_skill_hygiene_validate_compute: the only place its handler classes are constructed."""

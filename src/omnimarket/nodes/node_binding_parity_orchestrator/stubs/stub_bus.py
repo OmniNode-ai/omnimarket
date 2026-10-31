@@ -14,12 +14,14 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.event_bus.model_event_headers import ModelEventHeaders
 from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
 
+from omnimarket.handlers.container.container_inmemory import bind_core_event_bus
+
 type MessageCallback = Callable[[ModelEventMessage], Awaitable[None]]
 
 
 def build_reference_bus() -> EventBusInmemory:
     """The reference bus binding."""
-    return EventBusInmemory(environment="stub", group="stub-reference")
+    return bind_core_event_bus(environment="stub", group="stub-reference")
 
 
 class StubBusMutation:

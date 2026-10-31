@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 from typing import Protocol
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
     MAX_TAIL_CHARS,
     EnumLabWorkUnitStatus,
@@ -75,7 +76,9 @@ class LocalShellLabWorkExecutor:
     def __init__(
         self,
         work_root: Path | None = None,
-        url_base: str = "https://github.com",  # url-authority-ok: the git remote a pushed sha is fetched from; tests pass a file:// base
+        url_base: str = service_endpoint_url(
+            "github.web_url"
+        ),  # tests pass a file:// base
     ) -> None:
         self._root = work_root or Path.home() / "lab-run"
         self._url_base = url_base.rstrip("/")

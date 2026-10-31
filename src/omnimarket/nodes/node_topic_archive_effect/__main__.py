@@ -34,11 +34,11 @@ import json
 import sys
 from pathlib import Path
 
+from omnimarket.nodes.node_topic_archive_effect.container.container_topic_archive_effect import (
+    create_handler_topic_archive,
+)
 from omnimarket.nodes.node_topic_archive_effect.handlers._kafka_topic_reader import (
     AiokafkaTopicReader,
-)
-from omnimarket.nodes.node_topic_archive_effect.handlers.handler_topic_archive import (
-    HandlerTopicArchive,
 )
 from omnimarket.topic_archive.live import (
     AgeArchiveCipher,
@@ -88,7 +88,7 @@ async def _run(args: argparse.Namespace) -> ModelTopicArchiveResult:
     else:
         broker = reader = AiokafkaTopicReader(args.bootstrap)
     try:
-        return await HandlerTopicArchive(
+        return await create_handler_topic_archive(
             reader=reader,
             sink=sink,
             cipher=cipher,
