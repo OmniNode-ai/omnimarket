@@ -254,8 +254,6 @@ class HandlerGeneratedExecutor:
         # staging root to be configured for the sandbox-only paths.
         self._staging_dir_override = staging_dir
         self._event_publisher: EventPublisher | None = event_publisher
-        # node_name → handler_path, populated by deploy()
-        self._registry: dict[str, Path] = {}
 
         topics = _load_event_bus_topics(contract_path)
         deploy_topic = next((t for t in topics if "node-deploy" in t), "")
@@ -440,7 +438,6 @@ class HandlerGeneratedExecutor:
             return {"error": f"Failed to write sandbox files: {exc}"}
 
         handler_path = node_dir / _HANDLER_FILENAME
-        self._registry[node_name] = handler_path
         logger.info("[generated-executor] deployed %s → %s", node_name, handler_path)
         return {
             "status": "ok",
