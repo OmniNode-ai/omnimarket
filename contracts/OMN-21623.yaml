@@ -40,7 +40,32 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_contractor_integration_note_effect/services/note_composer.py src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py src/omnimarket/nodes/node_lab_work_unit_effect/protocols/local_shell_work_runner.py src/omnimarket/nodes/node_linear_triage/services/local_github_pr_reads.py src/omnimarket/nodes/node_local_dashboard_serve_effect/bundle.py src/omnimarket/nodes/node_pr_head_stage_compute/handlers/handler_pr_head_stage.py src/omnimarket/nodes/node_push_validation_effect/protocols/ephemeral_container_focused_run_subprocess.py src/omnimarket/nodes/node_push_validation_effect/protocols/gate_runner_suite_evaluation_subprocess.py src/omnimarket/nodes/node_push_validation_effect/protocols/git_push_validation_subprocess.py src/omnimarket/nodes/node_remote_lane_effect/handlers/handler_remote_lane_ref.py 2>&1 | grep -q literal_url"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          paths = [
+              Path("src/omnimarket/nodes/node_contractor_integration_note_effect/services/note_composer.py"),
+              Path("src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py"),
+              Path("src/omnimarket/nodes/node_lab_work_unit_effect/protocols/local_shell_work_runner.py"),
+              Path("src/omnimarket/nodes/node_linear_triage/services/local_github_pr_reads.py"),
+              Path("src/omnimarket/nodes/node_local_dashboard_serve_effect/bundle.py"),
+              Path("src/omnimarket/nodes/node_pr_head_stage_compute/handlers/handler_pr_head_stage.py"),
+              Path("src/omnimarket/nodes/node_push_validation_effect/protocols/ephemeral_container_focused_run_subprocess.py"),
+              Path("src/omnimarket/nodes/node_push_validation_effect/protocols/gate_runner_suite_evaluation_subprocess.py"),
+              Path("src/omnimarket/nodes/node_push_validation_effect/protocols/git_push_validation_subprocess.py"),
+              Path("src/omnimarket/nodes/node_remote_lane_effect/handlers/handler_remote_lane_ref.py"),
+          ]
+          assert all(path.is_file() for path in paths), "a slice module is missing"
+          validator = ValidatorContractsAndDi()
+          assert any(rule.rule_id == "literal_url" and rule.enabled for rule in validator.contract.rules), "literal_url rule is not enabled"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_url", "unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_url findings")
+          PY
         cwd: "."
   - id: "dod-omn21623-deploy-published-endpoint-readback"
     description: |-
