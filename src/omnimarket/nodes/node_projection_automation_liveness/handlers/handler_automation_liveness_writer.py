@@ -48,6 +48,7 @@ from omnimarket.models.liveness.model_automation_liveness import (
     ModelAutomationRunObserved,
     automation_liveness_topics,
 )
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_automation_liveness.handlers.handler_projection_automation_liveness import (
     HandlerProjectionAutomationLiveness,
 )
@@ -249,14 +250,14 @@ class AutomationLivenessProjectionWriter(BaseProjectionRunner):
                 return SqliteLivenessStore(sqlite_path_from_dsn(url))
         return self.db
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal shim: one injected message, one fold, one write."""
-        data = dict(input_data)
+        data = dict(request.payload)
         topics = self.subscribe_topics
-        topic = str(data.get("_topic", topics[0] if topics else ""))
-        partition = int(data.get("_partition", 0))
-        offset = int(data.get("_offset", 0))
-        fallback_id = str(data.get("_fallback_id", "")) or (
+        topic = request.topic_or(topics[0] if topics else "")
+        partition = request.partition
+        offset = request.offset
+        fallback_id = request.fallback_id or (
             deterministic_correlation_id(topic, partition, offset)
         )
         payload = {

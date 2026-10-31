@@ -7587,6 +7587,7 @@
       "producer": "node_projection_pr_state",
       "readers": [
         "node_dod_verify",
+        "node_factory_floor_compute",
         "node_github_webhook_ingress_effect",
         "node_lab_job_check_effect",
         "node_legacy_worktree_audit_effect",

@@ -6,6 +6,8 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.lane_brief.enum_lane_engine import EnumLaneEngine
+
 
 def engine_model(value: str) -> str | None:
     """Normalize executor aliases; a lab commit identity names only a host."""
@@ -16,8 +18,8 @@ def engine_model(value: str) -> str | None:
     for token, model in (
         ("glm", "glm"),
         ("codex", "codex"),
-        ("opus", "claude-opus"),
-        ("sonnet", "claude-sonnet"),
+        ("opus", EnumLaneEngine.CLAUDE_OPUS.value),
+        ("sonnet", EnumLaneEngine.CLAUDE_SONNET.value),
         ("haiku", "claude-haiku"),
     ):
         if token in tokens:

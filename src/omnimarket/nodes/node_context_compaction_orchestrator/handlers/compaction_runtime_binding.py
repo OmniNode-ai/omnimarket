@@ -27,8 +27,6 @@ from omnimarket.protocols.protocol_session_barrier_probe_source import (
     ProtocolSessionBarrierProbeSource,
 )
 
-from .handler_session_barrier_wait import HandlerSessionBarrierWait
-
 
 class ModelCompactionRuntimeBinding(BaseModel):
     """The contract's pack build and barrier wait settings (OMN-21334)."""
@@ -125,6 +123,10 @@ def bind_compaction_ports(
     sleep: Callable[[float], None] = time.sleep,
 ) -> tuple[ProtocolContextCompactionBarrierWait, ProtocolSessionBarrierProbeSource]:
     """Bind the existing barrier wait and its revision probe source."""
+    from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+        create_handler_session_barrier_wait,
+    )
+
     source = (
         barrier_probe_source
         if barrier_probe_source is not None
@@ -134,7 +136,7 @@ def bind_compaction_ports(
             sql_composer=read_sql_composer,
         )
     )
-    return HandlerSessionBarrierWait(
+    return create_handler_session_barrier_wait(
         source,
         deadline_s=binding.barrier_deadline_s,
         poll_interval_s=binding.barrier_poll_interval_s,
