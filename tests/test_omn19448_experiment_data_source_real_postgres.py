@@ -83,3 +83,45 @@ async def test_synthetic_terminal_and_closed_check(writer: str) -> None:
             )
             is False
         )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("writer", ["sync", "async"])
+async def test_fixture_seed_wins_over_synthetic_provenance(writer: str) -> None:
+    """OMN-21536: the data_source fold keeps a fixture seed even for a synthetic
+    terminal, in both writers, under the same closed CHECK."""
+    async with _provisioned_runner() as (runner, conn, schema):
+        registry_migration = (
+            _MIGRATIONS_DIR.parent.parent
+            / "node_projection_tenant_registry/migrations/0000_create_tenant_registry_mirror.sql"
+        )
+        await conn.execute(registry_migration.read_text())
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror (tenant_slug, tenant_uuid, status) "
+            "VALUES ($1, $2, 'active')",
+            PROJECTION_TENANT_SLUG,
+            PROJECTION_TENANT_UUID,
+        )
+        payload = recorded_terminal("synthetic")
+        payload["tenant_id"] = str(PROJECTION_TENANT_UUID)
+        payload["data_source"] = "fixture"
+        cid = payload["correlation_id"]
+        if writer == "async":
+            assert await runner.project_event(
+                runner._topic_delegate_skill_completed,
+                payload,
+                MessageMeta(partition=0, offset=0, fallback_id=cid),
+            )
+        else:
+            db = PostgresSyncProjectionAdapter(_base_dsn(), schema=schema)
+            await asyncio.to_thread(
+                HandlerProjectionDelegation().handle, {**payload, "_db": db}
+            )
+        assert (
+            await conn.fetchval(
+                "SELECT data_source FROM delegation_events WHERE correlation_id = $1",
+                cid,
+            )
+            == "fixture"
+        )
