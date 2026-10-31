@@ -45,11 +45,13 @@ def _render_files(command: ModelGenerateNodeCommand) -> list[tuple[str, str]]:
     handler_class = f"Handler{pascal}"
     request_model = f"Model{pascal}Request"
     result_model = f"Model{pascal}Result"
+    contract = (
+        command.contract_yaml
+        if command.contract_yaml is not None
+        else _contract_yaml(command, handler_class, request_model, result_model)
+    )
     return [
-        (
-            "contract.yaml",
-            _contract_yaml(command, handler_class, request_model, result_model),
-        ),
+        ("contract.yaml", contract),
         ("metadata.yaml", _metadata_yaml(command)),
         ("__init__.py", _node_init(command.node_name, handler_class, stem)),
         ("handlers/__init__.py", '"""Handlers for generated node."""\n'),

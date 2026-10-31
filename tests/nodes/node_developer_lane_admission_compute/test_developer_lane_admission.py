@@ -134,6 +134,71 @@ def test_collaborator_bound_explicitly_to_the_barred_lane_is_refused() -> None:
     assert decision["refusal"] == "collaborator-on-barred-lane"
 
 
+def machine_declaration(
+    *, people: tuple[str, ...], machines: tuple[str, ...]
+) -> dict[str, Any]:
+    """The overlay shape of a lab deployment: people's devices, then machines it installs itself."""
+    document = declaration(*people)
+    document["principals"] += [
+        {
+            "principal": name,
+            "login": "x@example.invalid",
+            "device": "d",
+            "role": "machine",
+        }
+        for name in machines
+    ]
+    return document
+
+
+def machine_request(lane_store: dict[str, Any]) -> dict[str, Any]:
+    built = request(lane_store)
+    built["lanes"][HOME_LANE]["declaration"] = machine_declaration(
+        people=(HOME_COLLAB,), machines=(OPERATOR,)
+    )
+    return built
+
+
+def test_quiet_host_machine_row_on_the_barred_lane_is_the_operators_own_flow() -> None:
+    """A lab host's login is declared with role machine; its hook events must keep flowing.
+
+    Recorded: every hook event of a host whose login is a machine row of the overlay was dropped
+    by the hook (the refusal below), so the host read as one that ran lanes and sent none.
+    """
+    decision = admit(machine_request(store(lane_home=OPERATOR)))
+    assert (decision["selected_lane"], decision["verdict"]) == (HOME_LANE, "operator")
+    assert decision["refusal"] is None
+
+
+def test_quiet_host_no_false_alarm_machine_row_is_never_held_back_as_a_collaborator() -> (
+    None
+):
+    decision = admit(machine_request(store(lane_home=OPERATOR)))
+    # The hook holds back events only for this verdict, and drops all of them on a refusal.
+    assert decision["verdict"] != handler.VERDICT_COLLABORATOR
+    assert decision["refusal"] is None
+
+
+def test_quiet_host_a_person_beside_machine_rows_is_still_refused_on_the_barred_lane() -> (
+    None
+):
+    decision = admit(machine_request(store(lane_home=HOME_COLLAB)))
+    assert decision["refusal"] == "collaborator-on-barred-lane"
+
+
+def test_quiet_host_a_machine_row_is_not_a_person_of_another_lane() -> None:
+    built = machine_request(store(bound=COLLAB_LANE, lane_collab=OPERATOR))
+    decision = admit(built)
+    assert decision["refusal"] is None
+    assert decision["verdict"] == "operator"
+
+
+def test_quiet_host_a_machine_row_without_a_principal_name_is_malformed() -> None:
+    built = machine_request(store(lane_home=OPERATOR))
+    built["lanes"][HOME_LANE]["declaration"]["principals"].append({"role": "machine"})
+    assert admit(built)["refusal"] == "declaration-malformed"
+
+
 def test_operators_own_home_lane_flow_is_unchanged() -> None:
     decision = admit(request(store(lane_home=OPERATOR)))
     assert (decision["selected_lane"], decision["verdict"]) == (HOME_LANE, "operator")
