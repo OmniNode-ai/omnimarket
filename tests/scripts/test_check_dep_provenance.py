@@ -9,7 +9,6 @@ import importlib.util
 from pathlib import Path
 
 import pytest
-from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
 
 pytestmark = pytest.mark.unit
 
@@ -205,9 +204,9 @@ def test_missing_pyproject_fails_closed(mod, tmp_path: Path) -> None:
 
 
 DEV_TAG = "dev-20261019090050-c330f5a7d597"
-SIBLING_PACKAGES = {
-    sibling.distribution: sibling.repo for sibling in load_contract().siblings
-}
+SIBLING_PACKAGES = dict(
+    entry.split("=", 1) for entry in _load_module().load_policy()["wrong_repo"].siblings
+)
 
 
 @pytest.mark.parametrize(("package", "repo"), SIBLING_PACKAGES.items())
@@ -292,7 +291,11 @@ def test_contract_excludes_omnibase_compat_dev_merge_tag(mod) -> None:
 
 
 def test_contract_dev_tag_pattern_controls_verdict(mod) -> None:
-    contract = load_contract().model_copy(update={"dev_tag_pattern": r"^rel-[0-9]+$"})
+    contract = mod.load_policy()
+    pins = contract["first_party_source_not_dev_tag"]
+    contract["first_party_source_not_dev_tag"] = pins.model_copy(
+        update={"tag_pattern": r"^rel-[0-9]+$"}
+    )
     text = (
         "[tool.uv.sources]\n"
         'omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core", '

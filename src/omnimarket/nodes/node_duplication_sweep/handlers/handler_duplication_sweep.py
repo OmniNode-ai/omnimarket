@@ -20,17 +20,19 @@ from pathlib import Path
 
 import yaml
 from omnibase_core.enums.enum_migration_conflict_type import EnumMigrationConflictType
-from omnibase_core.handlers.handler_migration_conflicts import (
-    HandlerMigrationConflicts,
-    find_migration_files,
-    iter_inventory_files,
-    load_inventory_yaml,
-)
 from omnibase_core.models.nodes.migration_conflicts.model_migration_conflict_input import (
     ModelMigrationConflictInput,
 )
 from omnibase_core.models.nodes.migration_conflicts.model_repo_source_file import (
     ModelRepoSourceFile,
+)
+from omnibase_core.nodes.node_cross_repo_boundary_check_effect.handler_migration_conflicts import (
+    HandlerMigrationConflicts,
+    iter_inventory_files,
+    load_inventory_yaml,
+)
+from omnibase_core.nodes.node_cross_repo_boundary_check_effect.runtime_migration_conflicts import (
+    find_migration_files,
 )
 from pydantic import BaseModel, ConfigDict, Field
 
