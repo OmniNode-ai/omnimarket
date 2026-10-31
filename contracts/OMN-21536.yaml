@@ -1,199 +1,71 @@
-schema_version: 1.0.0
-ticket_id: OMN-21536
-title: 'omnimarket: handler-shape debt burn-down (slice 3: public handler methods stop mutating handler state; slice 4: the
-  pr-review FSM reducer stops naming the event envelope)'
-summary: |-
-  Slice 3: The handler-shape validator of omnibase_core reports a public method of a handler class, other than handle, that assigns to the handler (mutating_public_method). Twenty-six of those sat in twenty files. Each now keeps its state in a collaborator the handler is given (a quota-reading store, a source-control connection, an overlay source, a decision count, a dispatch session, a DLQ routing mark, an emit lifecycle), in a local of the call, or nowhere when nothing read it. The tests of every touched node follow the move.
-
-  Slice 4: The handler-shape validator of omnibase_core reports a handler module that references the event envelope type (envelope_in_core): 25 modules. This change clears one, the pr-review FSM reducer, whose handler now takes the typed advance command the runtime adapter validates and emits only a projection. The other 24 modules either build or read an envelope in the handler (a bus publisher, a request and reply phase, an orchestrator emitting event envelopes, a handler that routes on the envelope's event type) and cannot lose it without a change in the shared runtime or in each node's contract; the lane stopped there on the operator's instruction that the shared runtime is the only place an envelope is unwrapped and that no per-handler helper stands in for it.
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21536"
+title: "omnimarket: handler-shape debt burn-down, slice 4: the pr-review FSM reducer stops naming the event envelope"
+summary: "The handler-shape validator of omnibase_core reports a handler module that references the event envelope type (envelope_in_core): 25 modules. This change clears one, the pr-review FSM reducer, whose handler now takes the typed advance command the runtime adapter validates and emits only a projection. The other 24 modules either build or read an envelope in the handler (a bus publisher, a request and reply phase, an orchestrator emitting event envelopes, a handler that routes on the envelope's event type) and cannot lose it without a change in the shared runtime or in each node's contract; the lane stopped there on the operator's instruction that the shared runtime is the only place an envelope is unwrapped and that no per-handler helper stands in for it."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-public-handler-methods-hold-no-state
-  statement: No public method of a handler class, other than handle, assigns to the handler or calls a mutating method on
-    one of its attributes, in the twenty files the validator named, and the nodes behave as before.
-  acceptance:
-  - id: AC3
-    statement: 'AC3: the handler-shape validator of omnibase_core run over src reports no mutating_public_method finding --
-      falsifier: the command of the evidence below prints a number above 0'
-  - id: AC4
-    statement: 'AC4: the tests of every touched node pass -- falsifier: the pytest command of the evidence below exits non-zero'
-- id: req-omn21536-s4-pr-review-fsm-reducer-names-no-envelope
-  statement: The pr-review FSM reducer's handler takes its typed advance command, references no event envelope type, and folds
-    the same state as before.
-  acceptance:
-  - id: AC1
-    statement: 'AC1: the handler-shape validator of omnibase_core reports no envelope_in_core issue on the pr-review FSM reducer
-      handler -- falsifier: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py exits non-zero'
-  - id: AC2
-    statement: 'AC2: the tests of the pr-review FSM reducer pass -- falsifier: the pytest command of the evidence below exits
-      non-zero'
+  - id: "req-omn21536-s4-pr-review-fsm-reducer-names-no-envelope"
+    statement: |-
+      The pr-review FSM reducer's handler takes its typed advance command, references no event envelope type, and folds the same state as before.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the handler-shape validator of omnibase_core reports no envelope_in_core issue on the pr-review FSM reducer handler -- falsifier: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py exits non-zero"
+      - id: "AC2"
+        statement: "AC2: the tests of the pr-review FSM reducer pass -- falsifier: the pytest command of the evidence below exits non-zero"
 evidence_requirements:
-- kind: tests
-  description: The tests of the nodes whose handler state moved, run on a lab host at the pushed head.
-  command: uv run pytest tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_golden_chain_emit_daemon.py
-    tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_pr_landing_github_effect.py
-    tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_omn14533_cross_boundary_savings_seam.py tests/test_omn16874_consumer_flow_writer_dispatch.py
-    tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py
-    tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_omn18531_compaction_savings.py tests/test_omn19438_savings_registry_tenant_uuid.py
-    tests/test_savings_runner_task_delegated_omn13598.py tests/test_projection_malformed_dlq_omn13548.py tests/test_projection_error_classification_omn13634.py
-    tests/test_projection_handlers.py tests/unit/delegation tests/unit/nodes/node_dod_verify tests/unit/nodes/node_generation_consumer
-    tests/unit/nodes/node_github_repo_write_effect tests/unit/nodes/node_pr_landing_github_effect tests/unit/nodes/node_projection_consumer_flow
-    tests/nodes/node_install_canary_effect tests/nodes/node_intent_event_consumer_effect tests/nodes/node_linear_comments_sweep_orchestrator
-    tests/nodes/node_morning_friction_sweep_orchestrator tests/nodes/node_morning_ground_state_orchestrator src/omnimarket/nodes/node_projection_savings/tests
-    -q --no-cov --tb=line
-- kind: tests
-  description: The pr-review FSM reducer's tests and the envelope ratchet test, run on a lab host at the pushed head.
-  command: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py
-    tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line
-    -p no:randomly
+  - kind: "tests"
+    description: "The pr-review FSM reducer's tests and the envelope ratchet test, run on a lab host at the pushed head."
+    command: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly"
 emergency_bypass:
   enabled: false
-  justification: ''
-  follow_up_ticket_id: ''
+  justification: ""
+  follow_up_ticket_id: ""
 dod_evidence:
-- id: dod-omn21536-ac3-no-mutating-public-method
-  description: AC3 runs the handler-shape validator over src at the committed head and counts the findings that name a public
-    method mutating handler state.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: command
-    check_value: |
-      set -u;
-      test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep -c 'is a public method that mutates handler state')" -eq 0
-    cwd: .
-- id: dod-omn21536-ac4-touched-node-tests
-  description: AC4 runs the tests of the nodes whose handler state moved, in groups that each finish inside the verifier's
-    30 s per-check budget. The slower suites of the same nodes (tests/unit/delegation, tests/unit/nodes/node_dod_verify) run
-    in the evidence requirement above on a lab host, and in the CI test shards.
-  source: manual
-  binds_ac:
-  - AC4
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/test_omn14533_cross_boundary_savings_seam.py tests/unit/nodes/node_projection_consumer_flow/test_omn17215_ac6_gap_row_does_not_shadow_observed.py
-      tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_bus_write_budget_consumer_flow_snapshot_policy.py
-      tests/test_omn18531_compaction_savings.py tests/test_projection_error_classification_omn13634.py tests/test_omn17426_savings_aggregates_bus_backed.py
-      tests/test_projection_malformed_dlq_omn13548.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py
-      tests/test_projection_handlers.py src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_golden_chain_emit_daemon.py
-      tests/nodes/node_install_canary_effect/test_install_canary.py tests/nodes/node_install_canary_effect/test_lane_ship_drift.py
-      tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_golden_chain_generation_self_extension.py
-      tests/test_omn16777_real_postgres_consumer_flow_write_path.py -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py
-      tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py
-      tests/unit/nodes/node_github_repo_write_effect/test_lane_write_identity.py tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py
-      tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py tests/nodes/node_linear_comments_sweep_orchestrator/test_error_chain_linear_comments_sweep_orchestrator.py
-      tests/nodes/node_linear_comments_sweep_orchestrator/test_golden_chain_linear_comments_sweep_orchestrator.py tests/nodes/node_linear_comments_sweep_orchestrator/test_overlay.py
-      tests/nodes/node_linear_comments_sweep_orchestrator/test_phase_bus.py tests/nodes/node_morning_friction_sweep_orchestrator/test_bus_cycle.py
-      tests/nodes/node_morning_friction_sweep_orchestrator/test_entry_point.py tests/nodes/node_morning_friction_sweep_orchestrator/test_error_chain_morning_friction_sweep_orchestrator.py
-      tests/nodes/node_morning_friction_sweep_orchestrator/test_golden_chain_morning_friction_sweep_orchestrator.py tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py
-      tests/nodes/node_morning_friction_sweep_orchestrator/test_phase_bus.py -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_pr_landing_github_effect/test_clean_pr_merges_omn_20866.py tests/unit/nodes/node_pr_landing_github_effect/test_contract.py
-      tests/unit/nodes/node_pr_landing_github_effect/test_fake_transport_replay.py tests/unit/nodes/node_pr_landing_github_effect/test_handler_pr_landing_github.py
-      tests/unit/nodes/node_pr_landing_github_effect/test_quota_reading.py tests/unit/nodes/node_pr_landing_github_effect/test_request_models.py
-      tests/unit/nodes/node_pr_landing_github_effect/test_required_contexts_and_held_arm_omn_20866.py -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_generation_consumer/test_cloud_endpoints_key_refs_omn12828.py tests/unit/nodes/node_generation_consumer/test_corpus_acceptance.py
-      tests/unit/nodes/node_generation_consumer/test_endpoint_failure_omn15502.py tests/unit/nodes/node_generation_consumer/test_endpoint_routing_authority.py
-      tests/unit/nodes/node_generation_consumer/test_escalation_omn12829.py tests/unit/nodes/node_generation_consumer/test_generation_rides_ladder_omn13359.py
-      tests/unit/nodes/node_generation_consumer/test_handler_generated_executor.py tests/unit/nodes/node_generation_consumer/test_handler_generation_consumer.py
-      tests/unit/nodes/node_generation_consumer/test_no_hackathon_tags_omn13607.py tests/unit/nodes/node_generation_consumer/test_offset_commit_after_terminal_ack_omn13467.py
-      tests/unit/nodes/node_generation_consumer/test_omn12813_output_format_fix.py tests/unit/nodes/node_generation_consumer/test_omn12890_gemini_model_repoint.py
-      tests/unit/nodes/node_generation_consumer/test_p2_seam_extensions.py tests/unit/nodes/node_generation_consumer/test_sea_generation_routing_parity.py
-      tests/unit/nodes/node_generation_consumer/test_semantic_validation_omn13166.py tests/unit/nodes/node_generation_consumer/test_semantic_validation_omn13217.py
-      tests/unit/nodes/node_generation_consumer/test_single_terminal_authority_omn15469.py tests/unit/nodes/node_generation_consumer/test_usage_source_capture_omn12996.py
-      tests/unit/nodes/node_generation_consumer/test_validator_corpora.py -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py
-      tests/nodes/node_morning_ground_state_orchestrator/test_entry_point.py tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py
-      tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py
-      tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py
-      tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py
-      tests/nodes/node_morning_ground_state_orchestrator/test_watcher_inventory.py -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_intent_event_consumer_effect/test_golden_chain_intent_event_consumer_effect.py
-      tests/nodes/node_intent_event_consumer_effect/test_resolver_satisfiable_construction.py -q --no-cov --tb=line
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py tests/unit/delegation/test_judge_receives_delegated_prompt_omn20340.py
-      tests/unit/delegation/test_judge_unavailable_deterministic_floor_omn13959.py tests/unit/delegation/test_judge_verdict_vetoes_acceptance_omn13642.py
-      -q --no-cov --tb=line
-    cwd: .
-- id: dod-omn21536-deploy-handlers-import
-  description: 'Hosted deploy check: the overlay-source collaborator this change adds is served from the repository at the
-    evaluated head (a fetch of the file at that commit, grepped for the class). No credentials, broker or lab service is required.
-    This checks the pushed source, not a production rollout.'
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: command
-    check_value: |
-      set -eu;
-      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/overlay_source.py" | grep -q "class OverlaySource"
-    cwd: .
-- id: dod-omn21536-s4-ac1-no-envelope-in-core
-  description: AC1 runs the handler-shape validator on the pr-review FSM reducer handler and finds no envelope_in_core issue.
-  source: manual
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov
-    cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-s4-ac2-pr-review-fsm-tests
-  description: AC2 runs the pr-review FSM reducer's tests.
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py
-      tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line
-      -p no:randomly
-    cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-s4-deploy-handler-smoke
-  description: 'Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command,
-    names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose
-    handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated
-    checkout package, not a production rollout.'
-  source: manual
-  checks:
-  - check_type: command
-    check_value: |
-      set -eu;
-      export PYTHONDONTWRITEBYTECODE=1;
-      uv run python -c '
-      import asyncio
-      import inspect
-      from uuid import uuid4
-      from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
-      from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
-      src = inspect.getsource(mod)
-      assert "ModelEventEnvelope" not in src, "handler names the event envelope"
-      hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
-      assert list(hints) == ["self", "request"], list(hints)
-      assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
-      cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
-      out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
-      assert len(out.projections) == 1, out
-      print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
-      '
-    cwd: .
-  - check_type: command
-    check_value: 'gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98
-      --jq ''.content'' | base64 -d | grep -c ''request: ModelPrReviewAdvanceCommand'''
-    cwd: .
+  - id: "dod-omn21536-s4-ac1-no-envelope-in-core"
+    description: "AC1 runs the handler-shape validator on the pr-review FSM reducer handler and finds no envelope_in_core issue."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21536-s4-ac2-pr-review-fsm-tests"
+    description: "AC2 runs the pr-review FSM reducer's tests."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21536-s4-deploy-handler-smoke"
+    description: "Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command, names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated checkout package, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          uv run python -c '
+          import asyncio
+          import inspect
+          from uuid import uuid4
+          from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
+          from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
+          src = inspect.getsource(mod)
+          assert "ModelEventEnvelope" not in src, "handler names the event envelope"
+          hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
+          assert list(hints) == ["self", "request"], list(hints)
+          assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
+          cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
+          out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
+          assert len(out.projections) == 1, out
+          print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
+          '
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98 --jq '.content' | base64 -d | grep -c 'request: ModelPrReviewAdvanceCommand'
+        cwd: "."
