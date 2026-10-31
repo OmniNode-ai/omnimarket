@@ -136,10 +136,7 @@ def _apply_routing_overlay(
     model: str,
 ) -> bool:
     backend = resolve_byok_provider_backend(provider, plan=plan)
-    # OMN-21263: a generic OpenAI-compatible row's endpoint is the URL its key
-    # was registered with on that machine, which no event carries; its own URL
-    # is a placeholder, so no overlay row is minted for it.
-    if backend is None or backend.endpoint_from_registration:
+    if backend is None:
         return False
     catalogued = db.query(CREDENTIALS_TABLE, {"api_key_ref": api_key_ref})
     if catalogued and catalogued[0].get("revoked_at") is not None:

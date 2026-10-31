@@ -345,9 +345,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         # detection-only plan (glm coding_plan) resolves to nothing here, so no
         # route to the Coding Plan endpoint is ever minted for a customer.
         backend = resolve_byok_provider_backend(provider, plan=plan)
-        # OMN-21263: nor for the generic OpenAI-compatible row, whose endpoint is
-        # the URL its key was registered with on its own machine (in no event).
-        if backend is None or backend.endpoint_from_registration:
+        if backend is None:
             # Deliberately not a raise and not a DLQ: the credential itself is
             # valid and now visible to its owner. What does not exist is a
             # backend to point it at. Falling back to a platform backend here
