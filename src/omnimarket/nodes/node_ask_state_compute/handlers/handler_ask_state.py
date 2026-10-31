@@ -1,0 +1,597 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""HandlerAskState: what became of each thing the operator asked for (OMN-21713).
+
+Pure and deterministic: the caller reads the captured prompts and the ledger rows and supplies
+the time. Every vocabulary and limit comes from the request's config; this module holds none.
+
+An ask is a captured prompt item whose kind the config tracks (ask, idea). Its state comes from
+the ledger rows tied to it, folded oldest first:
+
+* ``done``: a row cites ``closes-ask=<id>`` with evidence (a merged pull request, a TERMINAL or
+  a RULING by stamp), the operator withdrew it (a capture row ``state=dropped``, or a
+  CORRECTION citing it), a linked lane ended with a done outcome, or a RULING recorded it
+  without a pending mechanism;
+* ``owned``: a linked CLAIM has no closing TERMINAL, or the lane ended handed-off;
+* ``parked``: a STATUS ``state=parked`` (with ``reason=`` and ``seq=``) or a HOLD cites it;
+* ``ticketed``: a linked row names a ticket and nothing owns or parks the ask;
+* ``dropped``: none of those, once the grace window has passed (inside it the ask is ``new``).
+
+Rows tie to an ask in two ways. Explicit: the row carries ``ask=<id>`` (or ``asks=``). Inferred,
+only for an ask no row cites: a CLAIM inside the link window whose words share enough content
+words with the ask, or a RULING that quotes the ask verbatim. Inferred ties are marked, with the
+shared words, so a reader can audit them.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from omnimarket.nodes.node_ask_state_compute.models.model_ask_state import (
+    EnumAskLink,
+    EnumAskState,
+    ModelAskCounts,
+    ModelAskEntry,
+    ModelAskPrompt,
+    ModelAskStateConfig,
+    ModelAskStateReport,
+    ModelAskStateRequest,
+    ModelAskWip,
+    ModelKindCount,
+    ModelParkedAsk,
+    ModelUnclassifiedPrompt,
+)
+from omnimarket.nodes.node_operator_capture_compute.handlers.handler_open_asks import (
+    has_closing_evidence,
+    parse_ledger_row,
+)
+from omnimarket.nodes.node_operator_capture_compute.handlers.handler_utterance_classify import (
+    subject_terms,
+)
+
+_STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+_QUOTED = re.compile(r'"([^"]+)"')
+_FIELD_TOKEN = re.compile(r"\b[A-Za-z][\w-]*=\S+")
+_TICKET = re.compile(r"\bOMN-\d+\b")
+_WHITESPACE = re.compile(r"\s+")
+_BIG = 10_000
+
+
+@dataclass(frozen=True)
+class _Row:
+    stamp: str
+    kind: str
+    rest: str
+    cells: dict[str, str]
+    at: datetime
+
+    @property
+    def lane(self) -> str:
+        return self.cells.get("lane", "")
+
+    def ref(self) -> str:
+        return f"{self.kind} {self.stamp} lane={self.lane}"
+
+
+@dataclass
+class _Ask:
+    ask_id: str
+    item_id: str
+    kind: str
+    said_at: datetime
+    session_id: str
+    words: str
+    subject: str
+    confidence: float
+
+
+@dataclass
+class _Event:
+    row: _Row
+    explicit: bool
+    shared: tuple[str, ...] = ()
+
+
+def _norm(text: str) -> str:
+    return _WHITESPACE.sub(" ", text.lower()).strip()
+
+
+def _stamp_time(stamp: str) -> datetime:
+    return datetime.strptime(stamp, _STAMP_FORMAT).replace(tzinfo=UTC)
+
+
+def _aware(moment: datetime) -> datetime:
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def _ids(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _tickets(row: _Row) -> list[str]:
+    found: list[str] = []
+    for key in ("ticket", "tickets", "mechanism-ticket"):
+        found.extend(_TICKET.findall(row.cells.get(key, "")))
+    return found
+
+
+def _stems(
+    text: str, config: ModelAskStateConfig, limit: int = _BIG
+) -> tuple[str, ...]:
+    """Content words cut to ``stem_chars``, so creating and creation meet; short words are dropped."""
+    words = subject_terms(text, limit)
+    return tuple(
+        dict.fromkeys(
+            w[: config.stem_chars] for w in words if len(w) >= config.min_term_chars
+        )
+    )
+
+
+def _row_words(row: _Row) -> str:
+    """The free words of a row: its lane name and what is left once key=value tokens are removed."""
+    lane = row.lane.replace("-", " ").replace("_", " ")
+    return f"{lane} {_FIELD_TOKEN.sub(' ', row.rest)}"
+
+
+def _parse_rows(rows: tuple[str, ...]) -> list[_Row]:
+    parsed: list[_Row] = []
+    for raw in rows:
+        got = parse_ledger_row(raw)
+        if got is None:
+            continue
+        stamp, kind, rest, cells = got
+        parsed.append(_Row(stamp, kind, rest, cells, _stamp_time(stamp)))
+    parsed.sort(key=lambda r: r.stamp)
+    return parsed
+
+
+def _defines_ask(row: _Row, config: ModelAskStateConfig) -> bool:
+    return (
+        row.lane == config.capture_lane
+        and row.cells.get("kind") in config.tracked_kinds
+        and "item" in row.cells
+    )
+
+
+def _ask_id(item_id: str) -> str:
+    return "ask-" + item_id.removeprefix("cap-")
+
+
+def _collect_asks(
+    request: ModelAskStateRequest, rows: list[_Row]
+) -> tuple[list[_Ask], list[ModelKindCount], list[ModelUnclassifiedPrompt]]:
+    config = request.config
+    since = _aware(request.since)
+    asks: dict[str, _Ask] = {}
+    untracked: dict[str, int] = {}
+    unclassified: list[ModelUnclassifiedPrompt] = []
+    for prompt in sorted(request.prompts, key=lambda p: _aware(p.said_at)):
+        said = _aware(prompt.said_at)
+        if said < since:
+            continue
+        if not prompt.items:
+            unclassified.append(_unclassified(prompt, config))
+            continue
+        for item in prompt.items:
+            if item.kind not in config.tracked_kinds:
+                untracked[item.kind] = untracked.get(item.kind, 0) + 1
+                continue
+            asks.setdefault(
+                item.item_id,
+                _Ask(
+                    ask_id=_ask_id(item.item_id),
+                    item_id=item.item_id,
+                    kind=item.kind,
+                    said_at=said,
+                    session_id=prompt.session_id,
+                    words=item.quote,
+                    subject=item.subject,
+                    confidence=item.confidence,
+                ),
+            )
+    for row in rows:
+        if row.kind != "STATUS" or not _defines_ask(row, config):
+            continue
+        item_id = row.cells["item"]
+        said_cell = row.cells.get("said", "")
+        try:
+            said = _stamp_time(said_cell) if said_cell else row.at
+        except ValueError:
+            said = row.at
+        if item_id in asks or said < since:
+            continue
+        quoted = _QUOTED.findall(row.rest)
+        try:
+            confidence = float(row.cells.get("confidence", "0"))
+        except ValueError:
+            confidence = 0.0
+        asks[item_id] = _Ask(
+            ask_id=row.cells.get(config.ask_cells[0], "") or _ask_id(item_id),
+            item_id=item_id,
+            kind=row.cells["kind"],
+            said_at=said,
+            session_id=row.cells.get("session", ""),
+            words=quoted[-1] if quoted else "",
+            subject=row.cells.get("subject", ""),
+            confidence=min(max(confidence, 0.0), 1.0),
+        )
+    kinds = [ModelKindCount(kind=k, count=n) for k, n in sorted(untracked.items())]
+    return sorted(asks.values(), key=lambda a: a.said_at), kinds, unclassified
+
+
+def _unclassified(
+    prompt: ModelAskPrompt, config: ModelAskStateConfig
+) -> ModelUnclassifiedPrompt:
+    text = " ".join(prompt.text.split())
+    if len(text) > config.excerpt_chars:
+        text = text[: config.excerpt_chars - 3].rstrip() + "..."
+    return ModelUnclassifiedPrompt(
+        capture_id=prompt.capture_id, said_at=_aware(prompt.said_at), text=text
+    )
+
+
+def _explicit_refs(row: _Row, config: ModelAskStateConfig) -> list[str]:
+    refs: list[str] = []
+    for key in (*config.ask_cells, config.closes_ask_cell):
+        refs.extend(_ids(row.cells.get(key, "")))
+    return refs
+
+
+def _terminal_index(rows: list[_Row]) -> dict[tuple[str, str], _Row]:
+    index: dict[tuple[str, str], _Row] = {}
+    for row in rows:
+        if row.kind == "TERMINAL" and row.cells.get("closes-CLAIM"):
+            index.setdefault((row.lane, row.cells["closes-CLAIM"]), row)
+    return index
+
+
+def _infer(
+    ask: _Ask,
+    rows: list[_Row],
+    claim_stems: dict[str, frozenset[str]],
+    common: frozenset[str],
+    config: ModelAskStateConfig,
+) -> list[_Event]:
+    window_end = ask.said_at + timedelta(hours=config.link_window_hours)
+    ask_stems = tuple(
+        s
+        for s in _stems(f"{ask.words} {ask.subject}", config, config.ask_term_limit)
+        if s not in common
+    )
+    quote = _norm(ask.words)
+    found: list[_Event] = []
+    for row in rows:
+        if row.at < ask.said_at or row.at > window_end:
+            continue
+        if row.kind == "CLAIM" and ask_stems:
+            shared = tuple(
+                s for s in ask_stems if s in claim_stems[row.stamp + row.lane]
+            )
+            if (
+                len(shared) >= config.min_shared_terms
+                and len(shared) / len(ask_stems) >= config.min_shared_fraction
+            ):
+                found.append(_Event(row, False, shared))
+        elif (
+            row.kind == "RULING"
+            and len(quote) >= config.min_quote_chars
+            and quote in _norm(row.rest)
+        ):
+            found.append(_Event(row, False))
+    return found
+
+
+def _decide(
+    ask: _Ask,
+    events: list[_Event],
+    terminals: dict[tuple[str, str], _Row],
+    request: ModelAskStateRequest,
+) -> ModelAskEntry:
+    config = request.config
+    now = _aware(request.now)
+    # A linked CLAIM brings the TERMINAL that closes it.
+    seen = {id(e.row) for e in events}
+    for event in list(events):
+        if event.row.kind == "CLAIM":
+            terminal = terminals.get((event.row.lane, event.row.stamp))
+            if terminal is not None and id(terminal) not in seen:
+                seen.add(id(terminal))
+                events.append(_Event(terminal, event.explicit))
+    events.sort(key=lambda e: e.row.stamp)
+
+    done: str | None = None
+    owner: str | None = None
+    base: EnumAskState | None = None
+    reason: str | None = None
+    seq: int | None = None
+    tickets: list[str] = []
+    evidence: list[str] = []
+    shared: list[str] = []
+    for event in events:
+        row = event.row
+        if row.at < ask.said_at:
+            continue
+        evidence.append(row.ref())
+        shared.extend(s for s in event.shared if s not in shared)
+        for ticket in _tickets(row):
+            if ticket not in tickets:
+                tickets.append(ticket)
+        closes = ask.ask_id in _ids(row.cells.get(config.closes_ask_cell, ""))
+        if closes:
+            if row.kind == "CORRECTION" or (
+                row.lane == config.capture_lane
+                and row.cells.get(config.state_cell) == "dropped"
+            ):
+                done = "withdrawn"
+            elif has_closing_evidence(row.cells.get("evidence", "")):
+                done = "closes-ask"
+            else:
+                evidence.pop()
+                continue
+            break
+        if row.kind == "CLAIM":
+            owner = row.lane
+        elif row.kind == "TERMINAL":
+            outcome = row.cells.get("outcome", "")
+            if outcome in config.done_outcomes:
+                done = "terminal"
+                break
+            if outcome in config.handoff_outcomes:
+                owner = row.cells.get("handed_to") or row.lane
+            else:
+                owner = None
+        elif row.kind == "STATUS":
+            state = row.cells.get(config.state_cell, "")
+            if state == config.parked_state:
+                base = EnumAskState.PARKED
+                reason = row.cells.get(config.reason_cell) or reason
+                seq = _seq(row.cells.get(config.seq_cell, "")) or seq
+            elif state == config.ticketed_state:
+                base = EnumAskState.TICKETED
+        elif row.kind == "HOLD":
+            base = EnumAskState.PARKED
+            reason = row.cells.get(config.reason_cell) or reason
+        elif row.kind == "RULING":
+            if _tickets(row):
+                base = EnumAskState.TICKETED
+            else:
+                done = "ruling"
+                break
+
+    age = max((now - ask.said_at).total_seconds() / 60.0, 0.0)
+    state: EnumAskState
+    if done is not None:
+        state = EnumAskState.DONE
+    elif owner is not None:
+        state = EnumAskState.OWNED
+    elif base is not None:
+        state = base
+    elif tickets:
+        state = EnumAskState.TICKETED
+    elif age < config.grace_minutes:
+        state = EnumAskState.NEW
+    else:
+        state = EnumAskState.DROPPED
+    if state is not EnumAskState.PARKED:
+        reason, seq = None, None
+    explicit = any(e.explicit for e in events)
+    link = (
+        EnumAskLink.NONE
+        if not evidence
+        else EnumAskLink.EXPLICIT
+        if explicit
+        else EnumAskLink.INFERRED
+    )
+    return ModelAskEntry(
+        ask_id=ask.ask_id,
+        item_id=ask.item_id,
+        kind=ask.kind,
+        said_at=ask.said_at,
+        session_id=ask.session_id,
+        words=ask.words,
+        subject=ask.subject,
+        confidence=ask.confidence,
+        state=state,
+        owner_lane=owner if state is EnumAskState.OWNED else None,
+        tickets=tuple(tickets),
+        park_reason=reason,
+        park_seq=seq,
+        link=link,
+        resolution=done,
+        evidence=tuple(evidence),
+        shared_terms=tuple(shared) if link is EnumAskLink.INFERRED else (),
+        age_minutes=round(age, 1),
+    )
+
+
+def _seq(value: str) -> int | None:
+    return int(value) if value.strip().isdigit() else None
+
+
+def _parked_queue(entries: list[ModelAskEntry]) -> tuple[ModelParkedAsk, ...]:
+    parked = [e for e in entries if e.state is EnumAskState.PARKED]
+    parked.sort(
+        key=lambda e: (e.park_seq is None, e.park_seq or 0, e.said_at, e.ask_id)
+    )
+    return tuple(
+        ModelParkedAsk(
+            position=i,
+            ask_id=e.ask_id,
+            words=e.words,
+            reason=e.park_reason,
+            seq=e.park_seq,
+            said_at=e.said_at,
+            tickets=e.tickets,
+        )
+        for i, e in enumerate(parked, start=1)
+    )
+
+
+def _wip(entries: list[ModelAskEntry], limit: int | None) -> ModelAskWip:
+    lanes = tuple(
+        dict.fromkeys(
+            e.owner_lane
+            for e in entries
+            if e.state is EnumAskState.OWNED and e.owner_lane
+        )
+    )
+    if limit is None:
+        return ModelAskWip(owned_lanes=lanes, limit=None, status="unknown")
+    return ModelAskWip(
+        owned_lanes=lanes,
+        limit=limit,
+        status="over" if len(lanes) > limit else "within",
+    )
+
+
+def _counts(entries: list[ModelAskEntry]) -> ModelAskCounts:
+    def n(state: EnumAskState) -> int:
+        return sum(1 for e in entries if e.state is state)
+
+    return ModelAskCounts(
+        owned=n(EnumAskState.OWNED),
+        ticketed=n(EnumAskState.TICKETED),
+        parked=n(EnumAskState.PARKED),
+        done=n(EnumAskState.DONE),
+        dropped=n(EnumAskState.DROPPED),
+        new=n(EnumAskState.NEW),
+        total=len(entries),
+    )
+
+
+_ORDER = (
+    EnumAskState.DROPPED,
+    EnumAskState.NEW,
+    EnumAskState.PARKED,
+    EnumAskState.OWNED,
+    EnumAskState.TICKETED,
+    EnumAskState.DONE,
+)
+
+
+def render_text(report: ModelAskStateReport, excerpt_chars: int) -> str:
+    """The plain-text report: counts, then asks grouped by state, dropped first."""
+    c = report.counts
+    wip = report.wip
+    wip_text = (
+        f"WIP {len(wip.owned_lanes)}/{wip.limit} ({wip.status})"
+        if wip.limit is not None
+        else f"WIP {len(wip.owned_lanes)} lanes (limit UNKNOWN)"
+    )
+    lines = [
+        f"Operator asks since {report.since.strftime(_STAMP_FORMAT)}, read "
+        f"{report.generated_at.strftime(_STAMP_FORMAT)}: {c.total} tracked; "
+        f"{c.dropped} DROPPED, {c.new} new, {c.parked} parked, {c.owned} owned, "
+        f"{c.ticketed} ticketed, {c.done} done. {wip_text}."
+    ]
+    for state in _ORDER:
+        group = [e for e in report.asks if e.state is state]
+        if not group:
+            continue
+        lines.append("")
+        lines.append(f"{state.value.upper()} ({len(group)})")
+        for e in group:
+            lines.append(_entry_line(e, excerpt_chars))
+    if report.parked_queue:
+        lines.append("")
+        lines.append("PARKED QUEUE (in order)")
+        for p in report.parked_queue:
+            seq = f"seq {p.seq}" if p.seq is not None else "no seq"
+            lines.append(
+                f"{p.position}. {p.ask_id} ({seq}) {p.reason or 'no reason'}: "
+                f"{_clip(p.words, excerpt_chars)}"
+            )
+    if report.unclassified:
+        lines.append("")
+        lines.append(
+            f"UNCLASSIFIED PROMPTS ({len(report.unclassified)}): the capture found no "
+            "item; read them, a miss here is a silent drop"
+        )
+        for u in report.unclassified:
+            lines.append(
+                f"- {u.said_at.strftime(_STAMP_FORMAT)} {u.capture_id}: {u.text}"
+            )
+    if report.not_tracked:
+        counted = ", ".join(f"{k.kind} {k.count}" for k in report.not_tracked)
+        lines.append("")
+        lines.append(f"Not tracked as asks: {counted}.")
+    return "\n".join(lines)
+
+
+def _clip(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+
+
+def _entry_line(e: ModelAskEntry, excerpt_chars: int) -> str:
+    said = e.said_at.strftime("%m-%dT%H:%MZ")
+    parts = [e.ask_id, said]
+    if e.owner_lane:
+        parts.append(f"lane={e.owner_lane}")
+    if e.tickets:
+        parts.append("ticket=" + ",".join(e.tickets))
+    if e.resolution:
+        parts.append(f"by={e.resolution}")
+    if e.park_reason or e.park_seq is not None:
+        parts.append(f"seq={e.park_seq} reason={e.park_reason}")
+    if e.link is EnumAskLink.INFERRED:
+        parts.append("inferred[" + ",".join(e.shared_terms) + "]")
+    return "- " + " ".join(parts) + f": {_clip(e.words, excerpt_chars)}"
+
+
+class HandlerAskState:
+    """Fold the captured prompts and the ledger rows into each ask's state."""
+
+    def handle(self, request: ModelAskStateRequest) -> ModelAskStateReport:
+        config = request.config
+        rows = _parse_rows(request.rows)
+        asks, not_tracked, unclassified = _collect_asks(request, rows)
+        by_id = {a.ask_id: a for a in asks}
+        explicit: dict[str, list[_Event]] = {a.ask_id: [] for a in asks}
+        for row in rows:
+            if _defines_ask(row, config):
+                continue
+            for ref in dict.fromkeys(_explicit_refs(row, config)):
+                if ref in by_id:
+                    explicit[ref].append(_Event(row, True))
+        terminals = _terminal_index(rows)
+        claim_stems = {
+            r.stamp + r.lane: frozenset(_stems(_row_words(r), config))
+            for r in rows
+            if r.kind == "CLAIM"
+        }
+        frequency: dict[str, int] = {}
+        for stems in claim_stems.values():
+            for stem in stems:
+                frequency[stem] = frequency.get(stem, 0) + 1
+        common = frozenset(
+            stem
+            for stem, n in frequency.items()
+            if n / len(claim_stems) >= config.max_claim_frequency
+        )
+        entries: list[ModelAskEntry] = []
+        for ask in asks:
+            events = explicit[ask.ask_id]
+            if not events:
+                events = _infer(ask, rows, claim_stems, common, config)
+            entries.append(_decide(ask, list(events), terminals, request))
+        report = ModelAskStateReport(
+            schema_id=config.schema_id,
+            generated_at=_aware(request.now),
+            since=_aware(request.since),
+            asks=tuple(entries),
+            parked_queue=_parked_queue(entries),
+            dropped=tuple(e.ask_id for e in entries if e.state is EnumAskState.DROPPED),
+            counts=_counts(entries),
+            wip=_wip(entries, config.wip_limit),
+            not_tracked=tuple(not_tracked),
+            unclassified=tuple(unclassified),
+        )
+        return report.model_copy(
+            update={"text": render_text(report, config.excerpt_chars)}
+        )
+
+
+__all__ = ["HandlerAskState", "render_text"]
