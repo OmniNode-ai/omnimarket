@@ -6,35 +6,38 @@
 <title>Lean Factory Floor</title>
 <link rel="icon" href="data:,">
 <style>
-/* One page, a tab bar across the top. The first tab is a dashboard drawn from the same files the other tabs read:
-   each assembly line with its stop reason, each machine with its lanes, today's merges and reds, and how old every
-   source is. The other four tabs draw their own page inside this one. */
+/* One page, a tab bar across the top. The first tab is a dashboard: a one-sentence verdict, what needs a person, then
+   each assembly line, each machine and how old every source is. The other four tabs draw their own page inside this one.
+   The document scrolls as one page; only the title and tab bar stay put. Words use the body face; the mono face is for
+   numbers. Status words are 14px or more, chips and captions 12px or more. */
 :root{
-  --floor:#eceee9; --panel:#fbfbf8; --ink:#1c2320; --muted:#5b6660; --rule:#cdd3cc;
+  --floor:#eceee9; --panel:#fbfbf8; --ink:#1c2320; --muted:#4f5a54; --rule:#cdd3cc;
   --steel:#4b5c68; --car:#3d6f8f; --car-edge:#24475d;
   --safety:#d9a300; --safety-soft:#f6e6ae;
-  --ok:#2e8649; --warn:#bf7400; --stop:#c3352b; --stop-soft:#f3d2ce; --idle:#b4bdb6;
+  --ok:#2e8649; --warn:#bf7400; --stop:#c3352b; --stop-soft:#f3d2ce; --idle:#8f9993;
+  --ok-t:#1f6b38; --warn-t:#8a5300; --stop-t:#a3271f;
   --belt:#3a403d;
   --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
   --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#a3aea7; --rule:#343d39;
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
-  --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
+  --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#6b7770;
+  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ef5b4f;
   --belt:#0f1211; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#a3aea7; --rule:#343d39;
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
-  --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
+  --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#6b7770;
+  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ef5b4f;
   --belt:#0f1211; color-scheme:dark}
 
 *{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--floor);color:var(--ink);font:15px/1.5 var(--f-body);overflow:hidden}
+body{margin:0;background:var(--floor);color:var(--ink);font:15px/1.5 var(--f-body);min-height:100vh}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:.01em;text-transform:uppercase}
 h2{font-size:1.45rem;font-weight:800;line-height:1}
 h3{font-size:1.05rem;font-weight:600;letter-spacing:.03em}
@@ -44,18 +47,19 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
 .unread{color:var(--muted);font-style:italic}
-.age-stale{color:var(--stop);font-weight:600}
+.age-stale{color:var(--stop-t);font-weight:700}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.c-ok{--c:var(--ok);--ct:var(--ok-t)} .c-warn{--c:var(--warn);--ct:var(--warn-t)} .c-stop{--c:var(--stop);--ct:var(--stop-t)} .c-idle,.c-none{--c:var(--idle);--ct:var(--muted)}
 
-/* frame: the title and tab bar stay put, the chosen tab scrolls */
-.app{height:100vh;height:100dvh;display:flex;flex-direction:column;min-width:0}
-.top{flex:none;background:var(--panel);border-bottom:1px solid var(--rule);
+/* frame: the title and tab bar stay at the top while the page scrolls */
+.app{min-width:0}
+.top{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--rule);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .hazard{height:8px;margin:0 -16px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
 .titlerow{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 20px;padding:10px 0 4px;min-width:0}
 h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
-#stamp{font:500 .74rem/1.4 var(--f-mono);color:var(--muted);min-width:0}
-.banner{background:var(--stop-soft);border:1px solid var(--stop);border-radius:4px;padding:8px 12px;margin:6px 0 2px;font-size:.88rem}
+#stamp{font-size:.8rem;line-height:1.4;color:var(--muted);min-width:0}
+.banner{background:var(--stop-soft);border:1px solid var(--stop);border-radius:4px;padding:8px 12px;margin:6px 0 2px;font-size:.9rem}
 .banner[hidden]{display:none}
 
 /* tab bar */
@@ -64,100 +68,127 @@ h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
   color:var(--muted);font:inherit;text-align:left;cursor:pointer;padding:8px 12px 9px;display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:9px;align-items:center}
 .tab:hover{color:var(--ink);background:color-mix(in srgb,var(--safety) 10%,transparent)}
 .tab[aria-selected="true"]{background:var(--floor);border-color:var(--rule);color:var(--ink);box-shadow:inset 0 4px 0 var(--safety);padding-top:11px;margin-bottom:-1px}
-.tab i{grid-row:span 2;width:12px;height:12px;border-radius:50%;background:var(--c,var(--idle));box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--idle)) 25%,transparent)}
-.tab i.c-stop{animation:blink 1.1s steps(2,jump-none) infinite}
+.tab i{grid-row:span 3;width:12px;height:12px;border-radius:50%;background:var(--c,var(--idle));box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--idle)) 25%,transparent)}
 .tab i.c-none{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
-@keyframes blink{50%{opacity:.3}}
 .tab b{font:600 1.05rem/1.1 var(--f-display);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tab small{font-size:.72rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab em{font:700 .78rem/1.3 var(--f-body);font-style:normal;color:var(--ct,var(--muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab small{font-size:.78rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tab .short{display:none}
-.c-ok{--c:var(--ok)} .c-warn{--c:var(--warn)} .c-stop{--c:var(--stop)} .c-idle{--c:var(--idle)}
 
-main{flex:1 1 auto;min-height:0;position:relative}
-.pane{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain}
+main{min-width:0}
+.pane{min-width:0}
 .pane[hidden]{display:none}
-.pane iframe{display:block;width:100%;height:100%;border:0;background:var(--floor)}
+.pane iframe{display:block;width:100%;height:80vh;border:0;background:var(--floor)}
+
+/* a stopped lamp is steady and full strength; it pulses once when it turns red */
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 70%,transparent)}100%{box-shadow:0 0 0 9px transparent}}
+.pulse i{animation:pulse 1s ease-out 1}
 
 /* dashboard */
 .dash{max-width:1500px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 56px max(16px,env(safe-area-inset-left,0px));display:grid;gap:22px;min-width:0}
+.verdict{background:var(--panel);border:1px solid var(--rule);border-left:6px solid var(--c);border-radius:6px;padding:14px 18px;display:grid;gap:10px;min-width:0}
+.verdict .vs{font:700 1.5rem/1.25 var(--f-body);text-wrap:balance}
+.verdict .vs .st{color:var(--ct)}
+.needs{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.needs li{display:grid;gap:2px;padding:8px 0;border-top:1px dashed var(--rule);font-size:.95rem}
+.needs .who{font-size:.85rem;color:var(--muted)}
+.needs a{font-size:.88rem;font-weight:600}
+.sub{font:700 .85rem/1.2 var(--f-body);letter-spacing:.02em;color:var(--steel);margin-top:2px}
 .board{display:flex;flex-wrap:wrap;gap:2px;background:var(--belt);border-radius:6px;overflow:hidden}
-.lamp{flex:1 1 210px;background:var(--panel);padding:12px 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;align-items:center;min-width:0}
-.lamp i{width:16px;height:16px;border-radius:50%;grid-row:span 2;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
-.lamp.c-stop i{animation:blink 1.1s steps(2,jump-none) infinite}
+.lamp{flex:1 1 200px;background:var(--panel);padding:12px 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;align-items:center;min-width:0}
+.lamp i{width:16px;height:16px;border-radius:50%;grid-row:span 3;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
+.lamp.c-idle i{background:transparent;box-shadow:none;border:2px dashed var(--idle)}
 .lamp b{font:800 1.5rem/1.05 var(--f-display);letter-spacing:.02em;text-transform:uppercase}
-.lamp b small{font:600 .85rem/1 var(--f-display);letter-spacing:.05em;color:var(--muted);margin-left:6px}
-.lamp span{font-size:.8rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.lamp b small{font:600 .9rem/1.2 var(--f-display);letter-spacing:.05em;color:var(--muted);margin-left:6px}
+.lamp .st{font-size:.9rem;font-weight:700;color:var(--ct)}
+.lamp span.why{font-size:.8rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.key{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.8rem;color:var(--muted);align-items:center}
+.key span{display:inline-flex;gap:6px;align-items:center}
+.key i{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--c)}
+.key i.dash-dot{background:transparent;border:2px dashed var(--idle)}
+.key i.sq{border-radius:2px;width:14px;height:10px}
 
 .cols{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:22px;align-items:start}
 @media (max-width:1060px){.cols{grid-template-columns:minmax(0,1fr)}}
 .stack{display:grid;gap:22px;min-width:0;align-content:start}
 .sec{display:grid;gap:12px;min-width:0;align-content:start}
-.sec>header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 14px}
-.sec>header p{font-size:.8rem;color:var(--muted)}
+.sec>header{display:grid;gap:2px}
+.sec>header p{font-size:.85rem;color:var(--muted)}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:10px;min-width:0;align-content:start}
-.card.ghost{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 35%,transparent) 6px 7px),var(--panel)}
 .card.stopped{border-color:var(--stop);box-shadow:inset 4px 0 0 var(--stop)}
 
 /* assembly lines */
 .line-top{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
-.sign{font:800 .8rem/1 var(--f-display);letter-spacing:.16em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
-.pill{display:inline-flex;align-items:center;font:500 .72rem/1 var(--f-mono);letter-spacing:.06em;padding:4px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
-.pill.stop{color:var(--stop)} .pill.done,.pill.ok{color:var(--ok)} .pill.active,.pill.warn{color:var(--warn)} .pill.wait,.pill.idle{color:var(--muted)}
+.sign{font:800 .85rem/1 var(--f-display);letter-spacing:.16em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
+.pill{display:inline-flex;align-items:center;font:700 .8rem/1 var(--f-body);padding:4px 8px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.pill.stop{color:var(--stop-t)} .pill.done,.pill.ok{color:var(--ok-t)} .pill.active,.pill.warn{color:var(--warn-t)} .pill.wait,.pill.idle{color:var(--muted)}
 .pill.right{margin-left:auto}
-.line-name{font-size:.95rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.line-name{font-size:1rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
 .belt{position:relative;padding-top:20px}
 .cells{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:1px;height:14px;background:var(--belt);padding:2px;border-radius:2px}
 .cells b{display:block;border-radius:1px;background:transparent;box-shadow:inset 0 0 0 1px var(--idle)}
-.cells b.done{background:var(--car);box-shadow:none}
-.cells b.active{background:var(--safety);box-shadow:none}
-.cells b.prep{background:repeating-linear-gradient(45deg,transparent 0 2px,var(--steel) 2px 3px);box-shadow:inset 0 0 0 1px var(--steel)}
-.cells b.stop{background:var(--stop);box-shadow:none}
+.cells b.done,.key i.done{background:var(--car);box-shadow:none}
+.cells b.active,.key i.active{background:var(--safety);box-shadow:none}
+.cells b.prep,.key i.prep{background:repeating-linear-gradient(45deg,transparent 0 2px,var(--steel) 2px 3px);box-shadow:inset 0 0 0 1px var(--steel)}
+.cells b.stop,.key i.stop{background:var(--stop);box-shadow:none}
+.key i.wait{background:transparent;box-shadow:inset 0 0 0 1px var(--idle);border-radius:2px;width:14px;height:10px}
 .car{position:absolute;top:0;left:var(--pos);width:38px;height:17px;transform:translateX(-50%)}
-.cause{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.86rem;display:grid;gap:3px;overflow-wrap:anywhere}
-.cause b{font:600 .72rem/1 var(--f-mono);letter-spacing:.06em;color:var(--stop)}
+.cause{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.92rem;display:grid;gap:3px;overflow-wrap:anywhere}
+.cause b{font:700 .88rem/1.2 var(--f-body);color:var(--stop-t)}
 .cause.nocause{border-left-color:var(--idle);background:transparent;border:1px dashed var(--idle);border-left-width:3px;color:var(--muted)}
-.facts{font-size:.8rem;color:var(--muted)}
-.go{font-size:.8rem}
+.cause.nocause b{color:var(--muted)}
+.facts{font-size:.85rem;color:var(--muted)}
+.go{font-size:.85rem}
+details.ghosts{background:var(--panel);border:1px dashed var(--idle);border-radius:6px}
+details.ghosts>summary{cursor:pointer;padding:10px 14px;font-size:.9rem;color:var(--muted)}
+details.ghosts ul{margin:0;padding:0 14px 12px 32px;display:grid;gap:6px;font-size:.88rem;color:var(--muted)}
 
 /* machines */
-.bays{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
-.bay{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:9px;align-content:start;min-width:0}
-.bay.repair{border-style:dashed}
-.bay.unreadbay{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
-.bay-top{display:flex;gap:8px;justify-content:space-between;align-items:baseline;flex-wrap:wrap}
-.bay-top b{font:800 1.25rem/1 var(--f-display);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
+.mrows{display:grid;gap:10px}
+.mrow{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:8px;align-content:start;min-width:0}
+.mrow.repair{border-style:dashed}
+.mrow.unreadbay{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
+.mrow.alert{border-color:var(--stop);box-shadow:inset 4px 0 0 var(--stop)}
+.mtop{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap}
+.mtop b{font:800 1.25rem/1 var(--f-display);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
+.mtop .used{font-size:.95rem;font-weight:600}
+.mtop .pill{margin-left:auto}
 .slots{display:flex;flex-wrap:wrap;gap:3px}
-.slots i{width:14px;height:10px;border-radius:2px;border:1.5px solid var(--idle);background:transparent}
-.slots i.used{background:var(--car);border-color:var(--car-edge)}
-.slots i.codex{background:var(--steel);border-color:var(--steel)}
-.slots i.stall{background:var(--stop);border-color:var(--stop)}
-.slots i.over{background:var(--warn);border-color:var(--warn)}
-.capline{font-size:.78rem;color:var(--muted);overflow-wrap:anywhere}
+.slots i,.key i.slot{width:14px;height:10px;border-radius:2px;border:1.5px solid var(--idle);background:transparent}
+.slots i.used,.key i.used{background:var(--car);border-color:var(--car-edge)}
+.slots i.codex,.key i.codex{background:var(--steel);border-color:var(--steel)}
+.slots i.stall,.key i.stall{background:var(--stop);border-color:var(--stop)}
+.slots i.over,.key i.over{background:var(--warn);border-color:var(--warn)}
+.capline{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+.alerts{display:flex;flex-wrap:wrap;gap:4px 6px;min-width:0}
+.alerts .chip{white-space:normal;overflow-wrap:anywhere;max-width:100%}
 .gauges{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
-.gauge{display:grid;gap:3px;font-size:.76rem;color:var(--muted);min-width:0}
-.gauge .v{font:500 .78rem/1.2 var(--f-mono);color:var(--ink)}
+.gauge{display:grid;gap:3px;font-size:.82rem;color:var(--muted);min-width:0}
+.gauge .v{font-size:.9rem;font-weight:600;color:var(--ink)}
 .gbar{height:5px;background:var(--rule);border-radius:3px;overflow:hidden}
 .gbar b{display:block;height:100%;width:var(--w);background:var(--car)}
 .gbar.hot b{background:var(--stop)}
-.lrows{display:grid;gap:0;margin:0 -14px -12px;border-top:1px solid var(--rule)}
-.lrow{display:grid;gap:3px;padding:8px 14px;text-decoration:none;color:inherit;border-bottom:1px dashed var(--rule)}
+.lrows{display:grid;gap:0;margin:0 -14px -12px;border-top:1px solid var(--rule);min-width:0}
+.mrow>*,.lrow>*{min-width:0}
+.lrow .chip{white-space:normal;overflow-wrap:anywhere}
+.lrow{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:8px 14px;text-decoration:none;color:inherit;border-bottom:1px dashed var(--rule)}
 .lrow:last-child{border-bottom:0}
 .lrow:hover{background:color-mix(in srgb,var(--safety) 10%,transparent)}
-.lrow .tk{font:500 .7rem/1.3 var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
-.lrow .doing{font-size:.82rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.lrow .tk{font-size:.78rem;line-height:1.3;color:var(--muted);overflow-wrap:anywhere}
+.lrow .doing{font-size:.92rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .lrow .side{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
-.chip{font:500 .66rem/1 var(--f-mono);padding:3px 5px;border-radius:3px;border:1px solid var(--rule);white-space:nowrap;color:var(--muted)}
-.chip.red{color:var(--stop);border-color:var(--stop)} .chip.green{color:var(--ok);border-color:var(--ok)}
-.chip.pending{color:var(--warn);border-color:var(--warn)} .chip.stall{color:var(--stop);border-color:var(--stop);font-weight:600}
-.lrow .when{font:500 .66rem/1 var(--f-mono);color:var(--muted);margin-left:auto}
-details.more{font-size:.82rem}
-details.more>summary{cursor:pointer;color:var(--muted);padding:4px 0}
-details.fold{grid-column:1/-1;background:var(--panel);border:1px solid var(--rule);border-radius:6px}
-details.fold>summary{cursor:pointer;padding:10px 14px;font-size:.86rem;color:var(--muted)}
+.chip{font:600 .78rem/1 var(--f-body);padding:3px 6px;border-radius:3px;border:1px solid var(--muted);white-space:nowrap;color:var(--muted)}
+.chip.red,.chip.stall{color:var(--stop-t);border-color:var(--stop)} .chip.green{color:var(--ok-t);border-color:var(--ok)}
+.chip.pending,.chip.warn{color:var(--warn-t);border-color:var(--warn)}
+.lrow .when{font-size:.78rem;color:var(--muted);margin-left:auto}
+details.more{font-size:.88rem}
+details.more>summary{cursor:pointer;color:var(--car-edge);font-weight:600;padding:4px 0}
+details.fold{background:var(--panel);border:1px solid var(--rule);border-radius:6px}
+details.fold>summary{cursor:pointer;padding:10px 14px;font-size:.9rem;color:var(--muted)}
 details.fold[open]>summary{border-bottom:1px solid var(--rule)}
 details.fold .lrows{margin:0;border-top:0}
-.lamp-stop{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.84rem}
-ul.plain{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.82rem}
+.lamp-stop{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.9rem}
+ul.plain{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.88rem}
 ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px}
 
 /* today */
@@ -165,56 +196,51 @@ ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10
 .pair>div{background:var(--panel);padding:12px 14px;display:grid;gap:2px;align-content:start;min-width:0}
 .pair b{font:800 2.4rem/1 var(--f-display)}
 .pair b.unread{font:italic 400 1rem/1.4 var(--f-body)}
-.pair span{font-size:.8rem;color:var(--muted)}
-.pair .bad b{color:var(--stop)}
+.pair span{font-size:.85rem;color:var(--muted)}
+.pair .bad b{color:var(--stop-t)}
 .lst{list-style:none;margin:0;padding:0;display:grid}
-.lst li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:6px 0;border-bottom:1px dashed var(--rule);font-size:.84rem}
+.lst li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:6px 0;border-bottom:1px dashed var(--rule);font-size:.9rem}
 .lst li:last-child{border-bottom:0}
 .lst li span:first-child{min-width:0;overflow-wrap:anywhere}
-.lst li small{color:var(--muted);font:500 .7rem/1.4 var(--f-mono);overflow-wrap:anywhere;text-align:right;max-width:16em}
+.lst li small{color:var(--muted);font-size:.78rem;line-height:1.4;overflow-wrap:anywhere;text-align:right;max-width:16em}
 .lst a{color:inherit;text-decoration:none}
 .lst a:hover{text-decoration:underline}
-.sub{font:600 .78rem/1 var(--f-mono);letter-spacing:.04em;color:var(--steel);margin-top:2px}
 
 /* freshness */
 .fresh{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:8px}
 .src{background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--c,var(--ok));border-radius:4px;padding:8px 10px;display:grid;gap:2px;min-width:0}
 .src.c-idle{border-left-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
-.src b{font-size:.8rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.src span{font:500 .78rem/1.3 var(--f-mono);overflow-wrap:anywhere}
-.src small{font-size:.72rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
-.fgroup{font:600 .78rem/1 var(--f-mono);letter-spacing:.04em;color:var(--steel);margin:6px 0 -2px;grid-column:1/-1}
+.src b{font-size:.88rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.src span{font-size:.88rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.src small{font-size:.78rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+.fgroup{font:700 .85rem/1 var(--f-body);letter-spacing:.02em;color:var(--steel);margin:6px 0 -2px;grid-column:1/-1}
 .fgroup:first-child{margin-top:0}
 
-footer.note{font-size:.78rem;color:var(--muted);max-width:90ch}
+footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
 
 /* phone: five short tabs in one row, one column of content, nothing wider than the screen */
 @media (max-width:700px){
   h1{font-size:1.35rem}
   .titlerow{padding-top:8px}
-  #stamp{font-size:.68rem}
   .tabs{gap:2px;margin-top:4px}
   .tab{display:block;text-align:center;padding:7px 2px 8px}
   .tab[aria-selected="true"]{padding-top:10px}
-  .tab i{display:inline-block;width:9px;height:9px;margin:0 auto 3px;box-shadow:none}
-  .tab i{display:block}
-  .tab b{font-size:.78rem;letter-spacing:0;text-overflow:clip}
+  .tab i{display:block;width:9px;height:9px;margin:0 auto 3px;box-shadow:none}
+  .tab b{font-size:.85rem;letter-spacing:0;text-overflow:clip}
+  .tab em{display:block;font-size:.78rem}
   .tab small{display:none}
   .tab .long{display:none}
   .tab .short{display:inline}
   .dash{padding-top:12px;gap:18px}
+  .verdict .vs{font-size:1.25rem}
   .lamp{flex-basis:calc(50% - 2px);padding:10px 12px;grid-template-columns:minmax(0,1fr);gap:2px}
   .lamp i{grid-row:auto;width:10px;height:10px}
-  .lamp:last-child{flex-basis:100%}
   .lamp b{font-size:1.2rem}
-  .lamp b small{display:block;margin:2px 0 0;font-size:.72rem}
-  .lamp span{font-size:.74rem}
+  .lamp b small{display:block;margin:2px 0 0;font-size:.8rem}
   .pair b{font-size:2rem}
   .lst li{grid-template-columns:minmax(0,1fr)}
   .lst li small{text-align:left;max-width:none}
-  .gauges{grid-template-columns:1fr 1fr}
 }
-@media (prefers-reduced-motion:reduce){.tab i.c-stop,.lamp.c-stop i{animation:none}}
 </style>
 </head>
 <body>
@@ -250,6 +276,7 @@ const POLL_MS = 60000;
 const STALE_MIN = 90;
 const STORE_KEY = "factory-floor.tab";
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const ZONE = "America/New_York";
 
 // The tabs, in order. A tab with a page draws that page inside this one the first time it is chosen and keeps it.
 const TABS = [
@@ -268,6 +295,17 @@ const num = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ?
 const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
 const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
 
+// Plain words for text that comes from the record: worker, stopped, failing checks, change, log entry.
+const NOT_ID = "(?<![\\w-])", NOT_ID_END = "(?![\\w-])";
+const PLAIN = [
+  [/andon hold/gi, "stopped by hold"], [/andon cord pulled/gi, "stopped"], [/\bCI red\b/g, "failing checks"],
+  [new RegExp(NOT_ID + "PRs" + NOT_ID_END, "g"), "changes"], [new RegExp(NOT_ID + "PR" + NOT_ID_END, "g"), "change"],
+  [/pull requests/gi, "changes"], [/pull request/gi, "change"],
+  [/ledger rows/gi, "log entries"], [/ledger row/gi, "log entry"],
+  [new RegExp(NOT_ID + "lanes" + NOT_ID_END, "g"), "workers"], [new RegExp(NOT_ID + "lane" + NOT_ID_END, "g"), "worker"]
+];
+const plain = s => PLAIN.reduce((t, [re, to]) => t.replace(re, to), String(s == null ? "" : s));
+
 function ageText(ms){
   const m = Math.max(0, Math.round(ms / 60000));
   return m < 1 ? "under a minute" : m < 120 ? `${m} min` : m < 2880 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} days`;
@@ -277,7 +315,28 @@ function ageMs(iso){
   return Number.isNaN(t) ? null : Date.now() - t;
 }
 function sinceText(iso){ const ms = ageMs(iso); return ms == null ? "unread" : ageText(ms); }
-function clock(iso){ const t = Date.parse(iso); return Number.isNaN(t) ? "" : new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC"; }
+function utcText(iso){ const t = Date.parse(iso); return Number.isNaN(t) ? "" : new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC"; }
+
+// Times are shown in Eastern time with a relative age; the UTC time sits in a hover title.
+function etParts(t){
+  const o = {};
+  new Intl.DateTimeFormat("en-US", {timeZone: ZONE, weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true})
+    .formatToParts(new Date(t)).forEach(p => { o[p.type] = p.value; });
+  return o;
+}
+function etClock(iso, withDay){
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const p = etParts(t), n = etParts(Date.now());
+  const time = `${p.hour}:${p.minute} ${String(p.dayPeriod).toLowerCase()} ET`;
+  const sameDay = p.day === n.day && p.month === n.month;
+  return withDay || !sameDay ? `${p.weekday} ${p.day} ${p.month}, ${time}` : time;
+}
+function when(iso){
+  const ms = ageMs(iso);
+  return ms == null ? "unread" : `${etClock(iso)}, ${ageText(ms)} ago`;
+}
+const whenTag = iso => `<span title="${esc(utcText(iso))}">${esc(when(iso))}</span>`;
 
 // ---- Tabs: the hash names the tab (and, for the floor, a place on it); the last tab is kept per browser.
 function remembered(){
@@ -293,11 +352,12 @@ function parseHash(){
 }
 
 let currentTab = "";
+let lastPayload = null;
 const frames = {};
 
 function buildTabs(){
   el("tabs").innerHTML = TABS.map((t, i) => `<button type="button" class="tab" role="tab" id="tab-${t.id}" data-tab="${t.id}" aria-controls="pane-${t.id}" aria-selected="false" tabindex="-1" title="${esc(t.label)}">
-    <i class="c-none" id="lamp-${t.id}"></i><b><span class="long">${esc(t.label)}</span><span class="short">${esc(t.short)}</span></b><small id="sub-${t.id}">reading</small></button>`).join("");
+    <i class="c-none" id="lamp-${t.id}"></i><b><span class="long">${esc(t.label)}</span><span class="short">${esc(t.short)}</span></b><em class="c-none" id="word-${t.id}">Reading</em><small id="sub-${t.id}">reading</small></button>`).join("");
   el("tabs").addEventListener("click", ev => {
     const b = ev.target.closest ? ev.target.closest(".tab") : null;
     if (b) go(b.dataset.tab);
@@ -318,6 +378,23 @@ function go(id, anchor){
   location.hash = next;
 }
 
+// An embedded page is sized to its content, so the document is the only thing that scrolls.
+function fit(frame){
+  try {
+    const d = frame.contentDocument;
+    if (!d || !d.documentElement) return;
+    const h = Math.ceil(d.documentElement.scrollHeight);
+    if (h > 100 && Math.abs(h - frame.offsetHeight) > 2) frame.style.height = h + "px";
+  } catch (e) { /* a page that cannot be read keeps its starting height */ }
+}
+function sizeToContent(frame){
+  frame.addEventListener("load", () => {
+    fit(frame);
+    try { new ResizeObserver(() => fit(frame)).observe(frame.contentDocument.documentElement); } catch (e) { /* no observer: the timer below keeps it fitted */ }
+    setInterval(() => fit(frame), 1500);
+  });
+}
+
 function show(id, anchor){
   if (!TAB_IDS.includes(id)) id = "dashboard";
   currentTab = id;
@@ -336,13 +413,31 @@ function show(id, anchor){
     f.title = tab.label;
     f.setAttribute("referrerpolicy", "no-referrer");
     f.src = tab.page;
+    sizeToContent(f);
     frames[id] = f;
     el("pane-" + id).appendChild(f);
   }
   if (anchor && frames[id]) jumpIn(frames[id], anchor);
+  else if (anchor && id === "dashboard") jumpHere(anchor);
+  renderStamp();
+}
+
+function flash(target){
+  if (target.tagName === "DETAILS") target.open = true;
+  target.scrollIntoView({block: "center", inline: "nearest"});
+  target.classList.remove("flash");
+  void target.offsetWidth;
+  target.classList.add("flash");
+}
+
+// Move to a place on the dashboard itself.
+function jumpHere(anchor){
+  const target = el(anchor);
+  if (target) flash(target);
 }
 
 // Move to a place on a tab's page once it has drawn it (the floor page draws after it reads the record).
+// The frame's own page scrolls nothing: the outer document moves to the place.
 function jumpIn(frame, anchor){
   let tries = 0;
   const timer = setInterval(() => {
@@ -352,7 +447,9 @@ function jumpIn(frame, anchor){
     if (target){
       clearInterval(timer);
       if (target.tagName === "DETAILS") target.open = true;
-      target.scrollIntoView({block: "center", inline: "nearest"});
+      fit(frame);
+      const top = target.getBoundingClientRect().top + frame.getBoundingClientRect().top + window.scrollY - 150;
+      window.scrollTo(0, Math.max(0, top));
       target.classList.remove("flash");
       void target.offsetWidth;
       target.classList.add("flash");
@@ -391,15 +488,10 @@ function lineFacts(L){
 
 const CAR = `<svg class="car" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:var(--c);stroke:var(--belt)" stroke-width="2"/><circle cx="17" cy="22" r="5" style="fill:var(--belt)"/><circle cx="48" cy="22" r="5" style="fill:var(--belt)"/></svg>`;
 
+const lineLetter = i => "Line " + (LETTERS[i] || i + 1);
+
 function lineCard(slot, i){
-  const letter = "Line " + (LETTERS[i] || i + 1);
-  if (!slot.line){
-    return `<article class="card ghost" aria-label="${esc(letter)}, not in the record">
-      <div class="line-top"><span class="sign">${esc(letter)}</span><span class="pill idle">not in the record</span></div>
-      <p class="line-name unread">No plan matched “${esc(slot.fragment)}”</p>
-      <p class="facts">The deployment declares this line, but no plan in the plans repository matches it, so there are no parts, no percent and no stop reason to show.</p>
-    </article>`;
-  }
+  const letter = lineLetter(i);
   const L = slot.line, f = lineFacts(L);
   const pill = f.stopped ? ["stop", "Stopped"] : L.status_pill === "done" ? ["done", "Done"] : L.status_pill === "building" ? ["active", "Building"] : ["wait", "Queued"];
   const cells = f.items.length ? f.items : f.stations;
@@ -409,100 +501,119 @@ function lineCard(slot, i){
   const shown = causes.length ? causes : (reason ? [reason] : []);
   const cause = f.stopped
     ? (shown.length
-      ? `<div class="cause"><b>Why it is stopped</b>${shown.slice(0, 3).map(c => `<span>${esc(c)}</span>`).join("")}${shown.length > 3 ? `<span class="muted">and ${shown.length - 3} more on the floor tab</span>` : ""}</div>`
+      ? `<div class="cause"><b>Why it is stopped</b>${shown.slice(0, 3).map(c => `<span>${esc(plain(c))}</span>`).join("")}${shown.length > 3 ? `<span class="muted">and ${shown.length - 3} more on the floor tab</span>` : ""}</div>`
       : `<div class="cause nocause"><b>Why it is stopped</b><span>The record flags this line stopped and gives no reason.</span></div>`)
     : "";
   const cur = f.stations[f.cur];
   const c = f.stopped ? "var(--stop)" : "var(--safety)";
   return `<article class="card${f.stopped ? " stopped" : ""}" aria-label="${esc(letter)}">
-    <div class="line-top"><span class="sign">${esc(letter)}</span><span class="pill ${pill[0]}">${pill[1]}</span><span class="pill wait right" title="Share of the car built">${fmt(pct)}% built</span></div>
-    <p class="line-name">${esc(L.name)}</p>
+    <div class="line-top"><span class="sign">${esc(letter)}</span><span class="pill ${pill[0]}">${pill[1]}</span><span class="pill wait right" title="Share of the car built"><span class="mono">${fmt(pct)}%</span>&nbsp;built</span></div>
+    <p class="line-name">${esc(plain(L.name))}</p>
     <div class="belt" style="--pos:${pct}%;--c:${c}" role="img" aria-label="${f.done} of ${cells.length} parts done">${CAR}<div class="cells">${cells.map(x => `<b class="${esc(x.state)}"></b>`).join("")}</div></div>
     ${cause}
-    <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(cur.name)}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
+    <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(plain(cur.name))}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
     <a class="go" href="#floor/line-${esc(safeId(L.line_id))}">Open this line on the factory floor</a>
   </article>`;
 }
 
-// ---- Machines and their lanes. Every figure is from floor.machines, floor.lanes and floor.cloud.
+// Lines the deployment declares but no plan matches take one sentence, not a card each.
+function missingLines(items){
+  if (!items.length) return "";
+  return `<details class="ghosts" id="missingLines"><summary>${esc(plural(items.length, "more line is", "more lines are"))} planned but ${items.length === 1 ? "has" : "have"} no plan file yet (show)</summary>
+    <ul>${items.map(x => `<li>${esc(lineLetter(x.i))}: not in the record. No plan matched “${esc(x.slot.fragment)}”, so there are no parts, no percent and no stop reason to show.</li>`).join("")}</ul></details>`;
+}
+
+// ---- Machines and their workers. Every figure is from floor.machines, floor.lanes and floor.cloud.
 function ciChip(l){
-  if (!l.pr) return `<span class="chip" title="This lane has written no pull request">no PR yet</span>`;
-  const word = {green: "CI green", red: "CI red", pending: "CI pending", none: "no CI runs", unread: "CI unread"}[l.pr_ci] || "CI unread";
+  if (!l.pr) return `<span class="chip" title="This worker has written no change">no change yet</span>`;
+  const word = {green: "checks passing", red: "failing checks", pending: "checks running", none: "no checks yet", unread: "checks unread"}[l.pr_ci] || "checks unread";
   const merged = l.pr_state && l.pr_state !== "OPEN" && l.pr_state !== "unread" ? ` · ${String(l.pr_state).toLowerCase()}` : "";
-  return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${esc(l.pr)} · ${word}${esc(merged)}</span>`;
+  return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(plain(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : "")))}">${word} · change ${esc(l.pr)}${esc(merged)}</span>`;
 }
 
 function laneRow(l){
-  const doing = l.status_text ? esc(l.status_text) : l.title ? esc(l.title) : `<span class="unread">no status written</span>`;
-  return `<a class="lrow" href="#floor/lane-${esc(safeId(l.lane))}" title="${esc([l.ticket, l.title, l.status_full].filter(Boolean).join(" · "))}">
-    <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}${l.engine === "codex" ? " · Codex" : ""}</span>
+  const doing = l.status_text ? esc(plain(l.status_text)) : l.title ? esc(plain(l.title)) : `<span class="unread">no status written</span>`;
+  return `<a class="lrow" href="#floor/lane-${esc(safeId(l.lane))}" title="${esc(plain([l.ticket, l.title, l.status_full].filter(Boolean).join(" · ")))}">
     <span class="doing">${doing}</span>
-    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
+    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">gone quiet ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
+    <span class="tk">${esc(l.lane)}${l.ticket ? " · " + esc(l.ticket) : ""}${l.engine === "codex" ? " · Codex" : ""}</span>
   </a>`;
 }
 
 function gauge(label, value, frac, why, hot){
   if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${why ? ` (${esc(why)})` : ""}</span></div>`;
   const bar = frac == null ? "" : `<div class="gbar${hot ? " hot" : ""}" role="img" aria-label="${esc(label)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
-  return `<div class="gauge"><span>${esc(label)}</span><span class="v">${esc(value)}</span>${bar}</div>`;
+  return `<div class="gauge"><span>${esc(label)}</span><span class="v mono">${esc(value)}</span>${bar}</div>`;
 }
 
-function bayCard(m, byId){
+// One row per machine: its name, workers used of capacity, and alerts only. The worker list is one click away.
+function machineRow(m, byId){
   const lanes = (m.lanes || []).map(id => byId[id]).filter(Boolean);
   const rd = m.state === "read";
-  const word = rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread";
+  const word = rd ? (m.stale ? "reading out of date" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "not read";
   const tone = rd ? (m.stale ? "warn" : "ok") : "idle";
-  const cls = rd ? "" : m.state === "repair" || m.state === "out" ? " repair" : " unreadbay";
   const cap = m.cap == null ? null : num(m.cap);
   const age = m.read_age_min == null ? "" : ` · ${ageText(num(m.read_age_min) * 60000)} ago`;
+  const id = "bay-" + safeId(m.host || m.label);
+  const stalledN = lanes.filter(l => l.stalled).length;
+  const codexN = lanes.filter(l => !l.stalled && l.engine === "codex").length;
+  const runN = lanes.length - stalledN - codexN;
+  const over = cap == null ? 0 : Math.max(0, lanes.length - cap);
+  const free = cap == null ? 0 : Math.max(0, cap - lanes.length);
+  let cls = rd ? "" : m.state === "repair" || m.state === "out" ? " repair" : " unreadbay";
+  if (stalledN || over || m.refusal) cls += " alert";
   let body;
   if (rd){
     const cells = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}" title="${esc(l.lane)}"></i>`);
-    const free = cap == null ? 0 : Math.max(0, cap - lanes.length);
-    const over = cap == null ? 0 : Math.max(0, lanes.length - cap);
     const load = m.load_per_core;
     const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
-    body = `<div class="slots" role="img" aria-label="${lanes.length} lanes placed${cap == null ? "" : " of " + cap}">${cells.join("")}${"<i></i>".repeat(Math.min(free, 60))}</div>
-      <p class="capline"><span class="mono">${lanes.length}</span> lanes placed${cap == null ? ` · cap <span class="unread">unread</span>` : ` of <span class="mono">${cap}</span>`}${over ? ` · <b class="age-stale">${over} over the cap</b>` : ""}${m.refusal ? ` · refuses new work: ${esc(m.refusal)}` : ""}</p>
-      <div class="gauges">
-        ${gauge("load per core", load == null ? null : fmt(load), load == null ? null : num(load), "", num(load) >= 1)}
-        ${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}
-      </div>`;
+    const counts = [`${runN} running`, codexN ? `${codexN} on Codex` : "", stalledN ? `${stalledN} gone quiet` : "", over ? `${over} over the cap` : "", cap == null ? "" : `${free} free`].filter(Boolean).join(", ");
+    const alerts = [stalledN ? `<span class="chip stall">${stalledN} gone quiet</span>` : "", over ? `<span class="chip stall">${over} over the cap</span>` : "", m.refusal ? `<span class="chip warn">refuses new work: ${esc(plain(m.refusal))}</span>` : ""].filter(Boolean).join("");
+    body = `<div class="slots" role="img" aria-label="${esc(counts)}">${cells.join("")}${"<i></i>".repeat(Math.min(free, 60))}</div>
+      <p class="capline">${esc(counts)}${cap == null ? ` · capacity <span class="unread">unread</span>` : ""}</p>
+      ${alerts ? `<div class="alerts">${alerts}</div>` : ""}
+      <details class="more" id="${id}"><summary>${lanes.length ? `Show the ${plural(lanes.length, "worker", "workers")} and the load` : "Show the load"}</summary>
+        <div class="gauges">
+          ${gauge("load per core", load == null ? null : fmt(load), load == null ? null : num(load), "", num(load) >= 1)}
+          ${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}
+        </div>
+        ${lanes.length ? `<div class="lrows">${lanes.map(laneRow).join("")}</div>` : `<p class="capline">No worker is placed here.</p>`}
+      </details>`;
   } else {
-    body = `<p class="capline">${esc(m.note || "no reading")}${lanes.length ? ` The ledger still places ${plural(lanes.length, "lane", "lanes")} here.` : ""}</p>`;
+    body = `<p class="capline">${esc(plain(m.note || "no reading"))}${lanes.length ? ` The log still places ${plural(lanes.length, "worker", "workers")} here.` : ""}</p>`;
   }
-  return `<article class="bay${cls}" aria-label="${esc(m.label)}">
-    <div class="bay-top"><b>${esc(m.label)}</b><span class="pill ${tone}">${esc(word)}${esc(age)}</span></div>
+  return `<article class="mrow${cls}" aria-label="${esc(m.label)}">
+    <div class="mtop"><b>${esc(m.label)}</b>${rd ? `<span class="used"><span class="mono">${lanes.length}</span>${cap == null ? " workers" : ` of <span class="mono">${cap}</span> workers`}</span>` : ""}<span class="pill ${tone}">${esc(word)}${esc(age)}</span></div>
     ${body}
-    ${lanes.length ? `<div class="lrows">${lanes.map(laneRow).join("")}</div>` : (rd ? `<p class="capline">No lane is placed here.</p>` : "")}
   </article>`;
 }
 
-function cloudCard(cloud, lanes){
-  if (!cloud) return `<article class="bay unreadbay"><div class="bay-top"><b>Cloud</b><span class="pill idle">unread</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
+function cloudRow(cloud, lanes){
+  if (!cloud) return `<article class="mrow unreadbay"><div class="mtop"><b>Cloud</b><span class="pill idle">not read</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
   const rd = cloud.state === "read";
   const live = lanes.filter(l => l.placement === "cloud");
-  const stops = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b></div>`).join("");
+  const stops = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(plain(x.text))}</b></div>`).join("");
   const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span></li>`).join("");
   const sessions = cloud.sessions || [];
   const open = sessions.filter(s => s.open).length;
-  return `<article class="bay${rd ? "" : " unreadbay"}" aria-label="Cloud">
-    <div class="bay-top"><b>Cloud</b><span class="pill ${rd ? "ok" : "idle"}">${rd ? "read" : "unread"}</span></div>
+  const detail = `${rd ? (accts ? `<ul class="plain">${accts}</ul>` : `<p class="capline">No cloud account is signed in.</p>`) : `<p class="capline">${esc(plain(cloud.note || "the cloud accounts file could not be read"))}</p>`}
+    ${rd ? `<p class="capline">${open} of ${sessions.length} recent cloud sessions open${cloud.note ? ` · ${esc(plain(cloud.note))}` : ""}</p>` : ""}
+    ${live.length ? `<div class="lrows">${live.map(laneRow).join("")}</div>` : ""}`;
+  return `<article class="mrow${rd ? "" : " unreadbay"}${stops ? " alert" : ""}" aria-label="Cloud">
+    <div class="mtop"><b>Cloud</b>${rd ? `<span class="used"><span class="mono">${live.length}</span> workers</span>` : ""}<span class="pill ${rd ? "ok" : "idle"}">${rd ? "read" : "not read"}</span></div>
     ${stops}
-    ${rd ? (accts ? `<ul class="plain">${accts}</ul>` : `<p class="capline">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
-    ${rd ? `<p class="capline">${open} of ${sessions.length} recent cloud sessions open${cloud.note ? ` · ${esc(cloud.note)}` : ""}</p>` : ""}
-    ${live.length ? `<div class="lrows">${live.map(laneRow).join("")}</div>` : ""}
+    <details class="more" id="bay-cloud"><summary>Show the accounts${live.length ? ` and ${plural(live.length, "worker", "workers")}` : ""}</summary>${detail}</details>
   </article>`;
 }
 
-// ---- The day: the newest day of the process-health series, and the pull requests that are red now.
+// ---- The day: the newest day of the process-health series, and the changes that are failing checks now.
 function metric(day, key){
   const ms = day && day.window && Array.isArray(day.window.metrics) ? day.window.metrics : [];
   const m = ms.find(x => x.key === key);
   return m && m.value != null && m.status !== "unread" ? m : null;
 }
 
-const redRow = l => `<li><span><a href="#floor/lane-${esc(safeId(l.lane))}">${esc(l.pr)}</a> <span class="muted">${esc(l.pr_title || l.title || "")}</span></span><small>${esc(l.pr_ci_note || "CI red")} · ${esc(l.lane)}</small></li>`;
+const redRow = l => `<li><span><a href="#floor/lane-${esc(safeId(l.lane))}">${esc(plain(l.pr_title || l.title || l.pr))}</a> <span class="muted">(${esc(l.pr)})</span></span><small>${esc(plain(l.pr_ci_note || "failing checks"))} · ${esc(l.lane)}</small></li>`;
 
 function todayCard(floor, health){
   const days = health && Array.isArray(health.days) ? health.days : [];
@@ -512,23 +623,24 @@ function todayCard(floor, health){
   const re = metric(day, "reds.episodes_opened"), rh = metric(day, "reds.hours_red");
   const pm = metric(prev, "merges.total");
   const utcToday = new Date().toISOString().slice(0, 10);
+  const since = day && day.window && day.window.start ? day.window.start : day ? day.date + "T00:00:00Z" : "";
   const dayNote = !day ? "The process-health series is not published, so the day's counts are unread."
-    : `UTC day ${esc(day.date)}${day.partial ? ", so far" : ""}${day.window && day.window.end ? ` (to ${esc(String(day.window.end).slice(11, 16))} UTC)` : ""}${day.date !== utcToday ? `. <b class="age-stale">This is not today (${esc(utcToday)}): the series is behind.</b>` : ""}`;
+    : `Counted since ${esc(etClock(since, true))}${day.partial ? ", so far" : ""}${day.date !== utcToday ? `. <b class="age-stale">This is not today's count: the series is behind.</b>` : ""}`;
   const redLanes = (floor.lanes || []).filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN"));
   const merged = (floor.shipped || []).slice(0, 6);
-  const mergeTime = p => { const t = /merged (\S+)/.exec(p.detail || ""); return t ? sinceText(t[1]) + " ago" : esc(p.detail || ""); };
+  const mergeTime = p => { const t = /merged (\S+)/.exec(p.detail || ""); return t ? esc(when(t[1])) : esc(plain(p.detail || "")); };
   return `<section class="sec" aria-labelledby="todayH">
-    <header><h2 id="todayH">Merged and red today</h2></header>
-    <p class="facts">${dayNote}</p>
+    <header><h2 id="todayH">Changes merged and failing today</h2><p>What shipped today, and which changes are failing their checks right now.</p></header>
+    <p class="facts" title="${esc(since ? utcText(since) : "")}">${dayNote}</p>
     <div class="pair">
-      <div><b ${mt ? "" : 'class="unread"'}>${mt ? fmt(mt.value) : "unread"}</b><span>merges${mp ? `, ${fmt(mp.value)} to product code` : ""}${pm ? `; the day before ${fmt(pm.value)}` : ""}</span></div>
-      <div class="${redLanes.length || (re && re.value > 0) ? "bad" : ""}"><b>${redLanes.length}</b><span>pull requests red now on live lanes${re ? `; ${fmt(re.value)} dev-branch red ${num(re.value) === 1 ? "episode" : "episodes"} opened today${rh ? `, ${fmt(rh.value)} repo-hours red` : ""}` : "; dev-branch red episodes unread"}</span></div>
+      <div><b ${mt ? 'class="mono"' : 'class="unread"'}>${mt ? fmt(mt.value) : "unread"}</b><span>changes merged${mp ? `, ${fmt(mp.value)} to product code` : ""}${pm ? `; the day before ${fmt(pm.value)}` : ""}</span></div>
+      <div class="${redLanes.length || (re && re.value > 0) ? "bad" : ""}"><b class="mono">${redLanes.length}</b><span>changes failing checks right now${re ? `; ${fmt(re.value)} ${num(re.value) === 1 ? "stretch" : "stretches"} of failing checks opened on the main branch today${rh ? `, ${fmt(rh.value)} repo-hours failing` : ""}` : "; stretches of failing checks on the main branch are unread"}</span></div>
     </div>
     <div class="card">
-      <p class="sub">Newest merges in the record</p>
-      ${merged.length ? `<ul class="lst">${merged.map(p => `<li><span>${esc(p.title)} <span class="muted">(${esc(p.pr)})</span></span><small>${mergeTime(p)}</small></li>`).join("")}</ul>` : `<p class="unread">The record lists no merged change.</p>`}
-      <p class="sub">Red now</p>
-      ${redLanes.length ? `<ul class="lst">${redLanes.slice(0, 5).map(redRow).join("")}</ul>${redLanes.length > 5 ? `<details class="more"><summary>Show the other ${redLanes.length - 5}</summary><ul class="lst">${redLanes.slice(5).map(redRow).join("")}</ul></details>` : ""}` : `<p class="muted">No live lane has a red pull request.</p>`}
+      <p class="sub">Newest changes merged</p>
+      ${merged.length ? `<ul class="lst">${merged.map(p => `<li><span>${esc(plain(p.title))} <span class="muted">(${esc(p.pr)})</span></span><small>${mergeTime(p)}</small></li>`).join("")}</ul>` : `<p class="unread">The record lists no merged change.</p>`}
+      <p class="sub">Failing checks now</p>
+      ${redLanes.length ? `<ul class="lst">${redLanes.slice(0, 5).map(redRow).join("")}</ul>${redLanes.length > 5 ? `<details class="more"><summary>Show the other ${redLanes.length - 5}</summary><ul class="lst">${redLanes.slice(5).map(redRow).join("")}</ul></details>` : ""}` : `<p class="muted">No worker has a change failing checks.</p>`}
     </div>
   </section>`;
 }
@@ -541,12 +653,12 @@ function freshRows(rec, status, health, manifest, delegation){
   const flag = (group, name, ok, note) => rows.push({group, name, ok, note: note || "", flag: true});
   timed("Factory record", "Factory record computed", rec.generated_at);
   if (status && status.published_at) timed("Factory record", "Published to this page", status.published_at);
-  timed("Factory record", "Pull request watcher, last tick", s.watcher_last_tick);
-  timed("Factory record", "Newest ledger row read", s.ledger_newest_row, s.ledger_rows != null ? `${fmt(num(s.ledger_rows))} rows read` : "");
+  timed("Factory record", "Change watcher, last tick", s.watcher_last_tick);
+  timed("Factory record", "Newest log entry read", s.ledger_newest_row, s.ledger_rows != null ? `${fmt(num(s.ledger_rows))} entries read` : "");
   timed("Factory record", "Pool read of the machines", s.pool_read_at, s.placement_hosts ? `${plural(num(s.placement_hosts), "host", "hosts")} advertising slots` : "no host advertising slots");
   flag("Factory record", "Lab host table (caps, repair)", s.host_table_read);
   flag("Factory record", "Placement markers (units)", s.placement_markers_read);
-  flag("Factory record", "Remote-lane receipts", s.receipts_read);
+  flag("Factory record", "Worker receipts", s.receipts_read);
   flag("Factory record", "Cloud accounts", s.cloud_accounts_read);
   flag("Factory record", "CI runner fleet observation", s.runner_fleet_read, "no node writes this file yet");
   flag("Factory record", "Friction report", s.stoppage_report);
@@ -589,22 +701,33 @@ function freshState(r){
 
 function freshnessCard(rows){
   const withState = rows.map(r => Object.assign({st: freshState(r)}, r));
+  const tile = (r, group) => {
+    let value;
+    if (r.flag) value = r.ok ? "read" : `<span class="unread">not read</span>`;
+    else { const ms = ageMs(r.iso); value = ms == null ? `<span class="unread">not read (no readable time)</span>` : `<span class="${r.st === "stop" ? "age-stale" : ""}">${esc(ageText(ms))} old${r.st === "stop" ? " (out of date)" : ""}</span>`; }
+    return `${group}<div class="src c-${r.st}" ><b>${esc(r.name)}</b><span>${value}</span><small>${r.iso && !r.flag ? `<span title="${esc(utcText(r.iso))}">${esc(etClock(r.iso))}</span>${r.note ? " · " : ""}` : ""}${esc(plain(r.note))}</small></div>`;
+  };
   let last = "";
   const html = withState.map(r => {
     const g = r.group !== last ? `<p class="fgroup">${esc(r.group)}</p>` : "";
     last = r.group;
-    let value;
-    if (r.flag) value = r.ok ? "read" : `<span class="unread">unread</span>`;
-    else { const ms = ageMs(r.iso); value = ms == null ? `<span class="unread">unread (no readable time)</span>` : `<span class="${r.st === "stop" ? "age-stale" : ""}">${esc(ageText(ms))} old</span>`; }
-    return `${g}<div class="src c-${r.st}" ><b>${esc(r.name)}</b><span>${value}</span><small>${r.iso && !r.flag ? esc(clock(r.iso)) + (r.note ? " · " : "") : ""}${esc(r.note)}</small></div>`;
+    return tile(r, g);
   }).join("");
+  const problems = withState.filter(r => r.st !== "ok");
   const stale = withState.filter(r => r.st === "stop").length, unread = withState.filter(r => r.st === "idle").length;
-  return {stale, unread, total: withState.length, html};
+  return {stale, unread, total: withState.length, html, problems: problems.map(r => tile(r, "")).join("")};
 }
 
 // ---- Dashboard
-function lamp(cls, head, small, sub){
-  return `<div class="lamp c-${cls}" role="listitem"><i></i><b>${head}${small ? `<small>${esc(small)}</small>` : ""}</b><span>${esc(sub)}</span></div>`;
+const seenRed = new Set();
+function lamp(key, cls, head, small, word, why){
+  const pulse = cls === "stop" && !seenRed.has(key);
+  if (cls === "stop") seenRed.add(key); else seenRed.delete(key);
+  return `<div class="lamp c-${cls}${pulse ? " pulse" : ""}" role="listitem"><i></i><b class="mono">${head}${small ? `<small>${esc(small)}</small>` : ""}</b><span class="st">${esc(word)}</span><span class="why">${esc(why)}</span></div>`;
+}
+
+function listWords(parts){
+  return parts.length < 2 ? parts.join("") : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
 }
 
 function renderDashboard(p){
@@ -612,9 +735,11 @@ function renderDashboard(p){
   const floor = Object.assign({machines: [], lanes: [], cloud: null, shipped: [], waiting: [], stoppages: []}, rec.floor || {});
   const built = buildSlots(rec.lines || [], status);
   const slots = built.slots;
-  const facts = slots.filter(s => s.line).map(s => lineFacts(s.line));
+  const real = slots.map((s, i) => ({slot: s, i})).filter(x => x.slot.line);
+  const absent = slots.map((s, i) => ({slot: s, i})).filter(x => !x.slot.line);
+  const facts = real.map(x => lineFacts(x.slot.line));
   const stoppedN = facts.filter(f => f.stopped).length;
-  const missing = slots.filter(s => !s.line).length;
+  const missing = absent.length;
 
   const ms = floor.machines || [], lanes = floor.lanes || [];
   const read = ms.filter(m => m.state === "read");
@@ -622,99 +747,166 @@ function renderDashboard(p){
   const unreadM = ms.filter(m => m.state === "unread").length;
   const placed = ms.reduce((a, m) => a + num(m.lanes_placed), 0);
   const cap = read.reduce((a, m) => a + num(m.cap), 0);
-  const stalled = lanes.filter(l => l.stalled).length;
-  const redLanes = lanes.filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN")).length;
+  const stalledL = lanes.filter(l => l.stalled).sort((a, b) => num(b.silent_minutes) - num(a.silent_minutes));
+  const stalled = stalledL.length;
+  const redL = lanes.filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN"));
+  const redLanes = redL.length;
 
   const days = health && Array.isArray(health.days) ? health.days : [];
   const day = days.length ? days[days.length - 1] : null;
   const mt = metric(day, "merges.total");
   const fresh = freshnessCard(freshRows(rec, status, health, p.manifest, p.delegation));
+  const notFresh = fresh.stale + fresh.unread;
+
+  // The verdict: one sentence, then what needs a person.
+  const parts = [];
+  if (stoppedN) parts.push(`${plural(stoppedN, "line is", "lines are")} stopped`);
+  if (stalled) parts.push(`${plural(stalled, "worker has", "workers have")} gone quiet`);
+  if (redLanes) parts.push(`${plural(redLanes, "change is", "changes are")} failing checks`);
+  if (fresh.stale) parts.push(`${plural(fresh.stale, "source is", "sources are")} out of date`);
+  if (fresh.unread) parts.push(`${plural(fresh.unread, "source is", "sources are")} not read`);
+  if (unreadM) parts.push(`${plural(unreadM, "machine is", "machines are")} not read`);
+  const needsPerson = stoppedN || stalled || redLanes;
+  const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : "ok";
+  const needs = [];
+  real.forEach(x => {
+    const f = lineFacts(x.slot.line);
+    if (!f.stopped) return;
+    const L = x.slot.line;
+    const cs = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
+    const why = cs[0] || ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "");
+    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: whoever owns this line's plan; clear the stop or fix its cause.", href: `#floor/line-${safeId(L.line_id)}`, link: "Open this line"});
+  });
+  if (stalled) needs.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more.`, who: `Who acts: the owner of each worker, starting with ${stalledL[0].lane} (quiet for ${ageText(num(stalledL[0].silent_minutes) * 60000)}).`, href: `#floor/lane-${safeId(stalledL[0].lane)}`, link: "Open the quietest worker"});
+  if (redLanes) needs.push({what: `${plural(redLanes, "change is", "changes are")} failing checks.`, who: `Who acts: the worker that wrote each change, starting with ${redL[0].lane}.`, href: `#floor/lane-${safeId(redL[0].lane)}`, link: "Open the first failing change"});
+  if (notFresh) needs.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}.`, who: "Who acts: whoever runs the publish tick.", href: "#dashboard/freshH", link: "See which sources"});
+  if (unreadM) needs.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, who: "Who acts: whoever runs the machine pool read.", href: "#dashboard/baysH", link: "See the machines"});
+  const verdict = !parts.length ? "All lines running. Nothing needs you."
+    : `${needsPerson ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
+  const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : "Stopped or failing";
 
   const board = [];
   board.push(slots.length
-    ? lamp(stoppedN ? "stop" : missing ? "warn" : "ok", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", missing ? `${plural(missing, "declared line is", "declared lines are")} not in the record` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`)
-    : lamp("idle", "Lines", "unread", "The record holds no lines"));
+    ? lamp("lines", stoppedN ? "stop" : real.length ? "ok" : "idle", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", stoppedN ? "Stopped" : real.length ? "Running" : "No data", missing ? `${plural(missing, "declared line has", "declared lines have")} no plan file yet` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`)
+    : lamp("lines", "idle", "Lines", "not read", "No data", "The record holds no lines"));
+  board.push(lamp("workers", stalled ? "warn" : lanes.length ? "ok" : "idle", `${stalled} of ${lanes.length}`, "workers gone quiet", stalled ? "Needs a look" : lanes.length ? "Running" : "No data", stalled ? `Nothing logged for ${floor.stall_minutes || "the stall"} minutes or more` : lanes.length ? "All are logging" : "No worker is live in the record"));
+  board.push(lamp("changes", redLanes ? "stop" : lanes.length ? "ok" : "idle", `${redLanes}`, redLanes === 1 ? "change failing checks" : "changes failing checks", redLanes ? "Failing" : lanes.length ? "Passing" : "No data", "Changes written by live workers"));
   board.push(ms.length
-    ? lamp(unreadM ? "warn" : "ok", `${read.length} of ${ms.length}`, "machines read", `${placed} lanes placed on ${cap} slots${repair ? `; ${repair} in repair or out of selection` : ""}${unreadM ? `; ${unreadM} unread` : ""}`)
-    : lamp("idle", "Machines", "unread", "The record declares no machine bays"));
-  board.push(lamp(stalled ? "stop" : lanes.length ? "ok" : "idle", `${lanes.length}`, "live lanes", stalled ? `${stalled} stalled: nothing written for ${floor.stall_minutes || "the stall"} minutes` : lanes.length ? "none stalled" : "no lane is live in the record"));
-  board.push(mt ? lamp("ok", fmt(mt.value), "merges today", `${redLanes} live ${redLanes === 1 ? "lane has" : "lanes have"} a red pull request`) : lamp("idle", "Merges today", "unread", "The process-health series is not published"));
-  board.push(lamp(fresh.stale ? "stop" : fresh.unread ? "warn" : "ok", `${fresh.stale}`, "stale sources", `${fresh.unread} unread of ${fresh.total} sources; stale means older than ${STALE_MIN} minutes`));
+    ? lamp("machines", unreadM ? "warn" : "ok", `${read.length} of ${ms.length}`, "machines read", unreadM ? "Needs a look" : "Running", `${placed} workers on ${cap} slots${repair ? `; ${repair} in repair or out of selection` : ""}${unreadM ? `; ${unreadM} not read` : ""}`)
+    : lamp("machines", "idle", "Machines", "not read", "No data", "The record declares no machines"));
+  board.push(mt ? lamp("merges", num(mt.value) > 0 ? "ok" : "warn", fmt(mt.value), "changes merged today", num(mt.value) > 0 ? "Running" : "Needs a look", "From the process-health series") : lamp("merges", "idle", "Merges today", "not read", "No data", "The process-health series is not published"));
+  board.push(notFresh
+    ? lamp("sources", "warn", `${notFresh}`, fresh.stale && fresh.unread ? "sources not read or old" : fresh.stale ? (fresh.stale === 1 ? "source out of date" : "sources out of date") : (fresh.unread === 1 ? "source not read" : "sources not read"), "Needs a look", `${fresh.total - notFresh} of ${fresh.total} sources are fresh`)
+    : lamp("sources", "ok", `${fresh.total}`, "sources fresh", "Running", `Every source was read in the last ${STALE_MIN} minutes`));
 
   const byId = {};
   lanes.forEach(l => { byId[l.lane] = l; });
   const unplaced = lanes.filter(l => l.placement === "unplaced");
-  const bays = ms.map(m => bayCard(m, byId));
-  bays.push(cloudCard(floor.cloud, lanes));
-  if (unplaced.length) bays.push(`<details class="fold"><summary>${plural(unplaced.length, "live lane names", "live lanes name")} no machine the floor draws</summary><div class="lrows">${unplaced.map(laneRow).join("")}</div></details>`);
+  const rowsM = ms.map(m => machineRow(m, byId));
+  rowsM.push(cloudRow(floor.cloud, lanes));
+  if (unplaced.length) rowsM.push(`<details class="fold" id="unplaced"><summary>${plural(unplaced.length, "live worker names", "live workers name")} no machine the floor draws</summary><div class="lrows">${unplaced.map(laneRow).join("")}</div></details>`);
+
+  const freshLine = `${fresh.total - notFresh} of ${fresh.total} sources fresh${notFresh ? `; ${[fresh.stale ? plural(fresh.stale, "out of date", "out of date") : "", fresh.unread ? `${fresh.unread} not read` : ""].filter(Boolean).join(", ")}` : ""}`;
 
   el("dash").innerHTML = `
+    <section class="verdict c-${vcls}" aria-labelledby="verdictH">
+      <h2 class="sr" id="verdictH">Is anything wrong</h2>
+      <p class="vs" role="status"><span class="st">${esc(verdictWord)}.</span> ${esc(verdict)}</p>
+      ${needs.length ? `<div><p class="sub">Needs you</p><ol class="needs">${needs.slice(0, 5).map(n => `<li><span>${esc(n.what)}</span><span class="who">${esc(n.who)}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : ""}
+    </section>
     <div class="board" role="list" aria-label="Right now">${board.join("")}</div>
+    <div class="key" aria-label="What the lamp colours mean"><span><i style="--c:var(--ok)"></i>green: running as expected</span><span><i style="--c:var(--warn)"></i>amber: needs a look</span><span><i style="--c:var(--stop)"></i>red: stopped or failing</span><span><i class="dash-dot"></i>grey dashed: no data</span></div>
     <div class="cols">
       <div class="stack">
         <section class="sec" aria-labelledby="linesH">
-          <header><h2 id="linesH">Assembly lines</h2><p>${built.declared ? "In the order the deployment declares them" : esc("Which lines are declared is unread (" + built.reason + ")")}</p></header>
-          ${slots.length ? slots.map(lineCard).join("") : `<p class="unread">The record holds no lines.</p>`}
+          <header><h2 id="linesH">Assembly lines</h2><p>${built.declared ? "Each line is one plan being built, in the order the deployment declares them." : esc("Each line is one plan being built. Which lines are declared is unread (" + built.reason + ")")}</p></header>
+          ${real.length ? real.map(x => lineCard(x.slot, x.i)).join("") : `<p class="unread">The record holds no lines.</p>`}
+          ${missingLines(absent)}
+          ${real.length ? `<div class="key" aria-label="What the part colours mean"><span><i class="sq done"></i>part done</span><span><i class="sq active"></i>being built</span><span><i class="sq prep"></i>being prepared</span><span><i class="sq stop"></i>stopped</span><span><i class="sq wait"></i>not started</span></div>` : ""}
         </section>
         ${todayCard(floor, health)}
       </div>
       <section class="sec" aria-labelledby="baysH">
-        <header><h2 id="baysH">Machines and what runs on them</h2><p>${floor.stall_minutes ? `A lane is stalled after ${floor.stall_minutes} minutes without a row` : ""}</p></header>
-        <div class="bays">${bays.join("")}</div>
+        <header><h2 id="baysH">Machines and their workers</h2><p>${floor.stall_minutes ? `Each machine, how many workers use it, and anything wrong. A worker has gone quiet after ${floor.stall_minutes} minutes without a log entry.` : "Each machine, how many workers use it, and anything wrong."}</p></header>
+        <div class="key" aria-label="What the slot colours mean"><span><i class="slot used"></i>running</span><span><i class="slot codex"></i>on Codex</span><span><i class="slot stall"></i>gone quiet</span><span><i class="slot over"></i>over the cap</span><span><i class="slot"></i>free</span></div>
+        <div class="mrows">${rowsM.join("")}</div>
       </section>
     </div>
     <section class="sec" aria-labelledby="freshH">
-      <header><h2 id="freshH">How fresh each source is</h2><p>${fresh.stale} stale, ${fresh.unread} unread</p></header>
-      <div class="fresh">${fresh.html}</div>
+      <header><h2 id="freshH">How fresh each source is</h2><p>${esc(freshLine)}. A source is out of date after ${STALE_MIN} minutes.</p></header>
+      ${notFresh ? `<div class="fresh">${fresh.problems}</div>` : ""}
+      <details class="more" id="allSources"><summary>Show all ${fresh.total} sources</summary><div class="fresh">${fresh.html}</div></details>
     </section>
-    <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as unread, never as zero.</footer>`;
+    <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as not read, never as zero. Times are Eastern; hover a time to see UTC.</footer>`;
 
-  return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled};
+  return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
 }
 
-// ---- Tab lamps and captions, read from the same files.
-function setTab(id, cls, sub, title){
-  const i = el("lamp-" + id), s = el("sub-" + id);
+// ---- Tab lamps, words and captions, read from the same files.
+function setTab(id, cls, word, sub, title){
+  const i = el("lamp-" + id), s = el("sub-" + id), w = el("word-" + id);
   if (i){ i.className = "c-" + cls; i.title = title || ""; }
+  if (w){ w.className = "c-" + cls; w.textContent = word; }
   if (s) s.textContent = sub;
 }
 
+// What the header stamp says for each tab: the age of the data that tab shows.
+const tabAge = {};
+
 function renderTabs(p, d){
   const rec = p.record;
-  setTab("dashboard", d.stoppedN || d.stale || d.stalled ? "stop" : d.unread || d.unreadM ? "warn" : "ok",
-    `${d.stoppedN} of ${d.slots} lines stopped`, `${d.stale} stale and ${d.unread} unread sources`);
-  setTab("floor", d.stoppedN ? "stop" : "ok", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : "no line stopped");
+  const recAge = Date.parse(rec.generated_at);
+  tabAge.dashboard = tabAge.floor = Number.isNaN(recAge) ? {text: "Record time unreadable"} : {iso: rec.generated_at, label: "Record computed"};
+  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : d.stale || d.stalled || d.unread || d.unreadM ? "warn" : "ok",
+    d.stoppedN || d.redLanes ? "Stopped or failing" : d.stale || d.stalled || d.unread || d.unreadM ? "Needs a look" : "Running",
+    `${d.stoppedN} of ${d.slots} lines stopped`, `${d.stale} out of date and ${d.unread} not read sources`);
+  setTab("floor", d.stoppedN ? "stop" : "ok", d.stoppedN ? "Stopped" : "Running", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : "no line stopped");
   const h = p.health && p.health.summary;
-  if (!h) setTab("process", "none", "series not published", "unread");
-  else if (h.measured === false) setTab("process", "idle", "not measured", h.reason || "");
-  else setTab("process", num(h.worse) > 0 ? "warn" : "ok", `${num(h.improved)} better, ${num(h.worse)} worse`, `${num(h.flat)} flat, ${num(h.unmeasured)} unmeasured since the reset`);
+  tabAge.process = p.health && p.health.generated_at ? {iso: p.health.generated_at, label: "Series computed"} : {text: "Series not published"};
+  if (!h) setTab("process", "none", "No data", "series not published", "not read");
+  else if (h.measured === false) setTab("process", "idle", "Not measured", "not measured", h.reason || "");
+  else setTab("process", num(h.worse) > 0 ? "warn" : "ok", num(h.worse) > 0 ? "Needs a look" : "Running", `${num(h.improved)} better, ${num(h.worse)} worse`, `${num(h.flat)} flat, ${num(h.unmeasured)} unmeasured since the reset`);
   const m = p.manifest && Array.isArray(p.manifest.reports) ? p.manifest.reports : null;
   [["map", "decision_map"], ["quality", "decision_quality"]].forEach(([tab, rid]) => {
     const r = m && m.find(x => x.id === rid);
     const x = r && (r.data || []).find(y => y.status === "read");
-    if (!m) setTab(tab, "none", "manifest unread", "unread");
-    else if (!x) setTab(tab, "idle", "data unread", r ? ((r.data || [])[0] || {}).reason || "" : "not in the manifest");
-    else setTab(tab, "none", `${r.refresh === "snapshot" ? "snapshot, " : ""}${sinceText(x.as_of)} old`, `data from ${clock(x.as_of)}`);
+    const snap = r && r.refresh === "snapshot";
+    tabAge[tab] = x ? {iso: x.as_of, label: snap ? "Snapshot from" : "Data from"} : {text: "Data not read"};
+    if (!m) setTab(tab, "none", "No data", "manifest not read", "not read");
+    else if (!x) setTab(tab, "idle", "No data", "data not read", r ? ((r.data || [])[0] || {}).reason || "" : "not in the manifest");
+    else setTab(tab, "none", snap ? "Snapshot" : "Data", `${sinceText(x.as_of)} old`, `data from ${utcText(x.as_of)}`);
   });
 }
 
-// ---- Header: the record's age
-function renderStamp(rec){
+// ---- Header: the age of what the chosen tab shows. Only the record's own tabs get the stale-record banner.
+function renderStamp(){
+  const stamp = el("stamp"), banner = el("banner");
+  const rec = lastPayload && lastPayload.record;
+  if (!rec){ return; }
+  const a = tabAge[currentTab];
+  if (!a) stamp.textContent = "Reading the factory record";
+  else if (a.text) stamp.textContent = a.text;
+  else {
+    stamp.textContent = `${a.label} ${etClock(a.iso)} · ${ageText(ageMs(a.iso))} ago`;
+    stamp.title = utcText(a.iso);
+  }
   const gen = Date.parse(rec.generated_at);
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
-  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${clock(rec.generated_at)} · ${ageText(age)} old`;
-  const banner = el("banner");
-  if (age != null && age > STALE_MIN * 60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
-  else banner.hidden = true;
+  if ((currentTab === "dashboard" || currentTab === "floor") && age != null && age > STALE_MIN * 60000){
+    banner.hidden = false;
+    banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`;
+  } else banner.hidden = true;
 }
 
 let lastKey = "";
 function render(p){
-  renderStamp(p.record);
+  lastPayload = p;
   const key = JSON.stringify([p.record, p.status, p.health && p.health.generated_at, p.manifest, p.delegation && p.delegation.generated_at, Math.floor(Date.now() / 60000)]);
-  if (key === lastKey) return;
-  lastKey = key;
-  renderTabs(p, renderDashboard(p));
+  if (key !== lastKey){
+    lastKey = key;
+    renderTabs(p, renderDashboard(p));
+  }
+  renderStamp();
 }
 
 async function fetchOptional(name){
@@ -738,7 +930,7 @@ async function load(){
     banner.hidden = false;
     banner.textContent = "The factory record could not be read (" + e.message + "). Retrying every minute.";
     el("dash").innerHTML = `<p class="unread">Nothing is drawn: the factory record is unread.</p>`;
-    TAB_IDS.forEach(id => setTab(id, "none", "unread", "the factory record could not be read"));
+    TAB_IDS.forEach(id => setTab(id, "none", "No data", "not read", "the factory record could not be read"));
   }
 }
 

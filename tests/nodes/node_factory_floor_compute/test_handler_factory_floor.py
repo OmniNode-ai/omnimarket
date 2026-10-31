@@ -119,8 +119,8 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert (station0.name, station0.feeders) == ("Wave 0", ())
     assert (station1a.name, station1a.feeders) == ("Wave 1a", ("0",))
     notes = {item.id: item.note for item in station0.items}
-    assert notes["W0.1"] == "PRs merged"
-    assert notes["W0.2"] == "claim lane-a"
+    assert notes["W0.1"] == "changes merged"
+    assert notes["W0.2"] == "worker lane-a is on it"
     assert notes["G0"] == "waits for W0.2"
     assert line.andon.flag is False
     assert line.andon.reason == ""
@@ -222,7 +222,7 @@ def test_manifest_evidence_from_terminal_linear_open_pr_and_stale_claim() -> Non
     assert notes["A"] == "Linear done"
     assert notes["B"] == "Linear in progress"
     assert notes["C"] == "PR repo#3 open"
-    assert notes["E"] == "lane x ended blocked"
+    assert notes["E"] == "worker x ended blocked"
 
 
 # ------------------------------------------------------------------------- andon or fallback
@@ -265,7 +265,7 @@ def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -
     assert states["G0"] == "stop"
     assert _station_states(line) == {"0": "stop", "1a": "wait"}
     note = {i.id: i.note for st in line.stations for i in st.items}
-    assert note["W0.2"] == "andon hold hold-andon-1: andon:gate:0:W0.2"
+    assert note["W0.2"] == "stopped by hold hold-andon-1: andon:gate:0:W0.2"
     assert note["G0"].startswith("gate failed ")
 
 
