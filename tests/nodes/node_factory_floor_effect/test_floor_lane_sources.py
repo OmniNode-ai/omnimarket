@@ -104,7 +104,8 @@ def test_the_pool_receipt_is_read_at_its_start_time_and_a_missing_one_is_none(
     assert [r.host for r in pool] == ["h200", "h105"]
     assert pool[0].read_at == datetime(2026, 10, 31, 17, 57, 24, tzinfo=UTC)
     assert load_pool(tmp_path / "absent.json") is None
-    assert load_pool(write(tmp_path / "bad.json", "{not json")) is None
+    bad_path = write(tmp_path / "bad.json", "{not json")
+    assert load_pool(bad_path) is None
 
 
 def test_the_host_table_gives_cap_and_availability(tmp_path: Path) -> None:

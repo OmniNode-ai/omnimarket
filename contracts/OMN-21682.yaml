@@ -26,7 +26,7 @@ requirements:
       - id: "AC7"
         statement: "AC7: the floor section carries one machine bay per overlay-declared machine (pool-read load, memory and swap, cap, placed lanes, placed units, CI runners, read, unread or in repair), a cloud bay (accounts, sessions, a stop lamp when the newest finished session could not push) and every live lane (ticket title, kind, engine, newest STATUS with its age, pull request with CI state, run time, stalled after the contract's stall minutes, the station that holds its ticket); a machine or cloud account the overlay does not declare is never drawn and a source that could not be read is unread, not zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q"
       - id: "AC8"
-        statement: "AC8: node_factory_floor_effect reads the remote-lane receipts, the pool read receipt, the placement markers, the cloud accounts file, the lab host table, the runner fleet observation, the Linear titles and the watcher CI verdict from contract-declared locations, and a source that is absent or malformed is recorded as unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect -k 'lane_sources or machine_bays' -q"
+        statement: "AC8: node_factory_floor_effect reads the remote-lane receipts, the pool read receipt, the placement markers, the cloud accounts file, the lab host table, the runner fleet observation, the Linear titles and the watcher CI verdict from contract-declared locations, and a source that is absent or malformed is recorded as unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -k 'lane_sources or machine_bays' -q"
       - id: "AC9"
         statement: "AC9: a HOLD stops a line only when no sentence of its text that carries an exemption marker names the line, the reason a hold shows is its own text and never an empty string, and a line with a red open pull request on a part being built is stopped with that pull request as its cause -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_hold_exemption.py -q"
 evidence_requirements:
@@ -106,7 +106,7 @@ dod_evidence:
     binds_ac: ["AC8"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_effect -q --no-cov --tb=line -k 'lane_sources or machine_bays'"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov --tb=line -k 'lane_sources or machine_bays'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21682-ac9"
     description: "AC9 hold exemption and red pull request cause tests pass."
