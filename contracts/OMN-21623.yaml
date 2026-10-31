@@ -46,9 +46,10 @@ dod_evidence:
         check_value: "uv run python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_demo_rehearsal src/omnimarket/nodes/node_demo_drift_detector --report-json /tmp/omn21623-contracts-and-di.json"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-deploy-probe-policy-landed"
-    description: "Deploy check: the probe_policy section is present in both demo node contracts as published on the pull request branch, read through the GitHub contents API."
+    description: "Deploy check: the probe_policy section is present in both demo node contracts at the checked-out revision, read through the GitHub contents API; the merge-base control reads its own revision."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "command"
-        check_value: "for n in node_demo_rehearsal node_demo_drift_detector; do gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/$n/contract.yaml?ref=jonah/omn-21623-omnimarket-di-slice\" --jq .content | base64 -d | grep -q '^probe_policy:' || exit 1; done"
+        check_value: "for n in node_demo_rehearsal node_demo_drift_detector; do gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/$n/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^probe_policy:' || exit 1; done"
+        cwd: "${OMNI_HOME}/omnimarket"
