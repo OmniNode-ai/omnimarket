@@ -49,6 +49,7 @@ from omnimarket.events.provider_quota import (
     EnumProviderQuotaSource,
     ModelProviderQuotaObserved,
 )
+from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
@@ -754,7 +755,11 @@ class HandlerLlmDelegationCall:
         """The BYOK catalogue row this call is a customer route on, or ``None``."""
         if not is_tenant_credential_ref(request.secret_ref):
             return None
-        return resolve_byok_backend_by_endpoint(endpoint_url)
+        # OMN-21263: a generic OpenAI-compatible key's endpoint is the URL the
+        # developer registered, not the row's, so it is found by its credential.
+        return resolve_byok_backend_by_endpoint(
+            endpoint_url
+        ) or endpoints.registered_row_for_ref(request.secret_ref, endpoint_url)
 
     def _resolve_byok_model(
         self,
