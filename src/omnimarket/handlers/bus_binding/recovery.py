@@ -20,10 +20,10 @@ from omnimarket.models.bus_binding import (
     EnumBusBindingState,
     ModelBusBindingDecision,
 )
-from omnimarket.nodes.node_exception_queue_effect.handler import (
-    HandlerExceptionEmit,
-    HandlerExceptionQueue,
-    HandlerExceptionResolve,
+from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+    create_handler_exception_emit,
+    create_handler_exception_queue,
+    create_handler_exception_resolve,
 )
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionEmitRequest,
@@ -110,7 +110,7 @@ def raise_alarm(
         if overdue
         else f"durable bus health read failed: {decision.reason}"
     )
-    result = HandlerExceptionEmit().handle(
+    result = create_handler_exception_emit().handle(
         ModelExceptionEmitRequest(
             state_dir=state_dir / "exception-queue",
             row=ModelExceptionRow(
@@ -195,7 +195,7 @@ def _report_refused(
             message = " ".join(str(refusal.get("message", "")).split())[:300]
         except (OSError, ValueError, AttributeError):
             message = "refusal unreadable"
-        HandlerExceptionEmit().handle(
+        create_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=state_dir / "exception-queue",
                 row=ModelExceptionRow(
@@ -234,7 +234,7 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
         return
     queue_dir = state_dir / "exception-queue"
     refused = _report_refused(state_dir, decision, record["outage_started_at"])
-    opened = HandlerExceptionQueue().handle(
+    opened = create_handler_exception_queue().handle(
         ModelExceptionQueueRequest(queue_dir, "orchestrator")
     )
     how = (
@@ -248,7 +248,7 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
             and row["key"] == f"lane={decision.lane}"
             and row["source"] == SOURCE
         ):
-            HandlerExceptionResolve().handle(
+            create_handler_exception_resolve().handle(
                 ModelExceptionResolveRequest(
                     queue_dir,
                     row["id"],

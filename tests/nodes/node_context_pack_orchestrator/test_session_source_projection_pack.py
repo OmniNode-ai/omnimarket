@@ -10,8 +10,8 @@ from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnimarket.models.context_pack_orchestrator import (
     EnumContextPackOrchestratorStatus,
 )
-from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
-    HandlerContextPackOrchestrator,
+from omnimarket.nodes.node_context_pack_orchestrator.container.container_context_pack_orchestrator import (
+    create_handler_context_pack_orchestrator,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.protocols import (
     ProtocolContextTierSource,
@@ -40,7 +40,7 @@ def test_compaction_pack_carries_session_projection_prompt(
     bound[EnumContextFactor.OPERATOR_WORDS_UNRECORDED] = HandlerSessionContextSources(
         content_reader=projection, ledger_reader=projection, tenant_ids=("tenant-a",)
     )
-    built = HandlerContextPackOrchestrator(
+    built = create_handler_context_pack_orchestrator(
         bound, implementation_identity=lambda: FIXED_IDENTITY
     ).handle(command(session_id=LIVE_SESSION, newest_turn="2026-10-19T08:00:00Z"))
     assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
