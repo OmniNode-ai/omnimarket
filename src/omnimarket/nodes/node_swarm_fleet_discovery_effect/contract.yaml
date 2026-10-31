@@ -84,3 +84,6 @@ metadata:
 runtime_dispatch:
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.swarm-discover-fleet.v1
+
+timeouts:
+  request_timeout_seconds: 10.0  # Bounds each fleet discovery request.
