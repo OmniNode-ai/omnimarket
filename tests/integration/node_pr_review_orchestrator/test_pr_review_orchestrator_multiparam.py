@@ -25,6 +25,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_pr_review_orchestrator,
+)
 from omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator import (
     HandlerPrReviewOrchestrator,
 )
@@ -159,7 +162,7 @@ async def test_pr_review_round_trip(
 ) -> None:
     await integration_event_bus.start()
     try:
-        orchestrator = HandlerPrReviewOrchestrator(
+        orchestrator = create_handler_pr_review_orchestrator(
             inference_adapter=_MockInferenceAdapter(review_raw=review_raw),
             github_diff_effect=_MockGithubDiffEffect(content=_BAD_DIFF),
             github_review_effect=_MockGithubReviewEffect(),
@@ -215,7 +218,7 @@ async def test_pr_review_negative_control_bad_diff_not_clean(
     bot surfaces findings and downgrades the verdict to RISKS_NOTED."""
     await integration_event_bus.start()
     try:
-        orchestrator = HandlerPrReviewOrchestrator(
+        orchestrator = create_handler_pr_review_orchestrator(
             inference_adapter=_MockInferenceAdapter(review_raw=_TWO_FINDINGS),
             github_diff_effect=_MockGithubDiffEffect(content=_BAD_DIFF),
             github_review_effect=_MockGithubReviewEffect(),
