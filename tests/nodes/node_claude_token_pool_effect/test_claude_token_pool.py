@@ -19,7 +19,9 @@ import pytest
 from pydantic import SecretStr
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
-from omnimarket.nodes.node_claude_token_pool_effect import __main__ as cli
+from omnimarket.nodes.node_claude_token_pool_effect import (
+    runtime_claude_token_pool as cli,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     SECRET_REF_PREFIX,
     ClaudeTokenPoolRefusedError,
@@ -466,3 +468,32 @@ def test_cli_mark_revoked_exit_codes_and_one_alert_line(
     monkeypatch.setattr("sys.stdout", _Pipe())
     assert cli.main(["resolve"], handler) == cli.EXIT_ALL_LIMITED
     assert fake_token("a") not in capsys.readouterr().err
+
+
+def test_reorder_draws_the_named_labels_first_and_keeps_the_rest_in_place(
+    rig: Rig,
+) -> None:
+    handler, _, _ = rig
+    for seed, label in (("a", "one"), ("b", "two"), ("c", "three"), ("d", "four")):
+        add(handler, label, fake_token(seed))
+    result = op(handler, "reorder", labels=("three", "one"))
+    assert [t.label for t in result.tokens] == ["three", "one", "two", "four"]
+    assert op(handler, "resolve").chosen == "three"
+    # a limited first token is skipped, as in any order
+    op(handler, "mark_limited", label="three", seconds=60)
+    assert op(handler, "resolve").chosen == "one"
+    again = op(handler, "reorder", labels=("three", "one"))
+    assert [t.label for t in again.tokens] == ["three", "one", "two", "four"]
+
+
+def test_reorder_refuses_an_unknown_or_repeated_label_and_changes_nothing(
+    rig: Rig,
+) -> None:
+    handler, _, _ = rig
+    add(handler, "one", fake_token("a"))
+    add(handler, "two", fake_token("b"))
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="ghost"):
+        op(handler, "reorder", labels=("two", "ghost"))
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="twice"):
+        op(handler, "reorder", labels=("two", "two"))
+    assert [t.label for t in op(handler, "status").tokens] == ["one", "two"]

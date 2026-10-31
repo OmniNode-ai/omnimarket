@@ -29,7 +29,6 @@ import hashlib
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -53,16 +52,8 @@ from omnimarket.github_landing.github_landing_requests import (
     pull_request_request,
     pull_requests_request,
 )
-from omnimarket.github_landing.github_landing_transport import (
-    UrllibGithubLandingTransport,
-)
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
-)
-from omnimarket.inference.secret_store_resolver import resolve_api_key_async
-from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_github_repo_write import (
-    HandlerGithubRepoWriteEffect,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models import (
     EnumRepoWriteMode,
@@ -76,9 +67,10 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
 from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolGithubRepoWriteTransport,
 )
+from omnimarket.nodes.node_github_repo_write_effect.source_control_connection import (
+    SourceControlConnection,
+)
 
-_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
-_SECRET_NAME = "GITHUB_TOKEN"
 # A runaway paging guard: 10 pages of 100.
 _MAX_PAGES = 10
 # The diff patch text is cut here; the counts always cover every file.
@@ -138,7 +130,8 @@ class HandlerSourceControlGithub:
 
     ``transport`` is injected in tests (a recorded fake); without one,
     :meth:`connect` builds the live transport from the contract-declared
-    ``GITHUB_TOKEN`` ref.
+    ``GITHUB_TOKEN`` ref. The open transport and write effect are held by a
+    :class:`SourceControlConnection`, which a caller may inject.
     """
 
     def __init__(
@@ -147,29 +140,28 @@ class HandlerSourceControlGithub:
         *,
         lane: str = "source-control-adapter",
         clock: Callable[[], float] = time.time,
+        connection: SourceControlConnection | None = None,
     ) -> None:
-        self._transport = transport
+        self._connection = (
+            SourceControlConnection(transport, clock=clock)
+            if connection is None
+            else connection
+        )
         self._lane = lane
         self._clock = clock
         self._service_id = uuid4()
-        self._writer: HandlerGithubRepoWriteEffect | None = None
 
     # --- lifecycle ------------------------------------------------------------
 
     async def connect(self) -> bool:
-        if self._transport is None:
-            ref = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
-            secret = await resolve_api_key_async(ref, env_var_fallback=ref)
-            if secret is None or not secret.get_secret_value():
-                return False
-            self._transport = UrllibGithubLandingTransport(secret)
-        self._writer = HandlerGithubRepoWriteEffect(self._transport, clock=self._clock)
-        return True
+        return await self._connection.open()
 
     async def health_check(self) -> ProtocolServiceHealthStatus:
         return ModelSourceControlHealthStatus(
             service_id=self._service_id,
-            status="healthy" if self._transport is not None else "unavailable",
+            status="healthy"
+            if self._connection.transport is not None
+            else "unavailable",
             last_check=datetime.fromtimestamp(self._clock(), tz=UTC),
         )
 
@@ -177,17 +169,17 @@ class HandlerSourceControlGithub:
         return ["read", "write"]
 
     async def close(self, timeout_seconds: float = 30.0) -> None:
-        self._transport = None
-        self._writer = None
+        self._connection.release()
 
     # --- reads ----------------------------------------------------------------
 
     async def _get(
         self, request: ModelGithubHttpRequest
     ) -> tuple[int, dict[str, object]]:
-        if self._transport is None:
+        transport = self._connection.transport
+        if transport is None:
             raise RuntimeError("connect() before using the source-control adapter")
-        response = await self._transport.send(request)
+        response = await transport.send(request)
         if response.status == 404:
             return 404, {}
         if not 200 <= response.status < 300:
@@ -200,14 +192,15 @@ class HandlerSourceControlGithub:
     async def _collect(
         self, first: ModelGithubHttpRequest, *, item_key: str, limit: int
     ) -> list[dict[str, object]]:
-        if self._transport is None:
+        transport = self._connection.transport
+        if transport is None:
             raise RuntimeError("connect() before using the source-control adapter")
         items: list[dict[str, object]] = []
         request: ModelGithubHttpRequest | None = first
         for _page in range(_MAX_PAGES):
             if request is None or len(items) >= limit:
                 break
-            response = await self._transport.send(request)
+            response = await transport.send(request)
             if not 200 <= response.status < 300:
                 raise RuntimeError(
                     f"GitHub GET {request.path} answered HTTP {response.status}: "
@@ -292,10 +285,11 @@ class HandlerSourceControlGithub:
         base: str = "main",
         draft: bool = False,
     ) -> ModelPullRequest:
-        if self._writer is None:
+        writer = self._connection.writer
+        if writer is None:
             raise RuntimeError("connect() before using the source-control adapter")
         key = hashlib.sha256(f"{repo}:{head}:{base}".encode()).hexdigest()[:32]
-        result = await self._writer.handle(
+        result = await writer.handle(
             ModelRepoWriteRequest(
                 correlation_id=uuid4(),
                 operation=EnumRepoWriteOperation.PR_CREATE,

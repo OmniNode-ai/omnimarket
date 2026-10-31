@@ -14,10 +14,13 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import yaml
 
+from omnimarket.nodes.node_handoff_effect.models.model_handoff_request import (
+    ModelHandoffRequest,
+)
 from omnimarket.nodes.node_handoff_effect.service_catalog import probe_services
 
 logger = logging.getLogger(__name__)
@@ -206,20 +209,14 @@ class HandlerHandoffEffect:
     handler_type: Literal["node_handler"] = "node_handler"
     handler_category: Literal["effect"] = "effect"
 
-    def handle(
-        self,
-        session_id: str,
-        correlation_id: UUID,
-        summary: str | None = None,
-        cwd: str | None = None,
-    ) -> dict[str, object]:
+    def handle(self, request: ModelHandoffRequest) -> dict[str, object]:
         """Capture state and write artifact.
 
         Args:
-            session_id: Session identifier for artifact scoping.
-            correlation_id: Correlation ID flowing through the pipeline.
-            summary: Optional free-text note for next session.
-            cwd: Working directory to capture from (defaults to process cwd).
+            request: Session identifier for artifact scoping, correlation ID
+                flowing through the pipeline, optional free-text note for the
+                next session and the working directory to capture from
+                (defaults to process cwd).
 
         Returns:
             dict with artifact_path, captured_branches, captured_dirty_files.
@@ -227,7 +224,10 @@ class HandlerHandoffEffect:
         Raises:
             InfraHealthGatherError: If any mandatory infra health check cannot be sourced.
         """
-        work_dir = cwd or os.getcwd()
+        session_id = request.session_id
+        correlation_id = request.correlation_id
+        summary = request.summary
+        work_dir = request.cwd or os.getcwd()
 
         branch = _run(["git", "branch", "--show-current"], work_dir)
         commit = _run(["git", "log", "-1", "--format=%H"], work_dir)
