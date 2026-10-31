@@ -294,7 +294,8 @@ def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", PAGE, re.IGNORECASE
     )
-    assert "<link" not in PAGE
+    assert PAGE.count("<link") == 1
+    assert '<link rel="icon" href="data:,">' in PAGE
     assert "src=" not in PAGE
 
 
