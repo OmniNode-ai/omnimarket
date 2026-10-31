@@ -249,12 +249,5 @@ node_tool_reuse_matcher_compute failure_reason
 node_tool_reuse_matcher_compute match_strategy_used
 node_tool_reuse_matcher_compute onex.evt.omnimarket.tool-reuse-matched.v1
 node_tool_reuse_matcher_compute onex.evt.omnimarket.tool-reuse-no-match.v1
-node_version_skew_detector detected_at
-node_version_skew_detector incompatible_nodes
-node_version_skew_detector onex.evt.omniclaude.version-skew-detected.v1
-node_version_skew_detector onex.evt.omniclaude.version-skew-healthy.v1
-node_version_skew_detector plugin_version
-node_version_skew_detector runtime_version
-node_version_skew_detector status
 node_worker_stall_recovery onex.evt.omnimarket.worker-stall-recovery-complete.v1
 node_worker_stall_recovery onex.evt.omnimarket.worker-stall-recovery-result.v1

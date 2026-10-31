@@ -36,8 +36,8 @@ from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
 )
-from omnimarket.nodes.node_slack_publish_effect.handlers.handler_slack_publish_effect import (
-    HandlerSlackPublishEffect,
+from omnimarket.nodes.node_slack_publish_effect.container.container_slack_publish_effect import (
+    create_handler_slack_publish_effect,
 )
 from omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish import (
     ModelSlackPublish,
@@ -85,7 +85,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         )
         sys.exit(1)
 
-    handler = HandlerSlackPublishEffect()
+    handler = create_handler_slack_publish_effect()
 
     topic_cmd, topic_published, topic_failed, topic_deduped = _resolve_topics()
 
