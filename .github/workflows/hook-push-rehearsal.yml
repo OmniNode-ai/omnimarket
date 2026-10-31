@@ -23,7 +23,8 @@ jobs:
   hook-push-rehearsal:
     permissions:
       contents: read
-    uses: OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml@dev-20261018024445-b6ee996befa1
+    uses: OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml@dev-20261031034124-e3433152a2f6
     with:
       path-regex: '^(\.pre-commit-config\.yaml|\.pre-commit-hooks\.yaml|\.pre-commit-hooks/|scripts/hooks/|\.github/workflows/hook-push-rehearsal\.yml)'
       sample-file: src/omnimarket/adapters/adk/models.py
+      sibling-repositories: omnibase_infra

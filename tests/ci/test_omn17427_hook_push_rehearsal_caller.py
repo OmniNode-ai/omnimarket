@@ -72,3 +72,10 @@ def test_sample_file_is_a_python_source_file() -> None:
     assert sample.startswith("src/omnimarket/")
     assert sample.endswith(".py")
     assert (REPO_ROOT / sample).is_file()
+
+
+def test_caller_supplies_the_omnibase_infra_sibling_the_pre_push_set_reads() -> None:
+    # The Topic Naming Lint pre-push hook (scripts/validation/run_topic_lint.sh) runs
+    # omnibase_infra's lint_topic_names.py; without the sibling the rehearsal refuses the push.
+    siblings = str(_job()["with"]["sibling-repositories"]).split()
+    assert "omnibase_infra" in siblings
