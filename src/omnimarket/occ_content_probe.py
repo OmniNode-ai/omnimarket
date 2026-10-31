@@ -1148,8 +1148,11 @@ MAX_WORKFLOW_PIN_FILES = 5
 _WF_REPOSITORY_RE = re.compile(
     r"^(?P<indent>[ ]*)(?:-[ ]+)?repository:[ ]*['\"]?(?P<repo>[^'\"\s#]+)['\"]?[ ]*(?:#.*)?$"
 )
+# ``OMNIBASE_CORE_COMMIT`` (OMN-20074) is the env-var pin site omnibase_core's
+# docs/downstream-repos.yaml declares for a downstream repository, read by the checkout as
+# ``ref: ${{ env.OMNIBASE_CORE_COMMIT }}``. Only that exact key is a pin.
 _WF_REF_RE = re.compile(
-    r"^(?P<indent>[ ]*)ref:[ ]*['\"]?(?P<sha>[0-9a-f]{40})['\"]?(?P<tail>[ ]*(?:#.*)?)$"
+    r"^(?P<indent>[ ]*)(?P<key>ref|OMNIBASE_CORE_COMMIT):[ ]*['\"]?(?P<sha>[0-9a-f]{40})['\"]?(?P<tail>[ ]*(?:#.*)?)$"
 )
 # The only comment lines a pin bump may add, drop or rewrite: the banner the
 # bump engine owns (omnibase_core scripts/pin_bump.py). Any other comment line
@@ -1171,7 +1174,8 @@ def _normalize_workflow_pins(content: str) -> tuple[tuple[str, ...], tuple[str, 
 
     Drops the pin-banner comment lines and replaces the SHA of every ``ref:``
     that is a sibling of an allowed ``repository:`` key in the same mapping
-    with a placeholder. A ``ref:`` that precedes its ``repository:`` is left
+    with a placeholder, and does the same for the ``OMNIBASE_CORE_COMMIT`` env
+    var (OMN-20074). A ``ref:`` that precedes its ``repository:`` is left
     alone, which fails closed (the diff then shows it). The scope of a
     ``repository:`` ends at the first non-blank line indented less than the
     mapping it sits in.
@@ -1195,14 +1199,13 @@ def _normalize_workflow_pins(content: str) -> tuple[tuple[str, ...], tuple[str, 
                     len(line[indent:]) - len(line[indent:].lstrip("- "))
                 )
             m_ref = _WF_REF_RE.match(line)
-            if (
-                m_ref
-                and scope_repo in WORKFLOW_PIN_REPOSITORIES
-                and indent == scope_indent
+            if m_ref and (
+                m_ref.group("key") != "ref"
+                or (scope_repo in WORKFLOW_PIN_REPOSITORIES and indent == scope_indent)
             ):
                 pins.append(m_ref.group("sha"))
                 line = (
-                    f"{m_ref.group('indent')}ref: {_WF_PIN_PLACEHOLDER}"
+                    f"{m_ref.group('indent')}{m_ref.group('key')}: {_WF_PIN_PLACEHOLDER}"
                     f"{m_ref.group('tail')}"
                 )
         out.append(line.rstrip())

@@ -109,7 +109,10 @@ from packaging.version import InvalidVersion, Version
 #: declaration still covers every such directory in the tree. A new wire
 #: package therefore turns a test RED until someone decides, in writing,
 #: whether it is graded.
-WIRE_MODEL_ROOTS: tuple[str, ...] = ("src/omnimarket/models/delegation/wire",)
+WIRE_MODEL_ROOTS: tuple[str, ...] = (
+    "src/omnimarket/models/delegation/wire",
+    "src/omnimarket/models/evidence_pipeline/wire",
+)
 
 #: Where the importable package tree lives, relative to the repository root.
 SRC_DIR = "src"
@@ -300,10 +303,7 @@ def changed_wire_modules(
     modules: list[tuple[str, str]] = []
     seen: set[str] = set()
     for path in sorted(files):
-        if not path.endswith(".py"):
-            continue
-        name = Path(path).name
-        if not name.startswith("model_"):
+        if not (path.endswith(".py") and Path(path).name.startswith("model_")):
             continue
         if not any(path.startswith(f"{wire_root}/") for wire_root in wire_roots):
             continue

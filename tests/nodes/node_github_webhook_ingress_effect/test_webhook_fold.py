@@ -16,6 +16,7 @@ from omnimarket.models.model_github_pr_state_observation import (
 )
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubBranchHeadObservation,
+    ModelGitHubDevMergeTagObservation,
     ModelGitHubPrMergedObservation,
 )
 from omnimarket.nodes.node_github_webhook_ingress_effect.webhook_fold import (
@@ -461,3 +462,46 @@ class TestBranchHeadObservations:
 
     def test_no_watched_branches_means_no_branch_events(self) -> None:
         assert _fold("check_run", _summary_run("dev")) == ()
+
+
+class TestDevMergeTagObservations:
+    """OMN-20134: the creation of a dev-merge tag is the event a pin consumer acts on."""
+
+    TAG = "dev-20261030152335-66d35d2283c3"
+
+    def _push(self, **overrides: object) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "repository": {"full_name": "OmniNode-ai/omnibase_core"},
+            "ref": f"refs/tags/{self.TAG}",
+            "before": "0" * 40,
+            "after": "66d35d2283c3011c436799eacb9bce1a434ee6c9",
+            "created": True,
+            "deleted": False,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_a_created_dev_merge_tag_is_one_observation(self) -> None:
+        (obs,) = _fold("push", self._push())
+        assert isinstance(obs, ModelGitHubDevMergeTagObservation)
+        assert (obs.repo, obs.tag, obs.sha) == (
+            "OmniNode-ai/omnibase_core",
+            self.TAG,
+            "66d35d2283c3011c436799eacb9bce1a434ee6c9",
+        )
+        assert obs.topic == "onex.evt.github.dev-merge-tag.v1"
+        assert obs.delivery_id == D1
+
+    def test_other_tags_moves_and_deletions_say_nothing(self) -> None:
+        assert _fold("push", self._push(ref="refs/tags/v1.2.3")) == ()
+        assert _fold("push", self._push(ref="refs/tags/dev-2026-not-a-tag")) == ()
+        assert _fold("push", self._push(created=False)) == ()
+        assert _fold("push", self._push(created=False, deleted=True)) == ()
+
+    def test_a_tag_push_is_never_a_branch_head_event(self) -> None:
+        out = _fold("push", self._push())
+        assert not any(isinstance(o, ModelGitHubBranchHeadObservation) for o in out)
+
+    def test_a_tag_push_without_an_after_sha_is_a_malformed_delivery(self) -> None:
+        with pytest.raises(WebhookFoldError):
+            _fold("push", self._push(after=None))

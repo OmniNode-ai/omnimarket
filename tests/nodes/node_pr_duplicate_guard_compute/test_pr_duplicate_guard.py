@@ -12,25 +12,32 @@ the open pull request.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumDuplicateEvidence,
+    ModelDuplicateGuardRules,
     ModelFileTouch,
     ModelOpenPr,
     ModelPrDuplicateGuardRequest,
     ModelPrDuplicateGuardResult,
     ModelPrTouch,
 )
+from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers import (
+    handler_pr_duplicate_guard as handler_module,
+)
 from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers.handler_pr_duplicate_guard import (
     HandlerPrDuplicateGuard,
     distinctive_words,
+    load_generic_paths,
     overlap,
 )
 
 pytestmark = pytest.mark.unit
 
+GENERIC = ModelDuplicateGuardRules(generic_paths=load_generic_paths())
 NOW = datetime(2026, 10, 30, 0, 40, tzinfo=UTC)
 BASELINE = ".onex_ratchets/protocol_binding_baseline.txt"
 BASELINE_TEST = "tests/unit/validation/test_checker_protocol_binding.py"
@@ -303,7 +310,7 @@ def test_a_shared_lock_file_or_ticket_contract_says_nothing() -> None:
     )
     other = ModelOpenPr(number=5, head_ref="x", base="dev", title="a", touch=generic)
     assert other.touch is not None
-    lines, shared = overlap(generic, other.touch)
+    lines, shared = overlap(generic, other.touch, GENERIC, "omnibase_core")
 
     assert lines == []
     assert shared == []
@@ -481,3 +488,145 @@ def test_distinctive_words_drop_tickets_and_stop_words() -> None:
         "controller",
         "guard",
     }
+
+
+# ---- generated files: every plan pull request rewrites the count rows of a rendered index (2026-10-30)
+#
+# The caller reads the repository's generated paths from the deployment overlay and passes them in the request.
+# The fixtures use a made-up repository so the public tests carry no private name.
+
+PLANS = "example_plans_repo"
+INDEX = "plans/INDEX.md"
+REGISTRY = "plans/PLAN_LIFECYCLE.yaml"
+DECLARED = {PLANS: (INDEX,)}
+#: ``check_plan_index.py --write`` rewrites the status-count rows at lines 16 and 19 in every plan pull request.
+COUNT_ROWS = (16, 16), (19, 19)
+
+
+def plan_pr(number: int, plan: str, *plan_spans: tuple[int, int]) -> ModelOpenPr:
+    """A plan pull request: its plan file, its registry entry, and the regenerated count rows of the index."""
+    return ModelOpenPr(
+        number=number,
+        head_ref=f"jonah/plan-{number}",
+        base="main",
+        title=f"docs: the {plan} plan",
+        touch=touch(
+            ModelFileTouch(
+                path=f"plans/{plan}.md", added=not plan_spans, spans=plan_spans
+            ),
+            edit(INDEX, *COUNT_ROWS),
+            ModelFileTouch(path=REGISTRY),
+        ),
+    )
+
+
+def fold(
+    mine: ModelOpenPr,
+    *open_prs: ModelOpenPr,
+    repo: str = PLANS,
+    generated: dict[str, tuple[str, ...]] | None = None,
+) -> ModelPrDuplicateGuardResult:
+    return run(
+        repo=repo,
+        head_ref=mine.head_ref,
+        base="main",
+        title=mine.title,
+        touch=mine.touch,
+        open_prs=open_prs,
+        generated_paths=DECLARED if generated is None else generated,
+    )
+
+
+OPEN_PLANS = (
+    plan_pr(854, "alpha-ledger"),
+    plan_pr(1538, "beta-routing"),
+    plan_pr(1541, "gamma-dashboards"),
+)
+
+
+def test_plan_pull_requests_that_share_only_the_regenerated_index_rows_pass() -> None:
+    result = fold(plan_pr(1, "configuration-contract"), *OPEN_PLANS)
+
+    assert result.state == "clear"
+    assert result.evidence == ()
+
+
+def test_the_declaration_is_what_clears_the_index_rows() -> None:
+    mine = plan_pr(1, "configuration-contract")
+
+    undeclared = fold(mine, *OPEN_PLANS, generated={})
+
+    assert undeclared.state == "adopt"
+    assert {e.kind for e in undeclared.evidence} == {EnumDuplicateEvidence.LINES}
+    assert all(INDEX in e.detail for e in undeclared.evidence)
+    assert fold(mine, *OPEN_PLANS).state == "clear"
+
+
+def test_the_repository_is_matched_by_its_short_name_in_either_spelling() -> None:
+    mine = plan_pr(1, "configuration-contract")
+
+    assert fold(mine, *OPEN_PLANS, repo="SomeOrg/example-plans-repo").state == "clear"
+    assert (
+        fold(
+            mine,
+            *OPEN_PLANS,
+            generated={"SomeOrg/Example-Plans-Repo": (INDEX,)},
+        ).state
+        == "clear"
+    )
+
+
+def test_two_pull_requests_editing_the_same_plan_file_are_still_refused() -> None:
+    result = fold(
+        plan_pr(2, "alpha-ledger", (44, 60)),
+        plan_pr(854, "alpha-ledger", (40, 52)),
+        plan_pr(1538, "beta-routing"),
+    )
+
+    assert result.state == "adopt"
+    assert result.adopt_pr == f"{PLANS}#854"
+    assert [e.kind for e in result.evidence] == [EnumDuplicateEvidence.LINES]
+    assert "plans/alpha-ledger.md:44" in result.evidence[0].detail
+    assert INDEX not in result.evidence[0].detail
+
+
+def test_two_pull_requests_adding_the_same_plan_file_are_still_refused() -> None:
+    result = fold(plan_pr(2, "alpha-ledger"), plan_pr(854, "alpha-ledger"))
+
+    assert result.state == "adopt"
+    assert "plans/alpha-ledger.md (both add it)" in result.evidence[0].detail
+
+
+def test_a_repository_that_does_not_declare_the_index_generated_still_has_it_counted() -> (
+    None
+):
+    result = fold(
+        plan_pr(1, "configuration-contract"), *OPEN_PLANS, repo="example_repo"
+    )
+
+    assert result.state == "adopt"
+    assert all(INDEX in e.detail for e in result.evidence)
+
+
+def test_a_generated_path_names_one_file_not_every_file_of_that_name() -> None:
+    rules = ModelDuplicateGuardRules(generated_paths=DECLARED)
+    other = touch(edit("docs/INDEX.md", (16, 16)))
+    lines, shared = overlap(other, other, rules, PLANS)
+
+    assert shared == ["docs/INDEX.md"]
+    assert lines == ["docs/INDEX.md:16"]
+
+
+def test_the_shipped_generic_files_come_from_the_contract() -> None:
+    assert "*.lock" in GENERIC.generic_paths
+    assert GENERIC.ignores(PLANS, "uv.lock")
+    assert GENERIC.ignores(PLANS, "deep/dir/package-lock.json")
+    assert not GENERIC.ignores(PLANS, INDEX)
+
+
+def test_the_handler_source_holds_no_file_list() -> None:
+    source = Path(handler_module.__file__).read_text(encoding="utf-8")
+
+    assert "INDEX.md" not in source
+    assert "package-lock" not in source
+    assert "os.environ" not in source

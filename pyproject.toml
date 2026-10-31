@@ -833,6 +833,7 @@ node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap"
 node_session_phase_reducer = "omnimarket.nodes.node_session_phase_reducer"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem"
 node_onboarding = "omnimarket.nodes.node_onboarding"
+node_onex_setup_effect = "omnimarket.nodes.node_onex_setup_effect"
 node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner"
 node_similarity_compute = "omnimarket.nodes.node_similarity_compute"
 node_persona_builder_compute = "omnimarket.nodes.node_persona_builder_compute"
@@ -907,6 +908,7 @@ node_fixer_dispatcher = "omnimarket.nodes.node_fixer_dispatcher"
 node_verification_receipt_generator = "omnimarket.nodes.node_verification_receipt_generator"
 node_task_execution_orchestrator = "omnimarket.nodes.node_task_execution_orchestrator"
 node_pattern_b_broker = "omnimarket.nodes.node_pattern_b_broker"
+node_developer_lane_admission_compute = "omnimarket.nodes.node_developer_lane_admission_compute"
 
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_audit_trail_compactor = "omnimarket.nodes.node_audit_trail_compactor"
@@ -1032,6 +1034,11 @@ node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_eff
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
 node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
+node_receipt_gate_pin_advance_compute = "omnimarket.nodes.node_receipt_gate_pin_advance_compute"
+node_receipt_gate_pin_advance_effect = "omnimarket.nodes.node_receipt_gate_pin_advance_effect"
+node_projection_receipt_gate_pin_friction = "omnimarket.nodes.node_projection_receipt_gate_pin_friction"
+node_receipt_gate_pin_friction_report_compute = "omnimarket.nodes.node_receipt_gate_pin_friction_report_compute"
+node_receipt_gate_pin_friction_ledger_effect = "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect"
 node_operator_access_mode_effect = "omnimarket.nodes.node_operator_access_mode_effect"
 node_silent_failure_alarm_compute = "omnimarket.nodes.node_silent_failure_alarm_compute"
 node_runtime_deploy_effect = "omnimarket.nodes.node_runtime_deploy_effect"
@@ -1180,6 +1187,10 @@ lab-archive = "omnimarket.nodes.node_lab_history_archive_effect.cli:lab_archive_
 # `onex lab-story-log` -- write one ISO week of the work ledger as a sanitized story log for the
 # lab-journey article series; run weekly by a host tick. Discovered over installed distributions.
 lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_command"
+# `onex setup` -- set up this machine for ONEX, the first command a new developer runs: the
+# onboarding walk a CLI user needs from omnibase install.sh. omnibase_core names it as the root
+# quickstart. Discovered over installed distributions like the groups above.
+setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"
 # OMN-19998: `onex lab claude-token` -- store, deploy, probe and rotate a lab
 # host's Claude token by reference (node_lab_claude_token_effect). Discovered
 # over installed distributions like the groups above.
@@ -1230,18 +1241,16 @@ omnimarket = "omnimarket.nodes"
 # OMN-21396: infra#5389 vendors node_projection_delegation_eval 0008
 # (harness eval identity columns) byte-identical.
 # OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
-# OMN-21217: infra#5290 vendors node_delegation_routing_reducer 0007 (ordered
-# models) and node_projection_tenant_credentials 0009 (models and version)
-# byte-identical; infra#5426 (joins only the topics in use at boot) keeps the
-# composed runtime boot inside its budget with this PR's state topics.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261029155031-24bcaf4f984d" }
+# OMN-17427: infra#5449 reaches the done-write gate through omnibase_core's node contract,
+# so this tag imports no handler module that core#2135 moved.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261030213019-091013fd7adb" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261028111658-97c5d1c2802a" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261030152335-66d35d2283c3" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261028101803-7955bf0dff0f" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed

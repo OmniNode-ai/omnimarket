@@ -13,7 +13,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator
   class: HandlerReadinessGateOrchestrator
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report.ModelGapReport
+  input_model: omnimarket.models.evidence_pipeline.wire.model_gap_report.ModelGapReport
 
 # OMN-18013 / OMN-16939 — routing_strategy is topic_match with ONE entry per topic, each
 # declaring its own message_category. handler_wiring derives an entry's category ONCE
@@ -44,11 +44,11 @@ handler_routing:
 
 input_model:
   name: ModelGapReport
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report
+  module: omnimarket.models.evidence_pipeline.wire.model_gap_report
   description: "Deployment-scoped evidence gap report produced by deterministic analysis."
 output_model:
   name: ModelDeploymentReadinessResult
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result
+  module: omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result
   description: "Machine-readable deployment readiness decision."
 
 descriptor:
