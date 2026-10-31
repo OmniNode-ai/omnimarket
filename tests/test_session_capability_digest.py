@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_session_capability_digest_effect.handlers import (
-    HandlerSessionCapabilityDigest,
+from omnimarket.nodes.node_session_capability_digest_effect import (
+    runtime_session_capability_digest_cli as cli,
 )
 from omnimarket.nodes.node_session_capability_digest_effect.handlers import (
-    handler_session_capability_digest_cli as cli,
+    HandlerSessionCapabilityDigest,
 )
 from omnimarket.nodes.node_session_capability_digest_effect.models import (
     EnumSessionCapabilityDigestOutcome,

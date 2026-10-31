@@ -14,8 +14,8 @@ from uuid import uuid4
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 
-from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_response_parser_compute import (
-    HandlerResponseParserCompute,
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_response_parser_compute,
 )
 from omnimarket.nodes.node_review_response_parser_compute.models.model_review_response_parser import (
     ModelReviewResponseParserRequest,
@@ -37,7 +37,7 @@ async def test_golden_chain_response_parse_findings() -> None:
             }
         ]
     )
-    output = await HandlerResponseParserCompute().handle(
+    output = await create_handler_response_parser_compute().handle(
         ModelReviewResponseParserRequest(
             correlation_id=cid, raw_text=raw, source_model="qwen3-coder"
         )
@@ -53,7 +53,7 @@ async def test_golden_chain_response_parse_findings() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_golden_chain_response_parse_empty_is_clean() -> None:
-    output = await HandlerResponseParserCompute().handle(
+    output = await create_handler_response_parser_compute().handle(
         ModelReviewResponseParserRequest(
             correlation_id=uuid4(), raw_text="", source_model="m"
         )

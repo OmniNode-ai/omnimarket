@@ -15,8 +15,8 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 
-from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
-    HandlerContextPackOrchestrator,
+from omnimarket.nodes.node_context_pack_orchestrator.container.container_context_pack_orchestrator import (
+    create_handler_context_pack_orchestrator,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.tier_source_binding import (
     load_tier_sources,
@@ -138,12 +138,12 @@ def test_loading_makes_no_connection_without_a_dsn(
 
 
 def test_zero_argument_orchestrator_requires_runtime_sources() -> None:
-    handler = HandlerContextPackOrchestrator()
+    handler = create_handler_context_pack_orchestrator()
     assert handler._sources == {}
 
 
 def test_explicit_empty_sources_bind_nothing() -> None:
-    handler = HandlerContextPackOrchestrator({})
+    handler = create_handler_context_pack_orchestrator({})
     assert handler._sources == {}
 
 

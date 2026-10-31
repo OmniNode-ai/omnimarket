@@ -37,6 +37,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.events.runtime_deployment import (
     GRANT_FETCH_REF,
     GRANT_FILE_PATH,
@@ -58,7 +59,7 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 # GitHub API host for the grant-anchor read. This is the public api.github.com
 # control-plane host (no per-model routing authority applies to a VCS read of the
 # governance anchor), matching node_github_review_effect's identical I/O boundary.
-_GITHUB_API_BASE = "https://api.github.com"  # url-authority-ok: GitHub control-plane host for the omnimarket@main grant read; no model routing authority
+_GITHUB_API_BASE = GITHUB_REST_URL
 _GITHUB_API_VERSION = "2022-11-28"
 _REQUEST_TIMEOUT = 30.0
 _CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
