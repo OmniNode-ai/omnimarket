@@ -26,6 +26,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn21478-pr4639-machine-grant-role-runtime
+  description: Market's overlay reader round-trips named machine grant-role bindings through the installed core pin, keeps legacy rows unbound, and refuses developer bindings, duplicate roles and inline grants. The previous core pin refuses the valid machine binding.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_core_pin_principal_roles_omn21478.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn21478-omnimarket-workflow-and-rows
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
   source: manual
