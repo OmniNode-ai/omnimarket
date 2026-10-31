@@ -34,6 +34,8 @@
   "tests/ci/test_auto_merge_ready_for_review_omn19216.py": 0.25,
   "tests/ci/test_automated_pusher_identity_omn18273.py": 0.23,
   "tests/ci/test_canonical_file_shape_burndown_omn21524.py": 0.17,
+  "tests/ci/test_omn21630_urllib3_lock_floor.py": 0.05,
+  "tests/ci/test_omn21627_virtualenv_lock_floor.py": 0.05,
   "tests/ci/test_canonical_file_shape_pin_omn20460.py": 0.26,
   "tests/ci/test_check_aiokafka_construction_auth.py": 9.95,
   "tests/ci/test_check_backend_secret_discipline.py": 18.04,

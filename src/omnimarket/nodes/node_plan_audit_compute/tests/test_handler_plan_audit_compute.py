@@ -15,6 +15,9 @@ from omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_comput
 from omnimarket.nodes.node_plan_audit_compute.models.model_plan_audit_compute_request import (
     ModelPlanAuditComputeRequest,
 )
+from omnimarket.nodes.node_plan_audit_compute.models.model_plan_audit_compute_result import (
+    ModelPlanAuditComputeResult,
+)
 
 
 @pytest.mark.unit
@@ -325,3 +328,118 @@ def test_handler_yaml_parse_failure_is_fail_not_crash(tmp_path: Path) -> None:
     assert result.passed is False
     assert result.verdict == "FAIL"
     assert any("failed to read or parse YAML" in v for v in result.violations)
+
+
+_PLAN_BODY = """# Plan {name}
+
+- **state_as_of:** {state}
+- **Ticket:** OMN-21632
+{link}
+verified: 2026-10-31 via git show
+
+## 7. Tasks
+
+### Task 1
+Do the thing.
+"""
+
+
+def _write_plan(tmp_path: Path, state: str, link: bool, companion: str | None) -> Path:
+    plan = tmp_path / "2026-10-31-demo.md"
+    link_line = (
+        "- **Readable:** [plain words](2026-10-31-demo.readable.md)\n" if link else ""
+    )
+    plan.write_text(
+        _PLAN_BODY.format(name="demo", state=state, link=link_line), encoding="utf-8"
+    )
+    if companion is not None:
+        (tmp_path / "2026-10-31-demo.readable.md").write_text(
+            companion, encoding="utf-8"
+        )
+    return plan
+
+
+def _audit(path: Path) -> ModelPlanAuditComputeResult:
+    return HandlerPlanAuditCompute().handle(
+        ModelPlanAuditComputeRequest(plan_path=str(path))
+    )
+
+
+@pytest.mark.unit
+def test_companion_missing_fails_planted_fixture(tmp_path: Path) -> None:
+    """Planted failing fixture: new plan with a catalogue and no companion."""
+    result = _audit(_write_plan(tmp_path, "2026-10-31T09:00Z", False, None))
+
+    assert result.passed is False
+    assert any("companion" in v for v in result.violations)
+    assert any(c.name == "companion_readable" and not c.passed for c in result.checks)
+
+
+@pytest.mark.unit
+def test_companion_linked_and_present_passes(tmp_path: Path) -> None:
+    result = _audit(
+        _write_plan(tmp_path, "2026-10-31T09:00Z", True, "# Plain words\n\nHi.\n")
+    )
+
+    assert result.passed is True
+    assert any(c.name == "companion_readable" and c.passed for c in result.checks)
+
+
+@pytest.mark.unit
+def test_companion_present_but_unlinked_fails(tmp_path: Path) -> None:
+    result = _audit(_write_plan(tmp_path, "2026-11-02", False, "# Plain words\n"))
+
+    assert result.passed is False
+    assert any("does not link" in v for v in result.violations)
+
+
+@pytest.mark.unit
+def test_companion_empty_fails(tmp_path: Path) -> None:
+    result = _audit(_write_plan(tmp_path, "2026-10-31", True, "  \n"))
+
+    assert result.passed is False
+    assert any("no H1" in v for v in result.violations)
+
+
+@pytest.mark.unit
+def test_plan_before_effective_date_is_not_required(tmp_path: Path) -> None:
+    result = _audit(_write_plan(tmp_path, "2026-10-30T23:59Z", False, None))
+
+    assert result.passed is True
+    assert any("not required" in c.detail for c in result.checks)
+
+
+@pytest.mark.unit
+def test_catalogue_plan_without_state_as_of_warns(tmp_path: Path) -> None:
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# P\nOMN-1\nverified: 2026-10-31 via x\n## Tasks\n", encoding="utf-8"
+    )
+
+    result = _audit(plan)
+
+    assert result.passed is True
+    assert any("not evaluated" in w for w in result.warnings)
+
+
+@pytest.mark.unit
+def test_plan_without_catalogue_is_unaffected(tmp_path: Path) -> None:
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# P\n- state_as_of: 2026-11-01\nOMN-1\nverified: 2026-10-31 via x\n",
+        encoding="utf-8",
+    )
+
+    result = _audit(plan)
+
+    assert result.passed is True
+    assert all(c.name != "companion_readable" for c in result.checks)
+
+
+@pytest.mark.unit
+def test_directory_audit_treats_companion_as_structure_only(tmp_path: Path) -> None:
+    _write_plan(tmp_path, "2026-10-31", True, "# Plain words\n\nNo ticket here.\n")
+
+    result = _audit(tmp_path)
+
+    assert result.passed is True
