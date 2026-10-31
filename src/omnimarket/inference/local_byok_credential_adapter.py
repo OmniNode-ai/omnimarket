@@ -94,7 +94,8 @@ CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_TABLE} (
     registered_at  TEXT NOT NULL DEFAULT (datetime('now')),
     plan           TEXT,
     model          TEXT,
-    model_chosen_by TEXT
+    model_chosen_by TEXT,
+    base_url       TEXT
 )
 """
 
@@ -217,6 +218,12 @@ def _connect(db_path: Path) -> sqlite3.Connection:
             conn.execute(
                 f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model_chosen_by TEXT"
             )
+        # OMN-21263: the base URL a generic OpenAI-compatible key was registered
+        # for. Null for every catalogue provider, whose endpoint is the row's.
+        if "base_url" not in columns:
+            conn.execute(
+                f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN base_url TEXT"
+            )
         # OMN-21059: a credential stored with the single ``model`` column becomes a
         # list of one at position 0, keeping its recorded chooser. Idempotent: a
         # credential that already has list rows is left as it is.
@@ -287,6 +294,7 @@ def register_local_byok_credential(
     model: str | None = None,
     models: Sequence[str] | None = None,
     model_chosen_by: str | None = None,
+    base_url: str | None = None,
     db_path: Path | None = None,
 ) -> str:
     """Store ``secret_value`` under a freshly minted ref and return the ref.
@@ -316,6 +324,9 @@ def register_local_byok_credential(
             the model. ``None`` records no chooser and prevents re-aiming on a
             provider where the customer chooses. No model stores no chooser.
             Every entry of the list carries the same chooser.
+        base_url: OMN-21263. The endpoint a generic OpenAI-compatible key
+            was registered for, without ``/v1``; ``None`` for a catalogue
+            provider, whose endpoint is its row's.
         db_path: the local database. Defaults to the existing
             ``~/.omninode/delegation/delegation.sqlite``.
 
@@ -357,12 +368,14 @@ def register_local_byok_credential(
         )
         conn.execute(
             f"INSERT INTO {LOCAL_CREDENTIAL_TABLE} "
-            "(secret_ref, provider, secret_value, plan) VALUES (?, ?, ?, ?)",
+            "(secret_ref, provider, secret_value, plan, base_url) "
+            "VALUES (?, ?, ?, ?, ?)",
             (
                 ref,
                 normalized,
                 secret_value.strip(),
                 plan.strip().lower() if plan else None,
+                base_url.strip().rstrip("/") if base_url else None,
             ),
         )
         _write_models(conn, ref, chosen_models, model_chosen_by)
@@ -488,6 +501,61 @@ def resolve_local_byok_credential_plan(
     finally:
         conn.close()
     return str(row["plan"]) if row is not None and row["plan"] else None
+
+
+def resolve_local_byok_credential_base_url(
+    provider: str, *, db_path: Path | None = None
+) -> str | None:
+    """The base URL registered with ``provider``'s credential, or ``None`` (OMN-21263).
+
+    Set only for a generic OpenAI-compatible key, whose endpoint the developer
+    named. Never returns a value.
+    """
+    normalized = provider.strip().lower()
+    if not normalized:
+        return None
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return None
+    conn = _connect(resolved_path)
+    try:
+        row = conn.execute(
+            f"SELECT base_url FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? "
+            "ORDER BY registered_at DESC LIMIT 1",
+            (normalized,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return str(row["base_url"]) if row is not None and row["base_url"] else None
+
+
+def resolve_local_byok_registered_endpoint(
+    secret_ref: str | None, *, db_path: Path | None = None
+) -> tuple[str, str] | None:
+    """``(provider, base URL)`` of the local credential ``secret_ref`` names (OMN-21263).
+
+    ``None`` when the reference has no local row or its row records no base
+    URL. The effect boundary holds a reference and an endpoint, not a provider;
+    this is how it finds the generic row a registered endpoint belongs to.
+    Never returns a value.
+    """
+    if not secret_ref:
+        return None
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return None
+    conn = _connect(resolved_path)
+    try:
+        row = conn.execute(
+            f"SELECT provider, base_url FROM {LOCAL_CREDENTIAL_TABLE} "
+            "WHERE secret_ref = ?",
+            (secret_ref,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None or not row["base_url"]:
+        return None
+    return str(row["provider"]), str(row["base_url"])
 
 
 def resolve_local_byok_credential_models(
@@ -824,11 +892,13 @@ __all__: list[str] = [
     "mint_local_byok_credential_ref",
     "register_local_byok_credential",
     "registered_local_byok_providers",
+    "resolve_local_byok_credential_base_url",
     "resolve_local_byok_credential_model",
     "resolve_local_byok_credential_models",
     "resolve_local_byok_credential_plan",
     "resolve_local_byok_credential_ref",
     "resolve_local_byok_model_chooser",
+    "resolve_local_byok_registered_endpoint",
     "revoke_local_byok_credential",
     "set_local_byok_credential_models",
 ]

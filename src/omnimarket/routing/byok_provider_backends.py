@@ -354,6 +354,11 @@ class ModelByokProviderBackend(BaseModel):
     default_models: tuple[str, ...] = ()
     #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
     first_key: bool = False
+    #: OMN-21263. ``true`` declares a generic OpenAI-compatible row: the
+    #: developer names the endpoint's base URL when they register the key, and
+    #: ``endpoint_url`` and ``models_url`` here are placeholders that never
+    #: route. :func:`with_registered_base_url` puts the registered URL in.
+    endpoint_from_registration: bool = False
 
     @model_validator(mode="after")
     def _default_models_are_preferred_and_distinct(self) -> ModelByokProviderBackend:
@@ -1022,6 +1027,24 @@ def resolve_byok_provider_backend(
     return row if row is not None and row.customer_routable else None
 
 
+def with_registered_base_url(
+    backend: ModelByokProviderBackend, base_url: str
+) -> ModelByokProviderBackend:
+    """``backend`` addressing the endpoint a developer registered (OMN-21263).
+
+    ``base_url`` is the endpoint's root without ``/v1``, as stored with the
+    credential. Chat goes to ``<base>/v1/chat/completions`` and the model list
+    is read from ``<base>/v1/models``, the OpenAI API's own paths.
+    """
+    base = base_url.rstrip("/")
+    return backend.model_copy(
+        update={
+            "endpoint_url": f"{base}/v1/chat/completions",
+            "models_url": f"{base}/v1/models",
+        }
+    )
+
+
 def resolve_byok_backend_by_id(
     backend_ref: str | None,
 ) -> ModelByokProviderBackend | None:
@@ -1263,4 +1286,5 @@ __all__: list[str] = [
     "resolve_byok_provider_backend",
     "select_byok_model",
     "token_limit_field_for_endpoint",
+    "with_registered_base_url",
 ]

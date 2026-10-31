@@ -74,6 +74,27 @@ def offered_provider(secret_ref: str) -> str | None:
     return slug
 
 
+def _require_base_url_fits(provider: str | None, base_url: str | None) -> None:
+    """A generic endpoint's key comes with its URL, and no other key does (OMN-21263).
+
+    Refused before anything is stored: a generic key stored with no URL would
+    route nowhere, and a URL on a catalogue key would be ignored.
+    """
+    row = resolve_byok_provider_backend(provider) if provider is not None else None
+    generic = row is not None and row.endpoint_from_registration
+    if generic and not base_url:
+        raise LocalSecretStoreRefusedError(
+            f"a {provider} key is stored with the endpoint it is for: run onex "
+            f"models add {provider} --url <base url> --model <id>. Nothing was "
+            "stored."
+        )
+    if base_url and not generic:
+        raise LocalSecretStoreRefusedError(
+            "a base URL is stored only with a generic OpenAI-compatible key. "
+            "Nothing was stored."
+        )
+
+
 def fingerprint_prefix(value: str) -> str:
     """The first 8 hex characters of sha256(value): tells keys apart, cannot recover one."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
@@ -143,6 +164,7 @@ class HandlerLocalSecretStore:
                 "from a command-line argument."
             )
         provider = offered_provider(ref)
+        _require_base_url_fits(provider, request.base_url)
         asyncio.run(store.set_secret(ref, value))
         if provider is None:
             return ModelLocalSecretResult(operation="set", secret_ref=ref)
@@ -155,6 +177,7 @@ class HandlerLocalSecretStore:
             model=request.model,
             models=request.models or None,
             model_chosen_by=request.model_chosen_by,
+            base_url=request.base_url,
             db_path=store.db_path,
         )
         tenant_id = resolve_or_mint_local_deployment_tenant_id(None)

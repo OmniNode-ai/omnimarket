@@ -57,6 +57,7 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     registered_local_byok_providers,
+    resolve_local_byok_credential_base_url,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
@@ -73,6 +74,7 @@ from omnimarket.routing.byok_provider_backends import (
     customer_provider_catalogue,
     resolve_byok_backend_by_id,
     resolve_byok_provider_backend,
+    with_registered_base_url,
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -177,6 +179,14 @@ def _registered_byok_route(
     customer_ref = resolve_local_byok_credential_ref(slug, db_path=db_path)
     if customer_ref is None:
         return None
+    if byok.endpoint_from_registration:
+        # OMN-21263: a generic OpenAI-compatible key routes to the endpoint the
+        # developer registered it for; the row's own URLs are placeholders. A
+        # key stored with no URL has nowhere to go and mints no route.
+        base_url = resolve_local_byok_credential_base_url(slug, db_path=db_path)
+        if base_url is None:
+            return None
+        byok = with_registered_base_url(byok, base_url)
     if not pinned and local_byok_key_test_failed(slug, db_path=db_path):
         logger.info(
             "LocalByokRoute: skipping provider=%s; its key failed its last test",
