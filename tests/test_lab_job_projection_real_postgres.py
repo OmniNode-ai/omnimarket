@@ -259,19 +259,23 @@ def test_the_request_builds_the_coordinates_the_runner_dedups_on(
     """
     from omnimarket.models.model_message_meta import MessageMeta
     from omnimarket.models.model_projection_request import ModelProjectionRequest
+    from omnimarket.nodes.node_projection_lab_job.handlers.handler_lab_job_writer import (
+        LAB_JOB_TRANSITIONED_TOPIC_V1,
+    )
     from omnimarket.projection import runner
 
+    topic = LAB_JOB_TRANSITIONED_TOPIC_V1
     assert runner.MessageMeta is MessageMeta
     delivery = {
         **transitioned(1, S.RUNNING),
-        "_topic": "t",
+        "_topic": topic,
         "_partition": 3,
         "_offset": 41,
         "_fallback_id": "fallback-1",
     }
-    meta = ModelProjectionRequest.from_injected(delivery).message_meta("t")
+    meta = ModelProjectionRequest.from_injected(delivery).message_meta(topic)
     assert meta == MessageMeta(
-        partition=3, offset=41, fallback_id="fallback-1", topic="t"
+        partition=3, offset=41, fallback_id="fallback-1", topic=topic
     )
 
     schema = schema_factory()
