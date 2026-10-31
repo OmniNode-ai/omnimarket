@@ -76,3 +76,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k 'model_scope_rule and unset'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21267-deploy-source"
+    description: "Hosted deploy check: at the checked-out commit, the local dispatch port calls the rule check before any attempt, and the onex models only command exists. Needs no account, lab host or runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py" | grep "scope_reason = model_scope_skip_reason(" >/dev/null;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/models_only_command.py" | grep "def only_models" >/dev/null
+        cwd: "."
