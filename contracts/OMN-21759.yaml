@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21759"
+title: "omnimarket contracts_and_di literal_path burn-down, slice rf1400-c3: paths come from contracts and overlays"
+summary: "Seven modules held ten filesystem path literals in code (a home directory, a deployed repository, a PATH list, a container interpreter, two internal-path prefixes). Each value is now declared in configs/runtime_paths.yaml and read by reference through omnimarket.handlers.runtime_paths. The contracts_and_di check over src/omnimarket reports 1407 findings before and 1397 after; literal_path goes from 10 to 0, no other rule moves, and no baseline entry or suppression is added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21759-paths-from-authority"
+    statement: |-
+      The seven modules hold no filesystem path literal in code. Each reads its location from the runtime-path authority by reference with the value it held before, and an unknown reference fails at the call.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di literal_path count over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: uv run pytest tests/unit/handlers/test_runtime_paths_slice_c5.py -k no_literal_path_findings -q --no-cov"
+      - id: "AC2"
+        statement: "AC2: every path comes from the owning authority entry and is injected, none hard-coded in the touched code -- falsifier: uv run pytest tests/unit/handlers/test_runtime_paths_slice_c5.py tests/unit/handlers/test_runtime_paths.py -q --no-cov"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: the Lab line of the PR body names host, sha and exit code"
+evidence_requirements:
+  - kind: "tests"
+    description: "The slice tests and the runtime-path authority tests pass."
+    command: "uv run pytest tests/unit/handlers/test_runtime_paths_slice_c5.py tests/unit/handlers/test_runtime_paths.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21759-paths-tests"
+    description: "Declared values keep their previous content, the consumers take them, and the pinned validator reports no literal_path finding on the seven modules."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_runtime_paths_slice_c5.py tests/unit/handlers/test_runtime_paths.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21759-lab-proof"
+    description: "The same tests run on a lab host at the pushed head; the host, sha and exit code are in the PR body."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_runtime_paths_slice_c5.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
