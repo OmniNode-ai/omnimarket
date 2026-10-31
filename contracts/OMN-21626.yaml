@@ -96,6 +96,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_inventory_accounts_for_local_invocation_and_refuses_broken_handler -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          grep -q '^node_claude_pool_refill_effect = "omnimarket.nodes.node_claude_pool_refill_effect"' pyproject.toml && test -f src/omnimarket/nodes/node_claude_pool_refill_effect/contract.yaml
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21626-deploy-published-readback"
     description: |-
       Read the published refill command line at the evaluated revision. It is a runtime file beside the node
