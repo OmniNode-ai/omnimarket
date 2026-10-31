@@ -39,7 +39,10 @@ _METADATA = re.compile(r"^([A-Z][A-Za-z ]*?):[ \t]*(.*?)[ \t]*$")
 _TITLE = re.compile(r"^# Lane [^:\n]+:[ \t]*(.+?)[ \t]*$")
 _HEADER = re.compile(r"^Parent: .*?\bTicket: (OMN-[0-9]+)\. Repo: ([^ ]+?)\.")
 _CRITERIA = re.compile(r"^ticket-criteria:[ \t]*(\S+)[ \t]*$")
-_ALIASES = {"sonnet": "claude-sonnet", "opus": "claude-opus"}
+_ALIASES = {
+    "sonnet": EnumLaneEngine.CLAUDE_SONNET.value,
+    "opus": EnumLaneEngine.CLAUDE_OPUS.value,
+}
 
 
 def _column_zero_lines(brief: str) -> list[str]:
