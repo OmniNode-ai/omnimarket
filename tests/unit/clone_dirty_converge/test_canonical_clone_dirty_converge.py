@@ -169,9 +169,9 @@ class Planted:
 
 
 @pytest.fixture
-def omniclaude_case(tmp_path: Path) -> Planted:
-    """The first case: four staged source files, behind upstream (two here)."""
-    planted = Planted(tmp_path, "omniclaude", {"a.txt": "one\n", "b.txt": "one\n"})
+def staged_case(tmp_path: Path) -> Planted:
+    """The first case (a host's omniclaude): staged source files, behind upstream."""
+    planted = Planted(tmp_path, "platform", {"a.txt": "one\n", "b.txt": "one\n"})
     (planted.clone / "a.txt").write_text("staged source edit\n")
     (planted.clone / "b.txt").write_text("another staged edit\n")
     _git("add", "a.txt", "b.txt", cwd=planted.clone)
@@ -179,7 +179,7 @@ def omniclaude_case(tmp_path: Path) -> Planted:
 
 
 @pytest.fixture
-def omnidash_case(tmp_path: Path) -> Planted:
+def generated_case(tmp_path: Path) -> Planted:
     """The second case: a stale generated file that also carries a host value."""
     planted = Planted(
         tmp_path,
@@ -207,88 +207,88 @@ def test_the_age_is_the_contracts_and_the_overlay_replaces_it() -> None:
 
 
 def test_a_clone_not_yet_refused_for_the_age_is_left_alone(
-    omniclaude_case: Planted,
+    staged_case: Planted,
 ) -> None:
-    handler = omniclaude_case.handler(**{AGE_ENV: str(AGE)})
-    omniclaude_case.refuse_for(handler, 60)
-    before = _git("rev-parse", "HEAD", cwd=omniclaude_case.clone)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 60)
+    before = _git("rev-parse", "HEAD", cwd=staged_case.clone)
     assert handler.tick() == []
-    assert _git("rev-parse", "HEAD", cwd=omniclaude_case.clone) == before
-    assert omniclaude_case.branches() == ["dev"]
+    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == before
+    assert staged_case.branches() == ["dev"]
 
 
 def test_staged_source_files_go_to_a_rescue_branch_then_the_clone_converges(
-    omniclaude_case: Planted,
+    staged_case: Planted,
 ) -> None:
-    handler = omniclaude_case.handler(**{AGE_ENV: str(AGE)})
-    omniclaude_case.refuse_for(handler, 3 * AGE)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
     (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
-    assert _git("rev-parse", "HEAD", cwd=omniclaude_case.clone) == omniclaude_case.tip
-    assert _clean(omniclaude_case.clone)
-    (rescue,) = [b for b in omniclaude_case.branches() if b.startswith("rescue/")]
+    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == staged_case.tip
+    assert _clean(staged_case.clone)
+    (rescue,) = [b for b in staged_case.branches() if b.startswith("rescue/")]
     assert rescue == outcome.rescue_branch
-    assert "omniclaude-dirty-converge" in rescue
+    assert "platform-dirty-converge" in rescue
     assert (
-        _git("show", f"{rescue}:a.txt", cwd=omniclaude_case.remote)
-        == "staged source edit"
+        _git("show", f"{rescue}:a.txt", cwd=staged_case.remote) == "staged source edit"
     )
-    row = omniclaude_case.row_text()
+    row = staged_case.row_text()
     assert f"2 source path(s) pushed to origin branch {rescue}" in row
 
 
 def test_a_generated_file_with_a_host_value_is_archived_and_never_pushed(
-    omnidash_case: Planted,
+    generated_case: Planted,
 ) -> None:
-    handler = omnidash_case.handler(**{AGE_ENV: str(AGE)})
-    omnidash_case.refuse_for(handler, 3 * AGE)
+    handler = generated_case.handler(**{AGE_ENV: str(AGE)})
+    generated_case.refuse_for(handler, 3 * AGE)
     (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
-    assert _clean(omnidash_case.clone)
-    assert omnidash_case.branches() == ["dev"]
+    assert _clean(generated_case.clone)
+    assert generated_case.branches() == ["dev"]
     assert outcome.archive_only_paths == {
         "src/data-source-defaults.ts": "carries a host value"
     }
-    assert "kept only in the converge archive, never pushed" in omnidash_case.row_text()
+    assert (
+        "kept only in the converge archive, never pushed" in generated_case.row_text()
+    )
     if REAL_ROOT:
-        (archive,) = (omnidash_case.home / ".onex_state/canonical-clone-converge").glob(
-            "omnidash-*"
-        )
+        (archive,) = (
+            generated_case.home / ".onex_state/canonical-clone-converge"
+        ).glob("omnidash-*")
         assert HOST_VALUE in (archive / "full-vs-HEAD.patch").read_text()
 
 
-def test_a_failed_rescue_push_leaves_the_clone_dirty(omniclaude_case: Planted) -> None:
+def test_a_failed_rescue_push_leaves_the_clone_dirty(staged_case: Planted) -> None:
     _git(
         "remote",
         "set-url",
         "--push",
         "origin",
-        str(omniclaude_case.home / "missing.git"),
-        cwd=omniclaude_case.clone,
+        str(staged_case.home / "missing.git"),
+        cwd=staged_case.clone,
     )
-    handler = omniclaude_case.handler(**{AGE_ENV: str(AGE)})
-    omniclaude_case.refuse_for(handler, 3 * AGE)
-    before = _git("rev-parse", "HEAD", cwd=omniclaude_case.clone)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    before = _git("rev-parse", "HEAD", cwd=staged_case.clone)
     (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.FAILED
     assert "the rescue push failed" in outcome.reason
-    assert _git("rev-parse", "HEAD", cwd=omniclaude_case.clone) == before
+    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == before
     assert (
-        _git("diff", "--cached", "--name-only", cwd=omniclaude_case.clone)
-        == "a.txt\nb.txt"
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
     )
 
 
 def test_a_clone_ahead_of_its_upstream_is_never_converged(
-    omniclaude_case: Planted,
+    staged_case: Planted,
 ) -> None:
-    clone = omniclaude_case.clone
+    clone = staged_case.clone
     _git("reset", "--soft", "HEAD", cwd=clone)
     (clone / "local.txt").write_text("local commit\n")
     _git("add", "local.txt", cwd=clone)
     _git("commit", "--quiet", "-m", "local", cwd=clone)
-    handler = omniclaude_case.handler(**{AGE_ENV: str(AGE)})
-    omniclaude_case.refuse_for(handler, 3 * AGE)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
     (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
     assert "diverged" in outcome.reason
