@@ -978,18 +978,18 @@ def add_model(
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
-    The key is read from stdin when piped, or asked for at a hidden prompt.
-    A key already stored for PROVIDER is replaced, with the models named here
-    as its ordered list. The test passes only when it answers on the first
-    model stored for the key. Add models to a stored key later with
-    ``onex models add-model``.
+    The key is read from stdin when piped, or asked for at a hidden prompt. A key
+    already stored for PROVIDER is replaced, with the models named here as its ordered
+    list. The test passes only when it answers on the first model stored for the key.
+    Add models to a stored key later with ``onex models add-model``.
+
+    ``openai_compatible`` is any endpoint that speaks the OpenAI API and needs a key:
+    ``--url`` names its base URL, and each ``--model`` is checked against /v1/models.
 
     ``local`` asks for no key: ``--url`` names a model server that speaks the
-    OpenAI-compatible API and each ``--model`` a model it runs. The URL must
-    answer before it is declared in the local routes, beside any routes already
-    there. Local models are kept in order, first tried first, and a run tries
-    them before any key; ``onex models reorder local`` and ``onex models remove
-    local --model`` change the list.
+    OpenAI-compatible API and each ``--model`` a model it runs. It must answer before
+    it is declared in the local routes. Local models are tried in order before any key;
+    ``onex models reorder local`` and ``onex models remove local --model`` change them.
     """
     name = provider.lower()
     handler = _model_handler()
