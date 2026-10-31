@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
+from importlib.metadata import distribution
 from pathlib import Path
 
 import pytest
@@ -70,3 +72,37 @@ def test_pyproject_and_lock_pin_the_sibling_to_one_dev_merge_tag(
     packages = tomllib.loads((ROOT / "uv.lock").read_text())["package"]
     (locked,) = [p for p in packages if p["name"] == distribution]
     assert locked["source"]["git"].startswith(source["git"] + "?tag=" + source["tag"])
+
+
+def test_core_dev_merge_tag_matches_the_validated_release() -> None:
+    """The downstream bump installs the exact core release without moving infra."""
+    from omnibase_core.models.validation.model_sibling_repo_parameters import (
+        ModelSiblingRepoParameters,
+    )
+    from omnibase_core.validation.checker_first_party_ref import load_rule_parameters
+    from omnibase_core.validation.validator_first_party_ref import (
+        ValidatorFirstPartyRef,
+    )
+
+    tag = "dev-20261030230231-b611c1f94a95"
+    sha = "b611c1f94a9568119d6e251216ad52db87ee4505"
+    sources = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["uv"][
+        "sources"
+    ]
+    assert sources["omnibase-core"]["tag"] == tag
+    assert sources["omnibase-infra"]["tag"] == "dev-20261030213019-091013fd7adb"
+
+    packages = tomllib.loads((ROOT / "uv.lock").read_text())["package"]
+    (core,) = [package for package in packages if package["name"] == "omnibase-core"]
+    assert core["source"]["git"] == (
+        sources["omnibase-core"]["git"] + "?tag=" + tag + "#" + sha
+    )
+
+    direct_url = distribution("omnibase-core").read_text("direct_url.json")
+    assert direct_url is not None
+    installed = json.loads(direct_url)
+    assert installed["vcs_info"]["commit_id"] == sha
+    rules = load_rule_parameters(ValidatorFirstPartyRef().contract)
+    policy = rules["wrong_repo"]
+    assert isinstance(policy, ModelSiblingRepoParameters)
+    assert policy.siblings
