@@ -212,6 +212,7 @@ def refresh_metering_after_terminal(
     tenant_id: str,
     terminal_at: datetime,
     publisher: ProtocolMeteringRefreshPublisher | None = None,
+    baseline_model: str | None = None,
 ) -> ModelMeteringRefreshOutcome:
     """Fold the run's UTC day and the all row, once its terminal row is durable.
 
@@ -232,7 +233,7 @@ def refresh_metering_after_terminal(
         raise ValueError("terminal_at must be timezone aware")
     sink = publisher or InProcessMeteringRefreshPublisher(db_path)
     with metering_refresh_lock(db_path):
-        model = resolve_metering_baseline_model().model
+        model = baseline_model or resolve_metering_baseline_model().model
         baseline = resolve_baseline(model)
         version = current_pricing_manifest_version(model)
         records = read_metering_records(db_path=db_path)

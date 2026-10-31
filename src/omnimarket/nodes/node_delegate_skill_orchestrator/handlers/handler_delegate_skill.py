@@ -104,6 +104,11 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import 
     budget_cancelled_result,
     current_dispatch_progress,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_session_model import (
+    drop_saving_priced_elsewhere,
+    request_session_model,
+    session_model_dispatch_kwargs,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
 )
@@ -1193,10 +1198,12 @@ def _response_from_result(
         actual_cost_usd = max(
             actual_cost_usd, sum(attempt.cost_usd for attempt in attempts)
         )
+    # OMN-20557: the session model the caller named outranks the port's.
     baseline = resolve_baseline_model(
         overlay=result.get("overlay", {}),
         store=result.get("store", {}),
-        session_model=str(
+        session_model=request_session_model(request)
+        or str(
             result.get("model_cloud_baseline") or result.get("baseline_model") or ""
         ),
     )
@@ -1609,6 +1616,9 @@ class HandlerDelegateSkill:
             and requested_grace_seconds is not None
             else execution_budget.terminal_delivery_margin_seconds
         )
+        session_kwargs = session_model_dispatch_kwargs(
+            request, self._dispatch_port.dispatch
+        )
         progress = ModelDelegationDispatchProgress()
         progress_token = current_dispatch_progress.set(progress)
         try:
@@ -1677,6 +1687,8 @@ class HandlerDelegateSkill:
                     **_terminal_measure_dispatch_kwargs(
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
+                    # OMN-20557: only when named and declared by the port.
+                    **session_kwargs,
                 ),
                 timeout=float(execution_timeout_seconds + wait_allowance_seconds),
             )
@@ -1794,6 +1806,7 @@ class HandlerDelegateSkill:
         finally:
             current_dispatch_progress.reset(progress_token)
 
+        result = drop_saving_priced_elsewhere(result, request, session_kwargs)
         return delegate_skill_terminal_from_response(
             _response_from_result(
                 request,
