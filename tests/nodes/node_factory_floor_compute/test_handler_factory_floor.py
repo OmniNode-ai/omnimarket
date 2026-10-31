@@ -23,7 +23,7 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_outp
     ModelFactoryFloorResult,
     ModelFloorLine,
 )
-from omnimarket.nodes.node_factory_floor_compute.tests.support import (
+from tests.nodes.node_factory_floor_compute.support import (
     PLAN_PATH,
     advertisement,
     ago,
@@ -41,7 +41,8 @@ from omnimarket.nodes.node_factory_floor_compute.tests.support import (
 pytestmark = pytest.mark.unit
 
 HANDLER_SOURCE = (
-    Path(__file__).resolve().parents[1] / "handlers" / "handler_factory_floor.py"
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py"
 )
 
 

@@ -24,10 +24,9 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
 
 pytestmark = pytest.mark.unit
 
-CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
-COMPUTE_CONTRACT = (
-    Path(__file__).resolve().parents[2] / "node_factory_floor_compute" / "contract.yaml"
-)
+NODES = Path(__file__).resolve().parents[3] / "src/omnimarket/nodes"
+CONTRACT = NODES / "node_factory_floor_effect/contract.yaml"
+COMPUTE_CONTRACT = NODES / "node_factory_floor_compute/contract.yaml"
 NOW = datetime(2026, 10, 31, 12, 0, 0, tzinfo=UTC)
 
 MANIFEST = {

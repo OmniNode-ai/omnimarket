@@ -28,7 +28,10 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_inpu
     PrState,
 )
 
-CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+CONTRACT = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_factory_floor_compute/contract.yaml"
+)
 NOW = datetime(2026, 10, 31, 12, 0, 0, tzinfo=UTC)
 PLAN_PATH = "beta/plans/2026-10-31-wave-plan.md"
 
