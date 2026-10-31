@@ -32,8 +32,7 @@ dod_evidence:
   - id: "dod-omn21676-deploy-published-source-readback"
     description: |-
       Hosted-runner source-artifact readback: fetch the published verifier and trusted-check sources at the
-      evaluated commit and fail if the verifier still reads a Linear credential from the environment by name or
-      the trusted check does not answer a merge_blocked verdict. This checks the published source artifact and
+      evaluated commit and fail if the verifier still publishes the direct Linear read or the trusted check does not answer a merge_blocked verdict. This checks the published source artifact and
       does not assert a live runtime rollout.
     source: "manual"
     checks:
@@ -43,7 +42,10 @@ dod_evidence:
           verify="$(curl --fail --silent --show-error --location --max-time 20 "$base/node_dod_verify/services/evidence_collector.py")"
           check="$(curl --fail --silent --show-error --location --max-time 20 "$base/node_dod_criteria_check_effect/models/model_dod_criteria_check.py")"
           printf '%s' "$verify" | grep -q '_criteria_delegated'
-          printf '%s' "$verify" | grep -vq 'LINEAR_API_KEY_ENV'
+          if curl --fail --silent --location --max-time 20 --output /dev/null "$base/node_dod_verify/handlers/handler_dod_ticket_criteria_linear_effect.py"; then
+            echo "the direct Linear read is still published"
+            exit 1
+          fi
           printf '%s' "$check" | grep -q 'merge_blocked'
           echo "Published criteria-delegation readback: PASS"
         cwd: "."
