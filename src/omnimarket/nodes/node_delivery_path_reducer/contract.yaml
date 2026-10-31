@@ -1,0 +1,339 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delivery Path Reducer
+#
+# Pure reducer: folds one event of a delivery path into the path's record. The
+# lifecycle is the state_machine below (plan section 7.3, Figure 11), run by core's
+# execute_transition; the handler holds no table of states or transitions. The handler
+# builds the guard context (ref_kind, receipt_matches_tag, receipt_target_current,
+# consumer_on_tag, target_resolved) from the record and the event, and emits the
+# stale_limit_reached trigger from config.delivery.stale_after_minutes and the time the
+# expected target was first expected (the merge time, kept across retries and restarts).
+# The node takes facts and `now` and declares no protocol_dependencies.
+#
+# Call boundary: onex run-node node_delivery_path_reducer (fold an event into a path).
+name: node_delivery_path_reducer
+contract_name: node_delivery_path_reducer
+node_name: node_delivery_path_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Lifecycle of one delivery path: declared, tag_pending, tag_resolved, installing,
+  verified, stale, with refused as the error state and retired as the terminal state.
+  A path whose reference its role does not allow is refused from every active state and
+  nothing leaves refused. A path waiting for its tag, or for an install receipt that
+  names the tag, becomes stale at config.delivery.stale_after_minutes counted from the
+  merge time of the expected target; the deadline is kept across retries.
+
+handler:
+  module: omnimarket.nodes.node_delivery_path_reducer.handlers.handler_delivery_path
+  class: HandlerDeliveryPath
+  input_model: omnimarket.nodes.node_delivery_path_reducer.models.model_delivery_path.ModelDeliveryPathRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delivery_path_fold
+      handler:
+        name: HandlerDeliveryPath
+        module: omnimarket.nodes.node_delivery_path_reducer.handlers.handler_delivery_path
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelDeliveryPathRequest
+  module: omnimarket.nodes.node_delivery_path_reducer.models.model_delivery_path
+  description: The path's record, one event (or none, for a clock reading) and `now`.
+output_model:
+  name: ModelDeliveryPathResult
+  module: omnimarket.nodes.node_delivery_path_reducer.models.model_delivery_path
+  description: The next record, the triggers taken, and the decision rows written.
+
+terminal_event: onex.evt.omnimarket.delivery-path-folded.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delivery-path-fold-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.delivery-path-folded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delivery-path-fold-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delivery-path-folded.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delivery-path-folded.v1
+
+replay:
+  deterministic: true
+
+config:
+  delivery:
+    # The one home of the limit: minutes a path may wait for its tag, or for an install
+    # receipt that names the tag, counted from the merge time of the expected target.
+    stale_after_minutes: 60
+    # The trigger the handler emits when the limit is reached, and the state whose entry
+    # writes one decision row.
+    limit_trigger: stale_limit_reached
+    decision_state: stale
+    # Reference kinds that are never allowed, whatever reference_allowed says.
+    refused_reference_kinds: [branch, sha, hand_kept_version]
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: delivery_path_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'Lifecycle of one delivery path: an artifact reaches its consumer only from a reference its path role allows, and a path that reads anything else is refused.'
+  initial_state: declared
+  terminal_states: [retired]
+  error_states: [refused]
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: declared
+    state_type: operational
+    description: The delivery path is registered in the delivery contract with its repository, artifact, consumer and tag pattern.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: tag_pending
+    state_type: operational
+    description: The path reads a dev-merge tag and waits for the release train to publish the tag of the newest merge.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: tag_resolved
+    state_type: operational
+    description: The newest dev-merge tag is read and the consumer is not yet on it.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: installing
+    state_type: operational
+    description: The consumer is being installed from the resolved tag.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: verified
+    state_type: operational
+    description: The consumer's installed receipt names the resolved tag.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: stale
+    state_type: operational
+    description: The tag did not appear or the install did not match past the configured limit, or the consumer was found off the tag (stale at once, with no wait); one decision row is written.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: retired
+    state_type: terminal
+    description: The path was removed from the delivery contract.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: refused
+    state_type: error
+    description: The path reads a reference its declared role does not allow, and is refused until a new path is declared.
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: declared_to_tag_pending_on_path_checked_valid
+    from_state: declared
+    to_state: tag_pending
+    trigger: path_checked
+    priority: 1
+    conditions:
+    - {condition_name: reference_allowed, condition_type: expression, expression: reference_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: declared_to_refused_on_path_checked_refused
+    from_state: declared
+    to_state: refused
+    trigger: path_checked
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_pending_to_tag_resolved_on_tag_seen
+    from_state: tag_pending
+    to_state: tag_resolved
+    trigger: tag_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_pending_to_stale_on_stale_limit_reached
+    from_state: tag_pending
+    to_state: stale
+    trigger: stale_limit_reached
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_pending_to_tag_pending_on_path_checked_valid
+    from_state: tag_pending
+    to_state: tag_pending
+    trigger: path_checked
+    priority: 1
+    conditions:
+    - {condition_name: reference_allowed, condition_type: expression, expression: reference_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_pending_to_refused_on_path_checked_refused
+    from_state: tag_pending
+    to_state: refused
+    trigger: path_checked
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_installing_on_install_started
+    from_state: tag_resolved
+    to_state: installing
+    trigger: install_started
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_stale_on_stale_limit_reached
+    from_state: tag_resolved
+    to_state: stale
+    trigger: stale_limit_reached
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_tag_resolved_on_path_checked_valid
+    from_state: tag_resolved
+    to_state: tag_resolved
+    trigger: path_checked
+    priority: 1
+    conditions:
+    - {condition_name: reference_allowed, condition_type: expression, expression: reference_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_refused_on_path_checked_refused
+    from_state: tag_resolved
+    to_state: refused
+    trigger: path_checked
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_tag_resolved_on_newer_tag_seen
+    from_state: tag_resolved
+    to_state: tag_resolved
+    trigger: newer_tag_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_tag_pending_on_newer_merge_seen
+    from_state: tag_resolved
+    to_state: tag_pending
+    trigger: newer_merge_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_verified_on_install_receipt_read
+    from_state: installing
+    to_state: verified
+    trigger: install_receipt_read
+    priority: 1
+    conditions:
+    - {condition_name: receipt_names_tag, condition_type: expression, expression: receipt_matches_tag == True}
+    - {condition_name: receipt_target_current, condition_type: expression, expression: receipt_target_current == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_tag_resolved_on_install_receipt_read_mismatch
+    from_state: installing
+    to_state: tag_resolved
+    trigger: install_receipt_read
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_stale_on_stale_limit_reached
+    from_state: installing
+    to_state: stale
+    trigger: stale_limit_reached
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_installing_on_path_checked_valid
+    from_state: installing
+    to_state: installing
+    trigger: path_checked
+    priority: 1
+    conditions:
+    - {condition_name: reference_allowed, condition_type: expression, expression: reference_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_refused_on_path_checked_refused
+    from_state: installing
+    to_state: refused
+    trigger: path_checked
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_tag_resolved_on_newer_tag_seen
+    from_state: installing
+    to_state: tag_resolved
+    trigger: newer_tag_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_tag_pending_on_newer_merge_seen
+    from_state: installing
+    to_state: tag_pending
+    trigger: newer_merge_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_tag_resolved_on_newer_tag_seen
+    from_state: verified
+    to_state: tag_resolved
+    trigger: newer_tag_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_tag_pending_on_newer_merge_seen
+    from_state: verified
+    to_state: tag_pending
+    trigger: newer_merge_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_stale_on_consumer_read_off_tag
+    from_state: verified
+    to_state: stale
+    trigger: consumer_read
+    priority: 1
+    conditions:
+    - {condition_name: consumer_off_tag, condition_type: expression, expression: consumer_on_tag == False}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_verified_on_consumer_read_on_tag
+    from_state: verified
+    to_state: verified
+    trigger: consumer_read
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_verified_on_path_checked_valid
+    from_state: verified
+    to_state: verified
+    trigger: path_checked
+    priority: 1
+    conditions:
+    - {condition_name: reference_allowed, condition_type: expression, expression: reference_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_refused_on_path_checked_refused
+    from_state: verified
+    to_state: refused
+    trigger: path_checked
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_tag_resolved_on_tag_seen
+    from_state: stale
+    to_state: tag_resolved
+    trigger: tag_seen
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_installing_on_install_started
+    from_state: stale
+    to_state: installing
+    trigger: install_started
+    priority: 1
+    conditions:
+    - {condition_name: target_resolved, condition_type: expression, expression: target_resolved == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_stale_on_path_checked_valid
+    from_state: stale
+    to_state: stale
+    trigger: path_checked
+    priority: 1
+    conditions:
+    - {condition_name: reference_allowed, condition_type: expression, expression: reference_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_refused_on_path_checked_refused
+    from_state: stale
+    to_state: refused
+    trigger: path_checked
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: declared_to_retired_on_path_retired
+    from_state: declared
+    to_state: retired
+    trigger: path_retired
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_pending_to_retired_on_path_retired
+    from_state: tag_pending
+    to_state: retired
+    trigger: path_retired
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: tag_resolved_to_retired_on_path_retired
+    from_state: tag_resolved
+    to_state: retired
+    trigger: path_retired
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: installing_to_retired_on_path_retired
+    from_state: installing
+    to_state: retired
+    trigger: path_retired
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: verified_to_retired_on_path_retired
+    from_state: verified
+    to_state: retired
+    trigger: path_retired
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_retired_on_path_retired
+    from_state: stale
+    to_state: retired
+    trigger: path_retired

@@ -1,0 +1,198 @@
+schema_version: 1.0.0
+ticket_id: OMN-21491
+title: 'T-V2: delivery-path reducer'
+summary: 'New pure reducer node node_delivery_path_reducer. Its contract carries the plan section 7.3 (Figure 11) state machine
+  and config.delivery.stale_after_minutes; the handler builds the guard context and emits stale_limit_reached from the configured
+  limit and the merge time of the expected target.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-delivery-path-reducer
+  statement: The delivery-path reducer folds one event of a delivery path into its record through the contract's state machine.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The contract equals the fragment of 7.3, loads with the core model and has no unreachable state, dead
+      or ambiguous transition or cycle without exit -- falsifier: the contract-equality and `analyze_fsm` pytest cases'
+  - id: AC2
+    statement: 'AC2: A reference of kind `branch`, `sha` or `hand_kept_version` is refused and nothing leaves `refused` --
+      falsifier: three pytest cases and a case that every trigger from `refused` is rejected'
+  - id: AC3
+    statement: 'AC3: A path waiting for its tag past `stale_after_minutes` reaches `stale` and writes one decision row, and
+      when the tag then appears `tag_seen` brings it back to `tag_resolved` and an install reaches `verified`; `install_started`
+      from `stale` needs `target_resolved == True` -- falsifier: the pytest cases missing tag, timeout, tag appears, verified,
+      and a `stale` path with an unresolved target that stays `stale`'
+  - id: AC4
+    statement: 'AC4: An install whose receipt does not name the tag returns to `tag_resolved` and is retried, and the deadline
+      is the one anchored to the expected merge, so repeated older-tag receipts and a missing receipt both reach `stale` at
+      the limit instead of restarting the clock; `installing` has its own `stale_limit_reached` transition -- falsifier: two
+      pytest cases with a clock past the limit across five retries and with no receipt'
+  - id: AC5
+    statement: 'AC5: A `verified` path whose repository has a newer merge that no tag covers moves to `tag_pending` on `newer_merge_seen`
+      and to `stale` at the limit counted from that merge -- falsifier: the pytest case with an installed older tag and an
+      untagged newer merge'
+  - id: AC6
+    statement: 'AC6: `path_checked` is valid in every active state: a reference whose `reference_allowed` is False reaches
+      `refused` from `declared`, `tag_pending`, `tag_resolved`, `installing`, `verified` and `stale`, and an allowed one (a
+      dev-merge tag on a continuous path, or a candidate tag on a declared pre-PR path) moves `declared` to `tag_pending`
+      and leaves every other active state unchanged -- falsifier: twelve pytest cases, and a case that changes the reference
+      during pending resolution and during installation'
+  - id: AC7
+    statement: 'AC7: A consumer found off the tag leaves `verified` for `stale` -- falsifier: the pytest case with `consumer_on_tag`
+      False'
+  - id: AC8
+    statement: 'AC8: A newer merge or tag seen in `tag_resolved` or `installing` moves the path to the new target, and a receipt
+      for the superseded target never reaches `verified` -- falsifier: the pytest case that starts installing A, sees merge
+      B and then receives A''s successful receipt (the path stays off `verified` and keeps B as its target), plus its restart
+      and concurrent-sync variants'
+  - id: AC9
+    statement: 'AC9: Configuration: `stale_after_minutes` is a contract field; the handler holds no number -- falsifier: the
+      same waiting path is `stale` under a fixture of 30 and pending under 600'
+  - id: AC10
+    statement: 'AC10: Bindings: depends on no protocol (it takes facts and `now`) -- falsifier: byte-identical results in
+      process and through the local in-process entry of the parity harness (T-B2), and the conformance check (T-B1) fails
+      if a `protocol_dependencies` entry appears in its contract'
+evidence_requirements:
+- kind: tests
+  description: Focused node tests.
+  command: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py tests/nodes/node_binding_conformance_compute
+    -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-t-v2-ac1
+  description: AC1 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'section_7_3
+      or analyze_fsm'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac2
+  description: AC2 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'reference_branch
+      or reference_sha or reference_hand_kept or nothing_leaves_refused'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac3
+  description: AC3 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'missing_tag
+      or tag_appears_after_stale or install_started_from_stale or never_appears'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac4
+  description: AC4 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'five_retries
+      or missing_receipt or installing_has_its_own or mismatching_receipt'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac5
+  description: AC5 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'untagged_newer_merge'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac6
+  description: AC6 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'path_checked
+      or allowed_kinds or reference_changed_during'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac7
+  description: AC7 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'consumer_off_tag'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac8
+  description: AC8 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'superseded
+      or concurrent_sync or changed_artifact or receipt_target_current or newer_tag_from_verified'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac9
+  description: AC9 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'stale_after_minutes_is_read
+      or holds_no_limit_number or single_source'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-ac10
+  description: AC10 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py -q --no-cov --tb=line -k 'protocol
+      or byte_identical or conformance'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-deploy
+  description: 'Hosted deploy check: the node''s focused tests and the binding conformance tests run on the hosted runner
+    with no live dependency.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py tests/nodes/node_binding_conformance_compute
+      -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-deploy-probe
+  description: 'Deploy probe: the handler read from GitHub at the checked-out commit defines class HandlerDeliveryPath. The
+    merge base lacks the file, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delivery_path_reducer/handlers/handler_delivery_path.py?ref=$(git
+      rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerDeliveryPath'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-t-v2-delegation-join
+  description: 'Delegation join: the Codex threads 01a184a0-3963-7c91-b93f-db8b81a1d545 and 01a184a5-f421-72a2-97c6-e4dbbc8d0664
+    (handler, models, tests) and the onex delegate run a19e70fe-3d51-43d9-9b00-8e08f02f42b7 (commit message) have receipts
+    on the launching host. Read at the local Done gate only; the receipts are not on a hosted runner.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: grep -r -l -e 01a184a0-3963-7c91-b93f-db8b81a1d545 -e 01a184a5-f421-72a2-97c6-e4dbbc8d0664 ${OMNI_HOME}/.claude_scratch/delegation-receipts/factory-t-v2-2215
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: grep -r -l -e 'pr:OmniNode-ai/omnimarket#4548' ${OMNI_HOME}/.claude_scratch/delegation-receipts/factory-t-v2-2215/2026-10-28T223222Z-codex-build-reducer.json
+      ${OMNI_HOME}/.claude_scratch/delegation-receipts/factory-t-v2-2215/2026-10-28T223521Z-codex-fix-tag-anchor.json
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: test -s ${OMNI_HOME}/.onex_state/harness-delegate/a19e70fe-3d51-43d9-9b00-8e08f02f42b7/receipt.json
+    cwd: ${OMNI_HOME}/omnimarket

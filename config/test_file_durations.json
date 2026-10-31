@@ -679,6 +679,7 @@
   "tests/nodes/node_delegation_split_compute/test_split_recombine_roundtrip.py": 6.05,
   "tests/nodes/node_delegation_tier_comparison_compute/test_registration.py": 0.16,
   "tests/nodes/node_delegation_tier_comparison_compute/test_tier_comparison.py": 3.54,
+  "tests/nodes/node_delivery_path_reducer/test_delivery_path_fsm.py": 3.94,
   "tests/nodes/node_demo_drift_detector/test_handler_demo_drift_detector.py": 0.03,
   "tests/nodes/node_demo_fanout_orchestrator/test_golden_chain_demo_fanout_orchestrator.py": 0.08,
   "tests/nodes/node_demo_fix_dispatcher/test_handler_demo_fix_dispatcher.py": 0.02,
