@@ -55,12 +55,9 @@ node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-completed.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-failed.v1
 node_decompose_epic_orchestrator onex.cmd.omnimarket.contract-generate.v1
 node_demo_cost_compute onex.evt.omnimarket.demo-cost-computed.v1
-node_demo_drift_detector onex.evt.omnimarket.demo-drift-detected.v1
 node_demo_fanout_orchestrator onex.cmd.omnimarket.demo-inference-request.v1
 node_demo_fanout_orchestrator onex.evt.omnimarket.demo-fanout-completed.v1
 node_demo_fix_dispatcher onex.evt.omnimarket.demo-fixes-dispatched.v1
-node_demo_rehearsal onex.evt.omnimarket.demo-rehearsed.v1
-node_demo_rehearsal run_id
 node_deployment_evidence_reducer reduced
 node_design_plan_context_compute onex.evt.omnimarket.design-plan-context-completed.v1
 node_dispatch_worker_execution_effect onex.cmd.omnimarket.delegation-request.v1

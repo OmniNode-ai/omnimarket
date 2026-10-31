@@ -89,16 +89,14 @@ async def test_default_policy_from_contract_without_base_init(
     probe_name: str,
     path: str,
 ) -> None:
-    class HandlerWithoutInit(handler_module.HandlerDemoRehearsal):
-        def __init__(self) -> None:
-            pass
-
     dashboard_url = "http://dashboard.example.test:8080"
     monkeypatch.setenv("DEMO_DASHBOARD_URL", dashboard_url)
     contract_policy = ModelDemoProbePolicy.model_validate(
         load_packaged_contract_section("node_demo_rehearsal", "probe_policy")
     )
-    handler = HandlerWithoutInit()
+    handler = handler_module.HandlerDemoRehearsal.__new__(
+        handler_module.HandlerDemoRehearsal
+    )
 
     assert await getattr(handler, probe_name)() == {}
 
@@ -155,3 +153,13 @@ async def test_missing_overlay_raises_before_client_creation(
     timeouts, urls = recording_client
     assert timeouts == []
     assert urls == []
+
+
+@pytest.mark.unit
+def test_contract_declares_event_and_run_id_output() -> None:
+    event_bus = load_packaged_contract_section("node_demo_rehearsal", "event_bus")
+    outputs = load_packaged_contract_section("node_demo_rehearsal", "outputs")
+    assert isinstance(event_bus, dict)
+    assert isinstance(outputs, dict)
+    assert event_bus["publish_topics"] == ["onex.evt.omnimarket.demo-rehearsed.v1"]
+    assert "run_id" in outputs
