@@ -202,15 +202,16 @@ def test_the_shim_strips_the_delivery_keys_before_the_event_model(
     bare = schema_factory("bare")
     assert bare.writer(monkeypatch).handle(dict(event))["rows_upserted"] == 2
 
+    delivered = schema_factory("delivered")
+    writer = delivered.writer(monkeypatch)
     delivery = {
         **event,
-        "_topic": "onex.evt.test.v1",
+        "_topic": writer.subscribe_topics[0],
         "_partition": 3,
         "_offset": 41,
         "_fallback_id": "fallback-1",
     }
-    delivered = schema_factory("delivered")
-    assert delivered.writer(monkeypatch).handle(delivery)["rows_upserted"] == 2
+    assert writer.handle(delivery)["rows_upserted"] == 2
     assert delivered.state() == bare.state()
     assert delivered.transitions() == bare.transitions()
 
