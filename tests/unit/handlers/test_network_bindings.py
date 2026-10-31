@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
 
 from omnimarket.handlers import network_bindings
 from omnimarket.handlers.container.container_inmemory import (
@@ -97,3 +98,40 @@ def test_binding_sites_build_the_in_memory_implementations() -> None:
     )
     assert isinstance(bind_process_row_store(), InMemoryPrHandoffRowStore)
     assert isinstance(bind_database_adapter(), InmemoryDatabaseAdapter)
+
+
+@pytest.mark.unit
+def test_network_slice_has_no_targeted_findings() -> None:
+    root = Path(__file__).resolve().parents[3] / "src" / "omnimarket"
+    paths = [
+        root / relative
+        for relative in (
+            "delegated_test_loop/lane_bus.py",
+            "handlers/container/container_inmemory.py",
+            "models/delegation/wire/model_probe_ladder.py",
+            "nodes/node_binding_parity_orchestrator/handlers/handler_run_local.py",
+            "nodes/node_binding_parity_orchestrator/stubs/stub_bus.py",
+            "nodes/node_claude_review_gateway_effect/models/model_claude_review_gateway.py",
+            "nodes/node_golden_chain_sweep/census_collector.py",
+            "nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py",
+            "nodes/node_pr_handoff_orchestrator/state_codec.py",
+            "nodes/node_process_watchdog/handlers/checktargets_production.py",
+            "nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py",
+            "projection/api_server.py",
+            "rsd/v4_static_policy.py",
+        )
+    ]
+    rules = {"inmemory_outside_injection", "literal_host", "literal_ip", "literal_port"}
+    assert all(path.is_file() for path in paths), "a network slice module is missing"
+    validator = ValidatorContractsAndDi()
+    enabled = {rule.rule_id for rule in validator.contract.rules if rule.enabled}
+    assert rules <= enabled, f"network rules are not enabled: {sorted(rules - enabled)}"
+    result = validator.validate(paths)
+    assert result.metadata is not None
+    assert result.metadata.files_processed == len(paths)
+    offenders = [
+        str(issue)
+        for issue in result.issues
+        if issue.rule_name in rules | {"unparseable_file"}
+    ]
+    assert not offenders, "\n".join(offenders)

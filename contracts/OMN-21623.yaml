@@ -111,6 +111,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC5"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_network_bindings.py -k test_network_slice_has_no_targeted_findings -q --no-cov"
+        cwd: "."
       - check_type: "command"
         check_value: |-
           uv run --frozen python - <<'PY'
