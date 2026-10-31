@@ -107,6 +107,8 @@ from omnimarket.pack.model_context_pack_builder_result import (
 )
 from omnimarket.pack.model_context_profile import ModelContextProfile
 
+from ..container.container_parts import resolve_parts
+
 REDUCER_VERSION = "context-pack-orchestrator/1"
 
 _NODES_DIR = Path(__file__).resolve().parents[2]
@@ -269,10 +271,9 @@ class HandlerContextPackOrchestrator:
         clock: Callable[[], float] | None = None,
     ) -> None:
         self._sources = {} if sources is None else dict(sources)
-        self._resolver = profile_resolver or HandlerContextProfileResolver()
-        self._builder = builder or HandlerContextPackBuilder()
-        self._renderer = renderer or HandlerContextPackRender()
-        self._task_kind_rules = task_kind_rules or HandlerContextTaskKindRules()
+        self._resolver, self._builder, self._renderer, self._task_kind_rules = (
+            resolve_parts(profile_resolver, builder, renderer, task_kind_rules)
+        )
         self._implementation_identity = (
             implementation_identity or default_implementation_identity
         )

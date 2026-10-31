@@ -22,14 +22,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_mover import (
-    HandlerDevTagPinMover,
-)
 from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mover import (
     EnumConsumerTestOutcome,
     EnumPinMoveRefusal,
     ModelDevTagPinMoveRequest,
 )
+
+from .container import container_dev_tag_pin_mover_compute
 
 EXIT_CANDIDATE_WRITTEN = 3
 
@@ -47,13 +46,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    result = HandlerDevTagPinMover().handle(
-        ModelDevTagPinMoveRequest(
-            pyproject_text=args.pyproject.read_text(),
-            distribution=args.distribution,
-            repository_url=args.repository_url,
-            new_tag=args.tag,
-            consumer_tests=EnumConsumerTestOutcome(args.tests),
+    result = (
+        container_dev_tag_pin_mover_compute.build_handler_dev_tag_pin_mover().handle(
+            ModelDevTagPinMoveRequest(
+                pyproject_text=args.pyproject.read_text(),
+                distribution=args.distribution,
+                repository_url=args.repository_url,
+                new_tag=args.tag,
+                consumer_tests=EnumConsumerTestOutcome(args.tests),
+            )
         )
     )
     sys.stdout.write(result.model_dump_json(exclude={"candidate_text"}) + "\n")

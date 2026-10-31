@@ -31,9 +31,7 @@ from omnimarket.cli.reporting import (
     build_report_from_model_result,
     load_contract_metadata,
 )
-from omnimarket.nodes.node_local_review.handlers.handler_local_review import (
-    HandlerLocalReview,
-)
+from omnimarket.nodes.node_local_review.container import container_local_review
 from omnimarket.nodes.node_local_review.models.model_local_review_start_command import (
     ModelLocalReviewStartCommand,
 )
@@ -79,7 +77,7 @@ def main() -> None:
         requested_at=datetime.now(UTC),
     )
 
-    handler = HandlerLocalReview()
+    handler = container_local_review.build_handler_local_review()
     state = handler.start(command)
     if not report_output_requested():
         sys.stdout.write(state.model_dump_json(indent=2) + "\n")
