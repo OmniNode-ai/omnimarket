@@ -25,6 +25,9 @@ from omnimarket.nodes.node_verify_effect.handlers.handler_verify import HandlerV
 from omnimarket.nodes.node_verify_effect.models.model_verify_check import (
     ModelVerifyCheck,
 )
+from omnimarket.nodes.node_verify_effect.models.model_verify_input import (
+    ModelVerifyInput,
+)
 
 
 class _StubChecker:
@@ -97,7 +100,9 @@ async def test_verify_effect_multiparam(
     correlation_id = uuid4()
     handler = HandlerVerify(checkers=checkers)  # type: ignore[arg-type]
 
-    result = await handler.handle(correlation_id, dry_run=dry_run)
+    result = await handler.handle(
+        ModelVerifyInput(correlation_id=correlation_id, dry_run=dry_run)
+    )
 
     assert result.correlation_id == correlation_id
     assert result.all_critical_passed is expect_pass
@@ -119,7 +124,7 @@ async def test_verify_effect_negative_control_raising_checker_captured() -> None
             _StubChecker("runtime_health", passed=True, critical=True),
         ]
     )
-    result = await handler.handle(uuid4())
+    result = await handler.handle(ModelVerifyInput(correlation_id=uuid4()))
     # The raising checker did not crash the phase; it surfaced as a warning.
     assert len(result.warnings) == 1
     assert "probe connection refused" in result.warnings[0]
