@@ -17,13 +17,13 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
-from ..models import (
+from .handlers.handler_lab_fill_receipt_table import HandlerLabFillReceiptTable
+from .models import (
     ModelAdmittingHost,
     ModelLaneReceiptInput,
     ModelLaneReceiptTableRequest,
     ModelLaneReceiptTableResult,
 )
-from .handler_lab_fill_receipt_table import HandlerLabFillReceiptTable
 
 
 def request_from_json(text: str) -> ModelLaneReceiptTableRequest:

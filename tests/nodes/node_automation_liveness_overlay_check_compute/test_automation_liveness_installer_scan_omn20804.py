@@ -8,13 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.handlers.handler_automation_liveness_overlay_check_cli import main
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers import (
     classify_source,
 )
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models import (
     EnumAutomationLivenessFindingKind,
     EnumAutomationLivenessSourceClass,
+)
+from omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli import (
+    main,
 )
 from tests.nodes.node_automation_liveness_overlay_check_compute.support import (
     PLANTED_LAUNCHD_INSTALLER,
