@@ -89,6 +89,10 @@ def brief_refusals(
     umbrella_tickets: Sequence[str] | None = None,
 ) -> tuple[str, ...]:
     """``lane_brief.py check``: the refusal of a brief whose CLAIM ticket is an umbrella ticket on a PR-opening lane."""
+    from omnimarket.nodes.node_umbrella_ticket_compute.container.container_umbrella_ticket_compute import (
+        create_handler_umbrella_ticket,
+    )
+
     ticket = claim_ticket(parts)
     request = ModelUmbrellaTicketRequest(
         tickets=(ticket,) if ticket else (),
@@ -98,15 +102,19 @@ def brief_refusals(
         if umbrella_tickets is not None
         else None,
     )
-    return HandlerUmbrellaTicket().handle(request).refusals
+    return create_handler_umbrella_ticket().handle(request).refusals
 
 
 def pr_refusal(
     ticket: str, body: str, *, umbrella_tickets: Sequence[str] | None = None
 ) -> str:
     """``landing_text.py guard-create``: the refusal of a PR whose only title ticket is an umbrella ticket, or ""."""
+    from omnimarket.nodes.node_umbrella_ticket_compute.container.container_umbrella_ticket_compute import (
+        create_handler_umbrella_ticket,
+    )
+
     return "".join(
-        HandlerUmbrellaTicket()
+        create_handler_umbrella_ticket()
         .handle(
             ModelUmbrellaTicketRequest(
                 tickets=(ticket,),

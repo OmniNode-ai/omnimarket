@@ -26,11 +26,23 @@ Every rule the runner's SQL encodes is kept here, in the same order:
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+import logging
+from datetime import UTC, datetime
+from typing import Any, Protocol, cast
 
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write import (
+    HandlerCredentialRouteWrite,
+    HandlerCredentialRowWrite,
+)
 from omnimarket.projection.protocol_database import (
     ProtocolProjectionAttestedWrite,
     ProtocolProjectionDatabaseSync,
+)
+from omnimarket.protocols.protocol_credential_route_write import (
+    ProtocolCredentialRouteWrite,
+)
+from omnimarket.protocols.protocol_credential_row_write import (
+    ProtocolCredentialRowWrite,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
@@ -40,6 +52,7 @@ from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 
 CREDENTIALS_TABLE = "tenant_inference_credentials"
 OVERLAY_TABLE = "delegation_routing_tenant_overlay"
+logger = logging.getLogger(__name__)
 
 
 class ProtocolCredentialStore(
@@ -78,6 +91,33 @@ def _model(data: dict[str, Any]) -> str:
     return BYOK_MODEL_UNRESOLVED
 
 
+def registered_models(data: dict[str, Any]) -> list[str]:
+    models = data.get("models")
+    if models is None:
+        model = _model(data)
+        return [] if model == BYOK_MODEL_UNRESOLVED else [model]
+    if (
+        not isinstance(models, list)
+        or not models
+        or any(
+            not isinstance(model, str) or not model.strip() or len(model) > 200
+            for model in models
+        )
+        or len(set(models)) != len(models)
+    ):
+        raise ValueError(
+            "credential models must be a nonempty ordered list of distinct provider IDs"
+        )
+    return models
+
+
+def registered_expected_version(data: dict[str, Any]) -> int | None:
+    version = data.get("expected_version")
+    if version is not None and (type(version) is not int or version < 1):
+        raise ValueError("credential expected_version must be a positive integer")
+    return version
+
+
 def apply_credential_registered(
     data: dict[str, Any], db: ProtocolCredentialStore
 ) -> bool:
@@ -95,6 +135,8 @@ def apply_credential_registered(
                 f"{leak_key!r} -- refusing to project"
             )
     tenant = str(tenant_id)
+    models = registered_models(data)
+    expected_version = registered_expected_version(data)
     row: dict[str, object] = {
         "api_key_ref": str(api_key_ref),
         "tenant_id": tenant,
@@ -107,21 +149,29 @@ def apply_credential_registered(
     for column in _REGISTERED_OPTIONAL_COLUMNS:
         if data.get(column) is not None:
             row[column] = str(data[column])
-    db.upsert_returning(
-        CREDENTIALS_TABLE,
-        "api_key_ref",
-        row,
-        tenant=tenant,
-        insert_only_columns=frozenset({"created_at"}),
-        sql_expression_columns={"created_at": _NOW},
-    )
+    if isinstance(db, ProtocolCredentialRowWrite):
+        # OMN-21217: a register over a stored row (a tombstone included) raises
+        # its version by one in the same statement, as the runner's ON CONFLICT
+        # does, so concurrent writers never lose an increment.
+        db.write_credential_row(HandlerCredentialRowWrite.registered(row))
+    else:
+        db.upsert_returning(
+            CREDENTIALS_TABLE,
+            "api_key_ref",
+            row,
+            tenant=tenant,
+            insert_only_columns=frozenset({"created_at"}),
+            sql_expression_columns={"created_at": _NOW},
+        )
     _apply_routing_overlay(
         db,
         tenant_id=tenant,
         provider=str(provider),
         api_key_ref=str(api_key_ref),
         plan=_plan(data),
-        model=_model(data),
+        model=models[0] if models else _model(data),
+        models=models,
+        expected_version=expected_version,
     )
     return True
 
@@ -134,6 +184,8 @@ def _apply_routing_overlay(
     api_key_ref: str,
     plan: str | None,
     model: str,
+    models: list[str],
+    expected_version: int | None,
 ) -> bool:
     backend = resolve_byok_provider_backend(provider, plan=plan)
     if backend is None:
@@ -141,6 +193,37 @@ def _apply_routing_overlay(
     catalogued = db.query(CREDENTIALS_TABLE, {"api_key_ref": api_key_ref})
     if catalogued and catalogued[0].get("revoked_at") is not None:
         return False
+    if isinstance(db, ProtocolCredentialRouteWrite):
+        now = datetime.now(UTC).isoformat()
+        applied, current_version = _replace_credential_route(
+            db,
+            {
+                "tenant_id": tenant_id,
+                "task_type": BYOK_ALL_TASK_TYPES,
+                "backend_id": backend.backend_id,
+                "provider": backend.provider,
+                "endpoint_url": backend.endpoint_url,
+                "model_name": model,
+                "models": models,
+                "secret_ref": api_key_ref,
+                "timeout_ms": backend.timeout_ms,
+                "max_tokens": backend.max_tokens,
+                "created_at": now,
+                "updated_at": now,
+            },
+            expected_version,
+        )
+        if not applied:
+            logger.warning(
+                "credential_models_version_conflict tenant_id=%s current_version=%s",
+                tenant_id,
+                current_version,
+            )
+        return applied
+    if expected_version is not None or len(models) > 1:
+        raise TypeError(
+            "Credential route store does not support atomic version replacement"
+        )
     db.upsert_returning(
         OVERLAY_TABLE,
         "tenant_id,task_type",
@@ -170,19 +253,57 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
         return True
     ref = str(api_key_ref)
     tenant = str(tenant_id)
-    catalogued = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
-    if not catalogued or catalogued[0].get("revoked_at") is None:
-        db.upsert_returning(
-            CREDENTIALS_TABLE,
-            "api_key_ref",
-            {"api_key_ref": ref, "tenant_id": tenant, "name": None, "provider": None},
-            tenant=tenant,
-            insert_only_columns=frozenset(
-                {"tenant_id", "name", "provider", "created_at"}
-            ),
-            sql_expression_columns={"created_at": _NOW, "revoked_at": _NOW},
-        )
+    if isinstance(db, ProtocolCredentialRowWrite):
+        # OMN-21217: one statement, as the runner's: tombstone an unknown key,
+        # else keep the earliest revoked_at; the version rises in SQL on every
+        # revoke over a stored row, a repeated one included.
+        db.write_credential_row(HandlerCredentialRowWrite.revoked(ref, tenant))
+    else:
+        catalogued = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        if not catalogued or catalogued[0].get("revoked_at") is None:
+            db.upsert_returning(
+                CREDENTIALS_TABLE,
+                "api_key_ref",
+                {
+                    "api_key_ref": ref,
+                    "tenant_id": tenant,
+                    "name": None,
+                    "provider": None,
+                },
+                tenant=tenant,
+                insert_only_columns=frozenset(
+                    {"tenant_id", "name", "provider", "created_at"}
+                ),
+                sql_expression_columns={"created_at": _NOW, "revoked_at": _NOW},
+            )
     for route in db.query(OVERLAY_TABLE, {"tenant_id": tenant, "secret_ref": ref}):
+        # Schema versions are integers; generic projection rows erase that type.
+        if isinstance(db, ProtocolCredentialRouteWrite):
+            # The read can precede another registration. CAS must occur at the
+            # database boundary; a stale revoke must not overwrite its winner.
+            _replace_credential_route(
+                db,
+                {
+                    column: (None if column == "secret_ref" else route[column])
+                    for column in (
+                        "tenant_id",
+                        "task_type",
+                        "backend_id",
+                        "provider",
+                        "endpoint_url",
+                        "model_name",
+                        "models",
+                        "secret_ref",
+                        "timeout_ms",
+                        "max_tokens",
+                        "created_at",
+                    )
+                    if column in route
+                }
+                | {"updated_at": datetime.now(UTC).isoformat()},
+                int(cast(int, route["version"])),
+            )
+            continue
         kept = {
             column: route[column]
             for column in (
@@ -196,6 +317,11 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
                 "max_tokens",
             )
         }
+        for column in ("models", "version"):
+            if column in route:
+                kept[column] = route[column]
+        if "version" in route:
+            kept["version"] = int(cast(int, route["version"])) + 1
         db.upsert_returning(
             OVERLAY_TABLE,
             "tenant_id,task_type",
@@ -216,3 +342,14 @@ __all__ = [
     "apply_credential_registered",
     "apply_credential_revoked",
 ]
+
+
+def _replace_credential_route(
+    db: ProtocolCredentialRouteWrite,
+    row: dict[str, object],
+    expected_version: int | None,
+) -> tuple[bool, int | None]:
+    """Prepare domain SQL here; each driver retains its one atomic transaction."""
+    return db.replace_credential_route(
+        HandlerCredentialRouteWrite.prepare(row, expected_version)
+    )

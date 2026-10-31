@@ -21,8 +21,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from omnimarket.nodes.node_skill_tree_read_effect.handlers.handler_skill_tree_read import (
-    HandlerSkillTreeRead,
+from omnimarket.nodes.node_skill_tree_read_effect.container.container_skill_tree_read_effect import (
+    create_handler_skill_tree_read,
 )
 from omnimarket.nodes.node_skill_tree_read_effect.models import (
     ModelSkillTreeReadRequest,
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"ERROR: skills root not found: {args.skills_root}\n")
         return _EXIT_USAGE
 
-    snapshot = HandlerSkillTreeRead().handle(
+    snapshot = create_handler_skill_tree_read().handle(
         ModelSkillTreeReadRequest(skills_root=args.skills_root)
     )
     sys.stdout.write(snapshot.model_dump_json() + "\n")
