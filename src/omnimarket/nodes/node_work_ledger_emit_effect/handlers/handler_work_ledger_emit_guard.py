@@ -35,11 +35,12 @@ import argparse
 import os
 import sys
 
+from omnimarket.handlers.network_bindings import network_hosts
+
 GUARD_NAME = "ledger-test-write-guard"
 TEST_CONTEXT_ENV = "ONEX_TEST_CONTEXT"
 BOOTSTRAP_ENV = "KAFKA_BOOTSTRAP_SERVERS"
 EXIT_TEST_WRITE_REFUSED = 79
-_LOOPBACK_HOSTS = frozenset({"", "localhost", "127.0.0.1", "::1"})
 
 
 class LedgerTestWriteRefusedError(Exception):
@@ -70,7 +71,7 @@ class HandlerWorkLedgerEmitGuard:
         """The first non-loopback broker host the emit would publish to, else None."""
         for server in os.environ.get(BOOTSTRAP_ENV, "").split(","):
             host = cls._server_host(server).lower()
-            if host not in _LOOPBACK_HOSTS:
+            if host not in {"", *network_hosts("loopback.hosts")}:
                 return host
         return None
 

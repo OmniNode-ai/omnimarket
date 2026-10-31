@@ -46,7 +46,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import subprocess
 import sys
 import uuid
@@ -81,6 +80,9 @@ from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
     DEFAULT_OCC_CONTEXT,
     ModelOccReplayRecord,
     ModelOccReplayRequest,
+)
+from omnimarket.nodes.node_dod_verify.services.evidence_home import (
+    open_receipt_destinations,
 )
 from omnimarket.nodes.node_dod_verify.services.occ_replay import (
     render_replay_table,
@@ -561,12 +563,7 @@ def main() -> None:
     # under the same ONEX_EVIDENCE_ROOT. When that is unset the node is in its
     # documented stdout-only mode and there is nowhere durable to record an
     # attempt — no silent fallback path is invented for it.
-    evidence_root_env = os.environ.get("ONEX_EVIDENCE_ROOT")
-    ledger = (
-        FilesystemDodVerifyRetryLedger(ticket_state_root=Path(evidence_root_env))
-        if evidence_root_env
-        else None
-    )
+    evidence_root_env, ledger = open_receipt_destinations(args.output_path)
     attempt: ModelDodVerifyRetryState | None = None
     if ledger is not None:
         attempt = _open_attempt(ledger, args.ticket_id)

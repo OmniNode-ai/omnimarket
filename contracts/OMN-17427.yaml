@@ -1029,6 +1029,15 @@ requirements:
     acceptance:
       - id: "AC1742725"
         statement: "AC1742725: test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic awaits the runtime port's own route resolution before asyncio.wait_for and keeps the wait_for timeout at 10 seconds; both port kinds pass -- falsifier: the source check below fails on the merge base, whose single 10 second wait_for also covers first route discovery"
+  - id: "req-pr4603-shared-budget-readback"
+    statement: "The delegation budget projection uses the infra revision that declares its relation and grants, and the readback measures shared projection rows instead of host-local receipts by default."
+    acceptance:
+      - id: "AC460301"
+        statement: "The budget readings projection resolves its database privileges and wires through the real infra runtime with the locked dependency; the old infra pin fails Event Chain Gate collection on missing SELECT."
+      - id: "AC460302"
+        statement: "Delegate-skill terminals retain their budget and duration, refuse older and untimed deliveries, and the projection readback selects completed terminals inside the requested window and fails an over-budget run."
+      - id: "AC460303"
+        statement: "The budget readings migrations are byte-identical to the files delivered by infra#5469, including transactional reconciliation of required columns, defaults and constraints."
   - id: "req-pr4640-test-bus-lane"
     statement: "Integration tests use the broker from the declared test lane and refuse any other lane before constructing a producer."
     acceptance:
@@ -4352,6 +4361,40 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-runtime-wiring"
+    description: "The real projection operation resolver reads the locked infra topology during collection, and the runtime wires the node without missing relation privileges. The old infra pin fails collection before the selected assertion."
+    source: "manual"
+    binds_ac: ["AC460301"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_projection_delegation_budget_readings.py -q --no-cov --refuse-skips -k test_golden_chain_only_the_writer_is_routed"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-shared-budget"
+    description: "The fold and readback tests exercise terminal budgets, producer ordering, default projection selection, time-window filtering and a planted over-budget run."
+    source: "manual"
+    binds_ac: ["AC460302"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn21326_delegation_budget_readings_projection.py tests/test_omn21326_delegation_budget_readings_writer.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov --refuse-skips -k 'projection or terminal_the_lane'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-migration-parity"
+    description: "Both SQL digests bind this package's migrations to the bytes in infra dev-20261031045550-7035bd384149. The merge-base create migration has different bytes."
+    source: "manual"
+    binds_ac: ["AC460303"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn17427_budget_readings_migration_parity.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-deploy-probe"
+    description: "Hosted deployment artifact probe drives the checked-out projection writer through the real in-memory runtime and terminal topics, then tests the projection readback's verdict. Requires only the checkout and locked Python dependencies, with no database, broker, credentials or lab access. A missing topology grant or an incorrect fold or verdict fails this probe. This is a package readback, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_projection_delegation_budget_readings.py tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov --refuse-skips -k 'projection or terminal_the_lane'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-pr4640-declared-test-broker"
     description: "The declared lane resolves to its concrete broker despite another lane's ambient environment, and conftest uses that broker."

@@ -631,7 +631,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for the delegation execution owner and its transition outbox.
     # +1 for the delivered compaction_receipts CREATE; ownership was predeclared.
     # +1 for OMN-20169's delegation_capability_cells = 108.
-    assert census["source_created_tables"] == 108
+    # +1 for the delegation_budget_readings projection relation = 109.
+    assert census["source_created_tables"] == 109
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -806,7 +807,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-20169's delegation_capability_cells = 117.
     # OMN-21090: compaction_current_context is declared before infra vendors
     # its migration, as compaction_receipts was = 118.
-    assert census["source_declared_tables"] == 118
+    # +1 for the delegation_budget_readings projection relation = 119.
+    assert census["source_declared_tables"] == 119
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
