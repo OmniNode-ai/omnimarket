@@ -28,14 +28,15 @@ from omnimarket.models.context_pack_orchestrator import (
     ModelContextPackCommand,
     ModelContextPackRequest,
 )
+from omnimarket.nodes.node_context_pack_orchestrator.container.container_context_pack_orchestrator import (
+    create_handler_context_pack_orchestrator,
+    create_handler_context_profile_resolver,
+)
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     HandlerContextPackOrchestrator,
 )
 from omnimarket.nodes.node_context_pack_render_compute.handlers.handler_context_pack_render import (
     RENDER_CONTRACT_VERSION,
-)
-from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
-    HandlerContextProfileResolver,
 )
 
 SENTINEL = "SENTINEL-7f3a-package-text"
@@ -164,9 +165,9 @@ def orchestrator(
     render_contract_version: str = RENDER_CONTRACT_VERSION,
 ) -> HandlerContextPackOrchestrator:
     fixed = dict(FIXED_IDENTITY if identity is None else identity)
-    return HandlerContextPackOrchestrator(
+    return create_handler_context_pack_orchestrator(
         sources() if bound is None else bound,
-        profile_resolver=HandlerContextProfileResolver(profiles_dir),
+        profile_resolver=create_handler_context_profile_resolver(profiles_dir),
         implementation_identity=lambda: fixed,
         render_contract_version=render_contract_version,
     )
