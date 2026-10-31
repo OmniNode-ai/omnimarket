@@ -78,6 +78,7 @@ class ModelAskStateConfig(BaseModel):
     min_term_chars: int = Field(ge=1)
     ask_term_limit: int = Field(ge=1)
     max_claim_frequency: float = Field(gt=0.0, le=1.0)
+    common_min_claims: int = Field(ge=1)
     min_quote_chars: int = Field(ge=1)
     done_outcomes: tuple[str, ...]
     handoff_outcomes: tuple[str, ...]

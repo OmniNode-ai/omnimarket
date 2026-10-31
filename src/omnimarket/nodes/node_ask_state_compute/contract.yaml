@@ -78,6 +78,7 @@ config:
   min_term_chars: 3
   ask_term_limit: 8
   max_claim_frequency: 0.2
+  common_min_claims: 20
   min_quote_chars: 24
   done_outcomes: [done, merged]
   handoff_outcomes: [handed-off]

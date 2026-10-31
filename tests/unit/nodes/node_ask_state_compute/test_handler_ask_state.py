@@ -189,8 +189,8 @@ def test_parked_asks_queue_by_sequence_then_age_and_keep_their_reason() -> None:
 
 def test_a_later_claim_unparks_the_ask() -> None:
     rows = (
-        f"2026-10-31T04:00:00Z | STATUS | lane=orch | ask={ask_id(8)} | state=parked | reason=no slot | seq=1",
-        claim("lane-b", "2026-10-31T05:00:00Z", ask_id(8)),
+        f"2026-10-31T09:00:00Z | STATUS | lane=orch | ask={ask_id(8)} | state=parked | reason=no slot | seq=1",
+        claim("lane-b", "2026-10-31T10:00:00Z", ask_id(8)),
     )
     report = _run((_prompt(8, "Add the reducer"),), rows)
     entry = _entry(report, 8)
@@ -199,8 +199,8 @@ def test_a_later_claim_unparks_the_ask() -> None:
     assert report.parked_queue == ()
 
 
-def test_ticketed_status_row_ticketes_the_ask() -> None:
-    row = f"2026-10-31T04:00:00Z | STATUS | lane=orch | ask={ask_id(9)} | state=ticketed | ticket=OMN-500"
+def test_ticketed_status_row_makes_the_ask_ticketed() -> None:
+    row = f"2026-10-31T09:00:00Z | STATUS | lane=orch | ask={ask_id(9)} | state=ticketed | ticket=OMN-500"
     report = _run((_prompt(9, "Graph the factory"),), (row,))
     entry = _entry(report, 9)
     assert entry.state is EnumAskState.TICKETED
@@ -208,19 +208,19 @@ def test_ticketed_status_row_ticketes_the_ask() -> None:
 
 
 def test_closes_ask_needs_evidence_withdrawal_needs_none() -> None:
-    no_evidence = f"2026-10-31T04:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=trust me"
+    no_evidence = f"2026-10-31T09:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=trust me"
     assert (
         _state(_run((_prompt(10, "Do a thing"),), (no_evidence,)), 10)
         is EnumAskState.DROPPED
     )
 
-    merged = f"2026-10-31T04:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=omnimarket#4700"
+    merged = f"2026-10-31T09:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=omnimarket#4700"
     report = _run((_prompt(10, "Do a thing"),), (merged,))
     assert _state(report, 10) is EnumAskState.DONE
     assert _entry(report, 10).resolution == "closes-ask"
 
     withdrawn = (
-        f"2026-10-31T04:00:00Z | STATUS | lane=operator-capture | closes-ask={ask_id(10)} | "
+        f"2026-10-31T09:00:00Z | STATUS | lane=operator-capture | closes-ask={ask_id(10)} | "
         'state=dropped | evidence=operator-drop | "drop it"'
     )
     report = _run((_prompt(10, "Do a thing"),), (withdrawn,))
@@ -230,12 +230,12 @@ def test_closes_ask_needs_evidence_withdrawal_needs_none() -> None:
 
 def test_hold_parks_and_message_ticket_does_not_own() -> None:
     hold = (
-        f"2026-10-31T04:00:00Z | HOLD | lane=orch | id=2026-10-31T04:00:00Z-orch | ask={ask_id(11)} | "
+        f"2026-10-31T09:00:00Z | HOLD | lane=orch | id=2026-10-31T09:00:00Z-orch | ask={ask_id(11)} | "
         "to=orch | until=2026-11-01T00:00:00Z | reason=waits for the host"
     )
     assert _state(_run((_prompt(11, "Rack 51"),), (hold,)), 11) is EnumAskState.PARKED
     msg = (
-        f"2026-10-31T04:00:00Z | MSG | from=orch | to=other | id=2026-10-31T04:00:00Z-orch | "
+        f"2026-10-31T09:00:00Z | MSG | from=orch | to=other | id=2026-10-31T09:00:00Z-orch | "
         f"ask={ask_id(11)} | ticket=OMN-9"
     )
     assert _state(_run((_prompt(11, "Rack 51"),), (msg,)), 11) is EnumAskState.TICKETED
@@ -277,7 +277,7 @@ def test_words_every_claim_carries_do_not_link_asks() -> None:
     rows = tuple(
         f"2026-10-31T08:{m:02d}:00Z | CLAIM | lane=l{m} | ticket=OMN-1 | worktree=none | "
         "est ~1 lane-hours; displaces idle; (OMN-1) | Codex review of something unrelated"
-        for m in range(10, 20)
+        for m in range(10, 40)
     )
     report = _run((_prompt(15, "Have codex review everything"),), rows)
     assert _state(report, 15) is EnumAskState.DROPPED

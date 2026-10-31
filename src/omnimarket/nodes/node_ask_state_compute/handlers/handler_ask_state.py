@@ -111,8 +111,10 @@ def _ids(value: str) -> list[str]:
 
 
 def _tickets(row: _Row) -> list[str]:
+    """Tickets a row names. A RULING names its own ticket on every row, so only its mechanism ticket counts."""
     found: list[str] = []
-    for key in ("ticket", "tickets", "mechanism-ticket"):
+    keys = ("mechanism-ticket",) if row.kind == "RULING" else ("ticket", "tickets")
+    for key in keys:
         found.extend(_TICKET.findall(row.cells.get(key, "")))
     return found
 
@@ -354,7 +356,7 @@ def _decide(
             base = EnumAskState.PARKED
             reason = row.cells.get(config.reason_cell) or reason
         elif row.kind == "RULING":
-            if _tickets(row):
+            if row.cells.get("mechanism-ticket"):
                 base = EnumAskState.TICKETED
             else:
                 done = "ruling"
@@ -566,10 +568,14 @@ class HandlerAskState:
         for stems in claim_stems.values():
             for stem in stems:
                 frequency[stem] = frequency.get(stem, 0) + 1
-        common = frozenset(
-            stem
-            for stem, n in frequency.items()
-            if n / len(claim_stems) >= config.max_claim_frequency
+        common = (
+            frozenset(
+                stem
+                for stem, n in frequency.items()
+                if n / len(claim_stems) >= config.max_claim_frequency
+            )
+            if len(claim_stems) >= config.common_min_claims
+            else frozenset()
         )
         entries: list[ModelAskEntry] = []
         for ask in asks:
