@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21632-audit"
-    description: "The audit's companion cases pass."
+    description: "The audit's companion cases pass; the must-fail control reverts the merged companion-rule implementation."
     source: "manual"
     binds_ac: ["AC1", "AC2"]
     checks:
