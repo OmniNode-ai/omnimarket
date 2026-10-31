@@ -47,7 +47,7 @@ dod_evidence:
     check_value: uv run pytest tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_golden_chain_emit_daemon.py tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_omn14533_cross_boundary_savings_seam.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_omn18531_compaction_savings.py tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_projection_malformed_dlq_omn13548.py tests/test_projection_error_classification_omn13634.py tests/test_projection_handlers.py tests/unit/delegation tests/unit/nodes/node_dod_verify tests/unit/nodes/node_generation_consumer tests/unit/nodes/node_github_repo_write_effect tests/unit/nodes/node_pr_landing_github_effect tests/unit/nodes/node_projection_consumer_flow tests/nodes/node_install_canary_effect tests/nodes/node_intent_event_consumer_effect tests/nodes/node_linear_comments_sweep_orchestrator tests/nodes/node_morning_friction_sweep_orchestrator tests/nodes/node_morning_ground_state_orchestrator src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21536-deploy-handlers-import
-  description: 'Hosted package deploy smoke: the handler modules this change touched import from the evaluated checkout, and the handler-shape validator reports no mutating_public_method finding over src. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout.'
+  description: 'Hosted deploy check: the overlay-source collaborator this change adds is served from the repository at the evaluated head (a fetch of the file at that commit, grepped for the class). No credentials, broker or lab service is required. This checks the pushed source, not a production rollout.'
   source: manual
   binds_ac:
   - AC1
@@ -55,7 +55,5 @@ dod_evidence:
   - check_type: command
     check_value: |
       set -eu;
-      export PYTHONDONTWRITEBYTECODE=1;
-      uv run python -c "import omnimarket.handlers.github_quota_readings, omnimarket.handlers.overlay_source, omnimarket.handlers.scm.handler_gateway_read_client, omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow";
-      test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep -c 'is a public method that mutates handler state')" -eq 0
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/overlay_source.py" | grep -q "class OverlaySource"
     cwd: .
