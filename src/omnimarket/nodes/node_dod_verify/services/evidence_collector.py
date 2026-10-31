@@ -72,6 +72,12 @@ from omnimarket.enums.enum_dod_verify_execution_audience import (
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.models.model_criteria_drift import (
+    ModelCriteriaCheck,
+)
+from omnimarket.models.model_criteria_pins import (
+    ModelCriteriaPins,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     SCM_CACHE_DIR_ENV,
 )
@@ -79,12 +85,6 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effec
     HandlerDodEvidenceGithubEffect,
     HandlerDurableEvidenceGateEffect,
     pypi_release_files,
-)
-from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
-    ModelCriteriaCheck,
-)
-from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
-    ModelCriteriaPins,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
@@ -403,6 +403,8 @@ _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
 # check is not measured on that run (``criteria_check`` stays None) rather than
 # refusing every replayed contract that records criteria. Named and logged.
 _HISTORICAL_REPLAY_ENV = "DOD_VERIFY_HISTORICAL_REPLAY"
+# OMN-21676: the contract that declares the ticket-read credential's secret ref.
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # OMN-18117: path to the pin file whoever materialised this run's product
 # clones wrote — see ``ModelProductClonePinSet``. Unset (the local operator
@@ -2221,6 +2223,10 @@ class EvidenceCollector:
         self._ticket_reader = ticket_reader
         self._criteria_pins: ModelCriteriaPins | None = None
         self._criteria_read_before: ModelTicketCriteriaRead | None = None
+        # OMN-21676: True when the contract records criteria and this run, a hosted
+        # one with no ticket reader injected, left their comparison with the live
+        # ticket to the trusted pre-merge check.
+        self._criteria_delegated = False
         # OMN-20858: what the criteria-drift check established for the last
         # ticket-contract collect(). None when the contract records no criteria
         # (nothing to drift from) or no contract was loaded, so "not measured"
@@ -2499,6 +2505,7 @@ class EvidenceCollector:
         # pins of every contract are kept here and unioned after the loop.
         pin_parts: list[tuple[str, ModelCriteriaPins]] = []
         first_criteria_read: ModelTicketCriteriaRead | None = None
+        any_delegated = False
         for engaged in governing:
             pr = engaged.pr
             logger.info(
@@ -2523,6 +2530,7 @@ class EvidenceCollector:
                 pin_parts.append((name, self._criteria_pins))
                 if first_criteria_read is None:
                     first_criteria_read = self._criteria_read_before
+            any_delegated = any_delegated or self._criteria_delegated
             if multi:
                 # Two contracts may reuse an item id; the repository keeps them
                 # apart in one verdict.
@@ -2537,6 +2545,7 @@ class EvidenceCollector:
                 summaries.append(self.acceptance_summary)
             if self.contract_subject is not None:
                 subjects.append(self.contract_subject)
+        self._criteria_delegated = any_delegated
         if multi:
             # One verdict row names one contract; a verdict over several names
             # none rather than one of them.
@@ -2634,6 +2643,7 @@ class EvidenceCollector:
         self.criteria_check = None
         self._criteria_pins = None
         self._criteria_read_before = None
+        self._criteria_delegated = False
         self._last_contract = None
         raw: dict[str, Any] | None
         if loaded_contract is not None:
@@ -2711,7 +2721,7 @@ class EvidenceCollector:
         # in it, so no marker may retire one, whatever ids coincide.
         declared_count = len(dod_items)
         if inline_items is None:
-            self._begin_criteria_check(ticket_id, raw, dod_items)
+            self._begin_criteria_check(ticket_id, raw, dod_items, execution_audience)
             derived_items, self.acceptance_summary = derive_falsifier_items(
                 raw,
                 dod_items,
@@ -3802,10 +3812,24 @@ class EvidenceCollector:
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
 
     def _begin_criteria_check(
-        self, ticket_id: str, contract: dict[str, Any], dod_items: list[Any]
+        self,
+        ticket_id: str,
+        contract: dict[str, Any],
+        dod_items: list[Any],
+        execution_audience: EnumDodVerifyExecutionAudience = (
+            EnumDodVerifyExecutionAudience.HOSTED
+        ),
     ) -> None:
         """OMN-20858: read the live ticket before any check runs, when the contract
-        records criteria to compare it with."""
+        records criteria to compare it with.
+
+        OMN-21676: a hosted run with no ticket reader injected reads nothing. The
+        hosted job holds no Linear credential by design, so it records that the
+        comparison is delegated to the trusted pre-merge check
+        (``node_dod_criteria_check_effect``) and the local Done gate, which read the
+        ticket through the project tracker. An injected reader is always used, and
+        every other audience reads through the tracker.
+        """
         pins = extract_criteria_pins(contract, dod_items)
         if pins is None:
             return
@@ -3822,6 +3846,12 @@ class EvidenceCollector:
             )
             return
         self._criteria_pins = pins
+        if (
+            self._ticket_reader is None
+            and execution_audience is EnumDodVerifyExecutionAudience.HOSTED
+        ):
+            self._criteria_delegated = True
+            return
         self._criteria_read_before = self._criteria_reader().read(ticket_id)
 
     def finish_criteria_check(self) -> ModelCriteriaCheck | None:
@@ -3829,9 +3859,16 @@ class EvidenceCollector:
 
         A second read, not the first reused, because an edit made while the
         checks ran is exactly what the verdict must refuse. Returns None, and
-        reads nothing, when the contract recorded no criteria.
+        reads nothing, when the contract recorded no criteria. A delegated run
+        (OMN-21676) returns the check that says so and reads nothing.
         """
         pins = self._criteria_pins
+        if self._criteria_delegated:
+            self.criteria_check = ModelCriteriaCheck(
+                delegated=True,
+                known_labels=pins.known_labels if pins is not None else (),
+            )
+            return self.criteria_check
         before = self._criteria_read_before
         if pins is None or before is None:
             return None
@@ -3841,11 +3878,16 @@ class EvidenceCollector:
 
     def _criteria_reader(self) -> ProtocolDodTicketCriteriaReader:
         if self._ticket_reader is None:
-            from omnimarket.nodes.node_dod_verify.handlers.handler_dod_ticket_criteria_linear_effect import (
-                HandlerDodTicketCriteriaLinearEffect,
+            from omnimarket.nodes.node_dod_verify.services.criteria_ticket_read import (
+                TrackerCriteriaReader,
+            )
+            from omnimarket.nodes.node_dod_verify.services.linear_criteria_tracker import (
+                linear_project_tracker,
             )
 
-            self._ticket_reader = HandlerDodTicketCriteriaLinearEffect()
+            self._ticket_reader = TrackerCriteriaReader(
+                lambda: linear_project_tracker(_CONTRACT_PATH)
+            )
         return self._ticket_reader
 
     def _contract_repo_dirs(self, dod_items: list[Any]) -> tuple[str, ...]:
