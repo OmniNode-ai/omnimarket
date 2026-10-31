@@ -6,9 +6,10 @@ One test per decision table row (§3.2). No LLM calls. All deterministic.
 """
 
 import asyncio
-from uuid import UUID
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.enums.enum_polish_task_class import EnumPolishTaskClass
 from omnimarket.nodes.node_polish_task_classifier.handlers.handler_classifier import (
@@ -19,7 +20,6 @@ from omnimarket.nodes.node_polish_task_classifier.models.model_polish_classify_r
     ModelPolishClassifyRequest,
 )
 
-_CORRELATION_ID = UUID("00000000-0000-0000-0000-000000000001")
 _PR = 42
 _REPO = "OmniNode-ai/omnimarket"
 
@@ -198,7 +198,7 @@ def test_no_signals_classifies_stuck() -> None:
 def test_handler_handle_delegates_to_classify() -> None:
     handler = HandlerPolishTaskClassifier()
     req = _req(thread_body="hello")
-    result = asyncio.run(handler.handle(_CORRELATION_ID, req))
+    result = asyncio.run(handler.handle(req))
     assert result.task_class == EnumPolishTaskClass.THREAD_REPLY
 
 
@@ -207,3 +207,16 @@ def test_handler_type_and_category() -> None:
     handler = HandlerPolishTaskClassifier()
     assert handler.handler_type == "NODE_HANDLER"
     assert handler.handler_category == "COMPUTE"
+
+
+def test_contract_publishes_completed_and_failed_topics() -> None:
+    """The node's declared publish surface is completed and failed (OMN-21536)."""
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_polish_task_classifier/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.polish-task-classifier-completed.v1",
+        "onex.evt.omnimarket.polish-task-classifier-failed.v1",
+    ]

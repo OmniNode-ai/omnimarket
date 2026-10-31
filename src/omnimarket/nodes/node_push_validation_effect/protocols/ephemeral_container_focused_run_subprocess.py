@@ -33,6 +33,7 @@ import shlex
 import subprocess
 import tarfile
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_push_validation_effect.protocols.dtl_container_invocation import (
     DEFAULT_DOCKER_BIN,
     DTL_LABEL_KEY,
@@ -162,7 +163,7 @@ class EphemeralContainerFocusedRunSubprocess:
     def prepare_worktree(self, repo: str, commit_sha: str, task_dir: str) -> None:
         root = self.task_root()
         mirror = f"{root}/mirrors/{_mirror_name(repo)}"
-        url = f"https://github.com/{repo}.git"
+        url = f"{service_endpoint_url('github.web_url')}/{repo}.git"
         q = self._q
         result = self._ssh(
             "set -e; "

@@ -20,8 +20,11 @@ import json
 import logging
 import re
 import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
@@ -104,6 +107,11 @@ def _parse_scores(raw: str) -> dict[str, float] | None:
     return scores
 
 
+def _declared_seconds(declared: Any) -> float | None:
+    """A duration the contract config declares; None leaves the packaged contract to supply it."""
+    return None if declared is None else float(declared)
+
+
 class HandlerExtractionGrader:
     """Heuristic grader for ADR extraction quality using a configurable LLM.
 
@@ -118,7 +126,7 @@ class HandlerExtractionGrader:
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
         grader_model_key: str = "opus",
-        grader_timeout_seconds: float = 120.0,
+        grader_timeout_seconds: float | None = None,
         prompt_template_id: str = "adr_grading_v1",
         prompt_template_version: str = "1.0.0",
     ) -> None:
@@ -131,7 +139,18 @@ class HandlerExtractionGrader:
         self._bridge: ModelInferenceAdapter | None = inference_bridge
         self._bridge_lock = asyncio.Lock()
         self._grader_model_key = grader_model_key
-        self._grader_timeout_seconds = grader_timeout_seconds
+        self._grader_timeout_seconds = (
+            grader_timeout_seconds
+            if grader_timeout_seconds is not None
+            else float(
+                cast(
+                    dict[str, Any],
+                    load_packaged_contract_section(
+                        "node_adr_extraction_grader_llm_effect", "config"
+                    ),
+                )["grader_timeout_seconds"]["default"]
+            )
+        )
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
 
@@ -234,8 +253,8 @@ class HandlerExtractionGrader:
             grader_model_key=str(
                 cfg.get("grader_model_key", {}).get("default", "opus")
             ),
-            grader_timeout_seconds=float(
-                cfg.get("grader_timeout_seconds", {}).get("default", 120.0)
+            grader_timeout_seconds=_declared_seconds(
+                cfg.get("grader_timeout_seconds", {}).get("default")
             ),
             prompt_template_id=str(
                 cfg.get("prompt_template_id", {}).get("default", "adr_grading_v1")

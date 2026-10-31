@@ -14,6 +14,8 @@ import tomllib
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from omnimarket.handlers.runtime_paths import runtime_path
+
 from ..models import (
     ModelLabUvCacheColocateRequest,
     ModelLabUvCacheColocateResult,
@@ -27,7 +29,9 @@ MANAGED_COMMENT = (
 
 def default_uv_config() -> Path:
     return (
-        Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser()
+        Path(
+            os.environ.get("XDG_CONFIG_HOME") or runtime_path("uv.config_home")
+        ).expanduser()
         / "uv"
         / "uv.toml"
     )

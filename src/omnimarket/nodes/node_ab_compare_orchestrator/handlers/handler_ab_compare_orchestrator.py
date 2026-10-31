@@ -29,6 +29,7 @@ from typing import Any, Protocol, runtime_checkable
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_result import (
     ModelAbCompareResult,
     ModelComparisonRow,
@@ -170,7 +171,9 @@ def _run_quality_check(output: str) -> str:
             ["ruff", "check", "--select=E,F", fname],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=load_node_timeouts("node_ab_compare_orchestrator").get(
+                "quality_check_timeout_seconds"
+            ),
             check=False,
         )
         return (
@@ -338,7 +341,9 @@ class HandlerAbCompareOrchestrator:
             messages=({"role": "user", "content": user_prompt},),
             system_prompt=system_prompt,
             api_key=model.api_key,
-            timeout_seconds=120.0,
+            timeout_seconds=load_node_timeouts("node_ab_compare_orchestrator").get(
+                "llm_call_timeout_seconds"
+            ),
         )
         return await self._effect.handle(request)
 

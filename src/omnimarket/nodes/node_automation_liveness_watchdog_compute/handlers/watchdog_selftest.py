@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.liveness.model_automation_liveness import (
     EnumAutomationEmitter,
     EnumAutomationLivenessReason,
@@ -39,7 +40,9 @@ from omnimarket.nodes.node_automation_liveness_watchdog_compute.models.model_aut
 )
 
 PLANTED_HOST = "watchdog-selftest"
-_INTERVAL = 600
+_INTERVAL: float = load_node_timeouts("node_automation_liveness_watchdog_compute").get(
+    "selftest_interval_seconds"
+)
 _V = EnumAutomationLivenessVerdict
 _R = EnumAutomationLivenessReason
 _OK = EnumAutomationRunOutcome.OK
@@ -55,9 +58,13 @@ def _entry(name: str) -> ModelAutomationLivenessEntry:
             kind=EnumAutomationTriggerKind.LAUNCHD_INTERVAL,
             native_id=f"watchdog-selftest.{name}",
         ),
-        expected_interval_seconds=_INTERVAL,
-        alarm_deadline_seconds=86400,
-        max_runtime_seconds=_INTERVAL // 2,
+        expected_interval_seconds=int(_INTERVAL),
+        alarm_deadline_seconds=int(
+            load_node_timeouts("node_automation_liveness_watchdog_compute").get(
+                "selftest_alarm_deadline_seconds"
+            )
+        ),
+        max_runtime_seconds=int(_INTERVAL // 2),
         emitter=EnumAutomationEmitter.SELF,
         run_record=EnumAutomationRunRecord.PER_RUN,
         real_work="work_count",
