@@ -156,7 +156,3 @@ outputs:
     description: The content records with content_record_id, stream and
       producer_seq (stamp_content_records), or one barrier per stream
       (session_barrier).
-
-timeouts:
-  entry_ttl_seconds: 3600  # Bounds how long paired hook entries remain matchable.
-  lock_retry_delay_seconds: 0.01  # Bounds the wait between item-state lock attempts.

@@ -38,9 +38,6 @@ from omnimarket.nodes.node_baseline_capture.handlers.probes.probe_system_health 
 from omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect import (
     SYNC_TIMEOUT_SECONDS,
 )
-from omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity import (
-    ENTRY_TTL_SECONDS,
-)
 from omnimarket.nodes.node_captured_secret_store_effect.handlers.handler_captured_secret_store import (
     TIMEOUT_SECONDS as SECRET_STORE_TIMEOUT,
 )
@@ -88,10 +85,6 @@ DECLARED: dict[str, dict[str, float]] = {
         "readback_deadline_seconds": 60,
     },
     "node_canonical_clone_refresh_effect": {"sync_timeout_seconds": 300},
-    "node_capture_item_identity_effect": {
-        "entry_ttl_seconds": 3600,
-        "lock_retry_delay_seconds": 0.01,
-    },
     "node_captured_secret_store_effect": {
         "store_call_timeout_seconds": 5.0,
         "credential_close_timeout_seconds": 30.0,
@@ -130,7 +123,6 @@ def test_module_constants_come_from_the_contract() -> None:
     assert OBSERVER_KAFKA_TIMEOUT == 15.0
     assert SYSTEM_HEALTH_TIMEOUT == 3.0
     assert SYNC_TIMEOUT_SECONDS == 300
-    assert ENTRY_TTL_SECONDS == 3600
     assert SECRET_STORE_TIMEOUT == 5.0
 
 

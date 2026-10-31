@@ -1,18 +1,18 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
-title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice A: seventeen nodes declare their timeouts in their contract"
-summary: "Seventeen node packages (node_ab_compare_orchestrator through node_captured_secret_store_effect, alphabetically, without node_build_loop_orchestrator) held 31 timeout, interval, delay, backoff and TTL literals in code. Each value is now declared in its node's contract.yaml under timeouts (the three ADR nodes read the config entry their contract already declared) and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice; no literal_timeout finding remains in the seventeen node directories."
+title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice A: sixteen nodes declare their timeouts in their contract"
+summary: "Sixteen node packages (node_ab_compare_orchestrator through node_captured_secret_store_effect, alphabetically, without node_build_loop_orchestrator and node_capture_item_identity_effect, whose hook module may import only the standard library) held 29 timeout, interval, delay, backoff and TTL literals in code. Each value is now declared in its node's contract.yaml under timeouts (the three ADR nodes read the config entry their contract already declared) and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice; no literal_timeout finding remains in the sixteen node directories."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-omn21623-node-timeouts-a"
     statement: |-
-      The seventeen nodes hold no timeout, interval, delay, backoff or TTL literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+      The sixteen nodes hold no timeout, interval, delay, backoff or TTL literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
     acceptance:
       - id: "AC1"
-        statement: "AC1: the contracts_and_di check reports no literal_timeout finding in the seventeen node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-check-clean below exits nonzero when a timeout literal returns to any of them"
+        statement: "AC1: the contracts_and_di check reports no literal_timeout finding in the sixteen node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-check-clean below exits nonzero when a timeout literal returns to any of them"
       - id: "AC2"
         statement: "AC2: every node of the slice declares its durations in its contract.yaml with the value its code held before -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k declares_every_duration fails when a declared value or name differs from the table"
       - id: "AC3"
@@ -37,12 +37,12 @@ dod_evidence:
         check_value: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-timeouts-check-clean"
-    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the seventeen node directories."
+    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the sixteen node directories."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_ab_compare_orchestrator src/omnimarket/nodes/node_adr_decision_extraction_llm_effect src/omnimarket/nodes/node_adr_extraction_grader_llm_effect src/omnimarket/nodes/node_adr_segmentation_llm_effect src/omnimarket/nodes/node_antipattern_index_effect src/omnimarket/nodes/node_antipattern_match_effect src/omnimarket/nodes/node_architecture_graph_populate_effect src/omnimarket/nodes/node_auto_merge_effect src/omnimarket/nodes/node_automation_liveness_deadman_effect src/omnimarket/nodes/node_automation_liveness_watchdog_compute src/omnimarket/nodes/node_automation_liveness_watchdog_effect src/omnimarket/nodes/node_automation_run_observer_effect src/omnimarket/nodes/node_baseline_capture src/omnimarket/nodes/node_beacon_trace_capture_effect src/omnimarket/nodes/node_canonical_clone_refresh_effect src/omnimarket/nodes/node_capture_item_identity_effect src/omnimarket/nodes/node_captured_secret_store_effect 2>&1 | grep -q literal_timeout"
+        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_ab_compare_orchestrator src/omnimarket/nodes/node_adr_decision_extraction_llm_effect src/omnimarket/nodes/node_adr_extraction_grader_llm_effect src/omnimarket/nodes/node_adr_segmentation_llm_effect src/omnimarket/nodes/node_antipattern_index_effect src/omnimarket/nodes/node_antipattern_match_effect src/omnimarket/nodes/node_architecture_graph_populate_effect src/omnimarket/nodes/node_auto_merge_effect src/omnimarket/nodes/node_automation_liveness_deadman_effect src/omnimarket/nodes/node_automation_liveness_watchdog_compute src/omnimarket/nodes/node_automation_liveness_watchdog_effect src/omnimarket/nodes/node_automation_run_observer_effect src/omnimarket/nodes/node_baseline_capture src/omnimarket/nodes/node_beacon_trace_capture_effect src/omnimarket/nodes/node_canonical_clone_refresh_effect src/omnimarket/nodes/node_captured_secret_store_effect 2>&1 | grep -q literal_timeout"
         cwd: "."
   - id: "dod-omn21623-deploy-timeouts-source-readback"
     description: |-
