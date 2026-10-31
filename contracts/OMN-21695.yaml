@@ -30,9 +30,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC1"]
     checks:
-      - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_claude_review_batch_effect/__main__.py src/omnimarket/nodes/node_contract_seams_orchestrator/handlers/handler_contract_seams_run.py src/omnimarket/nodes/node_data_verification/handlers/handler_data_verification.py src/omnimarket/nodes/node_integration_test_runner/di_profiles.py src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py src/omnimarket/nodes/node_merge_sweep_compute/handlers/handler_merge_sweep.py src/omnimarket/nodes/node_observability_sink_effect/handlers/handler_observability_sink_effect.py src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py src/omnimarket/nodes/node_pipeline_fill/__main__.py src/omnimarket/nodes/node_pr_landing_orchestrator/handlers/handler_pr_landing_orchestrator.py src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/handler_pr_lifecycle_fix.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/__main__.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/consumer.py src/omnimarket/nodes/node_runtime_deploy_effect/handlers/handler_runtime_deploy_cli.py src/omnimarket/nodes/node_trajectory_evaluation_effect/handlers/handler_trajectory_evaluation.py 2>&1 | grep -q inmemory_outside_injection"
-        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/test_cdi_inmemory_binding_sites_c5.py -q --no-cov -k 'slice_module_constructs_no_in_memory_stand_in or positive_control_a_hand_construction_is_flagged'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21695-binding-site-tests"
     description: "Each binder returns its stand-in with the contract's values, every slice module is clean under the checker, and a hand construction is flagged (positive control)."
     source: "manual"
