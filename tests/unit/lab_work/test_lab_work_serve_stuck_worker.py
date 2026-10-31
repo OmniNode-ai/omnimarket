@@ -14,7 +14,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.lab_work import cli
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, ProtocolWorkHandler

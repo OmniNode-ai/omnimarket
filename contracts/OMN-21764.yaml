@@ -1,0 +1,43 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21764
+title: The lab-work caller reads with no consumer group, so a lab-run call leaves none on the CI bus
+summary: The lab-work caller built a fresh consumer group for every call and read its topics in it, so each call left a group behind on the broker. The caller now reads with no consumer group, the node contract declares that mode as caller_subscription.mode, and a caller on a bus without that call is refused at construction.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21764-caller-groupless
+  statement: The lab-work caller joins no consumer group, the node contract declares it, and many calls create no group beyond the serving host's one stable group.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the caller reads the capacity and terminal topics with no consumer group, and the node contract declares that mode -- falsifier: uv run pytest tests/unit/lab_work/test_caller_groupless.py -q'
+  - id: AC2
+    statement: 'AC2: many dispatch calls create at most a fixed number of consumer groups, zero for the caller -- falsifier: uv run pytest tests/unit/lab_work/test_caller_groupless.py -k many_calls -q'
+evidence_requirements:
+- kind: tests
+  description: The caller test file and the lab-work host, table and stuck-worker suites, run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/lab_work tests/nodes/node_morning_ground_state_orchestrator -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21764-ac1-caller-groupless
+  description: AC1 runs the caller test file, which reads the node contract's caller_subscription.mode and the caller's source, and counts the groups a caller opens.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/lab_work/test_caller_groupless.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21764-ac2-many-calls
+  description: AC2 runs 25 caller lifetimes against one serving host on the in-memory bus and asserts the only consumer group created is the host's own.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/lab_work/test_caller_groupless.py -k many_calls -q --no-cov --tb=line
+    cwd: .

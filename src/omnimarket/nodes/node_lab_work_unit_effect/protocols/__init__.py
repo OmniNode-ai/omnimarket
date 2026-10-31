@@ -12,6 +12,10 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_shell_work_runne
     LocalShellLabWorkExecutor,
     ProtocolLabWorkRunner,
 )
+from omnimarket.nodes.node_lab_work_unit_effect.protocols.protocol_ungrouped_bus import (
+    ProtocolUngroupedLabRunBus,
+    require_ungrouped,
+)
 
 __all__ = [
     "HostCapacityUnreadableError",
@@ -20,4 +24,6 @@ __all__ = [
     "LocalShellLabWorkExecutor",
     "ProtocolHostReader",
     "ProtocolLabWorkRunner",
+    "ProtocolUngroupedLabRunBus",
+    "require_ungrouped",
 ]
