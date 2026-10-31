@@ -53,6 +53,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_coh
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_data_source_fold import (
     HandlerDelegationDataSourceFold,
+    ModelDataSourceFoldRequest,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
     HandlerDelegationLineageFold,
@@ -1924,21 +1925,20 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         preservation (OMN-13596) were previously async-path-only absent.
         """
         # OMN-19448: the argument is envelope attribution, folded with provenance.
-        data_source = HandlerDelegationDataSourceFold().handle(event, data_source)
-        quality_gates_checked = list(row_model.quality_gates_checked)
-        quality_gates_failed = list(row_model.quality_gates_failed)
+        data_source = HandlerDelegationDataSourceFold().handle(
+            ModelDataSourceFoldRequest(terminal=event, envelope_source=data_source)
+        )
         # OMN-15905: row_model.timestamp is already an AwareDatetime
         # (ModelDelegationEventProjectionRow) -- bind it directly. Converting
         # to an isoformat() string here and back only to bind a str param to
         # a TIMESTAMPTZ column is exactly the class of bug asyncpg rejects
         # with DataError.
-        session_id = (
-            str(row_model.session_id) if row_model.session_id is not None else None
-        )
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
             "data_source": data_source,
-            "session_id": session_id,
+            "session_id": (
+                str(row_model.session_id) if row_model.session_id is not None else None
+            ),
             "timestamp": row_model.timestamp,
             # OMN-13171: explicit created_at injection for a backing store
             # without an implicit DB default (e.g. a warm-volume SQLite
@@ -1949,10 +1949,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "model_name": row_model.model_name,
             "delegated_by": row_model.delegated_by,
             "quality_gate_passed": row_model.quality_gate_passed,
-            "quality_gates_checked": len(quality_gates_checked),
-            "quality_gates_failed": len(quality_gates_failed),
-            "quality_gates_checked_jsonb": quality_gates_checked,
-            "quality_gates_failed_jsonb": quality_gates_failed,
+            "quality_gates_checked": len(row_model.quality_gates_checked),
+            "quality_gates_failed": len(row_model.quality_gates_failed),
+            "quality_gates_checked_jsonb": list(row_model.quality_gates_checked),
+            "quality_gates_failed_jsonb": list(row_model.quality_gates_failed),
             "quality_gate_detail": row_model.quality_gate_detail,
             "cost_usd": row_model.cost_usd,
             "cost_savings_usd": row_model.cost_savings_usd,

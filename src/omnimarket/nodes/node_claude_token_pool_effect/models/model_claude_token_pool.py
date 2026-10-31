@@ -21,13 +21,18 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     ``resolve``: choose the first token, in the order they were added, whose
     limit has passed and whose OAuth login is not revoked. ``mark_limited``:
     the account behind ``label`` hit its usage limit, out for ``seconds``.
-    ``mark_revoked``: skip ``label`` until re-added. ``status``: read the pool.
+    ``mark_revoked``: skip ``label`` until re-added. ``reorder``: draw ``labels`` first, in that
+    order, then every other token in its present order (a draw order differs per host so no two hosts
+    draw the same first token). ``status``: read the pool.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["add", "resolve", "mark_limited", "mark_revoked", "status"]
+    operation: Literal[
+        "add", "resolve", "mark_limited", "mark_revoked", "reorder", "status"
+    ]
     label: str | None = None
+    labels: tuple[str, ...] = ()
     setup_token_output: SecretStr | None = None
     seconds: float | None = Field(default=None, gt=0)
     force: bool = False
@@ -51,7 +56,9 @@ class ModelClaudeTokenPoolResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["add", "resolve", "mark_limited", "mark_revoked", "status"]
+    operation: Literal[
+        "add", "resolve", "mark_limited", "mark_revoked", "reorder", "status"
+    ]
     host: str
     tokens: tuple[ModelClaudeTokenPoolEntry, ...] = ()
     chosen: str | None = None

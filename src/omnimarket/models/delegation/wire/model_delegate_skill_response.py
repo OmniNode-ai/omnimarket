@@ -523,9 +523,9 @@ class ModelDelegateSkillResponse(BaseModel):
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
-    baseline_source: Literal["session_model", "overlay", "store", "fixed_default"] = (
-        Field(default="fixed_default")
-    )
+    baseline_source: Literal[
+        "session_model", "overlay", "store", "most_used", "fixed_default"
+    ] = Field(default="fixed_default")
     baseline_state: Literal["RESOLVED", "BASELINE_UNRESOLVED"] = Field(
         default="RESOLVED"
     )

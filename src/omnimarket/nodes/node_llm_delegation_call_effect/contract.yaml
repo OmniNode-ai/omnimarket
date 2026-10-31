@@ -51,6 +51,11 @@ description: |
   nested tool sandboxes can refuse that open. Startup refusal is a typed result,
   never grounds to change credentials, CODEX_HOME or sandbox permissions.
 
+  HandlerClaudeCredentialProbe runs one Claude Code call that proves the credential in
+  the host's environment (OMN-21626). It takes ModelClaudeCredentialProbeRequest (prompt,
+  model, timeout_seconds) and returns ModelClaudeCredentialProbeReceipt (redacted bounded
+  output, exit_cause, exit_code). The credential is never a field of either model.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
@@ -483,3 +488,21 @@ codex_harness:
   reasoning_effort: high
   max_timeout_seconds: 600
   terminate_grace_seconds: 5
+
+# Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
+# The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is
+# never a field of the request or the receipt. The probe handler is reached only by its command line on the host and
+# is not in handler_routing: a routed handler needs a subscribed topic, and a probe must never be triggered from the
+# bus. The `handler` entry below binds it to this node's contract, and the loader refuses a block whose bound
+# module is not the handler that reads it. CLI: python -m
+# omnimarket.nodes.node_llm_delegation_call_effect.runtime_claude_probe (request JSON on stdin).
+claude_credential_probe:
+  handler:
+    name: "HandlerClaudeCredentialProbe"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_credential_probe"
+  executable: claude
+  argv: ["-p", "--output-format", "text"]
+  scrubbed_env: [ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, CLAUDECODE]
+  max_timeout_seconds: 300
+  terminate_grace_seconds: 5
+  output_chars: 600

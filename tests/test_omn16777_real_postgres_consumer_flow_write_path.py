@@ -973,6 +973,18 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
         )
         assert asyncio.run(_count_rows()) == 2
 
+        # OMN-21536: the dispatch loop and the pool connected on it are held by
+        # the writer's DispatchSession, and a closed session reopens: the next
+        # message starts a fresh loop, connects a fresh pool and lands its row.
+        third = writer.handle(_heartbeat_payload(node_id=node_id, sequence=3))
+        writer.close_dispatch()
+        assert pools_created == 2, (
+            f"{pools_created} asyncpg pools after a close and one more message; "
+            "the session opens one pool per loop"
+        )
+        assert third["rows_upserted"] >= 1
+        assert asyncio.run(_count_rows()) == 3
+
         # OMN-16875: what the runtime publishes as the applied event.
         row = second["flow_rows"][0]
         assert row["consumer_group"] == _GROUP

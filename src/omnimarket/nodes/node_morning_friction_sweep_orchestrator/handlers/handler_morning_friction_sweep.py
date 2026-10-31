@@ -27,6 +27,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue, ValidationError
 
+from omnimarket.handlers.overlay_source import OverlaySource
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -242,7 +243,7 @@ class HandlerMorningFrictionSweep:
         # this handler inside the effects runtime, and a constructor that raises
         # there takes every other node's runtime down with it, so nothing here
         # touches the deployment: an absent overlay is refused when a run starts.
-        self._overlay = overlay
+        self._overlay = OverlaySource(load_friction_overlay, overlay)
         self.gateway = gateway or HandlerFrictionPhaseBus(event_bus)
         self.schemas = cast(
             dict[str, dict[str, JsonValue]],
@@ -254,9 +255,7 @@ class HandlerMorningFrictionSweep:
     @property
     def overlay(self) -> ModelFrictionOverlay:
         """The deployment overlay, read on first use; absent or invalid is a refusal."""
-        if self._overlay is None:
-            self._overlay = load_friction_overlay()
-        return self._overlay
+        return self._overlay.get()
 
     async def handle(
         self, request: ModelMorningFrictionSweepRequest

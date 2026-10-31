@@ -11,6 +11,9 @@ landing orchestrator's pattern). A lost race re-runs the leg.
 
 from __future__ import annotations
 
+from omnimarket.nodes.node_pr_handoff_orchestrator.container.container_row_store import (
+    bind_process_row_store,
+)
 from omnimarket.nodes.node_pr_handoff_orchestrator.models.model_pr_handoff_workflow_row import (
     ModelPrHandoffWorkflowRow,
 )
@@ -26,7 +29,7 @@ _STATE_IO_STORE = StateIoPrHandoffRowStore()
 # builds one handler instance per route, so the rows live beside the seam they
 # stand in for, one store per process, and a request and the observations of its
 # PR meet in the same row. The state_io table replaces it; nothing else reads it.
-_PROCESS_ROW_STORE = InMemoryPrHandoffRowStore()
+_PROCESS_ROW_STORE = bind_process_row_store()
 
 
 def shared_state_io_store() -> StateIoPrHandoffRowStore:

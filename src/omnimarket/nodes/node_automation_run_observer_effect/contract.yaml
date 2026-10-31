@@ -62,3 +62,7 @@ externally_consumed_topics:
 - onex.evt.omnimarket.automation-run-observer-polled.v1
 metadata:
   transport_type: kafka
+
+timeouts:
+  host_command_timeout_seconds: 20.0  # Bounds read-only host command execution.
+  kafka_request_timeout_seconds: 15.0  # Bounds Kafka admin requests and future waits.

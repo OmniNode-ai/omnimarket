@@ -67,6 +67,8 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_sta
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
     ClassifyRequest,
+    CloseoutRequest,
+    DispatchRequest,
     ProtocolBuildDispatchHandler,
     ProtocolCloseoutHandler,
     ProtocolRsdFillHandler,
@@ -74,6 +76,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolVerifyHandler,
     RsdFillRequest,
     ScoredTicket,
+    VerifyRequest,
 )
 from omnimarket.nodes.node_overseer_verifier import ModelVerifierRequest
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
@@ -469,8 +472,7 @@ class HandlerBuildLoopOrchestrator:
         try:
             if phase == EnumBuildLoopPhase.CLOSING_OUT:
                 await self._closeout.handle(
-                    correlation_id=correlation_id,
-                    dry_run=dry_run,
+                    CloseoutRequest(correlation_id=correlation_id, dry_run=dry_run)
                 )
                 return True, None, metrics
 
@@ -524,9 +526,11 @@ class HandlerBuildLoopOrchestrator:
 
             if phase == EnumBuildLoopPhase.BUILDING:
                 dispatch_result = await self._dispatch.handle(
-                    correlation_id=correlation_id,
-                    targets=self._last_classify_result,
-                    dry_run=dry_run,
+                    DispatchRequest(
+                        correlation_id=correlation_id,
+                        targets=self._last_classify_result,
+                        dry_run=dry_run,
+                    )
                 )
                 pr_refs: list[str] = []
                 cost_event_keys: list[str] = []
@@ -695,8 +699,7 @@ class HandlerBuildLoopOrchestrator:
             # No event bus: fall back to legacy verify handler for standalone/dry-run
             assert self._verify is not None
             result = await self._verify.handle(
-                correlation_id=correlation_id,
-                dry_run=dry_run,
+                VerifyRequest(correlation_id=correlation_id, dry_run=dry_run)
             )
             if not result.all_critical_passed:
                 return False, "Critical verification checks failed", {}

@@ -2807,7 +2807,7 @@ class HandlerDelegationWorkflow:
             # anywhere in the delegation chain). Durable design: OMN-14107.
             tenant_id=request.tenant_id or (get_settings().onex_tenant_id or None),
         )
-        self._workflows[cid] = workflow
+        self._register_workflow(workflow)
 
         routing_request = request
         if not request.tenant_id and workflow.tenant_id:
@@ -2815,6 +2815,15 @@ class HandlerDelegationWorkflow:
                 update={"tenant_id": workflow.tenant_id}
             )
         return [ModelRoutingIntent(payload=routing_request)]
+
+    def _register_workflow(self, workflow: DelegationWorkflowState) -> None:
+        """Record ``workflow`` in the injected workflow mapping under its correlation id.
+
+        The mapping is the handler's collaborator (the constructor's ``workflows``,
+        the process-wide ContextVar-backed proxy by default); the handler holds no
+        workflow state of its own.
+        """
+        self._workflows[workflow.correlation_id] = workflow
 
     def _contract_read_failed(
         self, request: ModelDelegationRequest, error: OSError
@@ -2825,7 +2834,7 @@ class HandlerDelegationWorkflow:
             tenant_id=request.tenant_id or (get_settings().onex_tenant_id or None),
             context_pack_hash=_context_pack_hash_for_event(request),
         )
-        self._workflows[request.correlation_id] = workflow
+        self._register_workflow(workflow)
         self._advance(workflow, EnumDelegationState.FAILED)
         # Only the exception class and errno cross this boundary, never a path
         # or the arbitrary contents of an OS error message.
