@@ -9,7 +9,9 @@ import re
 import shlex
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     cloud_start_script as cloud_start_script,
 )
@@ -90,7 +92,15 @@ def cloud_session_script(
     URL (the session id is appended to it) comes from the caller's overlay."""
     if not re.fullmatch(r"(?:session|cse)_[A-Za-z0-9]{8,}", session_id):
         raise ValueError(f"not a cloud session id: {session_id!r}")
-    if not re.fullmatch(r"https://[A-Za-z0-9./_-]+/", sessions_api_url):
+    parsed_url = urlsplit(sessions_api_url)
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.query
+        or parsed_url.fragment
+        or not re.fullmatch(
+            r"[A-Za-z0-9./_-]+/", f"{parsed_url.netloc}{parsed_url.path}"
+        )
+    ):
         raise ValueError(f"not a sessions API URL: {sessions_api_url!r}")
     return "\n".join(
         [
@@ -328,7 +338,7 @@ def cloud_bot_pr_text(
 def cloud_pr_url(stdout: str, owner: str, repo: str) -> str | None:
     """The first whole-line PR URL for this repository in the bot script's output, or None."""
     url_re = re.compile(
-        rf"https://github\.com/{re.escape(owner)}/{re.escape(repo)}/pull/\d+"
+        rf"{re.escape(service_endpoint_url('github.web_url'))}/{re.escape(owner)}/{re.escape(repo)}/pull/\d+"
     )
     return next(
         (

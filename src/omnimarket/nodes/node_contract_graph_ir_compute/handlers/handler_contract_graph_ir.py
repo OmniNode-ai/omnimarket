@@ -28,6 +28,7 @@ from omnibase_core.contract_graph import (
 )
 from omnibase_core.contract_graph.importer import _load_yaml
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_contract_graph_ir_compute.models.model_contract_graph_ir_request import (
     ModelContractGraphIrRequest,
 )
@@ -72,7 +73,10 @@ def _build_response(
     # UI component contracts are in-memory primitives, not on-disk contract.yaml
     # files, so they carry a stable in-memory source_path derived from their id.
     ui_components = tuple(
-        (component, f"in-memory://ui_component/{component.component_id}")
+        (
+            component,
+            f"{service_endpoint_url('internal_targets.ui_component_prefix')}{component.component_id}",
+        )
         for component in request.ui_components
     )
 

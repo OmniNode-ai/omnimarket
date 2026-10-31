@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 PLANS_TODAY_SCHEMA_ID = "omni.plans-today/2"
 
 PLANS_TODAY_JSON_SCHEMA: dict[str, Any] = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$schema": service_endpoint_url("schema_ids.json_schema_draft_2020_12"),
     "$id": "omni.plans-today/2",
     "title": "plans-today output",
     "description": "The ranked plans of the day, written beside detail.md. validate() in "

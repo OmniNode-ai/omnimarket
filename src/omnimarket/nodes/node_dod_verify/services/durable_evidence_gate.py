@@ -82,6 +82,7 @@ from omnibase_core.validation.runtime_ops_verb_loader import (
     load_runtime_ops_verb_allowlist,
 )
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
     EnumDefectLabel,
     EnumDoneClassLabel,
@@ -936,7 +937,7 @@ def _receipt_merge_commits(
         seen.add(key)
         citations.append(
             ModelCitedMergeCommit(
-                pr_url=f"https://github.com/{repo}/pull/{pr_number}",
+                pr_url=f"{service_endpoint_url('github.web_url')}/{repo}/pull/{pr_number}",
                 repo=repo,
                 pr_number=pr_number,
                 cited_sha=sha,
@@ -1024,7 +1025,8 @@ def _extract_repo_from_text(value: str, pr_number: int) -> str | None:
     if repo_match is not None:
         return repo_match.group("repo")
     for match in re.finditer(
-        r"https://github\.com/[^\s\"')]+/[^\s\"')]+/pull/\d+(?:/[^\s\"')]*)?",
+        re.escape(service_endpoint_url("github.web_url"))
+        + r"/[^\s\"')]+/[^\s\"')]+/pull/\d+(?:/[^\s\"')]*)?",
         value,
     ):
         parsed = parse_pr_url(match.group(0))
