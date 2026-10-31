@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-21507
+title: 'T-V0a: every factory PR is proven on a pre-PR lab slot before it merges'
+summary: The landing decision gains the lab-proof receipt row for a PR's exact head, the PR's cited tickets, the factory ticket manifest and the repository profiles as facts; a PR citing a factory task ticket
+  is mergeable only with a PASS row for its head under its repository's profile with the profile's negative control recorded failing. No profile's enforce is set.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-lab-proof-merge-gate
+  statement: A factory PR merges only on a lab-proof receipt that proves its exact head, and the decision stays pure.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A factory PR is not mergeable when its receipt row is absent, FAIL, INCONCLUSIVE or for an older head, and the decision names the reason -- falsifier: four pytest cases'
+  - id: AC2
+    statement: 'AC2: A receipt whose negative control did not fail does not admit the merge -- falsifier: the pytest case with a control recorded as passing'
+  - id: AC3
+    statement: 'AC3: A PR that cites no factory task ticket is decided as today -- falsifier: the existing landing decision tests pass unchanged'
+  - id: AC4
+    statement: 'AC4: Lab step: one wave-0 PR proven in each of omnimarket and omnibase_infra, and one omnibase_core PR through `foundation_override`, with the receipt row ids pasted -- falsifier: each pasted
+      row id resolves in `node_projection_lab_proof_receipts` to PASS for its head'
+  - id: AC5
+    statement: 'AC5: Configuration: the factory tickets are the T-Q0 manifest and the profiles are `config/lab_proof_profiles.yaml`, both supplied as facts; the node holds no ticket or profile id -- falsifier:
+      the same facts decide differently under two fixture manifests'
+  - id: AC6
+    statement: 'AC6: Bindings: pure, because the facts come in -- falsifier: byte-identical results in process and through the local in-process entry of the parity harness (T-B2)'
+evidence_requirements:
+- kind: tests
+  description: T-V0a tests.
+  command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q --no-cov --tb=line
+- kind: manual
+  description: 'deploy: read the lab-proof models at this head from the public repository and run the lab-proof landing tests on a hosted runner.'
+  command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21507-ac1
+  description: AC1 bound to its four pytest cases.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line -k "without_a_passing_receipt"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-ac2
+  description: AC2 bound to the negative-control cases.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line -k "negative_control"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-ac3
+  description: AC3 bound to the existing landing decision tests, run unchanged, and the no-factory-ticket cases.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-ac4
+  description: 'AC4 lab step: the receipt row ids named in the pull request body resolve to PASS for their heads in the receipt projection; read the projection''s rows, not a readback pasted into the body.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      grep -q 'receipt_key' src/omnimarket/nodes/node_projection_lab_proof_receipts/models/model_lab_proof_receipt_row.py
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-ac5
+  description: AC5 bound to the two-manifest and two-profile cases and the no-id source check.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line -k "two_manifests or two_profiles or hold_no_ticket"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-ac6
+  description: AC6 bound to the byte-identical in-process and contract-routed case.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line -k "byte_identical"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-delegation-join
+  description: 'Delegation join: the code of the head was drafted by codex thread 01a1851c-814c-7093-b908-5cfcd88316e3 (receipt 2026-10-29T004540Z-codex-fix.json, accepted at commit ad3823d5380206753ec169b7c24f80407c2f3ebd); the commit messages came from text runs 5af4129f-a106-4a53-b140-452fd9b2db53 (commit 708f777bd7a893b460f6d46763d95dbdb954fbd3), 09a45b12-70ea-4dac-8b11-5d2e6b7e7068 (commit ad3823d5380206753ec169b7c24f80407c2f3ebd) and ba4aff47-b6f3-4576-88e2-4e5b7e173370 (the commit that names it); each run has a receipt under the lane state root and a disposition event.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      grep -q 01a1851c-814c-7093-b908-5cfcd88316e3 contracts/OMN-21507.yaml
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21507-deploy-lab-proof-models
+  description: 'Hosted deploy readback: the public repository at this exact head must contain the lab-proof receipt model, and the landing decision tests must pass on a hosted runner. No lab service is required.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_pr_landing_decision_compute/models/model_landing_lab_proof.py" | grep -q '^class ModelLandingLabProofReceipt(BaseModel):'
+    cwd: .

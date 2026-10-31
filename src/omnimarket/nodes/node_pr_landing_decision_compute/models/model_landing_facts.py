@@ -17,6 +17,10 @@ defaults, so a snapshot without them decides exactly as before.
 Typed no-new-commits update responses and external shared-check verdicts are
 also optional effect observations. Without them the node cannot infer either
 class from an arbitrary refusal, a base push or a PR head alone.
+
+Factory tickets, repository lab-proof profiles and projected receipt rows are
+caller-supplied facts. Their empty defaults preserve the existing decisions
+for snapshots without lab-proof inputs.
 """
 
 from __future__ import annotations
@@ -46,6 +50,10 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingRefUpdateKind,
     EnumLandingResultKind,
     EnumLandingSuspension,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_proof import (
+    ModelLandingLabProofProfile,
+    ModelLandingLabProofReceipt,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
@@ -134,6 +142,9 @@ class ModelLandingPrFacts(BaseModel):
 
     pr: str = Field(..., pattern=PR_KEY_PATTERN)
     head_sha: str = Field(..., pattern=SHA_PATTERN)
+    cited_tickets: tuple[str, ...] = Field(
+        default=(), description="The task tickets cited by this PR."
+    )
     state: EnumLandingPrState
     ci: EnumLandingCi
     red_class: EnumLandingRedClass | None = Field(
@@ -508,6 +519,17 @@ class ModelLandingFacts(BaseModel):
         default_factory=ModelLandingControllerState
     )
     prs: tuple[ModelLandingPrFacts, ...] = ()
+    factory_tickets: tuple[str, ...] = Field(
+        default=(),
+        description="The task tickets in the caller's T-Q0 factory manifest.",
+    )
+    lab_proof_profiles: tuple[ModelLandingLabProofProfile, ...] = Field(
+        default=(), description="The repository lab-proof profiles read by the caller."
+    )
+    lab_proof_receipts: tuple[ModelLandingLabProofReceipt, ...] = Field(
+        default=(),
+        description="The receipt projection's rows for the PRs and their cited tickets.",
+    )
     update_no_new_commits: tuple[ModelLandingUpdateNoNewCommits, ...] = ()
     shared_check_verdicts: tuple[ModelLandingSharedCheckVerdict, ...] = ()
     companions: tuple[ModelLandingCompanionFacts, ...] = ()
@@ -568,6 +590,17 @@ class ModelLandingFacts(BaseModel):
             raise ValueError("each PR and companion appears once")
         if set(prs) & set(comps):
             raise ValueError("a companion is listed under companions only")
+        profile_repos = [p.repo for p in self.lab_proof_profiles]
+        if len(set(profile_repos)) != len(profile_repos):
+            raise ValueError("each repository has at most one lab-proof profile")
+        receipt_keys = [
+            (r.pr, r.head_sha, r.profile_id, r.profile_version)
+            for r in self.lab_proof_receipts
+        ]
+        if len(set(receipt_keys)) != len(receipt_keys):
+            raise ValueError(
+                "each PR head and lab-proof profile version has one receipt"
+            )
         if self.tick <= self.state.last_tick:
             raise ValueError("tick must be later than the state's last tick")
         for repo in self.drain_requested:

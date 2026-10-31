@@ -37,6 +37,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
     EnumLandingOutcomeReason,
     EnumLandingResultKind,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_proof import (
+    EnumLandingLabProofReason,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -381,6 +384,16 @@ class ModelLandingLandSkip(BaseModel):
         return self
 
 
+class ModelLandingLabProofHold(BaseModel):
+    """The lab-proof gap that kept one PR head from merging this tick."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str = Field(..., pattern=PR_KEY_PATTERN)
+    head_sha: str = Field(..., pattern=SHA_PATTERN)
+    reason: EnumLandingLabProofReason
+
+
 class ModelLandingDecision(BaseModel):
     """One tick's decision."""
 
@@ -411,6 +424,13 @@ class ModelLandingDecision(BaseModel):
             "tick and gets no row (its CI or merge state is what holds it)."
         ),
     )
+    lab_proof_holds: tuple[ModelLandingLabProofHold, ...] = Field(
+        default=(),
+        description=(
+            "Every open, green, CLEAN PR a lab-proof gap kept from merging on this "
+            "head, with the one reason."
+        ),
+    )
     next_state: ModelLandingControllerState
 
 
@@ -429,6 +449,7 @@ __all__: list[str] = [
     "ModelLandingDecision",
     "ModelLandingDegraded",
     "ModelLandingGateRow",
+    "ModelLandingLabProofHold",
     "ModelLandingLandSkip",
     "ModelLandingRecordedOutcome",
     "ModelLandingViolation",
