@@ -169,6 +169,16 @@ not_routing_configs:
     reason: canary manifest of rejected documents
   - path: src/omnimarket/configs/adr_canary_sanitization_gate.v1.yaml
     reason: sanitization gate patterns
+  - path: src/omnimarket/configs/bridge_model_keys.v1.yaml
+    reason: names the environment variables that hold each local model key's endpoint and served model id; the keys are fixed and no overlay chooses among them
+  - path: src/omnimarket/configs/design_to_plan_model.v1.yaml
+    reason: the one model key the design-to-plan handler asks for a plan; a handler argument injects another, and no route is chosen among sources
+  - path: src/omnimarket/configs/merge_sweep_triage_routing.v1.yaml
+    reason: the routing policy the merge-sweep triage handler attaches to its Phase 2 commands; the handler argument injects another, and the effect handlers do the routing
+  - path: src/omnimarket/configs/navigation_history_embedding.v1.yaml
+    reason: the embedding model the navigation history writer requests; a constructor argument injects another
+  - path: src/omnimarket/configs/openrouter_free_models.v1.yaml
+    reason: catalog of the OpenRouter free models with their tiers; it lists what exists and chooses no route
   - path: src/omnimarket/configs/check_register.yaml
     reason: register of checks
   - path: src/omnimarket/configs/delegation_acceptance_judge_rubric.v1.yaml

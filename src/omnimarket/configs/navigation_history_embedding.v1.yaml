@@ -1,0 +1,4 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The embedding model HandlerNavigationHistoryWriter requests (OMN-21691); code names no model.
+embedding_model: Qwen3-Embedding-8B

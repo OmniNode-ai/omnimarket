@@ -55,7 +55,8 @@ closed rather than substituting a baked-in literal.
 from __future__ import annotations
 
 import os
-from typing import Final
+from pathlib import Path
+from typing import Final, cast
 
 from pydantic import SecretStr
 
@@ -80,6 +81,7 @@ from omnimarket.inference.secret_store_resolver import (
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
 )
+from omnimarket.nodes.contract_topics import contract_section
 
 # key -> (url env var, model_id env var)
 # Context windows are resolved from the model registry at load time via
@@ -88,11 +90,10 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 # model_id is always resolved from the env var — no hardcoded defaults.
 # If the model-name env var is unset, model_id resolves to "" and the
 # downstream API call will fail immediately with an invalid-model error.
-_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = (
-    ("qwen3-coder", "LLM_CODER_URL", "LLM_CODER_MODEL_NAME"),
-    ("qwen3-14b", "LLM_CODER_FAST_URL", "LLM_CODER_FAST_MODEL_NAME"),
-    ("deepseek-r1", "LLM_DEEPSEEK_R1_URL", "LLM_DEEPSEEK_R1_MODEL_NAME"),
-    ("qwen3-next", "LLM_QWEN3_NEXT_URL", "LLM_QWEN3_NEXT_MODEL_NAME"),
+_KEYS_PATH = Path(__file__).parents[1] / "configs" / "bridge_model_keys.v1.yaml"
+_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = tuple(
+    (row["key"], row["url_env"], row["model_env"])
+    for row in cast("list[dict[str, str]]", contract_section(_KEYS_PATH, "model_keys"))
 )
 
 # The ``glm`` key's provider, as the bifrost contract declares it (OMN-17103).
@@ -109,9 +110,7 @@ _OPENROUTER_KEY_PREFIX: Final[str] = "openrouter/"
 # The keys whose route is an operator-configured ``LLM_*_URL`` endpoint. These
 # are the only keys that cannot reach a vendor API; every other key is either a
 # vendor route (``glm``, ``openrouter/*``) or resolves to nothing.
-LOCAL_ENDPOINT_MODEL_KEYS: Final[frozenset[str]] = frozenset(
-    key for key, _url_env, _model_env in _MODEL_KEY_REGISTRY
-)
+LOCAL_ENDPOINT_MODEL_KEYS: Final = frozenset(row[0] for row in _MODEL_KEY_REGISTRY)
 
 
 def is_local_endpoint_model_key(model_key: str) -> bool:

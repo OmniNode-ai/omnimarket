@@ -53,6 +53,13 @@ model_routing:
   max_tokens: 2048
   ci_override:
     primary: thread_replier_primary
+  # OMN-21691 -- the served models and legacy aliases are declared here and read by the handler; code names no model.
+  base_registry:
+    deepseek-r1-14b:
+      health_path: /health
+  contract_backends:
+    qwen3-coder-30b: local-coder
+    glm-4.5: cloud-glm
 
 inputs:
   correlation_id:

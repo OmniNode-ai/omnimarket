@@ -32,7 +32,7 @@ from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapte
 from omnimarket.github_api import GitHubApiError, rest_json
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.inference.secret_store_resolver import resolve_api_key
-from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.contract_topics import contract_secret_ref, contract_section
 from omnimarket.nodes.node_model_router.handlers.handler_model_router import (
     HandlerModelRouter,
 )
@@ -79,18 +79,31 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 
-# The unchanged fast-model entry retains its declared environment configuration.
+
+def _declared_routing(key: str) -> dict[str, Any]:
+    """The mapping the contract's ``model_routing`` block declares under *key*."""
+    block = contract_section(_CONTRACT_PATH, "model_routing", key)
+    if not isinstance(block, dict):
+        raise ValueError(f"{_CONTRACT_PATH}: model_routing.{key} must be a mapping")
+    return block
+
+
+# The contract declares the fast-model entry; the base URL keeps its environment configuration.
 _BASE_REGISTRY: dict[str, dict[str, str]] = {
-    "deepseek-r1-14b": {
+    model: {
         "base_url": os.environ.get(  # contract-config-ok: config
             "LLM_CODER_FAST_URL", ""
         ),
-        "health_path": "/health",
-    },
+        "health_path": str(entry["health_path"]),
+    }
+    for model, entry in _declared_routing("base_registry").items()
 }
 
 # Legacy policy keys remain aliases; the contract owns URLs and served models.
-_CONTRACT_BACKENDS = {"qwen3-coder-30b": "local-coder", "glm-4.5": "cloud-glm"}
+_CONTRACT_BACKENDS: dict[str, str] = {
+    str(alias): str(backend_id)
+    for alias, backend_id in _declared_routing("contract_backends").items()
+}
 
 _THREAD_REPLY_SYSTEM_PROMPT = (
     "You are a helpful code-review assistant. Given a PR review thread, "

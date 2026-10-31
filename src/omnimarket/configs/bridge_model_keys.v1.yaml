@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Local-endpoint model keys of the inference bridge (OMN-21691). Read by
+# omnimarket.inference.bridge_config_loader. Each key names the environment variable that holds
+# its endpoint URL and the one that holds its served model id; the model id itself is never
+# declared here.
+model_keys:
+  - key: qwen3-coder
+    url_env: LLM_CODER_URL
+    model_env: LLM_CODER_MODEL_NAME
+  - key: qwen3-14b
+    url_env: LLM_CODER_FAST_URL
+    model_env: LLM_CODER_FAST_MODEL_NAME
+  - key: deepseek-r1
+    url_env: LLM_DEEPSEEK_R1_URL
+    model_env: LLM_DEEPSEEK_R1_MODEL_NAME
+  - key: qwen3-next
+    url_env: LLM_QWEN3_NEXT_URL
+    model_env: LLM_QWEN3_NEXT_MODEL_NAME
