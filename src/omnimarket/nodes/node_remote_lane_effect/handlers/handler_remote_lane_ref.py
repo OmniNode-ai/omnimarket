@@ -18,6 +18,8 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 from ..models import SHA_RE, ModelRemoteLaneRefRequest, ModelRemoteLaneRefResult
 from ..protocols import ProtocolRemoteLaneGit, RemoteLanePortError
 
@@ -51,10 +53,13 @@ class HandlerRemoteLaneRef:
         for clone in candidates:
             if self._git.is_clone(clone):
                 return ["git", "-C", clone, "ls-remote"], "origin"
-        return [
-            "git",
-            "ls-remote",
-        ], f"https://github.com/{request.owner}/{request.repo}.git"
+        return (
+            [
+                "git",
+                "ls-remote",
+            ],
+            f"{service_endpoint_url('github.web_url')}/{request.owner}/{request.repo}.git",
+        )
 
     def _ls_remote(
         self,

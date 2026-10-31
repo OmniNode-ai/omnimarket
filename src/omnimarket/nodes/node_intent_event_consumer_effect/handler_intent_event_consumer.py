@@ -53,7 +53,7 @@ Example::
         )
 
         # Run until shutdown
-        await consumer.stop()
+        await consumer.shutdown()
 
 .. versionadded:: 0.1.0
     Initial implementation for OMN-1619.
@@ -825,7 +825,7 @@ class HandlerIntentEventConsumer:
             health_check_timestamp=now,
         )
 
-    async def stop(self) -> None:
+    async def shutdown(self) -> None:
         """Graceful shutdown.
 
         Unsubscribes from all event bus topics, cancels pending message processing

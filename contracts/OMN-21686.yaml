@@ -1,0 +1,139 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21686"
+title: "A compute node turns ledger, landing, repo-status and merge history into a daily process-health series with a before and after summary around the factory reset"
+summary: "node_process_health_compute folds caller-read facts into one metric list per UTC day (dev-branch reds, regressions, bug tickets, validation failures, lane outcomes, merges and time to merge, andon stops, friction minutes, delegation share) and the same list over equal-length windows on both sides of the reset. Every metric names its sources and the hours of its window each covered; an unread source makes the metric unread and never a zero. node_process_health_effect reads the sources and writes the JSON to the path its contract declares. The shared models live in omnimarket.models.process_health so the factory floor record can embed the result."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21686-series"
+    statement: |-
+      The process-health series is a pure function of typed inputs. It reads no clock, file or network, reports an unread source as unread with the reason, and compares equal-length windows around the reset date from the node contract.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_process_health_compute has contract.yaml, metadata.yaml, typed input and output models and a pure handler, registered under onex.nodes, with no clock, file or network read in the handler -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k purity -q"
+      - id: "AC2"
+        statement: "AC2: the output carries one entry per UTC day for dev-branch reds per repo with hours red, regressions by kind, bug tickets opened and closed, validation failures by class, lane outcome shares, merges per day with green-to-merged time, andon stops with hours stopped, friction minutes by class with measured time apart from capacity estimates, and delegation share -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k series -q"
+      - id: "AC3"
+        statement: "AC3: every metric names its source and window, and a day whose source was not read is reported unread with the reason and never filled with a zero -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k unread_source -q"
+      - id: "AC4"
+        statement: "AC4: the before and after summary compares equal-length windows around the reset date and marks the reset on the series -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k reset_summary -q"
+      - id: "AC5"
+        statement: "AC5: the same input run twice yields byte-identical JSON and the CLI writes it to the output path declared in the contract, with no path, host or repo list hard-coded in the handler -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests src/omnimarket/nodes/node_process_health_effect/tests -k determinism_or_cli -q"
+      - id: "AC6"
+        statement: "AC6: the suite passes on the lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The purity, series, unread-source, reset-summary, determinism and runtime-entry cases."
+    command: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21686-ac1-purity"
+    description: "The compute handlers read no file, network or clock."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -k purity -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21686-ac2-series"
+    description: "The daily series contains every metric family and the expected values."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -k series -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21686-ac3-unread-source"
+    description: "An unread source retains its reason and produces no zero-valued metric."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -k unread_source -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21686-ac4-reset-summary"
+    description: "The summary compares equal-length windows around the configured reset."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -k reset_summary -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21686-ac5-determinism-and-cli"
+    description: "Repeated compute is byte-identical and the CLI writes to the contract-declared or overridden path."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py -k 'determinism or cli' -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21686-suite"
+    description: "The process-health compute and effect suites pass."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21686-deploy-runtime-readback"
+    description: "Hosted deploy smoke: dispatch the packaged effect through the in-process ONEX runtime with temporary source paths. Read the JSON at the contract-declared output path and require fourteen days, the reset marker, five lane-stated friction minutes from the ledger, and unread merges with no fabricated zero. No broker, container or deployed lane is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          uv run --locked python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from omnimarket.nodes.node_process_health_effect.models.model_process_health_run import ModelProcessHealthRunRequest
+          root = Path(sys.argv[1])
+          ledger = root / "ledger" / "ROLLING_WORK_LEDGER.md"
+          ledger.parent.mkdir()
+          ledger.write_text("2026-10-30T10:00:00Z | FRICTION | lane=a | actor=claude:sonnet:x | class=gate-conflict | cost=~5 lane-minutes | text\n")
+          environ = {
+              "ONEX_LEDGER_PATH": str(ledger),
+              "ONEX_STATE_DIR": str(root / "state"),
+              "OMNI_HOME": str(root / "missing-clones"),
+              "LANDING_STATE_DIR": str(root / "missing-landing"),
+              "THROUGHPUT_TICK_REPO_STATUS_EVENTS": str(root / "missing-repo-status.jsonl"),
+              "LANDING_METRICS_HISTORY": str(root / "missing-metrics.jsonl"),
+              "PROCESS_HEALTH_LINEAR_SNAPSHOT": str(root / "missing-linear.json"),
+          }
+          request = ModelProcessHealthRunRequest.model_validate({"environ": environ, "generated_at": "2026-10-30T12:00:00Z"})
+          (root / "input.json").write_text(request.model_dump_json())
+          PY
+          export ONEX_LANE=omn21686-deploy-probe;
+          "$runtime_bin/onex" node node_process_health_effect --input "$probe_dir/input.json" --state-root "$probe_dir/runtime" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from omnimarket.models.process_health import ModelProcessHealthResult
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          output = root / "state" / "process-health" / "process-health.json"
+          assert receipt["result"]["output_path"] == str(output), receipt
+          data = json.loads(output.read_text())
+          ModelProcessHealthResult.model_validate(data)
+          assert len(data["days"]) == 14, data["days"]
+          assert [day["date"] for day in data["days"] if day["is_reset_day"]] == ["2026-10-29"]
+          sources = {source["name"]: source for source in data["sources"]}
+          assert sources["ledger"]["status"] == "read", sources
+          assert sources["git_merges"]["status"] == "unread" and sources["git_merges"]["reason"], sources
+          metrics = {metric["key"]: metric for metric in data["days"][-1]["window"]["metrics"]}
+          assert metrics["friction.lane_stated_minutes"]["value"] == 5.0, metrics
+          assert metrics["merges.total"]["status"] == "unread" and metrics["merges.total"]["value"] is None, metrics
+          print(json.dumps({"run_id": receipt["run_id"], "days": len(data["days"]), "friction_minutes": metrics["friction.lane_stated_minutes"]["value"], "merges": metrics["merges.total"]["status"]}))
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -18,17 +18,18 @@ under concurrent consumers and let an older redelivery win.
 
 from __future__ import annotations
 
-import asyncio
-import threading
-from collections.abc import Callable, Coroutine, Hashable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 import yaml
 
+from omnimarket.nodes.node_projection_consumer_flow.dispatch_session import (
+    DispatchSession,
+)
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow import (
     HandlerProjectionConsumerFlow,
     snapshot_publish_due,
@@ -42,9 +43,6 @@ from omnimarket.nodes.node_projection_consumer_flow.models import (
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
-
-if TYPE_CHECKING:
-    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 
 TABLE_FLOW = "omninode_internal.consumer_flow_windows"
 TABLE_PRODUCE = "omninode_internal.topic_produce_windows"
@@ -296,13 +294,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         # The in-process dispatch loop (OMN-17427, C28). Started on the first
         # message and kept for the writer's life, so the pool and the producer
         # opened on it are opened once, not once per heartbeat.
-        self._dispatch_guard = threading.Lock()
-        self._dispatch_loop: asyncio.AbstractEventLoop | None = None
-        self._dispatch_thread: threading.Thread | None = None
-        self._connect_lock: asyncio.Lock | None = None
-        # The adapter whose pool this writer opened, compared by identity so a
-        # replaced ``_db`` (the runtime's bind, a test double) is connected.
-        self._connected_db: AsyncpgAdapter | None = None
+        self._dispatch = DispatchSession(f"{type(self).__name__}-dispatch")
         # Cold start is self-healing and deliberately has no backfill publisher:
         # every live runtime re-emits a heartbeat on its own interval. The first
         # window per pair after start publishes, then on verdict change or once
@@ -338,62 +330,20 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
             fallback_id=str(input_data.pop("_fallback_id", "")),
             topic=topic,
         )
-        return self._run_on_dispatch_loop(
-            self._project_one_message(topic, input_data, meta)
-        )
-
-    def _run_on_dispatch_loop[T](self, coroutine: Coroutine[Any, Any, T]) -> T:
-        """Run ``coroutine`` on the long-lived dispatch loop and wait for it."""
-        with self._dispatch_guard:
-            loop = self._dispatch_loop
-            if loop is None or loop.is_closed():
-                loop = asyncio.new_event_loop()
-                thread = threading.Thread(
-                    target=loop.run_forever,
-                    name=f"{type(self).__name__}-dispatch",
-                    daemon=True,
-                )
-                thread.start()
-                self._dispatch_loop = loop
-                self._dispatch_thread = thread
-                self._connect_lock = None
-                self._connected_db = None
-        return asyncio.run_coroutine_threadsafe(coroutine, loop).result()
+        return self._dispatch.run(self._project_one_message(topic, input_data, meta))
 
     def close_dispatch(self) -> None:
         """Close the pool and producer and stop the dispatch loop, if started."""
-        with self._dispatch_guard:
-            loop = self._dispatch_loop
-            thread = self._dispatch_thread
-            self._dispatch_loop = None
-            self._dispatch_thread = None
-        if loop is None or loop.is_closed():
-            return
-        asyncio.run_coroutine_threadsafe(self.aclose(), loop).result()
-        loop.call_soon_threadsafe(loop.stop)
-        if thread is not None:
-            thread.join()
-        loop.close()
+        self._dispatch.stop(self.aclose)
 
     async def aclose(self) -> None:
         """Release what the message path opened on the current loop."""
         await self._stop_producer()
-        if self._connected_db is not None:
-            connected = self._connected_db
-            self._connected_db = None
-            await connected.close()
+        await self._dispatch.release_connection()
 
     async def _ensure_connected(self) -> None:
         """Open the pool once on the running loop, and again only if ``_db`` changed."""
-        if self._connected_db is self.db:
-            return
-        if self._connect_lock is None:
-            self._connect_lock = asyncio.Lock()
-        async with self._connect_lock:
-            if self._connected_db is self.db:
-                return
-            await self.db.connect()
-            self._connected_db = self.db
+        await self._dispatch.ensure_connected(self.db)
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
