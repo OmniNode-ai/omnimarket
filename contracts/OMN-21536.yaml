@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-21536
+title: 'omnimarket: handler-shape debt burn-down, slice 3: public handler methods stop mutating handler state'
+summary: The handler-shape validator of omnibase_core reports a public method of a handler class, other than handle,
+  that assigns to the handler (mutating_public_method). Twenty-six of those sat in twenty files. Each now keeps its
+  state in a collaborator the handler is given (a quota-reading store, a source-control connection, an overlay source, a
+  decision count, a dispatch session, a DLQ routing mark, an emit lifecycle), in a local of the call, or nowhere when
+  nothing read it. The tests of every touched node follow the move.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-public-handler-methods-hold-no-state
+  statement: No public method of a handler class, other than handle, assigns to the handler or calls a mutating method on one of its attributes, in the twenty files the validator named, and the nodes behave as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the handler-shape validator of omnibase_core run over src reports no mutating_public_method finding -- falsifier: the command of the evidence below prints a number above 0'
+  - id: AC2
+    statement: 'AC2: the tests of every touched node pass -- falsifier: the pytest command of the evidence below exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: The tests of the nodes whose handler state moved, run on a lab host at the pushed head.
+  command: uv run pytest tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_golden_chain_emit_daemon.py tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_omn14533_cross_boundary_savings_seam.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_omn18531_compaction_savings.py tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_projection_malformed_dlq_omn13548.py tests/test_projection_error_classification_omn13634.py tests/test_projection_handlers.py tests/unit/delegation tests/unit/nodes/node_dod_verify tests/unit/nodes/node_generation_consumer tests/unit/nodes/node_github_repo_write_effect tests/unit/nodes/node_pr_landing_github_effect tests/unit/nodes/node_projection_consumer_flow tests/nodes/node_install_canary_effect tests/nodes/node_intent_event_consumer_effect tests/nodes/node_linear_comments_sweep_orchestrator tests/nodes/node_morning_friction_sweep_orchestrator tests/nodes/node_morning_ground_state_orchestrator src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21536-ac1-no-mutating-public-method
+  description: AC1 runs the handler-shape validator over src at the committed head and counts the findings that name a public method mutating handler state.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -u;
+      test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep -c 'is a public method that mutates handler state')" -eq 0
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-touched-node-tests
+  description: AC2 runs the tests of the nodes whose handler state moved.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_golden_chain_emit_daemon.py tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_omn14533_cross_boundary_savings_seam.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_omn18531_compaction_savings.py tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_projection_malformed_dlq_omn13548.py tests/test_projection_error_classification_omn13634.py tests/test_projection_handlers.py tests/unit/delegation tests/unit/nodes/node_dod_verify tests/unit/nodes/node_generation_consumer tests/unit/nodes/node_github_repo_write_effect tests/unit/nodes/node_pr_landing_github_effect tests/unit/nodes/node_projection_consumer_flow tests/nodes/node_install_canary_effect tests/nodes/node_intent_event_consumer_effect tests/nodes/node_linear_comments_sweep_orchestrator tests/nodes/node_morning_friction_sweep_orchestrator tests/nodes/node_morning_ground_state_orchestrator src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
