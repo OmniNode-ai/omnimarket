@@ -165,9 +165,9 @@ class HandlerReceiptGatePinFrictionLedger:
         """Append the fold's friction event; a fold that caused none is nothing."""
         if folded.friction_event is None:
             return None
-        return await self.append(folded.friction_event)
+        return await self._append(folded.friction_event)
 
-    async def append(
+    async def _append(
         self, event: ModelPinFrictionEvent
     ) -> ModelPinFrictionLedgerAppended:
         config = self._config

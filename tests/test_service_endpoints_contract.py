@@ -12,6 +12,7 @@ Verifies:
 
 from __future__ import annotations
 
+import ast
 import re
 import textwrap
 from pathlib import Path
@@ -25,6 +26,7 @@ from omnimarket.config.service_endpoints import (
     LINEAR_GRAPHQL_URL,
     _load_config,
     _require,
+    service_endpoint_url,
 )
 
 # ---------------------------------------------------------------------------
@@ -39,11 +41,18 @@ class TestCanonicalUrls:
     def test_github_graphql_url(self) -> None:
         assert GITHUB_GRAPHQL_URL == "https://api.github.com/graphql"
 
+    def test_github_web_url(self) -> None:
+        assert service_endpoint_url("github.web_url") == "https://github.com"
+
     def test_linear_graphql_url(self) -> None:
         assert LINEAR_GRAPHQL_URL == "https://api.linear.app/graphql"
 
     def test_all_urls_are_https(self) -> None:
-        for url in (GITHUB_REST_URL, GITHUB_GRAPHQL_URL, LINEAR_GRAPHQL_URL):
+        for url in (
+            GITHUB_REST_URL,
+            GITHUB_GRAPHQL_URL,
+            LINEAR_GRAPHQL_URL,
+        ):
             assert url.startswith("https://"), f"URL must be HTTPS: {url}"
 
     def test_config_file_exists(self) -> None:
@@ -189,3 +198,57 @@ def test_endpoint_reference_resolves_shared_authority() -> None:
         _ep_module.service_endpoint_url("slack.auth_test_url")
         == _ep_module.SLACK_AUTH_TEST_URL
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. The GitHub web origin is read from the endpoint authority, never spelled
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_GITHUB_WEB_RESOLVED_MODULES = (
+    "src/omnimarket/nodes/node_contractor_integration_note_effect/services/note_composer.py",
+    "src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py",
+    "src/omnimarket/nodes/node_lab_work_unit_effect/protocols/local_shell_work_runner.py",
+    "src/omnimarket/nodes/node_linear_triage/services/local_github_pr_reads.py",
+    "src/omnimarket/nodes/node_local_dashboard_serve_effect/bundle.py",
+    "src/omnimarket/nodes/node_pr_head_stage_compute/handlers/handler_pr_head_stage.py",
+    "src/omnimarket/nodes/node_push_validation_effect/protocols/ephemeral_container_focused_run_subprocess.py",
+    "src/omnimarket/nodes/node_push_validation_effect/protocols/gate_runner_suite_evaluation_subprocess.py",
+    "src/omnimarket/nodes/node_push_validation_effect/protocols/git_push_validation_subprocess.py",
+    "src/omnimarket/nodes/node_remote_lane_effect/handlers/handler_remote_lane_ref.py",
+)
+
+
+def _string_constants(tree: ast.AST) -> list[str]:
+    """Every string constant in the module that is code, not a docstring."""
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            body = node.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+            ):
+                docstrings.add(id(body[0].value))
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
+
+
+class TestGithubWebOriginIsResolved:
+    @pytest.mark.parametrize("relative", _GITHUB_WEB_RESOLVED_MODULES)
+    def test_module_holds_no_github_web_literal(self, relative: str) -> None:
+        tree = ast.parse((_REPO_ROOT / relative).read_text(encoding="utf-8"))
+        offenders = [
+            value
+            for value in _string_constants(tree)
+            if re.search(r"https?://github\.com", value)
+        ]
+        assert offenders == [], f"{relative} spells the GitHub web origin: {offenders}"

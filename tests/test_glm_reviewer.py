@@ -40,6 +40,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace i
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    DispatchRequest,
 )
 
 # ---------------------------------------------------------------------------
@@ -487,8 +488,10 @@ async def test_handle_no_reviewer_allow_unreviewed_false_rejects() -> None:
         mock_coder.return_value = "def handle(self):\n    pass\n"
         mock_reviewer.return_value = ("unavailable", None)
         result = await adapter.handle(
-            correlation_id=uuid4(),
-            targets=targets,
+            DispatchRequest(
+                correlation_id=uuid4(),
+                targets=targets,
+            )
         )
 
     # All 3 attempts failed (reviewer unavailable, allow_unreviewed=False)
