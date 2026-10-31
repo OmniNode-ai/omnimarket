@@ -32,6 +32,7 @@ from typing import Any, Literal, cast
 
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_plan,
@@ -112,6 +113,7 @@ MODEL_LABELS: dict[str, str] = {
     "glm": "GLM",
     "ollama": "Ollama",
     "local": "Local URL",
+    "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
 }
 OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
@@ -137,6 +139,7 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "openai",
     "anthropic",
     "glm",
+    "openai_compatible",
 )
 
 
@@ -148,13 +151,12 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
 def _offered_provider(secret_ref: str) -> str | None:
     """The BYOK provider a declared ``llm.<provider>.<field>`` ref names, if offered.
 
-    OMN-19205. A declared reference is what tier selection resolves, but the
-    route a customer's work may run on carries a TENANT-shaped reference: the
-    local BYOK substitution swaps the house-shaped rung for the catalogue's
-    customer backend only when one is registered for the provider. Storing the
-    declared reference alone therefore routed nowhere. ``None`` for a minted
-    reference (already the customer's) and for a provider the catalogue does
-    not offer (no customer backend to route to).
+    OMN-19205. A declared reference is what tier selection resolves, but the route a
+    customer's work may run on carries a TENANT-shaped reference: the local BYOK
+    substitution swaps the house-shaped rung for the catalogue's customer backend only
+    when one is registered for the provider. Storing the declared reference alone
+    therefore routed nowhere. ``None`` for a minted reference (already the customer's)
+    and for a provider the catalogue does not offer (no customer backend to route to).
     """
     return offered_provider(secret_ref)
 
@@ -178,19 +180,18 @@ def resolve_plan(
 ) -> tuple[str | None, str | None]:
     """The plan this key registers under, decided BEFORE anything is stored.
 
-    Returns ``(plan, model)``. ``model`` is the model detection already resolved
-    for the detected plan from the key's own model list, or ``None`` when
-    detection did not run.
+    Returns ``(plan, model)``. ``model`` is the model detection already resolved for the
+    detected plan from the key's own model list, or ``None`` when detection did not run.
 
     OMN-20157. ``None`` for a provider that is not offered or has one plan:
-    nothing to choose. Otherwise the named plan, checked against the catalogue,
-    or the plan detection finds. When neither yields one the command stops and
-    stores nothing, because a key filed under the wrong product routes to an
-    endpoint that refuses it and reads as a billing failure.
+    nothing to choose. Otherwise the named plan, checked against the catalogue, or the
+    plan detection finds. When neither yields one the command stops and stores nothing,
+    because a key filed under the wrong product routes to an endpoint that refuses it
+    and reads as a billing failure.
 
-    A plan the catalogue declares detection-only (z.ai's Coding Plan) is refused
-    with its typed code whether it is named with ``--plan`` (no network is used)
-    or found by detection: a customer's Coding Plan key is never stored or routed.
+    A plan the catalogue declares detection-only (z.ai's Coding Plan) is refused with
+    its typed code whether it is named with ``--plan`` (no network is used) or found by
+    detection: a customer's Coding Plan key is never stored or routed.
 
     The key is sent only to the provider's own declared endpoints, by
     :func:`detect_byok_plan`, and is never echoed.
@@ -253,7 +254,7 @@ def check_chosen_model(
     and nothing is stored. A list that cannot be read stores the model as
     chosen, unchecked, and says so.
     """
-    backend = resolve_byok_provider_backend(provider, plan=plan)
+    backend = endpoints.key_backend(provider, plan)
     if backend is None:
         return chosen
     echo(f"Checking that {provider} lists {chosen} for your key.")
@@ -283,21 +284,20 @@ def resolve_model(
 ) -> str | None:
     """The model this key's route will run, decided BEFORE anything is stored.
 
-    OMN-20157. The catalogue pins no model: it declares a preference, and the
-    provider's own model list for THIS key says what it may use (a provider
-    retires ids for new accounts while old ones keep them). ``known`` is a model
-    plan detection already resolved. A key the provider refuses, or whose list
-    names no preferred model, is refused here with the provider's words and
-    nothing is stored. A list that cannot be read stores no model, and the
-    first delegation resolves it instead.
+    OMN-20157. The catalogue pins no model: it declares a preference, and the provider's
+    own model list for THIS key says what it may use (a provider retires ids for new
+    accounts while old ones keep them). ``known`` is a model plan detection already
+    resolved. A key the provider refuses, or whose list names no preferred model, is
+    refused here with the provider's words and nothing is stored. A list that cannot be
+    read stores no model, and the first delegation resolves it instead.
 
-    OMN-20844. ``chosen`` is the model the customer named with ``--model``; it
-    is checked against the key's list and stored as named. For a provider whose
-    catalogue row says the customer chooses the model, no ``--model`` means the
-    customer is asked (``ask_model``, a terminal) and a caller that cannot ask is
-    refused: the preference is never used to pick one for them.
+    OMN-20844. ``chosen`` is the model the customer named with ``--model``; it is
+    checked against the key's list and stored as named. For a provider whose catalogue
+    row says the customer chooses the model, no ``--model`` means the customer is asked
+    (``ask_model``, a terminal) and a caller that cannot ask is refused: the preference
+    is never used to pick one for them.
     """
-    backend = resolve_byok_provider_backend(provider, plan=plan)
+    backend = endpoints.key_backend(provider, plan)
     if chosen is None and backend is not None and backend.customer_chooses_model:
         if ask_model is None:
             raise ModelKeyRefusedError(
@@ -507,14 +507,13 @@ def drain_pending_credential_events(db_path: Path) -> None:
 def fold_credential_events(result: ModelLocalSecretResult, db_path: Path) -> None:
     """Fold the effect's credential events into the local projection store.
 
-    Mode 1 has no broker: the local runtime folds a node's events in-process
-    into the SQLite store the local dashboard serves, as the delegation and
-    metering folds do. That store is the same file as the secret store (the
-    2026-09-18 ruling: one local database), and the rows carry the fingerprint
-    prefix and set time, never the value.
+    Mode 1 has no broker: the local runtime folds a node's events in-process into the
+    SQLite store the local dashboard serves, as the delegation and metering folds do.
+    That store is the same file as the secret store (the 2026-09-18 ruling: one local
+    database), and the rows carry the fingerprint prefix and set time, never the value.
 
-    The store change has already happened, so a fold that fails keeps its events
-    in the pending file for the next ``onex secret`` command to apply.
+    The store change has already happened, so a fold that fails keeps its events in the
+    pending file for the next ``onex secret`` command to apply.
     """
     if not result.events:
         return
@@ -581,8 +580,9 @@ def store_key(
             "--model applies to a provider key the catalogue offers; this "
             "reference names none. Nothing was stored."
         )
-    model = (
-        resolve_model(
+    model = None
+    if provider is not None:
+        model = resolve_model(
             provider,
             plan,
             value,
@@ -591,9 +591,6 @@ def store_key(
             ask_model=ask_model,
             echo=echo,
         )
-        if provider is not None
-        else None
-    )
     chooser = model_chosen_by(provider, plan, model, model_option)
     # OMN-19985: the local secret store effect stores the key and, for a provider
     # key, registers it under a freshly minted route ref (replacing any earlier
@@ -714,6 +711,7 @@ def add_key(
     key: str,
     models: tuple[str, ...],
     *,
+    url: str | None = None,
     ask_model: AskModel | None = None,
     echo: Echo = _quiet,
 ) -> ModelModelTestResult:
@@ -731,16 +729,18 @@ def add_key(
     if len(set(models)) != len(models):
         raise ModelKeyRefusedError("a model is named twice. Nothing was stored.")
     plan = resolve_local_byok_credential_plan(provider)
-    for extra in models[1:]:
-        check_chosen_model(provider, plan, key, extra, echo)
-    store_key(
-        f"llm.{provider}.api_key",
-        key,
-        force=True,
-        model_option=models[0] if models else None,
-        ask_model=ask_model,
-        echo=echo,
-    )
+    # OMN-21263: a generic endpoint's key is checked and stored with its URL.
+    with endpoints.registering_endpoint(provider, url, ModelKeyRefusedError):
+        for extra in models[1:]:
+            check_chosen_model(provider, plan, key, extra, echo)
+        store_key(
+            f"llm.{provider}.api_key",
+            key,
+            force=True,
+            model_option=models[0] if models else None,
+            ask_model=ask_model,
+            echo=echo,
+        )
     handler = model_handler()
     if len(models) > 1:
         try:
