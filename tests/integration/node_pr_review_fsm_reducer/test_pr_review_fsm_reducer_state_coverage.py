@@ -32,7 +32,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.nodes.node_pr_review_fsm_reducer.handlers.handler_pr_review_fsm import (
     HandlerPrReviewFsm,
@@ -58,12 +57,7 @@ class _PrReviewFsmBusHandler:
 
     async def handle(self, **payload: Any) -> ModelPrReviewBotState:
         command = ModelPrReviewAdvanceCommand.model_validate(payload)
-        envelope: ModelEventEnvelope[ModelPrReviewAdvanceCommand] = ModelEventEnvelope(
-            payload=command,
-            correlation_id=command.state.correlation_id,
-            event_type=_ADVANCE_EVENT_TYPE,
-        )
-        output = await self._handler.handle(envelope)
+        output = await self._handler.handle(command)
         projection = output.projections[0]
         assert isinstance(projection, ModelPrReviewBotState)
         return projection
