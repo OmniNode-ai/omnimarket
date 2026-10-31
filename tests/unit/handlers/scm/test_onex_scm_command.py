@@ -29,6 +29,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 from omnibase_infra.errors import InfraConnectionError
 from pydantic import BaseModel, ConfigDict, create_model
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.handler_scm_dispatch import (
     SCM_REFUSED_VERBS,
@@ -1042,7 +1043,7 @@ def test_read_exhausts_three_unanswered_attempts(
     assert retry_pauses == [20, 20]
 
 
-@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+@pytest.mark.parametrize("error_type", [LabRunBusError, InfraConnectionError])
 def test_read_retries_when_the_bus_does_not_open(
     monkeypatch: pytest.MonkeyPatch,
     retry_pauses: list[float],
@@ -1060,7 +1061,7 @@ def test_read_retries_when_the_bus_does_not_open(
     assert retry_pauses == [20]
 
 
-@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+@pytest.mark.parametrize("error_type", [LabRunBusError, InfraConnectionError])
 def test_read_exhausts_three_bus_unavailable_attempts(
     monkeypatch: pytest.MonkeyPatch,
     retry_pauses: list[float],
@@ -1238,7 +1239,7 @@ def test_write_is_not_republished_unless_the_broker_shows_no_consumer(
     assert retry_pauses == []
 
 
-@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+@pytest.mark.parametrize("error_type", [LabRunBusError, InfraConnectionError])
 def test_write_is_not_republished_when_the_bus_does_not_open(
     monkeypatch: pytest.MonkeyPatch,
     retry_pauses: list[float],
