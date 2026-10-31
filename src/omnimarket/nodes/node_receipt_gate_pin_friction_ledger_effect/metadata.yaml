@@ -1,0 +1,23 @@
+name: node_receipt_gate_pin_friction_ledger_effect
+version: "1.0.0"
+description: "Appends a pin friction event to the rolling ledger as a FRICTION row with class=pin-advance and the caller repository as the site, through the ledger host's bus append (OMN-20134)."
+pack: ci
+node_role: effect
+display_name: "Receipt Gate Pin Friction Ledger Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_receipt_gate_pin_friction_ledger_effect: "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase-infra>=0.38.3,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "ci", "pin", "ledger", "friction", "OMN-20134"]

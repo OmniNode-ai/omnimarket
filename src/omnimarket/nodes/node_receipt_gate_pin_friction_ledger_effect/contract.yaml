@@ -1,0 +1,131 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Receipt Gate Pin Friction Ledger Effect (OMN-20134)
+#
+# The ledger half of the pin friction measurement. A pin pull request whose updater
+# run failed or was refused, or that a lane or person touched, leaves one typed
+# friction event (node_projection_receipt_gate_pin_friction). This effect appends it to
+# the rolling work ledger as a FRICTION row with class=pin-advance and site=<the
+# caller repository>, through the ledger host's bus append (the canonical path;
+# node_work_ledger_append_effect hosts it), so the friction readers that count
+# FRICTION rows by class count it. It answers exactly one
+# ModelPinFrictionLedgerAppended per event: accepted, duplicate, refused, error or
+# pending. With no ledger appender wired it answers error, never silence.
+#
+# The ledger request id is a uuid5 of (site, branch, reason): a redelivered event is
+# the same request and the ledger host appends it once.
+#
+# The ledger bus is a deployment fact: the lane named by the env var below is
+# declared in omnimarket/config/ci_bus_lanes.yaml under the workspace root. Nothing
+# here names a machine.
+name: "node_receipt_gate_pin_friction_ledger_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Append a pin friction event to the rolling ledger as a FRICTION row with class=pin-advance and the site, and answer for it."
+input_model:
+  name: "ModelPinFrictionFoldResult"
+  module: "omnimarket.models.receipt_gate_pin_friction"
+  description: "A fold of one observation of a pin pull request; its friction event, when it has one, is the row to append (the reason, the caller repository as the site, the pin kind, the core tag, the touches and the refusal classes)."
+output_model:
+  name: "ModelPinFrictionLedgerAppended"
+  module: "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect.models.model_pin_friction_ledger"
+  description: "One answer per event: accepted, duplicate, refused, error or pending, with the row."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 90000
+runtime_profiles:
+  - main
+
+env_dependencies:
+  ONEX_PIN_FRICTION_LEDGER_BUS_LANE:
+    required: false
+    description: "The declared bus lane of the ledger host's work-ledger serve. Unset: every event is answered error (no appender wired)."
+  OMNIBASE_PATH:
+    required: false
+    description: "Workspace root holding omnimarket/config/ci_bus_lanes.yaml, where the lane's broker is declared."
+
+# The cost cell is an estimate the friction guard requires on every FRICTION row
+# (lane-minutes, declared here and not measured per row). The measured cost of a
+# touched pin pull request is the report node's touches and time to merge.
+pin_friction_ledger_config:
+  lane: receipt-gate-pin-advance
+  ticket: OMN-20134
+  friction_class: pin-advance
+  actor: "node:receipt-gate-pin-friction"
+  cost_by_reason:
+    updater-failed: "~15 lane-minutes"
+    human-touched: "~10 lane-minutes"
+  ledger_bus_lane_env: ONEX_PIN_FRICTION_LEDGER_BUS_LANE
+  workspace_root_env: OMNIBASE_PATH
+  request_namespace: "2f6b0c3e-8f0a-4b7e-9a51-6d1c7e4a9b20"
+  timeout_s: 60
+
+handler:
+  module: "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect.handlers.handler_pin_friction_ledger"
+  class: "HandlerReceiptGatePinFrictionLedger"
+  input_model: "omnimarket.models.receipt_gate_pin_friction.ModelPinFrictionFoldResult"
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "pin_friction.ledger_append"
+      message_category: "event"
+      handler:
+        name: "HandlerReceiptGatePinFrictionLedger"
+        module: "omnimarket.nodes.node_receipt_gate_pin_friction_ledger_effect.handlers.handler_pin_friction_ledger"
+      event_model:
+        name: "ModelPinFrictionFoldResult"
+        module: "omnimarket.models.receipt_gate_pin_friction"
+      topic: onex.evt.omnimarket.pin-friction-folded.v1
+      description: "Append the fold's friction event, if it has one, as a FRICTION row; answer accepted, duplicate, refused, error or pending. A fold with no friction event is nothing."
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.evt.omnimarket.pin-friction-folded.v1
+  publish_topics:
+    - onex.evt.omnimarket.receipt-gate-pin-friction-appended.v1
+
+consumed_events:
+  - topic: onex.evt.omnimarket.pin-friction-folded.v1
+    event_type: "PinFrictionFoldResult"
+    message_category: "EVENT"
+    description: "One fold of an observation of a pin pull request; the ones that carry a friction event (an updater run that failed, a pin pull request that was touched) are appended."
+
+published_events:
+  - event_type: "PinFrictionLedgerAppended"
+    topic: onex.evt.omnimarket.receipt-gate-pin-friction-appended.v1
+    description: "The ledger's answer for the friction event."
+
+terminal_event: onex.evt.omnimarket.receipt-gate-pin-friction-appended.v1
+
+runtime_dispatch:
+  terminal_events:
+    success: onex.evt.omnimarket.receipt-gate-pin-friction-appended.v1
+
+metadata:
+  transport_type: kafka
+  description: "Receipt gate pin friction ledger EFFECT - FRICTION row with class=pin-advance (OMN-20134)"
+  author: "OmniNode Team"
+  created: "2026-10-31"
+  tags:
+    - "effect"
+    - "ci"
+    - "pin"
+    - "ledger"
+    - "friction"
+    - "OMN-20134"
+  related_tickets:
+    - "OMN-20134"
