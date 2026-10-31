@@ -16,7 +16,10 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: write
-dependencies: []
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+  - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "lab-work", "placement"]

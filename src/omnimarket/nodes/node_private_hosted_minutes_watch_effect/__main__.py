@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from .handlers import HandlerPrivateHostedMinutesWatch
+from .container import container_private_hosted_minutes_watch_effect
 from .models import ModelHostedMinutesWatchRequest
 
 
@@ -37,7 +37,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        result = HandlerPrivateHostedMinutesWatch().handle(
+        result = container_private_hosted_minutes_watch_effect.build_handler_private_hosted_minutes_watch().handle(
             ModelHostedMinutesWatchRequest(
                 org=args.org,
                 day=args.day,

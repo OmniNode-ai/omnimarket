@@ -6,7 +6,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from .model_automation_liveness_scanned_file import ModelAutomationLivenessScannedFile
+from omnimarket.models.automation_liveness_overlay_check import (
+    ModelAutomationLivenessScannedFile,
+)
 
 
 class ModelAutomationLivenessInstallerScanRequest(BaseModel):

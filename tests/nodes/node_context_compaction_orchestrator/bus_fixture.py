@@ -31,6 +31,9 @@ from omnimarket.models.context_pack_orchestrator import ModelContextPackBuilt
 from omnimarket.models.model_session_stream_barrier import (
     ModelSessionStreamBarrierProbe,
 )
+from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+    create_handler_context_compaction_orchestrator,
+)
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.compaction_runtime_binding import (
     load_compaction_pack_topics,
     load_compaction_runtime_binding,
@@ -233,7 +236,7 @@ class BusHarness:
         kwargs.setdefault("barrier_probe_source", MetSource())
         kwargs.setdefault("event_publisher", self.publisher)
         kwargs.setdefault("event_consumer", self.consumer)
-        return HandlerContextCompactionOrchestrator(**kwargs)
+        return create_handler_context_compaction_orchestrator(**kwargs)
 
     @property
     def commands(self) -> list[dict[str, Any]]:

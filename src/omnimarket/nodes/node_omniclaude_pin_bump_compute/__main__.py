@@ -16,8 +16,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from omnimarket.nodes.node_omniclaude_pin_bump_compute.handlers.handler_omniclaude_pin_bump import (
-    HandlerOmniclaudePinBump,
+from omnimarket.nodes.node_omniclaude_pin_bump_compute.container import (
+    container_omniclaude_pin_bump_compute,
 )
 from omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_pin_bump import (
     ModelOmniclaudePinBumpRequest,
@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True)
     args = parser.parse_args(argv)
 
-    result = HandlerOmniclaudePinBump().handle(
+    result = container_omniclaude_pin_bump_compute.build_handler_omniclaude_pin_bump().handle(
         ModelOmniclaudePinBumpRequest(
             ci_text=args.ci_yml.read_text(), new_version=args.version
         )
