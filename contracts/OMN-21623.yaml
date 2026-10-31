@@ -107,7 +107,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/handlers/test_runtime_paths.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-paths-clean"
-    description: "The contracts_and_di check over the modules of the slice reports no literal_path finding."
+    description: "The pinned contracts_and_di validator scans all seventeen modules; its structured findings contain no literal_path rule. Missing modules, incomplete scans and validator errors fail the probe."
     source: "manual"
     binds_ac: ["AC5"]
     checks:
@@ -115,8 +115,19 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/handlers/test_runtime_paths.py::test_slice_has_no_literal_path_findings -q --no-cov"
         cwd: "."
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi scripts/shadow_mode_parity_proof.py src/omnimarket/events/emit_client.py src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/handlers/handler_automation_liveness_installer_scan.py src/omnimarket/nodes/node_brief_prerequisites_compute/handlers/handler_brief_prerequisites.py src/omnimarket/nodes/node_dispatch_worker/handlers/handler_dispatch_worker.py src/omnimarket/nodes/node_emit_daemon/__main__.py src/omnimarket/nodes/node_emit_daemon/handlers/handler_emit_daemon.py src/omnimarket/nodes/node_emit_daemon/models/model_emit_daemon_config.py src/omnimarket/nodes/node_environment_health_scanner/handlers/handler_environment_health_scanner.py src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_emit_daemon.py src/omnimarket/nodes/node_install_canary_effect/handlers/handler_install_canary.py src/omnimarket/nodes/node_lab_disk_growth_effect/handlers/handler_lab_uv_cache_colocate.py src/omnimarket/nodes/node_landing_tlc_receipt_effect/handlers/handler_landing_tlc_receipt_cli.py src/omnimarket/nodes/node_merge_sweep_compute/__main__.py src/omnimarket/nodes/node_merge_sweep_compute/consumer.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py src/omnimarket/nodes/node_runner_orchestrator/models/model_runner_result.py 2>&1 | grep -q literal_path"
-        cwd: "."
+        check_value: |-
+          uv run --frozen python -c '
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          paths = [Path(name) for name in "scripts/shadow_mode_parity_proof.py src/omnimarket/events/emit_client.py src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/handlers/handler_automation_liveness_installer_scan.py src/omnimarket/nodes/node_brief_prerequisites_compute/handlers/handler_brief_prerequisites.py src/omnimarket/nodes/node_dispatch_worker/handlers/handler_dispatch_worker.py src/omnimarket/nodes/node_emit_daemon/__main__.py src/omnimarket/nodes/node_emit_daemon/handlers/handler_emit_daemon.py src/omnimarket/nodes/node_emit_daemon/models/model_emit_daemon_config.py src/omnimarket/nodes/node_environment_health_scanner/handlers/handler_environment_health_scanner.py src/omnimarket/nodes/node_environment_health_scanner/handlers/prober_emit_daemon.py src/omnimarket/nodes/node_install_canary_effect/handlers/handler_install_canary.py src/omnimarket/nodes/node_lab_disk_growth_effect/handlers/handler_lab_uv_cache_colocate.py src/omnimarket/nodes/node_landing_tlc_receipt_effect/handlers/handler_landing_tlc_receipt_cli.py src/omnimarket/nodes/node_merge_sweep_compute/__main__.py src/omnimarket/nodes/node_merge_sweep_compute/consumer.py src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py src/omnimarket/nodes/node_runner_orchestrator/models/model_runner_result.py".split()]
+          assert all(path.is_file() for path in paths), "a target module is missing"
+          result = ValidatorContractsAndDi().validate(paths)
+          assert result.metadata.files_processed == len(paths), "the validator did not scan every target"
+          findings = [issue for issue in result.issues if issue.rule_name == "literal_path"]
+          print(f"files_processed={result.metadata.files_processed}; literal_path={len(findings)}")
+          assert not findings, findings
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-deploy-published-paths-readback"
     description: |-
       Hosted-runner source-artifact readback: fetch the runtime-path authority at the
