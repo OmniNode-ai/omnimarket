@@ -1254,6 +1254,74 @@ def test_write_is_not_republished_when_the_bus_does_not_open(
     assert retry_pauses == []
 
 
+@pytest.mark.parametrize(
+    "reason", ["consumer_present_no_terminal", "consumer_evidence_unreadable"]
+)
+@pytest.mark.parametrize("verb", _WRITE_VERBS)
+def test_write_is_not_republished_after_retry_when_consumer_evidence_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    verb: str,
+    reason: _Reason,
+) -> None:
+    from omnimarket.handlers.scm import handler_scm_consumer_diagnostics as diagnostics
+    from omnimarket.models.scm.model_scm_consumer_evidence import (
+        ModelScmConsumerEvidence,
+    )
+
+    first, second = FakeBus(answer=False), FakeBus(answer=False)
+    opened = _install_bus_attempts(monkeypatch, [first, second])
+    reasons: list[_Reason] = ["no_consumer_for_topic", reason]
+    read: list[str] = []
+
+    async def diagnose(
+        opened: object, node: EnumScmNode, topic: str
+    ) -> ModelScmConsumerEvidence:
+        current = reasons[len(read)]
+        read.append(topic)
+        return ModelScmConsumerEvidence(
+            reason=current,
+            command_topic=topic,
+            physical_topic=topic,
+            consumer_count=0 if current == "no_consumer_for_topic" else None,
+        )
+
+    monkeypatch.setattr(diagnostics, "diagnose_scm_timeout", diagnose)
+
+    result = _run(_write_args(verb))
+
+    assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
+    answer = _answer(result)
+    assert answer["reason"] == reason
+    assert answer["attempts"] == 2
+    assert len(opened) == 2
+    assert read == [WRITE.command, WRITE.command]
+    assert len(first.published) == len(second.published) == 1
+    assert answer["correlation_id"] == second.published[0][1]["correlation_id"]
+    assert retry_pauses == [20]
+
+
+@pytest.mark.parametrize("error_type", [LabRunBusError, InfraConnectionError])
+@pytest.mark.parametrize("verb", _WRITE_VERBS)
+def test_write_is_not_republished_after_retry_when_bus_does_not_open(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    verb: str,
+    error_type: type[Exception],
+) -> None:
+    first = FakeBus(answer=False)
+    opened = _install_bus_attempts(monkeypatch, [first, error_type("unavailable")])
+    read = _install_evidence(monkeypatch, "no_consumer_for_topic")
+
+    result = _run(_write_args(verb))
+
+    assert result.exit_code == scm_cli.EXIT_BUS_UNAVAILABLE, result.output
+    assert len(opened) == 2
+    assert len(first.published) == 1
+    assert read == [WRITE.command]
+    assert retry_pauses == [20]
+
+
 def test_timeout_with_unknown_transport_does_not_invent_no_consumers(
     monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
 ) -> None:

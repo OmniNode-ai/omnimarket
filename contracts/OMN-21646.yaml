@@ -26,7 +26,7 @@ requirements:
     statement: "A write that may already be running is never republished."
     acceptance:
       - id: "AC2"
-        statement: "AC2: a write whose consumer is present but unanswered, whose consumer evidence is unreadable, or whose bus does not open makes one attempt and is never republished -- falsifier: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k write_is_not_republished fails"
+        statement: "AC2: a write whose consumer is present but unanswered, whose consumer evidence is unreadable, or whose bus does not open is never republished again, including after an earlier no-consumer retry -- falsifier: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k write_is_not_republished fails"
 evidence_requirements:
   - kind: "tests"
     description: "The recreate window of 2026-10-31 (no consumer, then one rejoins) completes on the second attempt; every other unanswered write is attempted once."
@@ -45,10 +45,33 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k write_retries_when_no_consumer -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21646-no-blind-republish"
-    description: "A present consumer, unreadable evidence and an unopened bus each make one attempt."
+    description: "A present consumer, unreadable evidence and an unopened bus stop further attempts, including after a no-consumer retry; the transition tests fail without the write retry."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k write_is_not_republished -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21646-deploy-write-retry-smoke"
+    description: >-
+      Hosted-runner deploy smoke of this checkout's SCM CLI in a disposable
+      Python 3.13 container with read-only source and a dedicated virtualenv.
+      Through its in-process bus interface, a missing consumer permits one
+      retry with the same idempotency key and a fresh correlation id; changed
+      consumer evidence or an unopened bus stops further retries. No lane
+      credentials are needed. This is an isolated runtime readback, not a
+      production rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          docker run --rm \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+            --workdir /workspace --env PYTHONDONTWRITEBYTECODE=1 \
+            ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \
+            sh -ec '
+          uv venv /tmp/scm-probe
+          uv pip install --python /tmp/scm-probe/bin/python omnibase-infra==0.38.75 pytest==9.0.2 pytest-asyncio==1.3.0 pytest-cov==7.0.0 httpx==0.28.1 jinja2==3.1.6
+          exec /tmp/scm-probe/bin/python -m pytest tests/unit/handlers/scm/test_onex_scm_command.py -k "write_retries_when_no_consumer_and_keeps_its_idempotency_key or write_is_not_republished_after_retry" -q --no-cov -p no:cacheprovider
+          '
         cwd: "${OMNI_HOME}/omnimarket"

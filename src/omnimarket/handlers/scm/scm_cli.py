@@ -35,7 +35,9 @@ answer, 69 the bus could not be opened, 75 no terminal event in time (the
 outcome is unknown: read before retrying; a write retried with the same
 idempotency key is not written twice).
 Gateway reads retry on no terminal or bus unavailability for up to three total
-attempts, pausing 20 seconds between attempts; writes make one attempt (OMN-21396).
+attempts, pausing 20 seconds between attempts (OMN-21396). Writes retry only when
+the broker reports no consumer, checking that evidence after each timeout;
+other unanswered writes and bus-open failures stop immediately (OMN-21646).
 With ``--bus inmemory``, the selected contract is hosted in this process by
 the runtime dispatcher before the command is published.
 
