@@ -337,6 +337,7 @@ def test_list_json_is_one_object_per_provider(
         "glm",
         "ollama",
         "local",
+        "openai_compatible",
     ]
     assert rows[2]["set_up"] is True
     assert rows[2]["last_test"]["status"] == "passed"

@@ -32,6 +32,11 @@ pytestmark = pytest.mark.unit
 def test_every_catalogue_row_declares_a_non_empty_default_models_list() -> None:
     for row in load_byok_plan_catalog().values():
         assert isinstance(row.default_models, tuple)
+        if row.endpoint_from_registration:
+            # OMN-21263: a generic endpoint's models are the developer's to
+            # name; the catalogue cannot know which ids it serves.
+            assert row.default_models == ()
+            continue
         assert row.default_models
         assert all(
             isinstance(model_id, str) and model_id for model_id in row.default_models
