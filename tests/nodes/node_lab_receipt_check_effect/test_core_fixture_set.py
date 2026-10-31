@@ -135,4 +135,8 @@ async def test_core_fixture_set_clean_pair_yields_no_issue(name: str) -> None:
     result = await run_node(document, document.phase)
     assert result.issues == ()
     assert result.merge_blocked is False
-    assert result.verdict is EnumLabReceiptVerdict.PASS
+    assert result.verdict is (
+        EnumLabReceiptVerdict.PASS
+        if result.required
+        else EnumLabReceiptVerdict.NOT_REQUIRED
+    )
