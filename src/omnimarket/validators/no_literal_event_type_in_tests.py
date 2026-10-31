@@ -172,11 +172,6 @@ _FENCED: tuple[tuple[str, str, str], ...] = (
         "HOLE",
     ),
     (
-        "tests/test_golden_chain_pr_review.py",
-        "onex.evt.omnimarket.pr-review-bot-phase-advance.v1",  # onex-topic-allow: pinned fence row; reading it from the file it pins defeats the pin
-        "HOLE",
-    ),
-    (
         "tests/test_golden_chain_runtime_closeout_orchestrator.py",
         "onex.evt.omnimarket.closeout-fitness-gated.v1",  # onex-topic-allow: pinned fence row; reading it from the file it pins defeats the pin
         "HOLE",
