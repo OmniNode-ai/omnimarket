@@ -22,7 +22,7 @@ The decision:
 4. The developer's principal is read from the lane store when the lane's credential source is
    the lane store, from the operator env file when it is that, and from the lane store for a bound
    lane that has no credential source. No principal is a refusal, never a pass.
-5. A principal on the selected lane's own list is a declared collaborator (admitted; the hook
+5. A principal on the selected lane's own list (a machine row is not a person) is a declared collaborator (admitted; the hook
    drops the held event classes). A principal on another lane's list is refused: a person derives
    nothing from a lane they are not declared on. A principal on a list while the selected lane is
    one a collaborator never uses (``barred_lanes``) is refused. Any other principal is the
@@ -44,6 +44,9 @@ PROFILE_LANE_BINDING_KEY = "lane_binding"
 LANE_STORE_LANES_BLOCK = "lanes"
 LANE_STORE_USERNAME_KEY = "sasl_username"
 DECLARATION_SCHEMA_VERSION = "developer_principal.v1"
+# A row with this role is a machine the deployment installs and runs itself, not a person's
+# development machine; it is never a declared collaborator.
+ROLE_MACHINE = "machine"
 
 # The hook-edge contract's own value for a lane whose credential is in the operator env file.
 SOURCE_OPERATOR_ENV = "operator_env_file"
@@ -91,7 +94,12 @@ def _refuse(lane: str, refusal: str, detail: str) -> dict[str, Any]:
 
 
 def _declared_principals(declaration: Mapping[str, Any]) -> frozenset[str] | None:
-    """The principals a well-formed declaration lists, or ``None`` when it is malformed."""
+    """The people a well-formed declaration lists, or ``None`` when it is malformed.
+
+    A machine row is read for well-formedness and left out of the result: a lab host's login is
+    listed beside the people so the broker grants cover it, and listing it as a collaborator held
+    back or, on a barred lane, dropped every hook event of that host.
+    """
     rows = declaration.get("principals")
     if (
         declaration.get("schema_version") != DECLARATION_SCHEMA_VERSION
@@ -105,7 +113,8 @@ def _declared_principals(declaration: Mapping[str, Any]) -> frozenset[str] | Non
         name = row.get("principal") if isinstance(row, Mapping) else None
         if not isinstance(name, str) or not name.strip():
             return None
-        names.add(name)
+        if row.get("role") != ROLE_MACHINE:
+            names.add(name)
     return frozenset(names)
 
 
