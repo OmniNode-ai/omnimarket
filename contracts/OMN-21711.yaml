@@ -168,3 +168,6 @@ dod_evidence:
       git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21711.yaml';
       ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21536.yaml'
     cwd: .
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -k every_repo_contract_binds_every_criterion -q --no-cov --tb=line
+    cwd: .
