@@ -199,7 +199,9 @@ def _dummy_value(field_name: str, event_type: str) -> object:
     if field_name in ("pid",):
         return 1234
     if field_name in ("socket_path",):
-        return "/tmp/onex-emit.sock"  # local-path-ok: synthetic test value
+        from omnimarket.handlers.runtime_paths import runtime_path
+
+        return runtime_path("emit_daemon.socket_path")
     if field_name in ("kafka_offset",):
         return 42
     if field_name in ("round_trip_ms",):
@@ -652,13 +654,13 @@ async def main_async(out_path: Path) -> int:
 
 
 def main() -> int:
+    from omnimarket.handlers.runtime_paths import runtime_path
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path(
-            "/tmp/omn-15971-shadow-parity-report.json"
-        ),  # local-path-ok: script output default, overridable via --out
+        default=Path(runtime_path("shadow_mode_parity_proof.report_path")),
         help="Path to write the JSON diff artifact",
     )
     args = parser.parse_args()

@@ -38,6 +38,9 @@ import yaml
 from omnimarket.nodes.node_build_dispatch_effect.handlers.dispatch_history_store import (
     DispatchHistoryStore,
 )
+from omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_input import (
+    ModelBuildDispatchInput,
+)
 from omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_outcome import (
     ModelBuildDispatchOutcome,
 )
@@ -131,22 +134,21 @@ class HandlerBuildDispatch:
         return "effect"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        targets: tuple[ModelBuildTarget, ...],
-        dry_run: bool = False,
+        self, request: ModelBuildDispatchInput
     ) -> ModelBuildDispatchResult:
         """Dispatch builds for each target ticket.
 
         Args:
-            correlation_id: Cycle correlation ID.
-            targets: Tickets to dispatch.
-            dry_run: Skip actual dispatch.
+            request: Cycle correlation ID, the tickets to dispatch and the
+                dry-run flag (skips actual dispatch).
 
         Returns:
             ModelBuildDispatchResult with per-ticket outcomes and delegation
             payloads for the orchestrator to publish.
         """
+        correlation_id = request.correlation_id
+        targets = request.targets
+        dry_run = request.dry_run
         logger.info(
             "Build dispatch: %d targets (correlation_id=%s, dry_run=%s)",
             len(targets),

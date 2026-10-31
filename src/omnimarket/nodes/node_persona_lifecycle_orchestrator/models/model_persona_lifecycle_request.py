@@ -11,6 +11,7 @@ only, empty handlers/, OMN-7305 never shipped"). Recovered from git history
 """
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,4 +30,8 @@ class ModelPersonaLifecycleRequest(BaseModel):
     user_id: str | None = Field(
         default=None,
         description="User ID for on-demand rebuild (required when operation='on_demand')",
+    )
+    correlation_id: UUID | None = Field(
+        default=None,
+        description="Correlation ID forwarded to the persona rebuild port",
     )

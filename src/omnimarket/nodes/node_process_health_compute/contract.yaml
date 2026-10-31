@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Process Health Compute
+# Direct invocation only: a pure compute over caller-read facts, no event bus and no terminal event.
+name: "node_process_health_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  The daily process-health series and a before and after summary around the factory reset.
+  Metrics per UTC day: dev-branch reds and hours red per repo, regressions (merges later fixed
+  forward or reverted, tickets reopened, fix causes that came back), bug tickets opened and
+  closed, validation failures (real-red PR heads, guard and hook refusals, hook-preflight
+  blocks), lane outcome shares, merges and the time to merge, andon stops and hours stopped,
+  friction minutes with lane-stated, reporter-stated and capacity estimates kept apart from the
+  measured controller lease minutes, and delegation share. Every metric names its sources and
+  the hours of its window each covered; a source that was not read, or does not cover a day,
+  makes the metric unread and never a zero. Pure: it reads no file, no network and no clock;
+  node_process_health_effect reads the sources and writes the JSON to its contract-declared path.
+input_model:
+  name: "ModelProcessHealthRequest"
+  module: "omnimarket.models.process_health"
+  description: "Caller-read source reads and their typed records, plus the config below."
+output_model:
+  name: "ModelProcessHealthResult"
+  module: "omnimarket.models.process_health"
+  description: "The daily series, the reset marker and the before and after summary."
+handler:
+  module: "omnimarket.nodes.node_process_health_compute.handlers.handler_process_health"
+  class: "HandlerProcessHealth"
+  input_model: "omnimarket.models.process_health.ModelProcessHealthRequest"
+  output_model: "omnimarket.models.process_health.ModelProcessHealthResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_process_health_compute.handlers.handler_process_health:HandlerProcessHealth"
+  handlers:
+    - operation: "compute_process_health"
+      handler:
+        name: "HandlerProcessHealth"
+        module: "omnimarket.nodes.node_process_health_compute.handlers.handler_process_health"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation by node_process_health_effect, which reads the sources and writes the JSON."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+config:
+  process_health:
+    reset_at: "2026-10-29T01:30:00Z"
+    reset_label: "Factory reset (andon HOLD, 2026-10-29T01:30Z)"
+    series_days: 14
+    summary_max_hours: 168
+    flat_threshold_ratio: 0.05
+    fix_forward_window_hours: 72
+    fix_subject_pattern: "^(fix|hotfix)(\\(|:|!)"
+    revert_subject_pattern: "(?i)^revert(\\b|\\(|:|!)"
+    ticket_pattern: "OMN-[0-9]+"
+    umbrella_min_prs: 5
+    bot_markers: ["[bot]"]
+    ledger_roll_subject_pattern: "ledger rows through"
+    reporter_actor_prefixes: ["hook", "launchd", "script:"]
+    capacity_estimate_classes: ["lab-idle", "quiet-host", "zero-flip-streak", "lab-source-unreadable", "lab-enumerate-unreadable"]
+    estimate_cost_prefixes: ["est"]
+    preflight_guard_marker: "preflight"
+    refusal_class: "refusal"
+    unclassified_label: "unclassified"
+    lane_outcome_classes:
+      done: ["done", "merged", "delivered", "pass_evidence"]
+      handed-off: ["handed-off"]
+      blocked: ["blocked"]
+      failed: ["failed", "fail_no_evidence"]
+      partial: ["partial"]
+    other_outcome_class: "other"
+    landing_lane_prefix: "landing-L"
+    landing_failed_results: ["blocked", "external_blocker", "push_failed", "push_timeout", "no_result_file", "failed"]
+    landing_failed_class: "landing-failed"
+    red_verdict: "base_branch_red"
+    fix_dispatch_kind: "dispatch_worker"
+    fix_dispatch_outcome: "spawned"
+    andon_reason_prefixes: ["andon"]
+    andon_text_prefixes: ["andon", "andon stop"]
+    bug_labels: ["bug"]
+    relapse_min_gap_minutes: 30
+metadata:
+  transport_type: local
+  description: "Process Health Compute - pure daily series of regressions, reds, bugs, validation failures, lane outcomes, merges, andon stops, friction and delegation, with a before and after summary."
+  author: "OmniNode Team"
+  created: "2026-10-31"
+  tags: ['compute', 'process-health', 'factory-floor', 'OMN-21686']
+  related_tickets: ['OMN-21686', 'OMN-17427']
