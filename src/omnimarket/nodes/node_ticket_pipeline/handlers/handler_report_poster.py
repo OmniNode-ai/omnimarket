@@ -6,10 +6,11 @@ logger = logging.getLogger(__name__)
 
 
 class HandlerReportPoster:
-    def __init__(self) -> None:
-        self._report_endpoint = (
-            "https://api.example.com/reports"  # Placeholder endpoint
-        )
+    def __init__(
+        self,
+        report_endpoint: str = "https://api.example.com/reports",  # Placeholder endpoint
+    ) -> None:
+        self._report_endpoint = report_endpoint
 
     def post_report(self, report_data: dict[str, object]) -> bool:
         """
@@ -29,12 +30,3 @@ class HandlerReportPoster:
         except Exception as e:
             logger.info(f"Error posting report: {e!s}")
             return False
-
-    def set_endpoint(self, endpoint_url: str) -> None:
-        """
-        Updates the report endpoint URL.
-
-        Args:
-            endpoint_url: New URL for report posting
-        """
-        self._report_endpoint = endpoint_url

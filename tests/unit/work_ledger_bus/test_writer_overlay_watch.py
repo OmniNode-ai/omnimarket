@@ -163,7 +163,7 @@ def test_a_declared_machine_is_served_and_attributed_without_a_reinstall(
         host = WorkLedgerAppendHost(bus, handler, writer_principals=["dev-installed"])
 
         async def serve(writers: frozenset[str]) -> bool:
-            handler.set_writer_principals(writers)
+            handler.writers.replace(writers)
             return await host.set_writer_principals(writers)
 
         watch = WriterOverlayWatch(

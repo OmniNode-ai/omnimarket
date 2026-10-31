@@ -1,0 +1,98 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21712
+title: public handler methods stop mutating handler state, handler-shape slice 3 (omnimarket#4634 contract split)
+summary: Slice 3 of the omnimarket handler-shape burn-down (omnimarket#4634). The handler-shape validator of omnibase_core reports a public method of a handler class, other than handle, that assigns to the handler (mutating_public_method). Twenty-six of those sat in twenty files. Each now keeps its state in a collaborator the handler is given (a quota-reading store, a source-control connection, an overlay source, a decision count, a dispatch session, a DLQ routing mark, an emit lifecycle), in a local of the call, or nowhere when nothing read it. The tests of every touched node follow the move. The acceptance items of this PR moved here from the shared contracts/OMN-21536.yaml.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21712-own-contract
+  statement: The public handler methods touched by omnimarket#4634 stop mutating handler state, and the PR's acceptance items live in this contract file, not in the shared contracts/OMN-21536.yaml.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the public handler methods touched by omnimarket#4634 stop mutating handler state and the handler-shape count over them drops as the PR states -- falsifier: uv run pytest tests/unit -q over the touched modules plus the handler-shape checker re-run on the PR paths'
+  - id: AC2
+    statement: 'AC2: the PR''s acceptance items live in contracts/OMN-21712.yaml and the PR does not edit contracts/OMN-21536.yaml -- falsifier: git diff --stat origin/dev...HEAD on the PR head lists contracts/OMN-21712.yaml and not contracts/OMN-21536.yaml'
+evidence_requirements:
+- kind: tests
+  description: The tests of the nodes whose handler state moved, run on a lab host at the pushed head.
+  command: uv run pytest tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_golden_chain_emit_daemon.py tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_omn14533_cross_boundary_savings_seam.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_omn18531_compaction_savings.py tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_projection_malformed_dlq_omn13548.py tests/test_projection_error_classification_omn13634.py tests/test_projection_handlers.py tests/unit/delegation tests/unit/nodes/node_dod_verify tests/unit/nodes/node_generation_consumer tests/unit/nodes/node_github_repo_write_effect tests/unit/nodes/node_pr_landing_github_effect tests/unit/nodes/node_projection_consumer_flow tests/nodes/node_install_canary_effect tests/nodes/node_intent_event_consumer_effect tests/nodes/node_linear_comments_sweep_orchestrator tests/nodes/node_morning_friction_sweep_orchestrator tests/nodes/node_morning_ground_state_orchestrator src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21536-ac3-no-mutating-public-method
+  description: AC1 runs the handler-shape validator over src at the committed head and counts the findings that name a public method mutating handler state.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -u;
+      test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep -c 'is a public method that mutates handler state')" -eq 0
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21536-ac4-touched-node-tests
+  description: AC1 runs the tests of the nodes whose handler state moved, in groups that each finish inside the verifier's 30 s per-check budget. The slower suites of the same nodes (tests/unit/delegation, tests/unit/nodes/node_dod_verify) run in the evidence requirement above on a lab host, and in the CI test shards.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn14533_cross_boundary_savings_seam.py tests/unit/nodes/node_projection_consumer_flow/test_omn17215_ac6_gap_row_does_not_shadow_observed.py tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_omn18531_compaction_savings.py tests/test_projection_error_classification_omn13634.py tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_projection_malformed_dlq_omn13548.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_projection_handlers.py src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_golden_chain_emit_daemon.py tests/nodes/node_install_canary_effect/test_install_canary.py tests/nodes/node_install_canary_effect/test_lane_ship_drift.py tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/nodes/node_github_repo_write_effect/test_handler_github_repo_write.py tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py tests/unit/nodes/node_github_repo_write_effect/test_lane_write_identity.py tests/unit/nodes/node_github_repo_write_effect/test_source_control_github_conformance.py tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py tests/nodes/node_linear_comments_sweep_orchestrator/test_error_chain_linear_comments_sweep_orchestrator.py tests/nodes/node_linear_comments_sweep_orchestrator/test_golden_chain_linear_comments_sweep_orchestrator.py tests/nodes/node_linear_comments_sweep_orchestrator/test_overlay.py tests/nodes/node_linear_comments_sweep_orchestrator/test_phase_bus.py tests/nodes/node_morning_friction_sweep_orchestrator/test_bus_cycle.py tests/nodes/node_morning_friction_sweep_orchestrator/test_entry_point.py tests/nodes/node_morning_friction_sweep_orchestrator/test_error_chain_morning_friction_sweep_orchestrator.py tests/nodes/node_morning_friction_sweep_orchestrator/test_golden_chain_morning_friction_sweep_orchestrator.py tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py tests/nodes/node_morning_friction_sweep_orchestrator/test_phase_bus.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_github_effect/test_clean_pr_merges_omn_20866.py tests/unit/nodes/node_pr_landing_github_effect/test_contract.py tests/unit/nodes/node_pr_landing_github_effect/test_fake_transport_replay.py tests/unit/nodes/node_pr_landing_github_effect/test_handler_pr_landing_github.py tests/unit/nodes/node_pr_landing_github_effect/test_quota_reading.py tests/unit/nodes/node_pr_landing_github_effect/test_request_models.py tests/unit/nodes/node_pr_landing_github_effect/test_required_contexts_and_held_arm_omn_20866.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_generation_consumer/test_cloud_endpoints_key_refs_omn12828.py tests/unit/nodes/node_generation_consumer/test_corpus_acceptance.py tests/unit/nodes/node_generation_consumer/test_endpoint_failure_omn15502.py tests/unit/nodes/node_generation_consumer/test_endpoint_routing_authority.py tests/unit/nodes/node_generation_consumer/test_escalation_omn12829.py tests/unit/nodes/node_generation_consumer/test_generation_rides_ladder_omn13359.py tests/unit/nodes/node_generation_consumer/test_handler_generated_executor.py tests/unit/nodes/node_generation_consumer/test_handler_generation_consumer.py tests/unit/nodes/node_generation_consumer/test_no_hackathon_tags_omn13607.py tests/unit/nodes/node_generation_consumer/test_offset_commit_after_terminal_ack_omn13467.py tests/unit/nodes/node_generation_consumer/test_omn12813_output_format_fix.py tests/unit/nodes/node_generation_consumer/test_omn12890_gemini_model_repoint.py tests/unit/nodes/node_generation_consumer/test_p2_seam_extensions.py tests/unit/nodes/node_generation_consumer/test_sea_generation_routing_parity.py tests/unit/nodes/node_generation_consumer/test_semantic_validation_omn13166.py tests/unit/nodes/node_generation_consumer/test_semantic_validation_omn13217.py tests/unit/nodes/node_generation_consumer/test_single_terminal_authority_omn15469.py tests/unit/nodes/node_generation_consumer/test_usage_source_capture_omn12996.py tests/unit/nodes/node_generation_consumer/test_validator_corpora.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py tests/nodes/node_morning_ground_state_orchestrator/test_bus_cycle.py tests/nodes/node_morning_ground_state_orchestrator/test_entry_point.py tests/nodes/node_morning_ground_state_orchestrator/test_error_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py tests/nodes/node_morning_ground_state_orchestrator/test_overlay.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_bus.py tests/nodes/node_morning_ground_state_orchestrator/test_phase_lab_work.py tests/nodes/node_morning_ground_state_orchestrator/test_watcher_inventory.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_intent_event_consumer_effect/test_golden_chain_intent_event_consumer_effect.py tests/nodes/node_intent_event_consumer_effect/test_resolver_satisfiable_construction.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py tests/unit/delegation/test_judge_receives_delegated_prompt_omn20340.py tests/unit/delegation/test_judge_unavailable_deterministic_floor_omn13959.py tests/unit/delegation/test_judge_verdict_vetoes_acceptance_omn13642.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21536-deploy-handlers-import
+  description: 'Hosted deploy check: the overlay-source collaborator this change adds is served from the repository at the evaluated head (a fetch of the file at that commit, grepped for the class). No credentials, broker or lab service is required. This checks the pushed source, not a production rollout.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/overlay_source.py" | grep -q "class OverlaySource"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21712-ac2-own-contract-file
+  description: 'AC2 reads the PR''s diff against the base branch: it lists this ticket''s own contract file and does not list the shared parent contract file.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21712.yaml';
+      ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21536.yaml'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line
+    cwd: .
