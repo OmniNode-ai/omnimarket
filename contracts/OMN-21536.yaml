@@ -55,12 +55,66 @@ dod_evidence:
       print("Published build dispatch handler readback: single typed request PASS")
       '
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-ac2-touched-node-tests
-  description: AC2 runs the tests of the nodes whose handle signature changed.
+- id: dod-omn21536-ac2-dispatch-closeout-verify
+  description: AC2, part of the touched-node tests. Runs the tests of the build dispatch, closeout and verify effects, the build-loop golden chains, the retry loop and the GLM reviewer. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_golden_chain_build_dispatch_effect.py tests/test_golden_chain_closeout_effect.py tests/test_golden_chain_verify_effect.py tests/test_golden_chain_build_loop_orchestrator.py tests/test_golden_chain_build_loop_events.py tests/unit/nodes/node_build_loop_orchestrator tests/integration/node_verify_effect tests/test_golden_chain_design_to_plan.py tests/test_handler_handoff_effect.py tests/test_handoff_failure_modes.py tests/test_handoff_validation_gate.py tests/unit/nodes/node_monitor_alert_responder tests/nodes/node_omnigate_receipt_generator tests/nodes/node_omnigate_receipt_verifier tests/unit/nodes/node_persona_lifecycle_orchestrator tests/nodes/node_polish_task_classifier tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_golden_chain_state_persist_effect.py tests/nodes/node_thread_reply_effect tests/test_golden_chain_thread_reply_effect.py tests/test_golden_chain_ticket_query.py tests/unit/nodes/node_pr_lifecycle_orchestrator tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_market_node_runtime_dogfood.py tests/test_handler_routing_boot_resolvable.py src/omnimarket/nodes/node_projection_delegation/tests src/omnimarket/nodes/node_build_loop_orchestrator/tests tests/test_retry_loop.py tests/test_glm_reviewer.py tests/test_no_cross_node_reach_in.py tests/test_handler_shape_multiparam_omn21536.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/test_golden_chain_build_dispatch_effect.py tests/test_golden_chain_closeout_effect.py tests/test_golden_chain_verify_effect.py tests/test_golden_chain_build_loop_orchestrator.py tests/test_golden_chain_build_loop_events.py tests/integration/node_verify_effect tests/test_retry_loop.py tests/test_glm_reviewer.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-build-loop-orchestrator
+  description: AC2, part of the touched-node tests. Runs the tests of the build-loop orchestrator, its unit tests and its node tests. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_build_loop_orchestrator/tests -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-handoff-alert-receipt-persona
+  description: AC2, part of the touched-node tests. Runs the tests of the design-to-plan launch, handoff, alert classify, both omnigate receipt handlers, persona rebuild and polish classifier. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_design_to_plan.py tests/test_handler_handoff_effect.py tests/test_handoff_failure_modes.py tests/test_handoff_validation_gate.py tests/unit/nodes/node_monitor_alert_responder tests/nodes/node_omnigate_receipt_generator tests/nodes/node_omnigate_receipt_verifier tests/unit/nodes/node_persona_lifecycle_orchestrator tests/nodes/node_polish_task_classifier -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-state-thread-ticket
+  description: AC2, part of the touched-node tests. Runs the tests of the delegation data-source fold, state persist, thread reply and ticket query. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_golden_chain_state_persist_effect.py tests/nodes/node_thread_reply_effect tests/test_golden_chain_thread_reply_effect.py tests/test_golden_chain_ticket_query.py src/omnimarket/nodes/node_projection_delegation/tests -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-pr-lifecycle-ci-red
+  description: AC2, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator CI-red triage, runner and dev-head dispatch unit tests. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_event_facts.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_claim_lease_terminal_refused.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_dev_head_red_dispatch_omn20730.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-pr-lifecycle-unit
+  description: AC2, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator unit tests (the verify call and the phase transitions), without the contract walk. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_main_cli.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_delegation_counters_aggregation.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_handler_pr_lifecycle_orchestrator_hotspots.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_omn_13859_prune_wiring.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_omn_13984_fail_fast_core_subhandlers.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_orchestrator_phase_transitions.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_pr_changed_files_fail_closed.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_pr_ledger_phase_separation.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_pr_ledger_projection.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_repo_health_fanout.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_sub_handler_protocol_conformance.py tests/unit/nodes/node_pr_lifecycle_orchestrator/test_verifying_phase_dispatch.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-pr-lifecycle-golden
+  description: AC2, part of the touched-node tests. Runs the tests of the PR lifecycle orchestrator golden chain and the cross-node reach-in guard. The hosted verifier kills a check at 30 seconds, so the touched-node tests run as several checks that each fit; the whole set, with the repo-wide inventory tests (market node runtime dogfood, handler routing boot resolvable, PR lifecycle contract walk) that each take longer than 30 seconds alone, also runs as the lab evidence above.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_no_cross_node_reach_in.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
