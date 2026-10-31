@@ -41,6 +41,7 @@ from omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon import (
 )
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_state import (
     EnumEmitDaemonPhase,
+    ModelEmitDaemonCommand,
 )
 from omnimarket.nodes.node_emit_daemon.models.model_durability import (
     EnumDurabilityTier,
@@ -501,21 +502,25 @@ class TestHandlerEmitDaemon:
         lifecycle = EmitLifecycle()
         handler = HandlerEmitDaemon(lifecycle)
 
-        started = handler.handle({"action": "start", "socket_path": "/tmp/t.sock"})
-        assert started["phase"] == EnumEmitDaemonPhase.LISTENING
+        started = handler.handle(
+            ModelEmitDaemonCommand(action="start", socket_path="/tmp/t.sock")
+        )
+        assert started.phase == EnumEmitDaemonPhase.LISTENING
         assert lifecycle.phase == EnumEmitDaemonPhase.LISTENING
 
         stopped = handler.handle(
-            {"action": "stop", "events_published": 4, "events_dropped": 1}
+            ModelEmitDaemonCommand(action="stop", events_published=4, events_dropped=1)
         )
-        assert stopped["phase"] == EnumEmitDaemonPhase.STOPPED
-        assert stopped["events_published"] == 4
+        assert stopped.phase == EnumEmitDaemonPhase.STOPPED
+        assert stopped.events_published == 4
         assert lifecycle.phase == EnumEmitDaemonPhase.STOPPED
 
     def test_status_reports_the_lifecycle_state_without_moving_it(self) -> None:
         lifecycle = EmitLifecycle()
         handler = HandlerEmitDaemon(lifecycle)
-        assert handler.handle({})["phase"] == EnumEmitDaemonPhase.IDLE
+        assert (
+            handler.handle(ModelEmitDaemonCommand()).phase == EnumEmitDaemonPhase.IDLE
+        )
         assert lifecycle.phase == EnumEmitDaemonPhase.IDLE
 
     def test_a_handler_built_without_a_lifecycle_owns_a_fresh_one(self) -> None:
