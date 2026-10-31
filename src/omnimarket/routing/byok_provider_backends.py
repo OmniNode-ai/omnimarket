@@ -354,6 +354,11 @@ class ModelByokProviderBackend(BaseModel):
     default_models: tuple[str, ...] = ()
     #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
     first_key: bool = False
+    #: OMN-21263. ``true`` declares the generic OpenAI-compatible row: the
+    #: developer names the endpoint's base URL when they register the key, and
+    #: ``endpoint_url`` and ``models_url`` here are placeholders that never route
+    #: (``omnimarket.handlers.openai_compatible_endpoint`` puts the URL in).
+    endpoint_from_registration: bool = False
 
     @model_validator(mode="after")
     def _default_models_are_preferred_and_distinct(self) -> ModelByokProviderBackend:
@@ -1007,8 +1012,7 @@ def resolve_byok_provider_backend(
     Matching is exact on the provider string the customer submitted, lowercased
     and stripped. ``ModelInferenceCredentialCreateRequest.provider`` already
     constrains that string to ``^[A-Za-z0-9_-]+$``, so case is the only
-    normalisation a legitimate submission can need. A plan is normalised the
-    same way.
+    normalisation a legitimate submission can need. A plan is normalised alike.
     """
     normalized = provider.strip().lower()
     if not normalized:

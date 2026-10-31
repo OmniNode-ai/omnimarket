@@ -1,0 +1,68 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21263
+title: "A developer can add a provider that speaks the OpenAI API, with a key, by URL"
+summary: One generic keyed catalogue row, openai_compatible, takes any endpoint that speaks the OpenAI chat API and needs a key. `onex models add openai_compatible --url <base> --model <id>` reads the key from stdin or a hidden prompt, checks each chosen model against the endpoint's own /v1/models, and stores the base URL with the credential. Routing, the pinned test, the call-time BYOK_MODEL_NOT_CHOSEN refusal, and `onex models list|reorder|remove` treat it like any other key. The onboarding half (AC4) ships in omniclaude.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21263-openai-compatible-endpoint
+    statement: "A developer registers any OpenAI-compatible endpoint that needs a key, by URL, and delegation uses it like any other key."
+    acceptance:
+      - id: AC1
+        statement: "AC1: `onex models add` registers an OpenAI-compatible endpoint by base URL with a key read from stdin or a hidden prompt, and one or more chosen models in order; the key is never printed, logged or passed as an argument -- falsifier: `uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -k 'registers_the_endpoint or never_taken or never_logged or endpoint_refuses or url_is_required'` against a stub server that requires a bearer key"
+      - id: AC2
+        statement: "AC2: the endpoint's models list is read from its /models route when it has one, and a model the endpoint does not list is refused at registration -- falsifier: `uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -k 'does_not_list or no_models_route'`"
+      - id: AC3
+        statement: "AC3: delegation routes to it in the developer's chosen order like any other key, and a key with no chosen model is refused (BYOK_MODEL_NOT_CHOSEN) -- falsifier: `uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -k 'chosen_order or no_chosen_model'`"
+      - id: AC5
+        statement: "AC5: `onex models list`, `reorder` and `remove` handle it -- falsifier: `uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -k list_reorder_and_remove`"
+evidence_requirements:
+  - kind: tests
+    description: A stub endpoint that refuses any request without the bearer key; the CLI registers it by URL with the key on stdin, refuses unlisted models and a wrong key, routes it in the chosen order, refuses a route with no chosen model before any call, and lists, reorders and removes it.
+    command: uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -o addopts=''
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21263-ac1-register-by-url
+    description: The endpoint is registered by URL with the key from stdin and the chosen models in order; the key is never in output or logs and no --key option exists.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -o addopts='' -k 'registers_the_endpoint or never_taken or never_logged or endpoint_refuses or url_is_required'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]
+  - id: dod-omn21263-ac2-models-route
+    description: A model the endpoint's /v1/models does not list is refused and nothing is stored; an endpoint with no /v1/models keeps the chosen models unchecked and says so.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -o addopts='' -k 'does_not_list or no_models_route'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC2]
+  - id: dod-omn21263-ac3-routing
+    description: The pinned route addresses the registered URL on the first chosen model, the next chosen model follows it, a house rung is answered on it, and a key or route with no chosen model is refused with BYOK_MODEL_NOT_CHOSEN.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -o addopts='' -k 'chosen_order or no_chosen_model'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21263-ac5-list-reorder-remove
+    description: onex models list shows the endpoint and its models; reorder and remove --model edit its list; remove deletes the key and its URL.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_openai_compatible_provider_omn21263.py -o addopts='' -k list_reorder_and_remove
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC5]
+  - id: dod-omn21263-deploy-source-readback
+    description: Published-source deploy check for a CLI path with no live consumer. Read the provider catalogue as published on GitHub at the checkout's exact commit and require the openai_compatible row; a commit that is not published, or lacks the row, fails the command. This reads back published source, not a deployed runtime.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref='"$(git rev-parse HEAD)"
+          --jq .content | base64 -d | grep -x '  - provider: openai_compatible' >/dev/null

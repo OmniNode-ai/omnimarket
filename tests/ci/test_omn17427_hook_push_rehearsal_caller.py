@@ -36,11 +36,11 @@ def test_caller_runs_on_pull_request_and_merge_group() -> None:
     assert set(triggers) == {"pull_request", "merge_group"}
 
 
-def test_caller_pins_the_reusable_at_a_full_sha() -> None:
+def test_caller_pins_the_reusable_at_a_dev_merge_tag() -> None:
     uses = str(_job()["uses"])
     path, _, ref = uses.partition("@")
     assert path == REUSABLE
-    assert re.fullmatch(r"[0-9a-f]{40}", ref)
+    assert re.fullmatch(r"dev-\d{14}-[0-9a-f]{12}", ref)
 
 
 @pytest.mark.parametrize(
@@ -72,3 +72,10 @@ def test_sample_file_is_a_python_source_file() -> None:
     assert sample.startswith("src/omnimarket/")
     assert sample.endswith(".py")
     assert (REPO_ROOT / sample).is_file()
+
+
+def test_caller_supplies_the_omnibase_infra_sibling_the_pre_push_set_reads() -> None:
+    # The Topic Naming Lint pre-push hook (scripts/validation/run_topic_lint.sh) runs
+    # omnibase_infra's lint_topic_names.py; without the sibling the rehearsal refuses the push.
+    siblings = str(_job()["with"]["sibling-repositories"]).split()
+    assert "omnibase_infra" in siblings

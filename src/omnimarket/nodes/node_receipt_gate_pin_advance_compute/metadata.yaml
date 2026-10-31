@@ -1,0 +1,22 @@
+name: node_receipt_gate_pin_advance_compute
+version: "1.0.0"
+description: "Plans the pull requests that advance each repository's receipt-gate caller pin to the newest source-repository dev tag whose gate file differs (OMN-20134)."
+pack: ci
+node_role: compute
+display_name: "Receipt Gate Pin Advance Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_receipt_gate_pin_advance_compute: "omnimarket.nodes.node_receipt_gate_pin_advance_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ci", "pin", "dev-tag", "receipt-gate", "OMN-20134"]

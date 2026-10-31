@@ -28,6 +28,11 @@ class ModelGitHubWorkflowRunObservation(BaseModel):
     workflow: str = Field(..., min_length=1)
     head_sha: str = Field(..., min_length=1)
     status: Literal["requested", "in_progress", "completed"]
+    run_attempt: int | None = Field(
+        default=None,
+        ge=1,
+        description="Which attempt of the run this is; above 1 is a re-run (OMN-20134).",
+    )
     delivery_id: UUID = Field(..., description="The X-GitHub-Delivery GUID.")
     github_event: str = Field(..., min_length=1)
     as_of: datetime
