@@ -14,6 +14,8 @@ requirements:
     statement: 'AC1: omnimarket CI calls the core reusable at a full 40-hex sha and the context is a required row of .github/required-checks.yaml and asserted by the CI Summary gate -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q'
   - id: AC2
     statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
+  - id: AC3
+    statement: 'AC3: the automated pin bump moves omnibase-core to dev tag dev-20261030214334-59faa7f31f38 in [tool.uv.sources] and uv.lock -- falsifier: grep -q dev-20261030214334-59faa7f31f38 on pyproject.toml and uv.lock, plus the dev_merge_tag tests'
 evidence_requirements:
 - kind: tests
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
@@ -44,3 +46,15 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn21478-core-pin-bump-4613
+  description: The omnibase-core pin in pyproject.toml and uv.lock is the dev tag dev-20261030214334-59faa7f31f38 and the dev merge tag tests pass.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'tag = "dev-20261030214334-59faa7f31f38"' pyproject.toml && grep -q dev-20261030214334-59faa7f31f38 uv.lock
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
