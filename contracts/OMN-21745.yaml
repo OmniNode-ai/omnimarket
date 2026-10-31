@@ -45,3 +45,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_golden_chain_platform_readiness.py tests/test_node_runtime_coverage.py -q --no-cov --tb=line
     cwd: .
+- id: dod-omn21745-deploy-entrypoint-binding-readback
+  description: 'Hosted source readback at the evaluated commit: the representative node_compliance_sweep entrypoint calls its binding factory, and that factory constructs NodeComplianceSweep. This checks published source availability and wiring, not a production rollout.'
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      head_sha="$(git rev-parse HEAD)";
+      entrypoint="$(curl --fail --silent --show-error --location --max-time 10 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/${head_sha}/src/omnimarket/nodes/node_compliance_sweep/__main__.py")";
+      binding="$(curl --fail --silent --show-error --location --max-time 10 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/${head_sha}/src/omnimarket/nodes/node_compliance_sweep/container/container_compliance_sweep.py")";
+      printf '%s\n' "$entrypoint" | grep -Fq 'handler = container_compliance_sweep.build_node_compliance_sweep()';
+      printf '%s\n' "$binding" | grep -Fq 'def build_node_compliance_sweep() -> NodeComplianceSweep:';
+      printf '%s\n' "$binding" | grep -Fq 'return NodeComplianceSweep()'
+    cwd: .
