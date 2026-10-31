@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# One positive and one negative fixture per rule of node_local_alert_compute's
+# contract, keyed by the rule's code. A positive fixture must open the rule's
+# alert and a negative one must not. A rule added to the contract with no entry
+# here fails tests/test_omn19991_local_alert_rule_fixtures.py.
+#
+# observed_state is the service's last report; silence_seconds is how long ago
+# that report was, at the time the compute judges it.
+SERVICE_DOWN:
+  positive: {observed_state: down, silence_seconds: 0}
+  negative: {observed_state: running, silence_seconds: 0}
+SERVICE_DEGRADED:
+  positive: {observed_state: unhealthy, silence_seconds: 0}
+  negative: {observed_state: running, silence_seconds: 0}
+HEALTH_UNKNOWN:
+  # One second past the contract's 60 s freshness deadline, and exactly at it.
+  positive: {observed_state: running, silence_seconds: 61}
+  negative: {observed_state: running, silence_seconds: 60}

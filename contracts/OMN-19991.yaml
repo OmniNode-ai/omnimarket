@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19991"
+title: "Local alert transitions are published as an event and folded into node_projection_local_alerts keyed on tenant, code and subject"
+summary: "First omnimarket step. This change adds the local alert transition payload (raised or cleared, with code, subject, severity, the raise time and the evidence it was read from) with a transition id derived from its own fields, the pure derivation of transitions from the local_environment rows around one write, and the pure fold into one local_alerts row per (tenant, code, subject), applied by UPSERT through the portable adapter on the local SQLite store. An alert clears only when a later report meets the clear condition. The projection node's contract, the Postgres migrations and grants, the omnibase_infra vendor mirror and the topic's publication from the environment writer follow in a later step, the way OMN-19988 landed. AC2 adds a contract-driven fixture check, so a rule added to the compute's contract with no fixture fails."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19991-alert-transitions-fold-deterministically"
+    statement: |-
+      Each verdict change the local environment store makes becomes a raised or cleared transition with a deterministic id, and the transitions fold into one local_alerts row per (tenant, code, subject) by UPSERT, so a repeated condition updates one row and a replay changes none. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Replaying the same input events produces the same alert rows (deterministic transition ids, UPSERT) -- falsifier: a replay test over a recorded hour run with uv run pytest finds a changed row
+      - id: "AC2"
+        statement: |-
+          AC2: Every rule in the compute's contract has a positive and a negative fixture -- falsifier: the contract test run with uv run pytest passes with a rule that has no fixture
+evidence_requirements:
+  - kind: "tests"
+    description: "An hour of compose health reports through the real environment store and the local_alerts fold on a real SQLite file; replaying the reports or the transitions changes no row, a second run derives the same transition ids, the transitions folded in reverse or shuffled order give the same rows, a repeated condition updates one row, and an alert clears only on a report meeting the clear condition. The handler module does not exist at the merge base, so the file cannot be collected there."
+    command: "uv run pytest tests/test_omn19991_local_alert_transitions.py -q"
+  - kind: "tests"
+    description: "Every rule the compute's contract declares has a positive and a negative fixture in the fixture file, read by rule code, and a rule without one is reported missing. The fixture file does not exist at the merge base, so these tests fail there."
+    command: "uv run pytest tests/test_omn19991_local_alert_rule_fixtures.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19991-ac1-replay-changes-no-row"
+    description: "AC1. A scripted hour of compose reports (four services every 30 s; postgres stopped twice, redpanda unhealthy once, valkey silent five minutes) goes through apply_local_environment_status and the local_alerts fold on a real SQLite file. Replaying every report, and every transition, leaves both tables byte for byte; a second run on a fresh store derives the same transition ids and the same rows; the transitions folded reversed or shuffled, twice over, give the same rows; postgres stopped twice keeps one SERVICE_DOWN row; an older transition writes nothing; an alert stays raised until a report meets the clear condition. Absent at the merge base."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19991_local_alert_transitions.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19991-ac2-every-rule-has-fixtures"
+    description: "AC2. The rules are read from node_local_alert_compute's contract and parametrise the positive and negative fixture tests, so the set grows with the contract; each positive fixture opens exactly its rule and each negative one does not; a rule added with no fixture, or with only a positive one, is reported missing. Absent at the merge base."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19991_local_alert_rule_fixtures.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
