@@ -291,12 +291,47 @@ dod_evidence:
         check_value: "uv run pytest tests/test_node_timeouts_slice_b_contract.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-timeouts-b-check-clean"
-    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the eleven node directories."
+    description: "The pinned contracts_and_di validator scans every source module in the eleven node directories and reports no literal_timeout finding. Missing directories, incomplete scans, disabled timeout rules, parse errors and validator failures refuse the evidence."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_report_anchor_probe_effect src/omnimarket/nodes/node_repo_health_repair_effect src/omnimarket/nodes/node_runtime_sweep src/omnimarket/nodes/node_secret_store_effect src/omnimarket/nodes/node_session_bootstrap src/omnimarket/nodes/node_session_orchestrator src/omnimarket/nodes/node_shadow_review_effect src/omnimarket/nodes/node_silent_failure_alarm_compute src/omnimarket/nodes/node_swarm_endpoint_health_effect src/omnimarket/nodes/node_swarm_fleet_discovery_effect src/omnimarket/nodes/node_topic_activity_sampler_effect 2>&1 | grep -q literal_timeout"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          nodes = [
+              "node_report_anchor_probe_effect",
+              "node_repo_health_repair_effect",
+              "node_runtime_sweep",
+              "node_secret_store_effect",
+              "node_session_bootstrap",
+              "node_session_orchestrator",
+              "node_shadow_review_effect",
+              "node_silent_failure_alarm_compute",
+              "node_swarm_endpoint_health_effect",
+              "node_swarm_fleet_discovery_effect",
+              "node_topic_activity_sampler_effect",
+          ]
+          paths = []
+          for node in nodes:
+              root = Path("src/omnimarket/nodes") / node
+              assert root.is_dir(), f"slice node missing: {root}"
+              sources = sorted(
+                  path for path in root.rglob("*.py")
+                  if not {"tests", "test", "fixtures", "__pycache__"}.intersection(path.relative_to(root).parts)
+              )
+              assert sources, f"slice node has no source modules: {root}"
+              paths.extend(sources)
+          validator = ValidatorContractsAndDi()
+          assert any(rule.rule_id == "literal_timeout" and rule.enabled for rule in validator.contract.rules), "literal_timeout rule is not enabled"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_timeout", "unparseable_file"}]
+          print(f"contracts_and_di: {result.metadata.files_processed} source modules in {len(nodes)} nodes checked; literal_timeout or parse findings: {len(offenders)}")
+          assert not offenders, "\n".join(offenders)
+          PY
         cwd: "."
   - id: "dod-omn21623-deploy-timeouts-b-source-readback"
     description: |-
