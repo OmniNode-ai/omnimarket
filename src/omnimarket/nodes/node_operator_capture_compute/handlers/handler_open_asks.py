@@ -46,6 +46,15 @@ def _cells(rest: str) -> dict[str, str]:
     return cells
 
 
+def parse_ledger_row(row: str) -> tuple[str, str, str, dict[str, str]] | None:
+    """One ledger row as (stamp, type, rest, cells); None for a line that opens no row."""
+    match = _ROW.match(row.rstrip("\n"))
+    if not match:
+        return None
+    stamp, row_kind, rest = match.groups()
+    return stamp, row_kind, rest, _cells(rest)
+
+
 def has_closing_evidence(evidence: str) -> bool:
     """A merged PR, a TERMINAL or a RULING named by stamp; anything else is not evidence."""
     return bool(_EVIDENCE.search(evidence))
@@ -159,4 +168,4 @@ def _digest(
     return "\n".join(lines)
 
 
-__all__ = ["HandlerOpenAsks", "has_closing_evidence"]
+__all__ = ["HandlerOpenAsks", "has_closing_evidence", "parse_ledger_row"]

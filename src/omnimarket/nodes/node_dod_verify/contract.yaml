@@ -220,6 +220,15 @@ outputs:
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 
+secrets:
+  # OMN-21676: read only by a run that is not hosted (the local Done gate), to read a ticket's
+  # body through the project tracker the ticketing nodes use. A hosted run holds no Linear
+  # credential and reads no ticket: it records the criteria comparison as delegated to
+  # node_dod_criteria_check_effect, which runs before the merge on a trusted host.
+  LINEAR_API_KEY:
+    description: "Linear API key the local Done gate reads a ticket body with; resolved from the lab key store, never a repository secret."
+    required: false
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.dod-verify-start.v1

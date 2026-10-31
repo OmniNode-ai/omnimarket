@@ -16,12 +16,11 @@ from omnimarket.nodes.node_deep_dive_report_effect.deep_dive.technical_report im
     UncitedClaimError,
     scrub,
 )
-from omnimarket.nodes.node_deep_dive_report_effect.handlers import (
-    HandlerTechnicalDeepDive,
-)
 from omnimarket.nodes.node_deep_dive_report_effect.models import (
     ModelTechnicalDeepDiveCommand,
 )
+
+from .container import container_deep_dive_report_effect
 
 
 def _read_object(path: Path, *, allow_trailing_lines: bool = False) -> dict[str, Any]:
@@ -80,7 +79,9 @@ def main(argv: list[str] | None = None) -> int:
             ledger_rows=ledger_rows,
             redact_terms=redact_terms,
         )
-        result = HandlerTechnicalDeepDive().handle(command)
+        result = container_deep_dive_report_effect.build_handler_technical_deep_dive().handle(
+            command
+        )
         args.out.write_text(result.report_markdown, encoding="utf-8")
         if args.claims_out is not None:
             args.claims_out.write_text(

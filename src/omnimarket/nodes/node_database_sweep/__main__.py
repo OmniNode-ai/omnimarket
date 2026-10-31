@@ -17,9 +17,9 @@ import argparse
 import logging
 import sys
 
+from omnimarket.nodes.node_database_sweep.container import container_database_sweep
 from omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep import (
     DatabaseSweepRequest,
-    NodeDatabaseSweep,
 )
 
 _log = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = NodeDatabaseSweep()
+    handler = container_database_sweep.build_node_database_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

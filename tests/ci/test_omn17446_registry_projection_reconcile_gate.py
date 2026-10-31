@@ -88,6 +88,7 @@ def _write_contract(
     relation: str,
     access: str = "write",
     subscribe_topics: tuple[str, ...] = ("onex.evt.some.thing.v1",),
+    extra: dict[str, object] | None = None,
 ) -> None:
     node_dir = root / "src" / "omnimarket" / "nodes" / node
     node_dir.mkdir(parents=True, exist_ok=True)
@@ -109,6 +110,7 @@ def _write_contract(
                     ]
                 },
                 "event_bus": {"subscribe_topics": list(subscribe_topics)},
+                **(extra or {}),
             }
         ),
         encoding="utf-8",
@@ -395,18 +397,54 @@ class TestTheWaysToBeClean:
         )
         assert gate.scan(repo) == []
 
-    def test_a_compaction_class_topic_clears_the_finding(
+    def test_an_undeclared_snapshot_topic_is_still_a_finding(
         self, gate: ModuleType, repo: pathlib.Path
     ) -> None:
-        """A keyed changelog retains the latest value per key indefinitely, so
-        the relation can always be rebuilt from it. This is option A of the
-        ticket -- available to any future registry, even though the operator
-        declined it for onex.tenant.events in particular."""
+        """A topic name proves nothing about how the topic was created: the
+        taxonomy's snapshot default is ``compact,delete`` with a 7-day
+        retention, so an undeclared snapshot source can age off (OMN-21217)."""
         _write_contract(
             repo,
             "node_projection_thing_registry",
             relation="thing_registry_mirror",
             subscribe_topics=("onex.snapshot.thing.registry.v1",),
+        )
+        _write_migration(
+            repo,
+            "node_projection_consumer",
+            "0034_convert.sql",
+            _CONVERSION_SQL,
+        )
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_a_declared_compacted_topic_clears_the_finding(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        """A keyed changelog retains the latest value per key indefinitely, so
+        the relation can always be rebuilt from it. This is option A of the
+        ticket; its cleanup policy must be declared where the provisioner
+        reads it."""
+        topic = "onex.snapshot.thing.registry.v1"
+        _write_contract(
+            repo,
+            "node_projection_thing_registry",
+            relation="thing_registry_mirror",
+            subscribe_topics=(topic,),
+            extra={
+                "projection_api": {
+                    "expose": True,
+                    "exposures": [
+                        {
+                            "topic": topic,
+                            "bus_backed": True,
+                            "table": "thing_registry_mirror",
+                            "topic_config": {
+                                "kafka_config": {"cleanup.policy": "compact"}
+                            },
+                        }
+                    ],
+                }
+            },
         )
         _write_migration(
             repo,
@@ -638,6 +676,168 @@ class TestFailsClosed:
 # --------------------------------------------------------------------------
 # Against the real tree
 # --------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# OMN-21217: a declared cleanup policy, not the topic's name, decides
+# --------------------------------------------------------------------------
+
+_STATE_TOPIC = "onex.evt.thing.registry-state.v1"
+
+
+def _exposure_declaring(topic: str, policy: str) -> dict[str, object]:
+    return {
+        "projection_api": {
+            "expose": True,
+            "exposures": [
+                {
+                    "topic": topic,
+                    "bus_backed": True,
+                    "table": "thing_registry_mirror",
+                    "topic_config": {"kafka_config": {"cleanup.policy": policy}},
+                }
+            ],
+        }
+    }
+
+
+class TestADeclaredCleanupPolicyDecides:
+    """The topic provisioner creates a topic with the ``cleanup.policy`` its
+    contract declares, so the declaration is what the topic is. An event-family
+    name with compaction declared is a keyed changelog; a snapshot name that
+    declares ``delete`` is not one."""
+
+    def _registry(
+        self, repo: pathlib.Path, topic: str, extra: dict[str, object] | None
+    ) -> None:
+        _write_contract(
+            repo,
+            "node_projection_thing_registry",
+            relation="thing_registry_mirror",
+            subscribe_topics=(topic,),
+            extra=extra,
+        )
+        _write_migration(
+            repo, "node_projection_consumer", "0034_convert.sql", _CONVERSION_SQL
+        )
+
+    def test_an_event_topic_declared_compact_on_its_exposure_clears_the_finding(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        self._registry(repo, _STATE_TOPIC, _exposure_declaring(_STATE_TOPIC, "compact"))
+        assert gate.scan(repo) == []
+
+    def test_compact_delete_is_not_a_durable_source(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        """With ``compact,delete`` Kafka still discards old segments by
+        retention, so the latest row of a key can age off and the registry
+        could not be rebuilt from the topic."""
+        self._registry(
+            repo, _STATE_TOPIC, _exposure_declaring(_STATE_TOPIC, "compact,delete")
+        )
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_an_event_topic_declared_compact_on_a_published_event_clears_it(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        published = {
+            "published_events": [
+                {
+                    "topic": _STATE_TOPIC,
+                    "event_type": "ThingRegistryState",
+                    "topic_config": {"kafka_config": {"cleanup.policy": "compact"}},
+                }
+            ]
+        }
+        self._registry(repo, _STATE_TOPIC, published)
+        assert gate.scan(repo) == []
+
+    def test_an_old_style_name_declaration_is_read_like_the_provisioner_reads_it(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        """The provisioner applies an event section item's topic_config to its
+        ``name`` key as well as its ``topic`` key, so the gate reads both."""
+        topic = "onex.snapshot.thing.registry.v1"
+        named = {
+            "published_events": [
+                {
+                    "name": topic,
+                    "event_type": "ThingRegistryState",
+                    "topic_config": {"kafka_config": {"cleanup.policy": "delete"}},
+                }
+            ]
+        }
+        self._registry(repo, topic, named)
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_a_dict_subscription_declaring_compact_clears_the_finding(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        """A subscription written as a dict, with its topic_config beside it, is
+        provisioned with that config; the gate must match it by its topic."""
+        _write_contract(
+            repo,
+            "node_projection_thing_registry",
+            relation="thing_registry_mirror",
+            subscribe_topics=(),
+            extra={
+                "event_bus": {
+                    "subscribe_topics": [
+                        {
+                            "topic": _STATE_TOPIC,
+                            "topic_config": {
+                                "kafka_config": {"cleanup.policy": "compact"}
+                            },
+                        }
+                    ]
+                }
+            },
+        )
+        _write_migration(
+            repo, "node_projection_consumer", "0034_convert.sql", _CONVERSION_SQL
+        )
+        assert gate.scan(repo) == []
+
+    def test_an_event_topic_with_no_declaration_still_fails(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        self._registry(repo, _STATE_TOPIC, None)
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_an_event_topic_declared_delete_still_fails(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        self._registry(repo, _STATE_TOPIC, _exposure_declaring(_STATE_TOPIC, "delete"))
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_a_snapshot_name_declared_delete_fails(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        topic = "onex.snapshot.thing.registry.v1"
+        self._registry(repo, topic, _exposure_declaring(topic, "delete"))
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_two_contracts_declaring_different_policies_is_an_input_error(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        self._registry(repo, _STATE_TOPIC, _exposure_declaring(_STATE_TOPIC, "compact"))
+        _write_contract(
+            repo,
+            "node_other_publisher",
+            relation="other_rows",
+            extra={
+                "published_events": [
+                    {
+                        "topic": _STATE_TOPIC,
+                        "event_type": "ThingRegistryState",
+                        "topic_config": {"kafka_config": {"cleanup.policy": "delete"}},
+                    }
+                ]
+            },
+        )
+        with pytest.raises(gate.GateInputError):
+            gate.scan(repo)
 
 
 class TestAgainstTheRealRepository:

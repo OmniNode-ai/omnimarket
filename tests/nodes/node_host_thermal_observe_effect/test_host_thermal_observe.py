@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_host_thermal_observe_effect import handlers
-from omnimarket.nodes.node_host_thermal_observe_effect.handlers import (
-    handler_host_thermal_cli as cli,
+from omnimarket.nodes.node_host_thermal_observe_effect import (
+    runtime_host_thermal_cli as cli,
 )
 from omnimarket.nodes.node_host_thermal_observe_effect.handlers import (
     handler_host_thermal_report as summary,
