@@ -71,6 +71,17 @@ def read_discover(
         if license_body is not None
         else None
     )
+    advertised: list[JsonValue] = [
+        name
+        for name in (
+            "Processors",
+            "Memory",
+            "EthernetInterfaces",
+            "LogServices",
+            "Bios",
+        )
+        if link_of(system, name) is not None
+    ]
     return {
         "generation_declared": host.generation.value,
         "redfish_version": root.get("RedfishVersion"),
@@ -80,17 +91,7 @@ def read_discover(
         "ilo_firmware": manager.get("FirmwareVersion"),
         "ilo_model": manager.get("Model"),
         "license": ilo_license if ilo_license is not None else "not advertised",
-        "advertised_system_links": sorted(
-            name
-            for name in (
-                "Processors",
-                "Memory",
-                "EthernetInterfaces",
-                "LogServices",
-                "Bios",
-            )
-            if link_of(system, name) is not None
-        ),
+        "advertised_system_links": advertised,
     }
 
 
