@@ -16,6 +16,7 @@ round trip asserts BOTH halves, in order, on every leg.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -45,6 +46,19 @@ def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:
     return MessageMeta(partition=partition, offset=offset, fallback_id="golden-1")
 
 
+def _catalog_rows(rows: list[dict[str, Any]]) -> Any:
+    """Answer the credential catalog's own statements with ``rows``, and the
+    route statements with nothing: a route write returns a route row, never a
+    catalog row (OMN-21217 publishes each to its own state topic)."""
+
+    async def execute(sql: str, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        if sql.lstrip().startswith("INSERT INTO tenant_inference_credentials"):
+            return rows
+        return []
+
+    return execute
+
+
 @pytest.mark.unit
 def test_contract_declares_the_credential_topics_and_terminal_event() -> None:
     contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
@@ -56,8 +70,14 @@ def test_contract_declares_the_credential_topics_and_terminal_event() -> None:
     # genuine, non-vacuous comparison against the literal contract declares,
     # not a self-tautology.
     assert contract["terminal_event"] == TERMINAL_EVENT
-    assert contract["projection_api"]["table"] == "tenant_inference_credentials"
-    assert contract["projection_api"]["bus_backed"] is True
+    # OMN-21217: the node declares two exposures; this is the served one.
+    served = next(
+        exposure
+        for exposure in contract["projection_api"]["exposures"]
+        if exposure["topic"] == "onex.snapshot.projection.tenant-credentials.v1"
+    )
+    assert served["table"] == "tenant_inference_credentials"
+    assert served["bus_backed"] is True
 
 
 @pytest.mark.unit
@@ -81,16 +101,18 @@ async def test_registered_then_revoked_round_trip_projects_correctly() -> None:
     """
     db = AsyncMock()
     db.execute = AsyncMock(
-        return_value=[
-            {
-                "api_key_ref": "cred_omninode_openrouter_golden1",
-                "tenant_id": "omninode",
-                "name": "golden-key",
-                "provider": "openrouter",
-                "created_at": "2026-08-20T00:00:00Z",
-                "revoked_at": None,
-            }
-        ]
+        side_effect=_catalog_rows(
+            [
+                {
+                    "api_key_ref": "cred_omninode_openrouter_golden1",
+                    "tenant_id": "omninode",
+                    "name": "golden-key",
+                    "provider": "openrouter",
+                    "created_at": "2026-08-20T00:00:00Z",
+                    "revoked_at": None,
+                }
+            ]
+        )
     )
 
     runner = HandlerTenantCredentialsProjectionRunner()

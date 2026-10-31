@@ -197,6 +197,18 @@ def _seed_byok_overlay(db: InmemoryDatabaseAdapter) -> None:
             "max_tokens": None,
         },
     )
+    # OMN-21217: routing binds a tenant key to its own catalogued choice, so the
+    # live tenant's key is catalogued with the model its route names.
+    db.upsert(
+        "tenant_inference_credentials",
+        "api_key_ref",
+        {
+            "api_key_ref": _SECRET_REF,
+            "tenant_id": _TENANT_ID,
+            "provider": "openrouter",
+            "models": ["nvidia/nemotron-3-ultra-550b-a55b:free"],
+        },
+    )
 
 
 def _request(

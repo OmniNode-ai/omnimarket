@@ -190,11 +190,13 @@ db_io:
     # classification for tenant-attributable workload data. The table remains
     # v1(a) / no-RLS in this PR; OMN-16314 owns the later tenant-isolation
     # policy/foundation work.
+    # OMN-21217: this reducer only reads the overlay; node_projection_tenant_credentials
+    # is its one writer and owns its compacted state topic (ruling 2026-10-25).
     - name: delegation_routing_tenant_overlay
       database_ref: application
       schema: public
       migration: "0001_create_delegation_routing_tenant_overlay.sql"
-      access: read_write
+      access: read
       role: tenant_routing_overlay
 
 config:

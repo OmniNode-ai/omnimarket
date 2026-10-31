@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-20858 -- the Linear ticket read, and the pins a contract records.
+"""OMN-20858 -- the ticket read, and the pins a contract records.
 
-The read is exercised through ``urllib.request.urlopen`` patched at the module
-boundary, so no request leaves the machine. The pin rules mirror
+OMN-21676: the read goes through the project tracker the ticketing nodes use, served
+here by a recorded tracker, so no request leaves the machine and no credential is read. The pin rules mirror
 ``onex_change_control``'s stale-pin gate: a hash that moved is stale unless an
 independent acceptance pins the live text; a retired binding is not a pin; a
 record carrying no hash is not comparable.
@@ -12,26 +12,21 @@ record carrying no hash is not comparable.
 
 from __future__ import annotations
 
-import io
-import json
-import urllib.error
+import asyncio
 from typing import Any
 
 import pytest
 
 from omnimarket.enums.enum_criteria_drift_kind import EnumCriteriaDriftKind
-from omnimarket.nodes.node_dod_verify.handlers import (
-    handler_dod_ticket_criteria_linear_effect as effect_module,
-)
-from omnimarket.nodes.node_dod_verify.handlers.handler_dod_ticket_criteria_linear_effect import (
-    HandlerDodTicketCriteriaLinearEffect,
-)
 from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
     ModelTicketCriteriaRead,
 )
 from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     compare_criteria,
     extract_criteria_pins,
+)
+from omnimarket.nodes.node_dod_verify.services.criteria_ticket_read import (
+    TrackerCriteriaReader,
 )
 from omnimarket.occ_contract_pin import criterion_hash
 
@@ -40,88 +35,81 @@ pytestmark = pytest.mark.unit
 _KEY = "-".join(["recorded", "stand", "in", "value"])
 
 
-class _Response(io.BytesIO):
-    def __enter__(self) -> _Response:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        return None
+class _Issue:
+    def __init__(self, identifier: str, description: str | None) -> None:
+        self.identifier = identifier
+        self.description = description
 
 
-def _answer(monkeypatch: pytest.MonkeyPatch, body: object) -> list[Any]:
-    sent: list[Any] = []
+class _Tracker:
+    """A recorded tracker: serves one issue, or raises what it is given."""
 
-    def fake_urlopen(request: Any, timeout: float) -> _Response:
-        sent.append(request)
-        return _Response(json.dumps(body).encode("utf-8"))
+    def __init__(self, answer: _Issue | BaseException) -> None:
+        self._answer = answer
+        self.asked: list[str] = []
+        self.closed = False
 
-    monkeypatch.setattr(effect_module.urllib.request, "urlopen", fake_urlopen)
-    return sent
+    async def get_issue(self, issue_id: str) -> _Issue:
+        self.asked.append(issue_id)
+        if isinstance(self._answer, BaseException):
+            raise self._answer
+        return self._answer
+
+    async def close(self) -> None:
+        self.closed = True
 
 
-def test_the_effect_returns_the_ticket_body(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LINEAR_API_KEY", _KEY)
-    sent = _answer(
-        monkeypatch,
-        {"data": {"issue": {"identifier": "OMN-1", "description": "- AC1: x"}}},
-    )
-    read = HandlerDodTicketCriteriaLinearEffect().read("OMN-1")
+def _reader(tracker: _Tracker) -> TrackerCriteriaReader:
+    async def factory() -> _Tracker:
+        return tracker
+
+    return TrackerCriteriaReader(factory)
+
+
+def test_the_reader_returns_the_ticket_body_and_closes_the_tracker() -> None:
+    tracker = _Tracker(_Issue("OMN-1", "- AC1: x"))
+    read = _reader(tracker).read("OMN-1")
     assert read == ModelTicketCriteriaRead(ticket_id="OMN-1", description="- AC1: x")
-    assert json.loads(sent[0].data)["variables"] == {"id": "OMN-1"}
+    assert tracker.asked == ["OMN-1"]
+    assert tracker.closed
 
 
-def test_the_effect_reads_a_null_description_as_an_empty_body(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("LINEAR_API_KEY", _KEY)
-    _answer(
-        monkeypatch, {"data": {"issue": {"identifier": "OMN-1", "description": None}}}
-    )
-    assert HandlerDodTicketCriteriaLinearEffect().read("OMN-1").description == ""
+def test_the_reader_reads_a_null_description_as_an_empty_body() -> None:
+    assert _reader(_Tracker(_Issue("OMN-1", None))).read("OMN-1").description == ""
 
 
-def test_the_effect_without_a_credential_is_unavailable_and_sends_nothing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
-    sent = _answer(monkeypatch, {})
-    read = HandlerDodTicketCriteriaLinearEffect().read("OMN-1")
+def test_the_reader_without_a_tracker_is_unavailable_and_names_only_the_class() -> None:
+    async def factory() -> _Tracker:
+        raise RuntimeError(f"api_key_ref resolved to None {_KEY}")
+
+    read = TrackerCriteriaReader(factory).read("OMN-1")
     assert read.description is None
-    assert read.unavailable_reason == "no Linear credential in the environment"
-    assert sent == []
+    assert read.unavailable_reason == "no ticket tracker could be built (RuntimeError)"
+    assert _KEY not in repr(read)
 
 
 @pytest.mark.parametrize(
-    "body",
+    "answer",
     [
-        {"errors": [{"message": "boom"}]},
-        {"data": {"issue": None}},
-        {"data": {"issue": {"identifier": "OMN-2", "description": "- AC1: x"}}},
-        ["not", "an", "object"],
+        KeyError("Issue not found: OMN-1"),
+        ConnectionError(f"unreachable {_KEY}"),
+        _Issue("OMN-2", "- AC1: x"),
     ],
 )
-def test_the_effect_refuses_every_unusable_answer(
-    monkeypatch: pytest.MonkeyPatch, body: object
+def test_the_reader_refuses_every_unusable_answer(
+    answer: _Issue | BaseException,
 ) -> None:
-    monkeypatch.setenv("LINEAR_API_KEY", _KEY)
-    _answer(monkeypatch, body)
-    read = HandlerDodTicketCriteriaLinearEffect().read("OMN-1")
+    read = _reader(_Tracker(answer)).read("OMN-1")
     assert read.description is None
     assert read.unavailable_reason
-
-
-def test_the_effect_names_a_transport_failure_without_the_credential(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("LINEAR_API_KEY", _KEY)
-
-    def broken(request: Any, timeout: float) -> Any:
-        raise urllib.error.URLError(f"unreachable {request.headers}")
-
-    monkeypatch.setattr(effect_module.urllib.request, "urlopen", broken)
-    read = HandlerDodTicketCriteriaLinearEffect().read("OMN-1")
-    assert read.unavailable_reason == "Linear read failed (URLError)"
     assert _KEY not in repr(read)
+
+
+def test_the_reader_runs_inside_a_running_loop() -> None:
+    async def inside() -> ModelTicketCriteriaRead:
+        return _reader(_Tracker(_Issue("OMN-1", "- AC1: x"))).read("OMN-1")
+
+    assert asyncio.run(inside()).description == "- AC1: x"
 
 
 def test_a_read_carries_exactly_one_of_body_and_reason() -> None:

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports</title>
+<link rel="icon" href="data:,">
+<style>
+/* Layout: a header, then one card per report in a responsive grid. Each card shows the age of the data behind it. */
+:root{
+  --floor:#eceee9; --panel:#fbfbf8; --ink:#1c2320; --muted:#5b6660; --rule:#cdd3cc; --steel:#4b5c68;
+  --safety:#d9a300; --ok:#2e8649; --warn:#bf7400; --stop:#c3352b; --idle:#b4bdb6; --belt:#3a403d; --link:#24475d;
+  --f-display:"Arial Narrow",Impact,sans-serif;
+  --f-body:system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39; --steel:#90a4b3;
+  --safety:#f0c232; --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --idle:#4a554f; --belt:#0f1211; --link:#9cc7e3; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39; --steel:#90a4b3;
+  --safety:#f0c232; --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --idle:#4a554f; --belt:#0f1211; --link:#9cc7e3; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--floor);color:var(--ink);font:15px/1.55 var(--f-body)}
+.wrap{max-width:1080px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+h1,h2{font-family:var(--f-display);margin:0;text-wrap:balance;text-transform:uppercase;letter-spacing:.01em}
+h1{font-size:clamp(2.2rem,6vw,3.2rem);font-weight:800;line-height:.95}
+h2{font-size:1.25rem;font-weight:700}
+p{margin:0}
+.eyebrow{font:500 .72rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
+header{display:grid;gap:14px}
+.lede{max-width:68ch;color:var(--muted)}
+.banner{border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
+.banner[hidden]{display:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:16px 18px;display:grid;gap:12px;align-content:start;min-width:0}
+.card h2 a{color:var(--link);text-decoration:none}
+.card h2 a:hover,.card h2 a:focus-visible{text-decoration:underline}
+.card .sum{color:var(--muted);font-size:.92rem}
+.tag{font:500 .68rem/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.tag.tick{color:var(--ok)} .tag.snapshot{color:var(--steel);border-style:dashed}
+.top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}
+.data{display:grid;gap:8px;border-top:1px dashed var(--rule);padding-top:10px}
+.row{display:grid;gap:2px}
+.row .nm{font-size:.82rem;color:var(--muted)}
+.row .ag{font:500 .95rem/1.3 var(--f-mono);font-variant-numeric:tabular-nums}
+.row .bs{font-size:.78rem;color:var(--muted)}
+.ag.fresh{color:var(--ok)} .ag.old{color:var(--warn)} .ag.stale{color:var(--stop)} .ag.snap{color:var(--ink)} .ag.unread{color:var(--stop);font-style:italic}
+.note{font-size:.82rem;color:var(--muted)}
+footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px}
+a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="hazard" aria-hidden="true"></div>
+    <div class="eyebrow" id="stamp">Reading the manifest</div>
+    <h1>Reports</h1>
+    <p class="lede">Every report here is drawn from data files that nodes write (or, for a snapshot, that a lane wrote), and every card shows how old the data behind it is. A source that could not be read says so; it is never shown as a quiet zero. This site is on the lab server and answers on the tailnet only.</p>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <main class="grid" id="grid" aria-live="polite"></main>
+  <footer>
+    <div class="hazard" aria-hidden="true"></div>
+    <p>Refreshed data on the cards is checked against the clock in this browser. A live source older than 90 minutes is amber and older than 6 hours is red. A snapshot is never red, because nothing refreshes it; its card says what its age is measured from.</p>
+  </footer>
+</div>
+<script>
+const MANIFEST_FILE = "manifest.json";
+const POLL_MS = 60000;
+const OLD_MIN = 90;
+const STALE_MIN = 360;
+const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const el = id => document.getElementById(id);
+
+function ageText(ms){
+  const m = Math.max(0, Math.round(ms/60000));
+  if (m < 2) return "just now";
+  if (m < 120) return m + " minutes old";
+  const h = m/60;
+  if (h < 48) return (h < 10 ? h.toFixed(1) : Math.round(h)) + " hours old";
+  return Math.round(h/24) + " days old";
+}
+function stamp(iso){ return iso.length <= 10 ? iso : iso.slice(0,16).replace("T"," ") + " UTC"; }
+
+function dataRow(d, refresh){
+  if (d.status !== "read"){
+    return `<div class="row"><span class="nm">${esc(d.name)}</span><span class="ag unread">unread</span><span class="bs">${esc(d.reason || "not readable")}</span></div>`;
+  }
+  const ms = Date.now() - Date.parse(d.as_of);
+  const min = ms/60000;
+  const cls = refresh === "snapshot" ? "snap" : min > STALE_MIN ? "stale" : min > OLD_MIN ? "old" : "fresh";
+  return `<div class="row"><span class="nm">${esc(d.name)}</span><span class="ag ${cls}">${esc(ageText(ms))}</span><span class="bs">as of ${esc(stamp(d.as_of))}, from ${esc(d.as_of_basis || "")}</span></div>`;
+}
+
+function card(r){
+  const label = r.refresh === "tick" ? "Refreshed every tick" : "Snapshot";
+  return `<article class="card">
+    <div class="top"><h2><a href="${esc(r.href)}">${esc(r.title)}</a></h2><span class="tag ${esc(r.refresh)}">${label}</span></div>
+    <p class="sum">${esc(r.summary)}</p>
+    ${r.refresh_note ? `<p class="note">${esc(r.refresh_note)}</p>` : ""}
+    <div class="data">${(r.data || []).map(d => dataRow(d, r.refresh)).join("")}</div>
+  </article>`;
+}
+
+function render(m){
+  const pub = Date.parse(m.published_at);
+  el("stamp").textContent = "Reports site · manifest published " + ageText(Date.now() - pub).replace(" old", " ago");
+  el("grid").innerHTML = (m.reports || []).map(card).join("") || `<p class="note">The manifest lists no report.</p>`;
+}
+
+async function load(){
+  const banner = el("banner");
+  try {
+    const r = await fetch(MANIFEST_FILE, {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const m = await r.json();
+    banner.hidden = true;
+    render(m);
+  } catch (e) {
+    banner.hidden = false;
+    banner.textContent = "The reports manifest could not be read (" + e.message + "). Retrying every minute.";
+  }
+}
+load();
+setInterval(load, POLL_MS);
+</script>
+</body>
+</html>
