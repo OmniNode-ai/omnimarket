@@ -207,7 +207,7 @@ _ASK_START = re.compile(
     re.IGNORECASE,
 )
 _ASK_PHRASE = re.compile(
-    r"\b(?:can you|could you|would you|please|i need you to|i want you to|we need to|"
+    r"\b(?:can you|could you|would you|can we|could we|please|i need you to|i want you to|we need to|"
     r"need to get|go ahead and|make sure)\b",
     re.IGNORECASE,
 )
@@ -288,9 +288,10 @@ def heuristic_kind(sentence: str) -> EnumUtteranceKind:
     return EnumUtteranceKind.CHAT
 
 
-def _heuristic_items(utterance: ModelUtterance) -> tuple[ModelUtteranceItem, ...]:
-    items: list[ModelUtteranceItem] = []
-    for match in _SENTENCE.finditer(utterance.text):
+def heuristic_sentences(text: str) -> tuple[tuple[str, EnumUtteranceKind], ...]:
+    """Each sentence of a message that the wording classifies as something other than chat."""
+    found: list[tuple[str, EnumUtteranceKind]] = []
+    for match in _SENTENCE.finditer(text):
         quote = match.group(0).strip()
         words = len(_WORD.findall(quote.lower()))
         if words < 1:
@@ -300,16 +301,21 @@ def _heuristic_items(utterance: ModelUtterance) -> tuple[ModelUtteranceItem, ...
             continue
         if words < 2 and kind is not EnumUtteranceKind.DECISION:
             continue
-        items.append(
-            ModelUtteranceItem(
-                item_id=item_id(utterance.capture_id, quote),
-                kind=kind,
-                quote=quote,
-                subject=" ".join(subject_terms(quote, 5)),
-                confidence=0.5,
-            )
+        found.append((quote, kind))
+    return tuple(found)
+
+
+def _heuristic_items(utterance: ModelUtterance) -> tuple[ModelUtteranceItem, ...]:
+    return tuple(
+        ModelUtteranceItem(
+            item_id=item_id(utterance.capture_id, quote),
+            kind=kind,
+            quote=quote,
+            subject=" ".join(subject_terms(quote, 5)),
+            confidence=0.5,
         )
-    return tuple(items)
+        for quote, kind in heuristic_sentences(utterance.text)
+    )
 
 
 def _delegated_items(
@@ -424,6 +430,7 @@ __all__ = [
     "HandlerUtteranceClassify",
     "build_classify_prompt",
     "heuristic_kind",
+    "heuristic_sentences",
     "is_machine_injection",
     "item_id",
     "subject_terms",
