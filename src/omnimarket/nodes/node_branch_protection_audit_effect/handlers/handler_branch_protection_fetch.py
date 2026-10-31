@@ -7,9 +7,11 @@ import json
 from pydantic import JsonValue
 
 from omnimarket.github_api import GitHubApiError
+from omnimarket.nodes.node_branch_protection_audit_effect.container.container_branch_protection_audit_effect import (
+    build_handler_github_api_read,
+)
 from omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_github_api_read import (
     GitHubTokenResolutionError,
-    HandlerGitHubApiRead,
 )
 from omnimarket.nodes.node_branch_protection_audit_effect.models import (
     ModelBranchProtectionFetchRequest,
@@ -35,7 +37,7 @@ class HandlerBranchProtectionFetch:
     """Read each repository in policy order and retain failed reads as errors."""
 
     def __init__(self, reader: ProtocolGitHubApiRead | None = None) -> None:
-        self._reader = reader if reader is not None else HandlerGitHubApiRead()
+        self._reader = reader if reader is not None else build_handler_github_api_read()
 
     def _read_rest(
         self, key: str, documents: dict[str, JsonValue], errors: dict[str, str]

@@ -33,10 +33,14 @@ import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
+)
+from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+    build_build_loop_orchestrator,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     build_endpoint_configs,
@@ -50,13 +54,15 @@ from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_classify
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch import (
     AdapterLlmDispatch,
 )
-from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
-    HandlerBuildLoopOrchestrator,
-)
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     CloseoutResult,
     VerifyResult,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
+        HandlerBuildLoopOrchestrator,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +114,7 @@ def assemble_live_orchestrator(
         ", ".join(t.value for t in sorted(endpoint_configs.keys(), key=str)),
     )
 
-    return HandlerBuildLoopOrchestrator(
+    return build_build_loop_orchestrator(
         closeout=_PassthroughCloseout(),
         verify=_PassthroughVerify(),
         rsd_fill=AdapterLinearFill(
