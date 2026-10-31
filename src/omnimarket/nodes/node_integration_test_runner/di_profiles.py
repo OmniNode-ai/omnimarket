@@ -7,8 +7,11 @@ import os
 from typing import Any
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_integration_test_runner.container.container_inmemory import (
+    bind_fallback_event_bus,
+    bind_local_event_bus,
+)
 from omnimarket.nodes.node_integration_test_runner.models.model_test_runner_request import (
     EnumDIProfile,
 )
@@ -19,12 +22,12 @@ logger = logging.getLogger(__name__)
 def build_event_bus_for_profile(profile: EnumDIProfile) -> Any:
     """Return the event bus implementation for the given profile.
 
-    - LOCAL: EventBusInmemory (no network required)
+    - LOCAL: the in-memory bus (no network required)
     - STAGING/PRODUCTION: EventBusKafka if KAFKA_BOOTSTRAP_SERVERS is set,
       else fall back to EventBusInmemory with a warning.
     """
     if profile == EnumDIProfile.LOCAL:
-        return EventBusInmemory(environment="test", group="integration-test-runner")
+        return bind_local_event_bus()
 
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
     if not bootstrap:
@@ -33,9 +36,7 @@ def build_event_bus_for_profile(profile: EnumDIProfile) -> Any:
             "falling back to EventBusInmemory",
             profile,
         )
-        return EventBusInmemory(
-            environment=profile.value, group="integration-test-runner"
-        )
+        return bind_fallback_event_bus(environment=profile.value)
 
     try:
         from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
@@ -46,9 +47,7 @@ def build_event_bus_for_profile(profile: EnumDIProfile) -> Any:
             "[di_profiles] EventBusKafka init failed (%s) — falling back to EventBusInmemory",
             exc,
         )
-        return EventBusInmemory(
-            environment=profile.value, group="integration-test-runner"
-        )
+        return bind_fallback_event_bus(environment=profile.value)
 
 
 def build_conftest_plugin_for_profile(profile: EnumDIProfile) -> Any:
