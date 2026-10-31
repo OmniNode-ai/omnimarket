@@ -312,7 +312,7 @@ def test_live_omnimarket_contracts_all_routed() -> None:
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_LANE_OVERLAY = _REPO_ROOT / "config" / "ci_bus_lanes.yaml"
+_LANE_OVERLAY = _REPO_ROOT / "tests" / "fixtures" / "ci_bus_lanes.yaml"
 _BOUNDED_LANES = ("dev", "dogfood")
 _DELEGATION_COMMAND_TOPIC = "onex.cmd.omnibase-infra.delegation-request.v1"
 _EXPECTED_ROUTE_IDENTITY: dict[str, dict[str, str]] = {
@@ -347,7 +347,7 @@ def test_k6_only_dev_and_the_isolated_lab_declare_a_route() -> None:
         and (data.get("delegation_routes") or data.get("broker_topology"))
     )
     assert declaring == sorted(_BOUNDED_LANES)
-    assert "delegation_routes" not in lanes["ci-bus"]
+    assert "delegation_routes" not in lanes["example-bus"]
     assert "delegation_routes" not in lanes["prod"]
     for name in _BOUNDED_LANES:
         rows = lanes[name]["delegation_routes"]
@@ -415,5 +415,5 @@ def test_k6_overlay_is_packaged_once_as_a_wheel_resource() -> None:
     assert list(forced).count("config/ci_bus_lanes.yaml") == 1
     assert _LANE_OVERLAY.is_file()
     assert not (
-        _REPO_ROOT / "src" / "omnimarket" / "config" / "ci_bus_lanes.yaml"
+        _REPO_ROOT / "src" / "omnimarket" / "tests" / "fixtures" / "ci_bus_lanes.yaml"
     ).exists()

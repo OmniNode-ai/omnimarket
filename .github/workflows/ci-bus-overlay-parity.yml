@@ -191,12 +191,19 @@ jobs:
       - name: Sync omnimarket environment
         run: uv sync
 
+      - name: Fetch the private CI bus lanes
+        uses: ./.github/actions/fetch-lane-table
+        with:
+          overlay-repo: ${{ vars.OMNI_CI_OVERLAY_REPO }}
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+
       - name: Validate this overlay against the publisher's live model
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/ci/check_ci_bus_overlay_parity.py \
-            --overlay config/ci_bus_lanes.yaml \
+            --overlay "$ONEX_CI_BUS_LANES_PATH" \
             --consumer-model .ci-bus-consumer/scripts/trigger_rebuild_on_merge.py \
             --consumer-ref "omnibase_infra v${{ steps.pins.outputs.infra_version }} ${{ steps.consumer.outputs.sha }}"
 

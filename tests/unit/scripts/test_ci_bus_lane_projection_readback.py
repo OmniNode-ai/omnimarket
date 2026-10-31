@@ -31,7 +31,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-OVERLAY_PATH = REPO_ROOT / "config" / "ci_bus_lanes.yaml"
+OVERLAY_PATH = REPO_ROOT / "tests" / "fixtures" / "ci_bus_lanes.yaml"
 
 #: The one lane the chain canary's projection readback may be declared on.
 #: `.github/workflows/chain-canary.yml` in omnibase_infra states the scope in
