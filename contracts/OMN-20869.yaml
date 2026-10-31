@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20869"
+title: "The two lab-headroom FIX lines name a lane, so the host read the throughput tick prints is a command that runs"
+summary: "OMN-20869 is the throughput tick reading idle lab hosts as UNKNOWN while the read its FIX text names records nothing the tick consumes. The reading half landed in omniclaude-internal#517 on 2026-10-10. This contract covers the omnimarket half, which that change did not reach: the FIX text itself. UNREAD_HOST_FIX and LIVE_UNREAD_FIX in handler_throughput_tick_decision.py printed `onex_lab_run.py --hosts`, and lab_run.py resolves the lane from ONEX_LAB_RUN_LANE at lines 1005 to 1008, before it looks at --hosts at line 1019, so with no lane exported the reader gets `lab-run: refusing without a lane; pass --lane or ONEX_LAB_RUN_LANE` and reads no host. The host then stays UNKNOWN on the next tick and the tick names the same unrunnable read again. Both lines now print `--hosts --lane <lane>`, in the placeholder style the `<omni plugin>` path in them already uses. The handler grows by no code line: the two FIX strings change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20869-live-unread-fix-names-a-lane"
+    statement: |-
+      A host whose newest placement reading is outside the window is UNKNOWN with a FIX that names a
+      lane, so the read it prints resolves a lane instead of refusing before it reads a host.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the LIVE_UNREAD_FIX line of a stale or future reading prints `onex_lab_run.py --hosts --lane <lane>` -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -k a_stale_or_future_reading_is_no_reading"
+  - id: "req-omn20869-unread-host-fix-names-a-lane"
+    statement: |-
+      A host with no reading at all is UNKNOWN with the same lane-bearing read, so neither UNKNOWN
+      path prints a command that refuses.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the UNREAD_HOST_FIX line of a host with no recent reading prints `onex_lab_run.py --hosts --lane <lane>` after its ` | FIX: ` marker -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -k a_host_with_no_recent_reading_is_unknown_naming_the_read_that_refreshes_it"
+  - id: "req-omn20869-parity-fixture-carries-the-lane"
+    statement: |-
+      The CLI parity fixture carries the lane-bearing text, so a later change that drops the lane
+      from either FIX line fails the parity check instead of shipping an unrunnable read again.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the throughput-tick CLI parity fixture exercises every lab-headroom finding class with the lane-bearing FIX text -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -k parity_fixture_exercises_every_lab_headroom_finding_class"
+evidence_requirements:
+  - kind: "tests"
+    description: "The whole throughput-tick decision node suite passes on the change."
+    command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20869-live-unread-fix"
+    description: "A stale or future reading is UNKNOWN and its FIX names a lane."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -q --no-cov -k a_stale_or_future_reading_is_no_reading"
+        cwd: "."
+  - id: "dod-omn20869-unread-host-fix"
+    description: "A host with no recent reading is UNKNOWN and its FIX names a lane."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_blindspots_throughput_tick_decision_compute.py -q --no-cov -k a_host_with_no_recent_reading_is_unknown_naming_the_read_that_refreshes_it"
+        cwd: "."
+  - id: "dod-omn20869-parity-fixture"
+    description: "The CLI parity fixture carries the lane-bearing FIX text for every lab-headroom finding class."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_lab_headroom_throughput_tick_decision_compute.py -q --no-cov -k parity_fixture_exercises_every_lab_headroom_finding_class"
+        cwd: "."
