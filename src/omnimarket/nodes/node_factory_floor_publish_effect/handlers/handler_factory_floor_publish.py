@@ -387,11 +387,7 @@ class HandlerFactoryFloorPublish:
         missing = [
             token
             for token in declared or ()
-            if not any(
-                token in str(line.get("plan_path", ""))
-                or line.get("declared_fragment") == token
-                for line in drawn
-            )
+            if not any(token in str(line.get("plan_path", "")) for line in drawn)
         ]
         if not missing:
             return results

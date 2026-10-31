@@ -279,7 +279,7 @@ def test_a_declared_plan_with_no_file_is_written_as_a_stopped_line_with_its_caus
     assert list(lines) == ["2026-10-31-wave-plan", "absent-plan"]
     absent = lines["absent-plan"]
     assert (absent["status_pill"], absent["source"]) == ("stopped", "undrawn")
-    assert absent["declared_fragment"] == "absent-plan"
+    assert absent["plan_path"] == "absent-plan"
     assert absent["andon"]["causes"] == [
         "plan file not found: no plan path contains absent-plan"
     ]

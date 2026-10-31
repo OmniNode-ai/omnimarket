@@ -54,7 +54,7 @@ requirements:
       A declared line the board cannot draw is never silent: it is drawn stopped with its cause, the publish status names it when the record leaves it out, and a lane that ended blocked or an ask to the orchestrator nobody answered stops the line it belongs to, with its age.
     acceptance:
       - id: "AC14"
-        statement: "AC14: a declared plan text that matches no plan file is drawn as a stopped line with the cause plan file not found, and a matched plan with no tasks is drawn stopped with the cause no task table -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q -k 'undrawn or declared_fragment or no_task_table or declares_no_line'"
+        statement: "AC14: a declared plan text that matches no plan file is drawn as a stopped line with the cause plan file not found, and a matched plan with no tasks is drawn stopped with the cause no task table -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q -k 'undrawn or declared_text or no_task_table or declares_no_line'"
       - id: "AC15"
         statement: "AC15: the publish status marks the factory_floor step not ok and names the declared lines when the record leaves any of them out -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q -k 'one_of_three_declared'"
       - id: "AC16"
@@ -180,7 +180,7 @@ dod_evidence:
     binds_ac: ["AC14"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q --no-cov --tb=line -k 'undrawn or declared_fragment or no_task_table or declares_no_line'"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q --no-cov --tb=line -k 'undrawn or declared_text or no_task_table or declares_no_line'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac15"
     description: "AC15 the publish status names a declared line the record leaves out."

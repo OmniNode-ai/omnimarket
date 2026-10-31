@@ -445,14 +445,6 @@ def _ledger_stops(
     return stops
 
 
-def _declared_fragment(
-    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
-) -> str:
-    return next(
-        (t for t in request.selection.plan_path_contains if t in plan.plan_path), ""
-    )
-
-
 def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
     """A declared line no plan matched is drawn stopped with its cause, never left out of the record."""
     cause = request.config.undrawn_not_found_cause
@@ -460,7 +452,7 @@ def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
         ModelFloorLine(
             line_id=token,
             name=token,
-            plan_path="",
+            plan_path=token,
             source="undrawn",
             status_pill="stopped",
             percent_built=0,
@@ -472,7 +464,6 @@ def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
                 ],
                 causes=(f"{cause}: no plan path contains {token}",),
             ),
-            declared_fragment=token,
         )
         for token in dict.fromkeys(request.selection.plan_path_contains)
         if not any(token in plan.plan_path for plan in request.plans)
@@ -563,7 +554,6 @@ def _line(
         andon=ModelFloorAndon(
             flag=bool(causes), reason=reason[: request.config.note_chars], causes=causes
         ),
-        declared_fragment=_declared_fragment(plan, request),
     )
 
 

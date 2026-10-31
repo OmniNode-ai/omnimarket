@@ -54,7 +54,11 @@ class ModelFloorAndon(BaseModel):
 
 
 class ModelFloorLine(BaseModel):
-    """One car on the line: a selected plan, or a declared line no plan could be read for (``source`` undrawn)."""
+    """One car on the line: a selected plan, or a declared line no plan could be read for.
+
+    For ``source`` undrawn there is no plan: ``plan_path`` holds the declared text itself, so a reader that pairs a
+    declared text with the line whose path contains it pairs this line, and the andon carries the cause.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -66,8 +70,6 @@ class ModelFloorLine(BaseModel):
     percent_built: int
     stations: tuple[ModelFloorStation, ...]
     andon: ModelFloorAndon
-    # The overlay-declared text that selected this line ("" when the run declared none).
-    declared_fragment: str = ""
 
 
 class ModelFloorBay(BaseModel):

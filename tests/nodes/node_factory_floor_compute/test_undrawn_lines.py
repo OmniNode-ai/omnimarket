@@ -144,13 +144,15 @@ def by_id(result: ModelFactoryFloorResult) -> dict[str, ModelFloorLine]:
 # --------------------------------------------------------------------- a declared line with no plan
 
 
-def test_a_declared_fragment_matching_no_plan_file_is_drawn_stopped_with_its_cause() -> (
+def test_a_declared_text_matching_no_plan_file_is_drawn_stopped_with_its_cause() -> (
     None
 ):
     result = compute((validators_plan(),))
-    assert [line.declared_fragment for line in result.lines] == list(DECLARED)
+    # Every declared text has a line whose path contains it, so a reader pairing them leaves none out.
+    for token in DECLARED:
+        assert any(token in line.plan_path for line in result.lines)
     for token in (WAVE, RUNTIME):
-        line = next(x for x in result.lines if x.declared_fragment == token)
+        line = next(x for x in result.lines if x.plan_path == token)
         assert line.status_pill == "stopped"
         assert line.source == "undrawn"
         assert line.andon.flag is True
@@ -166,10 +168,10 @@ def test_every_declared_line_that_has_a_plan_is_drawn_from_it_and_not_as_undrawn
 ):
     result = compute((validators_plan(), wave_plan()))
     drawn = [line for line in result.lines if line.source != "undrawn"]
-    assert [line.declared_fragment for line in drawn] == [VALIDATORS, WAVE]
-    assert [
-        line.declared_fragment for line in result.lines if line.source == "undrawn"
-    ] == [RUNTIME]
+    assert [VALIDATORS in drawn[0].plan_path, WAVE in drawn[1].plan_path] == [True] * 2
+    assert [line.plan_path for line in result.lines if line.source == "undrawn"] == [
+        RUNTIME
+    ]
 
 
 def test_a_run_that_declares_no_line_draws_the_plans_it_is_given_and_no_undrawn_line() -> (
@@ -177,14 +179,13 @@ def test_a_run_that_declares_no_line_draws_the_plans_it_is_given_and_no_undrawn_
 ):
     result = compute((validators_plan(),), declared=())
     assert [line.source for line in result.lines] == ["plan-task-table"]
-    assert result.lines[0].declared_fragment == ""
 
 
 def test_a_plan_that_matched_but_has_no_tasks_is_drawn_stopped_as_no_task_table() -> (
     None
 ):
     empty = ModelFloorPlanInput(plan_path=f"beta/plans/2026-10-30-{RUNTIME}.md")
-    line = next(x for x in compute((empty,)).lines if x.declared_fragment == RUNTIME)
+    line = next(x for x in compute((empty,)).lines if RUNTIME in x.plan_path)
     assert line.source == "plan-task-table"
     assert line.status_pill == "stopped"
     assert line.andon.causes[0].startswith("no task table")

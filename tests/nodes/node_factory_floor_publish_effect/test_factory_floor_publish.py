@@ -1345,7 +1345,7 @@ def test_a_declared_line_drawn_as_a_stopped_undrawn_line_counts_as_drawn(
         tmp_path,
         [
             {"plan_path": "beta/plans/2026-10-28-beta-plan.md"},
-            {"plan_path": "", "declared_fragment": "alpha-plan", "source": "undrawn"},
+            {"plan_path": "alpha-plan", "source": "undrawn"},
         ],
     )
     result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
@@ -1385,8 +1385,7 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
             {
                 "line_id": "alpha-plan",
                 "name": "alpha-plan",
-                "plan_path": "",
-                "declared_fragment": "alpha-plan",
+                "plan_path": "alpha-plan",
                 "source": "undrawn",
                 "status_pill": "stopped",
                 "percent_built": 0,
@@ -1414,5 +1413,4 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
     )
     lines = out["lines"]
     assert "Cord pulled: plan file not found: no plan path contains alpha-plan" in lines
-    assert "no plan read" in lines
     assert "No plan read for this line" not in lines

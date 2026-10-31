@@ -90,7 +90,8 @@ runtime:
     overlay_id: node_factory_floor_effect
     file_env: ONEX_FACTORY_FLOOR_OVERLAY
   # The step that makes the record. Its status is not ok while a declared line has no line in the record (a line is
-  # drawn when a record line's plan_path contains the declared text or its declared_fragment equals it), and its detail
+  # drawn when a record line's plan_path contains the declared text; the effect draws a declared line no plan matched
+  # stopped, with the declared text as its plan_path), and its detail
   # names the missing lines, so a line the board cannot draw is never silent.
   record_step: factory_floor
   steps:
