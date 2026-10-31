@@ -26,6 +26,7 @@ from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command im
     ModelDesignToPlanCommand,
 )
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_phase3_launch import (
+    ModelDesignToPlanPhase3LaunchRequest,
     ModelDesignToPlanPhase3LaunchResult,
 )
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
@@ -266,7 +267,9 @@ class TestDesignToPlanGoldenChain:
             plan_path="docs/plans/omn-12359.md",
         )
 
-        result = handler.handle(command, state)
+        result = handler.handle(
+            ModelDesignToPlanPhase3LaunchRequest(command=command, state=state)
+        )
 
         assert isinstance(result, ModelDesignToPlanPhase3LaunchResult)
         assert result.status == "planned"
@@ -299,7 +302,9 @@ class TestDesignToPlanGoldenChain:
             plan_path="/tmp/omn-12359-plan.md",
         )
 
-        result = HandlerDesignToPlanPhase3Launch().handle(command, state)
+        result = HandlerDesignToPlanPhase3Launch().handle(
+            ModelDesignToPlanPhase3LaunchRequest(command=command, state=state)
+        )
 
         assert result.status == "planned"
         assert result.dry_run is True
@@ -316,7 +321,9 @@ class TestDesignToPlanGoldenChain:
         )
 
         with pytest.raises(ValueError, match="plan_path"):
-            HandlerDesignToPlanPhase3Launch().handle(command, state)
+            HandlerDesignToPlanPhase3Launch().handle(
+                ModelDesignToPlanPhase3LaunchRequest(command=command, state=state)
+            )
 
     async def test_phase3_launch_no_launch_skips_without_plan_path(
         self, event_bus: EventBusInmemory
@@ -329,7 +336,9 @@ class TestDesignToPlanGoldenChain:
             no_launch=True,
         )
 
-        result = HandlerDesignToPlanPhase3Launch().handle(command, state)
+        result = HandlerDesignToPlanPhase3Launch().handle(
+            ModelDesignToPlanPhase3LaunchRequest(command=command, state=state)
+        )
 
         assert result.status == "skipped"
         assert result.plan_path is None
@@ -347,7 +356,9 @@ class TestDesignToPlanGoldenChain:
         )
 
         with pytest.raises(ValueError, match="current_phase='launch'"):
-            HandlerDesignToPlanPhase3Launch().handle(command, state)
+            HandlerDesignToPlanPhase3Launch().handle(
+                ModelDesignToPlanPhase3LaunchRequest(command=command, state=state)
+            )
 
     async def test_phase3_launch_publish_payload_matches_downstream_model(
         self, event_bus: EventBusInmemory
@@ -359,7 +370,9 @@ class TestDesignToPlanGoldenChain:
             current_phase=EnumDesignToPlanPhase.LAUNCH,
             plan_path="/tmp/omn-12359-plan.md",
         )
-        result = HandlerDesignToPlanPhase3Launch().handle(command, state)
+        result = HandlerDesignToPlanPhase3Launch().handle(
+            ModelDesignToPlanPhase3LaunchRequest(command=command, state=state)
+        )
         dispatch = result.dispatches[0]
 
         await event_bus.start()
