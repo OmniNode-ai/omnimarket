@@ -26,9 +26,9 @@ import logging
 import sys
 from pathlib import Path
 
+from omnimarket.nodes.node_create_ticket.container import container_create_ticket
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     EnumTicketOperation,
-    HandlerCreateTicket,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
     TicketGuardRefusedError,
@@ -135,7 +135,7 @@ def main() -> None:
             pillar=args.pillar or None,
             dry_run=args.dry_run,
         )
-        result = HandlerCreateTicket().handle(request)
+        result = container_create_ticket.build_handler_create_ticket().handle(request)
     except (RuntimeError, ValueError, OSError) as exc:
         # A guard refusal, a missing guard or key, an invalid request, or the
         # fail-closed empty-id check (OMN-14547) -- reported as a structured
