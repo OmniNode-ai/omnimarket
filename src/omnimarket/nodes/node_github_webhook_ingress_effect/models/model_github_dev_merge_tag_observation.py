@@ -11,11 +11,41 @@ pin exists.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-GITHUB_DEV_MERGE_TAG_TOPIC_V1 = "onex.evt.github.dev-merge-tag.v1"  # onex-topic-allow: declared in node_github_webhook_ingress_effect contract.yaml publish_topics, consumed by node_receipt_gate_pin_advance_effect (OMN-20134)
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_section,
+)
+
+
+def _dev_merge_tag_topic(contract_path: Path) -> str:
+    """Resolve this observation's unique, declared publication topic."""
+    events = contract_section(contract_path, "published_events")
+    if isinstance(events, list):
+        topics = [
+            event.get("topic")
+            for event in events
+            if isinstance(event, dict)
+            and event.get("event_type") == "GitHubDevMergeTagObservation"
+        ]
+        if (
+            len(topics) == 1
+            and isinstance(topics[0], str)
+            and topics[0] in contract_publish_topics(contract_path)
+        ):
+            return topics[0]
+    raise ValueError(
+        f"{contract_path} must declare one published GitHubDevMergeTagObservation topic"
+    )
+
+
+GITHUB_DEV_MERGE_TAG_TOPIC_V1 = _dev_merge_tag_topic(
+    Path(__file__).resolve().parents[1] / "contract.yaml"
+)
 
 
 class ModelGitHubDevMergeTagObservation(BaseModel):
