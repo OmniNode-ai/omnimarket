@@ -21,14 +21,14 @@ from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick impor
     result_payload,
     tick_outcome,
 )
-from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli import (
-    main as cli_main,
-)
 from omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick import (
     ModelHourlyTickRequest,
     ModelHourlyTickResult,
     ModelSweepResult,
     ModelTickState,
+)
+from omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli import (
+    main as cli_main,
 )
 
 PARITY = json.loads(
@@ -207,10 +207,10 @@ def test_real_contract_bus_dispatch(tmp_path: Path) -> None:
     from importlib.metadata import entry_points
 
     import omnimarket.nodes.node_hourly_tick_effect as package
-    from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli import (
+    from omnimarket.nodes.node_hourly_tick_effect.node import NodeHourlyTickEffect
+    from omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli import (
         dispatch,
     )
-    from omnimarket.nodes.node_hourly_tick_effect.node import NodeHourlyTickEffect
 
     found = entry_points(group="onex.nodes", name="node_hourly_tick_effect")
     assert len(found) == 1

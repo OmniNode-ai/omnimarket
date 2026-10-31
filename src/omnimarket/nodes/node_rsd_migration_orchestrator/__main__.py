@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_rsd_migration_orchestrator``: the RSD migration CLI."""
 
-from omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migration_cli import (
+from omnimarket.nodes.node_rsd_migration_orchestrator.runtime_rsd_migration_cli import (
     main,
 )
 

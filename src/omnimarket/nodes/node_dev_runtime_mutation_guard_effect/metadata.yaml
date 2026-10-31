@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dev_runtime_mutation_guard_effect
+version: 1.0.0
+description: Refuse a dev runtime container recreate, removal or restart outside a
+  deployment or a grant.
+pack: pr_lifecycle
+node_role: effect
+display_name: Dev Runtime Mutation Guard Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_dev_runtime_mutation_guard_effect: omnimarket.nodes.node_dev_runtime_mutation_guard_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- dev-runtime-mutation-guard

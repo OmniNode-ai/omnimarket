@@ -25,6 +25,9 @@ from collections import defaultdict
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.automation_liveness_overlay_check import (
+    ModelAutomationLivenessOverlayCheckRequest,
+)
 from omnimarket.models.liveness.model_automation_liveness import (
     EnumAutomationProcessState,
     EnumPositiveControlKind,
@@ -37,7 +40,6 @@ from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models impo
     ModelAutomationLivenessFinding,
     ModelAutomationLivenessFoundSource,
     ModelAutomationLivenessInstallerScanRequest,
-    ModelAutomationLivenessOverlayCheckRequest,
     ModelAutomationLivenessOverlayCheckResult,
     ModelAutomationLivenessSources,
 )
