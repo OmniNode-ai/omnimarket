@@ -6,9 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.handlers.handler_automation_liveness_overlay_check_cli import (
-    collect_files,
-)
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers import (
     HandlerAutomationLivenessOverlayCheck,
 )
@@ -16,6 +13,9 @@ from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models impo
     ModelAutomationLivenessOverlayCheckRequest,
     ModelAutomationLivenessOverlayCheckResult,
     ModelAutomationLivenessScannedFile,
+)
+from omnimarket.nodes.node_automation_liveness_overlay_check_effect.handlers import (
+    HandlerAutomationLivenessOverlayCheckRun,
 )
 
 REPOSITORY = "omnibase_infra"
@@ -99,7 +99,9 @@ def run_check(
         root = registry / repository
         if root.is_dir():
             scanned.append(repository)
-            files.extend(collect_files(repository, root))
+            files.extend(
+                HandlerAutomationLivenessOverlayCheckRun.collect_files(repository, root)
+            )
     return HandlerAutomationLivenessOverlayCheck().handle(
         ModelAutomationLivenessOverlayCheckRequest(
             overlay_text=overlay,

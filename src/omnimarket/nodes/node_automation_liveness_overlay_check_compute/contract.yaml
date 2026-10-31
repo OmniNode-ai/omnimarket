@@ -40,10 +40,6 @@ handler_routing:
       input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
       output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
 
-entry_points:
-  console_scripts:
-    onex-automation-liveness-check: omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main
-
 descriptor:
   node_archetype: compute
   purity: pure
@@ -52,7 +48,7 @@ descriptor:
   runtime_profiles: []
 
 runtime_dispatch:
-  external_trigger: "The onex-automation-liveness-check console script invokes the local node with the overlay, the sources declaration and the scanned installer files it read from the checkouts."
+  external_trigger: "The onex-automation-liveness-check console script (node_automation_liveness_overlay_check_effect) invokes the local node with the overlay, the sources declaration and the scanned installer files it read from the checkouts."
 
 event_bus:
   subscribe_topics: []
