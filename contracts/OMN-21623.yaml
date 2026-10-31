@@ -32,15 +32,14 @@ dod_evidence:
   - id: "dod-omn21623-probe-injection"
     description: "Injected overlay and policy, the contract-declared timeout, the setting and the refusal all behave as stated, for both nodes."
     source: "manual"
-    binds_ac: ["AC1", "AC2", "AC3"]
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_demo_rehearsal tests/nodes/node_demo_drift_detector tests/integration/node_demo_drift_detector -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_demo_rehearsal/test_probe_config.py tests/nodes/node_demo_drift_detector/test_probe_config.py tests/nodes/node_demo_rehearsal/test_handler_demo_rehearsal.py tests/nodes/node_demo_drift_detector/test_handler_demo_drift_detector.py tests/integration/node_demo_drift_detector/test_demo_drift_detector_multiparam.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-contracts-and-di-clean"
     description: "The contracts_and_di check of the pinned omnibase_core finds nothing in the two node directories."
     source: "manual"
-    binds_ac: ["AC4"]
     checks:
       - check_type: "command"
         check_value: "uv run python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_demo_rehearsal src/omnimarket/nodes/node_demo_drift_detector --report-json /tmp/omn21623-contracts-and-di.json"
@@ -48,7 +47,6 @@ dod_evidence:
   - id: "dod-omn21623-deploy-probe-policy-landed"
     description: "Deploy check: the probe_policy section is present in both demo node contracts at the checked-out revision, read through the GitHub contents API; the merge-base control reads its own revision."
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: "for n in node_demo_rehearsal node_demo_drift_detector; do gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/$n/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^probe_policy:' || exit 1; done"
