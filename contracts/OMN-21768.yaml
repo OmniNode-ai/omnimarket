@@ -1,0 +1,59 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21768
+title: omnimarket contracts_and_di literal_topic burn-down, slice rf1410-c1 (topics come from contracts and overlays)
+summary: One lane slice of the omnimarket literal_topic burn-down. Thirty topic strings hard-coded in five node test modules (the swarm subtask state reducer, the swarm dispatch orchestrator FSM routing, the pipeline fill handler, and the live events projection handler and golden chain) are read from the owning node contract.yaml through the existing contract topic helpers in omnimarket.nodes.contract_topics. No baseline entry, suppression or new constants module is added, and six onex-topic-allow comments on touched lines are removed with their literals.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21768-topics-from-contracts
+  statement: The topics used by the five touched test modules come from the owning node contract, and the contracts_and_di literal_topic count over those modules is zero.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contracts_and_di count for literal_topic over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule'
+  - id: AC2
+    statement: 'AC2: every topic comes from the owning node contract or overlay and is injected, none hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths'
+  - id: AC3
+    statement: 'AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The tests of the five touched modules, run on a lab host at the pushed head.
+  command: uv run pytest src/omnimarket/nodes/node_swarm_subtask_state_reducer/tests/test_handler_swarm_subtask_state.py src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests/test_fsm_routing_integration.py src/omnimarket/nodes/node_pipeline_fill/tests/test_handler_pipeline_fill.py src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py src/omnimarket/nodes/node_projection_live_events/tests/test_golden_chain_projection_live_events.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21768-ac1-no-topic-literal-in-slice
+  description: AC1 reads the five slice modules and requires that none holds a quoted onex topic string.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      ! grep -En "[\"']onex\.(cmd|evt|dlq|snapshot)\." src/omnimarket/nodes/node_swarm_subtask_state_reducer/tests/test_handler_swarm_subtask_state.py src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests/test_fsm_routing_integration.py src/omnimarket/nodes/node_pipeline_fill/tests/test_handler_pipeline_fill.py src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py src/omnimarket/nodes/node_projection_live_events/tests/test_golden_chain_projection_live_events.py
+    cwd: .
+- id: dod-omn21768-ac2-topics-read-from-contracts
+  description: AC2 runs the five touched test modules, which read every topic from the owning node contract.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_swarm_subtask_state_reducer/tests/test_handler_swarm_subtask_state.py src/omnimarket/nodes/node_pipeline_fill/tests/test_handler_pipeline_fill.py src/omnimarket/nodes/node_projection_live_events/tests/test_golden_chain_projection_live_events.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21768-ac3-own-contract-file
+  description: AC3 reads the PR's diff against the base branch and requires this ticket's own contract file in it and not the umbrella ticket's.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21768.yaml';
+      ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21623.yaml'
+    cwd: .

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import yaml
 
+from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
     HandlerPipelineFill,
     _is_blocked,
@@ -27,6 +28,20 @@ from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command impo
 )
 
 _NODE_DIR = Path(__file__).resolve().parents[1]
+
+
+def _published(name: str) -> str:
+    """The one publish topic the node contract declares for event *name*."""
+    (topic,) = (
+        t
+        for t in contract_publish_topics(_NODE_DIR / "contract.yaml")
+        if f".{name}." in t
+    )
+    return topic
+
+
+_TICKET_PIPELINE_START_TOPIC = _published("ticket-pipeline-start")
+_PIPELINE_FILL_COMPLETED_TOPIC = _published("pipeline-fill-completed")
 
 
 def _make_ticket(
@@ -111,9 +126,7 @@ def test_topics_from_contract_requires_publish_topics() -> None:
         patch(
             "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill._load_contract",
             return_value={
-                "event_bus": {
-                    "publish_topics": ["onex.cmd.omnimarket.ticket-pipeline-start.v1"]
-                }
+                "event_bus": {"publish_topics": [_TICKET_PIPELINE_START_TOPIC]}
             },
         ),
         pytest.raises(RuntimeError, match="pipeline_fill_completed"),
@@ -128,15 +141,15 @@ def test_topics_from_contract_returns_required_topics() -> None:
         return_value={
             "event_bus": {
                 "publish_topics": [
-                    "onex.cmd.omnimarket.ticket-pipeline-start.v1",
-                    "onex.evt.omnimarket.pipeline-fill-completed.v1",
+                    _TICKET_PIPELINE_START_TOPIC,
+                    _PIPELINE_FILL_COMPLETED_TOPIC,
                 ]
             }
         },
     ):
         assert _topics_from_contract() == {
-            "ticket_pipeline_start": "onex.cmd.omnimarket.ticket-pipeline-start.v1",
-            "pipeline_fill_completed": "onex.evt.omnimarket.pipeline-fill-completed.v1",
+            "ticket_pipeline_start": _TICKET_PIPELINE_START_TOPIC,
+            "pipeline_fill_completed": _PIPELINE_FILL_COMPLETED_TOPIC,
         }
 
 

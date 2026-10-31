@@ -19,12 +19,14 @@ OMN-12003
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
 
+from omnimarket.nodes.contract_topics import contract_subscribe_topics
 from omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch import (
     HandlerSwarmDispatchOrchestrator,
     MissingRunStateError,
@@ -73,14 +75,23 @@ class _MemoryStateStore:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _subscribed(name: str) -> str:
+    """The one subscribe topic the node contract declares for event *name*."""
+    (topic,) = (t for t in contract_subscribe_topics(_CONTRACT) if f".{name}." in t)
+    return topic
+
+
 _RUN_ID = "run-integration-001"
 _CORR_ID = "00000000-0000-4000-8000-000000000002"
 
-_HEALTH_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-endpoint-health-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
-_DECOMPOSITION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-decomposition-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
-_ENDPOINTS_SELECTED_TOPIC = "onex.evt.omnimarket.swarm-endpoints-selected.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
-_FANOUT_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-fanout-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
-_AGGREGATION_COMPLETED_TOPIC = "onex.evt.omnimarket.swarm-aggregation-completed.v1"  # onex-topic-allow: test fixture constant mirrors contract.yaml subscribe_topics
+_HEALTH_COMPLETED_TOPIC = _subscribed("swarm-endpoint-health-completed")
+_DECOMPOSITION_COMPLETED_TOPIC = _subscribed("swarm-decomposition-completed")
+_ENDPOINTS_SELECTED_TOPIC = _subscribed("swarm-endpoints-selected")
+_FANOUT_COMPLETED_TOPIC = _subscribed("swarm-fanout-completed")
+_AGGREGATION_COMPLETED_TOPIC = _subscribed("swarm-aggregation-completed")
 
 _HEALTH_EVENT: dict[str, Any] = {
     "run_id": _RUN_ID,
@@ -292,7 +303,9 @@ class TestFSMRoutingIntegration:
         await handler.handle_async(dispatch_request)
         with pytest.raises(ValueError, match="No FSM routing for topic"):
             await handler.route_event(
-                "onex.evt.omnimarket.unknown-topic.v1",  # onex-topic-allow: intentionally unknown topic for negative-path test
+                _HEALTH_COMPLETED_TOPIC.replace(
+                    "swarm-endpoint-health-completed", "unknown-topic"
+                ),
                 {"run_id": _RUN_ID},
             )
 
