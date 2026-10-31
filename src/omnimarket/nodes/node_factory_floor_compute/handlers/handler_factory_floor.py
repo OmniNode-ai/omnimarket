@@ -16,6 +16,11 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorPlanInput,
     ModelFloorTableTask,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
+    build_cloud,
+    build_lanes,
+    build_machines,
+)
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFactoryFloorResult,
     ModelFloorAndon,
@@ -516,8 +521,17 @@ def _floor(
             request.stoppages, key=lambda s: (-s.cost_minutes, -s.occurrences, s.name)
         )[: request.config.stoppage_limit]
     )
+    lanes = build_lanes(request, lines)
     return ModelFloorSection(
-        bays=bays, shipped=shipped, waiting=waiting, stoppages=stoppages
+        machines=build_machines(request, lanes),
+        cloud=build_cloud(request),
+        lanes=lanes,
+        stall_minutes=request.config.stall_minutes,
+        lane_window_minutes=request.config.lane_live_window_minutes,
+        bays=bays,
+        shipped=shipped,
+        waiting=waiting,
+        stoppages=stoppages,
     )
 
 
@@ -544,6 +558,14 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             linear_issues=len(request.linear),
             placement_hosts=len(request.placement),
             stoppage_report=bool(request.stoppages),
+            pool_read_at=_stamp(max(r.read_at for r in request.pool))
+            if request.pool
+            else "",
+            host_table_read=request.host_table is not None,
+            placement_markers_read=request.placed is not None,
+            receipts_read=request.receipts is not None,
+            cloud_accounts_read=request.cloud_accounts is not None,
+            runner_fleet_read=request.runner_fleet is not None,
         ),
     )
 

@@ -21,6 +21,7 @@ from omnimarket.models.model_host_capacity_advertisement import (
 ItemState = Literal["done", "active", "prep", "wait", "stop"]
 TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unread"]
 PrState = Literal["OPEN", "MERGED", "CLOSED"]
+CiState = Literal["green", "red", "pending", "none", "unread"]
 
 
 def _aware(value: datetime) -> datetime:
@@ -93,6 +94,8 @@ class ModelFloorPr(BaseModel):
     title: str = ""
     head_ref: str = ""
     tickets: tuple[str, ...] = ()
+    ci: CiState = "unread"
+    ci_note: str = ""
 
 
 class ModelFloorMerge(BaseModel):
@@ -142,6 +145,9 @@ class ModelFloorLedgerRow(BaseModel):
     outcome: str = ""
     closes_claim: str = ""
     text: str = ""
+    host: str = ""
+    model: str = ""
+    actor: str = ""
 
     _utc = field_validator("ts")(_aware)
 
@@ -154,6 +160,7 @@ class ModelFloorLinearIssue(BaseModel):
     id: str = Field(min_length=1)
     status: str = ""
     status_type: str = ""
+    title: str = ""
 
 
 class ModelFloorStoppage(BaseModel):
@@ -175,6 +182,128 @@ class ModelFloorSelection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = ()
+
+
+class ModelFloorMachineDecl(BaseModel):
+    """A machine the deployment overlay shows as a bay. A machine not declared here is never drawn."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    runner_labels: tuple[str, ...] = ()
+
+
+class ModelFloorPoolReading(BaseModel):
+    """One host as the landing placement's pool read reported it (the fields the bay draws)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    read_at: datetime
+    error: str = ""
+    cores: int | None = None
+    load1: float | None = None
+    busy_cores: float | None = None
+    mem_free_gb: float | None = None
+    mem_total_gb: float | None = None
+    swap_used_pct: float | None = None
+    cap: int | None = None
+    slots: int | None = None
+    refusal: str = ""
+
+    _utc = field_validator("read_at")(_aware)
+
+
+class ModelFloorHostRow(BaseModel):
+    """One row of the shared lab host table: its cap and whether the host is out of selection."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    cap: int | None = None
+    available: bool = True
+    unavailable_reason: str = ""
+
+
+class ModelFloorPlacedHost(BaseModel):
+    """Live placement markers of one host: every placed unit, and of those the remote lanes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    units: int = Field(ge=0)
+    lanes: int = Field(ge=0)
+
+
+class ModelFloorReceipt(BaseModel):
+    """The newest remote-lane receipt of one lane."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str = Field(min_length=1)
+    run_id: str = ""
+    host: str = ""
+    status: str = ""
+    final: bool = False
+    started_at: datetime
+    ended_at: datetime | None = None
+    model: str = ""
+    ticket: str = ""
+    placement: str = ""
+    account: str = ""
+    pr_heads: tuple[str, ...] = ()
+    result: str = ""
+    session_detail: str = ""
+    session_needs: str = ""
+
+    _utc = field_validator("started_at")(_aware)
+
+
+class ModelFloorCloudAccount(BaseModel):
+    """One cloud account of the cloud pool file."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    login: str = ""
+    cap: int | None = None
+    active: tuple[str, ...] = ()
+    credit_remaining: float | None = None
+    credit_read_at: str = ""
+    rate_status: str = ""
+    rate_resets_at: str = ""
+
+
+class ModelFloorRunner(BaseModel):
+    """One CI runner of the runner fleet observation: the host label it carries and its status."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host_label: str = Field(min_length=1)
+    status: Literal["online", "offline", "busy"]
+
+
+class ModelFloorRunnerFleet(BaseModel):
+    """The runner fleet observation the runner monitor builds, reduced to what a bay draws."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    observed_at: datetime
+    runners: tuple[ModelFloorRunner, ...] = ()
+
+    _utc = field_validator("observed_at")(_aware)
+
+
+class ModelFloorLaneKindRule(BaseModel):
+    """First rule whose any marker is found (case-insensitive) in the lane's actor, name or CLAIM text names its kind."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str = Field(min_length=1)
+    actor_contains: tuple[str, ...] = ()
+    lane_contains: tuple[str, ...] = ()
+    text_contains: tuple[str, ...] = ()
 
 
 class ModelFactoryFloorConfig(BaseModel):
@@ -200,6 +329,21 @@ class ModelFactoryFloorConfig(BaseModel):
     waiting_limit: int = Field(gt=0)
     stoppage_limit: int = Field(gt=0)
     note_chars: int = Field(gt=20)
+    lane_live_window_minutes: int = Field(gt=0)
+    stall_minutes: int = Field(gt=0)
+    status_chars: int = Field(gt=20)
+    title_chars: int = Field(gt=20)
+    lane_limit: int = Field(gt=0)
+    pool_stale_minutes: int = Field(gt=0)
+    lane_kinds: tuple[ModelFloorLaneKindRule, ...] = Field(min_length=1)
+    lane_kind_default: str = Field(min_length=1)
+    codex_model_markers: tuple[str, ...] = Field(min_length=1)
+    cloud_host_prefix: str = Field(min_length=1)
+    cloud_no_push_statuses: tuple[str, ...] = Field(min_length=1)
+    cloud_ready_logins: tuple[str, ...] = Field(min_length=1)
+    cloud_no_push_lamp_text: str = Field(min_length=1)
+    cloud_sessions_limit: int = Field(gt=0)
+    repair_reason_chars: int = Field(gt=20)
 
 
 class ModelFactoryFloorRequest(BaseModel):
@@ -216,5 +360,13 @@ class ModelFactoryFloorRequest(BaseModel):
     linear: tuple[ModelFloorLinearIssue, ...] = ()
     placement: tuple[ModelHostCapacityAdvertisement, ...] = ()
     stoppages: tuple[ModelFloorStoppage, ...] = ()
+    machines: tuple[ModelFloorMachineDecl, ...] = ()
+    # A source that could not be read is None, never an empty tuple: the record then says "unread", not "none".
+    pool: tuple[ModelFloorPoolReading, ...] | None = None
+    host_table: tuple[ModelFloorHostRow, ...] | None = None
+    placed: tuple[ModelFloorPlacedHost, ...] | None = None
+    receipts: tuple[ModelFloorReceipt, ...] | None = None
+    cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
+    runner_fleet: ModelFloorRunnerFleet | None = None
 
     _utc = field_validator("generated_at")(_aware)

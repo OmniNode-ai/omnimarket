@@ -23,6 +23,10 @@ requirements:
         statement: "AC5: the same input run twice yields byte-identical JSON, and the CLI writes it to the output path declared in the contract, with no path, host or plan selection hard-coded in the handler -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -k determinism_or_cli -q"
       - id: "AC6"
         statement: "AC6: the suite passes on the lab host -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q"
+      - id: "AC7"
+        statement: "AC7: the floor section carries one machine bay per overlay-declared machine (pool-read load, memory and swap, cap, placed lanes, placed units, CI runners, read, unread or in repair), a cloud bay (accounts, sessions, a stop lamp when the newest finished session could not push) and every live lane (ticket title, kind, engine, newest STATUS with its age, pull request with CI state, run time, stalled after the contract's stall minutes, the station that holds its ticket); a machine or cloud account the overlay does not declare is never drawn and a source that could not be read is unread, not zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q"
+      - id: "AC8"
+        statement: "AC8: node_factory_floor_effect reads the remote-lane receipts, the pool read receipt, the placement markers, the cloud accounts file, the lab host table, the runner fleet observation, the Linear titles and the watcher CI verdict from contract-declared locations, and a source that is absent or malformed is recorded as unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect -k 'lane_sources or machine_bays' -q"
 evidence_requirements:
   - kind: "tests"
     description: "Fixture tests of the compute node (an andon-stopped plan, a plan with no manifest, the floor) and of the effect node's command line and loaders."
@@ -86,3 +90,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerFactoryFloorEffect:'"
+  - id: "dod-omn21682-ac7"
+    description: "AC7 machine bay, cloud bay and lane tests pass."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac8"
+    description: "AC8 source loader tests pass."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect -q --no-cov --tb=line -k 'lane_sources or machine_bays'"
+        cwd: "${OMNI_HOME}/omnimarket"

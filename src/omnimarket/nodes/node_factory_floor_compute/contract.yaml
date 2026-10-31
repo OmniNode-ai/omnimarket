@@ -73,6 +73,36 @@ config:
   waiting_limit: 40
   stoppage_limit: 10
   note_chars: 200
+  # Live lanes (OMN-21733): a lane is live while its newest CLAIM has no TERMINAL after it and it wrote a row inside
+  # lane_live_window_minutes; it is stalled after stall_minutes without a row of any kind.
+  lane_live_window_minutes: 180
+  stall_minutes: 45
+  status_chars: 140
+  title_chars: 110
+  lane_limit: 200
+  pool_stale_minutes: 30
+  repair_reason_chars: 120
+  # The first rule with a marker in the lane's actor, name or CLAIM text names its kind.
+  lane_kinds:
+    - kind: landing worker
+      actor_contains: [landing-controller]
+    - kind: burn-down
+      text_contains: [burn-down, burn down]
+    - kind: plan
+      text_contains: [write a plan, implementation plan, plan for]
+    - kind: diagnose
+      text_contains: [find the real cause, diagnose, investigate, root cause, read-only evidence]
+    - kind: fix
+      text_contains: [fix, repair, reds on]
+  lane_kind_default: build
+  codex_model_markers: [codex]
+  # Cloud sessions are receipts whose host starts with this prefix; the cloud bay lights its stop lamp when the newest
+  # finished cloud session ended in one of these statuses.
+  cloud_host_prefix: "cloud:"
+  cloud_no_push_statuses: [cloud-no-pr]
+  cloud_no_push_lamp_text: Cloud sessions are ending without a pull request
+  cloud_ready_logins: [ok]
+  cloud_sessions_limit: 8
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

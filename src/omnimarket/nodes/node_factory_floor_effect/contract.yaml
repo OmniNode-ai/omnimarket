@@ -49,6 +49,7 @@ descriptor:
   side_effects:
   - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
   - reads the rolling ledger through the plugin's reader
+  - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
   - writes the factory floor JSON to runtime.output.relpath under the registry home
 
 # Where the entry reads and writes. Paths are relative to the registry home (the environment variable named by
@@ -61,6 +62,8 @@ runtime:
   overlay_file_env: ONEX_FACTORY_FLOOR_OVERLAY
   plugin_root_env: CLAUDE_PLUGIN_ROOT
   ledger_window_days: 14
+  # The reader cuts each row's text at this many characters (its own default drops the sentence a CLAIM carries).
+  ledger_cut_chars: 1200
   watcher_max_age_min: 90
   manifest_suffix: .tasks.yaml
   # A plan without a plans-today entry maps tickets and pull requests only from the header lines that start with
@@ -74,6 +77,29 @@ runtime:
     linear_snapshot_glob: linear-*.txt
     placement_relpath: .claude_scratch/lab-run/hosts.json
     friction_report_relpath: .claude_scratch/friction/friction-report.json
+    # The Linear snapshot with ticket titles (plans-today writes it beside the status text file).
+    linear_titles_glob: linear-*.json
+    # The runner monitor's fleet observation (docker/runners/runner-monitor.sh builds the event with
+    # scripts/runner_fleet_event.py); no node writes it to this path yet, so a bay draws its CI runners as unread
+    # until one does.
+    runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # The machine bays and the live lanes (OMN-21733). The remote-lane receipts are the runner's per-run JSON files;
+  # the pool receipt is the one `onex_lab_run.py --hosts` writes: the landing placement's pool read (load, memory,
+  # swap, cap per host, or UNREADABLE). The placement directory holds the live placement markers
+  # (<host>.<lease>.<pid>; a lease id at or over lane_marker_min_id is a remote lane) and the cloud accounts file.
+  # The lab host table is the file host_table_env names, else the one the deployment overlay's host_table_relpath names.
+  lane_sources:
+    remote_lane_dir_env: ONEX_REMOTE_LANE_DIR
+    remote_lane_dir_fallback: .local/state/omni/remote-lanes
+    pool_receipt: hosts-probe/latest.json
+    receipt_glob: "rlane-*.json"
+    receipt_window_hours: 24
+    result_chars: 600
+    placement_dir_env: LANDING_PLACEMENT_DIR
+    placement_dir_fallback: .local/state/omni/landing/placement
+    lane_marker_min_id: 1000000000
+    cloud_accounts_file: cloud-accounts.json
+    host_table_env: ONEX_LAB_RUN_HOSTS
   output:
     relpath: .claude_scratch/factory-floor/factory-floor.json
 metadata:
