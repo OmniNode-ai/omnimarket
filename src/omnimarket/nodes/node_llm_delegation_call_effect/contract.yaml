@@ -51,6 +51,11 @@ description: |
   nested tool sandboxes can refuse that open. Startup refusal is a typed result,
   never grounds to change credentials, CODEX_HOME or sandbox permissions.
 
+  HandlerClaudeCredentialProbe runs one Claude Code call that proves the credential in
+  the host's environment (OMN-21626). It takes ModelClaudeCredentialProbeRequest (prompt,
+  model, timeout_seconds) and returns ModelClaudeCredentialProbeReceipt (redacted bounded
+  output, exit_cause, exit_code). The credential is never a field of either model.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
@@ -369,6 +374,15 @@ handler_routing:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
       description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
+    - operation: "probe_claude_credential"
+      event_type: "omnimarket.claude-credential-probe"
+      event_model:
+        name: "ModelClaudeCredentialProbeRequest"
+        module: "omnimarket.models.delegation.model_claude_credential_probe"
+      handler:
+        name: "HandlerClaudeCredentialProbe"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_credential_probe"
+      description: "Prove the credential in the host's environment with one Claude Code call (OMN-21626); handle() returns the typed redacted receipt. Reached by runtime_claude_probe on the host that holds the credential, never over a customer topic."
   default_handler: "HandlerLlmDelegationCall"
 
 # Maps HandlerInferenceIntent's returned model to its publish topic so the
@@ -483,3 +497,15 @@ codex_harness:
   reasoning_effort: high
   max_timeout_seconds: 600
   terminate_grace_seconds: 5
+
+# Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
+# The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is
+# never a field of the request or the receipt. CLI: python -m
+# omnimarket.nodes.node_llm_delegation_call_effect.runtime_claude_probe (request JSON on stdin).
+claude_credential_probe:
+  executable: claude
+  argv: ["-p", "--output-format", "text"]
+  scrubbed_env: [ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, CLAUDECODE]
+  max_timeout_seconds: 300
+  terminate_grace_seconds: 5
+  output_chars: 600

@@ -1015,6 +1015,7 @@ node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
 node_insights_to_plan_compute = "omnimarket.nodes.node_insights_to_plan_compute"
 node_plan_audit_compute = "omnimarket.nodes.node_plan_audit_compute"
 node_plans_today_effect = "omnimarket.nodes.node_plans_today_effect"
+node_claude_pool_refill_effect = "omnimarket.nodes.node_claude_pool_refill_effect"
 node_resume_session_compute = "omnimarket.nodes.node_resume_session_compute"
 node_rewind_compute = "omnimarket.nodes.node_rewind_compute"
 node_rrh_compute = "omnimarket.nodes.node_rrh_compute"
@@ -1112,6 +1113,7 @@ omnimarket-projection-api = "omnimarket.projection.api_server:main"
 onex-ledger-reconcile = "omnimarket.nodes.node_ledger_reconcile_orchestrator.__main__:main"
 onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main"
 onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main"
+onex-claude-pool-refill = "omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
@@ -1608,6 +1610,7 @@ ignore = [
 "src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hook_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
+"src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and
