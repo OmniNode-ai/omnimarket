@@ -20,6 +20,9 @@ description: >
   intent for the drifted hosts, never a bare no-host; a missing hash on a drift-judged
   request is VENV_UNKNOWN, never a pass. How a finished lane closes is
   node_remote_lane_close_compute's decision, on its own command topic.
+  A collaborator machine (a reading marked contributor) takes a lane only bound to the lane its own
+  row declares, never one the non-contributor hosts bind, and only while that lane can take a lane;
+  otherwise its verdict says why (OMN-21599).
   An optional engine ladder starts at the cheapest eligible rung and escalates
   failed attempts up to the route ceiling (OMN-21396).
   A lane declaring a capability the Codex sandbox cannot grant skips the Codex rung.

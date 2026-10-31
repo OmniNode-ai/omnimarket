@@ -1,7 +1,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21599"
-title: "A collaborator's prompt hook checks the lane they are bound to"
+title: "A collaborator's prompt hook checks the lane they are bound to, and the placement node refuses a house-lane lane on a collaborator machine"
 summary: "The prompt hook selected the hook-edge contract's declared lane for every developer, so a collaborator bound to another lane passed unchecked or was blocked for lacking a login on the declared lane. node_developer_lane_admission_compute selects the lane from the developer's lane binding and checks the principal against that lane's own declared list of people. It names no lane: the lanes, the lane a collaborator never uses and every list arrive in the request, from the hook-edge contract and the private overlay declarations. The omniclaude hook loads the handler by path and calls it in place of its inline check."
 is_seam_ticket: false
 interface_change: true
@@ -15,10 +15,20 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: the node admits a bound collaborator with a declared principal, refuses the same developer with the binding removed, with the principal removed, and when selecting the barred lane, and leaves the operator's principal unchanged -- falsifier: uv run pytest tests/nodes/node_developer_lane_admission_compute fails one of those cases, or the node is absent at the merge base
+  - id: "req-omn21599-contributor-lane-placement"
+    statement: "Work may run on a collaborator machine but never bound to the lane the house works in: the placement node refuses a house-lane lane there and admits one bound to the collaborator lane once that lane is ready."
+    acceptance:
+      - id: "AC2159901"
+        statement: "AC2159901: a lane bound to the house lane is refused on a contributor host (the verdict names the lane it binds), and a lane bound to the collaborator lane is admitted when the row says the lane is ready -- falsifier: uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q passes with the refusal assertion removed from the node"
+      - id: "AC2159902"
+        statement: "AC2159902: while the row says the lane is not ready the host takes no lane and the verdict prints the row's reason, and the lab_hosts overlay model refuses a contributor row that binds a lane a non-contributor row binds -- falsifier: the same file passes with lane_ready defaulted to true or the validator removed"
 evidence_requirements:
   - kind: "tests"
     description: "The planted cases: bound with a declared principal passes, binding removed refuses, principal removed refuses, a collaborator selecting the barred lane refuses, the operator's own flow is unchanged; plus the by-path load and the standard-library-only module level."
     command: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -q --no-cov"
+  - kind: tests
+    description: "AC2159901 and AC2159902: the planted refusal, the planted admission, the fail-closed readiness and the overlay model validator"
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -88,3 +98,21 @@ dod_evidence:
           assert (decision["selected_lane"], decision["verdict"], decision["refusal"]) == ("lane-home", "operator", None), decision
           print("OMN-21599 published-source deploy readback: 5 admission decisions PASS")
           '
+  - id: "dod-omn21599-contributor-lane-placement"
+    description: "The contributor lane rule of the remote-lane placement node and the overlay model validator"
+    source: "manual"
+    binds_ac: ["AC2159901", "AC2159902"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21599-deploy-placement-check"
+    description: "Hosted package deploy smoke: the placement node source at the evaluated revision carries the contributor lane refusal, and the overlay model carries the lane_binding and lane_ready columns, read from the repository at that revision. No credentials, broker or lab service is required. This checks the evaluated revision, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def contributor_lane_refusal(\")' | grep -qx true"
+        cwd: "."
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/overlay_keys/model_overlay_documents.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"lane_ready: bool = False\")' | grep -qx true"
+        cwd: "."

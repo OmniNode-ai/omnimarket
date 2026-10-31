@@ -5,7 +5,7 @@
 
 The gate logic was ported out of the deleted omnimarket-local
 ``scripts/ci/check_routing_authority.py`` into the canonical core COMPUTE
-validator ``omnibase_core.validation.validator_routing_authority`` (which folds
+node ``omnibase_core.nodes.node_routing_authority_check_compute`` (which folds
 in the previously-unwired ``validator_delegation_profile``). The validator's own
 positive/negative unit suite lives in omnibase_core
 (``tests/unit/validation/test_validator_routing_authority.py``).
