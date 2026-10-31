@@ -9,7 +9,6 @@ from pathlib import Path
 from omnimarket.models.runtime_coverage import (
     ModelRuntimeCoverageRequest,
     ModelRuntimeCoverageResult,
-    ModelRuntimeRegistryEndpoint,
 )
 from omnimarket.nodes.node_runtime_coverage_compute import HandlerRuntimeCoverageCompute
 from omnimarket.nodes.node_runtime_coverage_effect import HandlerRuntimeCoverageEffect
@@ -43,24 +42,24 @@ async def read_health_runtime_coverage(
         .joinpath("contract.yaml")
         .read_text()
     )["runtime_coverage"]
-    from omnibase_infra.runtime.service_kernel import workspace_runtime_config_root
+    from omnibase_infra.handlers import handler_workspace_config_root_resolve as root
+    from omnibase_infra.models.workspace import ModelWorkspaceConfigRootRequest
 
     registry_path = (
         config_path
-        or workspace_runtime_config_root(workspace) / policy["policy_relative_path"]
+        or root.HandlerWorkspaceConfigRootResolve().require(
+            ModelWorkspaceConfigRootRequest(workspace_root=workspace)
+        )
+        / policy["policy_relative_path"]
     )
-    document = yaml.safe_load(registry_path.read_text())
-    lane_policy = document["bus_lanes"][bus_lane]
-    runtime_lanes = tuple(lane_policy["runtime_lanes"])
-    endpoints = tuple(
-        ModelRuntimeRegistryEndpoint.model_validate(row)
-        for row in lane_policy.get("runtime_registries", ())
-    )
+    lane_policy = yaml.safe_load(registry_path.read_text())["bus_lanes"][bus_lane]
     return await read_runtime_coverage(
-        ModelRuntimeCoverageRequest(
-            bus_lane=bus_lane,
-            runtime_lanes=runtime_lanes,
-            contract_roots=workspace_contract_roots(workspace),
-            runtime_registries=endpoints,
+        ModelRuntimeCoverageRequest.model_validate(
+            {
+                "bus_lane": bus_lane,
+                "runtime_lanes": lane_policy["runtime_lanes"],
+                "contract_roots": workspace_contract_roots(workspace),
+                "runtime_registries": lane_policy.get("runtime_registries", ()),
+            }
         )
     )
