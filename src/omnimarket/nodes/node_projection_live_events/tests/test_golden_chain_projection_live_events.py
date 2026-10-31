@@ -15,6 +15,10 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events import (
     HandlerProjectionLiveEvents,
     ModelLiveEvent,
@@ -22,9 +26,19 @@ from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_li
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
-LOG_TOPIC = "onex.evt.platform.log-entry.v1"
-APPLIED_TOPIC = "onex.evt.omnimarket.projection-live-events-applied.v1"
-SNAPSHOT_TOPIC = "onex.snapshot.projection.live-events.v1"
+
+
+def _topic(topics: tuple[str, ...], name: str) -> str:
+    """The one topic of *topics* the node contract declares for event *name*."""
+    (topic,) = (t for t in topics if f".{name}." in t)
+    return topic
+
+
+LOG_TOPIC = _topic(contract_subscribe_topics(CONTRACT_PATH), "log-entry")
+APPLIED_TOPIC = _topic(
+    contract_publish_topics(CONTRACT_PATH), "projection-live-events-applied"
+)
+SNAPSHOT_TOPIC = _topic(contract_publish_topics(CONTRACT_PATH), "live-events")
 TABLE = "live_events"
 
 
