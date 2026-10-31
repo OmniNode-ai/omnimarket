@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Canonical Clone Dirty Converge Effect (OMN-21821)
+#
+# WHO HOSTS THIS NODE. One timer tick per host that keeps canonical clones (a launchd agent on a Mac, a
+# systemd user timer on Linux), installed by the host installer. Shared runtimes must NEVER attach it: a
+# runtime container holds no canonical clone. The contract declares runtime_dispatch and neither an
+# event_bus block nor handler_routing, as the canonical clone refresh effect does.
+#
+# WHAT IT DOES. The sync engine only fast-forwards a clean clone. A clone refused for tracked changes
+# stayed behind for days (a host's omniclaude, 8 days; another host's omnidash, 143103 s). One tick runs
+# the engine with its refusal bound set to the age below, so the engine names every clone refused that
+# long. For each, source paths are pushed to a rescue branch, paths that look generated or carry a host
+# value stay only in the converge archive (never pushed), then converge-canonical-clone.sh resets the
+# clone to its upstream and writes the one ledger row, naming what was saved.
+name: "node_canonical_clone_dirty_converge_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Saves and converges a canonical clone that has been refused for tracked changes past a declared age.
+input_model:
+  name: "ModelDirtyConvergeTickRequest"
+  module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
+  description: "One tick; carries no input."
+output_model:
+  name: "ModelDirtyConvergeTickReceipt"
+  module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
+  description: "Each refused clone the tick converged, skipped or failed, and the age it applied."
+handler:
+  module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect"
+  class: "HandlerCanonicalCloneDirtyConvergeEffect"
+  input_model: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge.ModelDirtyConvergeTickRequest"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 1500000
+runtime_dispatch:
+  terminal_events:
+    success: "onex.evt.omnimarket.canonical-clone-dirty-converged.v1"
+metadata:
+  transport_type: none
+  description: "Hosted by one timer tick per host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-10-31"
+  tags: ["effect", "canonical-clone", "OMN-21821"]
+  related_tickets: ["OMN-21821"]
+
+timeouts:
+  # A canonical clone refused for tracked changes this long is saved and converged. The same value is
+  # handed to the sync engine as its refusal bound, so the engine reports the clone (REFUSED_TOO_LONG)
+  # at exactly this age. A host overlay replaces it with ONEX_CLONE_DIRTY_CONVERGE_AFTER_S in the
+  # tick's environment.
+  dirty_converge_after_seconds: 14400
+  dirty_converge_engine_seconds: 900  # Bounds one engine pass over every clone.
+  dirty_converge_rescue_push_seconds: 120  # Bounds the push of one rescue branch.
+  dirty_converge_script_seconds: 300  # Bounds one converge-canonical-clone.sh run.
+
+# Where the tick finds the engine and the converge script, relative to the registry root (OMNI_HOME),
+# and how it names what it writes. Nothing here names a machine.
+dirty_converge:
+  engine: omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py
+  converge_script: omniclaude/scripts/converge-canonical-clone.sh
+  ticket: OMN-21821
+  lane: canonical-clone-sync
+  rescue_branch_prefix: rescue/
+  tracking_branches: [main, dev, master]
+  # A path whose added lines match any of host_value_patterns keeps its content out of every remote: the
+  # converge archive is its only copy. generated_path_patterns match the path; generated_markers match
+  # the first 2000 characters of the file or of its committed version.
+  host_value_patterns:
+    - '/(Users|home|Volumes)/[^\s/]+'
+    - '\.ts\.net\b'
+    - '\b(192\.168|10\.\d{1,3}|172\.(1[6-9]|2\d|3[01])|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}\b'
+    - '(sk-|ghp_|gho_|xox[bp]-|AKIA)[A-Za-z0-9_-]{8,}'
+    - 'BEGIN [A-Z ]*PRIVATE KEY'
+    - '(?i)(password|secret|token|api_?key)\s*[:=]\s*\S'
+  generated_path_patterns:
+    - '(^|/)(generated|__generated__)/'
+    - '\.generated\.'
+    - '\.tsbuildinfo$'
+    - '\.min\.(js|css)$'
+  generated_markers:
+    - '(?i)@generated|auto-?generated|generated (by|file)|do not edit'
