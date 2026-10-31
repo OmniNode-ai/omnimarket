@@ -29,7 +29,6 @@ dod_evidence:
   - id: "dod-omn21662-pr-body-cause"
     description: "The PR body names the measured per-host cause."
     source: "manual"
-    binds_ac: ["AC1"]
     checks:
       - check_type: "command"
         check_value: "grep -q 'ROLE_MACHINE' src/omnimarket/nodes/node_developer_lane_admission_compute/handlers/handler_developer_lane_admission.py"
@@ -37,10 +36,10 @@ dod_evidence:
   - id: "dod-omn21662-quiet-host"
     description: "The quiet-host regression cases pass on the fix."
     source: "manual"
-    binds_ac: ["AC2"]
+    binds_ac: ["AC1", "AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute -k quiet_host -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -k quiet_host -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21662-no-false-alarm"
     description: "A machine row is never held back as a collaborator."
@@ -48,7 +47,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute -k quiet_host_no_false_alarm -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -k quiet_host_no_false_alarm -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21662-deploy-published-handler-readback"
     description: |-
