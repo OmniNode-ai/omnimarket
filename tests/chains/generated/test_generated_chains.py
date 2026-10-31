@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Gate: every live walker path of an enrolled workflow has a chain that still holds.
 
-The walker runs over ``src`` now, so a contract change that adds, removes or
-reroutes a path shows here. Each committed chain is re-driven through the real
-handlers and checked with the chain assertion helper. To regenerate after an
+The walker runs over the owner's node directory, so a contract change that adds,
+removes or reroutes a path shows here. Each committed chain is re-driven through
+the real handlers and checked with the chain assertion helper. To regenerate after an
 intended change, run this file with ``CHAIN_GEN_WRITE=1`` and commit the diff.
 """
 
@@ -44,14 +44,17 @@ def expectation_path(owner: str) -> Path:
 
 
 @cache
-def walker_report() -> dict[str, object]:
-    out = Path(os.environ.get("TMPDIR", "/tmp")) / f"chain-gen-walk-{os.getpid()}.json"
+def walker_report(owner: str) -> dict[str, object]:
+    """Walk the owner's own node directory; a walk of all of src took 14s of 22."""
+    out = (
+        Path(os.environ.get("TMPDIR", "/tmp")) / f"chain-gen-{owner}-{os.getpid()}.json"
+    )
     subprocess.run(
         [
             sys.executable,
             "-m",
-            "omnibase_core.validation.validator_contract_walker",
-            str(REPO / "src"),
+            "omnibase_core.nodes.node_contract_walker_check_compute.runtime_contract_walker_check",
+            str(REPO / "src" / "omnimarket" / "nodes" / owner),
             "--json-out",
             str(out),
         ],
@@ -64,7 +67,7 @@ def walker_report() -> dict[str, object]:
 
 
 def obligations(owner: str) -> tuple[ModelChainObligation, ...]:
-    return H.obligations(walker_report(), owner)
+    return H.obligations(walker_report(owner), owner)
 
 
 def committed(owner: str) -> ModelChainExpectationSet | None:
