@@ -33,15 +33,15 @@ from omnibase_core.models.validation.model_contract_walk_report import (
 from pydantic import JsonValue
 
 from omnimarket.models.contract_seams_design import ModelContractSeamsDesign
+from omnimarket.nodes.node_contract_seams_orchestrator.emit_contracts import (
+    ModelEmitConfig,
+    ModelEmittedContract,
+    emit_contracts,
+)
 from omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps import (
     HandlerContractNodeStep,
     ModelDrivenContractChain,
     drive_contract_chain,
-)
-from omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_emit_contracts import (
-    ModelEmitConfig,
-    ModelEmittedContract,
-    emit_contracts,
 )
 from omnimarket.nodes.node_contract_seams_orchestrator.models.model_contract_seams_run import (
     ModelContractSeamsConfig,

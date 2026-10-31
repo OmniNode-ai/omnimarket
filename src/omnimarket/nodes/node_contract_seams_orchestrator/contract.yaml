@@ -122,17 +122,17 @@ workflow_coordination:
         node_type: EFFECT_GENERIC
         description: Scaffold each node from its own contract
         depends_on: [emit_contracts]
-        step_config: {operation: scaffold_nodes, node: node_generate_node_effect, node_operation: generate_node, trigger: nodes_scaffolded}
+        step_config: {operation: scaffold_nodes, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_generate_node_effect, node_operation: generate_node, trigger: nodes_scaffolded}
       - node_id: read_seam_graph
         node_type: COMPUTE_GENERIC
         description: Read the seam graph of the scaffolded contracts
         depends_on: [scaffold_nodes]
-        step_config: {operation: read_seam_graph, node: node_seam_graph_compute, node_operation: extract}
+        step_config: {operation: read_seam_graph, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_seam_graph_compute, node_operation: extract}
       - node_id: match_seams
         node_type: COMPUTE_GENERIC
         description: Match each crossing's producer projection against its consumer projection
         depends_on: [read_seam_graph]
-        step_config: {operation: match_seams, node: node_seam_match_compute, node_operation: match, trigger: seams_read}
+        step_config: {operation: match_seams, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_seam_match_compute, node_operation: match, trigger: seams_read}
       - node_id: walk_event_chain
         node_type: COMPUTE_GENERIC
         description: Walk the scaffolded contracts' state machines with core's contract walker and drive the chain on the bus
@@ -142,12 +142,12 @@ workflow_coordination:
         node_type: COMPUTE_GENERIC
         description: Gate the driven chains against the design's chain paths
         depends_on: [walk_event_chain]
-        step_config: {operation: gate_chains, node: node_event_chain_generator_compute, node_operation: gate, trigger: chains_walked}
+        step_config: {operation: gate_chains, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_event_chain_generator_compute, node_operation: gate, trigger: chains_walked}
       - node_id: sweep_golden_chain
         node_type: COMPUTE_GENERIC
         description: Sweep the golden chain from the head topic to the tail event the drive captured
         depends_on: [gate_chains]
-        step_config: {operation: sweep_golden_chain, node: node_golden_chain_sweep, node_operation: sweep_golden_chains, trigger: golden_chain_swept}
+        step_config: {operation: sweep_golden_chain, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_golden_chain_sweep, node_operation: sweep_golden_chains, trigger: golden_chain_swept}
       - node_id: confirm_connected
         node_type: COMPUTE_GENERIC
         description: The head event reached the tail

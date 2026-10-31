@@ -79,3 +79,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_node_generate_node_effect.py -q --no-cov --tb=line -k contract
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21627-deploy-probe
+  description: 'Deploy probe: the orchestrator handler read from GitHub at the checked-out commit defines class HandlerContractSeamsRun. The merge base lacks the file, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_contract_seams_orchestrator/handlers/handler_contract_seams_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContractSeamsRun'
+    cwd: ${OMNI_HOME}/omnimarket
