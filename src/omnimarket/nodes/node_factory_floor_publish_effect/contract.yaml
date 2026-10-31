@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_factory_floor_publish_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Regenerate the factory floor record with node_factory_floor_effect, then publish the page and the record
+  to the directory a static server on the lab serves, over ssh, each file written to a temporary name and
+  renamed into place. The serving host, the directory and the URL come from the deployment overlay; this
+  contract declares only where the record is, what the files are called and the time limits.
+input_model:
+  name: ModelFactoryFloorPublishRequest
+  module: omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish
+  description: The flags of one run.
+output_model:
+  name: ModelFactoryFloorPublishResult
+  module: omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish
+  description: What was published and which record it carried.
+handler:
+  module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish
+  class: HandlerFactoryFloorPublish
+  input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish.ModelFactoryFloorPublishRequest
+  output_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish.ModelFactoryFloorPublishResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish:HandlerFactoryFloorPublish
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerFactoryFloorPublish
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 900000
+  side_effects:
+  - runs node_factory_floor_effect, which writes the factory floor JSON under the registry home
+  - reads the factory floor JSON and the packaged page
+  - writes index and record files to the serving host's directory over ssh
+  - writes last-run.json into the tick's state directory
+
+# Where the record is and what the served files are called. The record path is relative to the registry home
+# (the environment variable named by home_env). The record path must equal runtime.output.relpath of
+# node_factory_floor_effect (OMN-21682). The serving host, its directory and the URL are the deployment
+# overlay's ssh_target, remote_dir and serve_url: a file named by overlay_file_env, else
+# <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_publish_effect/overlay.yaml.
+runtime:
+  home_env: OMNI_HOME
+  overlay_file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY
+  page_relpath: page/index.html
+  evidence_file: last-run.json
+  source:
+    relpath: .claude_scratch/factory-floor/factory-floor.json
+  refresh:
+    module: omnimarket.nodes.node_factory_floor_effect
+    timeout_seconds: 600
+  names:
+    page: index.html
+    data: factory-floor.json
+  transport:
+    connect_timeout_seconds: 10
+    transfer_timeout_seconds: 60
+metadata:
+  transport_type: local
+  description: >-
+    Refresh the factory floor record and publish it with its page to the lab web server's directory.
+  author: OmniNode Team
+  created: '2026-10-31'
+  tags:
+  - effect
+  - factory-floor-publish
+  - OMN-21733
+  related_tickets:
+  - OMN-21733
+  - OMN-21682
