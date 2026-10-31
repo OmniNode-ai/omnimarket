@@ -6,10 +6,20 @@ summary: "The criteria-drift check (OMN-20858) read live Linear from the hosted 
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: "req-omn21676-criteria-delegation"
+    statement: "Hosted verification delegates criteria comparison to a trusted check that refuses drift and unreadable tickets."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a ticket contract that records a requirements list verifies in the hosted audience with no Linear credential in the environment, and its verdict names the criteria check as delegated, never unresolved ticket_unavailable -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k hosted_criteria_delegated_without_credential"
+      - id: "AC2"
+        statement: "AC2: a contract whose pinned criterion differs from the live ticket text still refuses with CRITERIA_DRIFT naming the criterion at the trusted point the check is delegated to, and the delegated hosted verdict is not accepted as proof of the criteria revision there -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k delegated_criteria_drift_still_refuses"
+      - id: "AC3"
+        statement: "AC3: an unreadable ticket at the trusted point still refuses ticket_unavailable, so delegation never turns an unreadable ticket into an unchanged one -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k delegated_ticket_unavailable_still_refuses"
 evidence_requirements:
   - kind: "tests"
     description: "A contract with a requirements list verifies hosted with no credential; real drift and an unreadable ticket block at the trusted check."
-    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py tests/unit/nodes/node_dod_criteria_check_effect tests/test_golden_chain_node_dod_criteria_check_effect.py -q --no-cov"
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py tests/unit/nodes/node_dod_criteria_check_effect/test_omn_21676_criteria_check.py tests/test_golden_chain_node_dod_criteria_check_effect.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -18,6 +28,7 @@ dod_evidence:
   - id: "dod-omn21676-hosted-delegation"
     description: "A hosted run with no ticket reader and no credential verifies a contract that records criteria, builds no tracker and records criteria_delegated; the local Done gate still refuses an unreadable ticket."
     source: "manual"
+    binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py tests/unit/nodes/node_dod_verify/test_omn_20858_ticket_effect_and_pins.py -q --no-cov"
@@ -25,9 +36,18 @@ dod_evidence:
   - id: "dod-omn21676-trusted-check"
     description: "The trusted check passes unchanged criteria, blocks an edited or deleted criterion, an unreadable ticket, a missing Linear credential, a moved head and anything GitHub cannot answer, and does not block a contract that records no criteria."
     source: "manual"
+    binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_dod_criteria_check_effect tests/test_golden_chain_node_dod_criteria_check_effect.py -q --no-cov"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_criteria_check_effect/test_omn_21676_criteria_check.py tests/test_golden_chain_node_dod_criteria_check_effect.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-unreadable-ticket"
+    description: "An unreadable ticket or missing Linear credential blocks the trusted check; the local Done gate still reports ticket_unavailable."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_criteria_check_effect/test_omn_21676_criteria_check.py tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py -k 'unreadable_ticket or no_linear_credential' -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21676-deploy-published-source-readback"
     description: |-

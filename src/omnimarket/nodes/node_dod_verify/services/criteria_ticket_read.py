@@ -77,10 +77,10 @@ def _unavailable(ticket_id: str, reason: str) -> ModelTicketCriteriaRead:
     return ModelTicketCriteriaRead(ticket_id=ticket_id, unavailable_reason=reason)
 
 
-def _run_blocking[T](work: Awaitable[T]) -> T:
+def _run_blocking(work: Awaitable[ModelTicketCriteriaRead]) -> ModelTicketCriteriaRead:
     """Run ``work`` to completion from sync code, on a worker thread when a loop is running."""
 
-    async def _await() -> T:
+    async def _await() -> ModelTicketCriteriaRead:
         return await work
 
     try:
