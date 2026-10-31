@@ -1,0 +1,106 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21733"
+title: "The factory floor page is served from h051 on the tailnet, with its JSON projection published to it on every tick"
+summary: "node_factory_floor_publish_effect regenerates the factory floor record with node_factory_floor_effect and publishes the packaged page and the record to the directory a static server on the lab serves, over ssh, each file written to a temporary name and renamed into place. The serving host, directory and URL come only from the deployment overlay. The page fetches factory-floor.json, renders it, shows the record's age, and carries no secret, absolute path, hostname or external URL."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21733-factory-floor-host"
+    statement: |-
+      The factory floor page is hosted in the lab: a static server bound to the tailnet address serves the page and the JSON the factory floor nodes write, and the record is refreshed and published on every tick.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_factory_floor_publish_effect has contract.yaml, metadata.yaml, typed models and a handler whose ssh target, remote directory and source paths come only from the overlay and the contract, and it refuses a run with a missing overlay key -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k overlay_or_missing_key -q"
+      - id: "AC2"
+        statement: "AC2: a publish copies the page and the JSON to a temp name and renames both into place so a reader never sees a partial file, and a failed copy leaves the previous files untouched -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k atomic -q"
+      - id: "AC3"
+        statement: "AC3: the page fetches factory-floor.json, renders lines, stations, bays, shipped, waiting and stoppages from the node record, shows how old the record is, and contains no secret, no absolute path, no hostname and no external URL -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page -q"
+      - id: "AC6"
+        statement: "AC6: the suite passes on the lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q"
+  - id: "req-omn21733-reports-site"
+    statement: |-
+      The lab web server also hosts a reports site: an index of every report with the age of each report's data, the process before-and-after report, the October decision map and the decision-quality report, each drawn from data files that nodes (or, for the two snapshots, a lane) wrote.
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: a publish copies the reports index, each report's page and data and a manifest (written last) to the serving directory, the manifest states each data file's own time and what it is measured from, and a data file that cannot be read is listed unread and not published -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k reports -q"
+      - id: "AC8"
+        statement: "AC8: the report pages carry no secret, absolute path or host, load nothing from another origin except the decision map's two integrity-pinned scripts, escape every character of the data they render, and show an unread source as unread rather than zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_reports -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
+    command: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21733-ac1"
+    description: "AC1 overlay tests pass."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k overlay_or_missing_key"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac2"
+    description: "AC2 atomic write tests pass."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k atomic"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac3"
+    description: "AC3 page tests pass."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac6"
+    description: "AC6 the whole suite passes on the lab host."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac7"
+    description: "AC7 reports publish tests pass."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q --no-cov --tb=line -k reports"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac8"
+    description: "AC8 report page tests pass."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q --no-cov --tb=line -k page_reports"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-deploy-probe"
+    description: "Deploy probe. The reports handler file that GitHub serves at the checked-out commit declares HandlerReportsPublish, the entry this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_reports_publish.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerReportsPublish:'"
+  - id: "dod-omn21733-floor-artwork"
+    description: "AC3 declared lines, record counts, bays and delegation are rendered from their sources."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'draws_the_declared_lines or shows_each_number or draws_the_bays'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-floor-artwork-deploy"
+    description: "Deploy probe reads the floor page at the checked-out commit from GitHub and requires buildSlots, which draws the overlay-declared lines and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function buildSlots(lines, status){'"

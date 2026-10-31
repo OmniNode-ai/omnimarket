@@ -13,8 +13,8 @@ from uuid import uuid4
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 
-from omnimarket.nodes.node_review_prompt_builder_compute.handlers.handler_prompt_builder_compute import (
-    HandlerPromptBuilderCompute,
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_prompt_builder_compute,
 )
 from omnimarket.nodes.node_review_prompt_builder_compute.models.model_review_prompt_builder import (
     ModelReviewPromptBuilderRequest,
@@ -26,7 +26,7 @@ from omnimarket.review.prompt_builder import ModelPromptBuilderOutput
 @pytest.mark.asyncio
 async def test_golden_chain_prompt_build() -> None:
     cid = uuid4()
-    output = await HandlerPromptBuilderCompute().handle(
+    output = await create_handler_prompt_builder_compute().handle(
         ModelReviewPromptBuilderRequest(
             correlation_id=cid,
             prompt_template_id="adversarial_reviewer_pr",
@@ -45,7 +45,7 @@ async def test_golden_chain_prompt_build() -> None:
 @pytest.mark.asyncio
 async def test_golden_chain_prompt_build_truncates_large_content() -> None:
     big = "x" * 500_000
-    output = await HandlerPromptBuilderCompute().handle(
+    output = await create_handler_prompt_builder_compute().handle(
         ModelReviewPromptBuilderRequest(
             correlation_id=uuid4(),
             prompt_template_id="adversarial_reviewer_pr",

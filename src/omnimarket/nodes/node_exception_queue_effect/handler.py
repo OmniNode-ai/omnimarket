@@ -327,13 +327,22 @@ class HandlerExceptionQueueRead:
     orchestrator to drain, and classes seen twice with no mechanize lane sent. An unreadable queue is a line, never a
     crash of the read."""
 
+    def __init__(self, queue: HandlerExceptionQueue | None = None) -> None:
+        if queue is None:
+            from .container.container_exception_queue_effect import (
+                create_handler_exception_queue,
+            )
+
+            queue = create_handler_exception_queue()
+        self._queue = queue
+
     def handle(
         self, request: ModelExceptionQueueReadRequest
     ) -> ModelExceptionQueueRead:
         where = request.state_dir or state_dir()
         try:
             op, orch = (
-                HandlerExceptionQueue().handle(ModelExceptionQueueRequest(where, a))
+                self._queue.handle(ModelExceptionQueueRequest(where, a))
                 for a in AUDIENCES
             )
         except (OSError, ValueError, KeyError) as exc:
@@ -379,6 +388,24 @@ class HandlerExceptionQueueRead:
 class HandlerExceptionCli:
     """``queue_status.py --exception emit|list|resolve``: parse, run the handler, print, and return the exit code.
     The runner is ``ONEX_EXCEPTION_RUNNER`` when set; ``--no-dispatch`` starts none."""
+
+    def __init__(
+        self,
+        emit: HandlerExceptionEmit | None = None,
+        queue: HandlerExceptionQueue | None = None,
+        resolve: HandlerExceptionResolve | None = None,
+    ) -> None:
+        from .container.container_exception_queue_effect import (
+            create_handler_exception_emit,
+            create_handler_exception_queue,
+            create_handler_exception_resolve,
+        )
+
+        self._emit = emit if emit is not None else create_handler_exception_emit()
+        self._queue = queue if queue is not None else create_handler_exception_queue()
+        self._resolve = (
+            resolve if resolve is not None else create_handler_exception_resolve()
+        )
 
     def handle(self, request: ModelExceptionCliRequest) -> ModelExceptionCliResult:
         ap = argparse.ArgumentParser(prog=CLI, allow_abbrev=False)
@@ -427,7 +454,7 @@ class HandlerExceptionCli:
                 args.ticket,
                 args.repo,
             )
-            result = HandlerExceptionEmit().handle(
+            result = self._emit.handle(
                 ModelExceptionEmitRequest(where, row, now, runner, args.parent)
             )
             detail = f" | {result.detail}" if result.detail else ""
@@ -437,7 +464,7 @@ class HandlerExceptionCli:
             )
             code = 3 if result.status == "refused" else 0
         elif args.verb == "list":
-            listed = HandlerExceptionQueue().handle(
+            listed = self._queue.handle(
                 ModelExceptionQueueRequest(where, args.audience)
             )
             label = "decision" if args.audience == "operator" else "open"
@@ -449,7 +476,7 @@ class HandlerExceptionCli:
             )
             code = 0
         else:
-            done = HandlerExceptionResolve().handle(
+            done = self._resolve.handle(
                 ModelExceptionResolveRequest(where, args.id, args.by, args.how, now)
             )
             out, code = (

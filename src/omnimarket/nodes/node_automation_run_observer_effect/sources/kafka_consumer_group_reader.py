@@ -16,12 +16,15 @@ from confluent_kafka.admin import AdminClient
 # The class confluent_kafka.admin re-exports, from the module that types it.
 from confluent_kafka.admin._listoffsets import OffsetSpec
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_automation_run_observer_effect.sources.source_consumer_group import (
     ModelConsumerGroupSnapshot,
     ModelPartitionOffsets,
 )
 
-_TIMEOUT_SECONDS = 15.0
+_TIMEOUT_SECONDS: float = load_node_timeouts("node_automation_run_observer_effect").get(
+    "kafka_request_timeout_seconds"
+)
 #: OffsetSpec.latest is untyped upstream; bound once to its real signature.
 _LATEST: Callable[[], OffsetSpec] = OffsetSpec.latest
 
