@@ -49,6 +49,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_projection_prod_promotion_gate import (
     HandlerProjectionProdPromotionGate,
 )
@@ -165,13 +166,13 @@ class ProdPromotionGateProjectionWriter(BaseProjectionRunner):
             return
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        partition = int(input_data.pop("_partition", 0))
-        offset = int(input_data.pop("_offset", 0))
-        fallback = str(input_data.pop("_fallback_id", "")) or (
+        topic = request.topic_or(topics[0] if topics else "")
+        partition = request.partition
+        offset = request.offset
+        fallback = request.fallback_id or (
             deterministic_correlation_id(topic, partition, offset)
         )
         meta = MessageMeta(
@@ -180,7 +181,7 @@ class ProdPromotionGateProjectionWriter(BaseProjectionRunner):
             fallback_id=fallback,
             topic=topic,
         )
-        return asyncio.run(self._project_one_message(topic, input_data, meta))
+        return asyncio.run(self._project_one_message(topic, request.payload, meta))
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta

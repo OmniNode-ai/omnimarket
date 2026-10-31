@@ -29,6 +29,7 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow import (
     HandlerProjectionConsumerFlow,
     snapshot_publish_due,
@@ -41,7 +42,10 @@ from omnimarket.nodes.node_projection_consumer_flow.models import (
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 if TYPE_CHECKING:
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
@@ -320,7 +324,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim: one loop and one pool per writer.
 
         The runtime calls this from a worker thread (``asyncio.to_thread``), so
@@ -331,15 +335,10 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         lane fell 5.5 hours behind at about 6 heartbeats a minute).
         """
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         return self._run_on_dispatch_loop(
-            self._project_one_message(topic, input_data, meta)
+            self._project_one_message(topic, request.payload, meta)
         )
 
     def _run_on_dispatch_loop[T](self, coroutine: Coroutine[Any, Any, T]) -> T:
