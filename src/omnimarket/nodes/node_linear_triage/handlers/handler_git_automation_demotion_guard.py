@@ -51,6 +51,7 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_linear_triage.models.model_git_automation_demotion_guard import (
     ModelDemotionAuditReport,
     ModelTeamAutomationProbe,
@@ -63,6 +64,8 @@ from omnimarket.nodes.node_linear_triage.services.git_automation_demotion_guard 
 )
 
 _log = logging.getLogger(__name__)
+
+_TIMEOUTS = load_node_timeouts("node_linear_triage")
 
 __all__ = [
     "AUTOMATION_PAGE_SIZE",
@@ -146,9 +149,13 @@ class LinearGraphQLPerTeamTransport:
     mistaken for an empty-and-therefore-clean result.
     """
 
-    def __init__(self, api_key: str, *, timeout: float = 30.0) -> None:
+    def __init__(self, api_key: str, *, timeout: float | None = None) -> None:
         self._api_key = api_key
-        self._timeout = timeout
+        self._timeout = (
+            timeout
+            if timeout is not None
+            else _TIMEOUTS.get("linear_graphql_timeout_seconds")
+        )
 
     def _post(self, query: str, variables: dict[str, Any] | None = None) -> Any:
         payload = json.dumps({"query": query, "variables": variables or {}}).encode()

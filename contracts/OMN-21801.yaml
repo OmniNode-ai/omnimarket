@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21801"
+title: "omnimarket contracts_and_di literal_timeout burn-down, slice rf1550-c3: node_linear_triage declares its timeouts in its contract"
+summary: "node_linear_triage held 9 timeout literals in code (5 in handler_linear_triage, 1 in each git-automation guard, 1 in done_write_receipt_gate, 1 in local_github_pr_reads). Each value is now declared in the node's contract.yaml under timeouts with the value it held before, read through the shared omnimarket.handlers.node_timeouts_reader adapter, and every networked or subprocess class takes an injected timeout that wins over the declared one. The contracts_and_di check over src/omnimarket reports 580 literal_timeout findings before the slice and 571 after, with no baseline entry or suppression added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21801-node-timeouts"
+    statement: |-
+      node_linear_triage holds no timeout literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_timeout over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every timeout comes from the owning node contract or overlay and is injected, none hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract timeout tests and the existing node_linear_triage tests pass."
+    command: "uv run pytest tests/unit/test_omn21801_linear_triage_timeouts.py tests/nodes/node_linear_triage -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21801-timeouts-contract-tests"
+    description: "Declared values, refusal of an undeclared name, contract-sourced defaults and injection all hold."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn21801_linear_triage_timeouts.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21801-check-clean"
+    description: "The pinned contracts_and_di validator scans the node directory; its structured findings contain no literal_timeout rule. Import, scan and path errors fail the probe."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          path = Path("src/omnimarket/nodes/node_linear_triage")
+          assert path.is_dir(), "the target node is missing"
+          result = ValidatorContractsAndDi().validate([path])
+          assert result.metadata.files_processed > 0, "the validator did not scan the target"
+          findings = [issue for issue in result.issues if issue.rule_name == "literal_timeout"]
+          print(f"files_processed={result.metadata.files_processed}; literal_timeout={len(findings)}")
+          assert not findings, findings
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21801-cloud-ci"
+    description: "Cloud lane: the hosted CI of the PR at its head is the evidence in place of a lab receipt (lab_exempt_paths cloud_ci rules)."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "test -s contracts/OMN-21801.yaml"
+        cwd: "${OMNI_HOME}/omnimarket"
