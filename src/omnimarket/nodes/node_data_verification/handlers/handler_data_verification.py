@@ -13,6 +13,9 @@ import re
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.nodes.node_data_verification.container.container_inmemory import (
+    bind_data_source,
+)
 from omnimarket.nodes.node_data_verification.models.model_data_verification_completed_event import (
     ModelDataVerificationCompletedEvent,
 )
@@ -272,7 +275,7 @@ class HandlerDataVerification:
         behavior did for every real caller.
         """
         command = payload
-        _result, completed = self.run_verification(command, InmemoryDataSource())
+        _result, completed = self.run_verification(command, bind_data_source())
         return completed
 
     def make_completed_event(
