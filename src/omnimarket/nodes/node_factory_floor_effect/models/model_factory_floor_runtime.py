@@ -40,6 +40,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     ledger_window_days: int = Field(gt=0)
     watcher_max_age_min: int = Field(gt=0)
     manifest_suffix: str = Field(min_length=1)
+    plan_header_keys: tuple[str, ...] = Field(min_length=1)
     plans_relpath: str = Field(min_length=1)
     sources: ModelFactoryFloorSources
     output: ModelFactoryFloorOutput

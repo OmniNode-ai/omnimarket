@@ -87,6 +87,7 @@ class HandlerFactoryFloorEffect:
                 kb=Path(kb_value),
                 plans_relpath=rt.plans_relpath,
                 manifest_suffix=rt.manifest_suffix,
+                header_keys=rt.plan_header_keys,
                 contains=contains,
                 plans_today=plans_today,
             ),

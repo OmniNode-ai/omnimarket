@@ -63,6 +63,9 @@ runtime:
   ledger_window_days: 14
   watcher_max_age_min: 90
   manifest_suffix: .tasks.yaml
+  # A plan without a plans-today entry maps tickets and pull requests only from the header lines that start with
+  # one of these keys (text before the first section heading), never from every mention in its prose.
+  plan_header_keys: [ticket, tickets, epic]
   plans_relpath: beta/plans
   sources:
     watcher_relpath: .claude_scratch/pr-watcher/state.json

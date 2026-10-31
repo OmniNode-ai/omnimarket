@@ -17,6 +17,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
     load_contract,
     load_linear,
+    load_plans,
     load_watcher,
     parse_ledger_text,
     write_result,
@@ -403,3 +404,39 @@ def test_determinism_or_cli_the_contract_declares_every_runtime_setting() -> Non
     assert contract.runtime.sources.watcher_relpath.endswith("state.json")
     config = yaml.safe_load(COMPUTE_CONTRACT.read_text(encoding="utf-8"))["config"]
     assert config["schema_id"] == "omni.factory-floor/1"
+
+
+def test_determinism_or_cli_a_plan_without_a_plans_today_entry_maps_only_its_header_tickets(
+    tmp_path: Path,
+) -> None:
+    plans = tmp_path / "beta/plans"
+    plans.mkdir(parents=True)
+    (plans / "2026-10-31-example.md").write_text(
+        "# Example\n\nstate_as_of: 2026-10-31\nticket: OMN-100 (carrier), omnimarket#7\n\n"
+        "## Context\n\nA prose mention of OMN-21433 and of omniclaude#9 is a reference, not scope.\n",
+        encoding="utf-8",
+    )
+    (plan,) = load_plans(
+        kb=tmp_path,
+        plans_relpath="beta/plans",
+        manifest_suffix=".tasks.yaml",
+        header_keys=("ticket", "tickets", "epic"),
+        contains=("example",),
+        plans_today=None,
+    )
+    assert plan.tickets == ("OMN-100",)
+    assert plan.prs == ("omnimarket#7",)
+
+
+def test_determinism_or_cli_a_hold_without_a_reason_cell_carries_its_free_text_as_the_reason() -> (
+    None
+):
+    rows = parse_ledger_text(
+        "L1 2026-10-29T01:31:43Z | HOLD | lane=a | id=x-andon-hold | to=all | ticket=OMN-1 | "
+        "refuses handoff of work that is not validator logic\n"
+        "L2 2026-10-29T01:32:43Z | HOLD | lane=a | id=y | reason=explicit | ticket=OMN-1 | other text\n"
+    )
+    assert [row.reason for row in rows] == [
+        "refuses handoff of work that is not validator logic",
+        "explicit",
+    ]

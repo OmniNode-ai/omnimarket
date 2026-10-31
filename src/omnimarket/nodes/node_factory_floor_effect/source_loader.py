@@ -129,6 +129,7 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
                 fields.setdefault(key, tokens[0] if tokens else "")
             elif sep and key == "reason":
                 fields.setdefault(key, value.strip()[:300])
+        free_text = cells[-1] if not re.match(r"^[A-Za-z_-]+=", cells[-1]) else ""
         row = ModelFloorLedgerRow(
             ts=ts,
             kind=cells[1],
@@ -138,14 +139,14 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             row_id=fields.get("id", ""),
             re=fields.get("re", ""),
             until=_ledger_ts(fields.get("until", "")),
-            reason=fields.get("reason", ""),
+            reason=fields.get("reason") or free_text[:300],
             task=fields.get("task", ""),
             state=fields.get("state", ""),
             subject=fields.get("subject", ""),
             verdict=fields.get("verdict", ""),
             outcome=fields.get("outcome", ""),
             closes_claim=fields.get("closes-claim") or fields.get("closes-CLAIM", ""),
-            text=cells[-1][:400] if not re.match(r"^[A-Za-z_-]+=", cells[-1]) else "",
+            text=free_text[:400],
         )
         if row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}:
             kept.append((order, row))
@@ -343,11 +344,25 @@ def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
         )
 
 
+def header_text(text: str, keys: tuple[str, ...]) -> str:
+    """The plan's header lines that start with one of ``keys`` (``key: value``), up to the first section heading."""
+    wanted = {key.casefold() for key in keys}
+    lines: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            break
+        key, sep, _ = line.partition(":")
+        if sep and key.strip(" *_").casefold() in wanted:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def load_plans(
     *,
     kb: Path,
     plans_relpath: str,
     manifest_suffix: str,
+    header_keys: tuple[str, ...],
     contains: tuple[str, ...],
     plans_today: dict[str, Any] | None,
 ) -> tuple[ModelFloorPlanInput, ...]:
@@ -376,6 +391,7 @@ def load_plans(
                         yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                     )
             entry = entries.get(relative)
+            header = header_text(text, header_keys)
             title = re.search(r"^# (.*)", text, re.MULTILINE)
             plans.append(
                 ModelFloorPlanInput(
@@ -384,10 +400,10 @@ def load_plans(
                     manifest=manifest,
                     tickets=tuple(entry.get("tickets", ()))
                     if entry is not None
-                    else tuple(sorted(set(TICKET_RE.findall(text)))),
+                    else tuple(sorted(set(TICKET_RE.findall(header)))),
                     prs=tuple(entry.get("prs", ()))
                     if entry is not None
-                    else tuple(sorted(set(PR_RE.findall(text)))),
+                    else tuple(sorted(set(PR_RE.findall(header)))),
                     table_tasks=tuple(
                         ModelFloorTableTask.model_validate(task)
                         for task in entry.get("tasks", ())
