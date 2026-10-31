@@ -377,7 +377,9 @@ class TestRegisterTenantKey:
                 name = "openrouter"
                 provider = "openrouter"
                 plan = None
-                model = request.model
+                models = request.models
+                expected_version = request.expected_version
+                model = request.models[0]
                 # OMN-20991: the response also carries the expiry and its warning.
                 expires_at = None
                 expiry_warning = None
@@ -395,5 +397,5 @@ class TestRegisterTenantKey:
         )
 
         assert result.exit_code == 0, result.output
-        assert seen[0].model == _PAID
+        assert seen[0].models == [_PAID]
         assert f'"model": "{_PAID}"' in result.output

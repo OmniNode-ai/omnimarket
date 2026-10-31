@@ -20,8 +20,8 @@ import json
 import sys
 
 from omnimarket.models.skill_tree import ModelSkillTreeSnapshot
-from omnimarket.nodes.node_skill_hygiene_validate_compute.handlers.handler_skill_hygiene_validate import (
-    HandlerSkillHygieneValidate,
+from omnimarket.nodes.node_skill_hygiene_validate_compute.container.container_skill_hygiene_validate_compute import (
+    create_handler_skill_hygiene_validate,
 )
 from omnimarket.nodes.node_skill_hygiene_validate_compute.models import (
     ModelSkillHygieneValidateRequest,
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         return _EXIT_USAGE
     tree = ModelSkillTreeSnapshot.model_validate_json(raw)
 
-    result = HandlerSkillHygieneValidate().handle(
+    result = create_handler_skill_hygiene_validate().handle(
         ModelSkillHygieneValidateRequest(tree=tree, strict=args.strict)
     )
 

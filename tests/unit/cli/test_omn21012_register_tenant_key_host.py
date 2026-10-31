@@ -28,9 +28,8 @@ from omnimarket.projection.credential_publisher import (
     ModelInferenceCredentialCreateRequest,
 )
 
-# OMN-21059: every shipped row has the customer choose the model; this file
-# registers a key with no model, which a row reaches with that flag off.
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
+# OMN-21217: hosted intake requires an explicit customer model choice.
+pytestmark = pytest.mark.unit
 _VALUE = "sk-test-host-bound-secret-never-published"
 _TENANT = "omninode"
 _HOST_ENVS = (
@@ -103,6 +102,8 @@ def _register(*extra: str) -> Any:
             "--expires",
             "2099-01-01",
             *extra,
+            "--model",
+            "glm-5",
         ],
         input=f"{_VALUE}\n",
     )

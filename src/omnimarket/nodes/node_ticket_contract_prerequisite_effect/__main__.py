@@ -8,8 +8,8 @@ import argparse
 import os
 import sys
 
-from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite import (
-    HandlerTicketContractPrerequisite,
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.container.container_ticket_contract_prerequisite_effect import (
+    create_handler_ticket_contract_prerequisite,
 )
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
     ModelTicketContractPrerequisiteRequest,
@@ -22,7 +22,7 @@ def main() -> int:
     parser.add_argument("--base", default="origin/dev")
     parser.add_argument("--title")
     args = parser.parse_args()
-    result = HandlerTicketContractPrerequisite().handle(
+    result = create_handler_ticket_contract_prerequisite().handle(
         ModelTicketContractPrerequisiteRequest(
             head=args.head, base=args.base, title=args.title
         )
