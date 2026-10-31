@@ -167,6 +167,181 @@ async def _provisioned_runner() -> AsyncIterator[
 
 
 @pytest.mark.integration
+@pytest.mark.asyncio
+async def test_ordered_models_compare_and_swap_real_postgres() -> None:
+    """T5: actual SQL types and same-version competing list replacements."""
+    import json
+
+    async with _provisioned_runner() as (runner, conn, _schema):
+        ref = f"cred_{BYOK_TENANT}_test_models"
+        for offset, (models, version) in enumerate(
+            [
+                (["vendor/a", "vendor/b"], None),
+                (["vendor/b", "vendor/a"], 1),
+                (["vendor/c"], 1),
+            ]
+        ):
+            payload = {
+                "tenant_id": BYOK_TENANT,
+                "provider": "openrouter",
+                "name": "ordered-test",
+                "api_key_ref": ref,
+                "models": models,
+                "metadata": {"model": models[0]},
+                "expected_version": version,
+            }
+            assert await runner.project_event(
+                TOPIC_REGISTERED,
+                payload,
+                MessageMeta(
+                    partition=0,
+                    offset=offset,
+                    fallback_id=f"models-{offset}",
+                    topic=TOPIC_REGISTERED,
+                ),
+            )
+        row = dict(
+            await conn.fetchrow(
+                "SELECT * FROM delegation_routing_tenant_overlay WHERE tenant_id=$1",
+                BYOK_TENANT,
+            )
+        )
+        actual = row.get("models")
+        assert (json.loads(actual) if isinstance(actual, str) else actual) == [
+            "vendor/b",
+            "vendor/a",
+        ]
+        assert row.get("version") == 2
+        assert row["model_name"] == "vendor/b"
+        assert row["secret_ref"] == ref
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_ordered_models_concurrent_replace_real_postgres() -> None:
+    """Catch sync JSONB binding errors and two writers accepting one version.
+
+    The asynchronous runner's test cannot exercise psycopg2's list adaptation
+    or the synchronous adapter's tenant-scoped transaction boundary. This uses
+    the existing disposable hosted-CI schema, never a deployed lane database.
+    """
+    import asyncio
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+        apply_credential_registered,
+    )
+    from omnimarket.projection.postgres_sync_database import (
+        PostgresSyncProjectionAdapter,
+    )
+
+    async with _provisioned_runner() as (_runner, conn, schema):
+        ref = f"cred_{BYOK_TENANT}_sync_models"
+
+        def register(models: list[str], version: int | None = None) -> None:
+            apply_credential_registered(
+                {
+                    "tenant_id": BYOK_TENANT,
+                    "provider": "openrouter",
+                    "name": "sync-ordered-test",
+                    "api_key_ref": ref,
+                    "models": models,
+                    "metadata": {"model": models[0]},
+                    "expected_version": version,
+                },
+                PostgresSyncProjectionAdapter(_base_dsn(), schema=schema),
+            )
+
+        await asyncio.to_thread(register, ["vendor/a", "vendor/b"])
+        choices = [["vendor/b", "vendor/a"], ["vendor/c", "vendor/d"]]
+        ready = Barrier(2, timeout=10)
+
+        def replace(models: list[str]) -> None:
+            ready.wait()
+            register(models, 1)
+
+        def compete() -> None:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(replace, choices))
+
+        await asyncio.to_thread(compete)
+        row = await conn.fetchrow(
+            "SELECT models, version, model_name, secret_ref "
+            "FROM delegation_routing_tenant_overlay WHERE tenant_id=$1",
+            BYOK_TENANT,
+        )
+        assert row is not None
+        models = (
+            json.loads(row["models"])
+            if isinstance(row["models"], str)
+            else row["models"]
+        )
+        assert models in choices
+        assert row["version"] == 2
+        assert row["model_name"] == models[0]
+        assert row["secret_ref"] == ref
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_concurrent_revokes_raise_version_twice_real_postgres() -> None:
+    """OMN-21217: the sync adapter raises the key's version in SQL, so two
+    concurrent revokes over one stored key raise it twice, as the async
+    runner's ON CONFLICT does; a read-then-write would end one short.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+        apply_credential_registered,
+        apply_credential_revoked,
+    )
+    from omnimarket.projection.postgres_sync_database import (
+        PostgresSyncProjectionAdapter,
+    )
+
+    async with _provisioned_runner() as (_runner, conn, schema):
+        ref = f"cred_{BYOK_TENANT}_sync_version"
+        data = {
+            "tenant_id": BYOK_TENANT,
+            "provider": "openrouter",
+            "name": "sync-version-test",
+            "api_key_ref": ref,
+            "models": ["vendor/a"],
+            "metadata": {"model": "vendor/a"},
+        }
+
+        def adapter() -> PostgresSyncProjectionAdapter:
+            return PostgresSyncProjectionAdapter(_base_dsn(), schema=schema)
+
+        async def version() -> int:
+            value = await conn.fetchval(
+                "SELECT version FROM tenant_inference_credentials WHERE api_key_ref=$1",
+                ref,
+            )
+            assert isinstance(value, int)
+            return value
+
+        await asyncio.to_thread(apply_credential_registered, dict(data), adapter())
+        before = await version()
+        ready = Barrier(2, timeout=10)
+
+        def revoke(_: int) -> None:
+            ready.wait()
+            apply_credential_revoked(dict(data), adapter())
+
+        def compete() -> None:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                list(pool.map(revoke, range(2)))
+
+        await asyncio.to_thread(compete)
+        assert await version() == before + 2
+
+
+@pytest.mark.integration
 class TestRealPostgresWritePath:
     async def test_registered_inserts_a_correctly_typed_row(self) -> None:
         async with _provisioned_runner() as (runner, admin_conn, _schema):

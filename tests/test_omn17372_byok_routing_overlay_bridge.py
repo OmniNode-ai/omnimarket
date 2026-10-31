@@ -275,6 +275,7 @@ class TestOverlayWrite:
             API_KEY_REF,
             backend.timeout_ms,
             backend.max_tokens,
+            "[]",  # Legacy event has no recorded customer model list.
         ]
         # The tenant's OWN ref, never a house ref.
         assert "llm.openrouter.api_key" not in str(sql)
