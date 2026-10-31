@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models for node_receipt_gate_pin_advance_compute (OMN-20134)."""
 
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models.model_receipt_gate_pin_advance import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     EnumCallerVerdict,
     EnumPinForm,
     ModelCallerPlan,

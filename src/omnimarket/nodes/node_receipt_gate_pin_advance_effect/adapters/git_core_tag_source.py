@@ -19,7 +19,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     ModelCoreDevTag,
 )
 from omnimarket.nodes.node_receipt_gate_pin_advance_effect.protocols import (

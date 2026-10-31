@@ -22,7 +22,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     ModelCallerSnapshot,
     ModelFileEdit,
     ModelPinCaller,

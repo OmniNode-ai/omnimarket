@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     EnumCallerVerdict,
 )
 

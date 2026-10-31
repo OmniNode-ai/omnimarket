@@ -13,7 +13,7 @@ from importlib import resources
 
 import yaml
 
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     ModelReceiptGatePinPolicy,
 )
 

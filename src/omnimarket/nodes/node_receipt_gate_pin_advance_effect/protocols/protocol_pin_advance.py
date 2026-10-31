@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     ModelCallerPlan,
     ModelCallerSnapshot,
     ModelCoreDevTag,

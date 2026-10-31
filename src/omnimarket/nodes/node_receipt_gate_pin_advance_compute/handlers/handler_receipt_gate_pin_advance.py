@@ -34,7 +34,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models.model_receipt_gate_pin_advance import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     DEV_TAG_PATTERN,
     EnumCallerVerdict,
     EnumPinForm,

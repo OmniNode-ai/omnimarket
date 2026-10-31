@@ -23,12 +23,12 @@ from uuid import UUID
 
 from pydantic import JsonValue
 
-from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
+    ModelCallerPlan,
+)
+from omnimarket.models.model_repo_write_io import (
     EnumRepoWriteOperation,
     ModelRepoWriteRequest,
-)
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
-    ModelCallerPlan,
 )
 from omnimarket.nodes.node_receipt_gate_pin_advance_effect.protocols import (
     PinAdvanceError,

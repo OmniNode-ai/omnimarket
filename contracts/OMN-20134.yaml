@@ -108,3 +108,30 @@ dod_evidence:
       --no-cov -k DevMergeTag
   binds_ac:
   - AC5
+- id: dod-omn20134-deploy-shared-model-readback
+  description: >-
+    Hosted-runner deploy artifact check: read the published shared pin model at
+    the evaluated checkout revision and require the stale-pin verdict and edit
+    fields used by the effect. A missing artifact, missing verdict or missing
+    edit field fails. This reads the source artifact, not a running deployment.
+    The effect golden-chain check exercises the corresponding runtime path.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/model_receipt_gate_pin_advance.py" | python3 -c '
+      import ast, sys
+      tree = ast.parse(sys.stdin.read())
+      classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+      verdicts = {node.targets[0].id: ast.literal_eval(node.value) for node in classes["EnumCallerVerdict"].body if isinstance(node, ast.Assign)}
+      assert verdicts["STALE"] == "stale", verdicts
+      fields = {node.target.id for node in classes["ModelCallerPlan"].body if isinstance(node, ast.AnnAssign)}
+      assert {"edits", "target_tag", "target_commit_sha", "base_head_sha", "idempotency_key"} <= fields, fields
+      print("OMN-20134 deploy artifact readback: stale verdict and atomic edit plan PASS")
+      '
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py -q -p no:randomly --no-cov
+  binds_ac:
+  - AC2
+  - AC3
+  - AC4

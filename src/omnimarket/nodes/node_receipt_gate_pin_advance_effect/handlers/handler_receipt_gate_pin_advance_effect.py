@@ -30,14 +30,14 @@ from omnimarket.github_landing.github_landing_transport import (
     UrllibGithubLandingTransport,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
-from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.handlers.handler_receipt_gate_pin_advance import (
-    HandlerReceiptGatePinAdvance,
-)
-from omnimarket.nodes.node_receipt_gate_pin_advance_compute.models import (
+from omnimarket.models.model_receipt_gate_pin_advance import (
     ModelCallerPlan,
     ModelReceiptGatePinAdvanceRequest,
     ModelReceiptGatePinPolicy,
+)
+from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_receipt_gate_pin_advance_compute.handlers.handler_receipt_gate_pin_advance import (
+    HandlerReceiptGatePinAdvance,
 )
 from omnimarket.nodes.node_receipt_gate_pin_advance_effect.adapters.git_core_tag_source import (
     GitCloneCoreTagSource,
