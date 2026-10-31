@@ -442,7 +442,7 @@ def test_leverage_counts_holds_after_the_asks_pr_and_other_lanes_citing_its_tick
 
 def _parked(n: int, seq: int | None) -> str:
     cell = f" | seq={seq}" if seq is not None else ""
-    return f"2026-10-31T09:{n:02d}:00Z | STATUS | lane=orch | ask={ask_id(n)} | state=parked | reason=r{n}{cell}"
+    return f"2026-10-31T09:{n - 50:02d}:00Z | STATUS | lane=orch | ask={ask_id(n)} | state=parked | reason=r{n}{cell}"
 
 
 def test_parked_queue_orders_restated_then_leverage_then_seq_and_marks_wip() -> None:
