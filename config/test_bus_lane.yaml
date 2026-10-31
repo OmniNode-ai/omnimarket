@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# config/test_bus_lane.yaml
+#
+# The one bus lane the omnimarket test suite may reach (OMN-17427).
+#
+# WHY THIS EXISTS: the integration fixtures used to read KAFKA_BOOTSTRAP_SERVERS
+# from the ambient environment. An operator machine exports that variable for
+# its own tooling and it named another lane, so an integration run published
+# test events to that lane and auto-created topics on it. A test must never
+# reach a lane it did not declare.
+#
+# The broker a test uses comes from THIS declaration plus the lane overlay in
+# config/ci_bus_lanes.yaml, never from the environment. tests/bus_lane_guard.py
+# resolves it and refuses, before any publish, a broker that belongs to any
+# other declared lane. Change the lane here, in a reviewed diff, if tests ever
+# need a different one.
+lane: dev
