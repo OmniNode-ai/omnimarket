@@ -35,6 +35,14 @@ requirements:
         statement: "AC9: the page draws a bay for every machine in the record with its lanes against its cap, draws a machine the pool could not read as unread and one in repair as repair, draws the cloud bay with its stop lamp, and draws each lane with its title, kind, engine, status, PR and CI state, stalled mark, full detail and station link, escaping every character of the record -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_draws -q"
       - id: "AC10"
         statement: "AC10: the publish contract runs the pool read of the machines before the record is computed, a failed pool step is recorded as failed and the machines are then drawn unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k refresh -q"
+  - id: "req-omn21733-tabs"
+    statement: |-
+      The site is one page with a tab bar across the top. The first tab is a dashboard that shows at a glance each assembly line's state and stop reason, each machine with its lanes, load and memory, today's merges and reds and the age of every source. The other tabs (Factory floor, Process before and after, Decision map, Decision quality) are drawn inside the page. The tab is in the URL hash and the last tab chosen is remembered in the browser.
+    acceptance:
+      - id: "AC11"
+        statement: "AC11: the tab page has five tabs with the dashboard first, opens the tab the hash names, else the remembered tab, else the dashboard, still opens when the browser blocks storage, and draws the other four pages inside itself -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_tabs -q"
+      - id: "AC12"
+        statement: "AC12: the dashboard draws each declared line with its state and its recorded stop reason (a declared line no plan matched drawn as not in the record), each machine with its lanes, load and memory, today's merges and reds from the process-health series, and the age of every source with a stale or unread one marked, and draws an unread source as unread rather than zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_dashboard -q"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -111,7 +119,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function buildSlots(lines, status){'"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function buildSlots(lines, status){'"
   - id: "dod-omn21733-ac9"
     description: "AC9 machine bay page tests pass."
     source: "manual"
@@ -120,6 +128,28 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_draws"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac11"
+    description: "AC11 tab page tests pass."
+    source: "manual"
+    binds_ac: ["AC11"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_tabs"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac12"
+    description: "AC12 dashboard tests pass."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_dashboard"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-tabs-deploy"
+    description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires renderDashboard, which draws the dashboard tab and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function renderDashboard(p){'"
   - id: "dod-omn21733-ac10"
     description: "AC10 refresh step tests pass."
     source: "manual"
