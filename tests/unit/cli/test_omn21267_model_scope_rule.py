@@ -119,6 +119,16 @@ def _local_model(server: str) -> None:
     assert added.exit_code == 0, added.output
 
 
+def _rule_unset() -> None:
+    """Set a rule, then clear it: the route below is the one with no rule in force."""
+    assert _models("only", "local").exit_code == 0
+    cleared = _models("only", "--clear")
+    assert cleared.exit_code == 0, cleared.output
+    from omnimarket.handlers.delegation_model_scope import read_model_scope
+
+    assert read_model_scope() is None
+
+
 def _rule_files(state: Path) -> list[str]:
     return sorted(p.name for p in state.iterdir() if "scope" in p.name)
 
@@ -312,6 +322,7 @@ def test_model_scope_rule_unset_leaves_the_route_unchanged(
     _local_model(server)
     _openrouter_key_with(_PAID)
     assert _models("first", "openrouter", _PAID).exit_code == 0
+    _rule_unset()
 
     effect = _Effect()
     result = _dispatch(monkeypatch, tmp_path, effect)
@@ -327,6 +338,7 @@ def test_model_scope_rule_unset_local_first_unchanged(
 ) -> None:
     _local_model(server)
     _openrouter_key_with(_PAID)
+    _rule_unset()
     effect = _Effect()
     result = _dispatch(monkeypatch, tmp_path, effect)
     assert effect.calls == [_LOCAL]

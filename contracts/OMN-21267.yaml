@@ -69,7 +69,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k 'model_scope_rule and no_model_is_left'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21267-ac4-unset-unchanged"
-    description: "With no rule, a paid model chosen to be tried first is still called first, and without a choice the local model is still first, with no skipped_rungs; both tests pass unchanged at the merge base."
+    description: "With no rule, a paid model chosen to be tried first is still called first, and without a choice the local model is still first, with no skipped_rungs; each after a rule is set and then cleared with onex models only --clear. Fails at the merge base, which has no onex models only command to clear a rule with."
     source: "manual"
     binds_ac: ["AC4"]
     checks:
