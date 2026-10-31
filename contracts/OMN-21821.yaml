@@ -1,36 +1,36 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21821"
-title: "A canonical clone refused for tracked changes past a declared age is saved and converged"
-summary: "node_canonical_clone_dirty_converge_effect runs the sync engine with its refusal bound at the declared age, pushes source paths to a rescue branch, keeps generated or host-value paths only in the converge archive, then converges the clone through converge-canonical-clone.sh."
+title: "A canonical clone refused for tracked changes past a declared age is converged and its changes dropped"
+summary: "node_canonical_clone_dirty_converge_effect runs the sync engine with its refusal bound at the declared age, converges the clone through converge-canonical-clone.sh and drops what it held (no rescue branch, no copy), naming it in the one ledger row; a clone a live lane uses is left alone."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-omn21821-dirty-converge"
     statement: |-
-      A canonical clone refused for tracked changes past a declared age is saved and converged
+      A canonical clone refused for tracked changes past a declared age is converged and its changes dropped
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: a clone refused for the declared age converges, source paths on a pushed rescue branch and generated or host-value paths never pushed -- falsifier: uv run pytest tests/unit/clone_dirty_converge -q
+          AC1: a clone refused for the declared age is converged and what it held is dropped and named in the one row, with no rescue branch pushed -- falsifier: uv run pytest tests/unit/clone_dirty_converge -q
       - id: "AC2"
         statement: |-
-          AC2: a clone not yet refused for the age, one ahead of its upstream and one whose rescue push fails are left as they were -- falsifier: uv run pytest tests/unit/clone_dirty_converge -q -k "not_yet_refused or ahead_of_its_upstream or failed_rescue_push"
+          AC2: a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were -- falsifier: uv run pytest tests/unit/clone_dirty_converge -q -k "not_yet_refused or open_claim_names or process_works_inside"
 evidence_requirements:
   - kind: "tests"
-    description: "a clone refused for the declared age converges, source paths on a pushed rescue branch and generated or host-value paths never pushed"
+    description: "a clone refused for the declared age is converged and what it held is dropped and named in the one row, with no rescue branch pushed"
     command: "uv run pytest tests/unit/clone_dirty_converge -q"
   - kind: "tests"
-    description: "a clone not yet refused for the age, one ahead of its upstream and one whose rescue push fails are left as they were"
-    command: "uv run pytest tests/unit/clone_dirty_converge -q -k \"not_yet_refused or ahead_of_its_upstream or failed_rescue_push\""
+    description: "a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were"
+    command: "uv run pytest tests/unit/clone_dirty_converge -q -k \"not_yet_refused or open_claim_names or process_works_inside\""
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-ac1"
-    description: "a clone refused for the declared age converges, source paths on a pushed rescue branch and generated or host-value paths never pushed"
+    description: "a clone refused for the declared age is converged and what it held is dropped and named in the one row, with no rescue branch pushed"
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -38,10 +38,10 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-ac2"
-    description: "a clone not yet refused for the age, one ahead of its upstream and one whose rescue push fails are left as they were"
+    description: "a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were"
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/clone_dirty_converge -q -k \"not_yet_refused or ahead_of_its_upstream or failed_rescue_push\""
+        check_value: "uv run pytest tests/unit/clone_dirty_converge -q -k \"not_yet_refused or open_claim_names or process_works_inside\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
