@@ -71,6 +71,19 @@ writer_topics:
   name_prefix: "work-ledger-append-from-"
   version: 1
   principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+# OMN-21622 (operator RULING 2026-10-30T21:35:44Z): the serve host also takes as writers the rows
+# of the deployment's developer.principal overlay whose role is in `roles`, read at start and
+# again whenever the file changes (checked every `refresh_seconds`), so declaring a machine's row
+# is the one step that lets it append and the serve is never reinstalled for it. The overlay is
+# `path` under the directory `root_env` names; a row without a role is `default_role`. An
+# unreadable or malformed overlay keeps the writers the host already serves.
+writer_overlay:
+  root_env: "ONEX_WORKSPACE_CONFIG_ROOT"
+  path: "config/lab/developer-principal-overlay.yaml"
+  schema_version: "developer_principal.v1"
+  default_role: "developer"
+  roles: ["machine"]
+  refresh_seconds: 60
 # OMN-20275: the serve host watches that its consumers hold partition assignments. When they do not for
 # `unhealthy_probes_before_degraded` probes in a row the host reports degraded, raises one alarm for the
 # episode and drops and retakes every subscription, waiting `backoff_initial_seconds` growing by

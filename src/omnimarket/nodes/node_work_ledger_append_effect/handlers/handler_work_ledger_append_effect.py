@@ -91,6 +91,16 @@ class HandlerWorkLedgerAppendEffect:
         )
         self._operator_principal = operator_principal
 
+    def set_writer_principals(self, writer_principals: Iterable[str]) -> None:
+        """Replace the known writers; the operator principal stays one (OMN-21622).
+
+        The serve process calls this when the deployment's principal overlay declares a new
+        machine, so a row a new machine publishes is attributed without reinstalling the serve.
+        """
+        self._writer_principals = frozenset(writer_principals) | (
+            {self._operator_principal} if self._operator_principal else set()
+        )
+
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
         return "NODE_HANDLER"
