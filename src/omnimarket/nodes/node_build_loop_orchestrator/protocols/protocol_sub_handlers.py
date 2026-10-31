@@ -28,6 +28,34 @@ class CloseoutResult(BaseModel):
     success: bool = Field(default=True)
 
 
+class CloseoutRequest(BaseModel):
+    """Typed request payload for the closeout effect handler (def-B).
+
+    Structurally mirrors ``ModelCloseoutInput`` at the orchestrator seam. The
+    real ``HandlerCloseout`` (cast to this protocol) reads only
+    ``request.correlation_id`` / ``request.dry_run``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Build loop cycle correlation ID.")
+    dry_run: bool = Field(default=False, description="Skip actual side effects.")
+
+
+class VerifyRequest(BaseModel):
+    """Typed request payload for the verification effect handler (def-B).
+
+    Structurally mirrors ``ModelVerifyInput`` at the orchestrator seam. The
+    real ``HandlerVerify`` (cast to this protocol) reads only
+    ``request.correlation_id`` / ``request.dry_run``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Build loop cycle correlation ID.")
+    dry_run: bool = Field(default=False, description="Skip actual checks.")
+
+
 class VerifyResult(BaseModel):
     """Result from a verification operation."""
 
@@ -126,6 +154,25 @@ class DelegationPayload(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
 
 
+class DispatchRequest(BaseModel):
+    """Typed request payload for the build dispatch effect handler (def-B).
+
+    Structurally mirrors ``ModelBuildDispatchInput`` at the orchestrator seam
+    (``correlation_id`` + ``targets`` + ``dry_run``) without reaching into the
+    dispatch node's private model package. The real ``HandlerBuildDispatch``
+    (cast to this protocol) reads only ``request.correlation_id`` /
+    ``request.targets`` / ``request.dry_run``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    correlation_id: UUID = Field(..., description="Build loop cycle correlation ID.")
+    targets: tuple[BuildTarget, ...] = Field(
+        default_factory=tuple, description="Tickets to dispatch for building."
+    )
+    dry_run: bool = Field(default=False, description="Skip actual dispatch.")
+
+
 class DispatchResult(BaseModel):
     """Result from build dispatch."""
 
@@ -144,9 +191,7 @@ class ProtocolCloseoutHandler(Protocol):
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        dry_run: bool = False,
+        request: CloseoutRequest,
     ) -> CloseoutResult: ...
 
 
@@ -156,9 +201,7 @@ class ProtocolVerifyHandler(Protocol):
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        dry_run: bool = False,
+        request: VerifyRequest,
     ) -> VerifyResult: ...
 
 
@@ -188,8 +231,5 @@ class ProtocolBuildDispatchHandler(Protocol):
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        targets: tuple[BuildTarget, ...],
-        dry_run: bool = False,
+        request: DispatchRequest,
     ) -> DispatchResult: ...

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from omnimarket.handlers.overlay_keys import resolve_overlay_key
+from omnimarket.handlers.runtime_paths import runtime_path
 
 CANARY_RECORD = "$ONEX_REGISTRY_ROOT/.claude_scratch/adoption/canary.json"
 CANARY_RECORD_REL = ".claude_scratch/adoption/canary.json"
@@ -481,7 +482,7 @@ class HandlerInstallCanary:
         )
         installed_file = self.runtime["expand"](
             target.spec.get(
-                "installed_plugins", "~/.claude/plugins/installed_plugins.json"
+                "installed_plugins", runtime_path("claude.installed_plugins_file")
             ),
             target.env,
         )

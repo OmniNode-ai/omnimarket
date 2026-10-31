@@ -5,17 +5,16 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from omnimarket.handlers.runtime_paths import runtime_dir
+
 from ..models import ModelLandingTlcPublishRequest, ModelLandingTlcSyncRequest
 from .handler_landing_tlc_publish import HandlerLandingTlcPublish
 from .handler_landing_tlc_sync import HandlerLandingTlcSync
-
-DEFAULT_STATE = "~/.local/state/omni/landing"
 
 
 def _repository(value: str) -> str:
@@ -39,7 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sync.add_argument(
         "--state-dir",
         type=Path,
-        default=Path(os.environ.get("LANDING_STATE_DIR", DEFAULT_STATE)),
+        default=Path(runtime_dir("landing_tlc_receipt.state_dir", "LANDING_STATE_DIR")),
     )
     sync.add_argument("--repo", type=_repository, required=True)
     sync.add_argument("--keep-newest", type=int, default=3)

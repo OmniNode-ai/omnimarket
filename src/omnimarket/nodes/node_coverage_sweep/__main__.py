@@ -21,9 +21,9 @@ import logging
 import os
 import sys
 
+from omnimarket.nodes.node_coverage_sweep.container import container_coverage_sweep
 from omnimarket.nodes.node_coverage_sweep.handlers.handler_coverage_sweep import (
     CoverageSweepRequest,
-    NodeCoverageSweep,
 )
 from omnimarket.nodes.sweep_scope import resolve_default_target_dirs
 
@@ -85,7 +85,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = NodeCoverageSweep()
+    handler = container_coverage_sweep.build_node_coverage_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

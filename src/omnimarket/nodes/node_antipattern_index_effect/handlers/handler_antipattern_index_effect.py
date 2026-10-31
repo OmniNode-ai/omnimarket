@@ -36,6 +36,7 @@ from typing import Any
 
 import httpx
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_antipattern_index_effect.models.model_antipattern_index_request import (
     ModelAntipatternIndexRequest,
 )
@@ -197,7 +198,11 @@ class HandlerAntipatternIndexEffect:
         indexed_ids: list[str] = []
         failed = 0
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            timeout=load_node_timeouts("node_antipattern_index_effect").get(
+                "embedding_request_timeout_seconds"
+            )
+        ) as client:
             for entry in vector_entries:
                 try:
                     text = _build_entry_text(entry)
