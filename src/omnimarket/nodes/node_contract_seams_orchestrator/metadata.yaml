@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_contract_seams_orchestrator
+version: 1.0.0
+description: Contracts and seams first for a design; a design is connected only when every contract is written, every node scaffolded, every crossing matched and the head event reaches the tail.
+pack: operator_tooling
+node_role: orchestrator
+display_name: Contract Seams Orchestrator
+omnibase_core_compat: '>=0.47.53,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_contract_seams_orchestrator: omnimarket.nodes.node_contract_seams_orchestrator
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- orchestrator
+- contract-seams
+- OMN-21627

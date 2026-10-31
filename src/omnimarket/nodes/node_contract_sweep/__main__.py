@@ -28,10 +28,10 @@ import argparse
 import logging
 import sys
 
+from omnimarket.nodes.node_contract_sweep.container import container_contract_sweep
 from omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep import (
     ContractSweepRequest,
     EnumSweepStatus,
-    NodeContractSweep,
 )
 
 _log = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def main() -> None:
 
     request = ContractSweepRequest(repos=repos, dry_run=args.dry_run)
 
-    handler = NodeContractSweep()
+    handler = container_contract_sweep.build_node_contract_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

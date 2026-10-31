@@ -14,8 +14,8 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from omnimarket.nodes.node_trajectory_evaluation_effect.handlers.handler_trajectory_evaluation import (
-    HandlerTrajectoryEvaluation,
+from omnimarket.nodes.node_trajectory_evaluation_effect.container.container_trajectory_evaluation_effect import (
+    create_handler_trajectory_evaluation,
 )
 from omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation import (
     ModelTrajectoryEvaluationFailed,
@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         if args[0] == "submit"
         else ModelTrajectoryEvaluationPoll.model_validate_json(raw)
     )
-    outcome = asyncio.run(HandlerTrajectoryEvaluation().handle(command))
+    outcome = asyncio.run(create_handler_trajectory_evaluation().handle(command))
     sys.stdout.write(outcome.model_dump_json() + "\n")
     if isinstance(outcome, ModelTrajectoryEvaluationRefused):
         return 3

@@ -1,0 +1,28 @@
+name: projection_delegation_budget_readings
+version: "1.0.0"
+description: "One row per delegate-skill terminal with the budget the run resolved and the time it took, readable from any lab host."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, delegation, budget, kafka, reducer]
+ownership:
+  delegation_budget_readings:
+    ddl_owner: omnimarket.nodes.node_projection_delegation_budget_readings
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_delegation_budget_readings.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      Omnimarket owns the fold and read model. Omnibase-infra vendors the
+      migrations solely so its forward migration runner can deploy them.
+pack: "data"
+display_name: "Projection: Delegation Budget Readings"
+node_role: "effect"

@@ -108,3 +108,6 @@ dod_evidence:
       git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21709.yaml';
       ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21536.yaml'
     cwd: .
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_omn21709_own_contract_file.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket

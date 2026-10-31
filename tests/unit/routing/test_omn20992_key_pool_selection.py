@@ -92,6 +92,9 @@ def _cred(
         "tenant_id": tenant,
         "provider": provider,
         "name": ref[-4:],
+        # A healthy key has an explicit owner choice. Unknown legacy choices
+        # are refused separately by the per-key storage regression suite.
+        "models": ["claude-model"],
         "revoked_at": revoked_at,
         "expires_at": expires_at,
     }

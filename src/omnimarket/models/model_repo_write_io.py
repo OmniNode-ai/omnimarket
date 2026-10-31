@@ -13,6 +13,8 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 - pr_thread_reply replaces ``gh api --method POST
   /repos/{o}/{r}/pulls/{n}/comments/{id}/replies`` with the same POST: one reply
   on a pull request's review-comment thread.
+- pr_thread_resolve replaces ``gh api graphql`` resolveReviewThread with the
+  same GraphQL mutation, refused unless the thread has a reply from the fixing lane.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -62,6 +64,7 @@ class EnumRepoWriteOperation(StrEnum):
     PR_CLOSE = "pr_close"
     PR_COMMENT = "pr_comment"
     PR_THREAD_REPLY = "pr_thread_reply"
+    PR_THREAD_RESOLVE = "pr_thread_resolve"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -79,6 +82,7 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
         "output",
     ),
     EnumRepoWriteOperation.PR_THREAD_REPLY: ("thread_comment_id",),
+    EnumRepoWriteOperation.PR_THREAD_RESOLVE: ("review_thread_id",),
 }
 
 
@@ -100,6 +104,7 @@ class EnumRepoWriteRefusal(StrEnum):
     LEASE_UNREADABLE = "lease_unreadable"
     CONTRACT_REQUIRED = "contract_required"
     NOT_FOUND = "not_found"
+    THREAD_NOT_REPLIED = "thread_not_replied"
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
@@ -112,6 +117,7 @@ _PR_SCOPED = frozenset(
         EnumRepoWriteOperation.PR_CLOSE,
         EnumRepoWriteOperation.PR_COMMENT,
         EnumRepoWriteOperation.PR_THREAD_REPLY,
+        EnumRepoWriteOperation.PR_THREAD_RESOLVE,
     }
 )
 # Operations that change a PR's state name the head they expect to act on.
@@ -265,6 +271,13 @@ class ModelRepoWriteRequest(BaseModel):
         description="pr_thread_reply: the id of the review comment that starts "
         "the thread, the first comment of the thread.",
     )
+    review_thread_id: str | None = Field(
+        default=None,
+        pattern=r"^PRRT_[A-Za-z0-9_-]+$",
+        description="pr_thread_resolve: the GraphQL node id of the review thread "
+        "(`onex scm pr-threads` lists them). Refused unless the thread already "
+        "has a reply from the fixing lane.",
+    )
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -308,6 +321,11 @@ class ModelRepoWriteRequest(BaseModel):
             and self.thread_comment_id is None
         ):
             missing.append("thread_comment_id")
+        if (
+            op is EnumRepoWriteOperation.PR_THREAD_RESOLVE
+            and self.review_thread_id is None
+        ):
+            missing.append("review_thread_id")
         if op is EnumRepoWriteOperation.PR_CLOSE and self.requested_by_run is None:
             missing.append("requested_by_run")
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:

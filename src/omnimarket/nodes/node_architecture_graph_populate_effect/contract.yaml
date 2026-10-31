@@ -253,3 +253,7 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.architecture-graph-populated.v1
+
+timeouts:
+  retry_initial_backoff_seconds: 0.1  # Bounds the initial wait before a transient-write retry.
+  retry_backoff_multiplier: 2.0  # Unitless factor scaling successive retry delays.
