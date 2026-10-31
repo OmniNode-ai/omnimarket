@@ -20,11 +20,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import yaml
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from omnimarket.github_landing.github_landing_transport import (
     UrllibGithubLandingTransport,
@@ -34,6 +37,12 @@ from omnimarket.models.model_receipt_gate_pin_advance import (
     ModelCallerPlan,
     ModelReceiptGatePinAdvanceRequest,
     ModelReceiptGatePinPolicy,
+)
+from omnimarket.models.receipt_gate_pin_friction import (
+    EnumPinKind,
+    EnumPinOutcomeKind,
+    EnumPinRefusalClass,
+    ModelPinOutcomeEvent,
 )
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_receipt_gate_pin_advance_compute.handlers.handler_receipt_gate_pin_advance import (
@@ -71,6 +80,21 @@ from omnimarket.nodes.node_receipt_gate_pin_advance_effect.protocols import (
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 _CONFIG_KEY = "pin_advance_effect_config"
+_OUTCOME_OF_RESULT: dict[EnumPinPrOutcome, EnumPinOutcomeKind] = {
+    EnumPinPrOutcome.OPENED: EnumPinOutcomeKind.OPENED,
+    EnumPinPrOutcome.REPLAYED: EnumPinOutcomeKind.REPLAYED,
+    EnumPinPrOutcome.FAILED: EnumPinOutcomeKind.FAILED,
+}
+
+
+def classify_refusal(
+    text: str, config: ModelPinAdvanceEffectConfig
+) -> EnumPinRefusalClass:
+    """The refusal class a failure's text names, from the contract's patterns."""
+    for entry in config.refusal_classes:
+        if re.search(entry.pattern, text, re.IGNORECASE):
+            return entry.refusal_class
+    return config.default_refusal_class
 
 
 def load_effect_config(
@@ -92,6 +116,7 @@ class HandlerReceiptGatePinAdvanceEffect:
         tag_source: ProtocolCoreTagSource | None = None,
         repository: ProtocolCallerRepository | None = None,
         pr_opener: ProtocolPinPrOpener | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._planner = (
             planner if planner is not None else HandlerReceiptGatePinAdvance()
@@ -101,17 +126,35 @@ class HandlerReceiptGatePinAdvanceEffect:
         self._tag_source = tag_source
         self._repository = repository
         self._pr_opener = pr_opener
+        self._clock = clock or (lambda: datetime.now(UTC))
 
-    async def handle(
+    async def handle(self, event: ModelDevMergeTagEvent) -> tuple[BaseModel, ...]:
+        """The completed event, then one typed outcome event per caller outcome.
+
+        The runtime's fan-out resolver routes each element by its class to the
+        topic the contract's published_events names for it.
+        """
+        completed, outcomes = await self._run(event)
+        return (completed, *outcomes)
+
+    async def advance(
         self, event: ModelDevMergeTagEvent
     ) -> ModelReceiptGatePinAdvanceCompleted:
+        return (await self._run(event))[0]
+
+    async def _run(
+        self, event: ModelDevMergeTagEvent
+    ) -> tuple[ModelReceiptGatePinAdvanceCompleted, tuple[ModelPinOutcomeEvent, ...]]:
         policy = self._policy
         if event.repo != policy.source_repository:
-            return ModelReceiptGatePinAdvanceCompleted(
-                trigger_tag=event.tag,
-                disposition=EnumPinAdvanceDisposition.IGNORED,
-                detail=f"{event.repo} is not the source repository "
-                f"{policy.source_repository}",
+            return (
+                ModelReceiptGatePinAdvanceCompleted(
+                    trigger_tag=event.tag,
+                    disposition=EnumPinAdvanceDisposition.IGNORED,
+                    detail=f"{event.repo} is not the source repository "
+                    f"{policy.source_repository}",
+                ),
+                (),
             )
         tag_source = self._tag_source or self._default_tag_source()
         repository = self._repository or await self._default_repository()
@@ -134,14 +177,19 @@ class HandlerReceiptGatePinAdvanceEffect:
                     self._advance, plan, repository, opener, event, correlation_id
                 )
             )
+        unjudged_plans = tuple(
+            p for p in planned.violations if not p.needs_pull_request
+        )
         unjudged = tuple(
             ModelPinUnjudged(
-                repository=p.repository, verdict=p.verdict, detail=p.detail
+                repository=p.repository,
+                verdict=p.verdict,
+                pin_kind=self._kind_of(p),
+                detail=p.detail,
             )
-            for p in planned.violations
-            if not p.needs_pull_request
+            for p in unjudged_plans
         )
-        return ModelReceiptGatePinAdvanceCompleted(
+        completed = ModelReceiptGatePinAdvanceCompleted(
             trigger_tag=event.tag,
             disposition=(
                 EnumPinAdvanceDisposition.ADVANCED
@@ -152,9 +200,74 @@ class HandlerReceiptGatePinAdvanceEffect:
             results=tuple(results),
             unjudged=unjudged,
         )
+        outcomes = self._outcome_events(
+            event, completed, branch_prefix=policy.branch_prefix
+        )
+        return completed, outcomes
 
     @staticmethod
+    def _kind_of(plan: ModelCallerPlan) -> EnumPinKind:
+        assert plan.pin_kind is not None  # the planner sets it on every plan
+        return EnumPinKind(plan.pin_kind.value)
+
+    def _outcome_events(
+        self,
+        event: ModelDevMergeTagEvent,
+        completed: ModelReceiptGatePinAdvanceCompleted,
+        *,
+        branch_prefix: str,
+    ) -> tuple[ModelPinOutcomeEvent, ...]:
+        """One typed event per caller outcome; a dry run happened to no one, so it has none."""
+        events: list[ModelPinOutcomeEvent] = []
+        for result in completed.results:
+            if result.outcome is EnumPinPrOutcome.DRY_RUN:
+                continue
+            at = result.at or self._clock()
+            events.append(
+                ModelPinOutcomeEvent(
+                    outcome=_OUTCOME_OF_RESULT[result.outcome],
+                    pin_kind=result.pin_kind,
+                    repository=result.repository,
+                    core_tag=result.target_tag,
+                    branch=result.branch,
+                    branch_head_sha=result.branch_head_sha,
+                    pr_number=result.pr_number,
+                    pr_url=result.pr_url,
+                    tag_pushed_at=event.as_of,
+                    outcome_at=at,
+                    seconds_tag_to_pr_opened=(
+                        None
+                        if event.as_of is None
+                        or result.outcome is EnumPinPrOutcome.FAILED
+                        else max((at - event.as_of).total_seconds(), 0.0)
+                    ),
+                    refusal_class=result.refusal_class,
+                    detail=result.detail,
+                    delivery_id=event.delivery_id,
+                )
+            )
+        if completed.newest_tag is None:
+            return tuple(events)
+        dry_run = event.dry_run or self._config.mode is EnumPinAdvanceMode.DRY_RUN
+        for held in () if dry_run else completed.unjudged:
+            events.append(
+                ModelPinOutcomeEvent(
+                    outcome=EnumPinOutcomeKind.REFUSED,
+                    pin_kind=held.pin_kind,
+                    repository=held.repository,
+                    core_tag=completed.newest_tag,
+                    branch=f"{branch_prefix}/{completed.newest_tag}",
+                    tag_pushed_at=event.as_of,
+                    outcome_at=self._clock(),
+                    refusal_class=EnumPinRefusalClass.UNMATCHED,
+                    detail=f"{held.verdict.value}: {held.detail}",
+                    delivery_id=event.delivery_id,
+                )
+            )
+        return tuple(events)
+
     def _advance(
+        self,
         plan: ModelCallerPlan,
         repository: ProtocolCallerRepository,
         opener: ProtocolPinPrOpener | None,
@@ -177,10 +290,17 @@ class HandlerReceiptGatePinAdvanceEffect:
                 outcome=outcome,
                 target_tag=plan.target_tag or "",
                 branch=plan.branch,
+                pin_kind=self._kind_of(plan),
                 branch_head_sha=branch_head_sha,
                 pr_number=pr_number,
                 pr_url=pr_url,
                 detail=detail,
+                refusal_class=(
+                    classify_refusal(detail, self._config)
+                    if outcome is EnumPinPrOutcome.FAILED
+                    else None
+                ),
+                at=self._clock(),
             )
 
         if opener is None:

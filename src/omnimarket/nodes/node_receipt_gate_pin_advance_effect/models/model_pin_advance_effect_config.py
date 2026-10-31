@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnimarket.models.receipt_gate_pin_friction import EnumPinRefusalClass
 
 
 class EnumPinAdvanceMode(StrEnum):
@@ -14,6 +17,21 @@ class EnumPinAdvanceMode(StrEnum):
 
     DRY_RUN = "dry_run"
     ENFORCE = "enforce"
+
+
+class ModelRefusalClassPattern(BaseModel):
+    """A refusal class and the pattern of the failure text that names it (contract data)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    refusal_class: EnumPinRefusalClass
+    pattern: str = Field(min_length=1)
+
+    @field_validator("pattern")
+    @classmethod
+    def _pattern_compiles(cls, value: str) -> str:
+        re.compile(value)
+        return value
 
 
 class ModelPinAdvanceEffectConfig(BaseModel):
@@ -31,3 +49,7 @@ class ModelPinAdvanceEffectConfig(BaseModel):
     bus_lane_env: str = Field(min_length=1)
     default_bus_lane: str = Field(min_length=1)
     bus_timeout_s: float = Field(gt=0)
+    refusal_classes: tuple[ModelRefusalClassPattern, ...] = Field(
+        description="First match wins: the class a failed pin pull request's error text names.",
+    )
+    default_refusal_class: EnumPinRefusalClass

@@ -22,10 +22,21 @@ requirements:
     statement: 'AC2: the handler-shape validator of the installed omnibase_core reports no noncanonical_handle finding on a BaseProjectionRunner subclass -- falsifier: the validator scan of the evidence below prints a (path, line) pair and exits non-zero'
   - id: AC3
     statement: 'AC3: the shim reads both source coordinates once and no runner overrides it, and the tests of every touched projection node pass -- falsifier: the pytest command of the evidence below exits non-zero'
+- id: "req-omn21536-s4-pr-review-fsm-reducer-names-no-envelope"
+  statement: |-
+    The pr-review FSM reducer's handler takes its typed advance command, references no event envelope type, and folds the same state as before.
+  acceptance:
+    - id: "AC4"
+      statement: "AC4: the handler-shape validator of omnibase_core reports no envelope_in_core issue on the pr-review FSM reducer handler -- falsifier: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py exits non-zero"
+    - id: "AC5"
+      statement: "AC5: the tests of the pr-review FSM reducer pass -- falsifier: the pytest command of the evidence below exits non-zero"
 evidence_requirements:
 - kind: tests
   description: The shim tests, the OMN-18905 coordinate guard and the projection suites, run on a lab host at the pushed head.
   command: uv run pytest tests/test_projection_request.py tests/test_omn18905_writers_carry_source_coordinates.py tests/test_projection_runner_nodes_declare_their_outputs.py tests/test_projection_runner.py tests/projection -q --no-cov --tb=line
+- kind: "tests"
+  description: "The pr-review FSM reducer's tests and the envelope ratchet test, run on a lab host at the pushed head."
+  command: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -110,3 +121,48 @@ dod_evidence:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_lab_job_projection_real_postgres.py::test_the_shim_strips_the_delivery_keys_before_the_event_model --refuse-skips -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
+- id: "dod-omn21536-s4-ac1-no-envelope-in-core"
+  description: "AC4 runs the handler-shape validator on the pr-review FSM reducer handler and finds no envelope_in_core issue."
+  source: "manual"
+  binds_ac: ["AC4"]
+  checks:
+    - check_type: "test_passes"
+      check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov"
+      cwd: "${OMNI_HOME}/omnimarket"
+- id: "dod-omn21536-s4-ac2-pr-review-fsm-tests"
+  description: "AC5 runs the pr-review FSM reducer's tests."
+  source: "manual"
+  binds_ac: ["AC5"]
+  checks:
+    - check_type: "test_passes"
+      check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly"
+      cwd: "${OMNI_HOME}/omnimarket"
+- id: "dod-omn21536-s4-deploy-handler-smoke"
+  description: "Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command, names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated checkout package, not a production rollout."
+  source: "manual"
+  checks:
+    - check_type: "command"
+      check_value: |
+        set -eu;
+        export PYTHONDONTWRITEBYTECODE=1;
+        uv run python -c '
+        import asyncio
+        import inspect
+        from uuid import uuid4
+        from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
+        from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
+        src = inspect.getsource(mod)
+        assert "ModelEventEnvelope" not in src, "handler names the event envelope"
+        hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
+        assert list(hints) == ["self", "request"], list(hints)
+        assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
+        cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
+        out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
+        assert len(out.projections) == 1, out
+        print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
+        '
+      cwd: "."
+    - check_type: "command"
+      check_value: |-
+        gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98 --jq '.content' | base64 -d | grep -c 'request: ModelPrReviewAdvanceCommand'
+      cwd: "."
