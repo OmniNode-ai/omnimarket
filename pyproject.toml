@@ -1240,7 +1240,7 @@ omnimarket = "omnimarket.nodes"
 # OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
 # OMN-17427: infra#5449 reaches the done-write gate through omnibase_core's node contract,
 # so this tag imports no handler module that core#2135 moved.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261030213019-091013fd7adb" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261031054837-4284f5bf5587" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.

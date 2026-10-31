@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: cee128709eef53924eeba314dfed097f46049aba3bdd072c94b957b369a5b561
+      sha256: b071d9da9febdd3c203ca858f854b08ded793cdbd062062e0ac60e2173f959cb
     expected_exit: 0
     target: src/omnibase_core/models/node_metadata/model_node_core_metadata_class.py
     patch:

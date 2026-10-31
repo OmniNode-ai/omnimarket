@@ -16,6 +16,8 @@ requirements:
     statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
   - id: AC3
     statement: 'AC3: the omnibase-core dev merge tag bump to dev-20261031000524-fc6159b98026 keeps pyproject.toml and uv.lock on one tag -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
+  - id: AC4
+    statement: 'AC4: the omnibase-infra pin advances to dev-20261031054837-4284f5bf5587, whose own omnibase-core pin is the fc6159b98026 tag, so the Sibling Release Compatibility Gate resolves one omnibase-core -- falsifier: grep -q dev-20261031054837-4284f5bf5587 pyproject.toml uv.lock'
 evidence_requirements:
 - kind: tests
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
@@ -58,3 +60,15 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC3
+- id: dod-omn21478-omnimarket-infra-bump-4284f5bf5587
+  description: The omnibase-infra pin names dev-20261031054837-4284f5bf5587 in pyproject.toml and uv.lock, and the pins agree on one dev merge tag.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: grep -q dev-20261031054837-4284f5bf5587 pyproject.toml && grep -q dev-20261031054837-4284f5bf5587 uv.lock
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
