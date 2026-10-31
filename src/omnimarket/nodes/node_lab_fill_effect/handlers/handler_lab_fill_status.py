@@ -23,7 +23,11 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendRequest,
 )
 
-from ..models import ModelLabFillStatusWriteRequest, ModelLabFillStatusWriteResult
+from ..models import (
+    ModelLabFillStatusWriteRequest,
+    ModelLabFillStatusWriteResult,
+    load_lab_fill_port_config,
+)
 from ..protocols import (
     LabFillPortError,
     ProtocolLabFillClock,
@@ -32,7 +36,6 @@ from ..protocols import (
 )
 from .helpers_lab_fill_effect import default_clock, iso_utc
 
-DEFAULT_TIMEOUT_S = 60.0
 _FIELD = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*=")
 _ACCEPTED = (EnumWorkLedgerAppendStatus.ACCEPTED, EnumWorkLedgerAppendStatus.DUPLICATE)
 
@@ -61,7 +64,7 @@ class HandlerLabFillStatus:
         clock: ProtocolLabFillClock | None = None,
         host_name: str | None = None,
         *,
-        timeout_s: float = DEFAULT_TIMEOUT_S,
+        timeout_s: float | None = None,
     ) -> None:
         from ..protocols.local_lab_fill_adapters import (
             LocalResultWriter,
@@ -74,7 +77,11 @@ class HandlerLabFillStatus:
         self._writer = writer if writer is not None else LocalResultWriter()
         self._clock = default_clock(clock)
         self._host = host_name or socket.gethostname().split(".", 1)[0]
-        self._timeout_s = timeout_s
+        self._timeout_s = (
+            timeout_s
+            if timeout_s is not None
+            else load_lab_fill_port_config().status_append_timeout_seconds
+        )
 
     async def handle(
         self, request: ModelLabFillStatusWriteRequest

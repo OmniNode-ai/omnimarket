@@ -32,6 +32,10 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendRequest,
 )
 
+from ..models.model_lab_fill_port_config import (
+    ModelLabFillPortConfig,
+    load_lab_fill_port_config,
+)
 from .protocol_lab_fill_effect import (
     LabFillClaimFacts,
     LabFillCommandOutcome,
@@ -257,7 +261,7 @@ class LocalApprovedWork:
         return matches[0]
 
 
-def _graphql(query: str, timeout_s: float = 20.0) -> dict[str, object]:
+def _graphql(query: str, timeout_s: float) -> dict[str, object]:
     key = os.environ.get("LINEAR_API_KEY", "")
     if not key:
         raise LabFillPortError("LINEAR_API_KEY is missing")
@@ -291,6 +295,9 @@ def _watcher_path() -> Path:
 class LocalLiveChecks:
     """Assignment, fences, PR hold labels and completion for one lane, read right before launch."""
 
+    def __init__(self, config: ModelLabFillPortConfig | None = None) -> None:
+        self._config = config if config is not None else load_lab_fill_port_config()
+
     def skip_reason(
         self, *, ticket: str, kind: str, pr: str, operator_id: str, ledger_path: str
     ) -> tuple[str, str]:
@@ -298,7 +305,8 @@ class LocalLiveChecks:
         data = _graphql(
             '{issues(filter:{team:{key:{eq:"OMN"}},number:{eq:'
             + str(number)
-            + "}}){nodes{identifier state{type} assignee{id}}}}"
+            + "}}){nodes{identifier state{type} assignee{id}}}}",
+            self._config.linear_query_timeout_seconds,
         )
         issues = data.get("issues")
         nodes = issues.get("nodes", []) if isinstance(issues, dict) else []
@@ -314,7 +322,9 @@ class LocalLiveChecks:
         ):
             return "done", f"state {node['state']['type']}"
         try:
-            fenced = self._fences(ledger_path)
+            fenced = self._fences(
+                ledger_path, self._config.triage_fences_timeout_seconds
+            )
         except LabFillPortError as exc:
             return "fences-unreadable", str(exc)[:200]
         if ticket in fenced:
@@ -324,13 +334,13 @@ class LocalLiveChecks:
         return "", ""
 
     @staticmethod
-    def _fences(ledger_path: str) -> set[str]:
+    def _fences(ledger_path: str, timeout_s: float) -> set[str]:
         try:
             out = subprocess.run(
                 ["onex-triage-fences", os.path.expandvars(ledger_path), "--open-prs"],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=timeout_s,
                 check=True,
             )
             return set(json.loads(out.stdout)["fenced_tickets"])
@@ -367,8 +377,13 @@ class LocalLiveChecks:
 class LocalBriefBlocks:
     """The committed standing rules, then lane-brief's delegation and lab blocks."""
 
-    def __init__(self, skills_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        skills_dir: Path | None = None,
+        config: ModelLabFillPortConfig | None = None,
+    ) -> None:
         self._skills = skills_dir
+        self._config = config if config is not None else load_lab_fill_port_config()
 
     def blocks(self, *, ticket: str, brief_path: str) -> str:
         import argparse
@@ -380,7 +395,7 @@ class LocalBriefBlocks:
                 [sys.executable, str(rules_script)],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=self._config.lane_rules_block_timeout_seconds,
                 check=True,
             ).stdout
         except (OSError, subprocess.SubprocessError) as exc:
@@ -585,8 +600,13 @@ def _pr_key(value: str) -> str:
 class LocalOwnerReader:
     """The claim store (through its bridge), the PR claim registry CLI and the watcher's state file."""
 
-    def __init__(self, obi_home: str | None = None) -> None:
+    def __init__(
+        self,
+        obi_home: str | None = None,
+        config: ModelLabFillPortConfig | None = None,
+    ) -> None:
         self._obi = obi_home
+        self._config = config if config is not None else load_lab_fill_port_config()
 
     def claims(self, ledger_path: str, tickets: Sequence[str]) -> LabFillClaimFacts:
         obi = self._obi or os.environ.get("OMNIBASE_INTERNAL_HOME")
@@ -613,7 +633,7 @@ class LocalOwnerReader:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=self._config.claim_bridge_timeout_seconds,
                 env=env,
             )
             if done.returncode != 0:
@@ -635,7 +655,7 @@ class LocalOwnerReader:
                 ["python3", os.path.expandvars(cli_path), "list"],
                 capture_output=True,
                 text=True,
-                timeout=20,
+                timeout=self._config.pr_claim_registry_timeout_seconds,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise LabFillPortError(f"pr claim registry: {type(exc).__name__}") from exc

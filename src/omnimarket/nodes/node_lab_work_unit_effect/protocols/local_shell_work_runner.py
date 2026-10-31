@@ -29,9 +29,10 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
 )
-
-_EXTRA_PATH = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
-_GIT_TIMEOUT_SECONDS = 600
+from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit_host_config import (
+    ModelLabWorkUnitHostConfig,
+    load_lab_work_unit_host_config,
+)
 
 
 class ProtocolLabWorkRunner(Protocol):
@@ -40,7 +41,7 @@ class ProtocolLabWorkRunner(Protocol):
     ) -> ModelLabWorkUnitReceipt: ...
 
 
-def _env() -> dict[str, str]:
+def _env(config: ModelLabWorkUnitHostConfig) -> dict[str, str]:
     env = dict(os.environ)
     # A serve process started from a git hook would otherwise carry the hook's
     # repository location into every git call and every unit it runs.
@@ -52,7 +53,7 @@ def _env() -> dict[str, str]:
         "GIT_COMMON_DIR",
     ):
         env.pop(name, None)
-    extra = [str(Path(p).expanduser()) for p in _EXTRA_PATH]
+    extra = [str(Path(p).expanduser()) for p in config.executable_search_path]
     env["PATH"] = os.pathsep.join([*extra, env.get("PATH", "")])
     env["GIT_TERMINAL_PROMPT"] = "0"
     return env
@@ -75,17 +76,25 @@ class LocalShellLabWorkExecutor:
     def __init__(
         self,
         work_root: Path | None = None,
-        url_base: str = "https://github.com",  # url-authority-ok: the git remote a pushed sha is fetched from; tests pass a file:// base
+        url_base: str | None = None,
+        config: ModelLabWorkUnitHostConfig | None = None,
     ) -> None:
+        # The remote and the git bound come from the contract's host_config; a caller
+        # (a test with a file:// remote) injects url_base or a whole config instead.
+        self._config = (
+            config if config is not None else load_lab_work_unit_host_config()
+        )
         self._root = work_root or Path.home() / "lab-run"
-        self._url_base = url_base.rstrip("/")
+        self._url_base = (
+            url_base if url_base is not None else self._config.git_remote_base
+        ).rstrip("/")
 
     def _git(self, *args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["git", *args],
             capture_output=True,
             text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
+            timeout=self._config.git_timeout_seconds,
             check=False,
             env=env,
         )
@@ -93,7 +102,7 @@ class LocalShellLabWorkExecutor:
     def run(
         self, request: ModelLabWorkUnitRequest, host_name: str
     ) -> ModelLabWorkUnitReceipt:
-        env = _env()
+        env = _env(self._config)
         name = request.repo.rsplit("/", 1)[1]
         bare = self._root / "repos" / f"{name}.git"
         tree = self._root / "runs" / request.work_unit_id

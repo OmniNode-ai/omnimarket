@@ -24,12 +24,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-_EXTRA_PATH = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
+from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit_host_config import (
+    ModelLabWorkUnitHostConfig,
+    load_lab_work_unit_host_config,
+)
+
 #: A pseudo-tool: present only when ``claude auth status`` reports ``loggedIn: true``. A binary on
 #: the PATH is not a login (a Mac's keychain is locked over ssh and the same binary reports logged
 #: out), so a headless Claude unit asks for this, never for ``claude``.
 CLAUDE_LOGIN_TOOL = "claude-login"
-_LOGIN_TTL_SECONDS = 300.0
 #: A pseudo-tool ``lane-guard:<sha256>`` for each lane guard installed on this host whose bytes still hash to
 #: the sha256 in its directory name (``install_lane_guard.py install-guard`` writes
 #: ``~/.local/share/onex-lane-guard/sha256/<sha256>/lane_guard_host.py``). A bus unit runs a stub that execs
@@ -59,8 +62,8 @@ class ProtocolHostReader(Protocol):
     def read(self, tools: list[str]) -> HostReading: ...
 
 
-def _search_path() -> str:
-    extra = [str(Path(p).expanduser()) for p in _EXTRA_PATH]
+def _search_path(config: ModelLabWorkUnitHostConfig) -> str:
+    extra = [str(Path(p).expanduser()) for p in config.executable_search_path]
     return os.pathsep.join([*extra, os.environ.get("PATH", "")])
 
 
@@ -72,9 +75,9 @@ def _linux_mem_available() -> int:
     return int(match.group(1)) * 1024
 
 
-def _darwin_mem_available() -> int:
+def _darwin_mem_available(timeout: float) -> int:
     done = subprocess.run(
-        ["vm_stat"], capture_output=True, text=True, timeout=10, check=False
+        ["vm_stat"], capture_output=True, text=True, timeout=timeout, check=False
     )
     if done.returncode != 0:
         raise HostCapacityUnreadableError(f"vm_stat exited {done.returncode}")
@@ -90,7 +93,7 @@ def _darwin_mem_available() -> int:
     return sum(counts.values()) * int(page.group(1))
 
 
-def _claude_logged_in(path: str) -> bool:
+def _claude_logged_in(path: str, timeout: float) -> bool:
     # Reads the login state (claude auth status); runs no inference.
     exe = shutil.which("claude", path=path)  # canonical-inference-ok: login check
     if exe is None:
@@ -100,7 +103,7 @@ def _claude_logged_in(path: str) -> bool:
             [exe, "auth", "status"],
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -134,18 +137,30 @@ class LocalHostReader:
     """Reads the host this process runs on."""
 
     def __init__(
-        self, now: Callable[[], float] = time.monotonic, home: Path | None = None
+        self,
+        now: Callable[[], float] = time.monotonic,
+        home: Path | None = None,
+        config: ModelLabWorkUnitHostConfig | None = None,
     ) -> None:
         self._now = now
         self._home = home
+        self._config = (
+            config if config is not None else load_lab_work_unit_host_config()
+        )
         self._login: tuple[float, bool] | None = None
 
     def _has_login(self, path: str) -> bool:
         # A login changes rarely and the check spawns a process, so it is read at most once per
-        # _LOGIN_TTL_SECONDS rather than on every advertisement beat.
+        # login_cache_ttl_seconds rather than on every advertisement beat.
         stamp = self._now()
-        if self._login is None or stamp - self._login[0] > _LOGIN_TTL_SECONDS:
-            self._login = (stamp, _claude_logged_in(path))
+        if (
+            self._login is None
+            or stamp - self._login[0] > self._config.login_cache_ttl_seconds
+        ):
+            self._login = (
+                stamp,
+                _claude_logged_in(path, self._config.login_check_timeout_seconds),
+            )
         return self._login[1]
 
     def read(self, tools: list[str]) -> HostReading:
@@ -161,12 +176,12 @@ class LocalHostReader:
             if system == "Linux":
                 mem = _linux_mem_available()
             elif system == "Darwin":
-                mem = _darwin_mem_available()
+                mem = _darwin_mem_available(self._config.memory_probe_timeout_seconds)
             else:
                 raise HostCapacityUnreadableError(f"no memory reader for {system}")
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             raise HostCapacityUnreadableError(f"available memory: {exc}") from exc
-        path = _search_path()
+        path = _search_path(self._config)
         found = tuple(
             sorted(
                 tool

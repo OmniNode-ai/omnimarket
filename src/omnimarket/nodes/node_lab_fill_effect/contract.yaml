@@ -100,6 +100,18 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_tick"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick.ModelLabFillTickRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick.ModelLabFillTickResult"
+# OMN-21623: the bounds the local ports put on the processes and requests they spawn,
+# formerly literals in protocols/local_lab_fill_adapters.py and the status handler.
+# models/model_lab_fill_port_config.py reads this block (a missing or unknown key is
+# refused at load) and each port receives the result. A string value may be a
+# ${env.VAR} / ${env.VAR:default} overlay reference.
+port_timeouts:
+  linear_query_timeout_seconds: 20.0
+  triage_fences_timeout_seconds: 60
+  lane_rules_block_timeout_seconds: 60
+  claim_bridge_timeout_seconds: 60
+  pr_claim_registry_timeout_seconds: 20
+  status_append_timeout_seconds: 60.0
 descriptor:
   node_archetype: effect
   purity: effectful

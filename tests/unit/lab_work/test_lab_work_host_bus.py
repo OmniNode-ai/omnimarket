@@ -502,7 +502,7 @@ def test_claude_login_is_a_cached_login_check_not_a_binary_check(
     calls: list[str] = []
     answers = iter([False, True])
 
-    def fake_login(path: str) -> bool:
+    def fake_login(path: str, timeout: float) -> bool:
         calls.append(path)
         return next(answers)
 

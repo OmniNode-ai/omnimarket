@@ -79,6 +79,32 @@ runtime_dispatch:
 capacity:
   capacity_topic: "onex.evt.omnimarket.lab-host-capacity-advertised.v1"
   cadence_seconds: 10
+# OMN-21623: the host-side values the effect used to hold as literals in code.
+# models/model_lab_work_unit_host_config.py reads this block (a missing key or an
+# unknown key is refused at load, never defaulted) and the host reader and the
+# shell runner receive the result. A string value may be a ${env.VAR} /
+# ${env.VAR:default} overlay reference, so a host's own overlay sets a deployment
+# fact while the shipped value stays here.
+host_config:
+  # Directories put ahead of PATH when a tool or the unit's executable is looked up;
+  # a leading ~ is the serve process's home.
+  executable_search_path:
+    - "~/.local/bin"
+    - "/opt/homebrew/bin"
+    - "/usr/local/bin"
+  # The longest a unit may be asked to run; bounds the request's timeout_seconds.
+  max_unit_timeout_seconds: 7200
+  # Bound on each git call (init, cat-file, fetch, worktree) the runner makes.
+  git_timeout_seconds: 600
+  # Where a pushed sha is fetched from: <scheme>://<host>/<owner>/<name>.git. The host is
+  # a deployment fact, so a host's own overlay may set it through the environment.
+  git_remote_scheme: "https"
+  git_remote_host: "${env.ONEX_LAB_WORK_GIT_REMOTE_HOST:github.com}"
+  # The claude login reading is reused for this long between advertisement beats.
+  login_cache_ttl_seconds: 300.0
+  # Bounds on the two host probes that spawn a process.
+  login_check_timeout_seconds: 20
+  memory_probe_timeout_seconds: 10
 # The capacity advertisements leave the node graph here: they are read by the
 # caller (omnimarket.lab_work.bus.LabWorkCaller, behind `onex lab-work run` and
 # `onex lab-work hosts`), which is not a node contract.

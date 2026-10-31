@@ -18,6 +18,10 @@ from .model_lab_fill_effect import (
     ModelLabFillStatusWriteRequest,
     ModelLabFillStatusWriteResult,
 )
+from .model_lab_fill_port_config import (
+    ModelLabFillPortConfig,
+    load_lab_fill_port_config,
+)
 from .model_lab_fill_tick import (
     ModelLabFillTickAlarm,
     ModelLabFillTickDispatch,
@@ -37,6 +41,7 @@ __all__ = [
     "ModelLabFillOwnerFacts",
     "ModelLabFillOwnerFactsRequest",
     "ModelLabFillOwnerLane",
+    "ModelLabFillPortConfig",
     "ModelLabFillProbeRequest",
     "ModelLabFillProbeResult",
     "ModelLabFillReceiptLane",
@@ -51,5 +56,6 @@ __all__ = [
     "ModelLabFillTickRequest",
     "ModelLabFillTickResult",
     "ModelLabFillTickSkip",
+    "load_lab_fill_port_config",
     "render_refusals",
 ]

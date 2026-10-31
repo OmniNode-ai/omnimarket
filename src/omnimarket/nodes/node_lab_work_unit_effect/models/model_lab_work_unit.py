@@ -28,9 +28,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit_host_config import (
+    load_lab_work_unit_host_config,
+)
 
-#: A unit may run at most this long; the caller's wait adds slack on top.
-MAX_TIMEOUT_SECONDS: int = 7200
+#: A unit may run at most this long (the contract's host_config); the caller's wait adds slack on top.
+MAX_TIMEOUT_SECONDS: int = load_lab_work_unit_host_config().max_unit_timeout_seconds
 #: The receipt carries at most this much of the tail of the output.
 MAX_TAIL_CHARS: int = 8000
 

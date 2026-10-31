@@ -330,7 +330,7 @@ def test_live_checks_assignment_and_completion_and_fences(
 ) -> None:
     checks = LocalLiveChecks()
     monkeypatch.setattr(
-        LocalLiveChecks, "_fences", staticmethod(lambda _ledger: {"OMN-9"})
+        LocalLiveChecks, "_fences", staticmethod(lambda _ledger, _timeout_s: {"OMN-9"})
     )
     kwargs = {"pr": "", "operator_id": "me", "ledger_path": "/l"}
     _linear(
@@ -367,7 +367,7 @@ def test_live_checks_assignment_and_completion_and_fences(
 def test_live_checks_fences_that_cannot_be_read_stop_the_lane(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def broken(ledger: str) -> set[str]:
+    def broken(ledger: str, timeout_s: float) -> set[str]:
         raise LabFillPortError("onex-triage-fences: FileNotFoundError")
 
     monkeypatch.setattr(LocalLiveChecks, "_fences", staticmethod(broken))
@@ -420,7 +420,7 @@ def test_graphql_without_a_key_names_the_missing_key(
 ) -> None:
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
     with pytest.raises(LabFillPortError, match="LINEAR_API_KEY is missing"):
-        adapters._graphql("{x}")
+        adapters._graphql("{x}", 1.0)
 
 
 def test_appender_is_declared_by_environment_only(

@@ -1,0 +1,66 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21623
+title: "contracts_and_di burn-down, second omnimarket slice: the lab work unit node and the lab-fill ports take their timeouts, paths and remote from their contracts"
+summary: >-
+  The contracts_and_di check over omnimarket src reported 1474 findings. This slice clears 16 of them in two lab nodes: node_lab_work_unit_effect (7200 s unit bound, executable search paths, claude login cache TTL and probe timeouts, git timeout, git remote) and node_lab_fill_effect (six port timeouts). The values now live in a host_config block and a port_timeouts block of each node's contract.yaml, read through one shared contract block loader that expands ${env.VAR} overlay references and refuses a missing, unknown or malformed key; the host reader, the shell runner, the local ports and the status handler receive the validated model. Check after: 1458 findings (literal_timeout 601 to 590, literal_path 30 to 26, literal_url 43 to 42).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21623-lab-nodes-contract-config
+    statement: >-
+      The lab work unit node and the lab-fill ports hold no timeout, search path or git remote as a literal in code; each comes from the node's contract and is injected.
+    acceptance:
+      - id: AC7
+        statement: >-
+          AC7: the contract blocks load with the values the code used to hold, a block missing a key or carrying an unknown key fails to load, and a remote set by overlay is honoured -- falsifier: tests/unit/lab_work/test_lab_work_host_config.py and tests/nodes/node_lab_fill_effect/test_port_config_lab_fill_effect.py fail at the merge base (the loader and the blocks do not exist) and pass at the head
+      - id: AC8
+        statement: >-
+          AC8: the host reader, the shell runner and the lab-fill ports use the injected values, not code literals -- falsifier: the same two test files assert the timeout, search path and remote each component receives from a non-default config, and tests/unit/lab_work and tests/nodes/node_lab_fill_effect pass whole
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The two new test files plus the existing lab work and lab-fill suites pass at the head.
+    command: uv run --frozen pytest tests/unit/lab_work tests/nodes/node_lab_fill_effect -q -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21623-s2-ac1-contract-blocks
+    description: >-
+      The loader and block tests: shipped values equal the former literals, a missing or unknown key is refused, the overlay environment sets the git remote.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_config.py tests/nodes/node_lab_fill_effect/test_port_config_lab_fill_effect.py -q -n 0 -p no:cacheprovider
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC7, AC8]
+  - id: dod-omn21623-s2-deploy-isolated-runtime
+    description: >-
+      Hosted-runner deploy smoke: run this checkout with its frozen dependencies in
+      an isolated Python 3.13 Linux container and run the two contract-config test files.
+      Mount the acceptance check's lock-exact installed dependencies read-only into a
+      fresh venv, matching the hosted verifier's Python ABI and retaining the hermetic
+      import guard. Do not ask the image's older uv to read the
+      hosted runner's newer cache format. The runtime has no network and installs nothing
+      inside the 30 s probe.
+      The tests load both nodes' contracts, refuse a block missing a key, and drive the
+      host reader and the local ports with injected values. No lab route, credentials,
+      broker or production ledger is used. This proves the evaluated checkout in a
+      disposable runtime, not a production rollout.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          dependencies="$(uv run --frozen --python 3.13 python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" &&
+          docker run --rm --network none --user "$(id -u):$(id -g)" \
+            --tmpfs /tmp/cdi-venv:rw,mode=1777 \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace \
+            --mount "type=bind,source=$dependencies,target=/tmp/cdi-venv/lib/python3.13/site-packages,readonly" \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \
+            sh -ec 'python -m venv --without-pip /tmp/cdi-venv
+              exec /tmp/cdi-venv/bin/python -m pytest tests/unit/lab_work/test_lab_work_host_config.py tests/nodes/node_lab_fill_effect/test_port_config_lab_fill_effect.py \
+                -q --no-cov -p no:cacheprovider --basetemp=/tmp/cdi-tests --refuse-skips'
+        cwd: .

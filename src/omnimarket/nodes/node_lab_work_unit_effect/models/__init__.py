@@ -12,6 +12,10 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     ModelLabWorkUnitRequest,
     WorkKind,
 )
+from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit_host_config import (
+    ModelLabWorkUnitHostConfig,
+    load_lab_work_unit_host_config,
+)
 
 __all__ = [
     "MAX_TAIL_CHARS",
@@ -19,7 +23,9 @@ __all__ = [
     "EnumLabWorkUnitStatus",
     "ModelHostCapacityAdvertisement",
     "ModelHostCapacityProbeRequest",
+    "ModelLabWorkUnitHostConfig",
     "ModelLabWorkUnitReceipt",
     "ModelLabWorkUnitRequest",
     "WorkKind",
+    "load_lab_work_unit_host_config",
 ]
