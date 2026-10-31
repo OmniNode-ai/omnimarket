@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21787"
+title: "omnimarket handler-shape burn-down, slice rf1730-c9: five handlers take one typed request and return a typed response"
+summary: "The handler-shape validator over the omnimarket handler files reported 169 findings at dev d0b4d8886 (envelope_in_core 24, module_function_handler 55, noncanonical_handle 90). Five handlers whose dispatch path hands them a typed model now declare handle(request: ModelX) -> ModelY: HandlerContractReducer, HandlerEmitDaemon, HandlerLoopState, HandlerOmniGateProjection and NodeLogProjection. The count after the slice is 164 (noncanonical_handle 85); no baseline entry or suppression was added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21787-typed-handle"
+    statement: |-
+      Each handler of the slice takes one typed request model and returns a typed response model, holds no envelope, and the handler-shape validator reports no finding on its file.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the ValidatorHandlerShape count over the five slice files is zero and the repo total drops by five with no baseline entry or suppression added -- falsifier: uv run pytest tests/unit/nodes/test_omn21787_handler_shape_slice.py -k no_handler_shape_finding -q --no-cov"
+      - id: "AC2"
+        statement: "AC2: every touched handler is definition-B (handle(request)) with typed request and response models -- falsifier: uv run pytest tests/unit/nodes/test_omn21787_handler_shape_slice.py -k one_typed_request -q --no-cov"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR with lab proof of the tests and the validator re-run in its body -- falsifier: the PR body of the slice names the host, sha and exit code of the lab run"
+evidence_requirements:
+  - kind: "tests"
+    description: "The slice tests and the tests of the five touched nodes pass."
+    command: "uv run pytest tests/unit/nodes/test_omn21787_handler_shape_slice.py tests/unit/nodes/node_contract_reducer tests/test_golden_chain_emit_daemon.py tests/test_golden_chain_loop_state_reducer.py tests/nodes/node_omnigate_projection tests/test_golden_chain_log_projection.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21787-validator-clean"
+    description: "The handler-shape validator reports nothing on the five slice files, and the same validator reports the finding on the pre-change contract reducer."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_omn21787_handler_shape_slice.py -k no_handler_shape_finding -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21787-typed-signatures"
+    description: "Each slice handler's handle annotates one BaseModel parameter and a BaseModel return."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_omn21787_handler_shape_slice.py -k one_typed_request -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21787-node-tests"
+    description: "The tests of the five touched nodes pass against the typed handlers."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_contract_reducer tests/test_golden_chain_emit_daemon.py tests/test_golden_chain_loop_state_reducer.py tests/nodes/node_omnigate_projection tests/test_golden_chain_log_projection.py -q --no-cov"
+        cwd: "."
