@@ -70,7 +70,76 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_golden_chain_architecture_discovery.py tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_hook_input_omn21099.py tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py tests/nodes/node_claude_code_hook_adapter_effect/test_contracts.py tests/nodes/node_claude_code_hook_adapter_effect/test_install.py tests/nodes/node_claude_code_hook_adapter_effect/test_render.py tests/nodes/node_claude_code_hook_adapter_effect/test_render_loader_dollar_rule_omn21099.py tests/nodes/node_claude_code_hook_adapter_effect/test_session_barrier_producer_omn21099.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_linear_ticket_write_effect/test_golden_chain_linear_ticket_write_effect.py tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py tests/nodes/node_linear_ticket_write_effect/test_ticket_cli.py tests/nodes/node_linear_ticket_write_effect/test_ticket_guard_identity.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_rsd_migration_orchestrator/test_handler_rsd_migration_orchestrator.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_runtime_deploy_effect/test_golden_chain_runtime_deploy_effect.py tests/nodes/node_runtime_deploy_effect/test_runtime_deploy_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_session_capability_digest.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-deploy-cli-script-readback
+  description: Hosted-runner source-artifact readback of the eight registered console scripts whose entry modules moved. Fetch pyproject.toml at the evaluated commit and require each script to name its new runtime module. This checks the published revision, not a production rollout; missing source or any old handler mapping fails.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/pyproject.toml" | python3 -c '
+      import sys, tomllib
+      scripts = tomllib.loads(sys.stdin.read())["project"]["scripts"]
+      expected = {
+          "onex-hourly-tick": "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main",
+          "onex-host-thermal": "omnimarket.nodes.node_host_thermal_observe_effect.runtime_host_thermal_cli:main",
+          "onex-automation-liveness-check": "omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli:main",
+          "onex-patch-apply-dispatch": "omnimarket.nodes.node_patch_apply_dispatch_effect.runtime_patch_apply_dispatch_cli:main",
+          "onex-runtime-deploy": "omnimarket.nodes.node_runtime_deploy_effect.runtime_deploy_cli:main",
+          "onex-architecture-discovery": "omnimarket.nodes.node_architecture_discovery_orchestrator.runtime_architecture_discovery_cli:main",
+          "onex-claude-code-hook": "omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_claude_code_hook_cli:main",
+          "onex-secret-store-override": "omnimarket.nodes.node_lab_secret_store_override_effect.runtime_lab_secret_store_override_cli:main",
+      }
+      for name, entry in expected.items():
+          assert scripts.get(name) == entry, (name, scripts.get(name), entry)
+      print("OMN-21536 published-source CLI readback: 8 console script mappings PASS")
+      '
     cwd: ${OMNI_HOME}/omnimarket
 
   - id: "dod-omn21536-s4-ac1-no-envelope-in-core"
