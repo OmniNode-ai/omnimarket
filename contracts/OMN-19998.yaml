@@ -231,6 +231,11 @@ requirements:
     acceptance:
       - id: "AC43"
         statement: "AC43: sixteen writers each persist fifty records without an exception, the final lane record parses as JSON, and serialization or replacement failure preserves the previous record without temporary files -- falsifier: uv run pytest tests/unit/bus_binding/test_recovery_writes.py -q --no-cov fails with recovery.py at the merge base"
+  - id: "req-cause-ownership-counts-judged-prs"
+    statement: "The cause-claim ownership node counts as members of a shared red only the open PRs the throughput tick's repo-status verdict counts (OPEN, not a draft, not held-excluded), so a rewritten shared_red_unowned line and its cause-lane FIX never name a draft."
+    acceptance:
+      - id: "AC44"
+        statement: "AC44: landing_open_records keeps an OPEN non-draft PR and drops a draft, a held-excluded PR and a merged PR, and HandlerCauseClaimOwnership.handle passes only the kept PRs to claim_owners_of_check -- falsifier: uv run pytest tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_skips_drafts_omn19998.py -q fails with handler.py at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -1001,5 +1006,34 @@ dod_evidence:
               assert record["iteration"] == 49, record
               assert list(path.parent.iterdir()) == [path]
           print("bus-binding deploy readback: 16 processes, 800 writes, valid final JSON, no temporary files")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-cause-ownership-skips-drafts"
+    description: "The focused tests read the cause-claim ownership node's open-PR filter and its handle() call. Both fail with handler.py at the merge base, where every OPEN record, drafts included, reaches claim_owners_of_check."
+    source: "manual"
+    binds_ac: ["AC44"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_skips_drafts_omn19998.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-cause-owner-drafts-deploy-probe"
+    description: "Hosted-runner deploy readback imports the checked-out cause-claim ownership handler and reads the 2026-10-31 omnibase_infra shape (two non-draft PRs and one held-excluded draft red on one check); it refuses any member set other than the two non-draft PRs and needs no lab service or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          env UV_FROZEN=true PYTHONDONTWRITEBYTECODE=1 uv run python - <<'PY'
+          from omnimarket.nodes.node_cause_claim_ownership_effect import handler
+          red = {"red": ["Hostile Review Thread Gate"]}
+          state = {
+              "prs": {
+                  "omnibase_infra#5469": {"facts": {"state": "OPEN", "draft": False}, "cls": "red", "ci": red},
+                  "omnibase_infra#5475": {"facts": {"state": "OPEN", "draft": False}, "cls": "red", "ci": red},
+                  "omnibase_infra#5237": {"facts": {"state": "OPEN", "draft": True}, "cls": "held-excluded", "ci": red},
+              }
+          }
+          members = sorted(handler.landing_open_records(state))
+          assert members == ["omnibase_infra#5469", "omnibase_infra#5475"], members
+          print("cause ownership deploy readback: members", " ".join(members))
           PY
         cwd: "${OMNI_HOME}/omnimarket"

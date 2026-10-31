@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
+
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -276,7 +278,7 @@ def test_contract_binds_reads_through_an_env_prefix(
 # Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, so a bound
 # test that needs a database runs at the head and in the merge-base control.
 # The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146; then omnibase_core#2079, OMN-19513).
-_EXEMPT_REUSABLE_TAG = "dev-20261022114039-578228977721"
+_EXEMPT_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 
 
 def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
@@ -338,7 +340,7 @@ def test_caller_pins_a_verifier_that_refuses_unbound_criteria() -> None:
 # with none, so a contract can only scope it local_done_gate, which the hosted
 # control refuses as a control that did not run (omnimarket#3369).
 # The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146; then omnibase_core#2079, OMN-19513).
-_DATABASE_REUSABLE_TAG = "dev-20261022114039-578228977721"
+_DATABASE_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 
 
 def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:
