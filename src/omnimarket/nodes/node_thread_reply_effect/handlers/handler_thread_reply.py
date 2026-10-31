@@ -21,7 +21,6 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
-from uuid import UUID
 
 from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
@@ -41,6 +40,9 @@ from omnimarket.nodes.node_model_router.models.model_routing_request import (
 )
 from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event import (
     ModelThreadRepliedEvent,
+)
+from omnimarket.nodes.node_thread_reply_effect.models.model_thread_reply_request import (
+    ModelThreadReplyRequest,
 )
 
 _log = logging.getLogger(__name__)
@@ -263,24 +265,14 @@ class HandlerThreadReply:
         )
         return not direct_post
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        pr_number: int,
-        repo: str,
-        thread_body: str,
-        routing_policy: dict[str, Any],
-        head_ref_name: str | None = None,
-    ) -> ModelThreadRepliedEvent:
+    async def handle(self, request: ModelThreadReplyRequest) -> ModelThreadRepliedEvent:
         """Post a reply to the PR review thread.
 
         Args:
-            correlation_id: Pipeline correlation ID.
-            pr_number: GitHub PR number.
-            repo: GitHub repo slug (org/repo).
-            thread_body: Full text of the review thread to reply to.
-            routing_policy: Routing policy dict from the command envelope.
-            head_ref_name: Branch name; raises ValueError if protected.
+            request: Pipeline correlation ID, GitHub PR number, GitHub repo slug
+                (org/repo), full text of the review thread to reply to, routing
+                policy dict from the command envelope and the branch name
+                (raises ValueError if protected).
 
         Returns:
             ModelThreadRepliedEvent with outcome fields.
@@ -290,6 +282,12 @@ class HandlerThreadReply:
             RuntimeError: If the LLM call fails (no bare except — fail-loud).
             RuntimeError: On GitHub post-comment failure.
         """
+        correlation_id = request.correlation_id
+        pr_number = request.pr_number
+        repo = request.repo
+        thread_body = request.thread_body
+        routing_policy = request.routing_policy
+        head_ref_name = request.head_ref_name
         if head_ref_name and _PROTECTED_BRANCH_RE.match(head_ref_name):
             raise ValueError(
                 f"Refusing to post thread reply on protected branch: {head_ref_name!r}"

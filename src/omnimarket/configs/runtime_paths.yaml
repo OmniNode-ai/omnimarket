@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# runtime_paths.yaml -- authority for the filesystem locations omnimarket nodes
+# fall back to when the process's own setting (an env key or a CLI operand) is
+# absent (OMN-21623).
+#
+# No node, handler or model module holds one of these as a literal: it reads the
+# reference through omnimarket.handlers.runtime_paths.runtime_path. A missing
+# reference raises KeyError, so a typo fails at the call and never returns a
+# silent default. A value starting with ``~`` is expanded by its reader.
+
+emit_daemon:
+  # Unix socket, pid file and event spool of the portable emit daemon when no
+  # ONEX_EMIT_* override and no XDG_RUNTIME_DIR names a location.
+  socket_path: /tmp/onex-emit.sock
+  pid_path: /tmp/onex-emit.pid
+  spool_dir: /tmp/onex-event-spool
+  # Socket the environment health scanner probes when ONEX_EMIT_DAEMON_SOCKET is unset.
+  health_probe_socket_path: /tmp/onex_emit.sock
+
+claude:
+  tasks_dir: ~/.claude/tasks
+  installed_plugins_file: ~/.claude/plugins/installed_plugins.json
+
+codex:
+  home_dir: ~/.codex
+
+onex_state:
+  # State directory when neither ONEX_STATE_DIR nor OMNI_HOME names one.
+  default_dir: ~/.onex_state
+
+landing_tlc_receipt:
+  state_dir: ~/.local/state/omni/landing
+
+uv:
+  # XDG_CONFIG_HOME fallback that holds uv/uv.toml.
+  config_home: ~/.config
+
+runtime_host:
+  ci_disk_path: /var/lib/docker
+
+brief_prerequisites:
+  # Prefixes that mark a token in a brief as a filesystem path.
+  home_roots:
+    - /
+    - ~/
+    - $HOME/
+    - ${HOME}/
+    - $ONEX_REGISTRY_ROOT/
+    - ${ONEX_REGISTRY_ROOT}/
+
+automation_liveness:
+  # Regular expressions for the unit directories the installer scan looks for next to a write verb.
+  unit_directory_patterns:
+    - /etc/systemd/system
+    - \.config/systemd/user
+    - systemd/user
+    - /etc/cron\.d
+    - Library/LaunchAgents
+
+shadow_mode_parity_proof:
+  # Default output of scripts/shadow_mode_parity_proof.py; --out overrides it.
+  report_path: /tmp/omn-15971-shadow-parity-report.json

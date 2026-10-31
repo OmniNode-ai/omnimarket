@@ -90,7 +90,6 @@ node_golden_chain_generator_compute generator_version
 node_golden_chain_generator_compute onex.evt.omnimarket.golden-chain-generation-completed.v1
 node_golden_chain_generator_compute template_hash
 node_golden_chain_generator_compute ticket_id
-node_handoff_effect onex.evt.omnimarket.handoff-effect-completed.v1
 node_insights_to_plan_compute onex.evt.omnimarket.insights-to-plan-completed.v1
 node_integration_test_runner onex.evt.omnimarket.integration-test-runner-completed.v1
 node_intelligence_orchestrator onex.evt.omnimarket.code-analysis-failed.v1
@@ -143,10 +142,6 @@ node_merge_effect onex.evt.omnimarket.merge-complete.v1
 node_merge_effect onex.evt.omnimarket.merge-result.v1
 node_merge_sweep_auto_merge_arm_effect onex.evt.omnimarket.pr-auto-merge-armed.v1
 node_merge_sweep_auto_merge_arm_effect onex.evt.omnimarket.pr-auto-merge-unarmed-clean-alert.v1
-node_monitor_alert_responder onex.cmd.deploy.rebuild-requested.v1
-node_monitor_alert_responder onex.cmd.omnimarket.alert-fix-requested.v1
-node_monitor_alert_responder onex.evt.omnimarket.alert-response-completed.v1
-node_monitor_alert_responder onex.evt.omnimarket.monitor-alert-unhandled.v1
 node_morning_handoff_generator onex.evt.omnimarket.morning-handoff-generated.v1
 node_morning_handoff_generator run_id
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-build-completed.v1
@@ -169,7 +164,6 @@ node_plan_to_tickets created_count
 node_plan_to_tickets epic_id
 node_plan_to_tickets failed_count
 node_plan_to_tickets skipped_count
-node_polish_task_classifier onex.evt.omnimarket.polish-task-classifier-failed.v1
 node_pr_health_monitor onex.evt.omnimarket.pr-health-report-completed.v1
 node_projection_capsule_store onex.evt.omnimarket.capsule-store-applied.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1

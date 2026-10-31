@@ -1157,7 +1157,7 @@ async def test_check_run_create_dry_run_plans_same_post_without_transport() -> N
 async def test_check_run_create_refuses_under_quota_before_post() -> None:
     transport = _Recorded([])
     handler = _handler(transport)
-    handler.record_reading(
+    handler.quota_readings.record(
         ModelGithubQuotaReading.from_response_headers(
             _headers(remaining=499), identity="test"
         )

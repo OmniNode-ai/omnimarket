@@ -27,7 +27,9 @@ import pytest
 import yaml
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
-from omnimarket.nodes.node_claude_token_pool_effect import __main__ as cli
+from omnimarket.nodes.node_claude_token_pool_effect import (
+    runtime_claude_token_pool as cli,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     HandlerClaudeTokenPool,
 )

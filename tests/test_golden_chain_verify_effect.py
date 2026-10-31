@@ -24,6 +24,9 @@ from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
 from omnimarket.nodes.node_verify_effect.models.model_verify_check import (
     ModelVerifyCheck,
 )
+from omnimarket.nodes.node_verify_effect.models.model_verify_input import (
+    ModelVerifyInput,
+)
 from omnimarket.nodes.node_verify_effect.models.model_verify_result import (
     ModelVerifyResult,
 )
@@ -82,7 +85,7 @@ class TestVerifyEffectGoldenChain:
         handler = HandlerVerify()
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid)
+        result = await handler.handle(ModelVerifyInput(correlation_id=cid))
 
         assert isinstance(result, ModelVerifyResult)
         assert result.correlation_id == cid
@@ -95,7 +98,9 @@ class TestVerifyEffectGoldenChain:
         handler = HandlerVerify()
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid, dry_run=True)
+        result = await handler.handle(
+            ModelVerifyInput(correlation_id=cid, dry_run=True)
+        )
 
         assert result.all_critical_passed is True
         assert len(result.checks) == 3
@@ -109,7 +114,7 @@ class TestVerifyEffectGoldenChain:
         handler = HandlerVerify(checkers=[_PassingChecker(), _FailingCriticalChecker()])
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid)
+        result = await handler.handle(ModelVerifyInput(correlation_id=cid))
 
         assert result.all_critical_passed is False
         assert len(result.checks) == 2
@@ -124,7 +129,7 @@ class TestVerifyEffectGoldenChain:
         )
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid)
+        result = await handler.handle(ModelVerifyInput(correlation_id=cid))
 
         assert result.all_critical_passed is True
         assert len(result.warnings) == 1
@@ -135,7 +140,7 @@ class TestVerifyEffectGoldenChain:
         handler = HandlerVerify(checkers=[_PassingChecker(), _ExplodingChecker()])
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid)
+        result = await handler.handle(ModelVerifyInput(correlation_id=cid))
 
         assert result.all_critical_passed is True
         assert len(result.warnings) == 1
@@ -160,7 +165,7 @@ class TestVerifyEffectGoldenChain:
         handler = HandlerVerify(checkers=[_PassingChecker(), _PassingChecker()])
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid)
+        result = await handler.handle(ModelVerifyInput(correlation_id=cid))
 
         assert result.all_critical_passed is True
         assert len(result.checks) == 2
@@ -171,7 +176,7 @@ class TestVerifyEffectGoldenChain:
         handler = HandlerVerify(checkers=None)
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid)
+        result = await handler.handle(ModelVerifyInput(correlation_id=cid))
 
         assert result.all_critical_passed is True
         assert len(result.checks) == 3
