@@ -343,12 +343,12 @@ def _decide(
             else:
                 owner = None
         elif row.kind == "STATUS":
-            state = row.cells.get(config.state_cell, "")
-            if state == config.parked_state:
+            row_state = row.cells.get(config.state_cell, "")
+            if row_state == config.parked_state:
                 base = EnumAskState.PARKED
                 reason = row.cells.get(config.reason_cell) or reason
                 seq = _seq(row.cells.get(config.seq_cell, "")) or seq
-            elif state == config.ticketed_state:
+            elif row_state == config.ticketed_state:
                 base = EnumAskState.TICKETED
         elif row.kind == "HOLD":
             base = EnumAskState.PARKED
