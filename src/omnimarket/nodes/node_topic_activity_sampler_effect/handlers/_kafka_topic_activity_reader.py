@@ -10,8 +10,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 BOOTSTRAP_ENV = "KAFKA_BOOTSTRAP_SERVERS"
-_FETCH_TIMEOUT_SECONDS = 5.0
+_FETCH_TIMEOUT_SECONDS: float = load_node_timeouts(
+    "node_topic_activity_sampler_effect"
+).get("fetch_timeout_seconds")
 # Partitions per offsets_for_times request; see watermarks_and_offsets_for_times.
 _TIME_LOOKUP_CHUNK = 100
 

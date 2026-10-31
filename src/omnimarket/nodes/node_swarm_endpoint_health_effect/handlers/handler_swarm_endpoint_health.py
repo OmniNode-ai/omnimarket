@@ -16,6 +16,7 @@ import httpx
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import resolve_swarm_endpoint_registry_path
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_swarm_endpoint_health_effect.models.enums import (
     EnumEndpointStatus,
     EnumModelStatus,
@@ -38,7 +39,9 @@ _HttpGetFn = Callable[
     Coroutine[Any, Any, tuple[int, bytes]],
 ]
 
-_DEFAULT_TIMEOUT_SECONDS = 30.0
+_DEFAULT_TIMEOUT_SECONDS: float = load_node_timeouts(
+    "node_swarm_endpoint_health_effect"
+).get("request_timeout_seconds")
 
 # Shared endpoint registry used for ID-only requests from the orchestrator.
 _DEFAULT_REGISTRY_PATH = (

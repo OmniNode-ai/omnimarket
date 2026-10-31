@@ -107,3 +107,7 @@ dod_evidence:
 
 metadata:
   transport_type: filesystem
+
+timeouts:
+  git_diff_timeout_seconds: 120  # Bounds the git diff subprocess.
+  git_head_timeout_seconds: 60  # Bounds each git head lookup subprocess.

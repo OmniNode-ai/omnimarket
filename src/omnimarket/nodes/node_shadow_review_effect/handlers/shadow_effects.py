@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Protocol
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review import (
     EnumShadowArm,
     EnumShadowArmStatus,
@@ -80,14 +81,19 @@ class ProtocolShadowReviewer(Protocol):
     ) -> tuple[ModelShadowArmResult, ...]: ...
 
 
+_TIMEOUTS = load_node_timeouts("node_shadow_review_effect")
+
+
 def _git(
-    clone: Path, *args: str, timeout: float = 120.0
+    clone: Path, *args: str, timeout: float | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(clone), *args],
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=(
+            timeout if timeout is not None else _TIMEOUTS.get("git_timeout_seconds")
+        ),
         check=False,
     )
 
@@ -96,14 +102,21 @@ class CanonicalCloneDiffSource:
     """Reads a PR's diff from the canonical clone, refreshing its branches once."""
 
     def __init__(
-        self, omni_home: Path, refresh_script: Path, refresh_timeout_s: int = 300
+        self,
+        registry_root: Path,
+        refresh_script: Path,
+        refresh_timeout_s: int | None = None,
     ):
-        self._omni_home = omni_home
+        self._registry_root = registry_root
         self._refresh_script = refresh_script
-        self._refresh_timeout_s = refresh_timeout_s
+        self._refresh_timeout_s = (
+            refresh_timeout_s
+            if refresh_timeout_s is not None
+            else int(_TIMEOUTS.get("refresh_timeout_seconds"))
+        )
 
     def clone_for(self, repo: str) -> Path | None:
-        for root in (self._omni_home, self._omni_home.parent):
+        for root in (self._registry_root, self._registry_root.parent):
             if (root / repo / ".git").exists():
                 return root / repo
         return None

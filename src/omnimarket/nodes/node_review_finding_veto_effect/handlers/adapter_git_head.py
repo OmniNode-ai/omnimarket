@@ -8,8 +8,12 @@ import re
 import subprocess
 from pathlib import PurePosixPath
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 _SHA = re.compile(r"^[0-9a-f]{7,64}$")
-_GIT_TIMEOUT_SECONDS = 60
+_GIT_TIMEOUT_SECONDS: float = load_node_timeouts("node_review_finding_veto_effect").get(
+    "git_head_timeout_seconds"
+)
 
 
 class GitHeadFileReader:

@@ -36,14 +36,20 @@ import logging
 from omnibase_infra.enums.enum_infra_transport_type import EnumInfraTransportType
 from omnibase_infra.errors import InfraConnectionError, ModelInfraErrorContext
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 __all__ = ["collect_live_consumer_groups"]
 
 _log = logging.getLogger(__name__)
 
 # Wall-clock budget for the broker round-trip. A CI/skill invocation must fail
 # fast rather than hang indefinitely against an unreachable broker.
-_ADMIN_REQUEST_TIMEOUT_S = 10.0
-_ADMIN_RESULT_TIMEOUT_S = 15.0
+_ADMIN_REQUEST_TIMEOUT_S: float = load_node_timeouts("node_runtime_sweep").get(
+    "admin_request_timeout_seconds"
+)
+_ADMIN_RESULT_TIMEOUT_S: float = load_node_timeouts("node_runtime_sweep").get(
+    "admin_result_timeout_seconds"
+)
 
 # Group states that prove NO attached consumer members — a group in one of
 # these states is a dead/idle corpse, not a live consumer. Mirrors

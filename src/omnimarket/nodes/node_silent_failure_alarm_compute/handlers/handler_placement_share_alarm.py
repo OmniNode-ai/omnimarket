@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Literal
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 from ..models import (
     ModelLaneRefusal,
     ModelPlacementRun,
@@ -27,7 +29,10 @@ from ..models import (
 
 LANE = "silent-failure-alarm"
 TICKET = "OMN-17427"
-FILL_INTERVAL_MINUTES = 20
+FILL_INTERVAL_MINUTES = int(
+    load_node_timeouts("node_silent_failure_alarm_compute").get("fill_interval_seconds")
+    // 60
+)
 NO_REASON = "no-refusal-reported"
 
 __all__ = ["HandlerPlacementShareAlarm", "ModelPlacementShareResult"]
