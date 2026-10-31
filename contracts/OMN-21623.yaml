@@ -39,6 +39,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC3"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_service_endpoints_contract.py -k TestGithubWebOriginIsResolved -q --no-cov"
+        cwd: "."
       - check_type: "command"
         check_value: |-
           uv run --frozen python - <<'PY'
