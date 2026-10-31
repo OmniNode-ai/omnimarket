@@ -17,7 +17,7 @@ Failure modes each test is written against:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -46,6 +46,7 @@ from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_re
 from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import (
     SqliteTableRowSource,
 )
+from omnimarket.projection import read_page
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -57,6 +58,21 @@ TENANT = "6c24401e-0000-4000-8000-00000000000a"
 OTHER_TENANT = "11111111-2222-4333-8444-555555555555"
 TOKEN = "never-served-token-value"
 T0 = datetime(2026, 10, 18, 6, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def read_at_the_reports_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These fixtures describe live reports, independently of the calendar date
+    # on which the tests run. The stopped report below is the latest at T0+15.
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            observed_at = T0 + timedelta(seconds=15)
+            return (
+                observed_at.astimezone(tz) if tz else observed_at.replace(tzinfo=None)
+            )
+
+    monkeypatch.setattr(read_page, "datetime", FrozenDatetime)
 
 
 @cache
