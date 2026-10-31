@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import shlex
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 from ..models.model_pr_head_stage import ModelPrHeadStageRequest, ModelPrHeadStageResult
 
 
@@ -45,7 +47,7 @@ def fetch_script(request: ModelPrHeadStageRequest) -> str:
         lines += [
             '[ -d "$R" ] || git init --bare -q "$R" || exit 70',
             "GIT_TERMINAL_PROMPT=0 git "
-            f'-C "$R" fetch --no-tags -q {shlex.quote(f"https://github.com/{owner}/{repo}.git")} '
+            f'-C "$R" fetch --no-tags -q {shlex.quote(f"{service_endpoint_url('github.web_url')}/{owner}/{repo}.git")} '
             f"{shlex.quote(f'+refs/heads/{ref}:{destination}')} || exit 20",
             f'git -C "$R" cat-file -e {sha}^{{commit}} || exit 21',
             f'F=$(git -C "$R" rev-parse --verify {shlex.quote(destination)}) || exit 21',

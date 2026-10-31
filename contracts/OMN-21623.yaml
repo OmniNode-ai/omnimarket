@@ -1,54 +1,130 @@
 ---
-schema_version: "1.0.0"
-ticket_id: "OMN-21623"
-title: "Thirty hand constructions of handlers in thirteen nodes move to each node's binding module"
-summary: "Thirty places in thirteen nodes built a Handler or Node class by hand: five command-line entry points, four orchestrator composition roots, and optional-dependency fallbacks inside handlers. Each node now has a container package whose container_<node>.py holds typed build_ factories, the one declared binding site, and the old places call a factory with the same arguments and the same construction timing. Burn-down slice of the contracts_and_di check over this repository: handler_hand_construction findings go from 513 to 483 across src/omnimarket; the remaining 483 sit in other nodes."
-is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
-requirements:
-  - id: "req-omn21623-handler-binding-sites"
-    statement: |-
-      A node builds its handlers only in its binding module; every caller in the node uses the factory, and behaviour, arguments and defaults are unchanged.
-    acceptance:
-      - id: "AC1"
-        statement: "AC1: the contracts_and_di check reports no handler_hand_construction finding in the thirteen node directories of the slice -- falsifier: the command of dod-omn21623-hand-construction-clean below"
-      - id: "AC2"
-        statement: "AC2: the tests of the thirteen nodes pass with the factories in place -- falsifier: the command of dod-omn21623-node-tests below"
-evidence_requirements:
-  - kind: "tests"
-    description: "The tests of the touched nodes pass."
-    command: "uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov"
-emergency_bypass:
-  enabled: false
-  justification: ""
-  follow_up_ticket_id: ""
-dod_evidence:
-  - id: "dod-omn21623-node-tests"
-    description: "The focused tests of the touched nodes pass."
-    source: "manual"
-    binds_ac: ["AC2"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21623-hand-construction-clean"
-    description: "The contracts_and_di check over the thirteen node directories reports no handler_hand_construction finding."
-    source: "manual"
-    binds_ac: ["AC1"]
-    checks:
-      - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_adoption_recovery_effect src/omnimarket/nodes/node_aislop_sweep src/omnimarket/nodes/node_architecture_discovery_orchestrator src/omnimarket/nodes/node_baseline_compare src/omnimarket/nodes/node_board_truth_reconcile_effect src/omnimarket/nodes/node_branch_protection_audit_effect src/omnimarket/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_bus_audit_compute src/omnimarket/nodes/node_capsule_effectiveness_feedback_reducer src/omnimarket/nodes/node_capture_silence_watch_effect src/omnimarket/nodes/node_cause_claim_ownership_effect src/omnimarket/nodes/node_ci_watch src/omnimarket/nodes/node_claim_resolver  2>&1 | grep -q handler_hand_construction"
-        cwd: "."
-  - id: "dod-omn21623-deploy-published-binding-readback"
-    description: |-
-      Hosted-runner source-artifact readback: fetch the claim resolver binding module at the
-      evaluated published commit and require it to declare its factory. A missing factory
-      fails the command. No lab service, credentials or broker is required. This checks
-      the published source artifact and does not assert a live runtime rollout.
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: |-
-          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_claim_resolver/container/container_claim_resolver.py" | grep -q "def build_handler_claim_resolver"
-        cwd: "."
+"schema_version": "1.0.0"
+"ticket_id": "OMN-21623"
+"title": "Thirty hand constructions of handlers in thirteen nodes move to each node's binding module"
+"summary": "Thirty places in thirteen nodes built a Handler or Node class by hand: five command-line entry points, four orchestrator composition roots, and optional-dependency fallbacks inside handlers. Each node now has a container package whose container_<node>.py holds typed build_ factories, the one declared binding site, and the old places call a factory with the same arguments and the same construction timing. Burn-down slice of the contracts_and_di check over this repository: handler_hand_construction findings go from 513 to 483 across src/omnimarket; the remaining 483 sit in other nodes."
+"is_seam_ticket": false
+"interface_change": false
+"interfaces_touched": []
+"requirements":
+- "id": "req-omn21623-github-web-origin"
+  "statement": "The GitHub web origin is declared once, in configs/service_endpoints.yaml, and the resolver fails closed when the key is missing or empty. The ten modules of the slice build their GitHub URLs from the resolver and hold no literal of the origin in code, so the contracts_and_di check reports no literal_url finding on any of them."
+  "acceptance":
+  - "id": "AC1"
+    "statement": "AC1: configs/service_endpoints.yaml declares github.web_url and service_endpoint_url resolves it -- falsifier: uv run pytest tests/test_service_endpoints_contract.py -k github_web_url -q --no-cov"
+  - "id": "AC2"
+    "statement": "AC2: none of the ten modules of the slice holds the GitHub web origin as a string constant in code -- falsifier: uv run pytest tests/test_service_endpoints_contract.py -k TestGithubWebOriginIsResolved -q --no-cov"
+  - "id": "AC3"
+    "statement": "AC3: the contracts_and_di check reports no literal_url finding on the files of the slice -- falsifier: the command of dod-omn21623-check-clean below"
+- "id": "req-omn21623-handler-binding-sites"
+  "statement": "A node builds its handlers only in its binding module; every caller in the node uses the factory, and behaviour, arguments and defaults are unchanged."
+  "acceptance":
+  - "id": "AC4"
+    "statement": "AC4: the contracts_and_di check reports no handler_hand_construction finding in the thirteen node directories of the slice -- falsifier: the command of dod-omn21623-hand-construction-clean below"
+  - "id": "AC5"
+    "statement": "AC5: the tests of the thirteen nodes pass with the factories in place -- falsifier: the command of dod-omn21623-node-tests below"
+"evidence_requirements":
+- "kind": "tests"
+  "description": "The endpoint authority tests pass."
+  "command": "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
+- "kind": "tests"
+  "description": "The tests of the touched nodes pass."
+  "command": "uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov"
+"emergency_bypass":
+  "enabled": false
+  "justification": ""
+  "follow_up_ticket_id": ""
+"dod_evidence":
+- "id": "dod-omn21623-endpoint-authority"
+  "description": "The endpoint authority exposes the web origin and every slice module resolves it instead of spelling it."
+  "source": "manual"
+  "binds_ac":
+  - "AC1"
+  - "AC2"
+  "checks":
+  - "check_type": "test_passes"
+    "check_value": "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
+    "cwd": "${OMNI_HOME}/omnimarket"
+- "id": "dod-omn21623-check-clean"
+  "description": "The contracts_and_di check over the ten slice modules reports no literal_url finding."
+  "source": "manual"
+  "binds_ac":
+  - "AC3"
+  "checks":
+  - "check_type": "test_passes"
+    "check_value": "uv run pytest tests/test_service_endpoints_contract.py -k TestGithubWebOriginIsResolved -q --no-cov"
+    "cwd": "."
+  - "check_type": "command"
+    "check_value": |-
+      uv run --frozen python - <<'PY'
+      from pathlib import Path
+      from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+      paths = [
+          Path("src/omnimarket/nodes/node_contractor_integration_note_effect/services/note_composer.py"),
+          Path("src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py"),
+          Path("src/omnimarket/nodes/node_lab_work_unit_effect/protocols/local_shell_work_runner.py"),
+          Path("src/omnimarket/nodes/node_linear_triage/services/local_github_pr_reads.py"),
+          Path("src/omnimarket/nodes/node_local_dashboard_serve_effect/bundle.py"),
+          Path("src/omnimarket/nodes/node_pr_head_stage_compute/handlers/handler_pr_head_stage.py"),
+          Path("src/omnimarket/nodes/node_push_validation_effect/protocols/ephemeral_container_focused_run_subprocess.py"),
+          Path("src/omnimarket/nodes/node_push_validation_effect/protocols/gate_runner_suite_evaluation_subprocess.py"),
+          Path("src/omnimarket/nodes/node_push_validation_effect/protocols/git_push_validation_subprocess.py"),
+          Path("src/omnimarket/nodes/node_remote_lane_effect/handlers/handler_remote_lane_ref.py"),
+      ]
+      assert all(path.is_file() for path in paths), "a slice module is missing"
+      validator = ValidatorContractsAndDi()
+      assert any(rule.rule_id == "literal_url" and rule.enabled for rule in validator.contract.rules), "literal_url rule is not enabled"
+      result = validator.validate(paths)
+      assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+      offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_url", "unparseable_file"}]
+      assert not offenders, "\n".join(offenders)
+      print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_url findings")
+      PY
+    "cwd": "."
+- "id": "dod-omn21623-deploy-published-endpoint-readback"
+  "description": |-
+    Hosted-runner source-artifact readback: fetch the endpoint authority file at the
+    evaluated published commit and require it to declare github.web_url. A missing
+    key fails the command. No lab service, credentials or broker is required. This
+    checks the published source artifact and does not assert a live runtime rollout.
+  "source": "manual"
+  "checks":
+  - "check_type": "command"
+    "check_value": |-
+      curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/service_endpoints.yaml" | uv run --frozen python -c '
+      import sys, yaml
+      doc = yaml.safe_load(sys.stdin.read())
+      assert "web_url" in doc["github"], "github.web_url missing"
+      print("Published endpoint authority readback: github.web_url PASS")
+      '
+    "cwd": "."
+- "id": "dod-omn21623-node-tests"
+  "description": "The focused tests of the touched nodes pass."
+  "source": "manual"
+  "binds_ac":
+  - "AC5"
+  "checks":
+  - "check_type": "test_passes"
+    "check_value": "uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov"
+    "cwd": "${OMNI_HOME}/omnimarket"
+- "id": "dod-omn21623-hand-construction-clean"
+  "description": "The contracts_and_di check over the thirteen node directories reports no handler_hand_construction finding."
+  "source": "manual"
+  "binds_ac":
+  - "AC4"
+  "checks":
+  - "check_type": "command"
+    "check_value": "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_adoption_recovery_effect src/omnimarket/nodes/node_aislop_sweep src/omnimarket/nodes/node_architecture_discovery_orchestrator src/omnimarket/nodes/node_baseline_compare src/omnimarket/nodes/node_board_truth_reconcile_effect src/omnimarket/nodes/node_branch_protection_audit_effect src/omnimarket/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_bus_audit_compute src/omnimarket/nodes/node_capsule_effectiveness_feedback_reducer src/omnimarket/nodes/node_capture_silence_watch_effect src/omnimarket/nodes/node_cause_claim_ownership_effect src/omnimarket/nodes/node_ci_watch src/omnimarket/nodes/node_claim_resolver  2>&1 | grep -q handler_hand_construction"
+    "cwd": "."
+- "id": "dod-omn21623-deploy-published-binding-readback"
+  "description": |-
+    Hosted-runner source-artifact readback: fetch the claim resolver binding module at the
+    evaluated published commit and require it to declare its factory. A missing factory
+    fails the command. No lab service, credentials or broker is required. This checks
+    the published source artifact and does not assert a live runtime rollout.
+  "source": "manual"
+  "checks":
+  - "check_type": "command"
+    "check_value": "curl --fail --silent --show-error --location --max-time 15 \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_claim_resolver/container/container_claim_resolver.py\" | grep -q \"def build_handler_claim_resolver\""
+    "cwd": "."

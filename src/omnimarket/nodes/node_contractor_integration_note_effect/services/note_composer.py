@@ -34,6 +34,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request import (
     ModelContractorRoster,
     ModelContractorRosterEntry,
@@ -294,7 +295,7 @@ def render_pin_recipe(
     return recipe.template.format(
         repo=pull_request.repo,
         repo_name=repo_name or pull_request.repo,
-        repo_url=f"https://github.com/{pull_request.repo}",
+        repo_url=f"{service_endpoint_url('github.web_url')}/{pull_request.repo}",
         merge_sha=pull_request.merge_sha,
     )
 

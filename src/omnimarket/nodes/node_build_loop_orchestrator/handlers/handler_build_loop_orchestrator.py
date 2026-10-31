@@ -55,10 +55,6 @@ from omnimarket.nodes.node_build_loop import (
     ModelLoopStartCommand,
     ModelPhaseTransitionEvent,
 )
-from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
-    build_build_loop,
-    build_overseer_verifier,
-)
 from omnimarket.nodes.node_build_loop_orchestrator.models.model_loop_cycle_summary import (
     ModelLoopCycleSummary,
 )
@@ -222,6 +218,12 @@ class HandlerBuildLoopOrchestrator:
             topics.overseer_verification_completed
         )
         self._topic_overseer_verify_requested = topics.overseer_verify_requested
+        # The binding module imports this one; resolve its factories lazily.
+        from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+            build_build_loop,
+            build_overseer_verifier,
+        )
+
         self._fsm = (
             fsm if fsm is not None else build_build_loop()
         )  # lifecycle-ok: optional-di-fallback
