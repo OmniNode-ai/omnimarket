@@ -68,6 +68,9 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/scripts/test_check_dep_provenance.py -q --no-cov -p no:randomly
+    cwd: .
   - check_type: command
     check_value: |-
       env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'PY'
