@@ -22,13 +22,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command import (
-    ModelEvidencePipelineCommand,
-)
-
 from omnimarket.events.occ_evidence import (
     EnumRuntimeLane,
     ModelRuntimeDeploymentProof,
+)
+from omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command import (
+    ModelEvidencePipelineCommand,
 )
 from omnimarket.nodes.evidence_pipeline_native import (
     DeploymentProofEvidenceCollectorAdapter,

@@ -12,7 +12,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_evidence_extractor_compute.handlers.handler_evidence_extractor_compute
   class: HandlerEvidenceExtractorCompute
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload.ModelRawEvidencePayload
+  input_model: omnimarket.models.evidence_pipeline.wire.model_raw_evidence_payload.ModelRawEvidencePayload
 
 handler_routing:
   handlers:
@@ -23,11 +23,11 @@ handler_routing:
 
 input_model:
   name: ModelRawEvidencePayload
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload
+  module: omnimarket.models.evidence_pipeline.wire.model_raw_evidence_payload
   description: "Raw collected evidence from GitHub, CI, filesystem, git, and projection surfaces."
 output_model:
   name: ModelEvidenceBundle
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_bundle
+  module: omnimarket.models.evidence_pipeline.wire.model_evidence_bundle
   description: "Structured evidence bundle with provenance, hashes, scope, and ticket identity."
 
 descriptor:

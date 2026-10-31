@@ -26,9 +26,11 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import yaml
-from omnibase_compat.telemetry.model_sweep_result import ModelSweepResult
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_aislop_sweep.models.model_sweep_result import (
+    ModelSweepResult,
+)
 from omnimarket.nodes.sweep_scope import (
     SweepScopeUnresolvedError,
     collect_git_corpus,

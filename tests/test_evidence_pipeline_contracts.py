@@ -84,7 +84,7 @@ EXPECTED_NODES = {
     },
 }
 
-COMPAT_MODEL_PREFIX = "omnibase_compat.contracts.evidence_pipeline.wire."
+COMPAT_MODEL_PREFIX = "omnimarket.models.evidence_pipeline.wire."
 
 
 def _load_contract(node_name: str) -> dict[str, Any]:

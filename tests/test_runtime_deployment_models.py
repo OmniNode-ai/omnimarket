@@ -8,7 +8,7 @@ the deployment design (plan
 ``docs/plans/2026-06-01-node-based-runtime-deployment-occ-tdd.md``).
 
 The PASS path of OCC draft validation reuses the existing
-``omnibase_compat ... ModelEvidenceValidationResult`` on
+``omnimarket.models.evidence_pipeline ... ModelEvidenceValidationResult`` on
 ``onex.evt.omnimarket.evidence-validated.v1`` (blocker B4);
 ``ModelOccEvidenceDraftValidationResult`` is the INTERNAL reject/audit shape only.
 """
@@ -19,9 +19,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from omnibase_compat.contracts.runtime_deployment.wire.model_runtime_deployment_request import (
-    ModelRuntimeDeploymentRequest,
-)
 from omnibase_core.models.runtime_deployment.wire import (
     EnumRuntimeLane,
     ModelRuntimeDeploymentProof,
@@ -149,34 +146,6 @@ def test_deploy_agent_command_requires_prod_digest() -> None:
             runtime_lane=EnumRuntimeLane.PROD,
             git_ref="origin/main",
         )
-
-
-def _deployment_request_kwargs() -> dict[str, object]:
-    return {
-        "correlation_id": uuid4(),
-        "deployment_id": uuid4(),
-        "runtime_lane": EnumRuntimeLane.STABILITY_TEST,
-        "source_branch": "main",
-        "source_sha": "abc123",
-        "requested_by": "runtime-rebuild-trigger",
-        "requested_at": datetime.now(tz=UTC),
-    }
-
-
-@pytest.mark.unit
-def test_deployment_request_rejects_missing_source_sha() -> None:
-    kwargs = _deployment_request_kwargs()
-    del kwargs["source_sha"]
-    with pytest.raises(ValidationError):
-        ModelRuntimeDeploymentRequest(**kwargs)  # type: ignore[arg-type]
-
-
-@pytest.mark.unit
-def test_deployment_request_rejects_missing_runtime_lane() -> None:
-    kwargs = _deployment_request_kwargs()
-    del kwargs["runtime_lane"]
-    with pytest.raises(ValidationError):
-        ModelRuntimeDeploymentRequest(**kwargs)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
