@@ -66,23 +66,34 @@ dod_evidence:
       test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep -c 'is a public method that mutates handler state')" -eq 0
     cwd: .
 - id: dod-omn21536-ac2-touched-node-tests
-  description: AC2 runs the tests of the nodes whose handler state moved.
+  description: AC2 runs the tests of the nodes whose handler state moved, in groups that each finish inside the verifier's 30 s per-check budget. The slower suites of the same nodes (tests/unit/delegation, tests/unit/nodes/node_dod_verify) run in the evidence requirement above on a lab host, and in the CI test shards.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_golden_chain_emit_daemon.py
-      tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_golden_chain_pr_landing_github_effect.py
-      tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_omn14533_cross_boundary_savings_seam.py tests/test_omn16874_consumer_flow_writer_dispatch.py
-      tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py
-      tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_omn18531_compaction_savings.py tests/test_omn19438_savings_registry_tenant_uuid.py
-      tests/test_savings_runner_task_delegated_omn13598.py tests/test_projection_malformed_dlq_omn13548.py tests/test_projection_error_classification_omn13634.py
-      tests/test_projection_handlers.py tests/unit/delegation tests/unit/nodes/node_dod_verify tests/unit/nodes/node_generation_consumer
-      tests/unit/nodes/node_github_repo_write_effect tests/unit/nodes/node_pr_landing_github_effect tests/unit/nodes/node_projection_consumer_flow
-      tests/nodes/node_install_canary_effect tests/nodes/node_intent_event_consumer_effect tests/nodes/node_linear_comments_sweep_orchestrator
-      tests/nodes/node_morning_friction_sweep_orchestrator tests/nodes/node_morning_ground_state_orchestrator src/omnimarket/nodes/node_projection_savings/tests
-      -q --no-cov --tb=line
+    check_value: uv run pytest tests/test_omn14533_cross_boundary_savings_seam.py tests/unit/nodes/node_projection_consumer_flow tests/test_omn19438_savings_registry_tenant_uuid.py tests/test_savings_runner_task_delegated_omn13598.py tests/test_bus_write_budget_consumer_flow_snapshot_policy.py tests/test_omn18531_compaction_savings.py tests/test_projection_error_classification_omn13634.py tests/test_omn17426_savings_aggregates_bus_backed.py tests/test_projection_malformed_dlq_omn13548.py tests/test_omn16874_consumer_flow_writer_dispatch.py tests/test_omn16875_applied_event_producer_consumer_pin.py tests/test_projection_handlers.py src/omnimarket/nodes/node_projection_savings/tests -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn15583_savings_writer_binds_envelope_tenant.py tests/test_golden_chain_emit_daemon.py tests/nodes/node_install_canary_effect tests/test_golden_chain_github_repo_write_effect.py tests/test_golden_chain_pr_landing_github_effect.py tests/test_golden_chain_generation_self_extension.py tests/test_omn16777_real_postgres_consumer_flow_write_path.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect tests/nodes/node_linear_comments_sweep_orchestrator tests/nodes/node_morning_friction_sweep_orchestrator -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_generation_consumer -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_morning_ground_state_orchestrator -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_intent_event_consumer_effect -q --no-cov --tb=line
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_delegation_workflow_replay_omn19560.py tests/unit/delegation/test_judge_receives_delegated_prompt_omn20340.py tests/unit/delegation/test_judge_unavailable_deterministic_floor_omn13959.py tests/unit/delegation/test_judge_verdict_vetoes_acceptance_omn13642.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21536-deploy-handlers-import
   description: 'Hosted deploy check: the overlay-source collaborator this change adds is served from the repository at the
