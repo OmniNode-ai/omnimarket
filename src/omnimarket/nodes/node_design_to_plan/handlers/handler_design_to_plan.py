@@ -8,6 +8,7 @@ import logging
 import re
 from datetime import UTC, datetime
 
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
@@ -91,12 +92,16 @@ class HandlerDesignToPlan:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        plan_model_key: str = "qwen3-coder",
+        plan_model_key: str | None = None,
         plan_timeout_seconds: float = 240.0,
     ) -> None:
         self._bridge: ModelInferenceAdapter | None = inference_bridge
         self._bridge_lock = asyncio.Lock()
-        self._plan_model_key = plan_model_key
+        self._plan_model_key = (
+            plan_model_key
+            if plan_model_key is not None
+            else load_node_model_names("node_design_to_plan").get("plan_model_key")
+        )
         self._plan_timeout_seconds = plan_timeout_seconds
 
     async def _ensure_bridge(self) -> ModelInferenceAdapter:

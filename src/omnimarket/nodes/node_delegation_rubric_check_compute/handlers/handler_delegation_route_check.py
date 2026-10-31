@@ -6,6 +6,7 @@ import re
 
 from pydantic import JsonValue
 
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_outcome import (
     EnumRouteCheckOutcome,
 )
@@ -21,6 +22,8 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_ch
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_observation import (
     ModelRouteObservation,
 )
+
+_MODEL_NAMES = load_node_model_names("node_delegation_rubric_check_compute")
 
 
 def _terminal(doc: dict[str, JsonValue]) -> dict[str, JsonValue] | None:
@@ -119,7 +122,11 @@ class HandlerDelegationRouteCheck:
             if request.lane:
                 expect("lane", doc.get("lane"), request.lane)
             expect("backend_id", doc.get("backend_id"), request.pin)
-            expect("model", terminal.get("model_name"), request.model or "Qwen3.8-27B")
+            expect(
+                "model",
+                terminal.get("model_name"),
+                request.model or _MODEL_NAMES.get("local_route_model"),
+            )
             expect("routing_tier", doc.get("routing_tier"), "local")
             expect("accepted attempt backend_id", acc.get("backend_id"), request.pin)
             expect("secret_source", terminal.get("secret_source"), None)
@@ -133,7 +140,7 @@ class HandlerDelegationRouteCheck:
             expect(
                 "model",
                 terminal.get("model_name"),
-                request.model or "gemini-2.5-flash-lite",
+                request.model or _MODEL_NAMES.get("cheap_cloud_route_model"),
             )
             expect("routing_tier", doc.get("routing_tier"), "cheap_cloud")
             expect(

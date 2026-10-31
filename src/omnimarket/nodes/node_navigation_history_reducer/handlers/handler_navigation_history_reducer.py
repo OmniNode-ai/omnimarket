@@ -40,6 +40,7 @@ from qdrant_client.http import models as qdrant_models
 if TYPE_CHECKING:
     import asyncpg
 
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.nodes.node_navigation_history_reducer.models.model_navigation_history_request import (
     ModelNavigationHistoryRequest,
 )
@@ -98,7 +99,9 @@ def _parse_qdrant_port(value: str | None) -> int:
 
 _DEFAULT_QDRANT_PORT = _parse_qdrant_port(os.environ.get("QDRANT_PORT"))  # contract-config-ok: config  # fmt: skip
 _DEFAULT_EMBEDDING_URL = os.environ.get("LLM_EMBEDDING_URL", "")  # contract-config-ok: config  # fmt: skip
-_DEFAULT_EMBEDDING_MODEL = "Qwen3-Embedding-8B"
+_DEFAULT_EMBEDDING_MODEL = load_node_model_names("node_navigation_history_reducer").get(
+    "embedding_model"
+)
 _QDRANT_COLLECTION = "navigation_paths"
 
 # Qdrant vector dimension for Qwen3-Embedding-8B (4096-dim output)

@@ -36,6 +36,7 @@ from uuid import uuid4
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.config.env_flags import env_flag
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
     ModelClassifiedPR,
@@ -89,13 +90,14 @@ FAILED_CHECK_CONCLUSIONS = {
 # Default routing policy for Phase 2 LLM commands. It must match
 # omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy because effect
 # handlers fail-loud on malformed command routing.
+_MODEL_NAMES = load_node_model_names("node_merge_sweep_triage_orchestrator")
 _DEFAULT_ROUTING_POLICY: dict[str, Any] = {
-    "primary": "deepseek-r1-14b",
-    "fallback": "qwen3-coder-30b",
+    "primary": _MODEL_NAMES.get("routing_primary"),
+    "fallback": _MODEL_NAMES.get("routing_fallback"),
     "fallback_allowed_roles": ["ci_fixer", "thread_reply", "conflict_hunk"],
     "max_tokens": 2048,
     "temperature": 0.0,
-    "ci_override": {"primary": "deepseek-r1-14b"},
+    "ci_override": {"primary": _MODEL_NAMES.get("routing_primary")},
 }
 
 

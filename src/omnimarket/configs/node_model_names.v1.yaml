@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Model names a node reads at composition, by node and by the name its handler asks for
+# (omnimarket.handlers.node_model_names_reader). A node contract holds no model literal
+# (contract-overlay-boundary), so the names are declared here.
+schema_version: "1.0.0"
+nodes:
+  node_delegation_rubric_check_compute:
+    local_route_model: "Qwen3.8-27B"
+    cheap_cloud_route_model: "gemini-2.5-flash-lite"
+  node_design_to_plan:
+    plan_model_key: "qwen3-coder"
+  node_merge_sweep_triage_orchestrator:
+    routing_primary: "deepseek-r1-14b"
+    routing_fallback: "qwen3-coder-30b"
+  node_navigation_history_reducer:
+    embedding_model: "Qwen3-Embedding-8B"
+  node_plans_today_effect:
+    glm_model: "glm-5.3-flash"
+  node_shadow_review_effect:
+    glm_model: "glm-5.3"
+  node_thread_reply_effect:
+    fast_model: "deepseek-r1-14b"
+    coder_model: "qwen3-coder-30b"
+    glm_model: "glm-4.5"

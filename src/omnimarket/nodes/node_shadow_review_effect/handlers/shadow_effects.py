@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Protocol
 
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review import (
     EnumShadowArm,
     EnumShadowArmStatus,
@@ -29,7 +30,7 @@ from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review impor
 )
 
 GITHUB_OWNER = "OmniNode-ai"
-GLM_MODEL = "glm-5.3"
+GLM_MODEL = load_node_model_names("node_shadow_review_effect").get("glm_model")
 HARNESS_LANE = "shadow-review-runner"
 HARNESS_TICKET = "OMN-20422"
 

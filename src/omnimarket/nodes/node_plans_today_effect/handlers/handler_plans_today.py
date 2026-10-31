@@ -42,6 +42,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
+
 from ..models.model_plans_today import ModelPlansTodayRequest, ModelPlansTodayResult
 from ..models.model_plans_today_schema import PLANS_TODAY_SCHEMA_ID
 from ..plans_today_member import (
@@ -65,7 +67,7 @@ HARNESS_DELEGATE_RELPATH = (
     "harness_delegate.py",
 )
 GLM_HARNESS = "claude-glm"
-GLM_MODEL = "glm-5.3-flash"
+GLM_MODEL = load_node_model_names("node_plans_today_effect").get("glm_model")
 GLM_LANE = "plans-today"
 LIVE_MINUTES = 45  # the owner-liveness window wave.py owners and drain_map.py use
 MOVE_HOURS = 24
