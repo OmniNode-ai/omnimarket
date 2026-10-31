@@ -15,13 +15,9 @@ from .model_automation_liveness_installer_scan_result import (
 from .model_automation_liveness_installer_source import (
     ModelAutomationLivenessInstallerSource,
 )
-from .model_automation_liveness_overlay_check_request import (
-    ModelAutomationLivenessOverlayCheckRequest,
-)
 from .model_automation_liveness_overlay_check_result import (
     ModelAutomationLivenessOverlayCheckResult,
 )
-from .model_automation_liveness_scanned_file import ModelAutomationLivenessScannedFile
 from .model_automation_liveness_sources import (
     SOURCES_SCHEMA_VERSION,
     ModelAutomationLivenessSources,
@@ -39,9 +35,7 @@ __all__ = [
     "ModelAutomationLivenessInstallerScanRequest",
     "ModelAutomationLivenessInstallerScanResult",
     "ModelAutomationLivenessInstallerSource",
-    "ModelAutomationLivenessOverlayCheckRequest",
     "ModelAutomationLivenessOverlayCheckResult",
-    "ModelAutomationLivenessScannedFile",
     "ModelAutomationLivenessSources",
     "ModelAutomationLivenessUnitReference",
 ]
