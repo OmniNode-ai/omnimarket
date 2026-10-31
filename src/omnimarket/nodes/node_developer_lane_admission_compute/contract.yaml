@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeDeveloperLaneAdmissionCompute (OMN-21599)
+
+name: node_developer_lane_admission_compute
+version: "1.0.0"
+contract_name: node_developer_lane_admission_compute
+node_name: node_developer_lane_admission_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure decision of which lane a developer's hook events belong to and whether the developer may
+  use it. The selected lane is the developer's bound lane (onex profile bind-lane), else the
+  hook-edge contract's declared lane. The developer's principal is checked against the selected
+  lane's own declared list of people: a declared collaborator is admitted, a collaborator on a
+  lane the hook-edge contract bars is refused, a principal declared on another lane
+  is refused, a missing principal or a missing list for a bound lane is refused, and any other
+  principal is the operator's own, unchanged. Names no lane; every lane name and every list
+  arrives in the request, from the hook-edge contract and the private overlay declarations. The
+  prompt hook loads the handler module by file path, because a per-prompt hook cannot pay a
+  package import; the module level imports the standard library only.
+
+input_model:
+  name: ModelDeveloperLaneAdmissionRequest
+  module: omnimarket.nodes.node_developer_lane_admission_compute.models.model_developer_lane_admission
+
+output_model:
+  name: ModelDeveloperLaneAdmissionResult
+  module: omnimarket.nodes.node_developer_lane_admission_compute.models.model_developer_lane_admission
+
+handler:
+  module: omnimarket.nodes.node_developer_lane_admission_compute.handlers.handler_developer_lane_admission
+  class: HandlerDeveloperLaneAdmission
+  input_model: omnimarket.nodes.node_developer_lane_admission_compute.models.model_developer_lane_admission.ModelDeveloperLaneAdmissionRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerDeveloperLaneAdmission
+        module: omnimarket.nodes.node_developer_lane_admission_compute.handlers.handler_developer_lane_admission
+      event_model:
+        name: ModelDeveloperLaneAdmissionRequest
+        module: omnimarket.nodes.node_developer_lane_admission_compute.models.model_developer_lane_admission
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: hook.developer_lane.admission
+    description: Select a developer's lane from the lane binding and check the principal against that lane's declared people
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.developer-lane-admission-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.developer-lane-admission-decided.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.developer-lane-admission-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.developer-lane-admission-decided.v1
+
+terminal_event: onex.evt.omnimarket.developer-lane-admission-decided.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21599
+  maturity: alpha
+  tags:
+    - hooks
+    - lanes
+    - collaborators
