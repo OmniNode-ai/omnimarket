@@ -178,44 +178,100 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 <style>
-.health{display:grid;gap:14px}
-.health .src{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--muted)}
-.health .src b{font-weight:600;color:var(--ink)}
-.health .src .bad{color:var(--stop)} .health .src .part{color:var(--warn)}
-.htable{width:100%;border-collapse:collapse;font-size:.86rem}
-.htable th{font:500 .7rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule)}
-.htable td{padding:7px 8px;border-bottom:1px dashed var(--rule);vertical-align:middle}
-.htable td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-.htable .unread{color:var(--muted);font-style:italic}
-.verdict{font:500 .7rem/1 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;padding:4px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
-.verdict.better{color:var(--ok)} .verdict.worse{color:var(--stop)} .verdict.flat{color:var(--muted)} .verdict.info{color:var(--steel)} .verdict.unmeasured{color:var(--muted);border-style:dashed}
-.grey{background:color-mix(in srgb,var(--idle) 14%,var(--panel));border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:8px;color:var(--muted)}
-.grey h3{color:var(--muted)}
-.spark{display:block}
-.spark .ln{fill:none;stroke:var(--steel);stroke-width:1.5}
-.spark .pt{fill:var(--steel);stroke:var(--steel)} .spark .pt.part{fill:var(--panel)}
-.spark .rs{stroke:var(--warn);stroke-width:1;stroke-dasharray:2 2}
+/* Additions to the plant-floor styles: section nav, shift report, unread drawings, delegation, reports tabs. */
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+.sitenav{display:flex;flex-wrap:wrap;gap:6px 6px;position:sticky;top:0;z-index:5;margin:0 -4px;padding:8px 4px;background:color-mix(in srgb,var(--floor) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule)}
+.sitenav a{font:500 .72rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;text-decoration:none;color:var(--ink);padding:8px 10px;border:1px solid var(--rule);border-radius:3px;background:var(--panel)}
+.sitenav a:hover{border-color:var(--safety);background:var(--safety-soft)}
+@media (max-width:760px){.sitenav{flex-wrap:nowrap;overflow-x:auto}.sitenav a{white-space:nowrap}}
+
+.andon{display:flex;flex-wrap:wrap}
+.andon .lamp{flex:1 1 220px}
+#stamp{line-height:1.5;margin-bottom:6px}
+.lamp.c-idle{--c:var(--idle)}
+.lamp.c-idle i{animation:none}
+
+.report .prose p{max-width:68ch}
+.tally .unread-n{font-size:1.2rem;color:var(--muted);font-style:italic}
+
+.line-head .plan{font:400 .72rem/1.3 var(--f-mono);color:var(--muted);word-break:break-all}
+.line.ghost{border-style:dashed}
+.line.ghost .car-svg{opacity:.8}
+.line.ghost .meter b{width:0}
+.ghost-note{border:1px dashed var(--idle);border-radius:4px;padding:10px 12px;font-size:.86rem;color:var(--muted);background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
+.hint{font:500 .68rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:8px 22px 0}
+.floor-scroll{scroll-behavior:smooth}
+.st.stop{background:color-mix(in srgb,var(--stop) 6%,transparent)}
+.st.active{background:color-mix(in srgb,var(--safety) 8%,transparent)}
+.cause{border-left:3px solid var(--stop);background:var(--stop-soft);color:var(--ink);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.84rem}
+.feed .eyebrow+small{display:block;color:var(--muted);font-size:.7rem}
+.items small{overflow-wrap:anywhere}
+.st.solo .items{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px 24px}
+
+/* bays: unread drawing */
+.bay.unread{border-style:dashed;background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
+.slots.unread{height:16px;border-radius:3px;border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px)}
+.bay.stale .slots i.on{background:var(--warn);border-color:var(--warn);animation:none}
+
+/* dock lists */
+details.more summary{cursor:pointer;color:var(--muted);font-size:.8rem;padding:2px 0}
+details.more[open] summary{margin-bottom:8px}
+.list li span:first-child{min-width:0;overflow-wrap:anywhere}
+.list li .empty{font-style:italic}
+
+/* delegation */
+.stack.unread{border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 60%,transparent) 6px 7px)}
+.stack b+b{border-left:2px solid var(--panel)}
+
+/* stoppages */
+.chart-scroll .chart{min-width:640px}
+.unread{color:var(--muted);font-style:italic}
 .age-stale{color:var(--stop);font-weight:600}
 .banner{background:var(--stop-soft);color:var(--ink);border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
 .banner[hidden]{display:none}
 .empty{color:var(--muted);font-size:.9rem}
+.list li small{color:var(--muted);font-size:.72rem}
+
+/* reports, part of the floor */
+.rcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.rcard{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:8px;align-content:start;min-width:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.rcard h3{font-size:1.05rem}
+.rcard p{font-size:.84rem;color:var(--muted)}
+.rcard .age{font:500 .72rem/1.3 var(--f-mono);color:var(--muted)}
+.rcard[aria-selected="true"]{border-color:var(--safety);box-shadow:inset 0 -4px 0 var(--safety)}
+.rcard:focus-visible{outline:2px solid var(--safety);outline-offset:2px}
+.rpanel{border:1px solid var(--rule);border-radius:6px;background:var(--panel);overflow:hidden}
+.rbar{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--rule);font-size:.84rem;color:var(--muted)}
+.rbar a{color:var(--car-edge)}
+.rframe{display:block;width:100%;height:min(80vh,860px);min-height:420px;border:0;background:var(--floor)}
+.pills{display:flex;flex-wrap:wrap;gap:8px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <header id="top">
     <div class="hazard" aria-hidden="true"></div>
-    <nav class="sitenav"><a href="reports/">All reports</a></nav>
+    <nav class="sitenav" aria-label="Sections">
+      <a href="#shift">Shift report</a><a href="#lines">Lines</a><a href="#bays">Lab bays</a><a href="#dock">Shipping</a><a href="#deleg">Delegation</a><a href="#stops">Stoppages</a><a href="#reports">Reports</a><a href="reports/">All reports</a>
+    </nav>
     <div class="head-row">
       <div>
         <div class="eyebrow" id="stamp">Reading the factory record</div>
         <h1>Lean Factory Floor</h1>
       </div>
-      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage or wave, and the car is built part by part as stations finish. Feeder lines under a station are the work that supplies it. Bays are the lab machines doing the work. The page reads one JSON record, written by the factory floor nodes and published on every tick.</p>
+      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage or wave, and the car is built part by part as stations finish. Feeder lines under a station are the work that supplies it. Bays are the lab machines doing the work. Everything below is read from the factory record, the process-health series and the reports, published on every tick; a source that could not be read is drawn as unread.</p>
     </div>
     <div class="banner" id="banner" role="alert" hidden></div>
     <div class="andon" role="list" aria-label="Andon board" id="andon"></div>
   </header>
+
+  <section class="report" aria-labelledby="rep" id="shift">
+    <div class="prose" id="shiftProse">
+      <h2 id="rep">Shift report</h2>
+      <p class="empty">Reading the record.</p>
+    </div>
+    <div class="tally" aria-label="Shift numbers" id="tally"></div>
+  </section>
 
   <div class="key" aria-label="How to read the car">
     <span><i class="sw done"></i>Part finished</span>
@@ -227,39 +283,50 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 
   <div id="lines" style="display:grid;gap:28px"></div>
 
-  <section aria-labelledby="bays" style="display:grid;gap:14px">
-    <div><div class="eyebrow">Where the work runs</div><h2 id="bays">Lab bays</h2></div>
+  <section aria-labelledby="baysH" style="display:grid;gap:14px" id="bays">
+    <div><div class="eyebrow">Where the work runs</div><h2 id="baysH">Lab bays</h2></div>
     <div class="bays" id="bayGrid"></div>
   </section>
 
   <section class="two">
-    <div class="card" aria-labelledby="dock">
-      <div><div class="eyebrow">Out the door</div><h2 id="dock">Shipping dock</h2></div>
-      <div style="display:flex;gap:16px;align-items:end;flex-wrap:wrap"><span class="big mono" id="shippedCount">0</span><span class="muted">changes shipped on the lines above</span></div>
+    <div class="card" aria-labelledby="dockH" id="dock">
+      <div><div class="eyebrow">Out the door</div><h2 id="dockH">Shipping dock</h2></div>
+      <div style="display:flex;gap:16px;align-items:end;flex-wrap:wrap"><span class="big mono" id="shippedCount">0</span><span class="muted">changes in the record's shipped list</span></div>
       <h3>Shipped</h3>
-      <ul class="list" id="shipped"></ul>
+      <div id="shipped"></div>
       <h3>Waiting at the dock</h3>
-      <ul class="list" id="waiting"></ul>
+      <div id="waiting"></div>
     </div>
-    <div class="card" aria-labelledby="sources">
-      <div><div class="eyebrow">What the record was computed from</div><h2 id="sources">Sources</h2></div>
-      <ul class="list" id="sourceList"></ul>
+    <div class="card" aria-labelledby="delegH" id="deleg">
+      <div><div class="eyebrow">Work sent to other models</div><h2 id="delegH">Delegation</h2></div>
+      <div id="delegBody"><p class="empty">Reading the delegation counts.</p></div>
     </div>
   </section>
 
-  <section class="card health" aria-labelledby="ph">
-    <div><div class="eyebrow" id="phStamp">Process health</div><h2 id="ph">Process health since the factory reset</h2></div>
-    <div id="phBody"><p class="empty">Reading the process-health series.</p></div>
-  </section>
-
-  <section class="card" aria-labelledby="stops">
-    <div><div class="eyebrow">Friction report · stated cost in minutes</div><h2 id="stops">Biggest stoppages</h2></div>
+  <section class="card" aria-labelledby="stopsH" id="stops">
+    <div><div class="eyebrow" id="stopsStamp">Friction report · stated cost in minutes</div><h2 id="stopsH">Biggest stoppages</h2></div>
+    <p class="muted" id="stopsNote" style="font-size:.86rem"></p>
     <div class="chart-scroll"><svg class="chart" id="stopChart" viewBox="0 0 760 120" role="img" aria-label="Stoppage cost by cause"></svg></div>
+  </section>
+
+  <section aria-labelledby="repsH" style="display:grid;gap:14px" id="reports">
+    <div><div class="eyebrow" id="repsStamp">Reports on the same data</div><h2 id="repsH">Reports</h2></div>
+    <p class="muted" style="max-width:68ch">Each report is read here, on the floor. Pick one; the age on a card is the age of the data behind it, not of the page.</p>
+    <div class="rcards" id="rcards" role="tablist" aria-label="Reports"></div>
+    <div class="rpanel" id="rpanel" hidden>
+      <div class="rbar"><span id="rtitle"></span><a id="ropen" href="reports/">Open on its own page</a></div>
+      <div id="rhost"></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="sources" id="sourcesCard">
+    <div><div class="eyebrow">What the record was computed from</div><h2 id="sources">Sources</h2></div>
+    <ul class="list" id="sourceList"></ul>
   </section>
 
   <footer>
     <div class="hazard" aria-hidden="true"></div>
-    <p>The record is computed by the factory floor nodes from the plans and their task manifests, the pull request watcher, the rolling work ledger, the Linear snapshot, the lab placement reading and the friction report. The page reloads it every minute and shows how old it is.</p>
+    <p>The record is computed by the factory floor nodes from the plans and their task manifests, the pull request watcher, the rolling work ledger, the Linear snapshot, the lab placement reading and the friction report. The page reloads it every minute and shows how old it is. Nothing on the page is typed in: a figure that has no source is drawn unread, never as a zero.</p>
   </footer>
 </div>
 
@@ -267,36 +334,62 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 const DATA_FILE = "factory-floor.json";
 const STATUS_FILE = "publish-status.json";
 const HEALTH_FILE = "process-health.json";
+const REPORTS_FILE = "reports/manifest.json";
+const DELEGATION_FILE = "delegation.json";
 const POLL_MS = 60000;
 const STALE_MIN = 90;
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 const PART_NAMES = {frame:"Frame",engine:"Engine",wiring:"Wiring",body:"Body",glass:"Glass",lights:"Lights",wheels:"Wheels"};
 const PART_ORDER = ["frame","wiring","engine","body","glass","lights","wheels"];
 const STATE_LABEL = {done:"Done",active:"Working",prep:"Parts staged",wait:"Waiting",stop:"Stopped"};
+const STATE_WORD = {done:"finished",active:"being built",prep:"parts staged",wait:"not started",stop:"stopped"};
 const PILL_CLASS = {stopped:"stop",done:"done",building:"active",queued:"wait"};
-const PILL_LABEL = {stopped:"Stopped",done:"Done",building:"Building",queued:"Queued"};
+const PILL_LABEL = {stopped:"Andon cord pulled",done:"Done",building:"Building",queued:"Queued"};
+const TONE = {ok:"var(--ok)",warn:"var(--warn)",stop:"var(--stop)",idle:"var(--idle)"};
 
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const safeId = s => String(s).replace(/[^A-Za-z0-9_-]/g,"_");
 const el = id => document.getElementById(id);
+const num = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
+const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
+
+// Which part of the car a station builds. With seven or more stations the stations are grouped over the seven
+// parts in order; with fewer, each part is built by the station whose share of the line it falls in.
+function partStations(n){
+  return PART_ORDER.map((_, p) => {
+    if (n <= 0) return [];
+    if (n >= PART_ORDER.length){
+      const out = [];
+      for (let i = 0; i < n; i++) if (Math.floor(i * PART_ORDER.length / n) === p) out.push(i);
+      return out;
+    }
+    return [Math.min(n - 1, Math.floor(p * n / PART_ORDER.length))];
+  });
+}
+
+function aggregate(states){
+  if (!states.length) return "wait";
+  if (states.includes("stop")) return "stop";
+  if (states.every(s => s === "done")) return "done";
+  if (states.includes("active") || states.includes("done")) return "active";
+  if (states.includes("prep")) return "prep";
+  return "wait";
+}
 
 function partStates(stations){
-  const n = stations.length;
-  const parts = {};
-  PART_ORDER.forEach((k,i) => {
-    const st = n ? stations[Math.min(n-1, Math.floor(i*n/PART_ORDER.length))] : null;
-    parts[k] = st ? st.state : "wait";
-  });
+  const map = partStations(stations.length), parts = {};
+  PART_ORDER.forEach((k, p) => { parts[k] = aggregate(map[p].map(i => stations[i].state)); });
   return parts;
 }
 
 function carSVG(id, parts){
-  const c = (k,extra="") => `p s-${parts[k]||"wait"} ${extra}`;
+  const c = (k, extra = "") => `p s-${parts[k] || "wait"} ${extra}`;
   const wheel = x => `<g class="wheel"><circle class="${c("wheels")}" cx="${x}" cy="96" r="18" stroke-width="2"/><circle class="${c("wheels")}" cx="${x}" cy="96" r="6" stroke-width="2"/><path class="${c("wheels","stroke-only")}" d="M${x-12} 96H${x+12}M${x} 84V108" stroke-width="2"/></g>`;
-  const label = Object.entries(parts).map(([k,v]) => PART_NAMES[k]+" "+({done:"finished",active:"being built",prep:"parts staged",wait:"not started",stop:"stopped"}[v])).join(", ");
+  const label = PART_ORDER.map(k => PART_NAMES[k] + " " + STATE_WORD[parts[k] || "wait"]).join(", ");
   return `<svg class="car-svg" viewBox="0 0 300 122" role="img" aria-label="Car for ${esc(id)}: ${esc(label)}">
-   <defs><pattern id="hatch-${id}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="transparent"/><path d="M0 0V6" style="stroke:var(--steel)" stroke-width="1.6"/></pattern></defs>
-   <style>#line-${id} .p.s-prep{fill:url(#hatch-${id})}</style>
+   <defs><pattern id="hatch-${esc(id)}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="transparent"/><path d="M0 0V6" style="stroke:var(--steel)" stroke-width="1.6"/></pattern></defs>
+   <style>#line-${esc(id)} .p.s-prep{fill:url(#hatch-${esc(id)})}</style>
    <line x1="6" y1="116" x2="294" y2="116" style="stroke:var(--rule)" stroke-width="2"/>
    <path class="${c("body")}" stroke-width="2" d="M22 86 L22 66 Q24 58 36 56 L92 54 L122 32 Q130 26 142 26 L206 26 Q218 26 228 36 L250 56 L272 60 Q280 62 280 72 L280 86 Z"/>
    <path class="${c("glass")}" stroke-width="2" d="M100 54 L126 34 L168 34 L168 54 Z M174 34 L204 34 Q212 34 220 42 L232 54 L174 54 Z"/>
@@ -313,201 +406,338 @@ function miniCar(stopped){
   return `<svg class="mini${stopped?" stopped":""}" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:${stopped?"var(--stop)":"var(--safety)"};stroke:var(--belt)" stroke-width="1.5"/><circle cx="16" cy="21" r="5" style="fill:var(--belt);stroke:var(--roller)" stroke-width="2"/><circle cx="49" cy="21" r="5" style="fill:var(--belt);stroke:var(--roller)" stroke-width="2"/></svg>`;
 }
 
-function renderLines(lines){
-  const host = el("lines");
-  if (!lines.length){ host.innerHTML = `<p class="empty">The record holds no lines.</p>`; return; }
-  host.innerHTML = lines.map(L => {
-    const sid = safeId(L.line_id);
-    const stations = L.stations || [];
-    const n = Math.max(stations.length, 1);
-    let cur = stations.findIndex(s => s.state === "active" || s.state === "stop");
-    if (cur < 0) cur = stations.length && stations.every(s => s.state === "done") ? stations.length - 1 : 0;
-    const pos = (cur + 0.5) / n;
-    const stopped = L.status_pill === "stopped" || (L.andon && L.andon.flag);
-    const pct = Math.max(0, Math.min(100, Number(L.percent_built) || 0));
-    const causes = (L.andon && L.andon.causes || []).map(esc).join("; ");
-    return `<section class="line" id="line-${sid}" aria-labelledby="h-${sid}">
+// The lines in the order the deployment overlay declares them, with a slot for a declared line that no plan matched.
+function buildSlots(lines, status){
+  const decl = status && status.lines_declared;
+  if (!decl || decl.state !== "read" || !Array.isArray(decl.plan_path_contains)){
+    return {declared: false, reason: decl && decl.reason ? decl.reason : "the publish status carries no declaration", slots: lines.map(line => ({line, fragment: ""}))};
+  }
+  const used = new Set();
+  const slots = decl.plan_path_contains.map(fragment => {
+    const line = lines.find(x => !used.has(x) && String(x.plan_path).includes(fragment)) || null;
+    if (line) used.add(line);
+    return {line, fragment};
+  });
+  lines.forEach(line => { if (!used.has(line)) slots.push({line, fragment: ""}); });
+  return {declared: true, reason: "", slots};
+}
+
+function lineFacts(L){
+  const stations = L.stations || [];
+  const n = stations.length;
+  let cur = stations.findIndex(s => s.state === "active" || s.state === "stop");
+  if (cur < 0) cur = n && stations.every(s => s.state === "done") ? n - 1 : 0;
+  const items = stations.flatMap(s => s.items || []);
+  return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
+    active: items.filter(i => i.state === "active").length,
+    stopped: L.status_pill === "stopped" || !!(L.andon && L.andon.flag)};
+}
+
+function stationName(stations, id){
+  const hit = stations.find(s => s.id === id);
+  return hit ? hit.name : id;
+}
+
+function renderLine(slot, i){
+  const letter = "Line " + (LETTERS[i] || i + 1);
+  const L = slot.line;
+  if (!L){
+    const sid = "ghost-" + i;
+    return `<section class="line ghost" id="line-${sid}" aria-labelledby="h-${sid}">
       <div class="line-head">
-        ${carSVG(sid, partStates(stations))}
+        ${carSVG(sid, {})}
         <div class="meta">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(L.line_id)}</span><span class="pill ${PILL_CLASS[L.status_pill]||"wait"}">${esc(PILL_LABEL[L.status_pill]||L.status_pill)}</span></div>
-          <h2 id="h-${sid}">${esc(L.name)}</h2>
-          ${L.andon && L.andon.flag ? `<p class="muted">Cord pulled: ${esc(L.andon.reason)}${causes?` (${causes})`:""}</p>` : ""}
-          <div class="meter" role="img" aria-label="${pct} percent built"><b style="--w:${pct}%"></b></div>
-          <span class="eyebrow">${pct}% built · station ${Math.min(cur+1,n)} of ${stations.length}</span>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill wait">Not in the record</span></div>
+          <h2 id="h-${sid}">No plan read for this line</h2>
+          <p class="ghost-note">The deployment overlay declares this line as a plan whose path contains <b class="mono">${esc(slot.fragment)}</b>. No plan in the plans repository matched it, so there are no stations, no parts and no percent to draw. The car stays empty until that plan exists and the factory floor effect reads it.</p>
+          <div class="meter" role="img" aria-label="Unread"><b style="--w:0%"></b></div>
+          <span class="eyebrow">Unread</span>
         </div>
       </div>
-      <div class="floor-scroll"><div class="track" style="--n:${n}">
-        <div class="belt">${stations.map((_,i)=>i?`<span class="mark" style="left:${i/n*100}%"></span>`:"").join("")}
-          <div style="--pos:${pos}" class="mini-wrap">${miniCar(stopped)}</div></div>
-        <div class="stations">${stations.map((s,i) => `
-          <div class="st ${esc(s.state)}">
-            <div class="st-top"><span class="st-num mono">${i}</span><span class="pill ${esc(s.state)}">${esc(STATE_LABEL[s.state]||s.state)}</span></div>
+    </section>`;
+  }
+  const f = lineFacts(L);
+  const sid = safeId(L.line_id);
+  const parts = partStates(f.stations);
+  const map = partStations(f.n);
+  const pos = (f.cur + 0.5) / Math.max(f.n, 1);
+  const pct = Math.max(0, Math.min(100, num(L.percent_built)));
+  const reason = L.andon && L.andon.reason ? L.andon.reason : "";
+  const causes = (L.andon && L.andon.causes || []).filter(x => x !== reason && x.trim()).map(esc).join("; ");
+  const source = L.source === "manifest" ? "task manifest" : "plan task table";
+  return `<section class="line" id="line-${sid}" aria-labelledby="h-${sid}">
+      <div class="line-head">
+        ${carSVG(sid, parts)}
+        <div class="meta">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill ${PILL_CLASS[L.status_pill] || "wait"}">${esc(PILL_LABEL[L.status_pill] || L.status_pill)}</span></div>
+          <h2 id="h-${sid}">${esc(L.name)}</h2>
+          <span class="plan">${esc(L.plan_path)} · read from its ${esc(source)}</span>
+          ${L.andon && L.andon.flag ? `<p class="cause">Cord pulled: ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
+          <div class="meter" role="img" aria-label="About ${pct} percent built"><b style="--w:${pct}%"></b></div>
+          <span class="eyebrow">About ${pct}% of the car built · station ${Math.min(f.cur + 1, Math.max(f.n, 1))} of ${f.n} · ${f.done} of ${f.items.length} parts done</span>
+        </div>
+      </div>
+      ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways along the belt</div>` : ""}
+      <div class="floor-scroll" data-line="${esc(sid)}" data-cur="${f.cur}"><div class="track" style="--n:${Math.max(f.n, 1)}">
+        <div class="belt">${f.stations.map((_, k) => k ? `<span class="mark" style="left:${k / f.n * 100}%"></span>` : "").join("")}
+          <div style="--pos:${pos}" class="mini-wrap">${miniCar(f.stopped)}</div></div>
+        <div class="stations">${f.stations.map((s, k) => {
+          const builds = PART_ORDER.filter((_, p) => map[p].includes(k)).map(x => PART_NAMES[x].toLowerCase()).join(" and ");
+          return `
+          <div class="st ${esc(s.state)}${f.n === 1 ? " solo" : ""}">
+            <div class="st-top"><span class="st-num mono">${k}</span><span class="pill ${esc(s.state)}">${esc(STATE_LABEL[s.state] || s.state)}</span></div>
             <h3>${esc(s.name)}</h3>
-            <ul class="items">${(s.items||[]).map(it => `<li class="${esc(it.state)}"><i></i><span>${esc(it.title)}${it.note||(it.prs&&it.prs.length)?`<small>${esc([it.note].concat(it.prs||[]).filter(Boolean).join(" · "))}</small>`:""}</span></li>`).join("")}</ul>
-            ${(s.feeders||[]).length?`<div class="feed"><span class="eyebrow">Feeder lines</span>${s.feeders.map(f=>`<div>${esc(f)}</div>`).join("")}</div>`:""}
-          </div>`).join("")}
+            ${builds ? `<span class="part">Builds the ${esc(builds)}</span>` : ""}
+            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}"><i></i><span>${esc(it.title)}${it.note || (it.prs && it.prs.length) ? `<small>${esc([it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>` : ""}</span></li>`).join("")}</ul>
+            ${(s.feeders || []).length ? `<div class="feed"><span class="eyebrow">Feeder lines</span>${s.feeders.map(x => `<div>${esc(stationName(f.stations, x))}<small>feeds this station</small></div>`).join("")}</div>` : ""}
+          </div>`;
+        }).join("")}
         </div>
       </div></div>
     </section>`;
-  }).join("");
-  document.querySelectorAll(".mini-wrap").forEach(w => { const s = w.firstElementChild; s.style.setProperty("--pos", w.style.getPropertyValue("--pos")); w.replaceWith(s); });
 }
 
-function renderAndon(lines, floor){
-  const lamps = lines.map(L => {
-    const cls = L.andon && L.andon.flag ? "c-stop" : L.status_pill === "done" ? "c-ok" : "c-warn";
-    const word = L.andon && L.andon.flag ? "cord pulled" : (PILL_LABEL[L.status_pill] || "").toLowerCase();
-    const sub = L.andon && L.andon.flag ? L.andon.reason : `${Number(L.percent_built)||0}% built`;
-    return `<div class="lamp ${cls}" role="listitem"><i></i><b>${esc(L.line_id)} · ${esc(word)}</b><span>${esc(sub)}</span></div>`;
+function renderLines(slots, declared, reason){
+  const host = el("lines");
+  if (!slots.length){ host.innerHTML = `<p class="empty">The record holds no lines.</p>`; return; }
+  const keep = {};
+  host.querySelectorAll(".floor-scroll").forEach(s => { keep[s.dataset.line] = s.scrollLeft; });
+  host.innerHTML = (declared ? "" : `<p class="ghost-note">Which lines the overlay declares is unread (${esc(reason)}), so a declared line with no plan cannot be drawn.</p>`) + slots.map(renderLine).join("");
+  host.querySelectorAll(".mini-wrap").forEach(w => { const s = w.firstElementChild; s.style.setProperty("--pos", w.style.getPropertyValue("--pos")); w.replaceWith(s); });
+  host.querySelectorAll(".floor-scroll").forEach(s => {
+    const track = s.firstElementChild, n = num(getComputedStyle(track).getPropertyValue("--n"), 1);
+    s.scrollLeft = s.dataset.line in keep ? keep[s.dataset.line] : Math.max(0, (num(s.dataset.cur) - 0.5) * track.scrollWidth / n);
   });
-  const free = floor.bays.reduce((a,b) => a + (b.stale ? 0 : b.free), 0);
-  lamps.push(`<div class="lamp c-warn" role="listitem"><i></i><b>Lab bays · ${free} free</b><span>${floor.bays.filter(b=>b.stale).length} host advertisements stale</span></div>`);
+}
+
+function renderAndon(slots, floor, health, bayState){
+  const lamps = slots.map((slot, i) => {
+    const letter = "Line " + (LETTERS[i] || i + 1);
+    if (!slot.line) return `<div class="lamp c-idle" role="listitem"><i></i><b>${esc(letter)} · not in the record</b><span>No plan matched ${esc(slot.fragment)}</span></div>`;
+    const L = slot.line, f = lineFacts(L);
+    const cls = f.stopped ? "c-stop" : L.status_pill === "done" ? "c-ok" : "c-warn";
+    const word = f.stopped ? "cord pulled" : (PILL_LABEL[L.status_pill] || "").toLowerCase();
+    const cur = f.stations[f.cur];
+    const sub = f.stopped ? ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "") : `Station ${f.cur + 1} of ${f.n}${cur ? `, ${cur.name}` : ""}; ${f.done} of ${f.items.length} parts done`;
+    return `<div class="lamp ${cls}" role="listitem"><i></i><b>${esc(letter)} · ${esc(word)}</b><span>${esc(sub)}</span></div>`;
+  });
+  if (bayState.read){
+    const stale = floor.bays.filter(b => b.stale).length;
+    lamps.push(`<div class="lamp ${stale ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Lab bays · ${bayState.free} slots free</b><span>${bayState.running} running on ${floor.bays.length} hosts; ${stale} advertisements stale</span></div>`);
+  } else {
+    lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Lab bays · unread</b><span>No lab host advertised its slots</span></div>`);
+  }
   lamps.push(`<div class="lamp c-ok" role="listitem"><i></i><b>Shipping · ${floor.shipped.length}</b><span>${floor.waiting.length} waiting at the dock</span></div>`);
+  if (health && health.summary){
+    const sm = health.summary;
+    if (sm.measured === false) lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Process health · unmeasured</b><span>${esc(sm.reason || "the comparison could not be measured")}</span></div>`);
+    else lamps.push(`<div class="lamp ${num(sm.worse) > 0 ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Process health · ${num(sm.improved)} better</b><span>${num(sm.worse)} worse, ${num(sm.flat)} flat, ${num(sm.unmeasured)} unmeasured since the reset</span></div>`);
+  } else {
+    lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Process health · unread</b><span>The series is not published</span></div>`);
+  }
   el("andon").innerHTML = lamps.join("");
 }
 
-function renderBays(bays){
-  el("bayGrid").innerHTML = bays.length ? bays.map(b => `
-    <div class="bay"><div class="bay-top"><b>${esc(b.host)}</b><span class="eyebrow">${b.slots} slots</span></div>
-    <div class="slots" role="img" aria-label="${b.running} running, ${b.free} free">${"<i class=on></i>".repeat(Math.max(0,b.running))}${"<i></i>".repeat(Math.max(0,b.free))}</div>
-    <small><span class="mono">${b.running}</span> working · <span class="mono">${b.free}</span> free${b.stale?" · advertisement stale":""}</small></div>`).join("")
-    : `<p class="empty">No lab host advertised its slots.</p>`;
+function bayFacts(bays){
+  return {read: bays.length > 0, running: bays.reduce((a, b) => a + num(b.running), 0), free: bays.reduce((a, b) => a + (b.stale ? 0 : num(b.free)), 0), slots: bays.reduce((a, b) => a + num(b.slots), 0)};
+}
+
+function renderShift(slots, floor, rec, bayState){
+  const paras = [];
+  slots.forEach((slot, i) => {
+    const letter = "Line " + (LETTERS[i] || i + 1);
+    if (!slot.line){ paras.push(`<p><b>${esc(letter)}</b> is declared but unread: no plan matched ${esc(slot.fragment)}.</p>`); return; }
+    const L = slot.line, f = lineFacts(L), cur = f.stations[f.cur];
+    let t = `<b>${esc(letter)}</b>, ${esc(L.name)}, is at station ${f.cur + 1} of ${f.n}${cur ? ` (${esc(cur.name)})` : ""} with ${f.done} of ${f.items.length} parts done${f.active ? ` and ${f.active} being built` : ""}, about ${num(L.percent_built)}% of the car.`;
+    if (f.stopped) t += ` The andon cord is pulled${L.andon && L.andon.reason ? `: ${esc(L.andon.reason.replace(/[:\s]+$/, ""))}` : ""}.`;
+    paras.push(`<p>${t}</p>`);
+  });
+  let fl = `${floor.shipped.length} changes are in the shipped list and ${floor.waiting.length} are waiting at the dock.`;
+  fl += bayState.read ? ` ${floor.bays.length} lab hosts report ${bayState.free} free slots of ${bayState.slots}, with ${bayState.running} running.` : ` No lab host advertised its slots, so the bays are unread.`;
+  const top = floor.stoppages.slice().sort((a, b) => b.cost_minutes - a.cost_minutes)[0];
+  fl += top ? ` The costliest stoppage in the friction report is ${esc(top.name)}: ${fmt(top.cost_minutes)} minutes over ${num(top.occurrences)} occurrences.` : ` No friction report was supplied.`;
+  paras.push(`<p>${fl}</p>`);
+  el("shiftProse").innerHTML = `<h2 id="rep">Shift report</h2>${paras.join("")}`;
+  const f = slots.filter(s => s.line).map(s => lineFacts(s.line));
+  const inFlight = f.reduce((a, x) => a + x.active, 0), cords = f.filter(x => x.stopped).length;
+  const sh = rec.sources || {};
+  el("tally").innerHTML = [
+    [`<b class="mono">${floor.shipped.length}</b>`, "changes in the shipped list"],
+    [bayState.read ? `<b class="mono">${bayState.running}</b>` : `<b class="unread-n">unread</b>`, bayState.read ? "workers running in the bays" : "no host advertised its slots"],
+    [`<b class="mono">${inFlight}</b>`, "parts being built across the lines"],
+    [`<b class="mono">${cords}</b>`, cords === 1 ? "andon cord pulled" : "andon cords pulled"],
+    [`<b class="mono">${num(sh.ledger_rows).toLocaleString("en-US")}</b>`, "ledger rows read"],
+    [`<b class="mono">${num(sh.linear_issues).toLocaleString("en-US")}</b>`, "Linear issues read"]
+  ].map(([b, s]) => `<div>${b}<span>${esc(s)}</span></div>`).join("");
+}
+
+function renderBays(bays, status){
+  const hosts = status && Array.isArray(status.steps) ? status.steps.find(s => s.name === "hosts") : null;
+  if (!bays.length){
+    const why = hosts ? (hosts.status === "ok" ? "The placement reading ran and no host advertised." : `The placement reading failed (${esc(hosts.detail)}).`) : "The placement reading step has no status in this publish.";
+    el("bayGrid").innerHTML = `<div class="bay unread"><div class="bay-top"><b>unread</b><span class="eyebrow">no host</span></div>
+      <div class="slots unread" role="img" aria-label="No bay is drawn: no lab host advertised its slots"></div>
+      <small>No lab host advertised its slots. ${why}</small></div>`;
+    return;
+  }
+  el("bayGrid").innerHTML = bays.map(b => `
+    <div class="bay${b.stale ? " stale" : ""}"><div class="bay-top"><b>${esc(b.host)}</b><span class="eyebrow">${num(b.slots)} slots</span></div>
+    <div class="slots" role="img" aria-label="${num(b.running)} running, ${num(b.free)} free">${"<i class=on></i>".repeat(Math.max(0, num(b.running)))}${"<i></i>".repeat(Math.max(0, num(b.free)))}</div>
+    <small><span class="mono">${num(b.running)}</span> working · <span class="mono">${num(b.free)}</span> free${b.stale ? " · advertisement stale" : ""}</small></div>`).join("");
 }
 
 function prList(items){
-  return items.length ? items.map(p => `<li><span>${esc(p.title)} (${esc(p.pr)})</span><span>${esc(p.detail||p.line_id)}</span></li>`).join("") : `<li><span class="empty">None</span><span></span></li>`;
+  const row = p => `<li><span>${esc(p.title)} (${esc(p.pr)})</span><span>${esc(p.detail || p.line_id)}</span></li>`;
+  if (!items.length) return `<ul class="list"><li><span class="empty">None</span><span></span></li></ul>`;
+  const rest = items.slice(5);
+  return `<ul class="list">${items.slice(0, 5).map(row).join("")}</ul>` + (rest.length ? `<details class="more"><summary>Show the other ${rest.length}</summary><ul class="list">${rest.map(row).join("")}</ul></details>` : "");
+}
+
+function renderDelegation(d, err){
+  const host = el("delegBody");
+  if (!d || !Array.isArray(d.outcomes)){
+    host.innerHTML = `<p class="muted">Unread (${esc(err || "no data")}): no delegation counts are in the record, so none is drawn. A node that writes ${esc(DELEGATION_FILE)} (a window, the outcome counts and the calls per route) fills this card; the bar below stays hatched until then.</p>
+      <div class="stack unread" role="img" aria-label="Delegation outcomes are unread"></div>`;
+    return;
+  }
+  const total = Math.max(1, d.outcomes.reduce((a, o) => a + num(o.count), 0));
+  const w = d.window || {};
+  host.innerHTML = `
+    <p class="muted">${esc(num(d.total, total))} delegation calls${w.start && w.end ? ` from ${esc(String(w.start).slice(11, 16))} to ${esc(String(w.end).slice(11, 16))} UTC` : ""}.</p>
+    <div class="stack" role="img" aria-label="${esc(d.outcomes.map(o => num(o.count) + " " + o.label).join(", "))}">${d.outcomes.map(o => `<b style="width:${(num(o.count) / total * 100).toFixed(1)}%;background:${TONE[o.tone] || TONE.idle}"></b>`).join("")}</div>
+    <div class="legend">${d.outcomes.map(o => `<span><i style="background:${TONE[o.tone] || TONE.idle}"></i>${esc(num(o.count))} ${esc(o.label)}</span>`).join("")}</div>
+    ${Array.isArray(d.routes) && d.routes.length ? `<ul class="list">${d.routes.map(r => `<li><span>${esc(r.label)}</span><span>${esc(num(r.done))} of ${esc(num(r.total))}</span></li>`).join("")}</ul>` : ""}
+    ${d.why ? `<p style="font-size:.86rem">${esc(d.why)}</p>` : ""}`;
+}
+
+function niceMax(v){
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1))));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
 }
 
 function renderStops(stops){
   const svg = el("stopChart");
-  if (!stops.length){ svg.setAttribute("viewBox","0 0 760 40"); svg.innerHTML = `<text x="10" y="24" class="lbl-muted">No friction report was supplied.</text>`; return; }
-  const max = Math.max(1, ...stops.map(s => s.cost_minutes)), x0 = 250, w = 400, rowH = 38, top = 26;
-  const ticks = [0,0.25,0.5,0.75,1].map(f => f*max);
-  let out = ticks.map(v => { const x = x0 + v/max*w; return `<line class="grid" x1="${x}" y1="${top-8}" x2="${x}" y2="${top+stops.length*rowH}" stroke-width="1"/><text class="lbl-muted" x="${x}" y="${top-12}" text-anchor="middle">${Math.round(v).toLocaleString("en-US")}</text>`; }).join("");
-  out += stops.map((s,i) => { const y = top + i*rowH, bw = Math.max(2, s.cost_minutes/max*w);
-    return `<text x="${x0-10}" y="${y+15}" text-anchor="end">${esc(s.name.length>34?s.name.slice(0,33)+"…":s.name)}</text>
-      <rect x="${x0}" y="${y+4}" width="${bw}" height="16" rx="2" style="fill:${s.recurring?"var(--warn)":"var(--idle)"}"/>
-      <text class="lbl-muted" x="${x0+bw+8}" y="${y+16}">${Math.round(s.cost_minutes).toLocaleString("en-US")} min · ${s.occurrences}×</text>
-      <text x="${x0}" y="${y+33}" class="lbl-muted">${esc((s.tickets||[]).join(", "))}${s.last_seen?` · last ${esc(s.last_seen)}`:""}</text>`; }).join("");
-  svg.setAttribute("viewBox", `0 0 760 ${top+stops.length*rowH+6}`);
+  if (!stops.length){ svg.setAttribute("viewBox", "0 0 760 40"); svg.innerHTML = `<text x="10" y="24" class="lbl-muted">No friction report was supplied.</text>`; return; }
+  const top = 26, rowH = 38, x0 = 250, w = 400;
+  const max = niceMax(Math.max(1, ...stops.map(s => num(s.cost_minutes))));
+  const ticks = [0, 0.2, 0.4, 0.6, 0.8, 1].map(f => f * max);
+  const label = v => v >= 1000 ? fmt(v / 1000) + "k" : fmt(v);
+  let out = ticks.map(v => { const x = x0 + v / max * w; return `<line class="grid" x1="${x}" y1="${top - 8}" x2="${x}" y2="${top + stops.length * rowH}" stroke-width="1"/><text class="lbl-muted" x="${x}" y="${top - 12}" text-anchor="middle">${esc(label(v))}</text>`; }).join("");
+  out += stops.map((s, i) => {
+    const y = top + i * rowH, bw = Math.max(2, num(s.cost_minutes) / max * w), tk = (s.tickets || []);
+    const fix = tk.length ? tk.join(", ") : "no ticket yet";
+    const cls = tk.length ? "muted" : "stop";
+    return `<text x="${x0 - 10}" y="${y + 15}" text-anchor="end">${esc(s.name.length > 34 ? s.name.slice(0, 33) + "…" : s.name)}</text>
+      <rect x="${x0}" y="${y + 4}" width="${bw}" height="16" rx="2" style="fill:${s.recurring ? "var(--warn)" : "var(--idle)"}"/>
+      <text class="lbl-muted" x="${x0 + bw + 8}" y="${y + 16}">${esc(fmt(s.cost_minutes))} min · ${esc(num(s.occurrences))}×</text>
+      <text x="${x0}" y="${y + 33}" class="lbl-muted" style="fill:${cls === "stop" ? "var(--stop)" : "var(--muted)"}">${esc(fix)}${s.last_seen ? ` · last seen ${esc(s.last_seen)}` : ""}</text>`;
+  }).join("");
+  svg.setAttribute("viewBox", `0 0 760 ${top + stops.length * rowH + 6}`);
   svg.innerHTML = out;
 }
 
 function ageText(ms){
-  const m = Math.max(0, Math.round(ms/60000));
-  return m < 1 ? "under a minute" : m < 120 ? `${m} min` : `${(m/60).toFixed(1)} h`;
-}
-
-function render(rec, aux){
-  const lines = rec.lines || [];
-  const floor = Object.assign({bays:[],shipped:[],waiting:[],stoppages:[]}, rec.floor || {});
-  const gen = Date.parse(rec.generated_at);
-  const age = Number.isNaN(gen) ? null : Date.now() - gen;
-  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${new Date(gen).toISOString().replace("T"," ").slice(0,16)} UTC · ${ageText(age)} old`;
-  const banner = el("banner");
-  if (age != null && age > STALE_MIN*60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
-  else { banner.hidden = true; }
-  renderAndon(lines, floor);
-  renderLines(lines);
-  renderBays(floor.bays);
-  el("shippedCount").textContent = String(floor.shipped.length);
-  el("shipped").innerHTML = prList(floor.shipped);
-  el("waiting").innerHTML = prList(floor.waiting);
-  renderSources(rec.sources || {}, aux.status);
-  renderStops(floor.stoppages);
-  renderHealth(aux.health, aux.healthError);
+  const m = Math.max(0, Math.round(ms / 60000));
+  return m < 1 ? "under a minute" : m < 120 ? `${m} min` : m < 2880 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} days`;
 }
 
 function ageSpan(iso){
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return `<span class="unread">${esc(iso || "unread")}</span>`;
   const ms = Date.now() - t;
-  const cls = ms > STALE_MIN*60000 ? "age-stale" : "";
-  return `<span class="${cls}">${esc(ageText(ms))} ago</span> <small>${esc(new Date(t).toISOString().replace("T"," ").slice(0,16))} UTC</small>`;
+  return `<span class="${ms > STALE_MIN * 60000 ? "age-stale" : ""}">${esc(ageText(ms))} ago</span> <small>${esc(new Date(t).toISOString().replace("T", " ").slice(0, 16))} UTC</small>`;
 }
 
 function renderSources(s, status){
   const rows = [
     ["Pull request watcher, last tick", s.watcher_last_tick ? ageSpan(s.watcher_last_tick) : `<span class="unread">unread</span>`],
     ["Newest ledger row read", s.ledger_newest_row ? ageSpan(s.ledger_newest_row) : `<span class="unread">unread</span>`],
-    ["Ledger rows read", esc(s.ledger_rows ?? 0)],
-    ["Linear issues read", esc(s.linear_issues ?? 0)],
+    ["Ledger rows read", esc(num(s.ledger_rows).toLocaleString("en-US"))],
+    ["Linear issues read", esc(num(s.linear_issues).toLocaleString("en-US"))],
     ["Lab hosts advertising", s.placement_hosts ? esc(s.placement_hosts) : `<span class="unread">none read</span>`],
     ["Friction report", s.stoppage_report ? "read" : `<span class="unread">not supplied</span>`]
   ];
   if (status && Array.isArray(status.steps)){
     rows.push(["Published", ageSpan(status.published_at)]);
+    if (!status.steps.length) rows.push(["Input steps", `<span class="unread">skipped in this publish</span>`]);
     status.steps.forEach(st => rows.push([`Input step: ${st.name}`, st.status === "ok" ? "ok" : `<span class="age-stale">failed (${esc(st.detail)})</span>`]));
+    const d = status.lines_declared;
+    rows.push(["Lines declared by the overlay", d && d.state === "read" ? esc(d.plan_path_contains.length) : `<span class="unread">unread</span>`]);
   } else {
     rows.push(["Input steps", `<span class="unread">status not published</span>`]);
   }
-  el("sourceList").innerHTML = rows.map(([k,v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("");
+  el("sourceList").innerHTML = rows.map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("");
 }
 
-const GREY_PREFIXES = ["merges.", "delegation.", "lanes.terminals", "lanes.share_done", "lanes.share_handed_off", "friction.measured_lease_minutes"];
-const VERDICT = {improved:["better","Better"], worse:["worse","Worse"], flat:["flat","Flat"], informational:["info","Context"], unmeasured:["unmeasured","Unmeasured"]};
-
-function fmtValue(v, status, c){
-  if (v == null || status === "unread") return `<span class="unread">unread</span>`;
-  let text;
-  if (c.kind === "ratio") text = (v*100).toFixed(0) + "%";
-  else if (Number.isInteger(v)) text = v.toLocaleString("en-US");
-  else text = v.toLocaleString("en-US", {maximumFractionDigits: 1});
-  const unit = c.kind === "ratio" ? "" : " " + esc(c.comparable_unit || c.unit || "");
-  return esc(text) + `<small>${unit}${status === "partial" ? " (partial)" : ""}</small>`;
-}
-
-function spark(days, key){
-  const pts = days.map(d => {
-    const m = ((d.window || {}).metrics || []).find(x => x.key === key);
-    return m && m.value != null && m.status !== "unread" ? {v: m.value, part: m.status !== "read" || d.partial, reset: d.is_reset_day} : null;
-  });
-  const vals = pts.filter(Boolean).map(p => p.v);
-  if (!vals.length) return `<span class="unread">unread</span>`;
-  const lo = Math.min(...vals), hi = Math.max(...vals), w = 96, h = 24, span = hi - lo || 1;
-  const x = i => 3 + i*(w-6)/Math.max(1, pts.length-1), y = v => h-3 - (v-lo)/span*(h-6);
-  let path = "", pen = false;
-  pts.forEach((p,i) => { if (!p){ pen = false; return; } path += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(p.v).toFixed(1); pen = true; });
-  const resetI = pts.findIndex((p,i) => days[i].is_reset_day);
-  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${days.length} day series">
-    ${resetI >= 0 ? `<line class="rs" x1="${x(resetI)}" y1="0" x2="${x(resetI)}" y2="${h}"/>` : ""}
-    <path class="ln" d="${path}"/>${pts.map((p,i) => p ? `<circle class="pt${p.part?" part":""}" cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2"/>` : "").join("")}</svg>`;
-}
-
-function healthRows(list, days){
-  return `<table class="htable"><thead><tr><th>Measure</th><th>Last ${days.length} days</th><th>Before reset</th><th>After reset</th><th>Verdict</th></tr></thead><tbody>${
-    list.map(c => { const [cls, label] = VERDICT[c.verdict] || ["flat", c.verdict];
-      return `<tr><td>${esc(c.label)}</td><td>${spark(days, c.key)}</td><td class="num">${fmtValue(c.before, c.before_status, c)}</td><td class="num">${fmtValue(c.after, c.after_status, c)}</td><td><span class="verdict ${cls}">${esc(label)}</span></td></tr>`; }).join("")
-  }</tbody></table>`;
-}
-
-function renderHealth(h, err){
-  const body = el("phBody"), stamp = el("phStamp");
-  if (!h){
-    stamp.textContent = "Process health · unread";
-    body.innerHTML = `<p class="empty">The process-health series is not published${err ? " (" + esc(err) + ")" : ""}. No figure is shown rather than a zero.</p>`;
+// The reports: a card per report with the age of its data, and the selected one read in place.
+let openReportId = "";
+function renderReports(manifest, err){
+  const cards = el("rcards");
+  if (!manifest || !Array.isArray(manifest.reports)){
+    cards.innerHTML = `<p class="empty">The reports manifest is ${esc(err || "unread")}. The reports are at <a href="reports/">the reports index</a>.</p>`;
     return;
   }
-  const gen = Date.parse(h.generated_at);
-  stamp.innerHTML = `Process health · computed ${ageSpan(h.generated_at)}`;
-  const sm = h.summary || {}, days = h.days || [];
-  const comps = sm.comparisons || [];
-  const grey = c => GREY_PREFIXES.some(p => c.key.startsWith(p));
-  const quality = comps.filter(c => !grey(c)), other = comps.filter(grey);
-  const srcs = (h.sources || []).map(s => `<span><b>${esc(s.name)}</b> <span class="${s.status === "read" ? "" : s.status === "partial" ? "part" : "bad"}">${esc(s.status)}</span>${s.covered_to ? ` to ${esc(s.covered_to.slice(0,16).replace("T"," "))}` : ""}</span>`).join("");
-  const measured = sm.measured !== false;
-  body.innerHTML = `
-    <p class="muted">${esc(h.reset_label || "Factory reset")}: ${measured ? `${sm.improved ?? 0} measures better, ${sm.worse ?? 0} worse, ${sm.flat ?? 0} flat, ${sm.unmeasured ?? 0} unmeasured, comparing the ${sm.window_hours ?? "?"} hours before the reset with the same span after it. A dashed marker in a series is the reset.` : esc(sm.reason || "the comparison could not be measured")}</p>
-    <div class="src">${srcs}</div>
-    <h3>Quality</h3>
-    ${healthRows(quality, days)}
-    <div class="grey"><h3>Throughput and cost</h3>${healthRows(other, days)}</div>`;
+  const entries = manifest.reports.filter(r => r.id !== "factory_floor");
+  el("repsStamp").innerHTML = `Reports on the same data · manifest published ${ageSpan(manifest.published_at)}`;
+  cards.innerHTML = entries.map(r => {
+    const feeds = (r.data || []).map(d => d.status === "read" ? `${esc(d.name)}: data from ${ageSpan(d.as_of)}` : `<span class="age-stale">${esc(d.name)}: unread${d.reason ? ` (${esc(d.reason)})` : ""}</span>`).join("<br>");
+    return `<button type="button" class="rcard" role="tab" data-id="${esc(r.id)}" aria-selected="${r.id === openReportId}"><h3>${esc(r.title)}</h3><p>${esc(r.summary)}</p><span class="age">${feeds}${r.refresh === "snapshot" ? `<br>snapshot, not refreshed by a tick` : ""}</span></button>`;
+  }).join("");
+  cards.querySelectorAll(".rcard").forEach(b => b.addEventListener("click", () => openReport(entries.find(r => r.id === b.dataset.id))));
+  if (!openReportId && entries.length) openReport(entries[0]);
+  else if (openReportId) cards.querySelectorAll(".rcard").forEach(b => b.setAttribute("aria-selected", String(b.dataset.id === openReportId)));
+}
+
+function openReport(r){
+  if (!r) return;
+  openReportId = r.id;
+  document.querySelectorAll(".rcard").forEach(b => b.setAttribute("aria-selected", String(b.dataset.id === r.id)));
+  el("rpanel").hidden = false;
+  el("rtitle").textContent = r.title;
+  const url = "reports/" + r.href;
+  el("ropen").setAttribute("href", url);
+  const host = el("rhost");
+  const frame = document.createElement("iframe");
+  frame.className = "rframe";
+  frame.title = r.title;
+  frame.src = url + "?embed=1";
+  host.replaceChildren(frame);
+}
+
+let last = "";
+function render(parts){
+  const rec = parts.record;
+  const key = JSON.stringify([rec, parts.status, parts.health && parts.health.generated_at, parts.manifest, parts.delegation]);
+  const gen = Date.parse(rec.generated_at);
+  const age = Number.isNaN(gen) ? null : Date.now() - gen;
+  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${new Date(gen).toISOString().replace("T", " ").slice(0, 16)} UTC · ${ageText(age)} old`;
+  const banner = el("banner");
+  if (age != null && age > STALE_MIN * 60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
+  else { banner.hidden = true; }
+  if (key === last) return;
+  last = key;
+  const lines = rec.lines || [];
+  const floor = Object.assign({bays: [], shipped: [], waiting: [], stoppages: []}, rec.floor || {});
+  const built = buildSlots(lines, parts.status);
+  const bayState = bayFacts(floor.bays);
+  renderAndon(built.slots, floor, parts.health, bayState);
+  renderShift(built.slots, floor, rec, bayState);
+  renderLines(built.slots, built.declared, built.reason);
+  renderBays(floor.bays, parts.status);
+  el("shippedCount").textContent = String(floor.shipped.length);
+  el("shipped").innerHTML = prList(floor.shipped);
+  el("waiting").innerHTML = prList(floor.waiting);
+  renderDelegation(parts.delegation, parts.delegationError);
+  renderSources(rec.sources || {}, parts.status);
+  renderStops(floor.stoppages);
+  el("stopsNote").textContent = floor.stoppages.length ? "Bars in amber are classes that recurred; grey ones did not. A class with no ticket says so." : "";
+  renderReports(parts.manifest, parts.manifestError);
 }
 
 async function fetchOptional(name){
   try {
-    const r = await fetch(name, {cache:"no-store"});
+    const r = await fetch(name, {cache: "no-store"});
     if (r.status === 404) return {data: null, error: "not published"};
     if (!r.ok) return {data: null, error: "HTTP " + r.status};
     return {data: await r.json(), error: ""};
@@ -516,9 +746,12 @@ async function fetchOptional(name){
 
 async function load(){
   try {
-    const [r, st, ph] = await Promise.all([fetch(DATA_FILE, {cache:"no-store"}), fetchOptional(STATUS_FILE), fetchOptional(HEALTH_FILE)]);
+    const [r, st] = await Promise.all([fetch(DATA_FILE, {cache: "no-store"}), fetchOptional(STATUS_FILE)]);
+    // A file the status says was not published is not requested, so a quiet absence is not a failed request.
+    const none = {data: null, error: "not published"};
+    const [ph, mf, dg] = await Promise.all([fetchOptional(HEALTH_FILE), fetchOptional(REPORTS_FILE), st.data && st.data.delegation === "absent" ? none : fetchOptional(DELEGATION_FILE)]);
     if (!r.ok) throw new Error("HTTP " + r.status);
-    render(await r.json(), {status: st.data, health: ph.data, healthError: ph.error});
+    render({record: await r.json(), status: st.data, health: ph.data, manifest: mf.data, manifestError: mf.error, delegation: dg.data, delegationError: dg.error});
   } catch (e) {
     const banner = el("banner");
     banner.hidden = false;

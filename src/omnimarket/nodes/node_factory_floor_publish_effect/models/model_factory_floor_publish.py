@@ -38,6 +38,27 @@ class ModelPublishSource(BaseModel):
     relpath: str = Field(min_length=1)
 
 
+class ModelDeclaredLines(BaseModel):
+    """The part of the factory floor effect's overlay this node reads: which plans are lines.
+
+    The effect owns the overlay and its other fields; this node reads only ``plan_path_contains`` so the page can
+    draw a declared line that no plan matched as unread instead of leaving it out.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    plan_path_contains: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelLinesOverlay(BaseModel):
+    """Where the declared lines are: the effect's overlay id and the environment variable that pins its file."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    overlay_id: str = Field(min_length=1)
+    file_env: str = Field(min_length=1)
+
+
 StepKind = Literal["module", "capture", "copy"]
 
 
@@ -97,6 +118,7 @@ class ModelPublishNames(BaseModel):
     page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
+    delegation: str = Field(min_length=1)
     status: str = Field(min_length=1)
 
 
@@ -202,6 +224,8 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
+    delegation_relpath: str = Field(min_length=1)
+    lines_overlay: ModelLinesOverlay
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
     names: ModelPublishNames
     transport: ModelPublishTransport
@@ -239,6 +263,7 @@ class ModelFactoryFloorPublishResult(BaseModel):
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
     process_health_published: bool
+    delegation_published: bool = False
 
 
 class ModelReportsPublishRequest(BaseModel):
