@@ -2,13 +2,21 @@
 # SPDX-License-Identifier: MIT
 """OMN-21326 AC3: no completed deployed-lane run outlives its budget plus grace.
 
-Reads ``onex delegate`` run directories (``runs/<run_id>/{run.json,receipt.json}``)
-under each state root and selects, as the original finding did, runs whose
-run.json mtime falls in the window, whose locus is ``deployed-lane``, whose
-caller named a timeout, and whose result status is ``completed``. A selected run
-is over when its execution_duration_ms exceeds
+Reads finished delegation runs from the lab projection
+``omninode_internal.delegation_budget_readings`` (populated by
+node_projection_delegation_budget_readings from the delegate-skill terminals the
+deployed lane publishes), so the readback runs from any lab host and needs no
+access to the machine whose CLI invoked the run (OMN-17427). A state root of
+``onex delegate`` run directories (``runs/<run_id>/{run.json,receipt.json}``)
+stays an explicit local source, ``--state-root``.
+
+A run is selected, as the original finding did, when its end falls in the
+window, its status is ``completed`` and its caller named a timeout. A selected
+run is over when its execution_duration_ms exceeds
 (execution_timeout_seconds + grace) * 1000, with the grace read from the
-task-class declaration this checkout ships.
+task-class declaration this checkout ships. A projection row is a terminal the
+deployed lane published on the shared bus; a state-root run must also carry the
+``deployed-lane`` locus its CLI recorded.
 
 The verdict is the exit status, so the check fails by itself when its
 falsifier holds:
@@ -16,7 +24,7 @@ falsifier holds:
     0  at least one selected run, none over
     1  one or more selected runs over the bound (the falsifier)
     2  no selected run in the window: nothing was measured
-    3  the check could not run (no state root, or the declaration is ambiguous)
+    3  the check could not run (source unreadable, or the declaration is ambiguous)
 
 The summary is printed as one JSON line either way. The command line entry is
 ``runtime_budget_readback`` beside this node's contract.yaml.
@@ -24,9 +32,8 @@ The summary is printed as one JSON line either way. The command line entry is
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,11 +43,13 @@ from omnimarket.config.state_root import (
     OnexStateRootUnconfiguredError,
     resolve_onex_state_root,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_budget_reading import (
+    ModelBudgetReading,
+)
 
 TASK_CLASS_CONTRACTS = (
     Path(__file__).resolve().parents[3] / "configs/task_class_contracts.v1.yaml"
 )
-DEPLOYED_LANE = "deployed-lane"
 
 EXIT_PASS = 0
 EXIT_OVER = 1
@@ -86,53 +95,31 @@ def default_state_roots() -> list[Path]:
     return [Path.home() / ".onex_state"]
 
 
-def _load(path: Path) -> dict[str, Any] | None:
-    try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return loaded if isinstance(loaded, dict) else None
-
-
-def _run_dirs_in_window(
-    roots: Iterable[Path], since: datetime, until: datetime
-) -> Iterable[Path]:
-    for root in roots:
-        for run_json in sorted(root.glob("runs/*/run.json")):
-            mtime = datetime.fromtimestamp(run_json.stat().st_mtime, tz=UTC)
-            if since <= mtime < until:
-                yield run_json.parent
-
-
 def measure(
-    roots: Sequence[Path], since: datetime, until: datetime, grace_seconds: int
+    readings: Sequence[ModelBudgetReading],
+    since: datetime,
+    until: datetime,
+    grace_seconds: int,
+    source: str,
 ) -> dict[str, Any]:
     """Count selected runs and list every one over the bound."""
     selected = 0
     over: list[dict[str, Any]] = []
-    for run_dir in _run_dirs_in_window(roots, since, until):
-        receipt = _load(run_dir / "receipt.json")
-        if receipt is None or receipt.get("locus") != DEPLOYED_LANE:
+    for reading in readings:
+        if reading.status != "completed":
             continue
-        result = (receipt.get("receipt") or {}).get("result") or {}
-        terminal = result.get("terminal_payload")
-        if isinstance(terminal, dict) and isinstance(terminal.get("payload"), dict):
-            result = terminal["payload"]
-        budget = result.get("budget_evidence") or {}
-        if result.get("status") != "completed":
+        if reading.requested_timeout_seconds is None:
             continue
-        if budget.get("requested_timeout_seconds") is None:
-            continue
-        execution_timeout = budget.get("execution_timeout_seconds")
-        duration_ms = result.get("execution_duration_ms")
-        if not isinstance(execution_timeout, int) or not isinstance(duration_ms, int):
+        execution_timeout = reading.execution_timeout_seconds
+        duration_ms = reading.execution_duration_ms
+        if execution_timeout is None or duration_ms is None:
             continue
         selected += 1
         bound_ms = (execution_timeout + grace_seconds) * 1000
         if duration_ms > bound_ms:
             over.append(
                 {
-                    "run_id": run_dir.name,
+                    "run_id": reading.run_id,
                     "execution_duration_ms": duration_ms,
                     "bound_ms": bound_ms,
                 }
@@ -141,7 +128,7 @@ def measure(
         "window_since": since.isoformat(),
         "window_until": until.isoformat(),
         "grace_seconds": grace_seconds,
-        "state_roots": [str(root) for root in roots],
+        "source": source,
         "deployed_lane_completed": selected,
         "over_budget_plus_grace": len(over),
         "over_runs": over,
