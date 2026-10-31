@@ -491,7 +491,8 @@ async def test_system_status_cli_exits_nonzero_for_failed_health(monkeypatch, ca
         )
 
     monkeypatch.setattr(
-        cli, "HandlerPlatformDiagnostics", lambda: SimpleNamespace(handle=handle)
+        "omnimarket.nodes.node_platform_diagnostics.container.container_platform_diagnostics.HandlerPlatformDiagnostics",
+        lambda: SimpleNamespace(handle=handle),
     )
     with pytest.raises(SystemExit, match="1"):
         await cli._main()
