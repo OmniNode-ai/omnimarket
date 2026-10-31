@@ -44,6 +44,7 @@ import shlex
 import socket
 import subprocess
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_push_validation_effect.protocols.protocol_push_validation_client import (
     ModelSuiteRun,
 )
@@ -114,7 +115,7 @@ class SuiteEvaluationGateContainerSubprocess:
         repo_dir = f"{_workroot()}/{owner}/{name}"
         quoted_dir = shlex.quote(repo_dir)
         quoted_sha = shlex.quote(commit_sha)
-        quoted_url = shlex.quote(f"https://github.com/{repo}.git")
+        quoted_url = shlex.quote(f"{service_endpoint_url('github.web_url')}/{repo}.git")
 
         # (1) Clone-if-absent, fetch, verify the commit is a KNOWN object
         # BEFORE any checkout — an unknown SHA is an infra/input error

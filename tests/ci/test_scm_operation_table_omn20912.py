@@ -49,6 +49,7 @@ LANE_WRITES: dict[str, str] = {
     "workflow run": "workflow_dispatch",
     "api --method POST /repos/{o}/{r}/check-runs": "check_run_create",
     "api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies": "pr_thread_reply",
+    "api graphql resolveReviewThread": "pr_thread_resolve",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 

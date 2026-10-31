@@ -182,3 +182,12 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.baseline-captured.v1
+
+timeouts:
+  db_connect_timeout_seconds: 5.0  # Bounds the database probe connection.
+  github_prs_timeout_seconds: 30  # Bounds each GitHub PR listing subprocess.
+  kafka_topics_timeout_seconds: 5.0  # Bounds Kafka topic admin HTTP requests.
+  linear_tickets_timeout_seconds: 10.0  # Bounds Linear ticket HTTP requests.
+  system_health_timeout_seconds: 3.0  # Bounds each service health HTTP request.
+  git_branch_age_timeout_seconds: 10  # Bounds the Git branch HEAD timestamp subprocess.
+  git_branch_name_timeout_seconds: 10  # Bounds the Git current branch subprocess.

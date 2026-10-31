@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelKafkaTopicSnapshot,
     ProbeSnapshotItem,
@@ -37,7 +38,11 @@ class ProbeKafkaTopics:
         base_url = f"http://{admin_host}:{admin_port}"
 
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(
+                timeout=load_node_timeouts("node_baseline_capture").get(
+                    "kafka_topics_timeout_seconds"
+                )
+            ) as client:
                 topics_resp = await client.get(f"{base_url}/v1/topics")
                 topics_resp.raise_for_status()
                 topics: list[dict[str, object]] = topics_resp.json()

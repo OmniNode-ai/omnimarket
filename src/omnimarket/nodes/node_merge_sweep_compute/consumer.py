@@ -34,6 +34,7 @@ from typing import Any
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 
+from omnimarket.handlers.runtime_paths import runtime_dir
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
@@ -296,7 +297,7 @@ def main() -> None:
         "KAFKA_BROKER", ""
     )
     group_id = os.environ.get("MERGE_SWEEP_GROUP", "omnimarket.merge_sweep.consume.v1")
-    state_dir = os.environ.get("ONEX_STATE_DIR", os.path.expanduser("~/.onex_state"))
+    state_dir = runtime_dir("onex_state.default_dir", "ONEX_STATE_DIR")
 
     asyncio.run(_run_consumer(broker, group_id, state_dir))
 
