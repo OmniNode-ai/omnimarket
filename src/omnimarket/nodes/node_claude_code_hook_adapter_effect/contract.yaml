@@ -86,12 +86,12 @@ capabilities:
       qualification. Replay carries the recorded input hash, barrier, newest turn and
       compact model, validates the compaction command before publishing, and refuses
       a native verdict even if a prepared receipt has timings
-      (python -m omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_cli)
+      (python -m omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_compaction_latency_cli)
     version: 1.0.0
 
 entry_point:
   console_script: onex-claude-code-hook
-  module: omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli
+  module: omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_claude_code_hook_cli
   function: main
   stdin: one hook JSON document
   stdout: only the hook's output shape ({result}, {deny}, {messages}, hookSpecificOutput.additionalContext, or nothing)
