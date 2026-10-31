@@ -35,6 +35,11 @@ _TASK_CLASS_FIELDS = (
     "extraction_task_class",
     "summary_task_class",
 )
+# Model roles may enrich a package; they cannot provide its required authority.
+MODEL_ROLE_FACTOR_FIELDS: dict[EnumContextFactor, str] = {
+    EnumContextFactor.TRANSCRIPT_EXTRACTS: "extraction_task_class",
+    EnumContextFactor.TAIL_SUMMARY: "summary_task_class",
+}
 
 
 class ModelContextProfile(BaseModel):
@@ -78,6 +83,12 @@ class ModelContextProfile(BaseModel):
             raise ValueError("required_factors cannot also be excluded")
         if optional & excluded:
             raise ValueError("optional_factors cannot also be excluded")
+        for factor, role_field in MODEL_ROLE_FACTOR_FIELDS.items():
+            if factor in required and getattr(self, role_field) is not None:
+                raise ValueError(
+                    f"{role_field} cannot produce required factor {factor.value}; "
+                    "model-role factors must be optional"
+                )
         selected = required | optional
         if (
             EnumContextFactor.CONVERSATION_TAIL in selected
@@ -208,6 +219,7 @@ class ModelContextProfile(BaseModel):
 
 
 __all__ = [
+    "MODEL_ROLE_FACTOR_FIELDS",
     "MODEL_WRITTEN_FACTORS",
     "STABLE_TIER_FACTORS",
     "ModelContextProfile",

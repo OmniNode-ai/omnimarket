@@ -38,6 +38,30 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21090-ac5-model-role-optional-authority"
+    description: >-
+      Track E contribution only (OMN-21145): declared extraction and summary
+      roles cannot supply required authority; optional source outages omit the
+      role factor and preserve required content. This does not assert that all
+      Track E children are Done; that criterion remains a Linear API check.
+      Existing AC1 through AC5 evidence entries remain unchanged.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py tests/nodes/node_context_pack_orchestrator/test_model_role_outages.py -q -p no:randomly --no-cov -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-deploy-model-role-optional-authority"
+    description: >-
+      Hosted-runner offline artifact probe dispatches the packaged resolver by
+      CLI over the in-memory backend with explicit overlays and requires the
+      new authority guard. The same tests fail against the merge base. No lab
+      service or credentials are required.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py -q -p no:randomly --no-cov -n 0 -k 'role_factor_is_optional_on_every_binding and cli'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21090-ac4-pinned-git-source"
     description: "TC.3 repository contribution: a canonical pinned Git source returns exact bytes and provenance, denies unauthorized tenants and fails closed on unreadable objects. This does not assert that every Track C child is Done; that epic criterion remains a Linear API check. Existing evidence for each epic acceptance criterion is preserved."
     source: "manual"

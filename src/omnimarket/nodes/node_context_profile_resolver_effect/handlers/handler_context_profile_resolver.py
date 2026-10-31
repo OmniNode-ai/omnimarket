@@ -76,7 +76,11 @@ class HandlerContextProfileResolver:
     """One resolver by profile name; a name never reaches the filesystem as a path."""
 
     def __init__(self, profiles_dir: Path | None = None) -> None:
-        self._profiles_dir = profiles_dir if profiles_dir is not None else _PROFILES_DIR
+        self._profiles_dir = (
+            profiles_dir
+            if profiles_dir is not None
+            else resolve_path_config("CONTEXT_PROFILES_DIR", _PROFILES_DIR)[0]
+        )
 
     def handle(
         self, request: ModelContextProfileResolveRequest

@@ -35,6 +35,16 @@ scan_scope:
   extra_dirs:
     - src/omnimarket/data/model_registry
 sources:
+  - id: context_profile_model_roles
+    selects: the extraction, selection and summary task classes named by a context profile
+    resolver: omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver:HandlerContextProfileResolver.handle
+    # Profile data is outside this inventory's packaged routing-config scan.
+    packaged_defaults: []
+    overlay: CONTEXT_PROFILES_DIR binds a complete profile directory; explicit constructor injection wins
+    resolution_sites:
+      - "src/omnimarket/nodes/node_context_profile_resolver_effect/handlers/handler_context_profile_resolver.py:resolve_path_config('CONTEXT_PROFILES_DIR')"
+    precedence:
+      probe: context_profile_model_roles
   - id: routing_tiers_ladder
     selects: the tier ladder, which backend serves each tier and each task class's use_for
     resolver: omnimarket.routing.routing_tiers_path:resolve_routing_tiers_path
