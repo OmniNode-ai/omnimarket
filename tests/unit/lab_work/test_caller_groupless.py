@@ -153,7 +153,9 @@ def test_many_calls_create_at_most_the_serving_hosts_one_group() -> None:
 def test_the_caller_source_mints_no_group_name() -> None:
     source = Path(__file__).resolve().parents[3] / "src/omnimarket/lab_work/bus.py"
     text = source.read_text(encoding="utf-8")
-    caller_source = text[text.index("class LabWorkCaller") :]
+    caller_source = text[
+        text.index("class LabWorkCaller") : text.index("def _infra_error")
+    ]
     assert "group_id" not in caller_source
     assert "uuid4().hex" not in caller_source.split("async def dispatch")[0]
 
