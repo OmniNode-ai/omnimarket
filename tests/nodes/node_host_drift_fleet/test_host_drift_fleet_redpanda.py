@@ -39,9 +39,10 @@ pytestmark = [pytest.mark.kafka, pytest.mark.integration]
 
 @pytest.fixture(autouse=True)
 def fleet_bootstrap(monkeypatch: pytest.MonkeyPatch) -> str:
-    bootstrap = os.environ.get("ONEX_TEST_KAFKA_BOOTSTRAP", "")
-    if not bootstrap:
-        pytest.skip("ONEX_TEST_KAFKA_BOOTSTRAP not set; broker integration is opt-in")
+    # The declared test lane's broker; a run may pin another broker of that lane.
+    bootstrap = os.environ.get("ONEX_TEST_KAFKA_BOOTSTRAP", "") or str(
+        shared_fixtures._KAFKA_BOOTSTRAP
+    )
     assert_broker_in_declared_lane(bootstrap)
     # Configure the existing fixture before it starts; never use ambient brokers.
     monkeypatch.setattr(shared_fixtures, "_KAFKA_BOOTSTRAP", bootstrap)
