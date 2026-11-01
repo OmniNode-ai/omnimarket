@@ -36,17 +36,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: command
-        check_value: |
-          set -eu
-          readback_dir="$(mktemp -d)"
-          trap 'rm -rf "$readback_dir"' EXIT
-          revision="$(git rev-parse HEAD)"
-          path="src/omnimarket/nodes/node_prompt_intent_classify_compute/handlers/handler_prompt_intent_classify.py"
-          curl --fail --silent --show-error --location --max-time 10 \
-            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
-            --output "$readback_dir/source.py"
-          cmp "$path" "$readback_dir/source.py"
-          printf 'prompt-intent handler source readback matched %s\n' "$revision"
+        check_value: curl --fail --silent --show-error --location --max-time 10 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_prompt_intent_classify_compute/handlers/handler_prompt_intent_classify.py" | cmp - src/omnimarket/nodes/node_prompt_intent_classify_compute/handlers/handler_prompt_intent_classify.py
         cwd: .
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_prompt_intent_classify_compute/test_omn21898_omniintelligence_surface.py -q --no-cov --tb=line
