@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21359"
+title: "Delegation rubric task_answer_traceable stops reading JSON string values as verbatim quotations"
+summary: "task_answer_traceable treated every string value of three or more words in a JSON-shaped answer as a verbatim quotation and failed it with untraceable_identifier when the words were absent from the request. A JSON answer (an object or array, optionally inside a code fence) is now checked for identifiers, paths, backticked tokens and numbers but not for double-quoted word runs; a prose answer that quotes three or more words in double quotes is still checked."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21359-json-values"
+    statement: |-
+      A JSON string value of three or more words is not read as a quotation by task_answer_traceable.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a unit test in tests/nodes/node_delegation_rubric_check_compute built from the JSON classification answer above fails on the current code and passes once task_answer_traceable stops reading JSON string values as verbatim quotations -- falsifier: uv run pytest tests/nodes/node_delegation_rubric_check_compute -q -k json"
+  - id: "req-omn21359-prose-quotation"
+    statement: |-
+      A prose answer that quotes three or more words in double quotes, absent from the request and tool outputs, still fails with untraceable_identifier.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: an answer that quotes three or more words in double quotes in prose, where the words are absent from the request and tool outputs, still fails with untraceable_identifier -- falsifier: uv run pytest tests/nodes/node_delegation_rubric_check_compute -q -k quotation"
+evidence_requirements:
+  - kind: "tests"
+    description: "The delegation rubric check tests pass."
+    command: "uv run pytest tests/nodes/node_delegation_rubric_check_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21359-json"
+    description: "The JSON classification answer is no longer failed as an untraceable quotation."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_rubric_check_compute -q --no-cov -k json"
+        cwd: "."
+  - id: "dod-omn21359-quotation"
+    description: "A prose quotation of three or more words absent from the evidence still fails with untraceable_identifier."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_rubric_check_compute -q --no-cov -k quotation"
+        cwd: "."
