@@ -12,8 +12,22 @@ description: >
   using TASK_CLASS_CONTRACT_PATH or the packaged default, so removing a
   promotion refuses the next resolution with INVALID_PROFILE. A missing or
   invalid routing contract also fails closed. Profiles without model roles
-  do not depend on the routing contract. A failed resolve returns neither a
+  do not depend on the routing contract. A declared extraction or summary
+  role cannot supply a required factor: transcript_extracts and tail_summary
+  must be optional when their corresponding role is declared, otherwise
+  resolution fails INVALID_PROFILE before any source is called.
+  CONTEXT_PROFILES_DIR binds a deployment's profile directory; constructor
+  injection takes precedence. An unreadable override never falls back to
+  packaged profiles. A failed resolve returns neither a
   profile nor its hash on the same terminal event, not a second topic.
+
+configuration:
+  profiles_directory:
+    environment_variable: CONTEXT_PROFILES_DIR
+    packaged_default: omnimarket/pack/profiles
+  task_class_contract:
+    environment_variable: TASK_CLASS_CONTRACT_PATH
+    packaged_default: omnimarket/configs/task_class_contracts.v1.yaml
 
 handler_routing:
   routing_strategy: operation_match
