@@ -1,0 +1,67 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21325
+title: A 300 KB delegate-skill prompt is answered with no declared size bound
+summary: The delegate-skill node declares a prompt byte bound in its contract and the
+  handler refuses a larger request before any model call, on the in-process and the
+  deployed lane alike.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-prompt-size-bound-refused
+  statement: A delegate-skill request whose prompt exceeds the declared byte bound is
+    refused with a typed failure before any model call.
+  acceptance:
+  - id: AC1
+    statement: A delegate-skill request whose prompt exceeds the declared byte bound
+      is refused with a typed failure before any model call.
+- id: req-prompt-size-bound-declared
+  statement: The bound is declared in the node contract and enforced in the handler
+    both lanes run.
+  acceptance:
+  - id: AC2
+    statement: The bound is declared in the node contract and enforced in the handler
+      both lanes run.
+evidence_requirements:
+- kind: tests
+  description: Tests built from the P8 prompt size (300027 bytes) refuse it, count
+    bytes, and admit a prompt at the bound.
+  command: uv run pytest tests/unit -q -k delegate_prompt_size_bound
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-prompt-size-bound-refusal
+  description: The P8-sized prompt is refused before dispatch with refused_before_dispatch.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_prompt_size_bound_omn21325.py
+      -q -k delegate_prompt_size_bound
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-prompt-size-bound-declared
+  description: contract.yaml declares prompt_size_bound and the loader reads it.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_prompt_size_bound_omn21325.py
+      -q -k bound_is_declared
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn21325-deploy-prompt-size-bound-wired
+  description: Deploy probe reads the delegate-skill handler and contract from GitHub at the checked-out commit and requires the handler to refuse an oversized prompt and the contract to declare the bound. This source read fails when either is absent; it does not claim a running lane.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'prompt_exceeds_size_bound'
+    cwd: .
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'max_prompt_bytes: 262144'
+    cwd: .
