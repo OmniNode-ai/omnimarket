@@ -9,6 +9,8 @@ from omnimarket.models.lab_fill.model_lab_fill_launch import (
 )
 from omnimarket.models.lab_fill.model_lab_fill_live_ticket import (
     EnumLabFillLiveSkip,
+    ModelLabFillCriteriaReadRequest,
+    ModelLabFillCriteriaReadResult,
     ModelLabFillLiveFacts,
     ModelLabFillLiveGateRequest,
     ModelLabFillLivePlan,
@@ -30,6 +32,7 @@ from omnimarket.models.lab_fill.model_lab_fill_pr_land import (
 from omnimarket.models.lab_fill.model_lab_fill_ticket import (
     EnumLabFillTicketDrop,
     EnumLabFillTicketSource,
+    ModelLabFillLiveDescription,
     ModelLabFillTicketDrop,
     ModelLabFillTicketFacts,
     ModelLabFillTicketIssue,
@@ -46,8 +49,11 @@ __all__ = [
     "EnumLabFillTicketDrop",
     "EnumLabFillTicketSource",
     "ModelLabFillApprovedRow",
+    "ModelLabFillCriteriaReadRequest",
+    "ModelLabFillCriteriaReadResult",
     "ModelLabFillHoldSource",
     "ModelLabFillLaunch",
+    "ModelLabFillLiveDescription",
     "ModelLabFillLiveFacts",
     "ModelLabFillLiveGateRequest",
     "ModelLabFillLivePlan",
