@@ -34,9 +34,9 @@ from omnimarket.cli.reporting import (
     build_report_from_model_result,
     load_contract_metadata,
 )
+from omnimarket.nodes.node_aislop_sweep.container import container_aislop_sweep
 from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
-    NodeAislopSweep,
 )
 from omnimarket.nodes.sweep_scope import resolve_default_target_dirs
 
@@ -104,7 +104,7 @@ def main() -> None:
         severity_threshold=args.severity_threshold,
     )
 
-    handler = NodeAislopSweep(
+    handler = container_aislop_sweep.build_node_aislop_sweep(
         event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
     )
     result = handler.handle(request)
