@@ -50,7 +50,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor)$"
+    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -182,15 +182,26 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             host=fields.get("host", ""),
             model=fields.get("model", ""),
             actor=fields.get("actor", ""),
+            to=fields.get("to", ""),
         )
-        if row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}:
+        core = row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}
+        # Every ask to a recipient and every row that answers one: an ask stays open until an answer names it.
+        if core or (row.kind == "MSG" and row.to) or (row.kind == "ACK" and row.re):
             kept.append((order, row))
-        elif row.lane and (
-            row.lane not in latest
-            or (ts, order) > (latest[row.lane][1].ts, latest[row.lane][0])
+        if (
+            not core
+            and row.lane
+            and (
+                row.lane not in latest
+                or (ts, order) > (latest[row.lane][1].ts, latest[row.lane][0])
+            )
         ):
             latest[row.lane] = (order, row)
-    ordered = sorted([*kept, *latest.values()], key=lambda pair: (pair[1].ts, pair[0]))
+    held = {order for order, _ in kept}
+    ordered = sorted(
+        [*kept, *(pair for pair in latest.values() if pair[0] not in held)],
+        key=lambda pair: (pair[1].ts, pair[0]),
+    )
     return tuple(row for _, row in ordered)
 
 

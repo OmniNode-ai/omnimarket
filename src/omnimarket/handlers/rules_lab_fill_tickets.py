@@ -129,6 +129,7 @@ def plan_ticket_backlog(facts: ModelLabFillTicketFacts) -> ModelLabFillTicketPla
     }
     open_pr = set(facts.open_pr)
     claimed = set(facts.claimed)
+    live_text = {entry.id: entry.description for entry in facts.live_descriptions}
     items: list[ModelLabFillTicketItem] = []
     drops: list[ModelLabFillTicketDrop] = []
     for issue in facts.issues:
@@ -220,7 +221,21 @@ def plan_ticket_backlog(facts: ModelLabFillTicketFacts) -> ModelLabFillTicketPla
                 )
             )
             continue
-        criteria = parse_criteria(issue.description)
+        description = (
+            issue.description
+            if issue.description is not None
+            else live_text.get(issue.id)
+        )
+        if description is None:
+            if source in _SPRINT_SOURCES:
+                drops.append(
+                    ModelLabFillTicketDrop(
+                        id=issue.id, reason=EnumLabFillTicketDrop.CRITERIA_UNREAD
+                    )
+                )
+                continue
+            description = ""
+        criteria = parse_criteria(description)
         if source in _SPRINT_SOURCES and not criteria:
             drops.append(
                 ModelLabFillTicketDrop(
