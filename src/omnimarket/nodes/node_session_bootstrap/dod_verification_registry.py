@@ -16,8 +16,11 @@ import json
 import logging
 import re
 import subprocess
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_session_bootstrap.models.model_task_contract import (
     EnumDodCheckType,
     EnumEvidenceArtifactKind,
@@ -25,6 +28,11 @@ from omnimarket.nodes.node_session_bootstrap.models.model_task_contract import (
 )
 
 logger = logging.getLogger(__name__)
+
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_session_bootstrap", "timeouts"),
+)
 
 # ---------------------------------------------------------------------------
 # HTTP-probe vs UI/Playwright evidence classification (OMN-13776).
@@ -111,7 +119,7 @@ def _list_prs_matching_pattern(
     branch_pattern: str,
     extra_fields: str = "number,headRefName",
     limit: int = 50,
-    timeout: int = 30,
+    timeout: float | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Fetch open PRs from GitHub and filter by branch_pattern client-side.
 
@@ -134,7 +142,9 @@ def _list_prs_matching_pattern(
         ],
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=(
+            timeout if timeout is not None else _TIMEOUTS["pr_list_timeout_seconds"]
+        ),
     )
     if result.returncode != 0:
         return [], f"gh pr list failed: {result.stderr.strip()}"
@@ -228,7 +238,7 @@ def _check_golden_chain(contract: ModelTaskContract) -> tuple[bool, str]:
             ],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_TIMEOUTS["golden_chain_timeout_seconds"],
         )
         if result.returncode == 0:
             return True, f"Golden chain passed for {repo_name}"
@@ -268,7 +278,7 @@ def _check_pre_commit_clean(contract: ModelTaskContract) -> tuple[bool, str]:
             ["pre-commit", "run", "--all-files"],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_TIMEOUTS["pre_commit_timeout_seconds"],
             cwd=worktree_path,
         )
         if result.returncode == 0:
@@ -353,7 +363,7 @@ def _check_overseer_5check(contract: ModelTaskContract) -> tuple[bool, str]:
             ],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_TIMEOUTS["overseer_verify_timeout_seconds"],
         )
         if result.returncode == 0:
             return True, f"Overseer 5-check passed for {contract.ticket_id}"

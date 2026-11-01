@@ -80,8 +80,8 @@ def consented_accounts(hosts: Sequence[Any]) -> frozenset[str]:
 
 CLOUD_SESSION_RE = re.compile(r"\b((?:session|cse)_[A-Za-z0-9]{8,})\b")
 CLOUD_URL_RE = re.compile(
-    re.escape(service_endpoint_url("claude.cloud_session_url"))
-    + r"(?:session|cse)_[A-Za-z0-9]+"
+    re.escape(service_endpoint_url("claude.web_url"))
+    + r"/code/(?:session|cse)_[A-Za-z0-9]+"
 )
 
 

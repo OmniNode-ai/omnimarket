@@ -354,7 +354,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
             configs,
             tier=EnumModelTier.GEMINI_CLI,
             base_url=service_endpoint_url(
-                "internal_targets.gemini_cli"
+                "transport_sentinels.gemini_cli_url"
             ),  # sentinel: dispatched via subprocess, not HTTP
             model_id=gemini_cli_model,
             api_key=gemini_key,

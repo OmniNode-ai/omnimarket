@@ -125,17 +125,8 @@ _DEFAULT_INDEX_TIMEOUT_S: Final[float] = 20.0
 
 # The package index this org publishes to. Read from one place so tests can
 # assert the URL shape without a network call.
-PACKAGE_INDEX_JSON_URL: Final[str] = (
-    # url-authority-ok: the public PyPI JSON API is a GOVERNANCE-plane read for
-    # this verification probe, exactly as api.github.com is in
-    # node_prod_promotion_grant_resolver_effect. It carries no model routing
-    # authority, it is never a runtime dependency of any node, and it is the
-    # index these repos' own release.yml publishes to (`uv publish --check-url
-    # https://pypi.org/simple/`). Resolving it from a routing contract would
-    # make the released check depend on the very control plane whose contents
-    # it is auditing.
-    service_endpoint_url("pypi.release_json_template")
-)
+_PYPI: Final[str] = service_endpoint_url("pypi.base_url")
+PACKAGE_INDEX_JSON_URL: Final[str] = f"{_PYPI}/pypi/{{distribution}}/{{version}}/json"
 
 # ``gh pr checks --json ... state`` values that are NOT a failure. Anything
 # else (FAILURE, CANCELLED, ERROR, TIMED_OUT, ACTION_REQUIRED, PENDING,

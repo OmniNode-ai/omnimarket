@@ -11,7 +11,7 @@ from omnimarket.config.service_endpoints import service_endpoint_url
 PLANS_TODAY_SCHEMA_ID = "omni.plans-today/2"
 
 PLANS_TODAY_JSON_SCHEMA: dict[str, Any] = {
-    "$schema": service_endpoint_url("schema_ids.json_schema_draft_2020_12"),
+    "$schema": service_endpoint_url("json_schema.draft_2020_12_url"),
     "$id": "omni.plans-today/2",
     "title": "plans-today output",
     "description": "The ranked plans of the day, written beside detail.md. validate() in "

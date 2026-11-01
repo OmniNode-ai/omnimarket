@@ -122,7 +122,9 @@ from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
 from omnimarket.occ_contract_pin import acceptance_criteria_items, canonical_ac_label
 
 _PR_URL_RE = re.compile(
-    r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<num>\d+)"
+    "^"
+    + re.escape(service_endpoint_url("github.web_url"))
+    + r"/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)/pull/(?P<num>\d+)"
 )
 
 # Git short SHA is 7 hex chars; full is 40. Anything outside [7,40] hex chars

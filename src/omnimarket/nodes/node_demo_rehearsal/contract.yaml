@@ -60,6 +60,18 @@ outputs:
     type: int
     description: "Number of failure items in the rehearsal bundle"
 
+probe_policy:
+  timeout_seconds: 10.0
+
+deployment_overlay:
+  name: node_demo_rehearsal
+  required: true
+  fields:
+  - dashboard_url
+  description: Dashboard API base URL the rehearsal probes read. DEMO_DASHBOARD_URL supplies it
+    when set; otherwise the node overlay does. Missing or invalid configuration refuses;
+    the package ships no address.
+
 env_dependencies:
   OMNI_HOME:
     required: true

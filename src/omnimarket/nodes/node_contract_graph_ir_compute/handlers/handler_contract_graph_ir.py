@@ -75,7 +75,7 @@ def _build_response(
     ui_components = tuple(
         (
             component,
-            f"{service_endpoint_url('internal_targets.ui_component_prefix')}{component.component_id}",
+            f"{service_endpoint_url('transport_sentinels.inmemory_ui_component_prefix')}{component.component_id}",
         )
         for component in request.ui_components
     )

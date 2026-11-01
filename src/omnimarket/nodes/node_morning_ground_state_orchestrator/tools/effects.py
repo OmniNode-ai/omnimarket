@@ -871,7 +871,8 @@ def kb_open_pr(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
     )
     text = f"{done['stdout']}\n{done['stderr']}"
     url = re.search(
-        re.escape(service_endpoint_url("github.web_url")) + r"/\S+/pull/(\d+)", text
+        re.escape(service_endpoint_url("github.web_url")) + r"/\S+/pull/(\d+)",
+        text,
     )
     if not url:
         return {"opened": False, **done}
