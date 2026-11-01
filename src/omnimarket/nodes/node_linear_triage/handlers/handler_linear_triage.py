@@ -36,6 +36,7 @@ from omnimarket.config.service_endpoints import (
     GITHUB_REST_URL,
     LINEAR_GRAPHQL_URL,
 )
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     SecretStoreConfigurationError,
@@ -82,6 +83,8 @@ KNOWN_REPOS = [
 ]
 
 _log = logging.getLogger(__name__)
+
+_TIMEOUTS = load_node_timeouts("node_linear_triage")
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 # States considered "done" by Linear
@@ -146,8 +149,13 @@ class LinearHttpClient:
 
     _BASE = LINEAR_GRAPHQL_URL
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, *, timeout: float | None = None) -> None:
         self._api_key = api_key
+        self._timeout = (
+            timeout
+            if timeout is not None
+            else _TIMEOUTS.get("linear_graphql_timeout_seconds")
+        )
         self._workflow_state_cache: dict[str, str] | None = None
 
     def _post(self, query: str, variables: dict[str, object]) -> Any:
@@ -164,7 +172,7 @@ class LinearHttpClient:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
             data = json.loads(resp.read())
         if "errors" in data:
             raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
@@ -396,13 +404,24 @@ class GitHubHttpClient:
 
     _BASE = GITHUB_REST_URL
 
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, *, timeout: float | None = None) -> None:
         if not token:
             raise RuntimeError(
                 "GitHub token must not be empty. "
                 "Resolve it via the contract api_key_ref before constructing GitHubHttpClient."
             )
         self._token = token
+        # An injected timeout bounds REST and GraphQL calls alike.
+        self._rest_timeout = (
+            timeout
+            if timeout is not None
+            else _TIMEOUTS.get("github_rest_timeout_seconds")
+        )
+        self._graphql_timeout = (
+            timeout
+            if timeout is not None
+            else _TIMEOUTS.get("github_graphql_timeout_seconds")
+        )
 
     def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
         """GET request to GitHub API with rate-limit awareness."""
@@ -424,7 +443,7 @@ class GitHubHttpClient:
         # Retry up to 3 times on rate limit (403 with retry-after)
         for attempt in range(4):
             try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=self._rest_timeout) as resp:
                     remaining = resp.headers.get("x-ratelimit-remaining", "")
                     if remaining and int(remaining) <= 2:
                         reset_epoch = int(resp.headers.get("x-ratelimit-reset", "0"))
@@ -566,7 +585,7 @@ class GitHubHttpClient:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=self._graphql_timeout) as resp:
             data = json.loads(resp.read())
         if "errors" in data:
             raise RuntimeError(f"GitHub GraphQL error: {data['errors']}")
@@ -907,8 +926,14 @@ class OccReceiptSubprocessProbe:
         *,
         occ_repo_path: Path | None = None,
         governance_ref: str = _OCC_GOVERNANCE_REF,
+        git_timeout: float | None = None,
     ) -> None:
         self._governance_ref = governance_ref
+        self._git_timeout = (
+            git_timeout
+            if git_timeout is not None
+            else _TIMEOUTS.get("occ_git_timeout_seconds")
+        )
         if occ_repo_path is not None:
             self._occ_repo_path: Path | None = occ_repo_path
             return
@@ -962,7 +987,7 @@ class OccReceiptSubprocessProbe:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=self._git_timeout,
                 check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
@@ -985,7 +1010,7 @@ class OccReceiptSubprocessProbe:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=self._git_timeout,
                 check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:

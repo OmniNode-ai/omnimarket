@@ -144,3 +144,11 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.linear-triage-completed.v1
+
+timeouts:
+  linear_graphql_timeout_seconds: 30.0  # Bounds each Linear GraphQL request (triage client and both git-automation guards).
+  github_rest_timeout_seconds: 30.0  # Bounds each GitHub REST request.
+  github_graphql_timeout_seconds: 30.0  # Bounds each GitHub GraphQL request.
+  occ_git_timeout_seconds: 15.0  # Bounds the git ls-tree and git show reads of the OCC receipt probe.
+  dod_verify_timeout_seconds: 300.0  # Bounds a dod_verify subprocess run, which executes the contract's checks.
+  local_git_timeout_seconds: 60.0  # Bounds each git read against a canonical clone for local PR state.

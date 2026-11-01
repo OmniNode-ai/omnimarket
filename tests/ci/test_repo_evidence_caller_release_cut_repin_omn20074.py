@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -31,13 +32,9 @@ def test_caller_pins_the_reusable_that_derives_writer_release_cut_at_head() -> N
 
 def test_pinned_verifier_ships_the_release_cut_classifiers() -> None:
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
-    version = tuple(
-        int(part)
-        for part in caller["jobs"]["repo-evidence"]["with"]["verifier-version"].split(
-            "."
-        )
-    )
-    assert version >= (0, 4, 294)
+    inputs = caller["jobs"]["repo-evidence"]["with"]
+    assert re.fullmatch(r"dev-[0-9]{14}-[0-9a-f]{12}", inputs["verifier-tag"])
+    assert "verifier-version" not in inputs
     assert callable(occ_content_probe.is_release_artifact_only_diff)
     assert callable(occ_content_probe.classify_dependency_pin_only)
 

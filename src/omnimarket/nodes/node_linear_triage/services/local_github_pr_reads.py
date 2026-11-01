@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
@@ -37,7 +38,9 @@ _ORG = "OmniNode-ai"
 _SQUASH_SUBJECT = re.compile(r"^(?P<title>.*?)\s*\(#(?P<number>[1-9][0-9]*)\)\s*$")
 _FIELD_SEP = "\x1f"
 _RECORD_SEP = "\x1e"
-_GIT_TIMEOUT_S = 60
+_GIT_TIMEOUT_S: float = load_node_timeouts("node_linear_triage").get(
+    "local_git_timeout_seconds"
+)
 
 
 class LocalGitHubStateError(RuntimeError):
