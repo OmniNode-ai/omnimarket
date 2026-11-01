@@ -108,9 +108,11 @@ class HandlerArchitectureDiscovery:
         | None = None,
     ) -> None:
         if execute is None:
-            from ..adapters.handler_coding_agent_bus import HandlerCodingAgentBus
+            from ..container.container_architecture_discovery_orchestrator import (
+                build_handler_coding_agent_bus,
+            )
 
-            execute = HandlerCodingAgentBus().execute
+            execute = build_handler_coding_agent_bus().execute
         self._execute = execute
 
     def handle(self, request: ModelDiscoveryRequest) -> ModelDiscoveryResult:
