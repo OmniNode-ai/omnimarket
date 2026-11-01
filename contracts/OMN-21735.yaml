@@ -71,3 +71,6 @@ dod_evidence:
           printf '%s\n' "$classifier" | grep -Fq 'timeout=_TIMEOUTS.get("git_probe_s")';
           printf 'Published timeout reader wiring verified at %s\n' "$head_sha"
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov -k test_module_timeouts_are_the_contract_declarations"
+        cwd: "."
