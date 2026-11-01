@@ -17,12 +17,9 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.replay_bundle import ModelBundleFile, ModelVerifyBundleRequest
 from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest import (
     HandlerReplayBundleVerifier,
-)
-from omnimarket.nodes.node_context_compaction_manifest_compute.models import (
-    ModelBundleFile,
-    ModelVerifyBundleRequest,
 )
 from omnimarket.nodes.node_replay_bundle_writer_effect.models import (
     EnumReplayBundleWriteStatus,

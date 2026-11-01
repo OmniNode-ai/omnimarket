@@ -158,7 +158,6 @@ dod_evidence:
   - id: "dod-omn21108-deploy-writer-disk-readback"
     description: "Hosted deploy probe: install the locked product without dev dependencies, build one replay case, write it through the default local filesystem under a temporary overlay root, read every file back from disk and require one verified case. A wrong pin and an undeclared host must be refused. No private overlay or lab service is required; the merge base has no writer module."
     source: "manual"
-    binds_ac: ["AC12"]
     checks:
       - check_type: "command"
         check_value: |-

@@ -13,6 +13,13 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from omnimarket.models.replay_bundle import (
+    ModelBundleFile as ModelBundleFile,
+)
+from omnimarket.models.replay_bundle import (
+    ModelVerifyBundleRequest as ModelVerifyBundleRequest,
+)
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -195,21 +202,11 @@ class ModelBuildManifestRequest(_Frozen):
     profile_version: str | None = None
 
 
-class ModelBundleFile(_Frozen):
-    path: str
-    content: bytes
-
-
 class ModelBuildManifestResult(_Frozen):
     manifest_yaml: str
     bundle_files: tuple[ModelBundleFile, ...]
     case_ids: tuple[str, ...]
     refusals: tuple[str, ...] = ()
-
-
-class ModelVerifyBundleRequest(_Frozen):
-    manifest_yaml: str
-    bundle_files: tuple[ModelBundleFile, ...]
 
 
 class ModelVerifyBundleResult(_Frozen):

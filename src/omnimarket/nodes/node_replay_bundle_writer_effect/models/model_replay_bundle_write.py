@@ -8,9 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_context_compaction_manifest_compute.models import (
-    ModelBundleFile,
-)
+from omnimarket.models.replay_bundle import ModelBundleFile
 
 
 class EnumReplayBundleWriteStatus(StrEnum):
