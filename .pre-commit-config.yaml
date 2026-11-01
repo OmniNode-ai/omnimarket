@@ -622,6 +622,17 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # A projection or consumer fixture that hand-writes the event payload its producer
+      # emits stays green while production changes. Check-only; a fenced site that no
+      # longer matches is a hard failure, and a scan below its floor fails.
+      - id: handwritten-event-payload
+        name: Fixtures derive event payloads from the producer
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
+        files: ^(tests/.*\.py|src/omnimarket/nodes/node_projection_[^/]+/tests/.*\.py|src/omnimarket/nodes/node_handwritten_event_payload_check_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
       # the topic and deriving the event type proves the edge exists; hand-typing the
       # topic string as an event_type asserts on a shape the bus never carries, because
