@@ -150,6 +150,8 @@ not_routing_resolution_sites:
     reason: hosts and URLs a sweep probes; probe targets, not routes for delegated work
   - site: "src/omnimarket/handlers/lab_sli_pack_gate.py:load_node_overlay(LAB_SLI_PACK_OVERLAY)"
     reason: whether a deployment enables the lab SLI pack; an on or off switch for four nodes, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py:find_node_overlay(NODE_NAME)"
+    reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"

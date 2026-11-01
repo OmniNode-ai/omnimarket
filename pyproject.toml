@@ -314,6 +314,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
+node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
 node_codex_gitlink_compute = "omnimarket.nodes.node_codex_gitlink_compute"
 node_codex_landing_compute = "omnimarket.nodes.node_codex_landing_compute"
@@ -1070,6 +1071,8 @@ node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gat
 node_process_health_compute = "omnimarket.nodes.node_process_health_compute"
 node_process_health_effect = "omnimarket.nodes.node_process_health_effect"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
+node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
+node_lane_container_budget_compute = "omnimarket.nodes.node_lane_container_budget_compute"
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
 node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_compute"
@@ -1639,6 +1642,7 @@ ignore = [
 # channel to the Claude Code client.
 "src/omnimarket/nodes/node_operator_access_mode_effect/runtime_operator_hook_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_secret_store_override_effect/runtime_lab_secret_store_override_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]

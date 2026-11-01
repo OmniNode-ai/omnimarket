@@ -93,6 +93,18 @@ requirements:
       - id: "AC29"
         statement: |-
           AC29: WorkLedgerAppendHost.start and resubscribe take the shared command topic and every writer topic in about one group-join time rather than the sum of the joins, a missing writer topic is still skipped, and a missing shared command topic leaves no subscription -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_concurrent_subscribe.py -q
+  - id: "req-replay-loss-reported-and-batched"
+    statement: "A queued ledger append is either landed or its loss reaches the writer: a replay that is finally refused is reported to the writer's lane, a retry keeps the request id of its first attempt, and a multi-row ruling goes as one batched request."
+    acceptance:
+      - id: "AC26"
+        statement: |-
+          AC26: a replay that the ledger host finally refuses is reported to the writer and not silently left in refused/ -- falsifier: uv run pytest tests/handlers/bus_binding/test_replay_loss_omn20275.py -q -k refused_reported_to_writer
+      - id: "AC27"
+        statement: |-
+          AC27: a retry of the same row reuses its first req= and the serve answers duplicate, so the ACK does not repeat -- falsifier: uv run pytest tests/handlers/bus_binding/test_replay_loss_omn20275.py -q -k retry_keeps_request_id
+      - id: "AC28"
+        statement: |-
+          AC28: a multi-row ruling is sent as one batched request with one receipt -- falsifier: uv run pytest tests/handlers/bus_binding/test_replay_loss_omn20275.py -q -k multi_row_one_request
 evidence_requirements:
   - kind: "tests"
     description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
@@ -327,4 +339,31 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/unit/work_ledger_bus/test_concurrent_subscribe.py -q -n 0 -p no:randomly --no-cov'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac26-refused-reported-to-writer"
+    description: "AC26: a refusal found by a replay emits one non-decision case keyed to the writer's lane with the host's words, exit code, ledger host and the lost rows' kinds and stamps, with no outage episode open, and is not reported twice."
+    source: "manual"
+    binds_ac: ["AC26"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/bus_binding/test_replay_loss_omn20275.py -q -n 0 -p no:randomly --no-cov -k refused_reported_to_writer"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac27-retry-keeps-request-id"
+    description: "AC27: a retry of a row whose first attempt got no answer is sent under the first attempt's request id and rows, and the append handler answers duplicate."
+    source: "manual"
+    binds_ac: ["AC27"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/bus_binding/test_replay_loss_omn20275.py -q -n 0 -p no:randomly --no-cov -k retry_keeps_request_id"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/work_ledger_bus/test_work_ledger_append_cli.py -q -n 0 -p no:randomly --no-cov -k first_request_id"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac28-multi-row-one-request"
+    description: "AC28: all rows of one operator prompt go to the ledger in one append call."
+    source: "manual"
+    binds_ac: ["AC28"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/bus_binding/test_replay_loss_omn20275.py -q -n 0 -p no:randomly --no-cov -k multi_row_one_request"
         cwd: "${OMNI_HOME}/omnimarket"

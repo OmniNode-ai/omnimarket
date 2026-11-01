@@ -10,16 +10,18 @@ output constraint (events only, no result/projections).
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from uuid import UUID
 
 import pytest
+import yaml
 from omnibase_core.enums.enum_experiment_status import EnumExperimentStatus
 from omnibase_core.enums.enum_experiment_type import EnumExperimentType
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.experiment.model_experiment_result import (
     ModelExperimentResult,
 )
 
+from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_regression_test_orchestrator.handlers.handler_regression_test_orchestrator import (
     TOPIC_REGRESSION_COMPLETED,
     HandlerRegressionTestOrchestrator,
@@ -37,11 +39,15 @@ from omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_
     EnumRegressionDifficulty,
     ModelRegressionTask,
 )
-from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 _EXP_ID = UUID("11111111-1111-1111-1111-111111111111")
 _RUN_ID = UUID("22222222-2222-2222-2222-222222222222")
 _CORR_ID = UUID("33333333-3333-3333-3333-333333333333")
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_regression_test_orchestrator/contract.yaml"
+)
+_PUBLISH_TOPICS = list(contract_publish_topics(_CONTRACT_PATH))
 
 
 def _task(task_id: str) -> ModelRegressionTask:
@@ -170,26 +176,27 @@ def test_handle_emits_canonical_result_on_terminal_topic() -> None:
         tasks=(_task("reg-001"),),
         corpus=(ModelRegressionReplayEntry(task_id="reg-001", attempt=1, output="ok"),),
     )
-    envelope: ModelEventEnvelope[ModelRegressionSuiteStart] = ModelEventEnvelope(
-        payload=start,
-        correlation_id=_CORR_ID,
-        event_type=start.tasks[0].task_id,
-    )
-    output = asyncio.run(handler.handle(envelope))
+    output = asyncio.run(handler.handle(start))
 
     # ORCHESTRATOR archetype constraint: events only, never result/projections.
     assert output.result is None
     assert len(output.events) == 1
     emitted = output.events[0]
-    assert emitted.event_type == TOPIC_REGRESSION_COMPLETED
-    assert isinstance(emitted.payload, ModelExperimentResult)
-    assert emitted.payload.experiment_type is EnumExperimentType.REGRESSION_TEST
-    assert emitted.payload.status is EnumExperimentStatus.COMPLETED
+    # The handler returns the typed result; the runtime wraps it for the one
+    # contract publish topic, the terminal event.
+    assert isinstance(emitted, ModelExperimentResult)
+    assert emitted.experiment_type is EnumExperimentType.REGRESSION_TEST
+    assert emitted.status is EnumExperimentStatus.COMPLETED
+    assert output.correlation_id == start.correlation_id
+    assert _PUBLISH_TOPICS == [TOPIC_REGRESSION_COMPLETED]
+    # The contract's one declared output names the type the handler returns.
+    outputs = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))["outputs"]
+    assert outputs["experiment_result"]["type"] == type(emitted).__name__
 
 
 @pytest.mark.unit
-def test_handle_accepts_mapping_payload_on_run_node_path() -> None:
-    """onex run-node delivers a mapping payload; correlation_id is injected."""
+def test_handle_takes_the_request_validated_from_a_run_node_mapping() -> None:
+    """onex run-node delivers a mapping; the runtime validates it into the request."""
     handler = HandlerRegressionTestOrchestrator()
     payload = {
         "experiment_id": str(_EXP_ID),
@@ -200,16 +207,13 @@ def test_handle_accepts_mapping_payload_on_run_node_path() -> None:
             {"task_id": "reg-001", "attempt": 1, "output": "ok"},
         ],
     }
-    envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
-        payload=payload,
-        correlation_id=_CORR_ID,
-        event_type=publisher_event_type(
-            "onex.cmd.omnimarket.regression-suite-start.v1"
-        ),
+    request = ModelRegressionSuiteStart.model_validate(
+        {**payload, "correlation_id": str(_CORR_ID)}
     )
-    output = asyncio.run(handler.handle(envelope))
-    assert isinstance(output.events[0].payload, ModelExperimentResult)
-    assert output.events[0].payload.correlation_id == _CORR_ID
+    output = asyncio.run(handler.handle(request))
+    emitted = output.events[0]
+    assert isinstance(emitted, ModelExperimentResult)
+    assert emitted.correlation_id == _CORR_ID
 
 
 @pytest.mark.unit
