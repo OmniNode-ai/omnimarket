@@ -34,8 +34,13 @@ from omnibase_core.nodes.node_done_write_receipt_gate_compute.handler_done_write
     extract_dod_verify_verdict,
 )
 
-#: A verifier run executes the contract's checks, so it is slow by design.
-DOD_VERIFY_TIMEOUT_SECONDS = 300.0
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
+#: A verifier run executes the contract's checks, so it is slow by design; the
+#: bound is declared in the node contract.
+DOD_VERIFY_TIMEOUT_SECONDS: float = load_node_timeouts("node_linear_triage").get(
+    "dod_verify_timeout_seconds"
+)
 
 
 @runtime_checkable
