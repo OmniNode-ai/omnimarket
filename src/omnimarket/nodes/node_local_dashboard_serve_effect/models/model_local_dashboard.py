@@ -18,11 +18,13 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.handlers.network_bindings import network_host, network_port
+
 # The standalone projection API (``projection/api_server.py``) and OmniDash's
 # Express bridge own this port; the local dashboard never takes it.
-_STANDALONE_API_PORT = 3002
-_DEFAULT_HOST = "127.0.0.1"
-_LOOPBACK_NAMES = frozenset({"localhost"})
+_STANDALONE_API_PORT = network_port("projection_api.port")
+_DEFAULT_HOST = network_host("loopback.ipv4")
+_LOOPBACK_NAMES = frozenset({network_host("loopback.name")})
 
 
 class DashboardBindError(ValueError):

@@ -215,10 +215,45 @@ footer.note{font-size:.78rem;color:var(--muted);max-width:90ch}
   .gauges{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){.tab i.c-stop,.lamp.c-stop i{animation:none}}
+
+/* drill-down drawer: a side panel over the tab the reader is on; the board underneath keeps its place */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:40vw;min-width:380px;max-width:680px;background:var(--panel);border-left:1px solid var(--rule);box-shadow:-10px 0 28px rgba(0,0,0,.2);z-index:30;display:flex;flex-direction:column;
+  transform:translateX(24px);opacity:0;visibility:hidden;transition:transform .18s ease,opacity .18s ease,visibility 0s linear .18s}
+.drawer.open{transform:none;opacity:1;visibility:visible;transition:transform .18s ease,opacity .18s ease,visibility 0s}
+.drawer-head{flex:none;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
+.drawer-head h2{font-size:1.35rem;line-height:1.05;overflow-wrap:anywhere}
+.drawer-head h2:focus{outline:none}
+.drawer-head .eyebrow{display:block;font:600 .7rem/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--steel);margin-bottom:5px}
+.drawer-close{flex:none;font:700 1.3rem/1 var(--f-body);width:40px;height:40px;border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
+.drawer-close:hover{background:color-mix(in srgb,var(--safety) 15%,transparent)}
+.drawer-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 40px;display:grid;gap:14px;align-content:start}
+.drawer-body h3{margin:4px 0 -4px;color:var(--steel)}
+.scrim{display:none}
+dl.kv{margin:0;display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:6px 12px;font-size:.86rem}
+dl.kv dt{font:600 .72rem/1.5 var(--f-mono);letter-spacing:.04em;color:var(--steel)}
+dl.kv dd{margin:0;overflow-wrap:anywhere}
+.dlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.dlist>li{border:1px solid var(--rule);border-radius:4px;padding:8px 10px;display:grid;gap:4px;font-size:.84rem;overflow-wrap:anywhere}
+.dlist ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.8rem}
+.dlist .pill{justify-self:start}
+.drawer .lrows{margin:0;border:1px solid var(--rule);border-radius:4px}
+.drawer .gauges{grid-template-columns:1fr 1fr}
+.drawer a.open-full{font-weight:600}
+a.drill{font-size:.78rem}
+@keyframes paneIn{from{opacity:0}to{opacity:1}}
+.pane:not([hidden]){animation:paneIn .15s ease-out}
+@media (max-width:700px){
+  .drawer{width:100%;min-width:0;max-width:none;border-left:0;transform:translateY(24px)}
+  .drawer.open{transform:none}
+  .scrim{display:block;position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.5);opacity:0;visibility:hidden;transition:opacity .18s ease,visibility 0s linear .18s}
+  .scrim.open{opacity:1;visibility:visible;transition:opacity .18s ease,visibility 0s}
+  dl.kv{grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){.drawer,.drawer.open,.scrim,.scrim.open{transition:none}.pane:not([hidden]){animation:none}}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
   <div class="top">
     <div class="hazard" aria-hidden="true"></div>
     <div class="titlerow">
@@ -238,6 +273,16 @@ footer.note{font-size:.78rem;color:var(--muted);max-width:90ch}
     <section class="pane" id="pane-quality" role="tabpanel" aria-labelledby="tab-quality" hidden></section>
   </main>
 </div>
+
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <div><span class="eyebrow" id="drawerKind"></span><h2 id="drawerTitle" tabindex="-1"></h2></div>
+    <button type="button" class="drawer-close" id="drawerClose" aria-label="Close details" title="Close (Escape)">&times;</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="sr" id="drawerLive" role="status" aria-live="polite"></div>
+</aside>
 
 <script>
 const SITE = "";
@@ -277,7 +322,16 @@ function ageMs(iso){
   return Number.isNaN(t) ? null : Date.now() - t;
 }
 function sinceText(iso){ const ms = ageMs(iso); return ms == null ? "unread" : ageText(ms); }
-function clock(iso){ const t = Date.parse(iso); return Number.isNaN(t) ? "" : new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC"; }
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+const DAY_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {year: "numeric", month: "2-digit", day: "2-digit"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
+function localDay(ms){ const p = Object.fromEntries(DAY_FMT.formatToParts(new Date(ms)).map(x => [x.type, x.value])); return `${p.year}-${p.month}-${p.day}`; }
+// Minute counts in the record were measured when it was computed; this adds the time since, so they read against the real clock.
+let recordAt = NaN;
+function sinceRecord(){ return Number.isNaN(recordAt) ? 0 : Math.max(0, Date.now() - recordAt); }
+function liveMs(min){ return num(min) * 60000 + sinceRecord(); }
 
 // ---- Tabs: the hash names the tab (and, for the floor, a place on it); the last tab is kept per browser.
 function remembered(){
@@ -286,10 +340,16 @@ function remembered(){
 function remember(id){
   try { localStorage.setItem(STORE_KEY, id); } catch (e) { /* private window or blocked storage: the hash still works */ }
 }
+const DRILL_KINDS = {lane: "Lane", line: "Assembly line", bay: "Machine", st: "Station", part: "Part", stop: "Stoppage", report: "Report"};
+// A hash is #tab, or #tab/kind-id: the second form names the open panel (a lane, line, bay, station, stoppage or report).
 function parseHash(){
   const raw = decodeURIComponent((location.hash || "").replace(/^#/, ""));
   const [tab, ...rest] = raw.split("/");
-  return {tab: TAB_IDS.includes(tab) ? tab : "", anchor: rest.join("/")};
+  return hashParts(tab, rest.join("/"));
+}
+function hashParts(tab, anchor){
+  const m = /^([a-z]+)-(.+)$/.exec(anchor || "");
+  return {tab: TAB_IDS.includes(tab) ? tab : "", anchor: anchor || "", drill: m && DRILL_KINDS[m[1]] ? {kind: m[1], id: m[2]} : null};
 }
 
 let currentTab = "";
@@ -312,14 +372,31 @@ function buildTabs(){
   });
 }
 
-function go(id, anchor){
-  const next = "#" + id + (anchor ? "/" + anchor : "");
-  if (location.hash === next) { show(id, anchor); return; }
+function go(id){
+  const next = "#" + id;
+  if (location.hash === next) { sync(); return; }
   location.hash = next;
 }
 
-function show(id, anchor){
+// Each tab keeps its own scroll position: a hidden pane loses its scroll, so it is saved on the way out and put back on the way in.
+const scrolls = {};
+function saveScroll(){
+  if (!currentTab) return;
+  let fy = 0;
+  try { fy = frames[currentTab] && frames[currentTab].contentWindow ? frames[currentTab].contentWindow.scrollY : 0; } catch (e) { fy = 0; }
+  scrolls[currentTab] = {y: el("pane-" + currentTab).scrollTop, fy};
+}
+function restoreScroll(id){
+  const sv = scrolls[id];
+  if (!sv) return;
+  el("pane-" + id).scrollTop = sv.y;
+  try { if (frames[id] && frames[id].contentWindow) frames[id].contentWindow.scrollTo(0, sv.fy); } catch (e) { /* the frame is still loading */ }
+}
+
+function show(id){
   if (!TAB_IDS.includes(id)) id = "dashboard";
+  if (id === currentTab) return;
+  saveScroll();
   currentTab = id;
   remember(id);
   TABS.forEach(t => {
@@ -339,28 +416,112 @@ function show(id, anchor){
     frames[id] = f;
     el("pane-" + id).appendChild(f);
   }
-  if (anchor && frames[id]) jumpIn(frames[id], anchor);
+  restoreScroll(id);
 }
 
-// Move to a place on a tab's page once it has drawn it (the floor page draws after it reads the record).
-function jumpIn(frame, anchor){
-  let tries = 0;
-  const timer = setInterval(() => {
-    tries++;
-    let target = null;
-    try { target = frame.contentDocument && frame.contentDocument.getElementById(anchor); } catch (e) { target = null; }
-    if (target){
-      clearInterval(timer);
-      if (target.tagName === "DETAILS") target.open = true;
-      target.scrollIntoView({block: "center", inline: "nearest"});
-      target.classList.remove("flash");
-      void target.offsetWidth;
-      target.classList.add("flash");
-    } else if (tries > 40) clearInterval(timer);
-  }, 250);
+// ---- The drill-down drawer. It opens over the tab the reader is on and never moves that tab's scroll.
+let CUR = null;
+let drawerOpen = false, drawerPushed = false, drawerHTML = "", drawerKey = "";
+let opener = null, openerHref = "";
+const phone = () => window.matchMedia("(max-width:700px)").matches;
+
+function drillHref(kind, id, tab){ return "#" + (tab || "dashboard") + "/" + kind + "-" + id; }
+
+function sync(){
+  const h = parseHash();
+  if (h.tab) show(h.tab);
+  if (h.drill) openDrawer(h.drill); else closeDrawer();
 }
 
-window.addEventListener("hashchange", () => { const h = parseHash(); if (h.tab) show(h.tab, h.anchor); });
+// A click that names a panel: push one history entry on open, replace it on a swap.
+function openFrom(h, from){
+  const tab = h.tab || currentTab || "dashboard";
+  const next = "#" + tab + "/" + h.anchor;
+  if (location.hash === next && drawerOpen) return;
+  if (drawerOpen) history.replaceState(null, "", next);
+  else {
+    opener = from || document.activeElement;
+    openerHref = from && from.getAttribute ? from.getAttribute("href") || "" : "";
+    history.pushState(null, "", next);
+    drawerPushed = true;
+  }
+  sync();
+}
+
+function closeByUser(){
+  if (!drawerOpen) return;
+  if (drawerPushed) history.back();
+  else { history.replaceState(null, "", "#" + currentTab); sync(); }
+}
+
+function openDrawer(d){
+  const key = d.kind + "-" + d.id;
+  const fresh = !drawerOpen;
+  drawerOpen = true;
+  drawerKey = key;
+  drawNow();
+  const dr = el("drawer");
+  dr.classList.add("open");
+  el("scrim").classList.toggle("open", phone());
+  dr.setAttribute("aria-modal", String(phone()));
+  el("app").inert = phone();
+  if (fresh) el("drawerTitle").focus({preventScroll: true});
+  else { el("drawerBody").scrollTop = 0; el("drawerLive").textContent = el("drawerTitle").textContent; }
+}
+
+function closeDrawer(){
+  if (!drawerOpen) return;
+  drawerOpen = false;
+  drawerPushed = false;
+  drawerHTML = "";
+  el("drawer").classList.remove("open");
+  el("scrim").classList.remove("open");
+  el("app").inert = false;
+  let back = opener && opener.isConnected ? opener : null;
+  if (!back && openerHref) back = document.querySelector('a[href="' + openerHref.replace(/"/g, '\\"') + '"]');
+  if (!back) back = el("tab-" + currentTab);
+  if (back && back.focus) back.focus({preventScroll: true});
+  const f = frames[currentTab];
+  if (opener === f && f && f.contentWindow && f.contentWindow.__refocus) f.contentWindow.__refocus();
+  opener = null;
+  openerHref = "";
+}
+
+function drawNow(){
+  const m = drillContent(parseDrill(drawerKey));
+  el("drawerKind").textContent = m.kind;
+  el("drawerTitle").textContent = m.title;
+  if (m.html !== drawerHTML){ drawerHTML = m.html; el("drawerBody").innerHTML = m.html; }
+}
+const parseDrill = key => { const i = key.indexOf("-"); return {kind: key.slice(0, i), id: key.slice(i + 1)}; };
+function refreshDrawer(){ if (drawerOpen) drawNow(); }
+
+document.addEventListener("click", ev => {
+  const a = ev.target && ev.target.closest ? ev.target.closest('a[href^="#"]') : null;
+  if (!a) return;
+  const raw = decodeURIComponent((a.getAttribute("href") || "").replace(/^#/, ""));
+  const [tab, ...rest] = raw.split("/");
+  const h = hashParts(tab, rest.join("/"));
+  if (!h.drill) return;
+  ev.preventDefault();
+  if (a.closest("#drawer")) h.tab = currentTab;
+  openFrom(h, a);
+});
+el("drawerClose").addEventListener("click", closeByUser);
+el("scrim").addEventListener("click", closeByUser);
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && drawerOpen){ ev.preventDefault(); closeByUser(); } });
+// The other tabs are pages drawn in frames; a click on a lane, bay, line, station or stoppage there asks this page to open the drawer.
+window.addEventListener("message", ev => {
+  if (ev.origin !== location.origin) return;
+  const f = frames[currentTab];
+  if (!f || ev.source !== f.contentWindow || !ev.data) return;
+  if (ev.data.type === "close"){ closeByUser(); return; }
+  if (ev.data.type !== "drill" || typeof ev.data.anchor !== "string") return;
+  const h = hashParts(currentTab, ev.data.anchor);
+  if (h.drill) openFrom(h, drawerOpen ? opener : f);
+});
+window.addEventListener("hashchange", sync);
+window.addEventListener("popstate", sync);
 
 // ---- Lines, as the floor page reads them: the overlay-declared order, a slot for a line no plan matched.
 function buildSlots(lines, status){
@@ -420,7 +581,7 @@ function lineCard(slot, i){
     <div class="belt" style="--pos:${pct}%;--c:${c}" role="img" aria-label="${f.done} of ${cells.length} parts done">${CAR}<div class="cells">${cells.map(x => `<b class="${esc(x.state)}"></b>`).join("")}</div></div>
     ${cause}
     <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(cur.name)}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
-    <a class="go" href="#floor/line-${esc(safeId(L.line_id))}">Open this line on the factory floor</a>
+    <a class="go" href="${drillHref("line", esc(safeId(L.line_id)))}">Show this line's stations and parts</a>
   </article>`;
 }
 
@@ -432,12 +593,12 @@ function ciChip(l){
   return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${esc(l.pr)} · ${word}${esc(merged)}</span>`;
 }
 
-function laneRow(l){
+function laneRow(l, tab){
   const doing = l.status_text ? esc(l.status_text) : l.title ? esc(l.title) : `<span class="unread">no status written</span>`;
-  return `<a class="lrow" href="#floor/lane-${esc(safeId(l.lane))}" title="${esc([l.ticket, l.title, l.status_full].filter(Boolean).join(" · "))}">
+  return `<a class="lrow" href="${drillHref("lane", esc(safeId(l.lane)), tab)}" title="${esc([l.ticket, l.title, l.status_full].filter(Boolean).join(" · "))}">
     <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}${l.engine === "codex" ? " · Codex" : ""}</span>
     <span class="doing">${doing}</span>
-    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
+    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
   </a>`;
 }
 
@@ -454,7 +615,7 @@ function bayCard(m, byId){
   const tone = rd ? (m.stale ? "warn" : "ok") : "idle";
   const cls = rd ? "" : m.state === "repair" || m.state === "out" ? " repair" : " unreadbay";
   const cap = m.cap == null ? null : num(m.cap);
-  const age = m.read_age_min == null ? "" : ` · ${ageText(num(m.read_age_min) * 60000)} ago`;
+  const age = m.read_age_min == null ? "" : ` · ${m.read_at ? sinceText(m.read_at) : ageText(liveMs(m.read_age_min))} ago`;
   let body;
   if (rd){
     const cells = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}" title="${esc(l.lane)}"></i>`);
@@ -473,6 +634,7 @@ function bayCard(m, byId){
   }
   return `<article class="bay${cls}" aria-label="${esc(m.label)}">
     <div class="bay-top"><b>${esc(m.label)}</b><span class="pill ${tone}">${esc(word)}${esc(age)}</span></div>
+    <a class="drill" href="${drillHref("bay", esc(safeId(m.host)))}">Show this machine's detail</a>
     ${body}
     ${lanes.length ? `<div class="lrows">${lanes.map(laneRow).join("")}</div>` : (rd ? `<p class="capline">No lane is placed here.</p>` : "")}
   </article>`;
@@ -488,6 +650,7 @@ function cloudCard(cloud, lanes){
   const open = sessions.filter(s => s.open).length;
   return `<article class="bay${rd ? "" : " unreadbay"}" aria-label="Cloud">
     <div class="bay-top"><b>Cloud</b><span class="pill ${rd ? "ok" : "idle"}">${rd ? "read" : "unread"}</span></div>
+    <a class="drill" href="${drillHref("bay", "cloud")}">Show the cloud detail</a>
     ${stops}
     ${rd ? (accts ? `<ul class="plain">${accts}</ul>` : `<p class="capline">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
     ${rd ? `<p class="capline">${open} of ${sessions.length} recent cloud sessions open${cloud.note ? ` · ${esc(cloud.note)}` : ""}</p>` : ""}
@@ -502,7 +665,7 @@ function metric(day, key){
   return m && m.value != null && m.status !== "unread" ? m : null;
 }
 
-const redRow = l => `<li><span><a href="#floor/lane-${esc(safeId(l.lane))}">${esc(l.pr)}</a> <span class="muted">${esc(l.pr_title || l.title || "")}</span></span><small>${esc(l.pr_ci_note || "CI red")} · ${esc(l.lane)}</small></li>`;
+const redRow = l => `<li><span><a href="${drillHref("lane", esc(safeId(l.lane)))}">${esc(l.pr)}</a> <span class="muted">${esc(l.pr_title || l.title || "")}</span></span><small>${esc(l.pr_ci_note || "CI red")} · ${esc(l.lane)}</small></li>`;
 
 function todayCard(floor, health){
   const days = health && Array.isArray(health.days) ? health.days : [];
@@ -511,9 +674,9 @@ function todayCard(floor, health){
   const mt = metric(day, "merges.total"), mp = metric(day, "merges.product");
   const re = metric(day, "reds.episodes_opened"), rh = metric(day, "reds.hours_red");
   const pm = metric(prev, "merges.total");
-  const utcToday = new Date().toISOString().slice(0, 10);
+  const today = localDay(Date.now());
   const dayNote = !day ? "The process-health series is not published, so the day's counts are unread."
-    : `UTC day ${esc(day.date)}${day.partial ? ", so far" : ""}${day.window && day.window.end ? ` (to ${esc(String(day.window.end).slice(11, 16))} UTC)` : ""}${day.date !== utcToday ? `. <b class="age-stale">This is not today (${esc(utcToday)}): the series is behind.</b>` : ""}`;
+    : `Series day ${esc(day.date)}${day.partial ? ", so far" : ""}${day.window && day.window.end ? ` (to ${esc(clock(day.window.end))})` : ""}${day.date < today ? `. <b class="age-stale">This is not today (${esc(today)}): the series is behind.</b>` : ""}`;
   const redLanes = (floor.lanes || []).filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN"));
   const merged = (floor.shipped || []).slice(0, 6);
   const mergeTime = p => { const t = /merged (\S+)/.exec(p.detail || ""); return t ? sinceText(t[1]) + " ago" : esc(p.detail || ""); };
@@ -564,7 +727,7 @@ function freshRows(rec, status, health, manifest, delegation){
     timed("Reports and series", "Reports manifest", manifest.published_at);
     // The record and the series are listed above from their own files, so their manifest rows are not listed twice.
     manifest.reports.filter(r => r.id !== "factory_floor" && r.id !== "process_health").forEach(r => (r.data || []).forEach(x => {
-      if (x.status === "read") timed("Reports and series", x.name, x.as_of, r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : "", r.refresh);
+      if (x.status === "read") { timed("Reports and series", x.name, x.as_of, r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : "", r.refresh); rows[rows.length - 1].report = r.id; }
       else rows.push({group: "Reports and series", name: x.name, ok: false, flag: true, note: x.reason || "unread"});
     }));
   } else {
@@ -596,7 +759,8 @@ function freshnessCard(rows){
     let value;
     if (r.flag) value = r.ok ? "read" : `<span class="unread">unread</span>`;
     else { const ms = ageMs(r.iso); value = ms == null ? `<span class="unread">unread (no readable time)</span>` : `<span class="${r.st === "stop" ? "age-stale" : ""}">${esc(ageText(ms))} old</span>`; }
-    return `${g}<div class="src c-${r.st}" ><b>${esc(r.name)}</b><span>${value}</span><small>${r.iso && !r.flag ? esc(clock(r.iso)) + (r.note ? " · " : "") : ""}${esc(r.note)}</small></div>`;
+    const nm = r.report ? `<a href="${drillHref("report", esc(safeId(r.report)))}">${esc(r.name)}</a>` : esc(r.name);
+    return `${g}<div class="src c-${r.st}" ><b>${nm}</b><span>${value}</span><small>${r.iso && !r.flag ? esc(clock(r.iso)) + (r.note ? " · " : "") : ""}${esc(r.note)}</small></div>`;
   }).join("");
   const stale = withState.filter(r => r.st === "stop").length, unread = withState.filter(r => r.st === "idle").length;
   return {stale, unread, total: withState.length, html};
@@ -672,6 +836,108 @@ function renderDashboard(p){
   return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled};
 }
 
+// ---- What the drawer shows, read from the factory record in hand (the same files the dashboard reads).
+function kv(rows){ return `<dl class="kv">${rows.filter(Boolean).map(r => `<dt>${esc(r[0])}</dt><dd>${r[1]}</dd>`).join("")}</dl>`; }
+const unreadS = why => `<span class="unread">unread${why ? " (" + esc(why) + ")" : ""}</span>`;
+const stateWord = {done: "done", active: "being built", stop: "stopped", prep: "preparing", todo: "waiting", wait: "waiting"};
+
+function drillContent(d){
+  if (!CUR) return {kind: DRILL_KINDS[d.kind] || "", title: "Reading the record", html: `<p class="muted">Reading the factory record.</p>`};
+  const rec = CUR.record;
+  const floor = Object.assign({machines: [], lanes: [], cloud: null, stoppages: []}, rec.floor || {});
+  const lanes = floor.lanes || [], machines = floor.machines || [], lines = rec.lines || [];
+  const tab = currentTab || "dashboard";
+  const miss = (kind, what) => ({kind: DRILL_KINDS[kind] || "", title: "Not in the record", html: `<p class="unread">The current record holds no ${esc(what)} named “${esc(d.id)}”. It may have finished, or the record may be older than the link.</p>`});
+  if (d.kind === "lane"){
+    const l = lanes.find(x => safeId(x.lane) === d.id);
+    if (!l) return miss("lane", "lane");
+    const st = l.station ? stationRef(lines, l.station) : null;
+    return {kind: "Lane", title: l.title || l.lane, html: `<div>${ciChip(l)} ${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</div>` + kv([
+      ["Lane", esc(l.lane)],
+      ["Ticket", l.ticket ? esc(l.ticket) : unreadS("none named")],
+      ["Kind", esc(l.kind || "") + (l.engine ? " · " + esc(l.engine === "codex" ? "Codex" : l.engine === "claude" ? "Claude" : l.engine) : "")],
+      ["Newest row", l.status_full ? esc(l.status_full) : unreadS("the lane wrote no text")],
+      ["Written", esc(clock(l.status_at)) + " · " + esc(sinceText(l.status_at)) + " ago"],
+      ["Claimed for", l.claim_full ? esc(l.claim_full) : unreadS("")],
+      ["Running", esc(sinceText(l.started_at)) + " since " + esc(clock(l.started_at))],
+      ["Pull request", l.pr ? esc(l.pr) + (l.pr_title ? " · " + esc(l.pr_title) : "") + (l.pr_ci_note ? " · " + esc(l.pr_ci_note) : "") : "none written yet"],
+      ["Placed on", esc(l.placement === "cloud" ? "cloud" : l.host || l.placement || "unread")],
+      ["Builds", st ? `<a href="${drillHref("st", esc(safeId(st.line.line_id) + "-" + safeId(st.station.id)), tab)}">${esc(st.station.name)} · ${esc(st.item ? st.item.title : "")}</a>` : "no station on the lines holds this ticket"]
+    ])};
+  }
+  if (d.kind === "line"){
+    const L = lines.find(x => safeId(x.line_id) === d.id);
+    if (!L) return miss("line", "assembly line");
+    const f = lineFacts(L);
+    const reasons = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).concat(L.andon && L.andon.reason ? [L.andon.reason] : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
+    const uniq = reasons.filter((c, i) => reasons.indexOf(c) === i);
+    return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.status_pill === "done" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.status_pill || "queued")}</span> <span class="pill wait">${fmt(num(L.percent_built))}% built</span></div>`
+      + (f.stopped ? `<div class="cause"><b>Why it is stopped</b>${uniq.length ? uniq.map(c => `<span>${esc(c)}</span>`).join("") : "<span>The record flags this line stopped and gives no reason.</span>"}</div>` : "")
+      + `<p class="facts">${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>`
+      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(s.name)}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(i.title)} · ${esc(stateWord[i.state] || i.state || "")}</li>`).join("")}</ul></li>`).join("")}</ul>`};
+  }
+  if (d.kind === "st" || d.kind === "part"){
+    let hit = null;
+    lines.forEach(L => (L.stations || []).forEach(s => {
+      const key = safeId(L.line_id) + "-" + safeId(s.id);
+      if (!hit && (d.kind === "st" ? d.id === key : d.id.startsWith(key + "-"))) hit = {L, s};
+    }));
+    if (!hit) return miss(d.kind, "station");
+    const built = lanes.filter(l => l.station && l.station.line_id === hit.L.line_id && l.station.station_id === hit.s.id);
+    return {kind: "Station", title: hit.s.name, html: kv([["Line", `<a href="${drillHref("line", esc(safeId(hit.L.line_id)), tab)}">${esc(hit.L.name)}</a>`], ["State", esc(stateWord[hit.s.state] || hit.s.state || "unread")]])
+      + `<h3>Parts</h3><ul class="dlist">${(hit.s.items || []).map(i => `<li><span>${esc(i.title)}</span><span class="pill ${i.state === "stop" ? "stop" : i.state === "done" ? "done" : i.state === "active" ? "active" : "wait"}">${esc(stateWord[i.state] || i.state || "unread")}</span>${i.note || (i.prs && i.prs.length) ? `<small class="muted">${esc([i.note].concat(i.prs || []).filter(Boolean).join(" · "))}</small>` : ""}</li>`).join("") || `<li class="unread">No parts are listed.</li>`}</ul>`
+      + `<h3>Lanes building here</h3>` + (built.length ? `<div class="lrows">${built.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No live lane names this station.</p>`)};
+  }
+  if (d.kind === "bay"){
+    if (d.id === "cloud"){
+      const c = floor.cloud;
+      if (!c) return miss("bay", "cloud bay");
+      const live = lanes.filter(l => l.placement === "cloud");
+      return {kind: "Machine", title: "Cloud", html: kv([["State", c.state === "read" ? "read" : unreadS(c.note)]])
+        + (c.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b></div>`).join("")
+        + `<ul class="plain">${(c.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span></li>`).join("")}</ul>`
+        + `<h3>Lanes here</h3>` + (live.length ? `<div class="lrows">${live.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No cloud lane is live.</p>`)};
+    }
+    const m = machines.find(x => safeId(x.host) === d.id);
+    if (!m) return miss("bay", "machine");
+    const byId = {};
+    lanes.forEach(l => { byId[l.lane] = l; });
+    const placed = (m.lanes || []).map(id => byId[id]).filter(Boolean);
+    const rd = m.state === "read";
+    const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
+    const rn = m.runners || {};
+    return {kind: "Machine", title: m.label, html: kv([["State", esc(rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread")], ["Read", m.read_age_min == null ? unreadS("") : esc(ageText(num(m.read_age_min) * 60000)) + " ago"], ["Lanes", esc(String(placed.length)) + (m.cap == null ? " (cap unread)" : " of a cap of " + esc(String(num(m.cap))))], m.refusal ? ["Refuses new work", esc(m.refusal)] : null, !rd && m.note ? ["Note", esc(m.note)] : null])
+      + (rd ? `<div class="gauges">${gauge("load per core", m.load_per_core == null ? null : fmt(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core), "", num(m.load_per_core) >= 1)}${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}${gauge("swap used", m.swap_used_pct == null ? null : fmt(m.swap_used_pct) + "%", m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported")}${gauge("CI runners", rn.state === "read" ? `${num(rn.busy)} busy of ${num(rn.total)}` : null, rn.state === "read" && num(rn.total) ? num(rn.busy) / num(rn.total) : null, rn.note)}</div>` : "")
+      + `<h3>Lanes here</h3>` + (placed.length ? `<div class="lrows">${placed.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No lane is placed here.</p>`)};
+  }
+  if (d.kind === "stop"){
+    const st = (floor.stoppages || []).find(x => safeId(x.name) === d.id);
+    if (!st) return miss("stop", "stoppage");
+    return {kind: "Stoppage", title: String(st.name), html: kv(Object.keys(st).filter(k => k !== "name" && st[k] !== null && typeof st[k] !== "object").map(k => [k.replace(/_/g, " "), esc(st[k])]))};
+  }
+  if (d.kind === "report"){
+    const m = CUR.manifest && Array.isArray(CUR.manifest.reports) ? CUR.manifest.reports : [];
+    const r = m.find(x => safeId(x.id) === d.id);
+    if (!r) return miss("report", "report");
+    const t = TABS.find(x => x.report === r.id);
+    return {kind: "Report", title: r.title || r.name || r.id, html: kv([["Refreshed", r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : esc(r.refresh || "unread")], r.description ? ["About", esc(r.description)] : null])
+      + `<ul class="dlist">${(r.data || []).map(x => `<li><b>${esc(x.name)}</b>${x.status === "read" ? `<span>${esc(clock(x.as_of))} · ${esc(sinceText(x.as_of))} old</span>` : `<span class="unread">unread${x.reason ? " (" + esc(x.reason) + ")" : ""}</span>`}</li>`).join("")}</ul>`
+      + (t ? `<a class="open-full" href="#${esc(t.id)}">Open the full ${esc(t.label)} view</a>` : "")};
+  }
+  return miss(d.kind, "item");
+}
+
+function stationRef(lines, ref){
+  for (const L of lines){
+    if (L.line_id !== ref.line_id) continue;
+    for (const s of L.stations || []){
+      if (s.id !== ref.station_id) continue;
+      return {line: L, station: s, item: (s.items || []).find(i => i.id === ref.item_id) || null};
+    }
+  }
+  return null;
+}
+
 // ---- Tab lamps and captions, read from the same files.
 function setTab(id, cls, sub, title){
   const i = el("lamp-" + id), s = el("sub-" + id);
@@ -701,6 +967,7 @@ function renderTabs(p, d){
 // ---- Header: the record's age
 function renderStamp(rec){
   const gen = Date.parse(rec.generated_at);
+  recordAt = gen;
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
   el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${clock(rec.generated_at)} · ${ageText(age)} old`;
   const banner = el("banner");
@@ -710,11 +977,14 @@ function renderStamp(rec){
 
 let lastKey = "";
 function render(p){
+  CUR = p;
   renderStamp(p.record);
   const key = JSON.stringify([p.record, p.status, p.health && p.health.generated_at, p.manifest, p.delegation && p.delegation.generated_at, Math.floor(Date.now() / 60000)]);
-  if (key === lastKey) return;
-  lastKey = key;
-  renderTabs(p, renderDashboard(p));
+  if (key !== lastKey){
+    lastKey = key;
+    renderTabs(p, renderDashboard(p));
+  }
+  refreshDrawer();
 }
 
 async function fetchOptional(name){
@@ -744,8 +1014,16 @@ async function load(){
 
 buildTabs();
 const startHash = parseHash();
-show(startHash.tab || remembered() || "dashboard", startHash.anchor);
-if (!startHash.tab) history.replaceState(null, "", "#" + currentTab);
+show(startHash.tab || remembered() || "dashboard");
+if (startHash.drill){
+  // A shared link: keep the tab as the entry behind the panel, so the back button closes the panel and stays on the page.
+  history.replaceState(null, "", "#" + currentTab);
+  history.pushState(null, "", "#" + currentTab + "/" + startHash.anchor);
+  drawerPushed = true;
+  opener = el("tab-" + currentTab);
+  openDrawer(startHash.drill);
+  drawerPushed = true;
+} else if (!startHash.tab) history.replaceState(null, "", "#" + currentTab);
 load();
 setInterval(load, POLL_MS);
 </script>
