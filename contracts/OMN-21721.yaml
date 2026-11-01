@@ -63,6 +63,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC2"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov"
+        cwd: "."
       - check_type: "command"
         check_value: |
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_projection_llm_cost.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "TOPIC_LLM_CALL_COMPLETED: str = contract_topic(" > /dev/null'
