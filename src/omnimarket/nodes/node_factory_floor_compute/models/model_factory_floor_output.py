@@ -53,6 +53,28 @@ class ModelFloorAndon(BaseModel):
     causes: tuple[str, ...]
 
 
+class ModelFloorLaneContainers(BaseModel):
+    """One lane's application containers on one host against its declared budget."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    lane: str
+    status: Literal["PASS", "FAIL", "UNKNOWN"]
+    observed: int | None
+    budget: int | None
+    alarm_key: str
+
+
+class ModelFloorApplicationContainers(BaseModel):
+    """The container read shown on the selected line: per host and lane, or ``unread`` when no host was read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: Literal["read", "unread"]
+    lanes: tuple[ModelFloorLaneContainers, ...]
+
+
 class ModelFloorLine(BaseModel):
     """One car on the line: a selected plan, or a declared line no plan could be read for.
 
@@ -70,6 +92,8 @@ class ModelFloorLine(BaseModel):
     percent_built: int
     stations: tuple[ModelFloorStation, ...]
     andon: ModelFloorAndon
+    # Set on the line the selection names for the container read; every other line carries None.
+    application_containers: ModelFloorApplicationContainers | None = None
 
 
 class ModelFloorBay(BaseModel):

@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -11,8 +11,8 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031083115-257ba54d6dad" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261031054837-4284f5bf5587" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031202655-5bb91ae7e720" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261101125736-3f93a2cc6f6c" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261028101803-7955bf0dff0f" },
 ]
 
@@ -3085,8 +3085,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.60"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031083115-257ba54d6dad#257ba54d6dad5aef724a260547ed6da35f25e4ca" }
+version = "0.47.61"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031202655-5bb91ae7e720#5bb91ae7e72094a62a1198dbc92803448a05ec67" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3108,7 +3108,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261031054837-4284f5bf5587#4284f5bf55871b120353e650b7cce205882e252f" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261101125736-3f93a2cc6f6c#3f93a2cc6f6c18c7ad4fa6e74738908692c21449" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3252,8 +3252,8 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031083115-257ba54d6dad" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261031054837-4284f5bf5587" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031202655-5bb91ae7e720" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261101125736-3f93a2cc6f6c" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261028101803-7955bf0dff0f" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261028085302-971553debfa3" },
     { name = "packaging", specifier = ">=24.0" },
