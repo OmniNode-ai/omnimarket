@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_lane_container_budget import (
+    ModelLaneContainerBudgetVerdict,
+)
 
 ItemState = Literal["done", "active", "prep", "wait", "stop"]
 TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unread"]
@@ -183,6 +186,8 @@ class ModelFloorSelection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = ()
+    # The declared line (a plan_path_contains text) that shows each lane's application containers; empty shows none.
+    container_read_line: str = ""
 
 
 class ModelFloorMachineDecl(BaseModel):
@@ -377,5 +382,7 @@ class ModelFactoryFloorRequest(BaseModel):
     receipts: tuple[ModelFloorReceipt, ...] | None = None
     cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
     runner_fleet: ModelFloorRunnerFleet | None = None
+    # One verdict per host read by node_lane_container_budget_compute; None when no host was read.
+    lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
 
     _utc = field_validator("generated_at")(_aware)
