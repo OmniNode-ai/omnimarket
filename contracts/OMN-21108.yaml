@@ -88,6 +88,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_contracts.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21108-replay-bundle-writer"
+    description: "node_replay_bundle_writer_effect writes the manifest builder's bundle_files under the overlay-declared root and re-hashes every file; a corrupted file or a pinned-hash mismatch is a typed refusal, and an undeclared root has no default."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_replay_bundle_writer_effect/test_replay_bundle_writer.py -q -p no:randomly --no-cov"
   - id: "dod-omn21108-deploy-container-pinned-read"
     description: "Hosted deploy probe. An ephemeral Python 3.12 uv bookworm container (including Git for the locked infra dependency) installs the read-only checkout without dev dependencies, builds a one-boundary replay bundle with the T0.2 manifest builder under /tmp, reads OPERATOR_WORDS_UNRECORDED through the product handler and asserts the operator prompt is carried verbatim with status resolved, and that an unset replay root is the typed REPLAY_ROOT_MISSING error. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
