@@ -17,11 +17,9 @@ it is never wired into an agent-output reward (anti-sycophancy invariant).
 from __future__ import annotations
 
 import logging
-from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.intelligence.events import ModelUserCorrectionEvent
 from omnimarket.nodes.node_user_correction_observer_effect.models import (
@@ -59,34 +57,17 @@ class HandlerUserCorrectionObserver:
         return self._config.publish_topics[0]
 
     async def handle(
-        self, envelope: ModelEventEnvelope[Any]
+        self, request: ModelUserCorrectionEvent
     ) -> ModelHandlerOutput[None]:
         """Republish the observed correction as a durable EFFECT fact.
 
-        The inbound payload is validated into a ``ModelUserCorrectionEvent`` (the
-        model validator rejects an orphan correction with no context linkage).
+        The runtime adapter unwraps the inbound event and validates it into the
+        typed ``ModelUserCorrectionEvent`` (the model validator rejects an orphan
+        correction with no context linkage). The handler returns the typed fact;
+        the runtime wraps it for the contract publish topic.
         """
-        payload = envelope.payload
-        if isinstance(payload, ModelUserCorrectionEvent):
-            correction = payload
-        elif isinstance(payload, dict):
-            correction = ModelUserCorrectionEvent.model_validate(payload)
-        elif hasattr(payload, "model_dump"):
-            correction = ModelUserCorrectionEvent.model_validate(
-                payload.model_dump(mode="json")
-            )
-        else:
-            raise TypeError(
-                "user-correction observer received an unsupported payload type: "
-                f"{type(payload)!r}"
-            )
-
-        correlation_id = envelope.correlation_id or uuid4()
-        fact: ModelEventEnvelope[ModelUserCorrectionEvent] = ModelEventEnvelope(
-            payload=correction,
-            correlation_id=correlation_id,
-            event_type=self.publish_topic,
-        )
+        correction = request
+        correlation_id = correction.correlation_id
 
         logger.info(
             "Republished user correction",
@@ -102,10 +83,10 @@ class HandlerUserCorrectionObserver:
         )
 
         return ModelHandlerOutput.for_effect(
-            input_envelope_id=envelope.envelope_id,
+            input_envelope_id=uuid4(),
             correlation_id=correlation_id,
             handler_id=HANDLER_ID_USER_CORRECTION_OBSERVER,
-            events=(fact,),
+            events=(correction,),
         )
 
 

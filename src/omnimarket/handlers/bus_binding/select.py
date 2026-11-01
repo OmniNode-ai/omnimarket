@@ -178,6 +178,9 @@ async def replay_outbox(
     if bound.decision.binding is not EnumBusBinding.DURABLE or bound.decision.degraded:
         raise LabRunBusError("outbox replay requires a healthy durable binding")
     result = await outbox.drain(state_dir, send, limit=limit)
+    # OMN-20275: a refusal is reported to its writer by the replay that found it, whether or not an
+    # outage episode is open; record_replay below only closes the episode.
+    recovery.report_refused_to_writers(state_dir, bound.decision.observed_at)
     recovery.record_replay(state_dir, bound.decision, result)
     return result
 

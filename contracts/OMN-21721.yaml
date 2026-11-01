@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21721"
+title: "omnimarket contracts_and_di literal_topic burn-down, cloud slice cloud-lanes-1155-a"
+summary: "Nine modules named 28 event-bus topics as string literals. Seven node modules and the Codex adapter topic module now read each topic from the owning node contract's event_bus section through contract_topic; node_data_flow_sweep and node_platform_readiness, which probe topics they never consume, read them from a new probed_topics list in their own contract. The literal_topic count over the slice paths drops from 28 to 0 and the repo total from 164 to 136, with no baseline entry or suppression."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21721-topics-from-contract"
+    statement: |-
+      The nine slice modules hold no topic literal and each topic constant equals a topic its owning node contract declares in event_bus.subscribe_topics, event_bus.publish_topics or probed_topics.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di literal_topic count over the slice paths drops to zero and the repo total drops by the slice size with no baseline entry or suppression added -- falsifier: uv run python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi over the slice paths before and after, counts compared per rule"
+  - id: "req-omn21721-injected"
+    statement: |-
+      Every moved topic is read from the owning node contract (contract_topic for event_bus topics, contract_section for probed_topics), which refuses a missing or ambiguous match; none is hard-coded in the touched code.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: every moved topic is taken through an injected parameter bound from the node contract or overlay and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+  - id: "req-omn21721-one-pr"
+    statement: |-
+      The slice lands as one PR titled with this ticket id and its required checks are green on the exact head.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and its required checks are green on the exact head -- falsifier: uv run onex scm pr-checks at the PR head sha reads every required context success"
+evidence_requirements:
+  - kind: "tests"
+    description: "The topic resolution tests pass."
+    command: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21721-no-topic-literal"
+    description: "Each slice module holds no topic literal, so the literal_topic findings over the slice paths are zero."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov -k no_topic_literal"
+        cwd: "."
+  - id: "dod-omn21721-contract-topics"
+    description: "Each slice constant equals a topic its owning node contract declares, and probed topics are not event_bus subscriptions."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21721-pr-checks"
+    description: "The touched nodes' contract-wide validators pass on the PR head in hosted CI."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_contract_topic_graph.py tests/validators/test_event_registry_drift.py tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21721-deploy-probe"
+    description: "Deploy probe. The projection handler at the checked-out commit takes TOPIC_LLM_CALL_COMPLETED from its node contract through contract_topic; the probe reads it from GitHub at that commit and exits nonzero on a tree where the topic is still a string literal. It verifies published source only; a rollout of the runtime and a subscriber readback are not covered."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_projection_llm_cost.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "TOPIC_LLM_CALL_COMPLETED: str = contract_topic(" > /dev/null'
+        cwd: "."

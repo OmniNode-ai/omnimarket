@@ -30,6 +30,7 @@ import contextlib
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -37,6 +38,7 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 
 from omnimarket.config.env_flags import env_flag
 from omnimarket.handlers.model_binding_reader import model_binding_section
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
     ModelClassifiedPR,
@@ -57,16 +59,17 @@ from omnimarket.nodes.node_pr_polish.models.model_pr_polish_start_command import
 _log = logging.getLogger(__name__)
 
 # Topics from contract.yaml — never inline elsewhere
-TOPIC_AUTO_MERGE_ARM = "onex.cmd.omnimarket.pr-auto-merge-arm.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_REBASE = (
-    "onex.cmd.omnimarket.pr-rebase.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_AUTO_MERGE_ARM = contract_topic(
+    _CONTRACT, "publish_topics", ".pr-auto-merge-arm.v1"
 )
-TOPIC_CI_RERUN = "onex.cmd.omnimarket.pr-ci-rerun.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_THREAD_REPLY = "onex.cmd.omnimarket.pr-thread-reply.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_CONFLICT_HUNK = "onex.cmd.omnimarket.pr-conflict-hunk.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_CI_FIX = (
-    "onex.cmd.omnimarket.pr-ci-fix.v1"  # onex-topic-allow: pending contract auto-wiring
+TOPIC_REBASE = contract_topic(_CONTRACT, "publish_topics", ".pr-rebase.v1")
+TOPIC_CI_RERUN = contract_topic(_CONTRACT, "publish_topics", ".pr-ci-rerun.v1")
+TOPIC_THREAD_REPLY = contract_topic(_CONTRACT, "publish_topics", ".pr-thread-reply.v1")
+TOPIC_CONFLICT_HUNK = contract_topic(
+    _CONTRACT, "publish_topics", ".pr-conflict-hunk.v1"
 )
+TOPIC_CI_FIX = contract_topic(_CONTRACT, "publish_topics", ".pr-ci-fix.v1")
 
 # OMN-14151: legacy arm surface hard-gate. Safe default False — Rule 2 never
 # emits ModelAutoMergeArmCommand (the legacy unconditional arm-emit) unless an

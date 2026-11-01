@@ -65,12 +65,14 @@ RULING = (
 class FakeLedger:
     def __init__(self, fail_after: int | None = None) -> None:
         self.rows: list[str] = []
+        self.calls = 0
         self.fail_after = fail_after
 
-    def __call__(self, row: str) -> tuple[bool, str]:
+    def __call__(self, payload: str) -> tuple[bool, str]:
+        self.calls += 1
         if self.fail_after is not None and len(self.rows) >= self.fail_after:
             return False, "ledger append exit 3: locked"
-        self.rows.append(row)
+        self.rows.extend(payload.splitlines())
         return True, "ok"
 
 
@@ -173,15 +175,15 @@ def test_a_failed_append_keeps_the_prompt_and_the_retry_writes_no_row_twice(
 ) -> None:
     root = tmp_path / "store"
     _ingest(root)
-    append = FakeLedger(fail_after=1)
+    append = FakeLedger(fail_after=0)
     first = _process(root, ledger, _delegate(), append)
-    assert (first.rows_appended, first.pending) == (1, 1)
+    assert (first.rows_appended, first.pending) == (0, 1)
     assert first.errors
     assert "locked" in first.errors[0]
     append.fail_after = None
     delegate = _delegate()
     second = _process(root, ledger, delegate, append)
-    assert (second.rows_appended, second.pending, second.processed) == (1, 0, 1)
+    assert (second.rows_appended, second.pending, second.processed) == (2, 0, 1)
     assert delegate.calls == []
     assert [("kind=decision" in r, "kind=ask" in r) for r in append.rows] == [
         (True, False),
@@ -265,7 +267,7 @@ def test_two_prompts_with_the_same_words_and_distinct_prompt_ids_are_both_taken_
     assert take("prompt-b") is not None
 
 
-def test_a_crash_after_the_first_append_resumes_from_the_plan_and_writes_no_row_twice(
+def test_a_crash_before_the_append_resumes_from_the_plan_without_reclassifying(
     tmp_path: Path, ledger: Path
 ) -> None:
     root = tmp_path / "store"
@@ -275,22 +277,21 @@ def test_a_crash_after_the_first_append_resumes_from_the_plan_and_writes_no_row_
         pass
 
     class CrashingLedger(FakeLedger):
-        def __call__(self, row: str) -> tuple[bool, str]:
-            if self.rows:
-                raise Crash
-            return super().__call__(row)
+        def __call__(self, payload: str) -> tuple[bool, str]:
+            raise Crash
 
     first = CrashingLedger()
     with pytest.raises(Crash):
         _process(root, ledger, _delegate(), first)
-    assert len(first.rows) == 1
+    assert first.rows == []
     resumed = FakeLedger()
     delegate = _delegate()
     result = _process(root, ledger, delegate, resumed)
-    assert (result.processed, result.rows_appended, result.pending) == (1, 1, 0)
+    assert (result.processed, result.rows_appended, result.pending) == (1, 2, 0)
     assert delegate.calls == []
-    assert "kind=ask" in resumed.rows[0]
-    assert "kind=decision" in first.rows[0]
+    assert resumed.calls == 1
+    assert "kind=decision" in resumed.rows[0]
+    assert "kind=ask" in resumed.rows[1]
 
 
 @pytest.mark.parametrize(("exit_code", "landed"), [(0, True), (78, True), (65, False)])

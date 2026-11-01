@@ -73,8 +73,8 @@ class FakeLedger:
     def __init__(self) -> None:
         self.rows: list[str] = []
 
-    def __call__(self, row: str) -> tuple[bool, str]:
-        self.rows.append(row)
+    def __call__(self, payload: str) -> tuple[bool, str]:
+        self.rows.extend(payload.splitlines())
         return True, "ok"
 
 
