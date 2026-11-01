@@ -524,6 +524,7 @@ node_context_pack_render_compute = "omnimarket.nodes.node_context_pack_render_co
 node_lane_brief_section_compute = "omnimarket.nodes.node_lane_brief_section_compute"
 node_transcript_parse_compute = "omnimarket.nodes.node_transcript_parse_compute"
 node_transcript_read_effect = "omnimarket.nodes.node_transcript_read_effect"
+node_replay_bundle_writer_effect = "omnimarket.nodes.node_replay_bundle_writer_effect"
 node_retrieval_eval_compute = "omnimarket.nodes.node_retrieval_eval_compute"
 node_extraction_verify_compute = "omnimarket.nodes.node_extraction_verify_compute"
 node_extraction_fold_compute = "omnimarket.nodes.node_extraction_fold_compute"
