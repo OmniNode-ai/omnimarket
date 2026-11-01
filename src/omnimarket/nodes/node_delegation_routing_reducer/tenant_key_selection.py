@@ -13,6 +13,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -55,14 +56,20 @@ def _selected_key_model(
     if secret_ref is None or provider is None:
         return overlay_model
     try:
-        rows = db.query(
-            TENANT_CREDENTIALS_TABLE,
-            filters={
-                "tenant_id": tenant_id,
-                "provider": provider,
-                "api_key_ref": secret_ref,
-            },
-        )
+        # OMN-21819: a row stamped with the tenant's other form (name or registry
+        # UUID) is the same tenant's key; the first form that holds it answers.
+        rows = []
+        for tenant_form in sync_tenant_identity_forms(db, tenant_id):
+            rows = db.query(
+                TENANT_CREDENTIALS_TABLE,
+                filters={
+                    "tenant_id": tenant_form,
+                    "provider": provider,
+                    "api_key_ref": secret_ref,
+                },
+            )
+            if rows:
+                break
     except Exception:
         logger.warning(
             "selected credential choices unreadable for tenant_id=%s",
@@ -132,10 +139,16 @@ def _select_pool_secret_ref(
     if not provider:
         return overlay_secret_ref
     try:
-        catalogued = db.query(
-            TENANT_CREDENTIALS_TABLE,
-            filters={"tenant_id": tenant_id, "provider": provider},
-        )
+        # OMN-21819: the pool spans rows stamped with either of the tenant's
+        # forms (name or registry UUID); a failed read of either is a failed read.
+        catalogued = [
+            row
+            for tenant_form in sync_tenant_identity_forms(db, tenant_id)
+            for row in db.query(
+                TENANT_CREDENTIALS_TABLE,
+                filters={"tenant_id": tenant_form, "provider": provider},
+            )
+        ]
         # A missing or malformed primary key means the catalog could not be
         # read as credentials, not that every registered key has expired.
         # Keep this schema failure inside the existing read-error boundary.
