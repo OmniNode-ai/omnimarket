@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_container_budget_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Judge a host's recorded container listing against the application container budget declared for each of its
+  lanes. A lane over its budget reads FAIL, a host that could not be read reads UNKNOWN, and UNKNOWN fails; there is no
+  warning status. Each failing lane raises one alarm keyed lane-budget:<host>:<lane>, and a rerun replaces the row under
+  that key. The budget of each lane is data the caller passes in.
+input_model:
+  name: ModelLaneContainerBudgetRequest
+  module: omnimarket.models.model_lane_container_budget
+output_model:
+  name: ModelLaneContainerBudgetVerdict
+  module: omnimarket.models.model_lane_container_budget
+handler:
+  module: omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget
+  class: HandlerLaneContainerBudget
+  input_model: omnimarket.models.model_lane_container_budget.ModelLaneContainerBudgetRequest
+  output_model: omnimarket.models.model_lane_container_budget.ModelLaneContainerBudgetVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget:HandlerLaneContainerBudget
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLaneContainerBudget
+      module: omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with a recorded container listing and the declared budgets.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Judge a host's recorded container listing against the application container budget declared for each
+    of its lanes; over budget reads FAIL, an unreadable host reads UNKNOWN and fails, and each failing lane raises one
+    alarm keyed lane-budget:<host>:<lane>.
+  author: OmniNode Team
+  created: '2026-11-01'
+  tags:
+  - compute
+  - lane-container-budget-compute
+  - OMN-21892
+  related_tickets:
+  - OMN-21892
