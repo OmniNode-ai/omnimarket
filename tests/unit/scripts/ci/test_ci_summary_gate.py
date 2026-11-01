@@ -2459,3 +2459,82 @@ class TestSweepIsWiredIntoProductionPoller:
             assert endpoint in step
         assert "--check-runs-file check_runs.json" in step
         assert "--head-workflow-runs-file head_workflow_runs.json" in step
+
+
+# OMN-21588: composed-runtime-boot job is asserted at layer 4 and the sweep event set moved to JSON
+COMPOSED_RUNTIME_BOOT_CONTEXT = "composed-runtime-boot (omnimarket on infra)"
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("missing", EXIT_PENDING),
+        ("in_progress", EXIT_PENDING),
+        ("failure", EXIT_FAILURE),
+        ("success", EXIT_SUCCESS),
+    ],
+)
+def test_composed_runtime_boot_context_is_enforced(state: str, expected: int) -> None:
+    assert COMPOSED_RUNTIME_BOOT_CONTEXT in EXPECTED_EXTERNAL_CONTEXTS
+    producer = gate.EXTERNAL_CONTEXT_PRODUCERS[COMPOSED_RUNTIME_BOOT_CONTEXT]
+    assert producer.workflow == "runtime-boot-composed.yml"
+
+    runs = [
+        run
+        for run in _healthy_check_runs()
+        if run["name"] != COMPOSED_RUNTIME_BOOT_CONTEXT
+    ]
+    if state == "in_progress":
+        runs.append(
+            _check_run(
+                COMPOSED_RUNTIME_BOOT_CONTEXT,
+                status="in_progress",
+                conclusion=None,
+            )
+        )
+    elif state in ("failure", "success"):
+        runs.append(_check_run(COMPOSED_RUNTIME_BOOT_CONTEXT, conclusion=state))
+
+    code, report = evaluate_external(runs)
+    assert code == expected, report
+    if state == "missing":
+        assert COMPOSED_RUNTIME_BOOT_CONTEXT in report
+
+
+def test_sweep_non_pr_events_are_exactly_the_known_fifteen() -> None:
+    expected = frozenset(
+        {
+            "push",
+            "merge_group",
+            "schedule",
+            "workflow_dispatch",
+            "release",
+            "deployment",
+            "deployment_status",
+            "repository_dispatch",
+            "create",
+            "delete",
+            "fork",
+            "page_build",
+            "public",
+            "registry_package",
+            "watch",
+        }
+    )
+    assert expected == gate.SWEEP_NON_PR_EVENTS
+    assert "pull_request" not in gate.SWEEP_NON_PR_EVENTS
+    assert "pull_request_target" not in gate.SWEEP_NON_PR_EVENTS
+    assert gate.SWEEP_NON_PR_EVENTS_FILE.name == "ci_summary_sweep_non_pr_events.json"
+    assert gate.SWEEP_NON_PR_EVENTS_FILE.exists()
+
+
+def test_ci_summary_restores_every_gate_data_file_from_the_head() -> None:
+    text = CI_WORKFLOW.read_text()
+    for filename in (
+        "scripts/ci/ci_summary_external_producers.json",
+        "scripts/ci/ci_summary_sweep_non_pr_events.json",
+    ):
+        assert text.count(filename) >= 2, (
+            f"{filename} must appear in both the head sparse-checkout "
+            "list and the restore cp line"
+        )
