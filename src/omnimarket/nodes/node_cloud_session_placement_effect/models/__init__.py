@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Cloud session placement models."""
 
-from .model_cloud_session_placement import (
+from omnimarket.models.cloud_session_placement import (
     ModelCloudHost,
     ModelCloudSessionPlacementRequest,
     ModelCloudSessionPlacementResult,

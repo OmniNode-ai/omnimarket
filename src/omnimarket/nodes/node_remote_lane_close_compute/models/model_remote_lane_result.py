@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .model_remote_lane_first_turn_context import ModelRemoteLaneFirstTurnContext
 from .model_remote_lane_receipt_usage import ModelRemoteLaneReceiptUsage
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -57,4 +58,5 @@ class ModelRemoteLaneResult(BaseModel):
     delegation: dict[str, str]
     waiting_on_background: bool
     usage: ModelRemoteLaneReceiptUsage
+    first_turn_context: ModelRemoteLaneFirstTurnContext
     ledger_cells: dict[str, str] = Field(default_factory=dict)

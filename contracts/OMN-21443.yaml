@@ -1,0 +1,173 @@
+schema_version: 1.0.0
+ticket_id: OMN-21443
+title: 'T-A2: stop reducer, class registry and stop gate rule'
+summary: New reducer node node_andon_stop_reducer (contract state machine of plan section 5.8, config.andon_stop, andon_stop overlay model), the shared rule rules_stop_gate with stop_gate, models stop_gate,
+  and the stop fields, role-checked append, lease replacement and decision rows in node_exception_queue_effect. Pure local invocation; hosted deploy smoke folds a stop event through the packaged reducer
+  without external services.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-andon-stop
+  statement: A stop is a record of the exception queue whose lifecycle is the contract state machine of the stop reducer, and one rule refuses new work into its scope.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: `stop_gate(scope)` returns refuse with the stop''s id and swarm lane while open, and admit after `cleared_at` -- falsifier: the pytest cases'
+  - id: AC2
+    statement: 'AC2: A readback reading UNKNOWN leaves the stop open -- falsifier: the pytest case'
+  - id: AC3
+    statement: 'AC3: The contract''s `state_machine` equals the fragment of section 5.8 and passes `analyze_fsm` with no finding -- falsifier: a test that loads it with `ModelFSMSubcontract` and compares
+      it to a fixture copy of the fragment'
+  - id: AC4
+    statement: 'AC4: A row for a class not in `config.andon_stop.stop_classes` opens a failure record and no stop -- falsifier: the pytest case'
+  - id: AC5
+    statement: 'AC5: A lease, a countermeasure record, a clear or a declare-false written by a caller whose role is not the trigger''s role in `config.andon_stop.writer_roles` is refused at the queue''s
+      append and the refusal is recorded -- falsifier: four pytest cases through the persistence boundary, and a fifth with the right role that is accepted'
+  - id: AC6
+    statement: 'AC6: A class in `observe` mode returns admit with the stop named, never refuse -- falsifier: the pytest case'
+  - id: AC7
+    statement: 'AC7: A lease past its expiry is replaceable, and a replacement past `max_lease_replacements` writes one decision row -- falsifier: the pytest cases'
+  - id: AC8
+    statement: 'AC8: Configuration: every number of `config.andon_stop` is read from the reducer''s contract, the class mode from the `andon_stop` overlay, and no literal of the register is in the handler
+      or the rule -- falsifier: the pytest cases run with the fixture contract at 1 consecutive reading and again at 3 and assert the clear moves from the first readback to the third; an absent overlay
+      mode refuses naming the key'
+  - id: AC9
+    statement: 'AC9: Bindings: depends on LED, STO, CHG, HST and CLK (the exception queue persists what the reducer decides and starts the mechanize lane); the reducer is pure -- falsifier: this task''s
+      tests run under the `local` profile and under the `lab` profile through the parity run (T-B2) and assert identical semantic projections; a stub binding that reorders rows, drops a row or moves a source
+      time across a decision boundary makes the comparison fail'
+evidence_requirements:
+- kind: tests
+  description: Stop reducer and exception queue tests.
+  command: uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21443-ac1
+  description: AC1 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac1_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac2
+  description: AC2 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac2_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac3
+  description: AC3 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py -q --no-cov -k test_ac3_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac4
+  description: AC4 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac4_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac5
+  description: AC5 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac5_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac6
+  description: AC6 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac6_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac7
+  description: AC7 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac7_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac8
+  description: AC8 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac8_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-ac9
+  description: AC9 bound to its pytest cases.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac9_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21443-deploy-local-runtime
+  description: Hosted deploy smoke dispatches the installed reducer through the ONEX CLI with an in-memory backend and checks a lease applied by the swarm lane and a lease from the wrong role refused. No
+    broker, credentials, Docker or lab service is required; this is packaged local execution, not a production rollout.
+  source: manual
+  binds_ac:
+  - AC5
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_runtime_local.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      export PATH="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+      python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      request = {"stop": {"id": "stop-1", "cls": "engine-policy-breach", "scope": {"kind": "engine", "key": "example-engine"}, "state": "open", "stopped_at": "2026-11-01T10:00:00Z"}, "event": {"stop_id": "stop-1", "kind": "lease_granted", "role": "swarm_lane", "at": "2026-11-01T10:05:00Z", "lane_id": "swarm-lane-1"}}
+      (root / "applied.json").write_text(json.dumps(request))
+      request["event"]["role"] = "readback"
+      (root / "refused.json").write_text(json.dumps(request))
+      ' "$probe_dir";
+      for expected in applied refused; do
+        onex node node_andon_stop_reducer --input "$probe_dir/$expected.json" --state-root "$probe_dir/$expected.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$expected.receipt.json";
+        python -c '
+      import json
+      import sys
+      from pathlib import Path
+      expected, path = sys.argv[1:]
+      receipt = json.loads(Path(path).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      result = receipt["result"]
+      assert result["status"] == expected, result
+      assert result["stop"]["state"] == {"applied": "swarming", "refused": "open"}[expected], result
+      print(json.dumps({"run_id": receipt["run_id"], "result": result["status"], "state": result["stop"]["state"]}, sort_keys=True))
+      ' "$expected" "$probe_dir/$expected.receipt.json";
+      done
+    cwd: ${OMNI_HOME}/omnimarket

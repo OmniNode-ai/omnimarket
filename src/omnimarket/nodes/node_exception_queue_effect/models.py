@@ -7,7 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from omnimarket.models.stop_gate import ModelStopEvent, ModelStopRecord
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,9 @@ class ModelExceptionRow:
     decision: bool = False  # only a decision row reaches the operator
     ticket: str = ""
     repo: str = ""
+    readback_command: str = (
+        ""  # a stop's readback; read only for a class of the stop registry
+    )
 
 
 @dataclass(frozen=True)
@@ -30,6 +36,7 @@ class ModelExceptionEmitRequest:
     now: str
     runner: Path | None = None  # the remote-lane runner; None never dispatches
     parent: str | None = None
+    role: str = ""  # the writer's role; a row of a stop-registry class opens a stop only from the contract's opener
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,7 @@ class ModelExceptionEmitResult:
     occurrence: int
     mechanize: str  # '' below two, else sent:<lane> | already:<lane> | unsent:<why>
     detail: str
+    stop: str = ""  # opened:<id> | repeat:<id> | none:class_not_registered
 
 
 @dataclass(frozen=True)
@@ -95,3 +103,32 @@ class ModelExceptionQueueRead:
         str
     ]  # its DEGRADED reasons: decision rows, open rows, classes seen twice with no mechanize lane
     actions: list[str]  # one action per reason
+
+
+@dataclass(frozen=True)
+class ModelStopEventRequest:
+    state_dir: Path
+    event: ModelStopEvent
+    now: str  # when the queue appends the event, for the log; the event's own time drives the machine
+
+
+@dataclass(frozen=True)
+class ModelStopEventResult:
+    status: str  # applied | refused
+    reason: str  # '' when applied, else the refusal's reason
+    stop: ModelStopRecord | None
+    decision_rows: int
+    line: str
+
+
+@dataclass(frozen=True)
+class ModelOpenStopsRequest:
+    state_dir: Path
+
+
+@dataclass(frozen=True)
+class ModelOpenStopsResult:
+    stops: tuple[
+        ModelStopRecord, ...
+    ]  # every stop not yet cleared or declared false, for stop_gate
+    refusals: tuple[dict[str, Any], ...]  # the recorded refusals of writes to stops
