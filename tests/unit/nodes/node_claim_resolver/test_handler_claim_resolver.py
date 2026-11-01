@@ -299,7 +299,10 @@ def test_cli_reports_runtime_errors(
         def handle(self, request: ModelClaimResolutionRequest) -> None:
             raise RuntimeError("boom")
 
-    monkeypatch.setattr(claim_resolver_main, "HandlerClaimResolver", RaisingResolver)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_claim_resolver.container.container_claim_resolver.HandlerClaimResolver",
+        RaisingResolver,
+    )
 
     assert claim_resolver_main.main() == 1
     captured = capsys.readouterr()
