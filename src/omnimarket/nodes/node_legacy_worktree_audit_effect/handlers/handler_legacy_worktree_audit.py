@@ -28,6 +28,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 from ..models.model_legacy_worktree_audit_request import ModelLegacyWorktreeAuditRequest
 from ..models.model_legacy_worktree_audit_result import ModelLegacyWorktreeAuditResult
 
@@ -52,9 +54,8 @@ def remote_to_slug(url: str) -> str:
     url = url.removesuffix(".git")
     if url.startswith("git@github.com:"):
         return url[len("git@github.com:") :]
-    if url.startswith("https://github.com/"):
-        return url[len("https://github.com/") :]
-    return ""
+    prefix = f"{service_endpoint_url('github.web_url')}/"
+    return url.removeprefix(prefix) if url.startswith(prefix) else ""
 
 
 def gather_pr_index(repo_slugs: set[str]) -> dict[str, dict[str, dict[str, Any]]]:
