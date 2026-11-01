@@ -11,7 +11,7 @@ entry_points:
   onex.nodes:
     node_architecture_discovery_orchestrator: "omnimarket.nodes.node_architecture_discovery_orchestrator"
   console_scripts:
-    onex-architecture-discovery: "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
+    onex-architecture-discovery: "omnimarket.nodes.node_architecture_discovery_orchestrator.runtime_architecture_discovery_cli:main"
 capabilities:
   standalone: false
   full_runtime: true

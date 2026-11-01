@@ -327,6 +327,7 @@ node_pr_head_stage_compute = "omnimarket.nodes.node_pr_head_stage_compute"
 node_ticket_text_effect = "omnimarket.nodes.node_ticket_text_effect"
 node_runtime_coverage_compute = "omnimarket.nodes.node_runtime_coverage_compute"
 node_runtime_coverage_effect = "omnimarket.nodes.node_runtime_coverage_effect"
+node_consumer_group_guard_effect = "omnimarket.nodes.node_consumer_group_guard_effect"
 node_landing_tlc_receipt_effect = "omnimarket.nodes.node_landing_tlc_receipt_effect"
 node_hourly_tick_effect = "omnimarket.nodes.node_hourly_tick_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
@@ -592,6 +593,7 @@ node_automation_liveness_deadman_effect = "omnimarket.nodes.node_automation_live
 node_automation_liveness_watchdog_compute = "omnimarket.nodes.node_automation_liveness_watchdog_compute"
 node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liveness_watchdog_effect"
 node_automation_liveness_overlay_check_compute = "omnimarket.nodes.node_automation_liveness_overlay_check_compute"
+node_automation_liveness_overlay_check_effect = "omnimarket.nodes.node_automation_liveness_overlay_check_effect"
 node_landing_stall_expectation_compute = "omnimarket.nodes.node_landing_stall_expectation_compute"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_sli_alert_effect = "omnimarket.nodes.node_lab_sli_alert_effect"
@@ -1109,24 +1111,24 @@ node_plugin_walk_evidence_effect = "omnimarket.nodes.node_plugin_walk_evidence_e
 node_tlc_result_summary_effect = "omnimarket.nodes.node_tlc_result_summary_effect"
 
 [project.scripts]
-onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"
-onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.handler_host_thermal_cli:main"
-onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
-onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
+onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
+onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.runtime_host_thermal_cli:main"
+onex-automation-liveness-check = "omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli:main"
+onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.runtime_patch_apply_dispatch_cli:main"
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
-onex-access-mode = "omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_hook_cli:mode_main"
-onex-runtime-deploy = "omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy_cli:main"
-onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
+onex-access-mode = "omnimarket.nodes.node_operator_access_mode_effect.runtime_operator_hook_cli:mode_main"
+onex-runtime-deploy = "omnimarket.nodes.node_runtime_deploy_effect.runtime_deploy_cli:main"
+onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.runtime_architecture_discovery_cli:main"
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
 ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
 delegation-cost-demo = "omnimarket.cli.cli_delegation_cost_demo:main"
 onex-delegate = "omnimarket.adapters.claude_code.delegate:main"
-onex-claude-code-hook = "omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli:main"
+onex-claude-code-hook = "omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_claude_code_hook_cli:main"
 market-skills-demo = "omnimarket.cli.cli_market_skills_demo:main"
 omnimarket-validate-config = "omnimarket.cli.validate_config:main"
 omnimarket-projection-api = "omnimarket.projection.api_server:main"
 onex-ledger-reconcile = "omnimarket.nodes.node_ledger_reconcile_orchestrator.__main__:main"
-onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main"
+onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_effect.runtime_lab_secret_store_override_cli:main"
 onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main"
 onex-claude-pool-refill = "omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill:main"
 
@@ -1626,12 +1628,12 @@ ignore = [
 "src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
 # The operator-supervision hook entry prints its verdict to stdout and stderr: a hook's only
 # channel to the Claude Code client.
-"src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hook_cli.py" = ["T201"]
-"src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_operator_access_mode_effect/runtime_operator_hook_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_lab_secret_store_override_effect/runtime_lab_secret_store_override_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
-"src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py" = ["T201"]
-"src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_host_thermal_observe_effect/runtime_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and
 # print their tables to stdout, like the recorder script above. The scorer tests
 # reach into private helpers on purpose (that is what they test), assert on the
