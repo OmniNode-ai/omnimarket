@@ -58,3 +58,30 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_ticketing_epic_org_orchestrator tests/nodes/node_ticketing_epic_org_orchestrator -q --no-cov -n 0"
         cwd: "."
+  - id: "dod-omn21720-deploy-source-readback"
+    description: |-
+      Hosted source-artifact deploy readback at the evaluated commit. Fetch the
+      published handler and refuse one that holds a topic string literal or lacks
+      the contract loader binding. This reads the published source artifact; it
+      does not assert that a running service has rolled out.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          directory="$(mktemp -d)";
+          trap 'rm -rf "$directory"' EXIT;
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_ticketing_epic_org_orchestrator/handlers/handler_ticketing_epic_org.py" -o "$directory/handler.py"
+          python3 - "$directory/handler.py" <<'PY'
+          import ast
+          from pathlib import Path
+          import sys
+
+          tree = ast.parse(Path(sys.argv[1]).read_text())
+          literals = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("onex.")]
+          assert not literals, f"published handler still holds topic literals: {literals}"
+          assert any(isinstance(node, ast.FunctionDef) and node.name == "load_ticketing_epic_org_topics" for node in ast.walk(tree)), "published handler lacks the contract topic loader"
+          print("Published epic-org topic binding readback: PASS")
+          PY
+        cwd: "."

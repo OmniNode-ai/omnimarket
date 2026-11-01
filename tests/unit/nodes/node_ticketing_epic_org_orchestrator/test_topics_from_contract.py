@@ -90,3 +90,13 @@ def test_contracts_and_di_reports_no_literal_topic_in_the_handler() -> None:
         if issue.rule_name in {"literal_topic", "unparseable_file"}
     ]
     assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.unit
+def test_contract_publish_topics_are_the_four_declared_events() -> None:
+    assert set(contract_publish_topics(_CONTRACT)) == {
+        "onex.cmd.omnimarket.linear-epic-create.v1",
+        "onex.cmd.omnimarket.linear-ticket-reparent.v1",
+        "onex.evt.omnimarket.ticketing-epic-org-completed.v1",
+        "onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1",
+    }
