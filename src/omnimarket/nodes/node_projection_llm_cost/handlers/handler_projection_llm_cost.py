@@ -27,6 +27,7 @@ import yaml
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
     build_llm_call_metrics_row,
 )
@@ -38,7 +39,10 @@ from omnimarket.projection.protocol_database import (
 TABLE = "llm_call_metrics"
 CONFLICT_KEY = "input_hash"
 
-TOPIC_LLM_CALL_COMPLETED: str = "onex.evt.omniintelligence.llm-call-completed.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_LLM_CALL_COMPLETED: str = contract_topic(
+    _CONTRACT, "subscribe_topics", "llm-call-completed.v1"
+)
 
 
 class ModelLlmCallCompletedEvent(BaseModel):
