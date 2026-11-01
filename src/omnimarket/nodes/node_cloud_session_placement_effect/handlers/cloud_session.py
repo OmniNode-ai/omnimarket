@@ -9,7 +9,9 @@ import re
 import shlex
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     cloud_start_script as cloud_start_script,
 )
@@ -90,7 +92,14 @@ def cloud_session_script(
     URL (the session id is appended to it) comes from the caller's overlay."""
     if not re.fullmatch(r"(?:session|cse)_[A-Za-z0-9]{8,}", session_id):
         raise ValueError(f"not a cloud session id: {session_id!r}")
-    if not re.fullmatch(r"https://[A-Za-z0-9./_-]+/", sessions_api_url):
+    api_url = urlsplit(sessions_api_url)
+    if (
+        api_url.scheme != "https"
+        or api_url.query
+        or api_url.fragment
+        or api_url.geturl() != sessions_api_url
+        or not re.fullmatch(r"[A-Za-z0-9./_-]+/", f"{api_url.netloc}{api_url.path}")
+    ):
         raise ValueError(f"not a sessions API URL: {sessions_api_url!r}")
     return "\n".join(
         [
@@ -193,7 +202,7 @@ def cloud_prompt(
             f"- Stop at {max(10, timeout_min - 15)} minutes: push what you have and report it as partial.",
             (
                 "- End your final message with these lines, each on its own line: "
-                f"`PR: https://github.com/{owner}/{repo}/pull/<n> head=<full head sha>` (one per pull request you pushed), "
+                f"`PR: {service_endpoint_url('github.web_url')}/{owner}/{repo}/pull/<n> head=<full head sha>` (one per pull request you pushed), "
                 "`LANE_RESULT outcome=<handed-off|partial|blocked>`."
             ),
             "",
@@ -283,7 +292,7 @@ def cloud_result_text(
     for p in prs:
         repo, number = p["pr"].split("#", 1)
         lines.append(
-            f"PR: https://github.com/{owner}/{repo}/pull/{number} head={p['head']}"
+            f"PR: {service_endpoint_url('github.web_url')}/{owner}/{repo}/pull/{number} head={p['head']}"
         )
     if not prs:
         when = "after the session ended" if ended else "before the lane deadline"
@@ -328,7 +337,7 @@ def cloud_bot_pr_text(
 def cloud_pr_url(stdout: str, owner: str, repo: str) -> str | None:
     """The first whole-line PR URL for this repository in the bot script's output, or None."""
     url_re = re.compile(
-        rf"https://github\.com/{re.escape(owner)}/{re.escape(repo)}/pull/\d+"
+        rf"{re.escape(service_endpoint_url('github.web_url'))}/{re.escape(owner)}/{re.escape(repo)}/pull/\d+"
     )
     return next(
         (

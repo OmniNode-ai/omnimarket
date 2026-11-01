@@ -1,0 +1,172 @@
+{
+  "head_sha": "d68b0737cc30081e6214c7613817476ac26cac45",
+  "base_sha": "0a777fad4e0fcd0b7218ef6e98d7884295a06218",
+  "slice_files": 13,
+  "before": {
+    "handler_hand_construction": 11,
+    "literal_timeout": 31,
+    "literal_url": 16
+  },
+  "after": {
+    "handler_hand_construction": 11,
+    "literal_timeout": 31
+  },
+  "test_stdout": "..............................................................           [100%]\n62 passed in 2.63s\n",
+  "source_sha256": {
+    "src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py": "26b65e501a8cdbc455e2b8cc9ccc8b04910ec4ff35101c7fc64fe7caf28510cf",
+    "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py": "593b9170493f58e3363ff60fddeba855658fd83b51aed12919a18711168f8adf",
+    "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py": "12bcb1323f6d7bf6c69152fae9608c41dac1b106f8547ad2534aa0f86500d4e4",
+    "src/omnimarket/nodes/node_codex_landing_compute/handlers/handler_codex_landing.py": "f1baa79ba6bb6adbb2ec8365018d9a93072cde90ff0a39c8b6937d46ba2fe486",
+    "src/omnimarket/nodes/node_contract_graph_ir_compute/handlers/handler_contract_graph_ir.py": "789f9fdb0620385181087964d1d64ebc0bfc7b6ed7f8c52658007ff54748a5e6",
+    "src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py": "1483594518680ae0fb9b45748ddc2f36bea391dfd56f8d9cb058fb33711c6fec",
+    "src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py": "45e9bcedcbaa90a83810f2cdcfcf31a7e3fa4e916575a6ff0ae6490034c574fc",
+    "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py": "ec4c9d6f28bb224c6ce3e470688a43bf3549ac0c394ac5010ab386096860e033",
+    "src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py": "8f66eab24a83dd87af0b69cd5caf7edd2f5cae71c09512aacfc1bb3cab76663c",
+    "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py": "e98f4676e84a06af6826db56283e2f2c290af91069de75981dec83bbf24ff908",
+    "src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py": "f11030e627c1e4f477abe793aca20728629ae6b2a0eab7ac1c9e5c122ac2efde",
+    "src/omnimarket/nodes/node_plans_today_effect/models/model_plans_today_schema.py": "91bfd1a2579e69dd8034f246ffeb5ce62414273de370ce44f740400c74c73612",
+    "src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/handlers/handler_prod_promotion_grant_resolver.py": "a3921be4a3446322ddce65d0a41365780ec41609eae0e7eb2ecc257d735085dc"
+  },
+  "ticket": "OMN-21693",
+  "pr": "OmniNode-ai/omnimarket#4677",
+  "host": "h101",
+  "lease": 20149,
+  "test_command": [
+    "env",
+    "PYTHONDONTWRITEBYTECODE=1",
+    "COMPOSE_PROJECT_NAME=landing-l20149-lab",
+    "uv",
+    "run",
+    "--frozen",
+    "pytest",
+    "tests/test_service_endpoints_scheme_literals.py",
+    "tests/test_service_endpoints_contract.py",
+    "-q",
+    "--no-cov"
+  ],
+  "test_exit_code": 0,
+  "validator_command": [
+    "env",
+    "PYTHONDONTWRITEBYTECODE=1",
+    "COMPOSE_PROJECT_NAME=landing-l20149-lab",
+    "uv",
+    "run",
+    "--frozen",
+    "python",
+    "-m",
+    "omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run",
+    "omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi",
+    "src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py",
+    "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py",
+    "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py",
+    "src/omnimarket/nodes/node_codex_landing_compute/handlers/handler_codex_landing.py",
+    "src/omnimarket/nodes/node_contract_graph_ir_compute/handlers/handler_contract_graph_ir.py",
+    "src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py",
+    "src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py",
+    "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py",
+    "src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py",
+    "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py",
+    "src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py",
+    "src/omnimarket/nodes/node_plans_today_effect/models/model_plans_today_schema.py",
+    "src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/handlers/handler_prod_promotion_grant_resolver.py"
+  ],
+  "validator_exit_codes": {
+    "base": 1,
+    "head": 1
+  },
+  "validator_report_ids": {
+    "base": "a47aa509-755d-4bbc-b95f-00c4c725bc6f",
+    "head": "2a2c25f3-4233-46d1-b65f-9e7dd724030c"
+  },
+  "literal_url_slice_passes": true,
+  "landing_revalidation": {
+    "ticket": "OMN-21693",
+    "pr": "OmniNode-ai/omnimarket#4677",
+    "host": "h101",
+    "lease": 20543,
+    "tested_head_sha": "564a5f318fd5b0aa655f04d54177267136291de8",
+    "environment": {
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "COMPOSE_PROJECT_NAME": "landing-l20543-lab"
+    },
+    "source_sha256": {
+      "src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py": "26b65e501a8cdbc455e2b8cc9ccc8b04910ec4ff35101c7fc64fe7caf28510cf",
+      "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py": "2060bcfa6cc4b6a3ac1abe0f78e8fa343daaf46df954f93b0ee5ed70e58d6c8e",
+      "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py": "12bcb1323f6d7bf6c69152fae9608c41dac1b106f8547ad2534aa0f86500d4e4",
+      "src/omnimarket/nodes/node_codex_landing_compute/handlers/handler_codex_landing.py": "f1baa79ba6bb6adbb2ec8365018d9a93072cde90ff0a39c8b6937d46ba2fe486",
+      "src/omnimarket/nodes/node_contract_graph_ir_compute/handlers/handler_contract_graph_ir.py": "789f9fdb0620385181087964d1d64ebc0bfc7b6ed7f8c52658007ff54748a5e6",
+      "src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py": "1483594518680ae0fb9b45748ddc2f36bea391dfd56f8d9cb058fb33711c6fec",
+      "src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py": "45e9bcedcbaa90a83810f2cdcfcf31a7e3fa4e916575a6ff0ae6490034c574fc",
+      "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py": "ec4c9d6f28bb224c6ce3e470688a43bf3549ac0c394ac5010ab386096860e033",
+      "src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py": "8f66eab24a83dd87af0b69cd5caf7edd2f5cae71c09512aacfc1bb3cab76663c",
+      "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py": "e98f4676e84a06af6826db56283e2f2c290af91069de75981dec83bbf24ff908",
+      "src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py": "f11030e627c1e4f477abe793aca20728629ae6b2a0eab7ac1c9e5c122ac2efde",
+      "src/omnimarket/nodes/node_plans_today_effect/models/model_plans_today_schema.py": "91bfd1a2579e69dd8034f246ffeb5ce62414273de370ce44f740400c74c73612",
+      "src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/handlers/handler_prod_promotion_grant_resolver.py": "a3921be4a3446322ddce65d0a41365780ec41609eae0e7eb2ecc257d735085dc",
+      "src/omnimarket/configs/service_endpoints.yaml": "7b195858779f0456ec2dd329f4063153897da6eb66c254c8aa88f4509124ea36"
+    },
+    "endpoint_tests": {
+      "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "pytest",
+        "tests/test_service_endpoints_scheme_literals.py",
+        "tests/test_service_endpoints_contract.py",
+        "-q",
+        "--no-cov"
+      ],
+      "run_timestamp": "2026-10-31T21:12:56.165418+00:00",
+      "duration_ms": 6646,
+      "exit_code": 0,
+      "stdout": "..............................................................           [100%]\n62 passed in 3.32s\n"
+    },
+    "slice_validator": {
+      "command": [
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "-m",
+        "omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run",
+        "omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi",
+        "src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py",
+        "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py",
+        "src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py",
+        "src/omnimarket/nodes/node_codex_landing_compute/handlers/handler_codex_landing.py",
+        "src/omnimarket/nodes/node_contract_graph_ir_compute/handlers/handler_contract_graph_ir.py",
+        "src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py",
+        "src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py",
+        "src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py",
+        "src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py",
+        "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py",
+        "src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py",
+        "src/omnimarket/nodes/node_plans_today_effect/models/model_plans_today_schema.py",
+        "src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/handlers/handler_prod_promotion_grant_resolver.py"
+      ],
+      "run_timestamp": "2026-10-31T21:13:02.811630+00:00",
+      "duration_ms": 1902,
+      "exit_code": 1,
+      "raw_stdout_sha256": "2c15f1288a8265602dfbfcfc538c3b2a5ed9c5944c8834ce23e7e77f7f84c28e",
+      "stdout_worktree_relative": "Validation failed: 42 issue(s) in 7 file(s)\n  [ERROR] src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py:308: literal_timeout: literal 60.0 bound to 'timeout_seconds' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py:323: literal_timeout: literal 120.0 bound to 'timeout_seconds' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py:339: literal_timeout: literal 120.0 bound to 'timeout_seconds' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py:363: literal_timeout: literal 300.0 bound to 'timeout_seconds' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py:381: literal_timeout: literal 120.0 bound to 'timeout_seconds' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py:397: literal_timeout: literal 120.0 bound to 'timeout_seconds' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py:121: literal_timeout: literal 15 bound to '_GH_LIST_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py:122: literal_timeout: literal 30 bound to '_GH_PR_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py:124: literal_timeout: literal 20.0 bound to '_DEFAULT_INDEX_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py:2153: literal_timeout: literal 60 bound to '_GATE_GIT_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py:2154: literal_timeout: literal 30 bound to '_LINEAR_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py:2194: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:247: literal_timeout: literal 300 bound to '_DEFAULT_GIT_OP_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:349: literal_timeout: literal 30 bound to '_DEFAULT_CHECK_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:488: literal_timeout: literal 900 bound to '_DEFAULT_HERMETIC_SYNC_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:783: literal_timeout: literal 180.0 bound to '_TOOLCHAIN_PROBE_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:2126: literal_timeout: literal 120.0 bound to '_DEFAULT_GIT_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:2416: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:2591: handler_hand_construction: HandlerDurableEvidenceGateEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:3444: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:3523: handler_hand_construction: HandlerMustFailLocalTreeRun is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:3848: handler_hand_construction: HandlerDodTicketCriteriaLinearEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:4525: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:4562: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:5187: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py:5218: handler_hand_construction: HandlerDodEvidenceGithubEffect is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py:60: literal_timeout: literal 30 bound to '_JQ_TIMEOUT_S' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py:38: literal_timeout: literal 30 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py:82: literal_timeout: literal 120 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py:446: handler_hand_construction: HandlerLegacyWorktreeAudit is constructed by hand instead of resolved from the container -- Resolve the handler from the container with get_service; only a binding site builds it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:168: literal_timeout: literal 700 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:310: literal_timeout: literal 120 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:332: literal_timeout: literal 120 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:408: literal_timeout: literal 330 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:551: literal_timeout: literal 900 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:638: literal_timeout: literal 300 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:692: literal_timeout: literal 600 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:766: literal_timeout: literal 900 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:870: literal_timeout: literal 180 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:926: literal_timeout: literal 300 bound to 'timeout' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py:930: literal_timeout: literal 60 bound to 'sleep' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n  [ERROR] src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/handlers/handler_prod_promotion_grant_resolver.py:64: literal_timeout: literal 30.0 bound to '_REQUEST_TIMEOUT' is hard-coded in code -- Declare the timeout in the contract or overlay and inject it.\n"
+    },
+    "slice_findings": {
+      "literal_timeout": 31,
+      "handler_hand_construction": 11
+    },
+    "literal_url_slice_passes": true,
+    "dispatch_lab_proof": {
+      "command": [
+        "bash",
+        "-o",
+        "pipefail",
+        "-c",
+        "git log -1 --format=%s | grep -q OMN-21693"
+      ],
+      "run_timestamp": "2026-10-31T21:13:04.713600+00:00",
+      "duration_ms": 24,
+      "exit_code": 1,
+      "stdout": ""
+    }
+  }
+}

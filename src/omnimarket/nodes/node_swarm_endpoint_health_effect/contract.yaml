@@ -67,3 +67,6 @@ metadata:
   tags: [effect, swarm, endpoint-health, http-probe, OMN-11810]
   related_tickets:
     - "OMN-11810"
+
+timeouts:
+  request_timeout_seconds: 30.0  # Bounds each endpoint health request.
