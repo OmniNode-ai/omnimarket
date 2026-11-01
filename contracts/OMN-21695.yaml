@@ -1,0 +1,61 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21695"
+title: "In-memory stand-ins of fifteen omnimarket modules come from their node's binding site, not from the caller"
+summary: "Fifteen modules in fourteen nodes constructed an in-memory event bus, store, sink, evaluator or transport by hand (20 inmemory_outside_injection findings of the contracts_and_di check). Each node now has a container/container_inmemory.py binding site that returns the stand-in, and the environment and consumer-group values that were literals at the call sites are read from the node contract's in_memory_bindings section. Burn-down slice rf1145-c5: inmemory_outside_injection goes from 37 to 17 across src/omnimarket and the total from 1476 to 1456; the 17 left are 11 in files that open pull requests hold, 4 in node_projection_overnight (a projection write-path file, which the projection-write-path-db-gate lets change only with a real-Postgres integration test) and 2 outside any node (adapters/codex and cli), which the canonical-file-shape ratchet keeps from taking a binding site."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21695-binding-sites"
+    statement: |-
+      A node that needs an in-memory stand-in takes it from its container/container_inmemory.py; the caller never constructs it, and a value that names its environment or group comes from the node contract.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for inmemory_outside_injection over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every moved value is taken through an injected parameter bound from the node contract or overlay and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The binding-site tests and the unit tests of the touched nodes pass."
+    command: "uv run pytest tests/unit/nodes/test_cdi_inmemory_binding_sites_c5.py -q --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21695-checker-clean"
+    description: "The contracts_and_di check over the fifteen slice modules reports no inmemory_outside_injection finding."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/test_cdi_inmemory_binding_sites_c5.py -q --no-cov -k 'slice_module_constructs_no_in_memory_stand_in or positive_control_a_hand_construction_is_flagged'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21695-binding-site-tests"
+    description: "Each binder returns its stand-in with the contract's values, every slice module is clean under the checker, and a hand construction is flagged (positive control)."
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_cdi_inmemory_binding_sites_c5.py -q --no-cov -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21695-deploy-contract-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the claude_review_batch node contract at the
+      evaluated published commit and require it to declare the in-memory bus environment and group
+      its binding site reads. A missing key fails the command. No lab service, credentials or broker
+      is required. This checks the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_claude_review_batch_effect/contract.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          bindings = doc["in_memory_bindings"]
+          assert bindings["event_bus_environment"] and bindings["event_bus_group"], "in_memory_bindings incomplete"
+          print("Published in_memory_bindings readback: claude_review_batch PASS")
+          '
+        cwd: "."
