@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from omnimarket.events.topics import LAB_JOB_TRANSITIONED_TOPIC_V1
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_lab_job.handlers.handler_projection_lab_job import (
     HandlerProjectionLabJob,
 )
@@ -37,7 +38,10 @@ from omnimarket.nodes.node_projection_lab_job.models import (
     EnumLabJobProjectionEventKind,
     ModelLabJobProjectionRequest,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 if TYPE_CHECKING:
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
@@ -185,16 +189,11 @@ class LabJobProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
-        data = dict(input_data)
-        topic = str(data.pop("_topic", ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        data = dict(request.payload)
+        topic = request.topic_or("")
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(topic, data, meta))
 
     def _adapter_for_one_message(self) -> AsyncpgAdapter:

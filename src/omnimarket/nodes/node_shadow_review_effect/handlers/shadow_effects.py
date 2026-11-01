@@ -18,8 +18,11 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.handlers.model_binding_reader import model_binding
 from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review import (
     EnumShadowArm,
@@ -81,14 +84,20 @@ class ProtocolShadowReviewer(Protocol):
     ) -> tuple[ModelShadowArmResult, ...]: ...
 
 
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_shadow_review_effect", "timeouts"),
+)
+
+
 def _git(
-    clone: Path, *args: str, timeout: float = 120.0
+    clone: Path, *args: str, timeout: float | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(clone), *args],
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=(timeout if timeout is not None else _TIMEOUTS["git_timeout_seconds"]),
         check=False,
     )
 
@@ -97,14 +106,21 @@ class CanonicalCloneDiffSource:
     """Reads a PR's diff from the canonical clone, refreshing its branches once."""
 
     def __init__(
-        self, omni_home: Path, refresh_script: Path, refresh_timeout_s: int = 300
+        self,
+        registry_root: Path,
+        refresh_script: Path,
+        refresh_timeout_s: int | None = None,
     ):
-        self._omni_home = omni_home
+        self._registry_root = registry_root
         self._refresh_script = refresh_script
-        self._refresh_timeout_s = refresh_timeout_s
+        self._refresh_timeout_s = (
+            refresh_timeout_s
+            if refresh_timeout_s is not None
+            else int(_TIMEOUTS["refresh_timeout_seconds"])
+        )
 
     def clone_for(self, repo: str) -> Path | None:
-        for root in (self._omni_home, self._omni_home.parent):
+        for root in (self._registry_root, self._registry_root.parent):
             if (root / repo / ".git").exists():
                 return root / repo
         return None

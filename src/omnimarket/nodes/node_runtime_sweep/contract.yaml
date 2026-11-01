@@ -100,3 +100,7 @@ metadata:
 runtime_dispatch:
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.runtime-sweep-start.v1
+
+timeouts:
+  admin_request_timeout_seconds: 10.0  # Broker admin request budget.
+  admin_result_timeout_seconds: 15.0  # Wait for the broker admin result.
