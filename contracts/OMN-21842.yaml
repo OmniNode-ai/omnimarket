@@ -1,0 +1,66 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21842"
+title: "delegation: every gate decision made on the port path is recorded and published in the quality-gate-result shape the bus path uses"
+summary: "The in-process delegation port builds a quality-gate record from the gate result it holds (checks evaluated, skipped, failed and the deciding rule), carries it on the attempt record keyed by correlation id and attempt index, and publishes it to the quality-gate-result topic its node contract declares."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+  - "events"
+requirements:
+  - id: "req-omn21842-port-gate-record"
+    statement: |-
+      A port-path gate decision leaves a record a reader can read: the checks evaluated, skipped and failed and the rule that decided.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every port-path gate decision writes a quality-gate-result record, naming the evaluated, skipped and failed checks and the deciding rule, onto its attempt record, keyed by correlation id and attempt index -- falsifier: uv run pytest tests/unit/delegation -k \"port_gate_decision_recorded or port_gate_record_keyed_by_attempt\" -q"
+      - id: "AC2"
+        statement: "AC2: on a run with a bus, the same record is published to onex.evt.omnibase-infra.quality-gate-result.v1 and the in-memory and Redpanda overlays give the same record -- falsifier: uv run pytest tests/unit/delegation -k port_gate_record_published -q and an onex delegate run on a lab host followed by a consumer read of that topic"
+      - id: "AC3"
+        statement: "AC3: a run with no bus still completes and carries the record on its attempt record only -- falsifier: uv run pytest tests/unit/delegation -k port_gate_record_without_bus -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Record, key, publish, no-bus and old-recording cases pass."
+    command: "uv run pytest tests/unit/delegation/test_port_gate_record.py -q --no-cov -m \"not kafka\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21842-record-and-key"
+    description: "The decision is recorded on the attempt and keyed by attempt."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_port_gate_record.py -k \"port_gate_decision_recorded or port_gate_record_keyed_by_attempt\" -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21842-published"
+    description: "The record is published to the declared topic and the in-memory delivery matches the attempt record."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_port_gate_record.py -k port_gate_record_published -q --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_port_gate_record_consumer.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21842-no-bus"
+    description: "A run with no bus completes and keeps the record on the attempt."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_port_gate_record.py -k \"port_gate_record_without_bus or still_parses\" -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21842-deploy-record-model"
+    description: "The evaluated GitHub head serves the gate record model; the behavior tests run the port without a broker or lab service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/delegation/wire/model_quality_gate_record.py" | grep -q "class ModelQualityGateRecord"
+        cwd: "."
