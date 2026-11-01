@@ -469,13 +469,50 @@ dod_evidence:
       check_value: uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
       cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn21623-hand-construction-clean
-    description: The contracts_and_di check over the thirteen node directories reports no handler_hand_construction finding.
+    description: The pinned contracts_and_di validator scans every source module in the thirteen node directories and reports no handler_hand_construction finding. Missing directories, incomplete scans, a disabled rule, parse errors and validator failures refuse the evidence.
     source: manual
     binds_ac:
     - AC13
     checks:
     - check_type: command
-      check_value: '! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_adoption_recovery_effect src/omnimarket/nodes/node_aislop_sweep src/omnimarket/nodes/node_architecture_discovery_orchestrator src/omnimarket/nodes/node_baseline_compare src/omnimarket/nodes/node_board_truth_reconcile_effect src/omnimarket/nodes/node_branch_protection_audit_effect src/omnimarket/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_bus_audit_compute src/omnimarket/nodes/node_capsule_effectiveness_feedback_reducer src/omnimarket/nodes/node_capture_silence_watch_effect src/omnimarket/nodes/node_cause_claim_ownership_effect src/omnimarket/nodes/node_ci_watch src/omnimarket/nodes/node_claim_resolver  2>&1 | grep -q handler_hand_construction'
+      check_value: |-
+        uv run --frozen python - <<'PY'
+        from pathlib import Path
+        from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+        nodes = [
+        "node_adoption_recovery_effect",
+        "node_aislop_sweep",
+        "node_architecture_discovery_orchestrator",
+        "node_baseline_compare",
+        "node_board_truth_reconcile_effect",
+        "node_branch_protection_audit_effect",
+        "node_build_loop_orchestrator",
+        "node_bus_audit_compute",
+        "node_capsule_effectiveness_feedback_reducer",
+        "node_capture_silence_watch_effect",
+        "node_cause_claim_ownership_effect",
+        "node_ci_watch",
+        "node_claim_resolver",
+        ]
+        paths = []
+        for node in nodes:
+            root = Path("src/omnimarket/nodes") / node
+            assert root.is_dir(), f"slice node missing: {root}"
+            sources = sorted(
+                path for path in root.rglob("*.py")
+                if not {"tests", "test", "fixtures", "__pycache__"}.intersection(path.relative_to(root).parts)
+            )
+            assert sources, f"slice node has no source modules: {root}"
+            paths.extend(sources)
+        validator = ValidatorContractsAndDi()
+        assert any(rule.rule_id == "handler_hand_construction" and rule.enabled for rule in validator.contract.rules), "handler_hand_construction rule is not enabled"
+        result = validator.validate(paths)
+        assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+        offenders = [str(issue) for issue in result.issues if issue.rule_name in {"handler_hand_construction", "unparseable_file"}]
+        print(f"contracts_and_di: {result.metadata.files_processed} source modules in {len(nodes)} nodes checked; handler_hand_construction or parse findings: {len(offenders)}")
+        assert not offenders, "\n".join(offenders)
+        PY
       cwd: .
   - id: dod-omn21623-deploy-published-binding-readback
     description: 'Hosted-runner source-artifact readback: fetch the claim resolver binding module at the
