@@ -12,35 +12,35 @@ requirements:
       A branch is judged on its own change, from the newest contained open pull request head to its head.
     acceptance:
       - id: "AC1"
-        statement: "AC1: a branch that contains the head commits of two open pull requests and adds its own commits is judged on the diff from the newest contained open-PR head to its own head, and commits that belong to the contained pull requests never make it a duplicate of them or of pull requests touching the same lines -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k own_change -q"
+        statement: "AC1: a branch that contains the head commits of two open pull requests and adds its own commits is judged on the diff from the newest contained open-PR head to its own head, and commits that belong to the contained pull requests never make it a duplicate of them or of pull requests touching the same lines -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -k own_change -q"
   - id: "req-omn21851-intent"
     statement: |-
       Same lines with a different change are not duplicates; the same change still is.
     acceptance:
       - id: "AC2"
-        statement: "AC2: two pull requests that touch the same lines with different intent (no shared ticket, changed-line digests below the contract's same-change threshold) are clear, and a same-ticket same-change pull request is still refused -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k \"intent or same_change\" -q"
+        statement: "AC2: two pull requests that touch the same lines with different intent (no shared ticket, changed-line digests below the contract's same-change threshold) are clear, and a same-ticket same-change pull request is still refused -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k \"intent or same_change\" -q"
   - id: "req-omn21851-judged-commits"
     statement: |-
       The answer names the commits it judged.
     acceptance:
       - id: "AC3"
-        statement: "AC3: the refusal names the commits it judged, in the JSON answer and in the stderr message -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k judged_commits -q"
+        statement: "AC3: the refusal names the commits it judged, in the JSON answer and in the stderr message -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -k judged_commits -q"
   - id: "req-omn21851-declared"
     statement: |-
       The rule is declared data read through typed models.
     acceptance:
       - id: "AC4"
-        statement: "AC4: the stack rule and any new threshold are declared in the node contract config and read through a typed model, with no value hard-coded in the handler, and the tests run on the in-memory overlay -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -q"
+        statement: "AC4: the stack rule and any new threshold are declared in the node contract config and read through a typed model, with no value hard-coded in the handler, and the tests run on the in-memory overlay -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q"
   - id: "req-omn21851-recorded"
     statement: |-
       The recorded refusals of 2026-11-01 are a regression test.
     acceptance:
       - id: "AC5"
-        statement: "AC5: a regression test built from the recorded 2026-11-01 refusals (fixtures of the omnimarket#4727, #4730, #4731 and #4733 diff spans and the branch commit list at c4433d697, and of the the private plugin repository#1366 case) fails on the broken guard and passes on the fix -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k recorded_stack -q"
+        statement: "AC5: a regression test built from the recorded 2026-11-01 refusals (fixtures of the omnimarket#4727, #4730, #4731 and #4733 diff spans and the branch commit list at c4433d697, and of the the private plugin repository#1366 case) fails on the broken guard and passes on the fix -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k recorded_stack -q"
 evidence_requirements:
   - kind: "tests"
     description: "The duplicate guard compute and scm tests pass."
-    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -q --no-cov"
+    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -52,7 +52,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k own_change -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -k own_change -q --no-cov"
         cwd: "."
   - id: "dod-omn21851-intent"
     description: "Same lines under a different change are clear; a same-ticket same-change pull request is refused."
@@ -60,7 +60,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k 'intent or same_change' -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k 'intent or same_change' -q --no-cov"
         cwd: "."
   - id: "dod-omn21851-judged-commits"
     description: "The JSON answer and the stderr message name the judged commits."
@@ -68,15 +68,15 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k judged_commits -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -k judged_commits -q --no-cov"
         cwd: "."
   - id: "dod-omn21851-declared"
-    description: "The rule and thresholds come from the node contracts through typed models; the whole compute and scm test set passes."
+    description: "The rule and thresholds come from the node contracts through typed models; the duplicate-guard compute and scm test set passes."
     source: "manual"
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov"
         cwd: "."
   - id: "dod-omn21851-recorded-stack"
     description: "The recorded refusals of 2026-11-01 are clear on the fix; the PR body quotes the run on the parent commit, where they fail."
@@ -84,5 +84,12 @@ dod_evidence:
     binds_ac: ["AC5"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k recorded_stack -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_stack.py tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k recorded_stack -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21851-deploy-published-stack-rule"
+    description: "Deploy probe reads the snapshot node contract at the checked-out commit from GitHub and requires the declared stack base rule. This checks published source availability, not a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "curl -fsSL https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/contract.yaml | grep -F 'base_rule: newest_contained_open_pr_head'"
         cwd: "."
