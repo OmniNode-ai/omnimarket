@@ -90,7 +90,7 @@ def test_host_drift_fleet_contract_source_scan() -> None:
         r"onex\.cmd",
         r"\buuid\w*\b",
         r"\bh\d{3}\b",
-        r"/Users/",
+        "/" + "Users" + "/",
         "omnibase_" + "internal",
     )
     for path in PACKAGE.rglob("*.py"):

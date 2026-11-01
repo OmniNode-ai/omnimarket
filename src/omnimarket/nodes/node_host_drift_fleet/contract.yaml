@@ -23,14 +23,6 @@ handler:
   class: HandlerHostDriftFleet
   input_model: omnimarket.nodes.node_host_drift_fleet.models.ModelHostDriftFleetRequest
   output_model: omnimarket.nodes.node_host_drift_fleet.models.ModelHostDriftFleetResult
-handler_routing:
-  routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_host_drift_fleet.handlers.handler_host_drift_fleet:HandlerHostDriftFleet
-  handlers:
-  - operation: handle
-    handler:
-      name: HandlerHostDriftFleet
-      module: omnimarket.nodes.node_host_drift_fleet.handlers.handler_host_drift_fleet
 event_bus:
   subscribe_topics:
   - onex.evt.omnimarket.host-drift-heartbeat.v1
