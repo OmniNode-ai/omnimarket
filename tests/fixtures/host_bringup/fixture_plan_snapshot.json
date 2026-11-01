@@ -1,0 +1,60 @@
+{
+  "status": "planned",
+  "refusals": [],
+  "steps": [
+    {
+      "order": 1,
+      "target": "operator_sudo",
+      "stage": "A",
+      "check_kind": "person_confirmed",
+      "observed": "ok",
+      "decision": "skip",
+      "action": "person_step"
+    },
+    {
+      "order": 2,
+      "target": "os_packages",
+      "stage": "A",
+      "check_kind": "package_installed",
+      "observed": "ok",
+      "decision": "skip",
+      "action": "install_package"
+    },
+    {
+      "order": 3,
+      "target": "runtime_env_file",
+      "stage": "B",
+      "check_kind": "file_present",
+      "observed": "unknown",
+      "decision": "act",
+      "action": "write_file"
+    },
+    {
+      "order": 4,
+      "target": "tailnet_joined",
+      "stage": "B",
+      "check_kind": "command_succeeds",
+      "observed": "not_ok",
+      "decision": "act",
+      "action": "run_command"
+    },
+    {
+      "order": 5,
+      "target": "container_engine",
+      "stage": "C",
+      "check_kind": "service_active",
+      "observed": "unknown",
+      "decision": "act",
+      "action": "enable_service"
+    },
+    {
+      "order": 6,
+      "target": "runtime_stack",
+      "stage": "D",
+      "check_kind": "endpoint_healthy",
+      "observed": "unknown",
+      "decision": "act",
+      "action": "start_stack"
+    }
+  ]
+}
