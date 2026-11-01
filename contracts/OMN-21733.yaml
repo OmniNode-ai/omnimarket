@@ -49,6 +49,19 @@ requirements:
     acceptance:
       - id: "AC13"
         statement: "AC13: a hash naming a lane, line, machine or station opens a labelled panel over the tab with that item's detail, a name the record does not hold is said so, the panel closes by button, Escape, scrim and back with one history entry per open, the tab underneath never scrolls and each tab keeps its own scroll position -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_drawer -q"
+  - id: "req-omn21733-snapshot-history"
+    statement: |-
+      Each published factory floor record is retained under the overlay's history_root,
+      with contract-declared UTC names and retention, before the live record is replaced.
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: publishing writes a byte-identical snapshot under the contract's history subdirectory with a UTC timestamp, and a second publish preserves the first snapshot while updating the live record."
+      - id: "AC14"
+        statement: "AC14: publishing to an occupied snapshot name refuses the publish and preserves both the existing snapshot and the live record."
+      - id: "AC15"
+        statement: "AC15: retention removes the oldest snapshots outside its day window only while their count exceeds max_count, preserving younger snapshots, unrelated files and the live record."
+      - id: "AC16"
+        statement: "AC16: a missing history_root is refused with NodeOverlayError before transport; the contract declares history naming and retention without a host or absolute path."
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -170,7 +183,7 @@ dod_evidence:
     binds_ac: ["AC13"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_drawer"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_drawer"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-drawer-deploy"
     description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires drillContent, which draws the drill-down panel and is absent from the base page."
@@ -178,3 +191,41 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function drillContent(d){'"
+  - id: "dod-omn21733-snapshot-history"
+    description: "AC13 UTC naming and successive publishes retain the original snapshot bytes."
+    source: "manual"
+    binds_ac: ["AC13"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py -q --no-cov --tb=line -k 'history_snapshot_is_written or history_name_uses_utc or history_second_publish'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-snapshot-collision"
+    description: "AC14 An occupied history name refuses publication without replacing either record."
+    source: "manual"
+    binds_ac: ["AC14"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py -q --no-cov --tb=line -k 'history_a_snapshot_name_already_taken'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-snapshot-retention"
+    description: "AC15 Retention preserves the live record, unrelated files and snapshots within the window."
+    source: "manual"
+    binds_ac: ["AC15"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py -q --no-cov --tb=line -k 'retention'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-snapshot-overlay"
+    description: "AC16 History configuration is declared and missing history_root is refused before transport."
+    source: "manual"
+    binds_ac: ["AC16"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py -q --no-cov --tb=line -k 'history_root_missing or history_contract_declares'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-snapshot-history-deploy"
+    description: "Hosted deploy probe reads the publish handler at the checked-out commit from GitHub and requires the history snapshot call, which is absent from the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'snapshot = snapshot_name(rt.history, rt.names.data, now)'"
