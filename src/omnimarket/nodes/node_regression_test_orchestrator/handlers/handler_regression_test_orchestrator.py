@@ -8,10 +8,10 @@ had two paths: ``_run_live`` (called the imperative DelegationExecutor) and
 the **replay** path is migrated: the canonical node replays a recorded event
 corpus deterministically and never does live generation, never does I/O.
 
-``handle(envelope)`` is pure and deterministic:
+``handle(request)`` is pure and deterministic:
 
-  1. Coerce the payload into a typed :class:`ModelRegressionSuiteStart` carrying
-     the task suite + recorded replay corpus.
+  1. Take the typed :class:`ModelRegressionSuiteStart` the runtime adapter
+     unwrapped from the event, carrying the task suite + recorded replay corpus.
   2. For each task, look up the recorded attempt-1 output (SEA replay keyed on
      ``(task_id, attempt)``); ``passed = bool(output)`` — exactly the SEA
      ``_run_replay`` semantics. ``samples_per_task == 1`` marks results
@@ -21,21 +21,19 @@ corpus deterministically and never does live generation, never does I/O.
      event the runtime publishes. No I/O, no live providers, no in-process loop.
 
 An ORCHESTRATOR returns ``events``/``intents`` only — never ``result`` — so the
-aggregated experiment result rides the terminal event envelope.
+aggregated experiment result is the returned event; the runtime wraps it for the
+contract terminal topic.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from omnibase_core.enums.enum_experiment_status import EnumExperimentStatus
 from omnibase_core.enums.enum_experiment_type import EnumExperimentType
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.experiment.model_experiment_cost import ModelExperimentCost
 from omnibase_core.models.experiment.model_experiment_evidence_ref import (
     ModelExperimentEvidenceRef,
@@ -51,9 +49,6 @@ from omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_
 )
 from omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_suite_start import (
     ModelRegressionSuiteStart,
-)
-from omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_task import (
-    ModelRegressionTask,
 )
 
 HANDLER_ID = "regression-test-orchestrator"
@@ -141,55 +136,17 @@ class HandlerRegressionTestOrchestrator:
     """Canonical orchestrator: deterministic regression replay -> experiment result."""
 
     async def handle(
-        self, envelope: ModelEventEnvelope[Any]
+        self, request: ModelRegressionSuiteStart
     ) -> ModelHandlerOutput[None]:
         """Replay the regression suite and emit the canonical experiment result."""
-        correlation_id = envelope.correlation_id or uuid4()
-        start = _coerce_start(envelope.payload, correlation_id)
-        results = replay_results(start)
-        experiment_result = aggregate_experiment_result(start, results)
-        completed: ModelEventEnvelope[ModelExperimentResult] = ModelEventEnvelope(
-            payload=experiment_result,
-            correlation_id=experiment_result.correlation_id,
-            event_type=TOPIC_REGRESSION_COMPLETED,
-        )
+        results = replay_results(request)
+        experiment_result = aggregate_experiment_result(request, results)
         return ModelHandlerOutput.for_orchestrator(
-            input_envelope_id=envelope.envelope_id,
+            input_envelope_id=uuid4(),
             correlation_id=experiment_result.correlation_id,
             handler_id=HANDLER_ID,
-            events=(completed,),
+            events=(experiment_result,),
         )
-
-
-def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRegressionSuiteStart:
-    """Coerce a dispatch payload into the typed start command.
-
-    On the ``onex run-node`` path the payload may arrive as a mapping; the
-    runtime-injected envelope ``correlation_id`` is threaded in when the payload
-    does not carry one. The default task suite + empty corpus apply when absent.
-    """
-    if isinstance(payload, ModelRegressionSuiteStart):
-        return payload
-    if isinstance(payload, ModelRegressionTask):
-        raise TypeError(
-            "regression-suite-start payload must be ModelRegressionSuiteStart, not "
-            "a single ModelRegressionTask"
-        )
-    if isinstance(payload, Mapping):
-        data = dict(payload)
-        data.setdefault("correlation_id", str(correlation_id))
-        return ModelRegressionSuiteStart.model_validate(data)
-    if payload is None:
-        return ModelRegressionSuiteStart(correlation_id=correlation_id)
-    model_dump = getattr(payload, "model_dump", None)
-    if callable(model_dump):
-        data = dict(model_dump(mode="json"))
-        data.setdefault("correlation_id", str(correlation_id))
-        return ModelRegressionSuiteStart.model_validate(data)
-    raise TypeError(
-        "regression-suite-start payload must be ModelRegressionSuiteStart or a "
-        f"mapping; got {type(payload).__name__}"
-    )
 
 
 __all__ = [
