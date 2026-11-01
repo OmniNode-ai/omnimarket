@@ -1,0 +1,92 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21793"
+title: "Burn-down of the contracts_and_di literal_url findings of omnimarket, slice rf2050-c2: eleven modules read their URLs and URI prefixes from the endpoint authority"
+summary: "Eleven modules, in files no open pull request or pushed branch of the last days holds, spelled a URL, a URI prefix or a schema id inline. Each now resolves it from configs/service_endpoints.yaml through service_endpoint_url, which fails closed on a missing key. The contracts_and_di check over src reports 31 literal_url findings before the slice and 18 after, and 1317 findings in total before and 1304 after. The eighteen that remain sit in files that a live branch holds or that the canonical-file-shape ratchet would refuse to grow."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21793-literal-url-authority"
+    statement: |-
+      The eleven modules hold no URL literal in code. Every value comes from the endpoint authority by dotted reference, the authority fails closed on an unknown reference, and each value is the one the code held before.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di check reports no literal_url finding on the eleven modules of the slice and the repository total of literal_url findings drops from 31 to 18, with no baseline entry or suppression added -- falsifier: uv run pytest tests/test_literal_url_authority.py -k slice_has_no_literal_url_findings -q --no-cov fails when a URL literal returns to any of them"
+      - id: "AC2"
+        statement: "AC2: every URL comes from the endpoint authority and none is spelled in the touched code -- falsifier: uv run pytest tests/test_literal_url_authority.py tests/test_service_endpoints_contract.py -q --no-cov fails when a key is missing or a reference resolves to another value"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one pull request titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: the Lab line of the pull request body names a host, the pushed sha and the exit code of uv run pytest at that sha"
+evidence_requirements:
+  - kind: "tests"
+    description: "The slice scan, the authority references and the planted-URL positive control pass."
+    command: "uv run pytest tests/test_literal_url_authority.py -q --no-cov"
+  - kind: "tests"
+    description: "The endpoint authority tests pass."
+    command: "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21793-authority-tests"
+    description: "Each reference resolves, an unknown reference fails closed, and the rule fires on a planted URL."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_literal_url_authority.py tests/test_service_endpoints_contract.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21793-slice-clean"
+    description: "The pinned contracts_and_di validator scans all eleven modules; its structured findings contain no literal_url rule. Missing modules, incomplete scans and unparseable files fail the probe."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_literal_url_authority.py -k slice_has_no_literal_url_findings -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          from tests.test_literal_url_authority import SLICE_FILES
+
+          paths = list(SLICE_FILES)
+          assert all(path.is_file() for path in paths), "a slice module is missing"
+          validator = ValidatorContractsAndDi()
+          assert any(rule.rule_id == "literal_url" and rule.enabled for rule in validator.contract.rules), "literal_url rule is not enabled"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_url", "unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_url findings")
+          PY
+        cwd: "."
+  - id: "dod-omn21793-lab-proof"
+    description: "The pull request body carries the Lab line with host, sha and exit code of the test run on the lab at the pushed head."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_literal_url_authority.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21793-deploy-published-endpoint-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the endpoint authority file at the
+      evaluated published commit and require it to declare internal_targets.gemini_cli and
+      pypi.release_json_template. A missing key fails the command. No lab service,
+      credentials or broker is required. This checks the published source artifact and
+      does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/service_endpoints.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          assert doc["internal_targets"]["gemini_cli"], "internal_targets.gemini_cli missing"
+          assert doc["pypi"]["release_json_template"], "pypi.release_json_template missing"
+          print("Published endpoint authority readback: internal_targets and pypi PASS")
+          '
+        cwd: "."

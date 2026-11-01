@@ -43,12 +43,14 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.intents import ModelPersistStateIntent
 from omnibase_core.models.state.model_state_envelope import ModelStateEnvelope
 
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_result import CiFixResult
 from omnimarket.nodes.node_merge_sweep_state_reducer.models.model_merge_sweep_state import (
     ModelMergeSweepState,
@@ -70,8 +72,13 @@ from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event
 _log = logging.getLogger(__name__)
 
 # Topics from contract.yaml
-TOPIC_STATE_REDUCED = "onex.evt.omnimarket.merge-sweep-state-reduced.v1"  # onex-topic-allow: contract-declared
-TOPIC_SWEEP_COMPLETED = "onex.evt.omnimarket.merge-sweep-completed.v1"  # onex-topic-allow: contract-declared
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_STATE_REDUCED = contract_topic(
+    _CONTRACT, "publish_topics", "merge-sweep-state-reduced.v1"
+)
+TOPIC_SWEEP_COMPLETED = contract_topic(
+    _CONTRACT, "publish_topics", "merge-sweep-completed.v1"
+)
 
 NODE_ID = "node_merge_sweep_state_reducer"
 

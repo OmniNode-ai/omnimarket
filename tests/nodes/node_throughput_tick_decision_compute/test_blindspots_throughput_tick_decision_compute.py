@@ -176,7 +176,7 @@ def test_a_host_with_no_recent_reading_is_unknown_naming_the_read_that_refreshes
         "UNKNOWN lab-headroom:h101 | no placement reading in the last 15 min (newest none)"
     )
     for line in lab:
-        assert "onex_lab_run.py --hosts" in line.split(" | FIX: ", 1)[1]
+        assert "onex_lab_run.py --hosts --lane <lane>" in line.split(" | FIX: ", 1)[1]
     assert result.unknown[-2:] == ["lab-headroom:h201", "lab-headroom:h101"]
     assert not any(
         line.startswith("NOTE lab-headroom") and "no recent placement" in line
