@@ -39,6 +39,25 @@ def _sequence_fact(facts: Mapping[str, object], name: str) -> Sequence[object]:
     return cast("Sequence[object]", value)
 
 
+def _identity_evidence(
+    facts: Mapping[str, object],
+) -> tuple[tuple[str, ...] | None, str | None]:
+    raw_keys = facts.get("expected_keys")
+    expected_keys: tuple[str, ...] | None = None
+    if isinstance(raw_keys, Sequence) and not isinstance(
+        raw_keys, (str, bytes, bytearray)
+    ):
+        keys: list[str] = []
+        for key in cast("Sequence[object]", raw_keys):
+            if not isinstance(key, str):
+                break
+            keys.append(key)
+        else:
+            expected_keys = tuple(keys)
+    cursor = facts.get("source_cursor")
+    return expected_keys, cursor if isinstance(cursor, str) and cursor else None
+
+
 def _datetime_fact(facts: Mapping[str, object], name: str) -> datetime:
     value = facts.get(name)
     if not isinstance(value, str):
@@ -70,6 +89,7 @@ def classify_sm_00(
     """Read backlog items against the packaged admission policy."""
     items = _sequence_fact(request.facts, "items")
     window = _window(request.facts)
+    expected_identities, source_cursor = _identity_evidence(request.facts)
     repo_kinds: tuple[str, ...] | None = None
     if "repo_required_kinds" in request.facts:
         raw_kinds = _sequence_fact(request.facts, "repo_required_kinds")
@@ -118,6 +138,8 @@ def classify_sm_00(
                 window=window,
                 crossings=crossings,
                 read_at=request.now,
+                expected_identities=expected_identities,
+                source_cursor=source_cursor,
             ),
         )
     )
@@ -149,6 +171,7 @@ def _classify_lanes(
 ) -> ModelSeamClassifyResult:
     lanes = _sequence_fact(request.facts, "lanes")
     window = _window(request.facts)
+    expected_identities, source_cursor = _identity_evidence(request.facts)
     crossings: list[ModelSeamCrossing] = []
 
     for index, raw in enumerate(lanes):
@@ -197,6 +220,8 @@ def _classify_lanes(
                 window=window,
                 crossings=crossings,
                 read_at=request.now,
+                expected_identities=expected_identities,
+                source_cursor=source_cursor,
             ),
         )
     )
