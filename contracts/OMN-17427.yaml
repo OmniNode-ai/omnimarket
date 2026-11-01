@@ -2676,7 +2676,7 @@ dod_evidence:
           project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
           scripts = project["scripts"]
           expected = {
-              "onex-secret-store-override": "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main",
+              "onex-secret-store-override": "omnimarket.nodes.node_lab_secret_store_override_effect.runtime_lab_secret_store_override_cli:main",
               "onex-legacy-worktree-audit": "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main",
           }
           for name, target in expected.items():
