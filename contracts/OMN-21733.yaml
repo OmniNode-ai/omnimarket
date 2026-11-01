@@ -134,7 +134,7 @@ dod_evidence:
     binds_ac: ["AC11"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_tabs"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_tabs"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac12"
     description: "AC12 dashboard tests pass."
@@ -142,7 +142,7 @@ dod_evidence:
     binds_ac: ["AC12"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_dashboard"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_dashboard"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-tabs-deploy"
     description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires renderDashboard, which draws the dashboard tab and is absent from the base page."
