@@ -79,6 +79,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         remote_dir=str(tmp_path / "site"),
         serve_url="http://example.invalid:8088/",
         bus_lane="lane-x",
+        history_root=str(tmp_path / "kept"),
     )
 
 
@@ -133,7 +134,10 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
-            ssh_target=target, remote_dir="/srv/site", serve_url="u"
+            ssh_target=target,
+            remote_dir="/srv/site",
+            serve_url="u",
+            history_root="/srv/site",
         )
 
 
@@ -141,7 +145,10 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
-            ssh_target="lab-web", remote_dir=path, serve_url="u"
+            ssh_target="lab-web",
+            remote_dir=path,
+            serve_url="u",
+            history_root="/srv/site",
         )
 
 
@@ -185,11 +192,14 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "publish-status.json",
         "factory-floor.json",
     )
+    # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
     assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
         False,
         False,
         False,
+        False,
         True,
+        False,
     ]
     evidence = json.loads((tmp_path / "state/last-run.json").read_text())
     assert evidence["record_generated_at"] == RECORD["generated_at"]
@@ -877,14 +887,14 @@ SHELL_HARNESS = textwrap.dedent(
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(fs.readFileSync(pagePath, "utf8"))[1];
     const els = {};
     const mk = id => ({id, innerHTML: "", textContent: "", hidden: false, dataset: {}, style: {}, className: "",
-      tabIndex: 0, title: "", children: [], attrs: {}, classList: {add() {}, remove() {}},
+      tabIndex: 0, title: "", children: [], attrs: {}, classList: {add() {}, remove() {}, toggle() {}},
       querySelectorAll: () => [], setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {},
       appendChild(c) { this.children.push(c); }, focus() {}});
     const saved = {};
-    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), createElement: () => mk("created")};
-    globalThis.window = {addEventListener() {}};
-    globalThis.location = {hash: opts.hash || "", search: ""};
-    globalThis.history = {replaceState(_a, _b, h) { globalThis.location.hash = h; }};
+    globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), createElement: () => mk("created"), addEventListener() {}};
+    globalThis.window = {addEventListener() {}, matchMedia: () => ({matches: false})};
+    globalThis.location = {hash: opts.hash || "", search: "", origin: "null"};
+    globalThis.history = {replaceState(_a, _b, h) { globalThis.location.hash = h; }, pushState(_a, _b, h) { globalThis.location.hash = h; }};
     globalThis.localStorage = opts.storeBlocked
       ? {getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); }}
       : {getItem: k => (opts.stored && k === "factory-floor.tab" ? opts.stored : null), setItem(k, v) { saved[k] = v; }};
@@ -1112,7 +1122,7 @@ def test_page_dashboard_draws_each_line_with_its_state_and_its_real_stop_reason(
     assert "never-matched-plan" in dash
     assert "not in the record" in dash
     assert dash.index("Line A") < dash.index("Line B")
-    assert "#floor/line-plan-two" in dash
+    assert "#dashboard/line-plan-two" in dash
 
 
 def test_page_dashboard_draws_each_machine_with_its_lanes_load_and_memory() -> None:
@@ -1128,7 +1138,7 @@ def test_page_dashboard_draws_each_machine_with_its_lanes_load_and_memory() -> N
     assert "down for repair since the move" in dash
     assert "1 live lane names no machine the floor draws" in dash
     assert "stalled" in dash
-    assert "#floor/lane-lane-x" in dash
+    assert "#dashboard/lane-lane-x" in dash
 
 
 def test_page_dashboard_takes_todays_merges_and_reds_from_the_series_and_the_lanes() -> (
@@ -1216,3 +1226,77 @@ def test_page_tabs_shell_node_syntax_is_valid() -> None:
         check=False,
     )
     assert checked.returncode == 0, checked.stderr.decode()
+
+
+def test_page_drawer_a_hash_naming_a_lane_opens_the_panel_over_the_dashboard() -> None:
+    result = _run_shell(SHELL_FILES, hash="#dashboard/lane-lane-x")
+    out = _shell_out(result)
+    assert result["sel"] == ["tab-dashboard"]
+    assert "Ticket one" in out["drawerTitle"]
+    assert "Rebuilding the widget in full" in out["drawerBody"]
+    assert "OMN-1" in out["drawerBody"]
+    assert result["hash"] == "#dashboard/lane-lane-x"
+
+
+def test_page_drawer_a_line_a_machine_and_a_station_open_from_their_hash() -> None:
+    line = _shell_out(_run_shell(SHELL_FILES, hash="#dashboard/line-plan-two"))
+    assert "Second plan" in line["drawerTitle"]
+    assert "Look first" in line["drawerBody"]
+    assert "Part B" in line["drawerBody"]
+    bay = _shell_out(_run_shell(SHELL_FILES, hash="#floor/bay-m1"))
+    assert "Bay one" in bay["drawerTitle"]
+    assert "Rebuilding the widget" in bay["drawerBody"]
+    station = _shell_out(_run_shell(SHELL_FILES, hash="#dashboard/st-plan-two-0"))
+    assert "Look first" in station["drawerTitle"]
+    assert "Part A" in station["drawerBody"]
+
+
+def test_page_drawer_a_name_the_record_does_not_hold_says_so_instead_of_drawing_nothing() -> (
+    None
+):
+    out = _shell_out(_run_shell(SHELL_FILES, hash="#dashboard/lane-gone"))
+    assert "Not in the record" in out["drawerTitle"]
+    assert "gone" in out["drawerBody"]
+
+
+def test_page_drawer_is_a_labelled_dialog_closed_by_button_escape_scrim_and_back() -> (
+    None
+):
+    assert 'role="dialog"' in SHELL
+    assert 'aria-labelledby="drawerTitle"' in SHELL
+    assert 'id="drawerClose"' in SHELL
+    assert 'ev.key === "Escape"' in SHELL
+    assert 'el("scrim").addEventListener("click", closeByUser)' in SHELL
+    assert 'addEventListener("popstate", sync)' in SHELL
+    assert "history.pushState" in SHELL
+    assert "history.replaceState" in SHELL
+
+
+def test_page_drawer_never_scrolls_the_tab_under_it() -> None:
+    assert "scrollIntoView" not in SHELL
+    assert "preventScroll: true" in SHELL
+    assert "saveScroll" in SHELL
+    assert "restoreScroll" in SHELL
+    # the in-page anchor jumps are gone from the dashboard's links
+    assert 'href="#floor/' not in SHELL
+    # inside the board the floor page asks the board's panel to open and scrolls nothing
+    embedded = PAGE.split("if (EMBEDDED){", 1)[1].split("const a = t.closest", 1)[0]
+    assert "parent.postMessage" in PAGE
+    assert "scrollIntoView" not in embedded
+
+
+def test_page_drawer_motion_is_short_and_off_under_reduced_motion() -> None:
+    assert "transition:transform .18s ease,opacity .18s ease" in SHELL
+    reduced = SHELL.split("@media (prefers-reduced-motion:reduce){", 1)[1]
+    assert ".drawer,.drawer.open,.scrim,.scrim.open{transition:none}" in reduced
+    assert ".pane:not([hidden]){animation:none}" in reduced
+
+
+def test_page_drawer_the_phone_sheet_is_full_width_with_a_scrim_and_the_desktop_panel_is_not_dimmed() -> (
+    None
+):
+    assert "width:40vw" in SHELL
+    phone = SHELL.split("@media (max-width:700px){\n  .drawer{", 1)[1]
+    assert "width:100%" in phone.split("}", 1)[0]
+    assert ".scrim{display:none}" in SHELL
+    assert 'el("app").inert = phone()' in SHELL
