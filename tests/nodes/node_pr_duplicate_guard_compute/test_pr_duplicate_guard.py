@@ -648,7 +648,9 @@ def test_the_handler_source_holds_no_file_list() -> None:
     ("ticket", "mine", "theirs", "expected"),
     [
         ("OMN-2", ("aaaaaaaaaaaa",), ("bbbbbbbbbbbb",), "clear"),
-        ("OMN-1", ("aaaaaaaaaaaa",), ("bbbbbbbbbbbb",), "adopt"),
+        ("OMN-1", ("aaaaaaaaaaaa",), ("bbbbbbbbbbbb",), "clear"),
+        ("OMN-1", ("a", "b", "c"), ("a", "d", "e", "f"), "adopt"),
+        ("OMN-1", (), (), "adopt"),
         ("OMN-2", ("aaaaaaaaaaaa",), ("aaaaaaaaaaaa",), "adopt"),
         ("OMN-2", (), (), "clear"),
         ("OMN-2", (), ("aaaaaaaaaaaa",), "clear"),
@@ -678,8 +680,9 @@ def test_intent_line_overlap_needs_ticket_or_same_change(
     assert result.state == expected
     if expected == "clear":
         assert result.evidence == ()
+        why = "same ticket" if ticket == "OMN-1" else "other ticket"
         assert result.notes == (
-            f"example_repo#1 also changes {GUARD}:204 but carries a different intent (other ticket, different change): not the same fix",
+            f"example_repo#1 also changes {GUARD}:204 but carries a different intent ({why}, different change): not the same fix",
         )
     else:
         assert result.evidence[0].kind is EnumDuplicateEvidence.LINES
@@ -970,6 +973,7 @@ def test_intent_contract_owns_ticket_pattern_and_similarity_threshold() -> None:
     assert contract["config"]["intent"] == {
         "ticket_pattern": "OMN-[0-9]+",
         "min_same_change_similarity": 0.6,
+        "min_same_ticket_similarity": 0.1,
     }
     source = Path(handler_module.__file__).read_text()
     assert "OMN-" not in source

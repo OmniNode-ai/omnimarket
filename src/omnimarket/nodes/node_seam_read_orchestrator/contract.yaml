@@ -129,7 +129,7 @@ workflow_coordination:
         node_type: COMPUTE_GENERIC
         description: SM-07 handoff to controller
         depends_on: [st07_handoff]
-        step_config: {operation: classify_sm_07, shape: ModelWorkLedgerAppendRequest, gap: GAP-6, bound_minutes: 60}
+        step_config: {operation: classify_sm_07, shape: ModelPrHandoffDecisionRequest, bound_minutes: 60}
       - node_id: st08_landing_controller
         node_type: EFFECT_GENERIC
         description: St8 Landing controller
