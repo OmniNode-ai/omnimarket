@@ -233,6 +233,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolut
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_routing_answer_judge import (
     routing_answer_judge,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.quality_gate_record_recorder import (
+    build_quality_gate_record,
+    publish_quality_gate_record,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     ProtocolRunStepPublisher,
     RunStepRecorder,
@@ -3282,6 +3286,14 @@ class LocalDelegationDispatchPort:
                         ),
                     }
                 )
+            gate_record = build_quality_gate_record(
+                gate_result=gate_result,
+                task_type=task_type,
+                attempt_index=len(attempts),
+                deciding_rule=acceptance_reason.value,
+                acceptance_detail=acceptance_detail,
+            )
+            publish_quality_gate_record(self._terminal_publisher, gate_record)
             attempts.append(
                 {
                     "tier": attempt_tier,
@@ -3323,6 +3335,7 @@ class LocalDelegationDispatchPort:
                     # exactly the text that was judged.
                     "reasoning_preamble_rule": gate_result.reasoning_preamble_rule,
                     "rubric_verdict": rubric_verdict.model_dump(mode="json"),
+                    "gate_record": gate_record.model_dump(mode="json"),
                     "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
