@@ -58,6 +58,7 @@ from omnimarket.nodes.node_host_pool_alarm_effect.node import NodeHostPoolAlarmE
 
 class FakeEmit(HandlerExceptionEmit):
     def __init__(self) -> None:
+        super().__init__()
         self.requests: list[ModelExceptionEmitRequest] = []
 
     def __bool__(self) -> bool:
