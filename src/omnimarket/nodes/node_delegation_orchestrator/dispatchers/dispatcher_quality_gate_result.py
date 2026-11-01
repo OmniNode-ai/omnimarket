@@ -32,6 +32,9 @@ from omnibase_infra.nodes.node_registration_orchestrator.dispatchers._util_envel
 from omnibase_infra.utils import sanitize_error_message
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.models.delegation.wire.model_quality_gate_record import (
+    ModelQualityGateRecord,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
     TOPIC_ID_DELEGATION_COMPLETED_V2,
@@ -178,6 +181,24 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
                 await self._check_circuit_breaker("handle", correlation_id)
 
             payload = raw_payload
+            if isinstance(payload, dict) and "record_key" in payload:
+                # The in-process port publishes its own decision record to this
+                # topic. It describes a decision already made on a run this
+                # workflow does not hold, so it is read and acknowledged, never
+                # fed to the workflow.
+                ModelQualityGateRecord.model_validate(payload)
+                completed_at = datetime.now(UTC)
+                return ModelDispatchResult(
+                    dispatch_id=uuid4(),
+                    status=EnumDispatchStatus.SUCCESS,
+                    topic=TOPIC_ID_QUALITY_GATE_RESULT,
+                    dispatcher_id=self.dispatcher_id,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    duration_ms=(completed_at - started_at).total_seconds() * 1000,
+                    correlation_id=correlation_id,
+                    output_events=[],
+                )
             if not isinstance(payload, ModelQualityGateResult):
                 if isinstance(payload, dict):
                     payload = ModelQualityGateResult.model_validate(payload)

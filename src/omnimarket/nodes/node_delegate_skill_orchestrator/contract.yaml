@@ -341,6 +341,9 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.delegate-skill-failed.v1
   # One event per step of a run, numbered by this node from one counter per run.
   run_step_event: onex.evt.omnimarket.delegation-run-step.v1
+  # The port path's gate decision, in the shape the bus orchestrator's gate
+  # result uses; published only on runs this node's in-process port serves.
+  quality_gate_result_event: onex.evt.omnibase-infra.quality-gate-result.v1
   default_timeout_ms: 300000
   max_timeout_ms: 900000
 
@@ -501,6 +504,9 @@ event_bus:
     # after the admission commit and before any dispatch; appended so the
     # entries above keep their positions. Carries no prompt text.
     - onex.evt.omnimarket.delegate-skill-admission-decided.v1
+    # The in-process port's gate decision per attempt; appended so the entries
+    # above keep their positions.
+    - onex.evt.omnibase-infra.quality-gate-result.v1
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 
@@ -517,6 +523,9 @@ published_events:
   - event_type: DelegateSkillAdmissionDecided
     topic: onex.evt.omnimarket.delegate-skill-admission-decided.v1
     description: Admission decision for one client call, with the effective mode, before any dispatch.
+  - event_type: omnibase-infra.quality-gate-result
+    topic: onex.evt.omnibase-infra.quality-gate-result.v1
+    description: The checks one in-process gate decision evaluated, skipped and failed, and the rule that decided.
 
 # OMN-21098: the admission decision is consumed by the Claude Code adapter's
 # receipt-mode client, which awaits it by correlation id; no omnimarket contract
