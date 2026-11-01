@@ -135,6 +135,10 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voice_check import (
+    check_operator_voice,
+    operator_voice_check_name,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
     ModelIdentifierGroundingVerdict,
     ModelUngroundedIdentifier,
@@ -2622,10 +2626,18 @@ def _evaluate_heuristic_checks(
     evaluations: list[ModelQualityRuleEvaluation] = []
     skipped_heuristic: list[str] = []
     ungrounded: tuple[ModelUngroundedIdentifier, ...] = ()
+
+    def _record_failure(check: str, reason: str | None) -> None:
+        if reason is not None:
+            (blocking_failures if _is_blocking_rule(check) else scored_failures).append(
+                reason
+            )
+
     known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
     grounding_check = _identifier_grounding_check_name()
     numbers_check = _numeric_grounding_check_name()
     claims_check = _claim_grounding_check_name()
+    operator_voice_check = operator_voice_check_name()
     evidence_policy = resolve_evidence_comment_policy()
     evidence_checks = {
         evidence_policy.criteria_check_name: evaluate_criteria_covered,
@@ -2648,11 +2660,7 @@ def _evaluate_heuristic_checks(
             # response. With no grounding source it runs exactly as before.
             reason = _GROUNDING_AWARE_HEURISTIC_CHECKS[check](content, grounding_source)
             evaluations.append(_rule_evaluation(check, reason))
-            if reason is not None:
-                if _is_blocking_rule(check):
-                    blocking_failures.append(reason)
-                else:
-                    scored_failures.append(reason)
+            _record_failure(check, reason)
             continue
         if check in evidence_checks:
             # OMN-17427: both read the criteria and lane report the draft was
@@ -2665,11 +2673,15 @@ def _evaluate_heuristic_checks(
             if not evaluated:
                 skipped_heuristic.append(check)
                 continue
-            if reason is not None:
-                if _is_blocking_rule(check):
-                    blocking_failures.append(reason)
-                else:
-                    scored_failures.append(reason)
+            _record_failure(check, reason)
+            evaluations.append(_rule_evaluation(check, reason))
+            continue
+        if check == operator_voice_check:
+            reason, evaluated = check_operator_voice(content, grounding_source)
+            if not evaluated:
+                skipped_heuristic.append(check)
+                continue
+            _record_failure(check, reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
         if check == claims_check:
@@ -2680,11 +2692,7 @@ def _evaluate_heuristic_checks(
                 skipped_heuristic.append(check)
                 continue
             ungrounded = ungrounded + claim_rows
-            if reason is not None:
-                if _is_blocking_rule(check):
-                    blocking_failures.append(reason)
-                else:
-                    scored_failures.append(reason)
+            _record_failure(check, reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
         if check == numbers_check:
@@ -2695,11 +2703,7 @@ def _evaluate_heuristic_checks(
                 skipped_heuristic.append(check)
                 continue
             ungrounded = ungrounded + number_rows
-            if reason is not None:
-                if _is_blocking_rule(check):
-                    blocking_failures.append(reason)
-                else:
-                    scored_failures.append(reason)
+            _record_failure(check, reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
         if check == grounding_check:
@@ -2712,11 +2716,7 @@ def _evaluate_heuristic_checks(
                 # OMN-13850 removed from the deterministic band.
                 skipped_heuristic.append(check)
                 continue
-            if reason is not None:
-                if _is_blocking_rule(check):
-                    blocking_failures.append(reason)
-                else:
-                    scored_failures.append(reason)
+            _record_failure(check, reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
         grounding_aware = _GROUNDING_AWARE_ADEQUACY_CHECKS.get(check)
@@ -3296,6 +3296,7 @@ def _is_reject_only_heuristic_check(check: str) -> bool:
         or check == _identifier_grounding_check_name()
         or check == _numeric_grounding_check_name()
         or check == _claim_grounding_check_name()
+        or check == operator_voice_check_name()
         or bool(_MIN_LENGTH_CHECK_RE.match(check))
     )
 

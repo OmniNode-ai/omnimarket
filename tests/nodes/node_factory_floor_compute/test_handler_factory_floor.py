@@ -373,13 +373,19 @@ def test_andon_or_fallback_an_empty_manifest_falls_back_to_the_table() -> None:
     )
 
 
-def test_andon_or_fallback_selection_keeps_only_matching_plans_in_order() -> None:
+def test_selection_keeps_only_matching_plans_and_draws_an_unmatched_token_stopped() -> (
+    None
+):
     result = compute_factory_floor(
         request(
             plans=(table_plan(), wave_plan()), selection=("wave-plan", "nonexistent")
         )
     )
-    assert [line.line_id for line in result.lines] == ["2026-10-31-wave-plan"]
+    assert [line.line_id for line in result.lines] == [
+        "2026-10-31-wave-plan",
+        "nonexistent",
+    ]
+    assert result.lines[1].source == "undrawn"
 
 
 # --------------------------------------------------------------------------------------- floor

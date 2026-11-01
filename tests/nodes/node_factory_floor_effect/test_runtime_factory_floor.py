@@ -72,7 +72,7 @@ LEDGER = "\n".join(
         "L2 2026-10-31T11:41:00Z | HOLD | lane=lane-a | id=2026-10-31T11:41:00Z-lane-a | to=lane-a | ticket=OMN-100 | until=2026-10-31T15:00:00Z | reason=andon:gate:0:W0.2 | Andon stop on the line.",
         "L3 2026-10-31T11:50:00Z | STATUS | lane=lane-a | ticket=OMN-100 | state=gate | subject=0 | verdict=fail | Gate G0 FAIL.",
         "L4 2026-10-31T11:55:00Z | MSG | from=lane-b | to=lane-a | ticket=OMN-100 | a message",
-        "L5 2026-10-31T11:20:00Z | MSG | from=lane-b | to=lane-a | an older message",
+        "L5 2026-10-31T11:20:00Z | MSG | from=lane-b | an older message with no recipient",
         "not a row",
     ]
 )
@@ -270,6 +270,39 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     )  # the newest snapshot, not the older one
 
 
+def test_a_declared_plan_with_no_file_is_written_as_a_stopped_line_with_its_cause(
+    world: dict[str, Path],
+) -> None:
+    assert main(_argv(world, "--plan", "wave-plan", "--plan", "absent-plan")) == 0
+    document = json.loads(_output(world).read_text(encoding="utf-8"))
+    lines = {line["line_id"]: line for line in document["lines"]}
+    assert list(lines) == ["2026-10-31-wave-plan", "absent-plan"]
+    absent = lines["absent-plan"]
+    assert (absent["status_pill"], absent["source"]) == ("stopped", "undrawn")
+    assert absent["plan_path"] == "absent-plan"
+    assert absent["andon"]["causes"] == [
+        "plan file not found: no plan path contains absent-plan"
+    ]
+
+
+def test_an_unanswered_ask_in_the_ledger_stops_the_line_it_names_with_its_age(
+    world: dict[str, Path],
+) -> None:
+    ledger = world["ledger"]
+    ledger.write_text(
+        LEDGER
+        + "\nL6 2026-10-31T11:45:00Z | MSG | from=lane-b | id=ask-1 | to=orchestrator-31d9 | ticket=OMN-100 | two decisions are needed",
+        encoding="utf-8",
+    )
+    assert main(_argv(world, "--plan", "wave-plan")) == 0
+    document = json.loads(_output(world).read_text(encoding="utf-8"))
+    causes = document["lines"][0]["andon"]["causes"]
+    assert (
+        "MSG ask-1 to orchestrator-31d9 unanswered for 15 min: two decisions are needed"
+        in causes
+    )
+
+
 def test_determinism_or_cli_two_runs_write_identical_bytes(
     world: dict[str, Path],
 ) -> None:
@@ -355,7 +388,29 @@ def test_determinism_or_cli_ledger_parse_reads_cells_and_keeps_one_row_per_quiet
     assert hold.until.hour == 15
     assert (status.state, status.subject, status.verdict) == ("gate", "0", "fail")
     assert msg.lane == "lane-b"
+    assert msg.to == "lane-a"
     assert msg.ts.isoformat() == "2026-10-31T11:55:00+00:00"
+
+
+def test_determinism_or_cli_ledger_parse_keeps_every_ask_and_every_answer() -> None:
+    text = "\n".join(
+        [
+            "L1 2026-10-31T08:17:58Z | MSG | from=lane-b | id=ask-1 | to=orchestrator-31d9 | ticket=OMN-100 | two decisions are needed",
+            "L2 2026-10-31T08:30:00Z | MSG | from=lane-b | id=ask-2 | to=orchestrator-31d9 | ticket=OMN-100 | a second ask",
+            "L3 2026-10-31T09:00:00Z | ACK | from=orchestrator-31d9 | to=lane-b | re=ask-2 | answered",
+            "L4 2026-10-31T09:10:00Z | ACK | from=orchestrator-31d9 | to=lane-b | an ack that answers nothing",
+        ]
+    )
+    rows = parse_ledger_text(text)
+    asks = [r for r in rows if r.kind == "MSG"]
+    assert [(r.row_id, r.to, r.tickets) for r in asks] == [
+        ("ask-1", "orchestrator-31d9", ("OMN-100",)),
+        ("ask-2", "orchestrator-31d9", ("OMN-100",)),
+    ]
+    assert [(r.kind, r.re) for r in rows if r.kind == "ACK"] == [
+        ("ACK", "ask-2"),
+        ("ACK", ""),
+    ]
 
 
 def test_determinism_or_cli_linear_reads_the_compact_and_the_json_forms(

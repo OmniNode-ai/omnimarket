@@ -8,6 +8,7 @@
 # request on the bus and stops; this orchestrator, on a runtime that receives
 # the PR watcher's observations, decides when the PR is ready and hands it to
 # the landing lane by appending the same ledger rows pr-handoff wrote by hand.
+# The scope is the landing_scope overlay, read at composition.
 # No language model anywhere. It replaces the readiness half of pr-handoff's
 # handoff_row.sh, which read a copy of the PR watcher state taken when a lab
 # lane launched and so refused (exit 5) every PR the lane opened itself
@@ -169,6 +170,16 @@ state_machine:
       from_state: WAITING
       to_state: REFUSED
       trigger: evaluated_pr_not_open
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: waiting_to_refused_on_evaluated_repo-out-of-landing-scope
+      from_state: WAITING
+      to_state: REFUSED
+      trigger: evaluated_repo-out-of-landing-scope
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: waiting_to_refused_on_evaluated_scope-unread
+      from_state: WAITING
+      to_state: REFUSED
+      trigger: evaluated_scope-unread
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: waiting_to_refused_on_superseded
       from_state: WAITING

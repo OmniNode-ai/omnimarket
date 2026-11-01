@@ -8,8 +8,10 @@ records plus a ``git diff -U0`` against the merge base) and the rolling ledger t
 when any of these holds, naming the pull request to take over:
 
 - ``branch``: a pull request is already open from this branch;
-- ``lines``: overlapping existing lines or the same added file, with a shared ticket or materially
-  the same changed-line digests; proximity with different intent supplies only a note;
+- ``lines``: overlapping existing lines or the same added file, and the same change: changed lines at least
+  ``config.intent.min_same_change_similarity`` alike, or at least ``min_same_ticket_similarity`` alike under a
+  shared ticket (a shared ticket alone, with changed lines that share almost nothing, is one ticket over many pull
+  requests); proximity with different intent supplies only a note;
 - ``files_and_title``: it changes the same file and its title shares four distinctive words with the new
   one (two pull requests in a second repository added one dispatch on 2026-10-30);
 - ``cause_cited``: its title (a fix title) or a ``Fix-Check:`` / ``Fix-Cause:`` body line cites a check or
@@ -22,7 +24,9 @@ ledger) and the ones a repository regenerates in every pull request of a kind (t
 plan index). Neither list is code: the generic ones are ``config.generic_paths`` in this node's
 ``contract.yaml``, and the per-repository generated ones are the request's ``generated_paths``, which the
 snapshot effect reads from the deployment overlay (private repositories are named only there). Overlap in an
-authored file needs shared intent. Stack ancestors and descendants are skipped. A draft without a live
+authored file needs shared intent. Stack ancestors and descendants are skipped, and the caller reads the new
+branch's diff from the newest open pull request head it contains, so ``judged_commits`` are the branch's own. The
+answer names them: ``judged_commits`` in the JSON, ``Judged N commits`` in the message. A draft without a live
 owner CLAIM supplies evidence-only notes for lines, title and cause; the same head branch still refuses.
 
 Two pull requests on the same file that change different lines, with unrelated titles, are not duplicates:
@@ -163,7 +167,9 @@ def load_config() -> ModelDuplicateGuardConfig:
     return ModelDuplicateGuardConfig.model_validate(contract["config"])
 
 
-_INTENT = load_config().intent
+_CONFIG = load_config()
+_INTENT = _CONFIG.intent
+_REPORT = _CONFIG.report
 _TICKET_WORD = re.compile(rf"\b(?:{_INTENT.ticket_pattern})\b", re.I)
 _TICKET = re.compile(
     rf"\s*\(\s*{_TICKET_WORD.pattern}\s*\)|{_TICKET_WORD.pattern}", re.I
@@ -254,12 +260,27 @@ def _overlap(
     return sorted(lines), sorted(shared), hit_paths
 
 
-def _same_change(new: ModelPrTouch, other: ModelPrTouch, paths: set[str]) -> bool:
+def _similarity(
+    new: ModelPrTouch, other: ModelPrTouch, paths: set[str]
+) -> float | None:
+    """Share of the changed-line digests two diffs have in common on ``paths``; None when either side has none."""
     mine = {d for f in new.files if f.path in paths for d in f.digest}
     theirs = {d for f in other.files if f.path in paths for d in f.digest}
-    return bool(mine and theirs) and (
-        len(mine & theirs) / len(mine | theirs) >= _INTENT.min_same_change_similarity
+    if not (mine and theirs):
+        return None
+    return len(mine & theirs) / len(mine | theirs)
+
+
+def _same_intent(shared_ticket: bool, similarity: float | None) -> bool:
+    """One fix: the changes are alike enough (a shared ticket lowers the bar); unreadable digests leave a shared ticket to decide."""
+    if similarity is None:
+        return shared_ticket
+    bar = (
+        _INTENT.min_same_ticket_similarity
+        if shared_ticket
+        else _INTENT.min_same_change_similarity
     )
+    return similarity >= bar
 
 
 def _same_words(
@@ -401,12 +422,14 @@ class HandlerPrDuplicateGuard:
                     request.touch, pr.touch, rules, repo
                 )
                 words = sorted(new_words & distinctive_words(pr.title))
-                same_intent = bool(
-                    new_tickets & tickets(pr.head_ref, pr.title)
-                ) or _same_change(request.touch, pr.touch, hit_paths)
+                shared_ticket = bool(new_tickets & tickets(pr.head_ref, pr.title))
+                same_intent = _same_intent(
+                    shared_ticket, _similarity(request.touch, pr.touch, hit_paths)
+                )
                 if lines and not same_intent:
+                    why = "same ticket" if shared_ticket else "other ticket"
                     notes.append(
-                        f"{ref} also changes {_hits(lines)} but carries a different intent (other ticket, different change): not the same fix"
+                        f"{ref} also changes {_hits(lines)} but carries a different intent ({why}, different change): not the same fix"
                     )
                 if lines and same_intent:
                     hit = True
@@ -485,7 +508,12 @@ class HandlerPrDuplicateGuard:
                 state="clear",
                 notes=_shown(notes),
                 unread=tuple(unread),
-                message=f"no open pull request or live CLAIM in {repo} covers this change",
+                message=(
+                    f"no open pull request or live CLAIM in {repo} covers this change. "
+                    f"{_judged_text(request)}"
+                ),
+                judged_commits=request.judged_commits,
+                judged_base=request.judged_base,
             )
         ordered = sorted(
             evidence,
@@ -510,12 +538,31 @@ class HandlerPrDuplicateGuard:
             evidence=tuple(ordered),
             notes=_shown(notes),
             unread=tuple(unread),
+            judged_commits=request.judged_commits,
+            judged_base=request.judged_base,
             message=(
                 f"{target} already covers this change ({'; '.join(e.detail for e in ordered)}). "
+                f"{_judged_text(request)} "
                 "Open no second pull request: comment on it, rebase it or push to its branch, and say so on your STATUS row "
                 f"(adopted={adopt_pr or target})."
             ),
         )
+
+
+def _judged_text(request: ModelPrDuplicateGuardRequest) -> str:
+    """The commits the answer was judged on, as one sentence, capped at the contract's ``judged_commits_shown``."""
+    commits = request.judged_commits
+    if not commits:
+        return "Judged: no commits read (the branch's commits were not listed)."
+    shown = "; ".join(
+        f"{c.sha} {c.subject}".rstrip() for c in commits[: _REPORT.judged_commits_shown]
+    )
+    more = len(commits) - _REPORT.judged_commits_shown
+    if more > 0:
+        shown = f"{shown}; and {more} more"
+    start = request.judged_base or f"the base branch {request.base or ''}".rstrip()
+    noun = "commit" if len(commits) == 1 else "commits"
+    return f"Judged {len(commits)} {noun} after {start}: {shown}."
 
 
 def _hits(lines: list[str]) -> str:

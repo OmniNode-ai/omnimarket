@@ -7,7 +7,7 @@ from collections import Counter
 
 import asyncpg
 
-_DSN_ENV = "OMNIDASH_ANALYTICS_DB_URL"
+_DSN_ENV, WORK_DIR = "OMNIDASH_ANALYTICS_DB_URL", os.environ["OMN20032_WORK_DIR"]
 
 
 def _dsn() -> str:
@@ -15,7 +15,7 @@ def _dsn() -> str:
 
 
 ids = {}
-for f in glob.glob("/tmp/omn20032/gen_*.jsonl"):
+for f in glob.glob(f"{WORK_DIR}/gen_*.jsonl"):
     for l in open(f):
         d = json.loads(l)
         if d.get("correlation_id"):

@@ -23,9 +23,11 @@ class ModelPrHandoffDecisionRequest(BaseModel):
     live ledger HOLD rows that name the PR or the requesting lane. ``now`` is
     the evaluating message's time: the compute reads no clock.
     ``landing_scope`` is the repositories the landing controller lands, as the
-    caller read them from its landing-scope overlay. None means the scope was
-    not read and the decision is the one made without it; an empty tuple means
-    nothing is landed. The model carries no repository name.
+    caller read them from its ``landing_scope`` overlay. None means the scope
+    was not supplied and the request is refused scope-unread; an empty tuple
+    is a valid scope that lands nothing. ``landing_scope_problem`` explains
+    why the caller could not read the overlay. The model carries no repository
+    name.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -34,6 +36,7 @@ class ModelPrHandoffDecisionRequest(BaseModel):
     observation: ModelPrStateEmitRequest | None = None
     ledger_holds: tuple[str, ...] = Field(default=())
     landing_scope: tuple[str, ...] | None = None
+    landing_scope_problem: str | None = None
     now: Annotated[datetime, AwareDatetime]
 
 

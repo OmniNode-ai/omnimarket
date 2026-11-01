@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_handwritten_event_payload_check_effect
+node_type: effect
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read the projection and consumer fixture tests and refuse a hand-written
+  event-payload dict, so a fixture cannot stay green while the producer's payload
+  changes. A fenced site that no longer matches is a hard failure, and a scan that
+  finds far fewer files than the tree has fails.
+input_model:
+  name: ModelHandwrittenEventPayloadCheckRequest
+  module: omnimarket.nodes.node_handwritten_event_payload_check_effect.models.model_handwritten_event_payload_check
+output_model:
+  name: ModelHandwrittenEventPayloadCheckResult
+  module: omnimarket.nodes.node_handwritten_event_payload_check_effect.models.model_handwritten_event_payload_check
+handler:
+  module: omnimarket.nodes.node_handwritten_event_payload_check_effect.handlers.handler_handwritten_event_payload_check
+  class: HandlerHandwrittenEventPayloadCheck
+  input_model: omnimarket.nodes.node_handwritten_event_payload_check_effect.models.model_handwritten_event_payload_check.ModelHandwrittenEventPayloadCheckRequest
+  output_model: omnimarket.nodes.node_handwritten_event_payload_check_effect.models.model_handwritten_event_payload_check.ModelHandwrittenEventPayloadCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_handwritten_event_payload_check_effect.handlers.handler_handwritten_event_payload_check:HandlerHandwrittenEventPayloadCheck
+  handlers:
+  - operation: check_handwritten_event_payloads
+    handler:
+      name: HandlerHandwrittenEventPayloadCheck
+      module: omnimarket.nodes.node_handwritten_event_payload_check_effect.handlers.handler_handwritten_event_payload_check
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+  - effects
+inputs:
+  repo_root:
+    type: str
+    required: true
+    description: Repository checkout whose fixture tests are scanned.
+outputs:
+  admitted:
+    type: bool
+  exit_code:
+    type: int
+  scanned_files:
+    type: int
+  violations:
+    type: int
+  output_lines:
+    type: list
+metadata:
+  transport_type: inmemory
+terminal_event: onex.evt.omnimarket.handwritten-event-payload-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.handwritten-event-payload-check-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.handwritten-event-payload-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.handwritten-event-payload-check-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.handwritten-event-payload-check-completed.v1
