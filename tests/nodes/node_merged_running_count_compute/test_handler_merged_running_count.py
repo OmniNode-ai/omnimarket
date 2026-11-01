@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -184,6 +184,12 @@ def test_merge_to_a_non_landing_branch_and_a_duplicate_are_not_counted() -> None
     )
     result = _run(prs=(A, A, stacked))
     assert _day(result, "2026-11-01").merged == 1
+
+
+def test_a_merge_after_the_supplied_clock_is_not_counted() -> None:
+    later = _merged("repo_a", 78, NOW + timedelta(minutes=1))
+    result = _run(prs=(A, later))
+    assert sum(d.merged for d in result.days) == 1
 
 
 def test_removing_the_evidence_row_moves_running_by_exactly_one() -> None:

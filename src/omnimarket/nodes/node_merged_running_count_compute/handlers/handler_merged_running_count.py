@@ -55,7 +55,7 @@ class HandlerMergedRunningCount:
 
         verdicts = [
             self._verdict(pr, merged_at, config, zone, by_number, by_sha)
-            for pr, merged_at in self._counted(request.prs, config)
+            for pr, merged_at in self._counted(request.prs, config, request.now)
         ]
         today = request.now.astimezone(zone).date()
         days = tuple(
@@ -77,13 +77,14 @@ class HandlerMergedRunningCount:
 
     @staticmethod
     def _counted(
-        prs: tuple[ModelMrcPr, ...], config: ModelMrcConfig
+        prs: tuple[ModelMrcPr, ...], config: ModelMrcConfig, now: datetime
     ) -> list[tuple[ModelMrcPr, datetime]]:
         seen: dict[tuple[str, int], tuple[ModelMrcPr, datetime]] = {}
         for pr in prs:
             if (
                 pr.state in config.counted_pr_states
                 and pr.merged_at is not None
+                and pr.merged_at <= now
                 and pr.base_branch in config.landing_branches
             ):
                 seen.setdefault((_bare_repo(pr.repo), pr.number), (pr, pr.merged_at))
