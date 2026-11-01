@@ -439,7 +439,11 @@ async def test_a_partial_replay_with_a_refusal_keeps_the_episode_open_until_the_
     refuse = await _refuse_with(_LedgerHost(), "ledger_lock: friction guard rejected")
     async with _open(switch, workspace, tmp_path, START + timedelta(seconds=10)) as b:
         await select.replay_outbox(b, tmp_path, refuse, limit=1)
-    assert [row["cls"] for row in _rows(tmp_path)] == ["bus-binding-degraded"]
+    # The refusal is reported by the replay that found it; the episode stays open for the unreplayed file.
+    assert sorted(row["cls"] for row in _rows(tmp_path)) == [
+        "bus-binding-degraded",
+        "bus-binding-outbox-refused",
+    ]
     assert not any("resolves" in row for row in _history(tmp_path))
     async with _open(switch, workspace, tmp_path, START + timedelta(seconds=20)) as b:
         await select.replay_outbox(b, tmp_path, _LedgerHost().append)
