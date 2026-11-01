@@ -11,6 +11,7 @@ Contains:
 - ModelEpicOrgGroupingDecision: classification verdict for a proposed group
 - ModelTicketingEpicOrgRequest: input to the orchestrator
 - ModelTicketingEpicOrgResult: output from the orchestrator
+- ModelTicketingEpicOrgTopics: the publish topics bound from the node contract
 """
 
 from __future__ import annotations
@@ -175,4 +176,25 @@ class ModelTicketingEpicOrgResult(BaseModel):
         ge=0,
         default=0,
         description="Total number of tickets linked to a new or existing epic",
+    )
+
+
+class ModelTicketingEpicOrgTopics(BaseModel):
+    """The publish topics of the orchestrator, bound from ``event_bus`` of its contract.
+
+    Each field name is the event name of its topic with ``_`` for ``-``. The
+    handler loads them from the contract unless a caller injects an overlay.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    linear_epic_create: str = Field(description="Command topic to create an epic")
+    linear_ticket_reparent: str = Field(
+        description="Command topic to reparent a ticket under an epic"
+    )
+    ticketing_epic_org_completed: str = Field(
+        description="Event topic for a completed epic-org run"
+    )
+    ticketing_epic_org_proposal_ready: str = Field(
+        description="Event topic for a ready epic-org proposal"
     )
