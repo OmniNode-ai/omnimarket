@@ -649,8 +649,8 @@ def brief(
         f"# Lane {lane}: {item['kind']} {item['key']} ({ticket})\n"
         f"ROUTE: model={model} effort={EFFORT}\n"
         f"{engine}"
-        f"Parent: {parent or 'orchestrator'}. Ticket: {ticket}. Repo: {item['repo'] or 'none'}.\n"
         f"Opens PR in: {item['repo'] or 'none'}\n"
+        f"Parent: {parent or 'orchestrator'}. Ticket: {ticket}. Repo: {item['repo'] or 'none'}.\n"
         f"{required}"
         f'Authority: {RULING}: "fill those 27 shots and get things fixed"; the throughput tick dispatched this lane '
         "by itself into a free lab slot (the lab is never idle).\n"
