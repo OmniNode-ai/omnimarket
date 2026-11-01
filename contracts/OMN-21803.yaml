@@ -59,23 +59,20 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py -q --no-cov"
         cwd: "."
   - id: "dod-omn21803-deploy-import-check"
-    description: "Hosted package deploy smoke: the installed package imports the contract-resolved topic modules and every resolved topic is a declared onex topic. This checks the evaluated checkout package, not a production rollout."
+    description: "Hosted-runner deploy smoke: a disposable Python 3.13 container runs the topic-resolution tests against this checkout and its locked dependencies, mounted read-only. All seven modules must resolve their constants from their owning contracts, contain no topic literals, and reject missing or ambiguous matches. The container has no network. This checks the evaluated checkout in an isolated runtime, not a production rollout."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: |
-          set -eu;
-          export PYTHONDONTWRITEBYTECODE=1;
-          uv sync --locked;
-          uv run --locked python -c '
-          import importlib
-          from omnimarket.nodes.node_model_router.handlers import handler_model_router as m
-          topics = [m.TOPIC_MODEL_ROUTING_DEGRADED, m.TOPIC_MODEL_LLM_ROUTE_RESOLVED, m.TOPIC_MODEL_LLM_ROUTE_REJECTED]
-          assert all(t.startswith("onex.") for t in topics), topics
-          assert len(set(topics)) == 3, topics
-          for name in ("node_code_embedding_effect.handlers.handler_code_embedding_effect", "node_code_enrichment_effect.handlers.handler_code_enrichment_effect"):
-              importlib.import_module("omnimarket.nodes." + name)
-          print("contract-resolved topics import and resolve:", topics)
-          '
+          dependencies="$(uv run --frozen --python 3.13 python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" &&
+          docker run --rm --network none --user "$(id -u):$(id -g)" \
+            --tmpfs /tmp/contract-topics-venv:rw,mode=1777 \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace \
+            --mount "type=bind,source=$dependencies,target=/tmp/contract-topics-venv/lib/python3.13/site-packages,readonly" \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \
+            sh -ec 'python -m venv --without-pip /tmp/contract-topics-venv
+              exec /tmp/contract-topics-venv/bin/python -m pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py \
+                -q --no-cov -p no:cacheprovider --basetemp=/tmp/contract-topics-tests --refuse-skips'
         cwd: "."
