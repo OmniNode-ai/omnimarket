@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21885"
+title: "Per-kind and per-verb parity receipt for the work ledger projection: exact_kinds and verb_diff on every receipt row"
+summary: "The daily work-ledger parity receipt row gains exact_kinds (each of the 11 row kinds named yes or no) and verb_diff (a count per read verb from running each verb on the file and on the database through the ledger readers)."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21885-parity-receipt-columns"
+    statement: |-
+      The parity receipt says which row kinds are exact and which read verbs the two sources answer differently, so a reader flip can be judged per kind and per verb.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the receipt for a fixture day names each of the 11 row kinds as exact or not -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k by_kind -q"
+      - id: "AC2"
+        statement: "AC2: a verb answered differently by the two sources raises verb_diff, tested with a fixture where one HOLD is released in the file only -- falsifier: uv run pytest tests/unit/nodes/node_projection_work_ledger -k verb_diff -q"
+      - id: "AC3"
+        statement: "AC3: the receipt for 2026-10-27 reproduces the 23 STATUS misses recorded in the plan -- falsifier: the lab step output compared to the plan measurement M6"
+evidence_requirements:
+  - kind: "tests"
+    description: "The by-kind and per-verb receipt cases pass."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger -k \"by_kind or verb_diff\" -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21885-by-kind"
+    description: "Each of the 11 row kinds is named exact or not on the receipt."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_work_ledger/test_parity_by_kind.py -k by_kind -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21885-verb-diff"
+    description: "A HOLD released in the file only raises verb_diff; a failed or fallen-back read is err, never zero."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_work_ledger/test_parity_verb_diff.py -k verb_diff -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21885-m6-fixture"
+    description: "Fixture of the M6 shape only (23 STATUS rows missing, ten kinds exact); the live 2026-10-27 reproduction is the lab step and is not claimed by this entry."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_work_ledger/test_parity_by_kind.py -k by_kind_23_missing_status -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21885-deploy-receipt-model"
+    description: "The evaluated GitHub head serves the per-kind receipt builder; the behavior tests run the parity receipt without a broker or lab service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_projection_work_ledger/parity_receipt.py" | grep -q "def exact_kinds"
+        cwd: "."

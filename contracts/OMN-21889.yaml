@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-21889
+title: Lane receipts record first-turn context by source
+summary: Close-node reducer for first-turn context by source; measurement only, no change to any brief, plugin set or skill listing.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-first-turn-context
+  statement: The close node records first-turn context by source on each lane receipt.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every lane receipt records first-turn input tokens, brief bytes, skill listing size, tools count, plugins count, total turns and peak context -- falsifier: uv run pytest tests -q -k first_turn_context_receipt'
+  - id: AC2
+    statement: 'AC2: a receipt built from a log with no assistant usage records each absent field as UNKNOWN and not zero -- falsifier: uv run pytest tests -q -k first_turn_context_unknown'
+  - id: AC3
+    statement: 'AC3: the table builder yields one row per lane with the receipt columns; the Mac-log run is published in the PR body -- falsifier: uv run pytest tests -q -k first_turn_context_table'
+evidence_requirements:
+- kind: tests
+  description: Focused first-turn context tests.
+  command: uv run pytest tests/nodes/node_remote_lane_close_compute/test_first_turn_context.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21889-ac1
+  description: 'AC1 proof: first_turn_context_receipt.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_first_turn_context.py -q --no-cov -k first_turn_context_receipt
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21889-ac2
+  description: 'AC2 proof: first_turn_context_unknown.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_first_turn_context.py -q --no-cov -k first_turn_context_unknown
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21889-ac3
+  description: 'AC3 proof: first_turn_context_table.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_first_turn_context.py -q --no-cov -k first_turn_context_table
+    cwd: ${OMNI_HOME}/omnimarket
