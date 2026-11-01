@@ -15,6 +15,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 from ..models.model_codex_landing import (
     ModelCodexLandingRequest,
     ModelCodexLandingResult,
@@ -239,7 +241,11 @@ def codex_handoff_refusal(landing: Sequence[tuple[str, str]]) -> dict[str, Any] 
         None,
     )
     url = next((text for step, text in reversed(landing) if step == "PR"), "")
-    pr = re.fullmatch(r"https://github.com/[^/]+/([^/]+)/pull/([0-9]+)", url)
+    pr = re.fullmatch(
+        re.escape(service_endpoint_url("github.web_url"))
+        + r"/[^/]+/([^/]+)/pull/([0-9]+)",
+        url,
+    )
     answer = next((text for step, text in reversed(landing) if step == "HANDOFF"), "")
     refusal = re.fullmatch(r"rc=([0-9]+)(?: retries=[0-9]+)? (.*)", answer)
     if (
