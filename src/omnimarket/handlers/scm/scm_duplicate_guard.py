@@ -97,6 +97,7 @@ def refuse_or_continue(
     if code == EXIT_CLEAR:
         for note in answer.get("notes") or ():
             click.echo(f"PR-DUPLICATE-GUARD note: {note}", err=True)
+        click.echo(f"PR-DUPLICATE-GUARD clear: {answer['message']}", err=True)
         return None
     if code == EXIT_UNCHECKED:
         click.echo(
@@ -187,7 +188,9 @@ def duplicate_check_command(
         worktree=worktree,
     )
     click.echo(json.dumps(answer, separators=(",", ":")))
-    if code == EXIT_DUPLICATE:
+    if code == EXIT_CLEAR:
+        click.echo(f"PR-DUPLICATE-GUARD clear: {answer['message']}", err=True)
+    elif code == EXIT_DUPLICATE:
         click.echo(f"PR-DUPLICATE-REFUSED: {answer['message']}", err=True)
     elif code == EXIT_UNCHECKED:
         click.echo(f"PR-DUPLICATE-GUARD unchecked: {answer['reason']}", err=True)

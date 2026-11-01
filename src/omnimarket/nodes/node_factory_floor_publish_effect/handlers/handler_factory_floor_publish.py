@@ -242,7 +242,11 @@ class HandlerFactoryFloorPublish:
                     )
 
         data = self._read_record(home / rt.source.relpath)
-        generated_at = str(json.loads(data)["generated_at"])
+        record = json.loads(data)
+        generated_at = str(record["generated_at"])
+        results = self._flag_undrawn(
+            results, rt, self._declared_fragments(rt, env), record["lines"]
+        )
         page = (NODE_DIR / rt.page_relpath).read_bytes()
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         health = self._read_process_health(home / rt.process_health_relpath)
@@ -461,10 +465,10 @@ class HandlerFactoryFloorPublish:
         return data
 
     @staticmethod
-    def _declared_lines(
+    def _declared_fragments(
         rt: ModelFactoryFloorPublishRuntime, env: Mapping[str, str]
-    ) -> dict[str, object]:
-        """Which plans the factory floor effect's overlay declares as lines, or why that is unread."""
+    ) -> tuple[str, ...] | None:
+        """The plan texts the factory floor effect's overlay declares as lines, or ``None`` when that is unread."""
         try:
             declared = load_structured_overlay(
                 rt.lines_overlay.overlay_id,
@@ -473,14 +477,46 @@ class HandlerFactoryFloorPublish:
                 file_env=rt.lines_overlay.file_env,
             )
         except NodeOverlayError:
+            return None
+        return declared.plan_path_contains
+
+    @staticmethod
+    def _declared_lines(
+        rt: ModelFactoryFloorPublishRuntime, env: Mapping[str, str]
+    ) -> dict[str, object]:
+        """Which plans the factory floor effect's overlay declares as lines, or why that is unread."""
+        tokens = HandlerFactoryFloorPublish._declared_fragments(rt, env)
+        if tokens is None:
             return {
                 "state": "unread",
                 "reason": "the factory floor effect's overlay is missing or invalid",
             }
-        return {
-            "state": "read",
-            "plan_path_contains": list(declared.plan_path_contains),
-        }
+        return {"state": "read", "plan_path_contains": list(tokens)}
+
+    @staticmethod
+    def _flag_undrawn(
+        results: list[ModelPublishStepResult],
+        rt: ModelFactoryFloorPublishRuntime,
+        declared: tuple[str, ...] | None,
+        lines: Sequence[object],
+    ) -> list[ModelPublishStepResult]:
+        """Mark the record step not ok, naming the declared lines the record does not draw."""
+        drawn = [line for line in lines if isinstance(line, dict)]
+        missing = [
+            token
+            for token in declared or ()
+            if not any(token in str(line.get("plan_path", "")) for line in drawn)
+        ]
+        if not missing:
+            return results
+        flagged = ModelPublishStepResult(
+            name=rt.record_step,
+            status="failed",
+            detail="declared lines not drawn: " + ", ".join(missing),
+        )
+        if any(r.name == rt.record_step for r in results):
+            return [flagged if r.name == rt.record_step else r for r in results]
+        return [*results, flagged]
 
     def _copy(
         self,

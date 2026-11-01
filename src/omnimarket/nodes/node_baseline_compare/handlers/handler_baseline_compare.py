@@ -38,6 +38,9 @@ from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelServiceHealthSnapshot,
     ProbeSnapshotItem,
 )
+from omnimarket.nodes.node_baseline_compare.container.container_baseline_compare import (
+    build_handler_baseline_capture,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -371,7 +374,7 @@ class HandlerBaselineCompare:
         probe_registry: dict[str, ProbeProtocol] | None = None,
         capture_handler: HandlerBaselineCapture | None = None,
     ) -> None:
-        self._capture_handler = capture_handler or HandlerBaselineCapture(
+        self._capture_handler = capture_handler or build_handler_baseline_capture(
             probe_registry=probe_registry
         )  # lifecycle-ok: optional-di-fallback
 

@@ -376,6 +376,10 @@ jobs:
         run: uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
       - name: Retired model and archive safety negative controls
         run: uv run pytest tests/ci/test_retired_model_references.py tests/nodes/test_file_retention_archive_safety.py -q --no-cov
+      - name: Fixtures derive event payloads from the producer
+        run: uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
+      - name: Handwritten event-payload negative controls
+        run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Ruff format check
@@ -4277,11 +4281,12 @@ jobs:
           sparse-checkout: |
             scripts/ci/ci_summary_gate.py
             scripts/ci/ci_summary_external_producers.json
+            scripts/ci/ci_summary_sweep_non_pr_events.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json scripts/ci/
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json scripts/ci/
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:

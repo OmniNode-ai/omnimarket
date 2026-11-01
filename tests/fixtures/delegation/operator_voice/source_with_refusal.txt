@@ -1,0 +1,5 @@
+Thread on the storage migration request
+
+Requester: Can the storage migration go out this week? The cutover window is Thursday evening.
+Reviewer: I do not approve the migration until the rollback checklist is closed and every dry run has passed.
+Requester: Understood, I will finish the checklist first.

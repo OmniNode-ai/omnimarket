@@ -52,6 +52,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire import model_delegate_skill_response
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
 )
@@ -441,9 +442,13 @@ class TestEveryEmittedRungKeyIsDeclared:
         assert len(self._emitted_keys()) >= 10
 
     def test_no_emitted_key_is_undeclared(self) -> None:
-        undeclared = self._emitted_keys() - set(
-            ModelDelegateSkillAttemptRecord.model_fields
+        # A consumer-first key (OMN-18868) is accepted and dropped by the
+        # record's before-validator, so it does not refuse the evidence write;
+        # every other undeclared key still does.
+        accepted = set(ModelDelegateSkillAttemptRecord.model_fields) | set(
+            model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
         )
+        undeclared = self._emitted_keys() - accepted
         assert not undeclared, (
             "the port appends per-rung keys the attempt record does not declare, "
             "and the model forbids extras, so the evidence write will be refused "
