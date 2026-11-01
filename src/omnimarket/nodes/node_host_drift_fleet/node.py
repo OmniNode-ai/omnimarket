@@ -4,14 +4,18 @@
 
 from pathlib import Path
 
-from omnimarket.nodes.contract_topics import contract_subscribe_topics
+import yaml
 
 from .handlers.handler_host_drift_fleet import HandlerHostDriftFleet
 
 
 def load_topics() -> tuple[str, ...]:
     """Load heartbeat and resolved topics in their declared order."""
-    return contract_subscribe_topics(NodeHostDriftFleet.contract_path)
+    contract = yaml.safe_load(NodeHostDriftFleet.contract_path.read_text())
+    topics = contract["caller_subscription"]["topics"]
+    if not isinstance(topics, list) or not all(isinstance(t, str) for t in topics):
+        raise ValueError("caller_subscription.topics must be a string list")
+    return tuple(topics)
 
 
 class NodeHostDriftFleet(HandlerHostDriftFleet):

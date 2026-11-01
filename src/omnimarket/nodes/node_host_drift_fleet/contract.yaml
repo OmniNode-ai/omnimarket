@@ -24,9 +24,7 @@ handler:
   input_model: omnimarket.nodes.node_host_drift_fleet.models.ModelHostDriftFleetRequest
   output_model: omnimarket.nodes.node_host_drift_fleet.models.ModelHostDriftFleetResult
 event_bus:
-  subscribe_topics:
-  - onex.evt.omnimarket.host-drift-heartbeat.v1
-  - onex.evt.omnimarket.host-drift-resolved.v1
+  subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation with injected bus, clock and state store.
@@ -54,6 +52,9 @@ metadata:
   - OMN-21867
 caller_subscription:
   mode: stable_group_per_host
+  topics:
+  - onex.evt.omnimarket.host-drift-heartbeat.v1
+  - onex.evt.omnimarket.host-drift-resolved.v1
   group_id_template: '{prefix}.{host}'
   auto_offset_reset: earliest
 externally_produced_topics:

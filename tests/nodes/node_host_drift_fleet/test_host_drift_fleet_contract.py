@@ -29,14 +29,12 @@ def test_host_drift_fleet_contract_bindings() -> None:
     assert contract["descriptor"]["purity"] == "effectful"
     assert contract["descriptor"]["timeout_ms"] > 0
     assert contract["metadata"]["related_tickets"]
-    assert contract["event_bus"] == {
-        "subscribe_topics": [
-            "onex.evt.omnimarket.host-drift-heartbeat.v1",
-            "onex.evt.omnimarket.host-drift-resolved.v1",
-        ],
-        "publish_topics": [],
-    }
-    assert load_topics() == tuple(contract["event_bus"]["subscribe_topics"])
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert load_topics() == (
+        "onex.evt.omnimarket.host-drift-heartbeat.v1",
+        "onex.evt.omnimarket.host-drift-resolved.v1",
+    )
+    assert load_topics() == tuple(contract["caller_subscription"]["topics"])
     assert contract["caller_subscription"]["mode"] == "stable_group_per_host"
     assert contract["caller_subscription"]["group_id_template"] == "{prefix}.{host}"
     assert metadata["capabilities"]["requires_network"] is True
