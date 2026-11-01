@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+import yaml
 from omnibase_core.enums.enum_experiment_status import EnumExperimentStatus
 from omnibase_core.enums.enum_experiment_type import EnumExperimentType
 from omnibase_core.models.experiment.model_experiment_result import (
@@ -42,12 +43,11 @@ from omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_
 _EXP_ID = UUID("11111111-1111-1111-1111-111111111111")
 _RUN_ID = UUID("22222222-2222-2222-2222-222222222222")
 _CORR_ID = UUID("33333333-3333-3333-3333-333333333333")
-_PUBLISH_TOPICS = list(
-    contract_publish_topics(
-        Path(__file__).resolve().parents[4]
-        / "src/omnimarket/nodes/node_regression_test_orchestrator/contract.yaml"
-    )
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_regression_test_orchestrator/contract.yaml"
 )
+_PUBLISH_TOPICS = list(contract_publish_topics(_CONTRACT_PATH))
 
 
 def _task(task_id: str) -> ModelRegressionTask:
@@ -189,6 +189,9 @@ def test_handle_emits_canonical_result_on_terminal_topic() -> None:
     assert emitted.status is EnumExperimentStatus.COMPLETED
     assert output.correlation_id == start.correlation_id
     assert _PUBLISH_TOPICS == [TOPIC_REGRESSION_COMPLETED]
+    # The contract's one declared output names the type the handler returns.
+    outputs = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))["outputs"]
+    assert outputs["experiment_result"]["type"] == type(emitted).__name__
 
 
 @pytest.mark.unit

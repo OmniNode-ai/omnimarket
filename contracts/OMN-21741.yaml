@@ -52,3 +52,21 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/unit/nodes/node_regression_test_orchestrator/test_handler_regression_test_orchestrator.py -q --no-cov --tb=line
     cwd: .
+- id: dod-omn21741-ac2-handler-source-at-head
+  description: AC2 reads each of the three slice handler modules at the exact head and finds the typed request parameter that exists only after this change.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_redeploy_fsm_reducer/handlers/handler_redeploy_fsm.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "request: ModelRedeployAdvanceCommand" > /dev/null'''
+    cwd: .
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_regression_test_orchestrator/handlers/handler_regression_test_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "request: ModelRegressionSuiteStart" > /dev/null'''
+    cwd: .
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_user_correction_observer_effect/handler_user_correction_observer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "request: ModelUserCorrectionEvent" > /dev/null'''
+    cwd: .
