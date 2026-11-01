@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Topic constants for the Codex runtime request adapter, read from node contracts."""
+# Topic constants for the Codex runtime request adapter, read from node contracts.
 
 from omnimarket.nodes.contract_topics import codex_topic
 
