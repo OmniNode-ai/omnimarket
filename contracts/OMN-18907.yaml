@@ -72,3 +72,34 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_handwritten_event_payload_check.py -q --no-cov -k Ac4"
         cwd: "."
+  - id: "dod-omn18907-deploy-packaged-node"
+    description: "Hosted runtime probe: dispatch the packaged fixture-check node through the in-process ONEX runtime. The evaluated checkout must be admitted with at least 300 scanned files and zero violations; an empty tree must be refused with a scan-floor diagnostic. Both receipts must carry typed results. This checks the installed checkout without a broker, database, lab route or production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked --python 3.12 python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          "$runtime_bin/python" -c 'import json, sys; from pathlib import Path; Path(sys.argv[1]).write_text(json.dumps({"repo_root": str(Path.cwd())}))' "$probe_dir/live.json";
+          mkdir "$probe_dir/empty";
+          "$runtime_bin/python" -c 'import json, sys; from pathlib import Path; Path(sys.argv[1]).write_text(json.dumps({"repo_root": sys.argv[2]}))' "$probe_dir/empty.json" "$probe_dir/empty";
+          "$runtime_bin/onex" node node_handwritten_event_payload_check_effect --input "$probe_dir/live.json" --state-root "$probe_dir/live-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/live-receipt.json";
+          "$runtime_bin/onex" node node_handwritten_event_payload_check_effect --input "$probe_dir/empty.json" --state-root "$probe_dir/empty-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/empty-receipt.json";
+          "$runtime_bin/python" -c '
+          import json
+          import sys
+          from pathlib import Path
+          from omnimarket.nodes.node_handwritten_event_payload_check_effect.models.model_handwritten_event_payload_check import ModelHandwrittenEventPayloadCheckResult
+          live, empty = [json.loads(Path(p).read_text()) for p in sys.argv[1:]]
+          for receipt in (live, empty):
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          admitted, refused = [ModelHandwrittenEventPayloadCheckResult.model_validate(r["result"]) for r in (live, empty)]
+          assert admitted.admitted and admitted.exit_code == 0 and admitted.scanned_files >= 300 and admitted.violations == 0, admitted
+          assert not refused.admitted and refused.exit_code == 1 and refused.scanned_files == 0, refused
+          assert any("scan floor" in line for line in refused.output_lines), refused
+          print("packaged node admitted", admitted.scanned_files, "files; empty tree refused at scan floor")
+          ' "$probe_dir/live-receipt.json" "$probe_dir/empty-receipt.json"
+        cwd: "."
