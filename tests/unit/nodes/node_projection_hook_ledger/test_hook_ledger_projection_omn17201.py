@@ -747,7 +747,7 @@ async def test_bad_content_id_is_durably_quarantined_before_offset_commit(
     bad_tag: str | None,
 ) -> None:
     """The live runner DLQs malformed identity before advancing the Kafka offset."""
-    from omnimarket.projection.runner import ProjectionStats
+    from omnimarket.models.model_projection_stats import ProjectionStats
 
     record = _envelope_record()
     tags = record["_envelope"]["metadata"]["tags"]
@@ -790,10 +790,10 @@ async def test_bad_content_id_is_durably_quarantined_before_offset_commit(
 @pytest.mark.asyncio
 async def test_bad_content_id_is_not_committed_if_dlq_publish_fails() -> None:
     """A failed quarantine stays replayable instead of becoming a silent drop."""
+    from omnimarket.models.model_projection_stats import ProjectionStats
     from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
         HookLedgerProjectionError,
     )
-    from omnimarket.projection.runner import ProjectionStats
 
     timeline: list[str] = []
     runner, db, published = _runner()
@@ -827,10 +827,10 @@ async def test_bad_content_id_is_not_committed_if_dlq_publish_fails() -> None:
 @pytest.mark.asyncio
 async def test_bad_content_id_is_not_committed_without_a_dlq_publisher() -> None:
     """A missing runtime publisher is a quarantine failure, not a successful DLQ."""
+    from omnimarket.models.model_projection_stats import ProjectionStats
     from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
         HookLedgerProjectionError,
     )
-    from omnimarket.projection.runner import ProjectionStats
 
     timeline: list[str] = []
     runner, db, published = _runner()
