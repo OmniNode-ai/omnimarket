@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_handwritten_event_payload_check_effect
+version: 1.0.0
+description: Refuses a hand-written event-payload dict in projection and consumer fixture tests
+omnibase_core_compat: '>=0.47.28,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_handwritten_event_payload_check_effect: omnimarket.nodes.node_handwritten_event_payload_check_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  side_effect_class: read_only
+dependencies:
+- pydantic>=2.11.0
+- pyyaml>=6.0
+authors:
+- OmniNode Team
+license: MIT
+tags:
+- effect
+- ci
+- governance
+node_role: effect
+pack: delegation
+display_name: Handwritten Event Payload Check Effect

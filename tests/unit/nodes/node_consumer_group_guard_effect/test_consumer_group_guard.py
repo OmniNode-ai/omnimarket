@@ -106,6 +106,10 @@ def test_the_tick_writes_the_heartbeat_only_within_the_threshold(
     # The host installer's registry module tick passes these two flags and the lane in
     # the environment; a bus over the threshold stops the heartbeat the liveness watch reads.
     monkeypatch.setattr(guard, "resolve_broker", _broker)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_consumer_group_guard_effect.runtime_consumer_group_guard.reap",
+        lambda census, _lane, _dir: census,
+    )
     monkeypatch.setenv("ONEX_CONSUMER_GROUP_GUARD_BUS_LANE", "dev")
     tick = ["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "state")]
     monkeypatch.setattr(guard, "read_group_states", lambda _config: {"EMPTY": LIMIT})
