@@ -171,6 +171,26 @@ async def test_resolver_error_does_not_take_app_path_or_expose_value(
     mint.assert_not_called()
 
 
+async def test_unbuildable_store_names_the_missing_bootstrap_variable(monkeypatch):
+    from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationError
+
+    async def resolve(*args, **kwargs):
+        raise SecretStoreConfigurationError(
+            "Infisical machine identity is not fully configured. "
+            "Missing or blank: ['INFISICAL_ENVIRONMENT_SLUG']."
+        )
+
+    monkeypatch.setattr(module, "resolve_api_key_async", resolve)
+    mint = Mock()
+    monkeypatch.setattr(module, "mint_installation_token", mint)
+    with pytest.raises(module.GitHubAppCredentialMissingError) as caught:
+        await module.HandlerGithubRepoWriteEffect()._live_transport()
+    assert "GITHUB_TOKEN" in str(caught.value)
+    assert "INFISICAL_ENVIRONMENT_SLUG" in str(caught.value)
+    assert caught.value.__suppress_context__
+    mint.assert_not_called()
+
+
 def test_inmemory_cli_uses_the_same_store_resolver_for_app_credentials(
     monkeypatch, caplog
 ):

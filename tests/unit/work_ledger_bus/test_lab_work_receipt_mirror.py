@@ -9,9 +9,9 @@ from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProjectionNotMaterializedError
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolBusMessage,
