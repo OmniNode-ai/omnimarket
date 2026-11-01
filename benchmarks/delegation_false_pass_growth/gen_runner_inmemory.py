@@ -13,24 +13,24 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 cls, runs_total, conc = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-maxlen = 30000
+maxlen, WORK_DIR = 30000, os.environ["OMN20032_WORK_DIR"]
 prompts = [
     p
-    for p in json.load(open(f"/tmp/omn20032/prompts_{cls}.json"))
+    for p in json.load(open(f"{WORK_DIR}/prompts_{cls}.json"))
     if len(p["prompt"]) <= maxlen
 ]
 random.Random("omn-20032-" + cls).shuffle(prompts)
 off = int(os.environ.get("OFFSET", "0"))
 jobs = [(i + off, prompts[(i + off) % len(prompts)]) for i in range(runs_total)]
-log = open(f"/tmp/omn20032/genmem_{cls}.jsonl", "a")
+log = open(f"{WORK_DIR}/genmem_{cls}.jsonl", "a")
 env = dict(
     os.environ,
     BIFROST_CONTRACT_PATH="/app/.venv/lib/python3.12/site-packages/omnimarket/configs/bifrost_delegation.yaml",
     BIFROST_OVERLAY_PATH=os.environ.get(
-        "OVERLAY", "/tmp/omn20032/dev.local.bifrost.yaml"
+        "OVERLAY", f"{WORK_DIR}/dev.local.bifrost.yaml"
     ),
-    TASK_CLASS_CONTRACT_PATH="/tmp/omn20032/task_class_contracts.v1.yaml",
-    DELEGATION_ROUTING_TIERS_PATH="/tmp/omn20032/routing_tiers_local_only.yaml",
+    TASK_CLASS_CONTRACT_PATH=f"{WORK_DIR}/task_class_contracts.v1.yaml",
+    DELEGATION_ROUTING_TIERS_PATH=f"{WORK_DIR}/routing_tiers_local_only.yaml",
 )
 for k in (
     "OPENROUTER_API_KEY",
@@ -62,7 +62,7 @@ def one(job):
         "in-process",
         "--json",
         "--state-root",
-        f"/tmp/omn20032/statem_{cls}_{off}_{i % conc}",
+        f"{WORK_DIR}/statem_{cls}_{off}_{i % conc}",
     ]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=700, env=env)
