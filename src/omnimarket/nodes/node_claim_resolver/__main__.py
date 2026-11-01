@@ -13,8 +13,8 @@ import sys
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver import (
-    HandlerClaimResolver,
+from omnimarket.nodes.node_claim_resolver.container.container_claim_resolver import (
+    build_handler_claim_resolver,
 )
 from omnimarket.nodes.node_claim_resolver.models import ModelClaimResolutionRequest
 
@@ -28,7 +28,7 @@ def main() -> int:
         return 1
 
     try:
-        response = HandlerClaimResolver().handle(request)
+        response = build_handler_claim_resolver().handle(request)
     except Exception as exc:
         sys.stderr.write(f"CLAIM_RESOLVER_RUNTIME_ERROR:{exc}\n")
         return 1
