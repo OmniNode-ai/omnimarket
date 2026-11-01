@@ -24,6 +24,8 @@ from omnibase_core.models.contracts.ticket.model_runtime_sha_match_output import
 from omnibase_core.validation.runtime_sha_match import CHECK_TYPE_RUNTIME_SHA_MATCH
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.runtime_paths import runtime_path
+
 
 class ModelRuntimeShaVerifyRequest(BaseModel):
     """Input to HandlerRuntimeShaVerify."""
@@ -39,7 +41,7 @@ class ModelRuntimeShaVerifyRequest(BaseModel):
         description="SSH host of the runtime server",
     )
     runtime_repo_path: str = Field(
-        default="/opt/omninode/runtime",
+        default_factory=lambda: runtime_path("runtime_host.deployed_repo_path"),
         description="Absolute path to the deployed git repo on the runtime host",
     )
     runner: str = Field(default="integration-sweep-verifier", min_length=1)
@@ -67,7 +69,6 @@ class HandlerRuntimeShaVerify:
         except Exception as exc:
             return self._error_receipt(request, run_timestamp, probe_cmd, str(exc))
 
-        probe_stdout = deployed_sha + "\n"
         match = deployed_sha.lower() == request.merge_sha.lower()
         output = ModelRuntimeShaMatchOutput(
             runtime_host=request.runtime_host,
@@ -88,7 +89,7 @@ class HandlerRuntimeShaVerify:
             runner=request.runner,
             verifier=self._VERIFIER,
             probe_command=probe_cmd,
-            probe_stdout=probe_stdout,
+            probe_stdout=deployed_sha + "\n",
             actual_output=output.model_dump_json(),
             exit_code=0 if match else 1,
             pr_number=request.pr_number,
