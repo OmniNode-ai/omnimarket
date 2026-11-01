@@ -55,8 +55,6 @@ dod_evidence:
 - id: dod-omn21846-deploy-probe
   description: Read the published gate handler at the checked-out commit. It imports and calls the operator_voice check; the symbol is absent at the merge base, so a head without the wiring fails the probe.
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"check_operator_voice(content, grounding_source)\" > /dev/null'"
