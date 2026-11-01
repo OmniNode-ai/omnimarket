@@ -34,10 +34,71 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21694-checker-rerun"
-    description: "The contracts_and_di check over the slice paths reports no literal_path finding."
+    description: "The enabled contracts_and_di literal_path rule checks all nine slice modules. Missing modules, incomplete scans, unparseable files and literal_path findings fail the probe."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "uv run python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi benchmarks/delegation_false_pass_growth | grep -c literal_path | grep -qx 0"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          names = (
+              "audit_generated_rows.py",
+              "candidates_meta.py",
+              "gen_runner_inmemory.py",
+              "gen_runner_persisted_path.py",
+              "generation_summary.py",
+              "make_local_only_contract.py",
+              "make_local_only_routing.py",
+              "make_local_overlays.py",
+              "mem_to_content.py",
+          )
+          paths = [Path("benchmarks/delegation_false_pass_growth") / name for name in names]
+          assert all(path.is_file() for path in paths), "a slice module is missing"
+          validator = ValidatorContractsAndDi()
+          assert any(rule.rule_id == "literal_path" and rule.enabled for rule in validator.contract.rules), "literal_path rule is not enabled"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_path", "unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_path findings")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21694-deploy-published-overlay-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the overlay generator at the
+      evaluated published commit and run it with an injected scratch directory
+      and inert backend URLs. Require all three overlays under that directory
+      and verify their endpoint bindings. This checks the published benchmark
+      artifact and does not assert a live service rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/benchmarks/delegation_false_pass_growth/make_local_overlays.py" > "$probe_dir/generator.py";
+          mkdir "$probe_dir/output";
+          OMN20032_WORK_DIR="$probe_dir/output" BACKEND_A_CHAT_URL="http://backend-a.invalid/v1" BACKEND_B_CHAT_URL="http://backend-b.invalid/v1" uv run --frozen python -I "$probe_dir/generator.py";
+          uv run --frozen python - "$probe_dir/output" <<'PY'
+          import sys
+          from pathlib import Path
+          import yaml
+
+          output = Path(sys.argv[1])
+          a, b = "http://backend-a.invalid/v1", "http://backend-b.invalid/v1"
+          expected = {
+              "dev.local.bifrost.yaml": [a, a],
+              "dev.local202.bifrost.yaml": [a, b],
+              "dev.local202b.bifrost.yaml": [b, b],
+          }
+          assert sorted(path.name for path in output.iterdir()) == sorted(expected), "published generator did not write all three overlays under the injected directory"
+          for name, endpoints in expected.items():
+              document = yaml.safe_load((output / name).read_text())
+              assert [row["endpoint_url"] for row in document["backends"]] == endpoints, name
+          print("Published overlay generator readback: three injected-directory overlays and endpoint bindings PASS")
+          PY
         cwd: "${OMNI_HOME}/omnimarket"
