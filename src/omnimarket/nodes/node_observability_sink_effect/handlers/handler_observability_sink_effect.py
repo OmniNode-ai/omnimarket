@@ -15,8 +15,12 @@ import inspect
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Literal, Protocol
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import UUID
 
+from omnimarket.nodes.node_observability_sink_effect.container.container_inmemory import (
+    InMemoryObservabilitySink,
+    bind_local_sink,
+)
 from omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_input import (
     ModelActionEvent,
     ModelObservabilitySinkInput,
@@ -50,42 +54,6 @@ class ProtocolObservabilityPostgresSink(Protocol):
     ) -> UUID | Awaitable[UUID]: ...
 
 
-class InMemoryObservabilitySink:
-    """Local default sink — the contract default when no remote adapter is injected.
-
-    The in-memory/local bus is always present; Kafka and PostgreSQL persistence
-    are runtime overrides. When neither override is wired (the default local
-    runtime), observability events are recorded in memory so the effect runs
-    over the local bus instead of crashing. Trace ids are prefixed ``inmemory:``
-    and row ids are deterministic (uuid5 of the event id) so the output honestly
-    signals that local persistence was used, not a remote backend.
-    """
-
-    def __init__(self) -> None:
-        self.kafka_events: list[ModelActionEvent] = []
-        self.postgres_events: list[ModelActionEvent] = []
-
-    def publish_action_event(
-        self,
-        *,
-        correlation_id: UUID,
-        session_id: UUID,
-        event: ModelActionEvent,
-    ) -> str:
-        self.kafka_events.append(event)
-        return f"inmemory:{event.event_id}"
-
-    def insert_action_event(
-        self,
-        *,
-        correlation_id: UUID,
-        session_id: UUID,
-        event: ModelActionEvent,
-    ) -> UUID:
-        self.postgres_events.append(event)
-        return uuid5(NAMESPACE_URL, f"observability-inmemory:{event.event_id}")
-
-
 class HandlerObservabilitySinkEffect:
     """EFFECT: persist observability events through injected runtime adapters."""
 
@@ -102,7 +70,7 @@ class HandlerObservabilitySinkEffect:
         # The in-memory/local sink is the contract default. Kafka/Postgres
         # adapters are overrides supplied by runtime wiring; absent them the
         # effect degrades to local persistence rather than raising.
-        local_default = InMemoryObservabilitySink()
+        local_default = bind_local_sink()
         self._kafka_sink: ProtocolObservabilityKafkaSink = (
             kafka_sink if kafka_sink is not None else local_default
         )

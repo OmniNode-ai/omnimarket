@@ -16,6 +16,7 @@ from typing import Any, TypeVar
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_board_probe_results.contract_topics import (
     SUBSCRIBE_TOPICS,
     TOPIC_BOARD_PROBE_RESULT,
@@ -129,14 +130,14 @@ class BoardProbeResultsProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no publisher available for board probe DLQ {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal shim: one injected message, one guarded write."""
-        data = dict(input_data)
+        data = dict(request.payload)
         topics = self.subscribe_topics
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        partition = int(data.pop("_partition", 0))
-        offset = int(data.pop("_offset", 0))
-        fallback_id = str(data.pop("_fallback_id", "")) or (
+        topic = request.topic_or(topics[0] if topics else "")
+        partition = request.partition
+        offset = request.offset
+        fallback_id = request.fallback_id or (
             deterministic_correlation_id(topic, partition, offset)
         )
         for key in tuple(data):
