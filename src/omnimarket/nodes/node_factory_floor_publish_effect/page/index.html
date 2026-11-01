@@ -718,7 +718,7 @@ function freshRows(rec, status, health, manifest, delegation){
     timed("Reports and series", "Reports manifest", manifest.published_at);
     // The record and the series are listed above from their own files, so their manifest rows are not listed twice.
     manifest.reports.filter(r => r.id !== "factory_floor" && r.id !== "process_health").forEach(r => (r.data || []).forEach(x => {
-      if (x.status === "read") { timed("Reports and series", x.name, x.as_of, r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : ""); rows[rows.length - 1].report = r.id; }
+      if (x.status === "read") { timed("Reports and series", x.name, x.as_of, r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : "", r.refresh); rows[rows.length - 1].report = r.id; }
       else rows.push({group: "Reports and series", name: x.name, ok: false, flag: true, note: x.reason || "unread"});
     }));
   } else {
