@@ -50,7 +50,7 @@ def test_every_walker_obligation_is_bound_exactly_once() -> None:
     obligations = {o.path_id for o in load_obligations(_REPORT)}
     bound = _bound_path_ids()
 
-    assert len(obligations) == 13
+    assert len(obligations) == 15
     assert set(bound) - obligations == set(), "a marker names an unknown path id"
     assert obligations - set(bound) == set(), "an obligation has no chain case"
     assert {path_id: n for path_id, n in bound.items() if n != 1} == {}
