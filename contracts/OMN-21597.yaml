@@ -1,0 +1,121 @@
+schema_version: 1.0.0
+ticket_id: OMN-21597
+title: 'Contract hot loading A1b: The package announcer, catalog service and step 0 run as a contract-driven effect node in omnimarket'
+summary: 'The package announcer, the catalog service and boot step 0 land as node_package_announce_effect over omnibase_core''s announcement types, admission policy and lifecycle.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21597-ac1
+    statement: 'with two installed fixture packages whose metadata lists three contracts, the announcer publishes exactly three announcements, each with the canonical content hash, including one whose file has Windows line endings -- falsifier: a count other than three, or a hash that differs from the canonical form''s'
+    acceptance:
+      - id: AC1
+        statement: 'AC1: with two installed fixture packages whose metadata lists three contracts, the announcer publishes exactly three announcements, each with the canonical content hash, including one whose file has Windows line endings -- falsifier: a count other than three, or a hash that differs from the canonical form''s'
+  - id: req-omn21597-ac2
+    statement: 'The announcer and the catalog complete with the container constructor replaced by one that raises -- falsifier: the constructor is called'
+    acceptance:
+      - id: AC2
+        statement: 'AC2: The announcer and the catalog complete with the container constructor replaced by one that raises -- falsifier: the constructor is called'
+  - id: req-omn21597-ac3
+    statement: 'A malformed contract, a contract with no name and a listed contract whose file is absent are `announce_refused` with a typed reason and no catalog entry -- falsifier: an entry exists'
+    acceptance:
+      - id: AC3
+        statement: 'AC3: A malformed contract, a contract with no name and a listed contract whose file is absent are `announce_refused` with a typed reason and no catalog entry -- falsifier: an entry exists'
+  - id: req-omn21597-ac4
+    statement: 'A second boot with one fixture package removed announces a `withdraw` for each of its contracts from the persisted previous inventory, and the catalog marks them `withdrawn` -- falsifier: a contract of the removed package still admitted'
+    acceptance:
+      - id: AC4
+        statement: 'AC4: A second boot with one fixture package removed announces a `withdraw` for each of its contracts from the persisted previous inventory, and the catalog marks them `withdrawn` -- falsifier: a contract of the removed package still admitted'
+  - id: req-omn21597-ac5
+    statement: '`git grep -n "onex.nodes\|onex.domain_plugins"` over the node package finds the group name only in the announcer''s metadata reader -- falsifier: a match outside it'
+    acceptance:
+      - id: AC5
+        statement: 'AC5: `git grep -n "onex.nodes\|onex.domain_plugins"` over the node package finds the group name only in the announcer''s metadata reader -- falsifier: a match outside it'
+  - id: req-omn21597-ac6
+    statement: 'The same tests pass with the in-memory bus bound by one overlay and a second recording bus bound by another, with no code change -- falsifier: a test that names a concrete bus class'
+    acceptance:
+      - id: AC6
+        statement: 'AC6: The same tests pass with the in-memory bus bound by one overlay and a second recording bus bound by another, with no code change -- falsifier: a test that names a concrete bus class'
+  - id: req-omn21597-ac7
+    statement: 'An announcement that no catalog acknowledges is retried the number of times the lifecycle''s retry transition allows and then refused `ACKNOWLEDGEMENT_TIMEOUT` -- falsifier: a count of publishes other than one plus the retries'
+    acceptance:
+      - id: AC7
+        statement: 'AC7: An announcement that no catalog acknowledges is retried the number of times the lifecycle''s retry transition allows and then refused `ACKNOWLEDGEMENT_TIMEOUT` -- falsifier: a count of publishes other than one plus the retries'
+evidence_requirements:
+  - kind: tests
+    description: The node suites run on a lab host at the pushed head.
+    command: uv run pytest tests/nodes/node_package_announce_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21597-ac1
+    description: AC1 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_package_announcer.py -k 'three_contracts or windows_line_endings' -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21597-ac2
+    description: AC2 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_announce_before_container.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21597-ac3
+    description: AC3 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_package_announcer.py -k 'malformed or absent' -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21597-ac4
+    description: AC4 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_withdrawal_after_restart.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21597-ac5
+    description: AC5 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_group_name_confinement.py -k 'group_names or git_grep or planted_group' -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21597-ac6
+    description: AC6 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_group_name_confinement.py -k concrete_bus -q --no-cov --tb=line
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_announce_before_container.py -k same_scenario -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21597-ac7
+    description: AC7 is proven by the focused node tests.
+    source: manual
+    binds_ac:
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_package_announcer.py -k unacknowledged -q --no-cov --tb=line
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_package_announce_effect/test_announce_fsm.py -k allows_three_retries -q --no-cov --tb=line
+        cwd: .
