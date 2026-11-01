@@ -86,6 +86,22 @@ requirements:
     acceptance:
       - id: "AC22"
         statement: "AC22: the Factory floor tab has one verdict line and no lamp grid, shift report or tally, uses the glossary's plain words, shows Eastern time with UTC only in a title, counts each machine's slots under one legend, collapses lines with no plan file, and carries no text below twelve pixels -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q"
+  - id: "req-omn21733-merged-running-count"
+    statement: |-
+      The floor can be given the count of merged work and of merged-and-running work per operator day, and the idle slots per lab host, from a compute node whose inputs a reader effect supplies. The count is of merges, never of hand-offs.
+    acceptance:
+      - id: "AC31"
+        statement: "AC31: a pull request with a handed-off, armed or queued state and no merge adds nothing to the merged or running count, and the same pull request with a merge and no running evidence counts merged=1 running=0 -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute -q -k handoff_armed"
+      - id: "AC32"
+        statement: "AC32: a merge with adoption or deploy evidence counts as running with the evidence kind named, and removing the evidence row moves running by exactly one -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute -q -k evidence_row"
+      - id: "AC33"
+        statement: "AC33: idle slots per host are slots minus live lane slots for every host of the declared table, a full host reads idle 0, and a host removed from the table disappears -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute -q -k 'idle_slots or declared_table'"
+      - id: "AC34"
+        statement: "AC34: the declared timezone, window and evidence vocabulary change the output with no code change -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q -k declared"
+      - id: "AC35"
+        statement: "AC35: read through the container from files shaped like the lab's, the recorded day counts match the hand count -- falsifier: uv run pytest tests/nodes/node_merged_running_count_effect -q"
+      - id: "AC36"
+        statement: "AC36: the focused suites pass and mypy --strict is clean on both nodes -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q && uv run mypy src/omnimarket/nodes/node_merged_running_count_compute src/omnimarket/nodes/node_merged_running_count_effect --strict"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -319,3 +335,57 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-handoff"
+    description: "AC31 hand-offs never change the count."
+    source: "manual"
+    binds_ac: ["AC31"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute -q --no-cov --tb=line -k handoff_armed"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-evidence"
+    description: "AC32 evidence makes a merge run and its removal moves running by one."
+    source: "manual"
+    binds_ac: ["AC32"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute -q --no-cov --tb=line -k evidence_row"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-idle"
+    description: "AC33 idle slots per declared host."
+    source: "manual"
+    binds_ac: ["AC33"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute -q --no-cov --tb=line -k 'idle_slots or declared_table'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-declared"
+    description: "AC34 declared timezone, window and vocabulary change the output."
+    source: "manual"
+    binds_ac: ["AC34"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line -k declared"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-recorded"
+    description: "AC35 the recorded day counts match the hand count."
+    source: "manual"
+    binds_ac: ["AC35"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-suites"
+    description: "AC36 both suites pass."
+    source: "manual"
+    binds_ac: ["AC36"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-mrc-deploy"
+    description: "Deploy probe reads the compute handler at the checked-out commit from GitHub and requires HandlerMergedRunningCount, the entry this change adds and the base tree lacks."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merged_running_count_compute/handlers/handler_merged_running_count.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerMergedRunningCount:'"

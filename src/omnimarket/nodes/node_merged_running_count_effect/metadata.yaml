@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_running_count_effect
+version: "1.0.0"
+description: Reads the merges, adoption rows, host table and placement read, and calls the merged-and-running count compute node
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_merged_running_count_effect: omnimarket.nodes.node_merged_running_count_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: read
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+  - omnibase_core
+  - node_merged_running_count_compute
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, floor, merges, idle-slots]
+node_role: effect
+pack: "routing"
+display_name: "Merged Running Count Effect"
