@@ -34,6 +34,9 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
+    LinearHttpClient,
+)
 from omnimarket.nodes.node_linear_triage.models.model_git_automation_guard import (
     ModelGitAutomationAuditReport,
     ModelGitAutomationException,
@@ -82,12 +85,8 @@ class GitAutomationProbe(Protocol):
     def fetch(self) -> dict[str, Any]: ...
 
 
-class LinearGitAutomationProbe:
+class LinearGitAutomationProbe(LinearHttpClient):
     """Live probe against the Linear GraphQL API. The only networked class here."""
-
-    def __init__(self, api_key: str, *, timeout: float = 30.0) -> None:
-        self._api_key = api_key
-        self._timeout = timeout
 
     def fetch(self) -> dict[str, Any]:
         payload = json.dumps({"query": _QUERY}).encode()
