@@ -66,3 +66,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn21883-deploy-hosted-target-rows
+    description: Deploy probe. A hosted import of the shipped orchestrator contract at the checked-out commit loads all 57 target rows through the plan node's own loader and counts 4, 7, 15, 8, 7, 9 and 7 per stage. It fails at the merge base, where the orchestrator contract does not exist. No lab service is required.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import collections, pathlib, yaml
+          import omnimarket.nodes.node_host_bringup_orchestrator as pkg
+          doc = yaml.safe_load((pathlib.Path(pkg.__file__).parent / "contract.yaml").read_text())
+          rows = doc["targets"]
+          stages = collections.Counter(r["stage"] for r in rows)
+          assert len(rows) == 57, len(rows)
+          assert [stages[s] for s in "ABCDEFG"] == [4, 7, 15, 8, 7, 9, 7], stages
+          '
+        cwd: .

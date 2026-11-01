@@ -28,11 +28,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from omnimarket.models.host_bringup import EnumBringupAction, EnumBringupCheckKind
 from omnimarket.nodes.node_host_bringup_orchestrator.models import ModelPlanTargetRow
-from omnimarket.nodes.node_host_bringup_plan_compute.models import (
-    EnumBringupAction,
-    EnumBringupCheckKind,
-)
 
 _CONTRACT = Path(__file__).resolve().parent / "contract.yaml"
 
@@ -235,19 +232,6 @@ output_model:
   name: "ModelHostBringupPlan"
   module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
   description: "Planned steps in need order with skip or act per target, or the refusals."
-handler:
-  module: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan"
-  class: "HandlerHostBringupPlan"
-  input_model: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan.ModelHostBringupPlanRequest"
-  output_model: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan.ModelHostBringupPlan"
-handler_routing:
-  routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan:HandlerHostBringupPlan"
-  handlers:
-    - operation: "plan_host_bringup"
-      handler:
-        name: "HandlerHostBringupPlan"
-        module: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan"
 descriptor:
   node_archetype: orchestrator
   purity: pure

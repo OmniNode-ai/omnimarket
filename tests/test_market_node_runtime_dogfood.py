@@ -376,7 +376,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_seam_read_orchestrator is a graph contract only until its handler lands, so it is
     # experimental with no handler_routing: 26 -> 27. node_delegation_seam_orchestrator binds
     # a handler, so it is routable and adds nothing.
-    assert summary["skipped"] == 27
+    # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
+    # load_bringup_graph and declares no handler, so it is experimental with no
+    # handler_routing: 27 -> 28.
+    assert summary["skipped"] == 28
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
