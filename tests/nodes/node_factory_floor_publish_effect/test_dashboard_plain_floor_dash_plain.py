@@ -30,7 +30,7 @@ def test_f01_the_dashboard_opens_with_one_verdict_sentence_and_a_needs_you_list(
     assert "Needs you" in dash
     needs = dash.split('class="needs"')[1].split("</ol>")[0]
     assert 1 <= needs.count("<li>") <= 5
-    assert 'href="#floor/line-plan-two"' in dash
+    assert 'href="#dashboard/line-plan-two"' in dash
     assert "All lines running. Nothing needs you." in SHELL
 
 

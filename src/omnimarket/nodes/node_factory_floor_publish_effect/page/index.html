@@ -241,10 +241,45 @@ footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
   .lst li{grid-template-columns:minmax(0,1fr)}
   .lst li small{text-align:left;max-width:none}
 }
+/* drill-down drawer: a side panel over the tab the reader is on; the board underneath keeps its place */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:40vw;min-width:380px;max-width:680px;background:var(--panel);border-left:1px solid var(--rule);box-shadow:-10px 0 28px rgba(0,0,0,.2);z-index:30;display:flex;flex-direction:column;
+  transform:translateX(24px);opacity:0;visibility:hidden;transition:transform .18s ease,opacity .18s ease,visibility 0s linear .18s}
+.drawer.open{transform:none;opacity:1;visibility:visible;transition:transform .18s ease,opacity .18s ease,visibility 0s}
+.drawer-head{flex:none;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
+.drawer-head h2{font-size:1.35rem;line-height:1.05;overflow-wrap:anywhere}
+.drawer-head h2:focus{outline:none}
+.drawer-head .eyebrow{display:block;font:700 .78rem/1 var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--steel);margin-bottom:5px}
+.drawer-close{flex:none;font:700 1.3rem/1 var(--f-body);width:40px;height:40px;border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
+.drawer-close:hover{background:color-mix(in srgb,var(--safety) 15%,transparent)}
+.drawer-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 40px;display:grid;gap:14px;align-content:start}
+.drawer-body h3{margin:4px 0 -4px;color:var(--steel)}
+.scrim{display:none}
+dl.kv{margin:0;display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:6px 12px;font-size:.9rem}
+dl.kv dt{font:700 .8rem/1.5 var(--f-body);letter-spacing:.02em;color:var(--steel)}
+dl.kv dd{margin:0;overflow-wrap:anywhere}
+.dlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.dlist>li{border:1px solid var(--rule);border-radius:4px;padding:8px 10px;display:grid;gap:4px;font-size:.9rem;overflow-wrap:anywhere}
+.dlist ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.85rem}
+.dlist .pill{justify-self:start}
+.drawer .lrows{margin:0;border:1px solid var(--rule);border-radius:4px}
+.drawer .gauges{grid-template-columns:1fr 1fr}
+.drawer a.open-full{font-weight:600}
+a.drill{font-size:.85rem}
+@keyframes paneIn{from{opacity:0}to{opacity:1}}
+.pane:not([hidden]){animation:paneIn .15s ease-out}
+@media (max-width:700px){
+  .drawer{width:100%;min-width:0;max-width:none;border-left:0;transform:translateY(24px)}
+  .drawer.open{transform:none}
+  .scrim{display:block;position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.5);opacity:0;visibility:hidden;transition:opacity .18s ease,visibility 0s linear .18s}
+  .scrim.open{opacity:1;visibility:visible;transition:opacity .18s ease,visibility 0s}
+  dl.kv{grid-template-columns:minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){.drawer
+@media (prefers-reduced-motion:reduce){.drawer,.drawer.open,.scrim,.scrim.open{transition:none}.pane:not([hidden]){animation:none}.pulse i{animation:none}}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
   <div class="top">
     <div class="hazard" aria-hidden="true"></div>
     <div class="titlerow">
@@ -264,6 +299,16 @@ footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
     <section class="pane" id="pane-quality" role="tabpanel" aria-labelledby="tab-quality" hidden></section>
   </main>
 </div>
+
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <div><span class="eyebrow" id="drawerKind"></span><h2 id="drawerTitle" tabindex="-1"></h2></div>
+    <button type="button" class="drawer-close" id="drawerClose" aria-label="Close details" title="Close (Escape)">&times;</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="sr" id="drawerLive" role="status" aria-live="polite"></div>
+</aside>
 
 <script>
 const SITE = "";
@@ -287,6 +332,7 @@ const TABS = [
   {id: "quality", label: "Decision quality", short: "Quality", page: "reports/decision-quality/?embed=1", report: "decision_quality"}
 ];
 const TAB_IDS = TABS.map(t => t.id);
+const DRILL_KINDS = {lane: "Worker", line: "Assembly line", bay: "Machine", st: "Station", part: "Part", stop: "Stoppage", report: "Report"};
 
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const safeId = s => String(s).replace(/[^A-Za-z0-9_-]/g,"_");
@@ -348,7 +394,11 @@ function remember(id){
 function parseHash(){
   const raw = decodeURIComponent((location.hash || "").replace(/^#/, ""));
   const [tab, ...rest] = raw.split("/");
-  return {tab: TAB_IDS.includes(tab) ? tab : "", anchor: rest.join("/")};
+  return hashParts(tab, rest.join("/"));
+}
+function hashParts(tab, anchor){
+  const m = /^([a-z]+)-(.+)$/.exec(anchor || "");
+  return {tab: TAB_IDS.includes(tab) ? tab : "", anchor: anchor || "", drill: m && DRILL_KINDS[m[1]] ? {kind: m[1], id: m[2]} : null};
 }
 
 let currentTab = "";
@@ -372,12 +422,11 @@ function buildTabs(){
   });
 }
 
-function go(id, anchor){
-  const next = "#" + id + (anchor ? "/" + anchor : "");
-  if (location.hash === next) { show(id, anchor); return; }
+function go(id){
+  const next = "#" + id;
+  if (location.hash === next) { sync(); return; }
   location.hash = next;
 }
-
 // An embedded page is sized to its content, so the document is the only thing that scrolls.
 function fit(frame){
   try {
@@ -395,36 +444,45 @@ function sizeToContent(frame){
   });
 }
 
+// Each tab keeps its own scroll position: the document scrolls, so the place is saved on the way out and put back on the way in.
+const scrolls = {};
+function saveScroll(){ if (currentTab) scrolls[currentTab] = window.scrollY || 0; }
+function restoreScroll(id){ window.scrollTo(0, scrolls[id] || 0); }
+
 function show(id, anchor){
   if (!TAB_IDS.includes(id)) id = "dashboard";
-  currentTab = id;
-  remember(id);
-  TABS.forEach(t => {
-    const sel = t.id === id;
-    const b = el("tab-" + t.id);
-    b.setAttribute("aria-selected", String(sel));
-    b.tabIndex = sel ? 0 : -1;
-    el("pane-" + t.id).hidden = !sel;
-  });
-  const tab = TABS.find(t => t.id === id);
-  document.title = (id === "dashboard" ? "" : tab.label + " · ") + "Lean Factory Floor";
-  if (tab.page && !frames[id]){
-    const f = document.createElement("iframe");
-    f.title = tab.label;
-    f.setAttribute("referrerpolicy", "no-referrer");
-    f.src = tab.page;
-    sizeToContent(f);
-    frames[id] = f;
-    el("pane-" + id).appendChild(f);
+  if (id !== currentTab){
+    saveScroll();
+    currentTab = id;
+    remember(id);
+    TABS.forEach(t => {
+      const sel = t.id === id;
+      const b = el("tab-" + t.id);
+      b.setAttribute("aria-selected", String(sel));
+      b.tabIndex = sel ? 0 : -1;
+      el("pane-" + t.id).hidden = !sel;
+    });
+    const tab = TABS.find(t => t.id === id);
+    document.title = (id === "dashboard" ? "" : tab.label + " · ") + "Lean Factory Floor";
+    if (tab.page && !frames[id]){
+      const f = document.createElement("iframe");
+      f.title = tab.label;
+      f.setAttribute("referrerpolicy", "no-referrer");
+      f.src = tab.page;
+      sizeToContent(f);
+      frames[id] = f;
+      el("pane-" + id).appendChild(f);
+    }
+    restoreScroll(id);
+    renderStamp();
   }
   if (anchor && frames[id]) jumpIn(frames[id], anchor);
   else if (anchor && id === "dashboard") jumpHere(anchor);
-  renderStamp();
 }
 
 function flash(target){
   if (target.tagName === "DETAILS") target.open = true;
-  target.scrollIntoView({block: "center", inline: "nearest"});
+  window.scrollTo(0, Math.max(0, target.getBoundingClientRect().top + (window.scrollY || 0) - 150));
   target.classList.remove("flash");
   void target.offsetWidth;
   target.classList.add("flash");
@@ -457,7 +515,110 @@ function jumpIn(frame, anchor){
   }, 250);
 }
 
-window.addEventListener("hashchange", () => { const h = parseHash(); if (h.tab) show(h.tab, h.anchor); });
+
+// ---- The drill-down drawer. It opens over the tab the reader is on and never moves that tab's scroll.
+let CUR = null;
+let drawerOpen = false, drawerPushed = false, drawerHTML = "", drawerKey = "";
+let opener = null, openerHref = "";
+const phone = () => window.matchMedia("(max-width:700px)").matches;
+
+function drillHref(kind, id, tab){ return "#" + (tab || "dashboard") + "/" + kind + "-" + id; }
+
+function sync(){
+  const h = parseHash();
+  if (h.tab) show(h.tab, h.drill ? "" : h.anchor);
+  if (h.drill) openDrawer(h.drill); else closeDrawer();
+}
+
+// A click that names a panel: push one history entry on open, replace it on a swap.
+function openFrom(h, from){
+  const tab = h.tab || currentTab || "dashboard";
+  const next = "#" + tab + "/" + h.anchor;
+  if (location.hash === next && drawerOpen) return;
+  if (drawerOpen) history.replaceState(null, "", next);
+  else {
+    opener = from || document.activeElement;
+    openerHref = from && from.getAttribute ? from.getAttribute("href") || "" : "";
+    history.pushState(null, "", next);
+    drawerPushed = true;
+  }
+  sync();
+}
+
+function closeByUser(){
+  if (!drawerOpen) return;
+  if (drawerPushed) history.back();
+  else { history.replaceState(null, "", "#" + currentTab); sync(); }
+}
+
+function openDrawer(d){
+  const key = d.kind + "-" + d.id;
+  const fresh = !drawerOpen;
+  drawerOpen = true;
+  drawerKey = key;
+  drawNow();
+  const dr = el("drawer");
+  dr.classList.add("open");
+  el("scrim").classList.toggle("open", phone());
+  dr.setAttribute("aria-modal", String(phone()));
+  el("app").inert = phone();
+  if (fresh) el("drawerTitle").focus({preventScroll: true});
+  else { el("drawerBody").scrollTop = 0; el("drawerLive").textContent = el("drawerTitle").textContent; }
+}
+
+function closeDrawer(){
+  if (!drawerOpen) return;
+  drawerOpen = false;
+  drawerPushed = false;
+  drawerHTML = "";
+  el("drawer").classList.remove("open");
+  el("scrim").classList.remove("open");
+  el("app").inert = false;
+  let back = opener && opener.isConnected ? opener : null;
+  if (!back && openerHref) back = document.querySelector('a[href="' + openerHref.replace(/"/g, '\\"') + '"]');
+  if (!back) back = el("tab-" + currentTab);
+  if (back && back.focus) back.focus({preventScroll: true});
+  const f = frames[currentTab];
+  if (opener === f && f && f.contentWindow && f.contentWindow.__refocus) f.contentWindow.__refocus();
+  opener = null;
+  openerHref = "";
+}
+
+function drawNow(){
+  const m = drillContent(parseDrill(drawerKey));
+  el("drawerKind").textContent = m.kind;
+  el("drawerTitle").textContent = m.title;
+  if (m.html !== drawerHTML){ drawerHTML = m.html; el("drawerBody").innerHTML = m.html; }
+}
+const parseDrill = key => { const i = key.indexOf("-"); return {kind: key.slice(0, i), id: key.slice(i + 1)}; };
+function refreshDrawer(){ if (drawerOpen) drawNow(); }
+
+document.addEventListener("click", ev => {
+  const a = ev.target && ev.target.closest ? ev.target.closest('a[href^="#"]') : null;
+  if (!a) return;
+  const raw = decodeURIComponent((a.getAttribute("href") || "").replace(/^#/, ""));
+  const [tab, ...rest] = raw.split("/");
+  const h = hashParts(tab, rest.join("/"));
+  if (!h.drill) return;
+  ev.preventDefault();
+  if (a.closest("#drawer")) h.tab = currentTab;
+  openFrom(h, a);
+});
+el("drawerClose").addEventListener("click", closeByUser);
+el("scrim").addEventListener("click", closeByUser);
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && drawerOpen){ ev.preventDefault(); closeByUser(); } });
+// The other tabs are pages drawn in frames; a click on a lane, bay, line, station or stoppage there asks this page to open the drawer.
+window.addEventListener("message", ev => {
+  if (ev.origin !== location.origin) return;
+  const f = frames[currentTab];
+  if (!f || ev.source !== f.contentWindow || !ev.data) return;
+  if (ev.data.type === "close"){ closeByUser(); return; }
+  if (ev.data.type !== "drill" || typeof ev.data.anchor !== "string") return;
+  const h = hashParts(currentTab, ev.data.anchor);
+  if (h.drill) openFrom(h, drawerOpen ? opener : f);
+});
+window.addEventListener("hashchange", sync);
+window.addEventListener("popstate", sync);
 
 // ---- Lines, as the floor page reads them: the overlay-declared order, a slot for a line no plan matched.
 function buildSlots(lines, status){
@@ -512,7 +673,7 @@ function lineCard(slot, i){
     <div class="belt" style="--pos:${pct}%;--c:${c}" role="img" aria-label="${f.done} of ${cells.length} parts done">${CAR}<div class="cells">${cells.map(x => `<b class="${esc(x.state)}"></b>`).join("")}</div></div>
     ${cause}
     <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(plain(cur.name))}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
-    <a class="go" href="#floor/line-${esc(safeId(L.line_id))}">Open this line on the factory floor</a>
+    <a class="go" href="${drillHref("line", esc(safeId(L.line_id)))}">Show this line's stations and parts</a>
   </article>`;
 }
 
@@ -531,9 +692,9 @@ function ciChip(l){
   return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(plain(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : "")))}">${word} · change ${esc(l.pr)}${esc(merged)}</span>`;
 }
 
-function laneRow(l){
+function laneRow(l, tab){
   const doing = l.status_text ? esc(plain(l.status_text)) : l.title ? esc(plain(l.title)) : `<span class="unread">no status written</span>`;
-  return `<a class="lrow" href="#floor/lane-${esc(safeId(l.lane))}" title="${esc(plain([l.ticket, l.title, l.status_full].filter(Boolean).join(" · ")))}">
+  return `<a class="lrow" href="${drillHref("lane", esc(safeId(l.lane)), tab)}" title="${esc(plain([l.ticket, l.title, l.status_full].filter(Boolean).join(" · ")))}">
     <span class="doing">${doing}</span>
     <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">gone quiet ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
     <span class="tk">${esc(l.lane)}${l.ticket ? " · " + esc(l.ticket) : ""}${l.engine === "codex" ? " · Codex" : ""}</span>
@@ -577,8 +738,9 @@ function machineRow(m, byId){
           ${gauge("load per core", load == null ? null : fmt(load), load == null ? null : num(load), "", num(load) >= 1)}
           ${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}
         </div>
-        ${lanes.length ? `<div class="lrows">${lanes.map(laneRow).join("")}</div>` : `<p class="capline">No worker is placed here.</p>`}
-      </details>`;
+        ${lanes.length ? `<div class="lrows">${lanes.map(l => laneRow(l)).join("")}</div>` : `<p class="capline">No worker is placed here.</p>`}
+      </details>
+      <a class="drill" href="${drillHref("bay", esc(safeId(m.host)))}">Show this machine's detail</a>`;
   } else {
     body = `<p class="capline">${esc(plain(m.note || "no reading"))}${lanes.length ? ` The log still places ${plural(lanes.length, "worker", "workers")} here.` : ""}</p>`;
   }
@@ -598,11 +760,12 @@ function cloudRow(cloud, lanes){
   const open = sessions.filter(s => s.open).length;
   const detail = `${rd ? (accts ? `<ul class="plain">${accts}</ul>` : `<p class="capline">No cloud account is signed in.</p>`) : `<p class="capline">${esc(plain(cloud.note || "the cloud accounts file could not be read"))}</p>`}
     ${rd ? `<p class="capline">${open} of ${sessions.length} recent cloud sessions open${cloud.note ? ` · ${esc(plain(cloud.note))}` : ""}</p>` : ""}
-    ${live.length ? `<div class="lrows">${live.map(laneRow).join("")}</div>` : ""}`;
+    ${live.length ? `<div class="lrows">${live.map(l => laneRow(l)).join("")}</div>` : ""}`;
   return `<article class="mrow${rd ? "" : " unreadbay"}${stops ? " alert" : ""}" aria-label="Cloud">
     <div class="mtop"><b>Cloud</b>${rd ? `<span class="used"><span class="mono">${live.length}</span> workers</span>` : ""}<span class="pill ${rd ? "ok" : "idle"}">${rd ? "read" : "not read"}</span></div>
     ${stops}
     <details class="more" id="bay-cloud"><summary>Show the accounts${live.length ? ` and ${plural(live.length, "worker", "workers")}` : ""}</summary>${detail}</details>
+    <a class="drill" href="${drillHref("bay", "cloud")}">Show the cloud detail</a>
   </article>`;
 }
 
@@ -613,7 +776,7 @@ function metric(day, key){
   return m && m.value != null && m.status !== "unread" ? m : null;
 }
 
-const redRow = l => `<li><span><a href="#floor/lane-${esc(safeId(l.lane))}">${esc(plain(l.pr_title || l.title || l.pr))}</a> <span class="muted">(${esc(l.pr)})</span></span><small>${esc(plain(l.pr_ci_note || "failing checks"))} · ${esc(l.lane)}</small></li>`;
+const redRow = l => `<li><span><a href="${drillHref("lane", esc(safeId(l.lane)))}">${esc(plain(l.pr_title || l.title || l.pr))}</a> <span class="muted">(${esc(l.pr)})</span></span><small>${esc(plain(l.pr_ci_note || "failing checks"))} · ${esc(l.lane)}</small></li>`;
 
 function todayCard(floor, health){
   const days = health && Array.isArray(health.days) ? health.days : [];
@@ -676,7 +839,7 @@ function freshRows(rec, status, health, manifest, delegation){
     timed("Reports and series", "Reports manifest", manifest.published_at);
     // The record and the series are listed above from their own files, so their manifest rows are not listed twice.
     manifest.reports.filter(r => r.id !== "factory_floor" && r.id !== "process_health").forEach(r => (r.data || []).forEach(x => {
-      if (x.status === "read") timed("Reports and series", x.name, x.as_of, r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : "", r.refresh);
+      if (x.status === "read"){ timed("Reports and series", x.name, x.as_of, r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : ""); rows[rows.length - 1].report = r.id; }
       else rows.push({group: "Reports and series", name: x.name, ok: false, flag: true, note: x.reason || "unread"});
     }));
   } else {
@@ -705,7 +868,7 @@ function freshnessCard(rows){
     let value;
     if (r.flag) value = r.ok ? "read" : `<span class="unread">not read</span>`;
     else { const ms = ageMs(r.iso); value = ms == null ? `<span class="unread">not read (no readable time)</span>` : `<span class="${r.st === "stop" ? "age-stale" : ""}">${esc(ageText(ms))} old${r.st === "stop" ? " (out of date)" : ""}</span>`; }
-    return `${group}<div class="src c-${r.st}" ><b>${esc(r.name)}</b><span>${value}</span><small>${r.iso && !r.flag ? `<span title="${esc(utcText(r.iso))}">${esc(etClock(r.iso))}</span>${r.note ? " · " : ""}` : ""}${esc(plain(r.note))}</small></div>`;
+    return `${group}<div class="src c-${r.st}" ><b>${r.report ? `<a href="${drillHref("report", esc(safeId(r.report)))}">${esc(r.name)}</a>` : esc(r.name)}</b><span>${value}</span><small>${r.iso && !r.flag ? `<span title="${esc(utcText(r.iso))}">${esc(etClock(r.iso))}</span>${r.note ? " · " : ""}` : ""}${esc(plain(r.note))}</small></div>`;
   };
   let last = "";
   const html = withState.map(r => {
@@ -775,10 +938,10 @@ function renderDashboard(p){
     const L = x.slot.line;
     const cs = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
     const why = cs[0] || ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "");
-    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: whoever owns this line's plan; clear the stop or fix its cause.", href: `#floor/line-${safeId(L.line_id)}`, link: "Open this line"});
+    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: whoever owns this line's plan; clear the stop or fix its cause.", href: drillHref("line", safeId(L.line_id)), link: "Open this line"});
   });
-  if (stalled) needs.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more.`, who: `Who acts: the owner of each worker, starting with ${stalledL[0].lane} (quiet for ${ageText(num(stalledL[0].silent_minutes) * 60000)}).`, href: `#floor/lane-${safeId(stalledL[0].lane)}`, link: "Open the quietest worker"});
-  if (redLanes) needs.push({what: `${plural(redLanes, "change is", "changes are")} failing checks.`, who: `Who acts: the worker that wrote each change, starting with ${redL[0].lane}.`, href: `#floor/lane-${safeId(redL[0].lane)}`, link: "Open the first failing change"});
+  if (stalled) needs.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more.`, who: `Who acts: the owner of each worker, starting with ${stalledL[0].lane} (quiet for ${ageText(num(stalledL[0].silent_minutes) * 60000)}).`, href: drillHref("lane", safeId(stalledL[0].lane)), link: "Open the quietest worker"});
+  if (redLanes) needs.push({what: `${plural(redLanes, "change is", "changes are")} failing checks.`, who: `Who acts: the worker that wrote each change, starting with ${redL[0].lane}.`, href: drillHref("lane", safeId(redL[0].lane)), link: "Open the first failing change"});
   if (notFresh) needs.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}.`, who: "Who acts: whoever runs the publish tick.", href: "#dashboard/freshH", link: "See which sources"});
   if (unreadM) needs.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, who: "Who acts: whoever runs the machine pool read.", href: "#dashboard/baysH", link: "See the machines"});
   const verdict = !parts.length ? "All lines running. Nothing needs you."
@@ -804,7 +967,7 @@ function renderDashboard(p){
   const unplaced = lanes.filter(l => l.placement === "unplaced");
   const rowsM = ms.map(m => machineRow(m, byId));
   rowsM.push(cloudRow(floor.cloud, lanes));
-  if (unplaced.length) rowsM.push(`<details class="fold" id="unplaced"><summary>${plural(unplaced.length, "live worker names", "live workers name")} no machine the floor draws</summary><div class="lrows">${unplaced.map(laneRow).join("")}</div></details>`);
+  if (unplaced.length) rowsM.push(`<details class="fold" id="unplaced"><summary>${plural(unplaced.length, "live worker names", "live workers name")} no machine the floor draws</summary><div class="lrows">${unplaced.map(l => laneRow(l)).join("")}</div></details>`);
 
   const freshLine = `${fresh.total - notFresh} of ${fresh.total} sources fresh${notFresh ? `; ${[fresh.stale ? plural(fresh.stale, "out of date", "out of date") : "", fresh.unread ? `${fresh.unread} not read` : ""].filter(Boolean).join(", ")}` : ""}`;
 
@@ -840,6 +1003,108 @@ function renderDashboard(p){
     <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as not read, never as zero. Times are Eastern; hover a time to see UTC.</footer>`;
 
   return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
+}
+
+// ---- What the drawer shows, read from the factory record in hand (the same files the dashboard reads).
+function kv(rows){ return `<dl class="kv">${rows.filter(Boolean).map(r => `<dt>${esc(r[0])}</dt><dd>${r[1]}</dd>`).join("")}</dl>`; }
+const unreadS = why => `<span class="unread">unread${why ? " (" + esc(why) + ")" : ""}</span>`;
+const stateWord = {done: "done", active: "being built", stop: "stopped", prep: "preparing", todo: "waiting", wait: "waiting"};
+
+function drillContent(d){
+  if (!CUR) return {kind: DRILL_KINDS[d.kind] || "", title: "Reading the record", html: `<p class="muted">Reading the factory record.</p>`};
+  const rec = CUR.record;
+  const floor = Object.assign({machines: [], lanes: [], cloud: null, stoppages: []}, rec.floor || {});
+  const lanes = floor.lanes || [], machines = floor.machines || [], lines = rec.lines || [];
+  const tab = currentTab || "dashboard";
+  const miss = (kind, what) => ({kind: DRILL_KINDS[kind] || "", title: "Not in the record", html: `<p class="unread">The current record holds no ${esc(what)} named “${esc(d.id)}”. It may have finished, or the record may be older than the link.</p>`});
+  if (d.kind === "lane"){
+    const l = lanes.find(x => safeId(x.lane) === d.id);
+    if (!l) return miss("lane", "worker");
+    const st = l.station ? stationRef(lines, l.station) : null;
+    return {kind: "Worker", title: l.title || l.lane, html: `<div>${ciChip(l)} ${l.stalled ? `<span class="chip stall">gone quiet ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</div>` + kv([
+      ["Worker", esc(l.lane)],
+      ["Ticket", l.ticket ? esc(l.ticket) : unreadS("none named")],
+      ["Kind", esc(l.kind || "") + (l.engine ? " · " + esc(l.engine === "codex" ? "Codex" : l.engine === "claude" ? "Claude" : l.engine) : "")],
+      ["Newest log entry", l.status_full ? esc(plain(l.status_full)) : unreadS("the worker wrote no text")],
+      ["Written", esc(etClock(l.status_at)) + " · " + esc(sinceText(l.status_at)) + " ago"],
+      ["Claimed for", l.claim_full ? esc(plain(l.claim_full)) : unreadS("")],
+      ["Running", esc(sinceText(l.started_at)) + " since " + esc(etClock(l.started_at))],
+      ["Change", l.pr ? esc(l.pr) + (l.pr_title ? " · " + esc(plain(l.pr_title)) : "") + (l.pr_ci_note ? " · " + esc(plain(l.pr_ci_note)) : "") : "none written yet"],
+      ["Placed on", esc(l.placement === "cloud" ? "cloud" : l.host || l.placement || "unread")],
+      ["Builds", st ? `<a href="${drillHref("st", esc(safeId(st.line.line_id) + "-" + safeId(st.station.id)), tab)}">${esc(st.station.name)} · ${esc(st.item ? st.item.title : "")}</a>` : "no station on the lines holds this ticket"]
+    ])};
+  }
+  if (d.kind === "line"){
+    const L = lines.find(x => safeId(x.line_id) === d.id);
+    if (!L) return miss("line", "assembly line");
+    const f = lineFacts(L);
+    const reasons = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).concat(L.andon && L.andon.reason ? [L.andon.reason] : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
+    const uniq = reasons.filter((c, i) => reasons.indexOf(c) === i);
+    return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.status_pill === "done" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.status_pill || "queued")}</span> <span class="pill wait">${fmt(num(L.percent_built))}% built</span></div>`
+      + (f.stopped ? `<div class="cause"><b>Why it is stopped</b>${uniq.length ? uniq.map(c => `<span>${esc(c)}</span>`).join("") : "<span>The record flags this line stopped and gives no reason.</span>"}</div>` : "")
+      + `<p class="facts">${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>`
+      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(s.name)}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(i.title)} · ${esc(stateWord[i.state] || i.state || "")}</li>`).join("")}</ul></li>`).join("")}</ul>`};
+  }
+  if (d.kind === "st" || d.kind === "part"){
+    let hit = null;
+    lines.forEach(L => (L.stations || []).forEach(s => {
+      const key = safeId(L.line_id) + "-" + safeId(s.id);
+      if (!hit && (d.kind === "st" ? d.id === key : d.id.startsWith(key + "-"))) hit = {L, s};
+    }));
+    if (!hit) return miss(d.kind, "station");
+    const built = lanes.filter(l => l.station && l.station.line_id === hit.L.line_id && l.station.station_id === hit.s.id);
+    return {kind: "Station", title: hit.s.name, html: kv([["Line", `<a href="${drillHref("line", esc(safeId(hit.L.line_id)), tab)}">${esc(hit.L.name)}</a>`], ["State", esc(stateWord[hit.s.state] || hit.s.state || "unread")]])
+      + `<h3>Parts</h3><ul class="dlist">${(hit.s.items || []).map(i => `<li><span>${esc(i.title)}</span><span class="pill ${i.state === "stop" ? "stop" : i.state === "done" ? "done" : i.state === "active" ? "active" : "wait"}">${esc(stateWord[i.state] || i.state || "unread")}</span>${i.note || (i.prs && i.prs.length) ? `<small class="muted">${esc([i.note].concat(i.prs || []).filter(Boolean).join(" · "))}</small>` : ""}</li>`).join("") || `<li class="unread">No parts are listed.</li>`}</ul>`
+      + `<h3>Workers building here</h3>` + (built.length ? `<div class="lrows">${built.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No live worker names this station.</p>`)};
+  }
+  if (d.kind === "bay"){
+    if (d.id === "cloud"){
+      const c = floor.cloud;
+      if (!c) return miss("bay", "cloud bay");
+      const live = lanes.filter(l => l.placement === "cloud");
+      return {kind: "Machine", title: "Cloud", html: kv([["State", c.state === "read" ? "read" : unreadS(c.note)]])
+        + (c.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b></div>`).join("")
+        + `<ul class="plain">${(c.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span></li>`).join("")}</ul>`
+        + `<h3>Workers here</h3>` + (live.length ? `<div class="lrows">${live.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No cloud worker is live.</p>`)};
+    }
+    const m = machines.find(x => safeId(x.host) === d.id);
+    if (!m) return miss("bay", "machine");
+    const byId = {};
+    lanes.forEach(l => { byId[l.lane] = l; });
+    const placed = (m.lanes || []).map(id => byId[id]).filter(Boolean);
+    const rd = m.state === "read";
+    const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
+    const rn = m.runners || {};
+    return {kind: "Machine", title: m.label, html: kv([["State", esc(rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread")], ["Read", m.read_age_min == null ? unreadS("") : esc(ageText(num(m.read_age_min) * 60000)) + " ago"], ["Workers", esc(String(placed.length)) + (m.cap == null ? " (cap unread)" : " of a cap of " + esc(String(num(m.cap))))], m.refusal ? ["Refuses new work", esc(m.refusal)] : null, !rd && m.note ? ["Note", esc(m.note)] : null])
+      + (rd ? `<div class="gauges">${gauge("load per core", m.load_per_core == null ? null : fmt(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core), "", num(m.load_per_core) >= 1)}${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}${gauge("swap used", m.swap_used_pct == null ? null : fmt(m.swap_used_pct) + "%", m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported")}${gauge("CI runners", rn.state === "read" ? `${num(rn.busy)} busy of ${num(rn.total)}` : null, rn.state === "read" && num(rn.total) ? num(rn.busy) / num(rn.total) : null, rn.note)}</div>` : "")
+      + `<h3>Workers here</h3>` + (placed.length ? `<div class="lrows">${placed.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No worker is placed here.</p>`)};
+  }
+  if (d.kind === "stop"){
+    const st = (floor.stoppages || []).find(x => safeId(x.name) === d.id);
+    if (!st) return miss("stop", "stoppage");
+    return {kind: "Stoppage", title: String(st.name), html: kv(Object.keys(st).filter(k => k !== "name" && st[k] !== null && typeof st[k] !== "object").map(k => [k.replace(/_/g, " "), esc(st[k])]))};
+  }
+  if (d.kind === "report"){
+    const m = CUR.manifest && Array.isArray(CUR.manifest.reports) ? CUR.manifest.reports : [];
+    const r = m.find(x => safeId(x.id) === d.id);
+    if (!r) return miss("report", "report");
+    const t = TABS.find(x => x.report === r.id);
+    return {kind: "Report", title: r.title || r.name || r.id, html: kv([["Refreshed", r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : esc(r.refresh || "unread")], r.description ? ["About", esc(r.description)] : null])
+      + `<ul class="dlist">${(r.data || []).map(x => `<li><b>${esc(x.name)}</b>${x.status === "read" ? `<span>${esc(etClock(x.as_of))} · ${esc(sinceText(x.as_of))} old</span>` : `<span class="unread">unread${x.reason ? " (" + esc(x.reason) + ")" : ""}</span>`}</li>`).join("")}</ul>`
+      + (t ? `<a class="open-full" href="#${esc(t.id)}">Open the full ${esc(t.label)} view</a>` : "")};
+  }
+  return miss(d.kind, "item");
+}
+
+function stationRef(lines, ref){
+  for (const L of lines){
+    if (L.line_id !== ref.line_id) continue;
+    for (const s of L.stations || []){
+      if (s.id !== ref.station_id) continue;
+      return {line: L, station: s, item: (s.items || []).find(i => i.id === ref.item_id) || null};
+    }
+  }
+  return null;
 }
 
 // ---- Tab lamps, words and captions, read from the same files.
@@ -901,12 +1166,14 @@ function renderStamp(){
 let lastKey = "";
 function render(p){
   lastPayload = p;
+  CUR = p;
   const key = JSON.stringify([p.record, p.status, p.health && p.health.generated_at, p.manifest, p.delegation && p.delegation.generated_at, Math.floor(Date.now() / 60000)]);
   if (key !== lastKey){
     lastKey = key;
     renderTabs(p, renderDashboard(p));
   }
   renderStamp();
+  refreshDrawer();
 }
 
 async function fetchOptional(name){
@@ -936,8 +1203,16 @@ async function load(){
 
 buildTabs();
 const startHash = parseHash();
-show(startHash.tab || remembered() || "dashboard", startHash.anchor);
-if (!startHash.tab) history.replaceState(null, "", "#" + currentTab);
+show(startHash.tab || remembered() || "dashboard", startHash.drill ? "" : startHash.anchor);
+if (startHash.drill){
+  // A shared link: keep the tab as the entry behind the panel, so the back button closes the panel and stays on the page.
+  history.replaceState(null, "", "#" + currentTab);
+  history.pushState(null, "", "#" + currentTab + "/" + startHash.anchor);
+  drawerPushed = true;
+  opener = el("tab-" + currentTab);
+  openDrawer(startHash.drill);
+  drawerPushed = true;
+} else if (!startHash.tab) history.replaceState(null, "", "#" + currentTab);
 load();
 setInterval(load, POLL_MS);
 </script>
