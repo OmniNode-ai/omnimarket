@@ -76,10 +76,16 @@ requirements:
     statement: |-
       The three report pages open on their conclusion in plain words, use the board's type and colour tokens, and print every time in Eastern time with UTC only in a hover title; the dashboard and the floor page print every time in the viewer's own zone with the zone named, judge today by the viewer's day, and age each reading against the real clock.
     acceptance:
-      - id: "AC20"
-        statement: "AC20: the process, decision map and decision quality pages use the board type and tokens, carry no text below twelve pixels, show Eastern time with UTC only in a title, use the glossary's plain words and open on the conclusion with the provenance folded -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q"
-      - id: "AC21"
-        statement: "AC21: the dashboard and the floor page print the record time in the viewer's zone with the zone named, warn that the series is behind only when its day is not the viewer's day, and age each reading from the real clock rather than the record time -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q"
+      - id: "AC17"
+        statement: "AC17: the process, decision map and decision quality pages use the board type and tokens, carry no text below twelve pixels, show Eastern time with UTC only in a title, use the glossary's plain words and open on the conclusion with the provenance folded -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q"
+      - id: "AC18"
+        statement: "AC18: the dashboard and the floor page print the record time in the viewer's zone with the zone named, warn that the series is behind only when its day is not the viewer's day, and age each reading from the real clock rather than the record time -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q"
+  - id: "req-omn21733-floor-tab-plain"
+    statement: |-
+      The Factory floor tab opens on the lines with one verdict line, carries no second summary, uses the shared glossary's plain words, prints Eastern time with UTC only in a hover title, counts each machine's slots under one legend, collapses lines with no plan file into one sentence, and keeps every text at twelve pixels or more in the body face.
+    acceptance:
+      - id: "AC22"
+        statement: "AC22: the Factory floor tab has one verdict line and no lamp grid, shift report or tally, uses the glossary's plain words, shows Eastern time with UTC only in a title, counts each machine's slots under one legend, collapses lines with no plan file, and carries no text below twelve pixels -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -278,9 +284,9 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def _undrawn('"
   - id: "dod-omn21733-reports-plain"
-    description: "AC20 the plain report page tests pass."
+    description: "AC17 the plain report page tests pass."
     source: "manual"
-    binds_ac: ["AC20"]
+    binds_ac: ["AC17"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q --no-cov --tb=line"
@@ -292,9 +298,9 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/reports/process-health/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^const resetTitle = label =>'"
   - id: "dod-omn21733-local-time"
-    description: "AC21 the viewer-zone time tests pass."
+    description: "AC18 the viewer-zone time tests pass."
     source: "manual"
-    binds_ac: ["AC21"]
+    binds_ac: ["AC18"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q --no-cov --tb=line"
@@ -305,3 +311,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function clock(iso)'"
+  - id: "dod-omn21733-floor-tab-plain"
+    description: "AC22 the plain Factory floor tab tests pass."
+    source: "manual"
+    binds_ac: ["AC22"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
