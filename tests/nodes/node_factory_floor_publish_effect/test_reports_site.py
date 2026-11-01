@@ -129,7 +129,7 @@ def test_reports_contract_every_page_exists_and_every_link_lands_on_a_published_
     None
 ):
     rt = load_runtime()
-    published = {rt.names.page, rt.reports.index.remote}
+    published = {rt.names.page, rt.names.floor_page, rt.reports.index.remote}
     for entry in rt.reports.entries:
         for page in entry.pages:
             assert (NODE_DIR / page.page_relpath).is_file(), page.page_relpath
@@ -360,14 +360,15 @@ def test_page_reports_load_no_script_or_style_from_elsewhere(name: str) -> None:
     assert '<link rel="icon" href="data:,">' in page
 
 
-def test_page_reports_every_report_page_links_back_and_the_floor_links_to_the_index() -> (
+def test_page_reports_every_report_page_links_back_and_the_tab_page_draws_each_in_place() -> (
     None
 ):
     for name in ("process-health", "decision-map", "decision-quality"):
         assert 'href="../"' in REPORT_PAGES[name].read_text(encoding="utf-8"), name
-    assert 'href="reports/"' in (NODE_DIR / "page/index.html").read_text(
-        encoding="utf-8"
-    )
+    shell = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
+    for name in ("process-health", "decision-map", "decision-quality"):
+        assert f'page: "reports/{name}/?embed=1"' in shell, name
+    assert 'href="reports/"' not in shell
 
 
 def _inline_scripts(page: str) -> list[str]:
