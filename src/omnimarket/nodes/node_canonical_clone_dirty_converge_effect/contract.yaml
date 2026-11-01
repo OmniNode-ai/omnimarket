@@ -44,6 +44,9 @@ descriptor:
   idempotent: true
   runtime_profiles: []
   timeout_ms: 1500000
+dependency_ownership:
+  registry_root: "Owned by the host timer that invokes the handler; the registry root (OMNI_HOME) of the host, never a shared runtime."
+  env: "Owned by the host timer that invokes the handler; the tick's process environment."
 runtime_dispatch:
   external_trigger: One host timer tick invokes the typed handler with the host registry root and environment.
 metadata:
