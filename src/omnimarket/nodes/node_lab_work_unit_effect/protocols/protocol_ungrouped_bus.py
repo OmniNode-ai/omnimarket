@@ -31,7 +31,7 @@ def require_ungrouped(bus: ProtocolLabRunBus) -> ProtocolUngroupedLabRunBus:
     """Return ``bus`` typed for group-less reads, or refuse a bus that cannot do them."""
     if not isinstance(bus, ProtocolUngroupedLabRunBus):
         raise TypeError(
-            f"{type(bus).__name__} has no subscribe_ungrouped: a lab-work caller joins "
+            f"{type(bus).__name__} has no subscribe_ungrouped: a caller of this bus joins "
             "no consumer group, so it needs EventBusKafka or the in-memory infra bus"
         )
     return bus

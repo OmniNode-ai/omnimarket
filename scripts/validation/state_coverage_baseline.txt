@@ -54,12 +54,9 @@ node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-completed.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-failed.v1
 node_decompose_epic_orchestrator onex.cmd.omnimarket.contract-generate.v1
 node_demo_cost_compute onex.evt.omnimarket.demo-cost-computed.v1
-node_demo_drift_detector onex.evt.omnimarket.demo-drift-detected.v1
 node_demo_fanout_orchestrator onex.cmd.omnimarket.demo-inference-request.v1
 node_demo_fanout_orchestrator onex.evt.omnimarket.demo-fanout-completed.v1
 node_demo_fix_dispatcher onex.evt.omnimarket.demo-fixes-dispatched.v1
-node_demo_rehearsal onex.evt.omnimarket.demo-rehearsed.v1
-node_demo_rehearsal run_id
 node_deployment_evidence_reducer reduced
 node_design_plan_context_compute onex.evt.omnimarket.design-plan-context-completed.v1
 node_dispatch_worker_execution_effect onex.cmd.omnimarket.delegation-request.v1
@@ -167,12 +164,8 @@ node_pr_health_monitor onex.evt.omnimarket.pr-health-report-completed.v1
 node_projection_capsule_store onex.evt.omnimarket.capsule-store-applied.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1
 node_projection_llm_routing onex.evt.omnimarket.projection-llm-routing-applied.v1
-node_projection_pattern_learning onex.evt.omnimarket.projection-pattern-learning-applied.v1
-node_projection_routing_decision onex.evt.omnimarket.projection-routing-decision-applied.v1
-node_projection_routing_decision onex.snapshot.projection.agent-routing-decision.v1
 node_projection_sandbox_decisions onex.evt.omnimarket.projection-sandbox-decisions-applied.v1
 node_projection_sandbox_decisions onex.snapshot.projection.sandbox.decisions.v1
-node_projection_session_outcome onex.evt.omnimarket.projection-session-outcome-applied.v1
 node_projection_traces onex.evt.omnimarket.traces-snapshot.v1
 node_projection_voice_sessions onex.evt.omnimarket.projection-voice-sessions-applied.v1
 node_recall_compute confidence
