@@ -15,6 +15,7 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_trace import (
     HandlerProjectionRunTrace,
 )
@@ -22,7 +23,10 @@ from omnimarket.nodes.node_projection_run_trace.models import ModelDelegationRun
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
     async_resolve_write_tenant_uuid,
@@ -107,16 +111,11 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no DLQ publisher configured for {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         topics = self.subscribe_topics
-        data = dict(input_data)
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        data = dict(request.payload)
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(topic, data, meta))
 
     async def _project_one_message(

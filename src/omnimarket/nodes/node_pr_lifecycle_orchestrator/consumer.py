@@ -82,11 +82,13 @@ async def _invoke_pr_lifecycle(cmd: dict[str, Any]) -> dict[str, Any]:
     """Wire and run the PR lifecycle orchestrator. Returns a completion payload."""
     from typing import cast
 
-    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
         ProtocolEventBusPublisher,
     )
 
+    from omnimarket.nodes.node_pr_lifecycle_orchestrator.container.container_inmemory import (
+        bind_event_bus,
+    )
     from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
         HandlerPrLifecycleOrchestrator,
         ModelPrLifecycleStartCommand,
@@ -105,7 +107,7 @@ async def _invoke_pr_lifecycle(cmd: dict[str, Any]) -> dict[str, Any]:
         use_dag_ordering=cmd["use_dag_ordering"],
     )
 
-    bus = EventBusInmemory()
+    bus = bind_event_bus()
     await bus.start()
     result = await HandlerPrLifecycleOrchestrator(
         event_bus=cast(ProtocolEventBusPublisher, bus)

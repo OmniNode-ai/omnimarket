@@ -86,6 +86,14 @@ def _write(path: Path, content: str | dict[str, Any] | list[Any]) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def _own_lane_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The machine and lane sources are named by the environment; no test reads the real home's."""
+    monkeypatch.setenv("ONEX_REMOTE_LANE_DIR", str(tmp_path / "remote-lanes"))
+    monkeypatch.setenv("LANDING_PLACEMENT_DIR", str(tmp_path / "placement"))
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "no-such-hosts.yaml"))
+
+
 @pytest.fixture
 def world(tmp_path: Path) -> dict[str, Path]:
     home, kb = tmp_path / "home", tmp_path / "kb"
@@ -440,3 +448,132 @@ def test_determinism_or_cli_a_hold_without_a_reason_cell_carries_its_free_text_a
         "refuses handoff of work that is not validator logic",
         "explicit",
     ]
+
+
+def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tmp = world["tmp"]
+    overlay = _write(
+        tmp / "overlay.yaml",
+        yaml.safe_dump(
+            {
+                "plan_path_contains": ["wave-plan"],
+                "host_table_relpath": "tables/hosts.yaml",
+                "machines": [
+                    {
+                        "host": "h201",
+                        "label": "Bay one",
+                        "runner_labels": ["label-two"],
+                    },
+                    {"host": "h202", "label": "Bay two"},
+                ],
+            }
+        ),
+    )
+    monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    _write(
+        world["home"] / "tables" / "hosts.yaml",
+        yaml.safe_dump(
+            {
+                "hosts": [
+                    {"name": "h201", "cap": 4},
+                    {
+                        "name": "h202",
+                        "available": False,
+                        "unavailable_reason": "down for repair; later",
+                    },
+                ]
+            }
+        ),
+    )
+    lanes = tmp / "remote-lanes"
+    _write(
+        lanes / "hosts-probe" / "latest.json",
+        {
+            "started_at": "2026-10-31T11:58:00Z",
+            "readings": [
+                "h201:cores=32,load1=16.0,busy=3.0,free_gb=52.5,swap=23%,cap=4,slots=2,login=claude"
+            ],
+        },
+    )
+    _write(
+        lanes / "lane-a" / "rlane-lane-a-1.json",
+        {
+            "lane": "lane-a",
+            "host": "h201",
+            "status": "running",
+            "final": False,
+            "started_at": "2026-10-31T11:40:00Z",
+            "model": "sonnet",
+        },
+    )
+    _write(
+        tmp / "placement" / "cloud-accounts.json",
+        {"accounts": {"h201": {"login": "ok", "cap": 3}, "h999": {"login": "ok"}}},
+    )
+    ledger = tmp / "ledger-lanes.txt"
+    ledger.write_text(
+        "L1 2026-10-31T11:40:00Z | CLAIM | lane=lane-a | ticket=OMN-7 | actor=claude:sonnet:workflow-lane | model=claude-sonnet | host=h201 | Fix the first thing\n"
+        "L2 2026-10-31T11:55:00Z | STATUS | lane=lane-a | ticket=OMN-7 | pushed the fix\n",
+        encoding="utf-8",
+    )
+    argv = _argv(world)
+    argv[argv.index("--ledger-rows-file") + 1] = str(ledger)
+    assert main(argv) == 0
+    document = json.loads(_output(world).read_text(encoding="utf-8"))
+    floor = document["floor"]
+    one, two = floor["machines"]
+    assert (
+        one["label"],
+        one["state"],
+        one["cap"],
+        one["lanes"],
+        one["swap_used_pct"],
+    ) == (
+        "Bay one",
+        "read",
+        4,
+        ["lane-a"],
+        23.0,
+    )
+    assert (two["state"], two["note"]) == ("repair", "down for repair")
+    (lane,) = floor["lanes"]
+    assert (lane["ticket"], lane["host"], lane["status_text"], lane["engine"]) == (
+        "OMN-7",
+        "h201",
+        "pushed the fix",
+        "claude",
+    )
+    assert [a["name"] for a in floor["cloud"]["accounts"]] == ["h201"]
+    sources = document["sources"]
+    assert (
+        sources["host_table_read"],
+        sources["receipts_read"],
+        sources["runner_fleet_read"],
+    ) == (
+        True,
+        True,
+        False,
+    )
+
+
+def test_machine_bays_without_a_host_table_name_leave_caps_to_the_pool_read_and_the_table_unread(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    overlay = _write(
+        world["tmp"] / "overlay.yaml",
+        yaml.safe_dump(
+            {
+                "plan_path_contains": ["wave-plan"],
+                "machines": [{"host": "h201", "label": "Bay one"}],
+            }
+        ),
+    )
+    monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    assert main(_argv(world)) == 0
+    document = json.loads(_output(world).read_text(encoding="utf-8"))
+    assert document["sources"]["host_table_read"] is False
+    assert document["floor"]["machines"][0]["state"] == "unread"

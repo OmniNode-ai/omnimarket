@@ -3,6 +3,7 @@
 from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import (
     EnumLogLevel,
     ModelLogEntry,
+    ModelLogProjectionRequest,
     ModelLogProjectionSnapshot,
     ModelLogProjectionState,
     ModelLogQuery,
@@ -12,6 +13,7 @@ from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import
 __all__ = [
     "EnumLogLevel",
     "ModelLogEntry",
+    "ModelLogProjectionRequest",
     "ModelLogProjectionSnapshot",
     "ModelLogProjectionState",
     "ModelLogQuery",
