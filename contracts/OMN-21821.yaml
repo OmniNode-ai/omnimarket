@@ -13,17 +13,17 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: a clone refused for the declared age is converged and what it held is dropped and named in the one row, with no rescue branch pushed -- falsifier: uv run pytest tests/unit/clone_dirty_converge -q
+          AC1: a clone refused for the declared age is converged and what it held is dropped and named in the one row, with no rescue branch pushed -- falsifier: uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q
       - id: "AC2"
         statement: |-
-          AC2: a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were -- falsifier: uv run pytest tests/unit/clone_dirty_converge -q -k "not_yet_refused or open_claim_names or process_works_inside"
+          AC2: a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were -- falsifier: uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q -k "not_yet_refused or open_claim_names or process_works_inside"
 evidence_requirements:
   - kind: "tests"
     description: "a clone refused for the declared age is converged and what it held is dropped and named in the one row, with no rescue branch pushed"
-    command: "uv run pytest tests/unit/clone_dirty_converge -q"
+    command: "uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q"
   - kind: "tests"
     description: "a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were"
-    command: "uv run pytest tests/unit/clone_dirty_converge -q -k \"not_yet_refused or open_claim_names or process_works_inside\""
+    command: "uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q -k \"not_yet_refused or open_claim_names or process_works_inside\""
 emergency_bypass:
   enabled: false
   justification: ""
@@ -34,14 +34,27 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/clone_dirty_converge -q"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q"
+        cwd: "."
     binds_ac: ["AC1"]
   - id: "dod-ac2"
     description: "a clone not yet refused for the age, one an open CLAIM names and one a process works inside are left as they were"
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/clone_dirty_converge -q -k \"not_yet_refused or open_claim_names or process_works_inside\""
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q -k \"not_yet_refused or open_claim_names or process_works_inside\""
+        cwd: "."
     binds_ac: ["AC2"]
+  - id: "dod-omn21821-deploy-source-readback"
+    description: "Hosted source-artifact readback at the evaluated commit checks the published typed tick and the live-use guards. The focused tests exercise convergence and refusal behavior; this does not claim a host timer rollout."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 20 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/handlers/handler_canonical_clone_dirty_converge_effect.py" | python3 -c 'import sys; source = sys.stdin.read(); assert "def handle(" in source and "ModelDirtyConvergeTickReceipt(" in source; assert "lane = self._open_claim_naming(clone)" in source; assert "inside = self._process_inside(clone)" in source; assert "head != target" in source'
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py -q --no-cov"
+        cwd: "."

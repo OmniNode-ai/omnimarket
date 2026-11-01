@@ -4,8 +4,8 @@
 #
 # WHO HOSTS THIS NODE. One timer tick per host that keeps canonical clones (a launchd agent on a Mac, a
 # systemd user timer on Linux), installed by the host installer. Shared runtimes must NEVER attach it: a
-# runtime container holds no canonical clone. The contract declares runtime_dispatch and neither an
-# event_bus block nor handler_routing, as the canonical clone refresh effect does.
+# runtime container holds no canonical clone. The typed handler is invoked locally by the host timer;
+# its empty bus topics and runtime profiles keep it outside shared runtime dispatch.
 #
 # WHAT IT DOES. The sync engine only fast-forwards a clean clone. A clone refused for tracked changes
 # stayed behind for days (a host's omniclaude, 8 days; another host's omnidash, 143103 s). One tick runs
@@ -17,7 +17,7 @@
 name: "node_canonical_clone_dirty_converge_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
-runtime_profiles: [effects]
+runtime_profiles: []
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: "0.1.0"
 description: >
@@ -34,16 +34,20 @@ handler:
   module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect"
   class: "HandlerCanonicalCloneDirtyConvergeEffect"
   input_model: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge.ModelDirtyConvergeTickRequest"
+  output_model: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge.ModelDirtyConvergeTickReceipt"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
+  runtime_profiles: []
   timeout_ms: 1500000
 runtime_dispatch:
-  terminal_events:
-    success: "onex.evt.omnimarket.canonical-clone-dirty-converged.v1"
+  external_trigger: One host timer tick invokes the typed handler with the host registry root and environment.
 metadata:
-  transport_type: none
+  transport_type: local
   description: "Hosted by one timer tick per host, never a shared runtime"
   author: "OmniNode Team"
   created: "2026-10-31"
