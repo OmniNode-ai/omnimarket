@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Operator and tick entry point: print the census, exit 1 when the Empty-group count is over the contract threshold.
+"""Operator and tick entry point: print the census, reap long-Empty per-call groups when a state directory is given (OMN-21818), exit 1 when the Empty-group count is over the contract threshold.
 
 uv run python -m omnimarket.nodes.node_consumer_group_guard_effect --bus-lane dev
 
@@ -22,9 +22,13 @@ from pathlib import Path
 from omnimarket.models.consumer_group_guard import (
     ModelConsumerGroupCensus,
     ModelConsumerGroupGuardRequest,
+    ModelConsumerGroupReapRequest,
 )
 from omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_guard import (
     HandlerConsumerGroupGuardEffect,
+)
+from omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_group_reaper import (
+    HandlerConsumerGroupReaper,
 )
 
 BUS_LANE_VARIABLE = "ONEX_CONSUMER_GROUP_GUARD_BUS_LANE"
@@ -45,6 +49,22 @@ def record(census: ModelConsumerGroupCensus, state_dir: Path) -> None:
         _write(state_dir / "last-run.json", text)
 
 
+def reap(
+    census: ModelConsumerGroupCensus, bus_lane: str, state_dir: Path
+) -> ModelConsumerGroupCensus:
+    """Reap long-Empty per-call groups after a readable census; the census keeps its pre-reap count."""
+    if census.error:
+        return census
+    result = asyncio.run(
+        HandlerConsumerGroupReaper().handle(
+            ModelConsumerGroupReapRequest(bus_lane=bus_lane, state_dir=str(state_dir))
+        )
+    )
+    return census.model_copy(
+        update={"groups_reaped": result.groups_reaped, "reap_detail": result.detail}
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bus-lane", default=os.environ.get(BUS_LANE_VARIABLE))
@@ -60,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     if args.state_dir is not None:
+        census = reap(census, args.bus_lane, args.state_dir)
         record(census, args.state_dir)
     sys.stdout.write(census.model_dump_json(indent=2) + "\n")
     return 0 if census.status == "OK" else 1

@@ -2793,6 +2793,7 @@
   "tests/unit/nodes/node_claude_review_budget_compute/test_claude_review_budget.py": 1.48,
   "tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py": 3.51,
   "tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py": 0.43,
+  "tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py": 0.75,
   "tests/unit/nodes/node_context_source_guidance_effect/test_context_source_guidance.py": 0.27,
   "tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py": 0.45,
   "tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py": 0.27,
