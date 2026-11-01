@@ -3,7 +3,9 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from .handler import HandlerAdoptionRecovery
+from .container.container_adoption_recovery_effect import (
+    build_handler_adoption_recovery,
+)
 from .models import ModelAdoptionRecoveryRequest
 
 
@@ -11,7 +13,7 @@ class NodeAdoptionRecoveryEffect:
     """Invoke the journal and detached-process effect with an injected launcher."""
 
     def __init__(self, start: Callable[[Path], str | None]) -> None:
-        self.handler = HandlerAdoptionRecovery(start)
+        self.handler = build_handler_adoption_recovery(start)
 
     def handle(
         self, request: ModelAdoptionRecoveryRequest
