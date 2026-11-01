@@ -114,11 +114,13 @@ def _brief(
     model: str,
 ) -> Path:
     cls = request.row.cls
+    repo = next((r["repo"] for r in reversed(rows) if r.get("repo")), "")
     lines = [
         f"# Lane {lane}: mechanize exception class {cls} ({TICKET})",
         f"ROUTE: model={model} effort=high",
         f"Parent: {request.parent or 'orchestrator'}. Ticket: {TICKET}. "
-        f"Repo: {next((r['repo'] for r in reversed(rows) if r.get('repo')), '') or 'the class names it'}.",
+        f"Repo: {repo or 'the class names it'}.",
+        *([f"Opens PR in: {repo}"] if repo else []),
         'Authority: Operator 2026-10-18 ~22:30Z: "need to make the process as mechanical as possible, '
         'where you only have to rule on the exceptions instead of the rule."',
         "(6) SECOND OCCURRENCE BECOMES CODE",
