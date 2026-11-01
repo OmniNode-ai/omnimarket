@@ -629,6 +629,20 @@ quality_rules:
       Reject-only grounding. A number absent from the input is fabricated
       content that no score can make usable; it can fail a response and
       never promote one.
+  # A draft that grants approval, consent or a go-ahead the input never gave
+  # speaks in a voice it has no authority for, and no agent message is
+  # operator consent, so it vetoes like claims_grounded does. The directive
+  # states the rule to the model.
+  operator_voice:
+    enforcement: blocking
+    model_directive: >-
+      Do not approve, consent to, authorize or tell anyone to go ahead or
+      proceed unless the input already holds that grant. Report a grant the
+      input holds as the input's own, and quote a refusal as a quotation.
+    rationale: >-
+      Reject-only grounding. A decision the input does not hold is fabricated
+      content that no score can make usable; it can fail a draft and never
+      promote one.
   # OMN-17427: the draft's entries against the criteria it was built from.
   criteria_covered:
     enforcement: blocking
@@ -1479,6 +1493,11 @@ task_classes:
         # or be marked unverified or derived. Declared in the gate node's
         # contract.yaml (numeric_grounding); reject-only, never promoting.
         - numbers_grounded
+        # A drafted reply may not grant approval, consent or a go-ahead the
+        # input does not hold. Declared in the gate node's contract.yaml
+        # (operator_voice); reject-only, never promoting. Armed on the
+        # classes that draft replies only.
+        - operator_voice
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1976,6 +1995,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # A drafted reply may not grant approval, consent or a go-ahead the
+        # input does not hold. Declared in the gate node's contract.yaml
+        # (operator_voice); reject-only, never promoting. Armed on the
+        # classes that draft replies only.
+        - operator_voice
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -2100,6 +2124,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # A drafted reply may not grant approval, consent or a go-ahead the
+        # input does not hold. Declared in the gate node's contract.yaml
+        # (operator_voice); reject-only, never promoting. Armed on the
+        # classes that draft replies only.
+        - operator_voice
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -2378,6 +2407,11 @@ task_classes:
         # the identifier it is about. Declared in the gate node's contract.yaml
         # (claim_grounding); reject-only, never promoting.
         - claims_grounded
+        # A drafted reply may not grant approval, consent or a go-ahead the
+        # input does not hold. Declared in the gate node's contract.yaml
+        # (operator_voice); reject-only, never promoting. Armed on the
+        # classes that draft replies only.
+        - operator_voice
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
