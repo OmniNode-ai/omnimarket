@@ -120,3 +120,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_schedule_event -q --no-cov --tb=line
     cwd: .
+- id: dod-omn21890-deploy
+  description: The node is registered as an onex.nodes entry point and the onex-branch-prune console script resolves, so a deployed wheel carries the node.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_deploy -q --no-cov --tb=line
+    cwd: .

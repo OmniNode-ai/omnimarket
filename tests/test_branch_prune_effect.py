@@ -385,7 +385,7 @@ def test_branch_prune_schedule_event_runs_end_to_end_dry_by_default() -> None:
     tips = FakeTips()
     node = NodeBranchPruneEffect(host, tips)
     node.handler = handler(host, tips)
-    result = node.handle(_tick())
+    result = node.handler.handle(_tick())
     assert result.verdict == EnumBranchPruneVerdict.DRY_RUN
     assert host.delete_calls == []
     assert len(result.candidates) == 2
@@ -395,7 +395,7 @@ def test_branch_prune_schedule_event_deletes_when_overlay_allows() -> None:
     host = standard_host()
     node = NodeBranchPruneEffect(host, FakeTips())
     node.handler = handler(host, FakeTips(), policy(scheduled_dry_run=False))
-    result = node.handle(_tick())
+    result = node.handler.handle(_tick())
     assert result.verdict == EnumBranchPruneVerdict.PRUNED
     assert len(host.delete_calls) == 2
 
@@ -459,3 +459,24 @@ def test_branch_prune_contract_declares_the_completed_topic() -> None:
     assert raw["terminal_event"] == completed
     assert raw["event_bus"]["publish_topics"] == [completed]
     assert raw["published_events"][0]["topic"] == completed
+
+
+def test_branch_prune_deploy_registers_the_node_and_console_script() -> None:
+    import tomllib
+
+    pyproject = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+    )
+    scripts = pyproject["project"]["scripts"]
+    nodes = pyproject["project"]["entry-points"]["onex.nodes"]
+    assert (
+        scripts["onex-branch-prune"]
+        == "omnimarket.nodes.node_branch_prune_effect.runtime_branch_prune_cli:main"
+    )
+    assert nodes["node_branch_prune_effect"] == (
+        "omnimarket.nodes.node_branch_prune_effect"
+    )
+    module = importlib.import_module(
+        "omnimarket.nodes.node_branch_prune_effect.runtime_branch_prune_cli"
+    )
+    assert callable(module.main)
