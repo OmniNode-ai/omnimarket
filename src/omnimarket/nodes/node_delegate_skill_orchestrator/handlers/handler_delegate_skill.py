@@ -127,9 +127,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     ProtocolDelegationEventBus,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.session_model import (
+    bind_session_model,
+    current_session_model,
     drop_saving_priced_elsewhere,
     request_session_model,
-    session_model_dispatch_kwargs,
 )
 from omnimarket.nodes.node_delegation_output_extract_compute import (
     ModelDelegationOutputExtractRequest,
@@ -1631,9 +1632,9 @@ class HandlerDelegateSkill:
             and requested_grace_seconds is not None
             else execution_budget.terminal_delivery_margin_seconds
         )
-        session_kwargs = session_model_dispatch_kwargs(
-            request, self._dispatch_port.dispatch
-        )
+        # OMN-20557 / OMN-21752: the session model rides a context variable,
+        # not a dispatch() keyword -- see session_model.py.
+        session_token = bind_session_model(request, self._dispatch_port)
         progress = ModelDelegationDispatchProgress()
         progress_token = current_dispatch_progress.set(progress)
         try:
@@ -1702,8 +1703,6 @@ class HandlerDelegateSkill:
                     **_terminal_measure_dispatch_kwargs(
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
-                    # OMN-20557: only when named and declared by the port.
-                    **session_kwargs,
                 ),
                 timeout=float(execution_timeout_seconds + wait_allowance_seconds),
             )
@@ -1820,8 +1819,12 @@ class HandlerDelegateSkill:
 
         finally:
             current_dispatch_progress.reset(progress_token)
+            if session_token is not None:
+                current_session_model.reset(session_token)
 
-        result = drop_saving_priced_elsewhere(result, request, session_kwargs)
+        result = drop_saving_priced_elsewhere(
+            result, request, session_token is not None
+        )
         return delegate_skill_terminal_from_response(
             _response_from_result(
                 request,
