@@ -16,12 +16,12 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.cloud_session_placement import (
+    ModelCloudSessionPlacementRequest,
+)
 from omnimarket.models.lab_fill import ModelLabFillLaunch
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     HandlerCloudSessionPlacement,
-)
-from omnimarket.nodes.node_cloud_session_placement_effect.models import (
-    ModelCloudSessionPlacementRequest,
 )
 from omnimarket.nodes.node_lab_fill_effect.handlers import (
     HandlerLabFillLaunch,

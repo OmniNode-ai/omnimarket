@@ -45,12 +45,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from omnimarket.models.cloud_session_placement import (
+    ModelCloudSessionPlacementRequest,
+)
 from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     HandlerCloudSessionPlacement,
-)
-from omnimarket.nodes.node_cloud_session_placement_effect.models import (
-    ModelCloudSessionPlacementRequest,
 )
 
 from ..models import (
