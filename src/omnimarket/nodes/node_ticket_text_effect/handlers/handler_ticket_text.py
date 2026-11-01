@@ -23,6 +23,8 @@ import urllib.request
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from omnimarket.handlers.network_bindings import network_host
+
 from ..models.model_ticket_text import ModelTicketTextRequest, ModelTicketTextResult
 
 LINEAR_QUERY = (
@@ -58,7 +60,7 @@ def linear_url_ok(url: str) -> bool:
     parts = urllib.parse.urlsplit(url)
     try:
         loopback = (
-            parts.hostname == "localhost"
+            parts.hostname == network_host("loopback.name")
             or ipaddress.ip_address(parts.hostname or "").is_loopback
         )
     except ValueError:
