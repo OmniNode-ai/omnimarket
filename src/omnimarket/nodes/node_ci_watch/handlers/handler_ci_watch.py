@@ -834,20 +834,18 @@ class HandlerCiWatch:
         error_message is empty string on success.
         """
         try:
+            from omnimarket.nodes.node_ci_watch.container.container_ci_watch import (
+                build_handler_dispatch_worker,
+                build_handler_dispatch_worker_execution,
+            )
             from omnimarket.nodes.node_dispatch_worker import (
                 EnumWorkerRole,
                 ModelDispatchWorkerCommand,
-            )
-            from omnimarket.nodes.node_dispatch_worker.handlers.handler_dispatch_worker import (
-                HandlerDispatchWorker,
             )
             from omnimarket.nodes.node_dispatch_worker_execution_effect import (
                 ModelCompiledDispatchWorker,
                 ModelDispatchWorkerExecutionInput,
                 ModelDispatchWorkerSpecArtifact,
-            )
-            from omnimarket.nodes.node_dispatch_worker_execution_effect.handlers.handler_dispatch_worker_execution import (
-                HandlerDispatchWorkerExecution,
             )
         except ImportError as exc:
             return "", "import_error", str(exc)
@@ -901,7 +899,7 @@ class HandlerCiWatch:
         (tasks_dir / dispatch_command.team).mkdir(parents=True, exist_ok=True)
 
         with _dispatch_worker_environment():
-            dispatch_result = HandlerDispatchWorker().handle(
+            dispatch_result = build_handler_dispatch_worker().handle(
                 dispatch_command,
                 tasks_dir=tasks_dir,
                 existing_task_subjects=[],
@@ -934,7 +932,7 @@ class HandlerCiWatch:
         artifact_path = dispatch_dir / "dispatch_worker_spec.json"
         artifact_path.write_text(artifact.model_dump_json(indent=2))
 
-        execution_result = HandlerDispatchWorkerExecution().handle(
+        execution_result = build_handler_dispatch_worker_execution().handle(
             ModelDispatchWorkerExecutionInput(
                 correlation_id=correlation_uuid,
                 artifacts=(artifact,),
