@@ -20,15 +20,13 @@ from typing import cast
 from pydantic import ValidationError
 
 from omnimarket.github_api import GitHubApiError
-from omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_audit import (
-    HandlerBranchProtectionAudit,
-)
-from omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_fetch import (
-    HandlerBranchProtectionFetch,
+from omnimarket.nodes.node_branch_protection_audit_effect.container.container_branch_protection_audit_effect import (
+    build_handler_branch_protection_audit,
+    build_handler_branch_protection_fetch,
+    build_handler_branch_protection_policy_load,
 )
 from omnimarket.nodes.node_branch_protection_audit_effect.handlers.handler_branch_protection_policy_load import (
     BranchProtectionOverlayError,
-    HandlerBranchProtectionPolicyLoad,
 )
 from omnimarket.nodes.node_branch_protection_audit_effect.models import (
     DEFAULT_BRANCHES,
@@ -61,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jsonl", type=Path)
     args = parser.parse_args(argv)
     try:
-        policy = HandlerBranchProtectionPolicyLoad().handle(
+        policy = build_handler_branch_protection_policy_load().handle(
             ModelBranchProtectionPolicyLoadRequest(
                 overlay_path=args.overlay,
                 overlay_required=args.overlay_required,
@@ -87,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             return _error(f"could not read snapshot: {exc}")
     else:
         try:
-            snapshot = HandlerBranchProtectionFetch().handle(
+            snapshot = build_handler_branch_protection_fetch().handle(
                 ModelBranchProtectionFetchRequest(
                     policy=policy,
                     org=org,
@@ -103,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         except (OSError, UnicodeError) as exc:
             return _error(f"could not write snapshot: {exc}")
-    result = HandlerBranchProtectionAudit().handle(
+    result = build_handler_branch_protection_audit().handle(
         ModelBranchProtectionAuditRequest(
             policy=policy,
             snapshot=snapshot,
