@@ -358,3 +358,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_accounts.py -q --no-cov"
     binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac1-ledger-row-grammar-published"
+    description: "AC1 contribution only: the ledger row grammar (row types and required fields, holds and scoped releases, consent shape, the TERMINAL delegation cells, the CLAIM and TERMINAL worktree cells, the CLAIM contract floor) is published in omnimarket as shared handlers and as node_ledger_row_grammar_compute, so the ledger append path can call it from omnimarket. Publish only: no caller is switched and no copy is removed. A relative worktree path finds the private data clone through the repos.private_data_home_envs overlay key and refuses with that key named when the overlay is absent. Fails at the merge base, which has no node_ledger_row_grammar_compute and no ledger_row_grammar handler. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "file_exists"
+        check_value: "src/omnimarket/handlers/ledger_row_grammar.py"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/ledger_row_grammar tests/nodes/node_ledger_row_grammar_compute -q -n 0 --no-cov -p no:randomly"
+    binds_ac: ["AC1"]
