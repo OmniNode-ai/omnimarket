@@ -1,0 +1,24 @@
+name: node_replay_bundle_writer_effect
+version: "1.0.0"
+description: "Writes a compaction replay bundle under the overlay-declared root and verifies every pinned hash after writing"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_replay_bundle_writer_effect: "omnimarket.nodes.node_replay_bundle_writer_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "replay", "bundle", "write"]
+pack: "pipeline"
+display_name: "Replay Bundle Writer Effect"
+node_role: "effect"
+tickets: ["OMN-21108"]
