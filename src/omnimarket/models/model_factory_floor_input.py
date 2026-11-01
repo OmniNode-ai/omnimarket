@@ -148,6 +148,7 @@ class ModelFloorLedgerRow(BaseModel):
     host: str = ""
     model: str = ""
     actor: str = ""
+    to: str = ""
 
     _utc = field_validator("ts")(_aware)
 
@@ -347,6 +348,11 @@ class ModelFactoryFloorConfig(BaseModel):
     cloud_sessions_limit: int = Field(gt=0)
     repair_reason_chars: int = Field(gt=20)
     repair_reason_markers: tuple[str, ...] = Field(min_length=1)
+    undrawn_not_found_cause: str = Field(min_length=1)
+    undrawn_no_tasks_cause: str = Field(min_length=1)
+    stop_outcomes: tuple[str, ...] = Field(min_length=1)
+    ask_recipients: tuple[str, ...] = Field(min_length=1)
+    ask_answer_kinds: tuple[str, ...] = Field(min_length=1)
 
 
 class ModelFactoryFloorRequest(BaseModel):

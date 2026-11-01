@@ -73,6 +73,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.handlers.network_bindings import network_host
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, HOUSE_TENANT_UUID
 
 # The customer-facing error code. A stable, machine-readable contract: gateway
@@ -405,14 +406,12 @@ def lab_backend_hosts(backends: Mapping[str, object]) -> frozenset[str]:
     :func:`is_non_public_host` covers a lab host the contract does not name
     (for instance one registered as a house overlay row, OMN-19186).
     """
-    hosts: set[str] = set()
-    for backend in backends.values():
-        if getattr(backend, "provider", None) != "local":
-            continue
-        host = _endpoint_host(getattr(backend, "endpoint_url", None))
-        if host is not None:
-            hosts.add(host)
-    return frozenset(hosts)
+    hosts = (
+        _endpoint_host(getattr(backend, "endpoint_url", None))
+        for backend in backends.values()
+        if getattr(backend, "provider", None) == "local"
+    )
+    return frozenset(host for host in hosts if host is not None)
 
 
 def is_non_public_host(host: str) -> bool:
@@ -430,7 +429,7 @@ def is_non_public_host(host: str) -> bool:
         address = ipaddress.ip_address(host)
     except ValueError:
         return (
-            host == "localhost"
+            host == network_host("loopback.name")
             or host.endswith((".localhost", ".local", ".internal", ".lan", ".svc"))
             or "." not in host
         )
