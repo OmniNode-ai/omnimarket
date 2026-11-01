@@ -29,3 +29,30 @@ class ModelConsumerGroupCensus(BaseModel):
     empty_group_max: int = Field(ge=0)
     detail: str
     error: str = ""
+    groups_reaped: int = Field(default=0, ge=0)
+    reap_detail: str = ""
+
+
+class ModelReapRules(BaseModel):
+    """Reap limits and name rules, all declared in the node contract (OMN-21818)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    enabled: bool
+    min_empty_age_seconds: int = Field(ge=0)
+    max_deletes_per_run: int = Field(ge=0)
+    batch_size: int = Field(ge=1)
+    reapable_patterns: tuple[str, ...]
+    protected_patterns: tuple[str, ...]
+
+
+class ModelConsumerGroupReapRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    bus_lane: str = Field(min_length=1)
+    state_dir: str = Field(min_length=1)
+
+
+class ModelConsumerGroupReapResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    bus_lane: str
+    groups_reaped: int = Field(ge=0)
+    detail: str
