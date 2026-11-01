@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
@@ -47,6 +46,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from tests.bus_lane_guard import resolve_test_bus_broker
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
@@ -251,7 +251,7 @@ def test_redpanda_overlay_returns_the_same_gate_record(
     """Redpanda gives back the record that was published (lab, -m kafka)."""
     from confluent_kafka import Consumer, Producer
 
-    bootstrap = os.environ["KAFKA_BOOTSTRAP_SERVERS"]
+    bootstrap = resolve_test_bus_broker()
     record = ModelQualityGateRecord(
         record_key=f"{uuid4()}:0",
         correlation_id=uuid4(),
