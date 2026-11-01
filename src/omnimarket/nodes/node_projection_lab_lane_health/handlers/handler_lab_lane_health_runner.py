@@ -42,6 +42,7 @@ from typing import Any, TypeVar
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.lane_health_fold import (
     SUBSCRIBE_TOPICS,
     TOPIC_LAB_PASS_RECEIPT,
@@ -73,7 +74,10 @@ from omnimarket.nodes.node_projection_lab_lane_health.models.model_lab_lane_heal
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE = "omninode_internal.lab_lane_health"
 
@@ -268,7 +272,7 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
     #: standalone branch.
     onex_runtime_inprocess_dispatch = True
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal projection shim: one injected message, one write.
 
         The projection wiring path hands over the bare event plus its own
@@ -277,15 +281,10 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
         the domain payload the parsers declare.
         """
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         with self._dispatch_lock:
-            lanes = self._run(self._project_one_message(topic, input_data, meta))
+            lanes = self._run(self._project_one_message(topic, request.payload, meta))
         # ``rows_upserted`` is the key the runtime's own write-path guard reads
         # (``handler_wiring._extract_rows_upserted``); it gates the terminal
         # event on a PROVEN write and treats any other shape as zero. The

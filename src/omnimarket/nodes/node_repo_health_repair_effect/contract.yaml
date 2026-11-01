@@ -89,3 +89,6 @@ dod_evidence:
 
 metadata:
   transport_type: kafka
+
+timeouts:
+  linear_graphql_timeout_seconds: 30  # Bounds each Linear GraphQL request.
