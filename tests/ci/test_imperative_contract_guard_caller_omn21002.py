@@ -322,18 +322,10 @@ def test_canonical_shape_hook_uses_the_exemption_commit_and_ci_a_dev_merge_tag()
     assert hook_repo["repo"] == "https://github.com/OmniNode-ai/omnibase_core"
     jobs = _mapping(WORKFLOWS / "ci.yml")["jobs"]
     assert isinstance(jobs, dict)
-    # OMN-21331: CI reads core through a dev-merge tag, never a commit sha. The
-    # tag's commit descends from the hook's exemption commit.
-    core = jobs["canonical-file-shape"]["env"]["CANONICAL_FILE_SHAPE_CORE"]
-    # The hook runs the file-shape entry from its own core dev-merge tag, which
-    # the CI job pins to the same tag; the caller keeps its own tag.
-    assert hook_repo["rev"] in {CORE_HOOK_SHA, _caller_ref(), core.rsplit("@", 1)[1]}
-    assert re.fullmatch(
-        r"omnibase-core @ git\+https://github\.com/OmniNode-ai/omnibase_core"
-        r"@dev-[0-9]{14}-[0-9a-f]{12}",
-        core,
-    ), core
-    assert not re.search(r"[0-9a-f]{40}", core), core
+    # CI reads core through a dev-merge tag, never a commit sha, and the job reads
+    # that tag from this hook's rev, so the two cannot differ.
+    assert re.fullmatch(r"dev-[0-9]{14}-[0-9a-f]{12}", str(hook_repo["rev"])), hook_repo
+    assert 'h["id"] == "canonical-file-shape"' in str(jobs["canonical-file-shape"])
 
 
 def test_own_allowlist_matches_the_recorded_paths() -> None:

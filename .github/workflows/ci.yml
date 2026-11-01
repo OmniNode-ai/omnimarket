@@ -478,16 +478,22 @@ jobs:
       # OMN-17427: how every `uses:` ref is pinned is omnibase_core's check-action-pins,
       # with this repository's rule values in .action-pin-overlay.yaml. A third-party
       # ref is a full 40-hex commit sha; a first-party ref is a dev-merge tag. The
-      # core ref is the dev-merge tag the pre-commit hook's rev names. The overlay's
-      # known exceptions only shrink against the pull request base. SYNC with
-      # pre-commit hook 'check-action-pins'.
+      # core ref is read from the pre-commit hook's rev, so the hook and this step
+      # hold one tag. The overlay's known exceptions only shrink against the pull
+      # request base.
       - name: GitHub Actions pin check
         env:
-          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029044430-3f33be0d5364"
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           set -u
+          ACTION_PINS_CORE="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          refs = [r["repo"] + "@" + r["rev"] for r in config["repos"] if any(h["id"] == "check-action-pins" for h in r["hooks"])]
+          assert len(refs) == 1, refs
+          print("omnibase-core @ git+" + refs[0])
+          ')"
           args=()
           base="${PR_BASE:-${MQ_BASE:-}}"
           if [ -n "$base" ] && git fetch --no-tags --depth=1 origin "$base"; then
@@ -3898,8 +3904,6 @@ jobs:
     name: Canonical File Shape (OMN-20304)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029151319-6e0a5eee541a"
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
@@ -3913,6 +3917,17 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           version: "0.8.3"
+      - name: Read the core ref from the pre-commit hook
+        run: |
+          set -u
+          ref="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          refs = [r["repo"] + "@" + r["rev"] for r in config["repos"] if any(h["id"] == "canonical-file-shape" for h in r["hooks"])]
+          assert len(refs) == 1, refs
+          print("omnibase-core @ git+" + refs[0])
+          ')"
+          echo "CANONICAL_FILE_SHAPE_CORE=$ref" >> "$GITHUB_ENV"
       - name: Positive control (planted bad sample refused, clean sample accepted)
         run: |
           set -u
@@ -4014,6 +4029,52 @@ jobs:
           fi
           uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
             python -m omnibase_core.handlers.handler_public_runner_placement_cli "${args[@]}"
+
+  # OMN-21500: omnibase_core's generic validators run in CI as the hook ids of
+  # .pre-commit-config.yaml, so this job and the local hooks name one core
+  # dev-merge tag and cannot drift. Unconditional: no needs/if, so a failure fails CI
+  # Summary through its default-deny sweep.
+  core-validators:
+    name: Core Validators (OMN-21500)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.8.3"
+      - name: Positive control (planted defects refused)
+        run: |
+          set -u
+          printf 'import datetime\n\nNOW = datetime.datetime.utcnow()\n' > zz_planted_utcnow.py
+          printf 'CANARY_MODEL = "%s-%s"\n' gpt 4o > zz_planted_model.py
+          for pair in check-no-utcnow:zz_planted_utcnow.py check-hardcoded-model-config-compute:zz_planted_model.py; do
+            hook="${pair%%:*}"
+            planted="${pair#*:}"
+            if uvx pre-commit@4.5.1 run "$hook" --files "$planted"; then
+              echo "POSITIVE CONTROL FAILED: $hook accepted $planted"
+              exit 1
+            fi
+            echo "positive control: $hook refused $planted"
+          done
+          rm zz_planted_utcnow.py zz_planted_model.py
+      # Every hook with findings in the tree has a shrink-only baseline, so the
+      # whole tree is judged, not only the files the change touches.
+      - name: Run the core validators over the tree
+        run: |
+          set -u
+          for hook in check-no-utcnow check-ai-slop check-hardcoded-model-config-compute \
+            handler-di-gate check-protocol-binding; do
+            uvx pre-commit@4.5.1 run "$hook" --all-files
+          done
 
   # OMN-19998: the guard has both refusal and passing-pin controls, including
   # the actual lane-launch and controller-brief callers. Required by CI Summary.
