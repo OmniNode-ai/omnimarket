@@ -401,6 +401,11 @@ def load_market_registrations(
     for event_type, event_def in events.items():
         if not isinstance(event_def, dict):
             raise ValueError(f"Event {event_type!r} must be a mapping")
+        # A node-owned event is emitted by an omnimarket node, never by a hook
+        # client, so it has no hook-side registration to compare (OMN-21112).
+        # Only a literal boolean true declares it; any other value still compares.
+        if event_def.get("node_owned") is True:
+            continue
         fan_out = event_def.get("fan_out", [])
         if not isinstance(fan_out, list):
             raise ValueError(f"Event {event_type!r} fan_out must be a list")
@@ -661,8 +666,7 @@ def validate_event_registry_drift(
     rev = omniclaude_rev or read_pinned_omniclaude_rev(repo_root)
     with pinned_omniclaude_tree(omniclaude_root, rev) as tree:
         source = load_omniclaude_registrations(
-            tree / _OMNICLAUDE_EVENT_REGISTRY,
-            tree / _OMNICLAUDE_TOPICS,
+            tree / _OMNICLAUDE_EVENT_REGISTRY, tree / _OMNICLAUDE_TOPICS
         )
     registry = load_market_registrations(repo_root / market_registry_path)
     baseline = load_baseline(repo_root / baseline_path)
@@ -674,13 +678,10 @@ def validate_event_registry_drift(
         baseline_registry_only=baseline.registry_only_topics,
     )
     structural_report = compare_registrations(
-        source=source,
-        registry=registry,
-        baseline=baseline,
+        source=source, registry=registry, baseline=baseline
     )
     return CombinedDriftReport(
-        topic_report=topic_report,
-        structural_report=structural_report,
+        topic_report=topic_report, structural_report=structural_report
     )
 
 
@@ -726,8 +727,7 @@ def main(argv: list[str] | None = None) -> int:
 
     repo_root = resolve_repo_root(args.repo_root)
     omniclaude_root = resolve_omniclaude_root(
-        repo_root=repo_root,
-        explicit_root=args.omniclaude_root,
+        repo_root=repo_root, explicit_root=args.omniclaude_root
     )
     report = validate_event_registry_drift(
         repo_root=repo_root,
