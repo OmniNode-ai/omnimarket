@@ -32,8 +32,8 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
 )
-from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
-    HandlerBuildLoopOrchestrator,
+from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+    build_build_loop_orchestrator,
 )
 
 _log = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ def main() -> None:
         requested_at=datetime.now(UTC),
     )
 
-    handler = HandlerBuildLoopOrchestrator(event_bus=_EVENT_BUS)
+    handler = build_build_loop_orchestrator(event_bus=_EVENT_BUS)
     result = asyncio.run(handler.handle(command))
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
