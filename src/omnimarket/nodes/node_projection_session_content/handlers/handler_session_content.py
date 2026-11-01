@@ -31,6 +31,7 @@ from typing import Any, TypeVar
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import (
     SUBSCRIBE_TOPIC,
     SessionContentFoldError,
@@ -41,7 +42,10 @@ from omnimarket.nodes.node_projection_session_content.models.model_session_conte
     ModelSessionContentRow,
     ModelSessionContentWriteResult,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE = "omninode_internal.session_content"
 
@@ -141,22 +145,16 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
             )
         return declared
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """One injected message, one write, and the count the runtime reads.
 
         ``rows_upserted`` is the key the runtime's write-path guard reads; any
         other shape is treated as zero rows and suppresses the terminal event.
         """
-        topic = str(input_data.pop("_topic", SUBSCRIBE_TOPIC))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
-        for injected in [k for k in input_data if k.startswith("_")]:
-            input_data.pop(injected)
-        result = self._run(self._project_one_message(topic, input_data, meta))
+        topic = request.topic_or(SUBSCRIBE_TOPIC)
+        meta = request.message_meta(topic)
+        data = {k: v for k, v in request.payload.items() if not k.startswith("_")}
+        result = self._run(self._project_one_message(topic, data, meta))
         return result.model_dump()
 
     async def _project_one_message(

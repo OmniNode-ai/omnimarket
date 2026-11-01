@@ -38,15 +38,36 @@ class ModelPublishSource(BaseModel):
     relpath: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy"]
+class ModelDeclaredLines(BaseModel):
+    """The part of the factory floor effect's overlay this node reads: which plans are lines.
+
+    The effect owns the overlay and its other fields; this node reads only ``plan_path_contains`` so the page can
+    draw a declared line that no plan matched as unread instead of leaving it out.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    plan_path_contains: tuple[str, ...] = Field(min_length=1)
+
+
+class ModelLinesOverlay(BaseModel):
+    """Where the declared lines are: the effect's overlay id and the environment variable that pins its file."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    overlay_id: str = Field(min_length=1)
+    file_env: str = Field(min_length=1)
+
+
+StepKind = Literal["module", "capture", "copy", "command"]
 
 
 class ModelPublishStep(BaseModel):
     """One input step run before the record is read.
 
     ``module`` runs ``python -m <module> <args>``; ``capture`` runs ``argv`` and keeps its standard output as a
-    JSON list at ``output_relpath``; ``copy`` copies ``source_relpath`` to ``output_relpath`` (the JSON object at the key path ``select`` when it is given). ``{home}``,
-    ``{bus_lane}`` in ``args`` and ``argv`` are the registry home and the overlay's bus lane. A step that is not
+    JSON list at ``output_relpath``; ``command`` runs ``argv`` for what it writes itself and keeps nothing of its output; ``copy`` copies ``source_relpath`` to ``output_relpath`` (the JSON object at the key path ``select`` when it is given). ``{home}``,
+    ``{bus_lane}`` and ``{plugin_root}`` in ``args`` and ``argv`` are the registry home, the overlay's bus lane and the plugin root. A step that is not
     ``required`` may fail: the failure is recorded in the status file and the page shows its source as unread.
     """
 
@@ -69,6 +90,7 @@ class ModelPublishStep(BaseModel):
             "module": bool(self.module),
             "capture": bool(self.argv) and bool(self.output_relpath),
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
+            "command": bool(self.argv),
         }[self.kind]
         if not need:
             raise ValueError(
@@ -95,8 +117,10 @@ class ModelPublishNames(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     page: str = Field(min_length=1)
+    floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
+    delegation: str = Field(min_length=1)
     status: str = Field(min_length=1)
 
 
@@ -197,11 +221,15 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     home_env: str = Field(min_length=1)
+    plugin_root_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
+    floor_page_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
+    delegation_relpath: str = Field(min_length=1)
+    lines_overlay: ModelLinesOverlay
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
     names: ModelPublishNames
     transport: ModelPublishTransport
@@ -239,6 +267,7 @@ class ModelFactoryFloorPublishResult(BaseModel):
     serve_url: str
     steps: tuple[ModelPublishStepResult, ...]
     process_health_published: bool
+    delegation_published: bool = False
 
 
 class ModelReportsPublishRequest(BaseModel):

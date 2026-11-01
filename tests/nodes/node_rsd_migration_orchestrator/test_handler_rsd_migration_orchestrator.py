@@ -16,9 +16,6 @@ from omnimarket.models.model_delegated_code_edit import (
     ModelCodeEditResult,
     ModelDelegatedCodeEditRequest,
 )
-from omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migration_cli import (
-    main,
-)
 from omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migration_orchestrator import (
     AUTHORITY_ENTRY,
     CONTRACTS_GROUP,
@@ -33,6 +30,9 @@ from omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migra
 )
 from omnimarket.nodes.node_rsd_migration_orchestrator.models.model_rsd_migration import (
     ModelRsdMigrationTask,
+)
+from omnimarket.nodes.node_rsd_migration_orchestrator.runtime_rsd_migration_cli import (
+    main,
 )
 
 pytestmark = pytest.mark.unit

@@ -21,7 +21,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
   class: HandlerAutomationLivenessOverlayCheck
-  input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+  input_model: omnimarket.models.automation_liveness_overlay_check.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
   output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
 
 handler_routing:
@@ -37,12 +37,8 @@ handler_routing:
       handler:
         name: HandlerAutomationLivenessOverlayCheck
         module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
-      input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+      input_model: omnimarket.models.automation_liveness_overlay_check.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
       output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
-
-entry_points:
-  console_scripts:
-    onex-automation-liveness-check: omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main
 
 descriptor:
   node_archetype: compute
@@ -52,7 +48,7 @@ descriptor:
   runtime_profiles: []
 
 runtime_dispatch:
-  external_trigger: "The onex-automation-liveness-check console script invokes the local node with the overlay, the sources declaration and the scanned installer files it read from the checkouts."
+  external_trigger: "The onex-automation-liveness-check console script (node_automation_liveness_overlay_check_effect) invokes the local node with the overlay, the sources declaration and the scanned installer files it read from the checkouts."
 
 event_bus:
   subscribe_topics: []
