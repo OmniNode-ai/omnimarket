@@ -42,7 +42,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute -q --no-cov --tb=line"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line"
         cwd: "."
   - id: "dod-omn21892-ac2-unknown-fails"
     description: "AC2 runs an empty listing, a failed read, a line that is not JSON and a host with no declared budget, and requires UNKNOWN with failed true each time."
@@ -50,7 +50,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute -q --no-cov --tb=line -k unknown"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line -k unknown"
         cwd: "."
   - id: "dod-omn21892-ac3-floor-line"
     description: "AC3 computes the floor with the budget read and requires the line the selection names to carry observed, budget, status and alarm key per host and lane, unread without a read, and no container block on other lines."
@@ -58,7 +58,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k one_runtime"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov --tb=line -k one_runtime"
         cwd: "."
   - id: "dod-omn21892-deploy-probe"
     description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_lane_container_budget_compute through the in-process ONEX runtime with a two-container listing against a budget of one, and require a successful typed receipt whose verdict is FAIL with the alarm key lane-budget:probe-host:probe-lane. It fails at the merge base, where the node does not exist."
@@ -66,7 +66,7 @@ dod_evidence:
     binds_ac: ["AC1", "AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lane_container_budget_compute -q --no-cov"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov"
       - check_type: "command"
         check_value: |
           set -eu;
