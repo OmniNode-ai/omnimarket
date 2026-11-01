@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Release Action Classify Compute (OMN-21492, T-R1)
+#
+# Pure definition-B compute: handle(ModelReleaseActionRequest) -> ModelReleaseActionDecision.
+# It takes facts (the action, its actor and the actor's account type, the changed files, the
+# branch or tag, the grant facts of node_release_grant_read_effect) and the `release_gate`
+# overlay's policy, reads no clock, file, network or protocol, and so declares no
+# protocol_dependencies. Every login, branch, tag shape and identity is the overlay's; the
+# node names none. Call boundary: onex run-node node_release_action_classify_compute --input
+name: node_release_action_classify_compute
+contract_name: node_release_action_classify_compute
+node_name: node_release_action_classify_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Classify one action as a release kind (release_pr, version_tag, package_publish,
+  github_release, train_release, dev_merge_tag, none) and decide admit, refuse or blocked
+  with its reason. The train's own release and a dev-merge tag written by the tagger
+  identity are admitted. A release pull request from anyone else is admitted only on a
+  grant bound to this repository, pull request and head commit; a version tag, a package
+  publish and a GitHub release are refused, grant or not, unless the actor is the train
+  or a person in a grantor role list of the overlay who is not an agent. An action that
+  touches a version file and matches no known shape is refused. Missing or unreadable
+  facts are blocked, never an admission.
+
+handler:
+  module: omnimarket.nodes.node_release_action_classify_compute.handlers.handler_release_action_classify
+  class: HandlerReleaseActionClassify
+  input_model: omnimarket.nodes.node_release_action_classify_compute.models.model_release_action.ModelReleaseActionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_release_action
+      topic: onex.cmd.omnimarket.release-action-classify-requested.v1
+      handler:
+        name: HandlerReleaseActionClassify
+        module: omnimarket.nodes.node_release_action_classify_compute.handlers.handler_release_action_classify
+      input_model: omnimarket.nodes.node_release_action_classify_compute.models.model_release_action.ModelReleaseActionRequest
+      output_model: omnimarket.nodes.node_release_action_classify_compute.models.model_release_action.ModelReleaseActionDecision
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelReleaseActionRequest
+  module: omnimarket.nodes.node_release_action_classify_compute.models.model_release_action
+  description: The action, its actor and account type, the changed files, the ref, the grant facts and the release_gate policy.
+output_model:
+  name: ModelReleaseActionDecision
+  module: omnimarket.nodes.node_release_action_classify_compute.models.model_release_action
+  description: The release kind, the decision (admit, refuse or blocked) and its reason.
+
+terminal_event: onex.evt.omnimarket.release-action-classified.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.release-action-classify-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.release-action-classified.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.release-action-classify-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.release-action-classified.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.release-action-classified.v1
+
+metadata:
+  ticket: OMN-21492
+  transport_type: inmemory
