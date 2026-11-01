@@ -25,6 +25,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
@@ -36,7 +38,9 @@ _ORG = "OmniNode-ai"
 _SQUASH_SUBJECT = re.compile(r"^(?P<title>.*?)\s*\(#(?P<number>[1-9][0-9]*)\)\s*$")
 _FIELD_SEP = "\x1f"
 _RECORD_SEP = "\x1e"
-_GIT_TIMEOUT_S = 60
+_GIT_TIMEOUT_S: float = load_node_timeouts("node_linear_triage").get(
+    "local_git_timeout_seconds"
+)
 
 
 class LocalGitHubStateError(RuntimeError):
@@ -106,7 +110,7 @@ class LocalGitHubPrReads:
                 "body": str(facts.get("body") or ""),
                 "state": "open" if raw == "OPEN" else "closed",
                 "mergedAt": merged_at if raw == "MERGED" else "",
-                "url": f"https://github.com/{_ORG}/{repo}/pull/{num}",
+                "url": f"{service_endpoint_url('github.web_url')}/{_ORG}/{repo}/pull/{num}",
                 "repo": repo,
                 "head_ref": str(facts.get("head_ref") or ""),
             }
@@ -124,7 +128,7 @@ class LocalGitHubPrReads:
                 "body": "",
                 "state": "closed",
                 "mergedAt": str(merge["merged_at"]),
-                "url": f"https://github.com/{_ORG}/{repo}/pull/{num}",
+                "url": f"{service_endpoint_url('github.web_url')}/{_ORG}/{repo}/pull/{num}",
                 "repo": repo,
                 "head_ref": str(merge.get("head_ref") or ""),
             }
@@ -169,7 +173,7 @@ class LocalGitHubPrReads:
                     "body": parts[2],
                     "state": "closed",
                     "mergedAt": parts[0],
-                    "url": f"https://github.com/{_ORG}/{repo}/pull/{squash.group('number')}",
+                    "url": f"{service_endpoint_url('github.web_url')}/{_ORG}/{repo}/pull/{squash.group('number')}",
                     "repo": repo,
                     "head_ref": "",
                 }

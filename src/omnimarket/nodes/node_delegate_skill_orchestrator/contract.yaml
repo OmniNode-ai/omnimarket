@@ -341,6 +341,9 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.delegate-skill-failed.v1
   # One event per step of a run, numbered by this node from one counter per run.
   run_step_event: onex.evt.omnimarket.delegation-run-step.v1
+  # The port path's gate decision, in the shape the bus orchestrator's gate
+  # result uses; published only on runs this node's in-process port serves.
+  quality_gate_result_event: onex.evt.omnibase-infra.quality-gate-result.v1
   default_timeout_ms: 300000
   max_timeout_ms: 900000
 
@@ -447,6 +450,15 @@ handler_execution_budget:
 consume_concurrency:
   max_in_flight_records: 8
 
+# OMN-21325: the largest prompt, in UTF-8 bytes, a delegate-skill request may
+# carry. A larger request is refused before any model call with a failed
+# terminal (terminal_failure_cause refused_before_dispatch, error_message
+# prompt_exceeds_size_bound). The handler enforces it, so the in-process port
+# and the deployed consumer refuse the same request. 262144 is 256 KiB; the
+# eval case P8 was 300027 bytes (62291 input tokens) and ran to completion.
+prompt_size_bound:
+  max_prompt_bytes: 262144
+
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH
     required: false
@@ -492,6 +504,9 @@ event_bus:
     # after the admission commit and before any dispatch; appended so the
     # entries above keep their positions. Carries no prompt text.
     - onex.evt.omnimarket.delegate-skill-admission-decided.v1
+    # The in-process port's gate decision per attempt; appended so the entries
+    # above keep their positions.
+    - onex.evt.omnibase-infra.quality-gate-result.v1
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 
@@ -508,6 +523,9 @@ published_events:
   - event_type: DelegateSkillAdmissionDecided
     topic: onex.evt.omnimarket.delegate-skill-admission-decided.v1
     description: Admission decision for one client call, with the effective mode, before any dispatch.
+  - event_type: omnibase-infra.quality-gate-result
+    topic: onex.evt.omnibase-infra.quality-gate-result.v1
+    description: The checks one in-process gate decision evaluated, skipped and failed, and the rule that decided.
 
 # OMN-21098: the admission decision is consumed by the Claude Code adapter's
 # receipt-mode client, which awaits it by correlation id; no omnimarket contract
@@ -613,12 +631,22 @@ metadata:
     - "OMN-10604"
 
 # The receipt-window readback belongs to the delegation node, alongside the
-# requested-timeout policy it measures. It reads local state and never dispatches.
+# requested-timeout policy it measures. It never dispatches. It reads the lab
+# projection that node_projection_delegation_budget_readings folds from the
+# delegate-skill terminals the deployed lane publishes, so it runs from any lab
+# host and needs no access to the machine whose CLI invoked the run (OMN-17427).
+# The host, port and credentials are not here: the overlay or the secret store
+# sets dsn_env on the host that runs the readback.
 budget_readback:
   handler:
     name: HandlerBudgetReadback
     module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback
-  state_root: "--state-root, else shared runtime resolver (ONEX_STATE_DIR, then ONEX_STATE_ROOT), else ~/.onex_state"
+  source:
+    relation: omninode_internal.delegation_budget_readings
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    binding_ref: omninode_runtime_service
+    populated_by: omnimarket.nodes.node_projection_delegation_budget_readings
+  local_state_root: "--state-root (explicit, local runs only), else shared runtime resolver (ONEX_STATE_DIR, then ONEX_STATE_ROOT), else ~/.onex_state"
   window_hours: 24
   grace_source: configs/task_class_contracts.v1.yaml
   exit_codes:

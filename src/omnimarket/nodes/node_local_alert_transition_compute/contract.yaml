@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_local_alert_transition_compute
+contract_name: node_local_alert_transition_compute
+node_name: node_local_alert_transition_compute
+
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+node_type: compute
+# Invoked in process by the local environment writer around each write it
+# makes; it has no topic of its own, so it carries no onex.nodes entry point.
+lifecycle: experimental
+description: >-
+  Pure local alert transitions. A tenant's local_environment rows before and
+  after one write in; the alerts that write raised or cleared out, each with an
+  id derived from its tenant, code, subject, direction and time. The fold plan
+  keeps one local_alerts row per (tenant, code, subject): a replayed or older
+  transition plans no write. An alert clears only when a later report meets the
+  clear condition.
+
+input_model:
+  name: ModelLocalAlertTransitionRequest
+  module: omnimarket.nodes.node_local_alert_transition_compute.models
+output_model:
+  name: ModelLocalAlertTransitionResult
+  module: omnimarket.nodes.node_local_alert_transition_compute.models
+
+capabilities:
+  - name: local.environment.alert.transition.compute
+    description: Raised and cleared local alerts from one environment write
+    version: 1.0.0
+
+io_operations:
+  - operation: derive
+    description: The raises and clears one local_environment write made
+    protocol_method: handle
+    input_fields:
+      - request: ModelLocalAlertTransitionRequest
+    output_fields:
+      - result: ModelLocalAlertTransitionResult
+    idempotent: true
+
+handler:
+  module: omnimarket.nodes.node_local_alert_transition_compute.handlers.handler_local_alert_transition
+  class: HandlerLocalAlertTransition
+  input_model: omnimarket.nodes.node_local_alert_transition_compute.models.ModelLocalAlertTransitionRequest
+  output_model: omnimarket.nodes.node_local_alert_transition_compute.models.ModelLocalAlertTransitionResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT

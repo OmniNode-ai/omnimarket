@@ -14,7 +14,6 @@ import sys
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,6 +31,9 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
+from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.models.model_projection_stats import ProjectionStats
 from omnimarket.projection.dlq import (
     build_dlq_envelope,
     correlation_id_from_payload,
@@ -168,35 +170,6 @@ class _ProjectionHealthRequestHandler(http.server.BaseHTTPRequestHandler):
         # structured logger (module-level `logger`) is authoritative for
         # this process's diagnostics.
         return
-
-
-@dataclass
-class MessageMeta:
-    """Kafka message coordinates for deterministic dedup.
-
-    ``topic`` defaults to "" so the many pre-existing positional/keyword
-    call sites across handler test suites that predate OMN-15800 round 3
-    keep constructing valid instances; every live consumption path
-    (``BaseProjectionRunner._handle_message`` and each node's ``handle()``
-    RuntimeLocal shim) populates it for real. It is the authoritative
-    source-ordering coordinate (with partition/offset) consumed by
-    ``publish_snapshot_delta`` -- see CodeRabbit discussion r3745850632.
-    """
-
-    partition: int
-    offset: int
-    fallback_id: str
-    topic: str = ""
-
-
-@dataclass
-class ProjectionStats:
-    """In-memory projection stats."""
-
-    events_projected: int = 0
-    errors_count: int = 0
-    last_projected_at: datetime | None = None
-    topic_stats: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 class ModelProjectionRuntimeBinding(BaseModel):
@@ -612,6 +585,21 @@ class BaseProjectionRunner(ABC):
         Returns True if projection succeeded, False if DB unavailable.
         """
         ...
+
+    def handle(self, input_data: Any) -> Any:
+        # The runtime's projection arm calls handle(dict) and reads rows_upserted from
+        # the result. A handle annotated with a concrete model would be wired onto the
+        # typed dispatch arm instead (omnibase_infra OMN-16767) and stop receiving
+        # _db, _partition and _offset, so the dict is accepted here, once, and every
+        # runner implements project_request over the typed request. The signature is
+        # Any so a runner that is already canonical (a typed handle of its own) still
+        # overrides it.
+        return self.project_request(ModelProjectionRequest.from_injected(input_data))
+
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        # A runner the runtime dispatches in-process overrides this; a standalone runner
+        # owns its consume loop and is never handed a delivery.
+        raise NotImplementedError(type(self).__name__)
 
     @property
     def poison_dlq_topics(self) -> list[str]:

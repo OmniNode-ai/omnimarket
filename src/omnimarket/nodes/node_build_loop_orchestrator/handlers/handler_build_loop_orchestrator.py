@@ -67,6 +67,8 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_sta
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
     ClassifyRequest,
+    CloseoutRequest,
+    DispatchRequest,
     ProtocolBuildDispatchHandler,
     ProtocolCloseoutHandler,
     ProtocolRsdFillHandler,
@@ -74,6 +76,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     ProtocolVerifyHandler,
     RsdFillRequest,
     ScoredTicket,
+    VerifyRequest,
 )
 from omnimarket.nodes.node_overseer_verifier import ModelVerifierRequest
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier import (
@@ -218,8 +221,14 @@ class HandlerBuildLoopOrchestrator:
             topics.overseer_verification_completed
         )
         self._topic_overseer_verify_requested = topics.overseer_verify_requested
+        # The binding module imports this one; resolve its factories lazily.
+        from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+            build_build_loop,
+            build_overseer_verifier,
+        )
+
         self._fsm = (
-            fsm if fsm is not None else HandlerBuildLoop()
+            fsm if fsm is not None else build_build_loop()
         )  # lifecycle-ok: optional-di-fallback
         self._closeout = closeout
         self._verify = verify
@@ -231,7 +240,7 @@ class HandlerBuildLoopOrchestrator:
         self._overseer_verifier = (
             overseer_verifier
             if overseer_verifier is not None
-            else HandlerOverseerVerifier()
+            else build_overseer_verifier()
         )  # lifecycle-ok: optional-di-fallback
 
         # Inter-phase state: carry results between fill -> classify -> build
@@ -243,37 +252,37 @@ class HandlerBuildLoopOrchestrator:
     def _ensure_sub_handlers(self) -> None:
         """Lazy-initialize sub-handlers from default implementations if not injected."""
         if self._closeout is None:
-            from omnimarket.nodes.node_closeout_effect.handlers.handler_closeout import (
-                HandlerCloseout,
+            from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+                build_closeout,
             )
 
-            self._closeout = cast(ProtocolCloseoutHandler, HandlerCloseout())
+            self._closeout = cast(ProtocolCloseoutHandler, build_closeout())
         if self._verify is None:
-            from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
-                HandlerVerify,
+            from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+                build_verify,
             )
 
-            self._verify = cast(ProtocolVerifyHandler, HandlerVerify())
+            self._verify = cast(ProtocolVerifyHandler, build_verify())
         if self._rsd_fill is None:
-            from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
-                HandlerRsdFill,
+            from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+                build_rsd_fill,
             )
 
-            self._rsd_fill = cast(ProtocolRsdFillHandler, HandlerRsdFill())
+            self._rsd_fill = cast(ProtocolRsdFillHandler, build_rsd_fill())
         if self._classify is None:
-            from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
-                HandlerTicketClassify,
+            from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+                build_ticket_classify,
             )
 
             self._classify = cast(
-                ProtocolTicketClassifyHandler, HandlerTicketClassify()
+                ProtocolTicketClassifyHandler, build_ticket_classify()
             )
         if self._dispatch is None:
-            from omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch import (
-                HandlerBuildDispatch,
+            from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+                build_build_dispatch,
             )
 
-            self._dispatch = cast(ProtocolBuildDispatchHandler, HandlerBuildDispatch())
+            self._dispatch = cast(ProtocolBuildDispatchHandler, build_build_dispatch())
 
     async def handle(
         self,
@@ -469,8 +478,7 @@ class HandlerBuildLoopOrchestrator:
         try:
             if phase == EnumBuildLoopPhase.CLOSING_OUT:
                 await self._closeout.handle(
-                    correlation_id=correlation_id,
-                    dry_run=dry_run,
+                    CloseoutRequest(correlation_id=correlation_id, dry_run=dry_run)
                 )
                 return True, None, metrics
 
@@ -524,9 +532,11 @@ class HandlerBuildLoopOrchestrator:
 
             if phase == EnumBuildLoopPhase.BUILDING:
                 dispatch_result = await self._dispatch.handle(
-                    correlation_id=correlation_id,
-                    targets=self._last_classify_result,
-                    dry_run=dry_run,
+                    DispatchRequest(
+                        correlation_id=correlation_id,
+                        targets=self._last_classify_result,
+                        dry_run=dry_run,
+                    )
                 )
                 pr_refs: list[str] = []
                 cost_event_keys: list[str] = []
@@ -695,8 +705,7 @@ class HandlerBuildLoopOrchestrator:
             # No event bus: fall back to legacy verify handler for standalone/dry-run
             assert self._verify is not None
             result = await self._verify.handle(
-                correlation_id=correlation_id,
-                dry_run=dry_run,
+                VerifyRequest(correlation_id=correlation_id, dry_run=dry_run)
             )
             if not result.all_critical_passed:
                 return False, "Critical verification checks failed", {}

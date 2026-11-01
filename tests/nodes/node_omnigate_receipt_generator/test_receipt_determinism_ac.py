@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from uuid import UUID
 
 import pytest
 
@@ -54,8 +53,8 @@ async def test_ac_generator_same_input_and_clock_produce_identical_receipt(
     frozen_time = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
     with patch.object(handler_receipt_generator, "datetime", wraps=datetime) as clock:
         clock.now.return_value = frozen_time
-        first = await handler.handle(UUID(int=1), request)
-        second = await handler.handle(UUID(int=2), request)
+        first = await handler.handle(request)
+        second = await handler.handle(request)
 
     assert first == second
     assert first.receipt_json == second.receipt_json

@@ -1,0 +1,30 @@
+name: node_consumer_group_guard_effect
+version: 1.0.0
+description: Counts a bus's consumer groups by state, fails when the Empty groups pass the threshold this contract declares, and deletes long-Empty per-call groups under the limits this contract declares.
+omnibase_core_compat: '>=0.47.44,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_consumer_group_guard_effect: omnimarket.nodes.node_consumer_group_guard_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: destructive
+dependencies:
+  - pydantic>=2.0
+  - omnibase-infra>=0.38.77
+  - pyyaml>=6.0
+  - confluent-kafka>=2.0
+pack: observability
+display_name: Consumer Group Guard Effect
+node_role: effect
+authors:
+  - OmniNode Platform Team
+license: MIT
+tags:
+  - effect
+  - health
+  - consumer-groups

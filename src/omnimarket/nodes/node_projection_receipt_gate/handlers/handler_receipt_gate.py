@@ -36,13 +36,17 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_receipt_gate.models.model_receipt_gate_row import (
     ModelReceiptGateRow,
 )
 from omnimarket.nodes.node_projection_receipt_gate.reducers.reducer_receipt_gate import (
     reduce_receipt_gate,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,18 +123,13 @@ class HandlerReceiptGateProjectionRunner(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim -- same seam as the sibling
         runners, so ``onex run-node`` can drive one event through this path."""
-        payload = dict(input_data)
+        payload = dict(request.payload)
         topics = self.subscribe_topics
-        topic = str(payload.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(payload.pop("_partition", 0)),
-            offset=int(payload.pop("_offset", 0)),
-            fallback_id=str(payload.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         projected = asyncio.run(self.project_event(topic, payload, meta))
         return {"projected": projected}
 

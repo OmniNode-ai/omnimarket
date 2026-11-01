@@ -66,8 +66,7 @@ PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._-]*$")
 # What the host lacks, and what its owner adds, per capability; the probe's detail follows.
 OWNER_FIX = {
     SCM_PR_CREATE: "onex scm pr-create exits 69 on this host: its bus login cannot open the pr-create terminal topics; the host "
-    "owner grants the host's broker principal read on node_github_repo_write_effect's terminal topics and its "
-    "scm_command_client consumer group",
+    "owner grants the host's broker principal read on node_github_repo_write_effect's terminal topics (the command joins no consumer group)",
     GIT_WORKFLOW_PUSH: "the host's git credential lacks the workflow scope, so a push touching .github/workflows is refused; the "
     "host owner gives the host a GitHub credential with the workflow scope",
     SHELLCHECK: "shellcheck is not on the PATH lanes run with, so a system shellcheck hook (shell-hygiene) fails; the host owner "
@@ -99,7 +98,6 @@ elif what == "scm-pr-create":
     try:
         from pathlib import Path
         from omnimarket.handlers.scm import handler_scm_dispatch as dispatch, scm_cli
-        from omnimarket.lab_work.bus import _subscribe
         topics = dispatch.load_topics(dispatch.verb("pr-create").node)
     except Exception as exc:
         say("unknown", "scm-unimportable:" + type(exc).__name__)
@@ -109,12 +107,12 @@ elif what == "scm-pr-create":
         return None
 
     async def main():
-        # The opening and the subscriptions ``onex scm pr-create`` makes before it publishes, with its consumer group prefix.
+        # The opening and the subscriptions ``onex scm pr-create`` makes before it publishes: ungrouped reads, no consumer group.
         opts = {"bus": "kafka", "bus_lane": lane, "kafka_bootstrap": None, "omnibase_path": Path(root) if root else None}
         async with scm_cli._open_bus(opts) as bus:
-            group = dispatch.ScmBusCaller(bus)._group
+            ungrouped = dispatch.ScmBusCaller(bus)._bus  # refuses a bus with no ungrouped read, as the command does
             for topic in [t for t in (topics.success, topics.failure) if t]:
-                stop = await _subscribe(bus, topic, drop, group, "latest")
+                stop = await ungrouped.subscribe_ungrouped(topic, drop)
                 await stop()
         return topics.success
 

@@ -28,6 +28,7 @@ from typing import Any
 
 import httpx
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_antipattern_match_effect.models.model_antipattern_match import (
     ModelAntipatternMatch,
 )
@@ -286,7 +287,11 @@ def _build_qdrant_client() -> Any | None:
 async def _get_embedding(endpoint: str, text: str) -> list[float] | None:
     """Call embedding endpoint; returns None on any failure."""
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            timeout=load_node_timeouts("node_antipattern_match_effect").get(
+                "embedding_request_timeout_seconds"
+            )
+        ) as client:
             response = await client.post(
                 f"{endpoint}/v1/embeddings",
                 json={"input": text, "model": "embedding"},

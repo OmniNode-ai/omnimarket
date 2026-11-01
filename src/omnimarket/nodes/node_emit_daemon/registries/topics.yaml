@@ -909,6 +909,20 @@ events:
     partition_key_field: delegation_correlation_id
     required_fields: [tenant_id, delegation_correlation_id, disposition, reason_code, caller_lane, artifact_kind, recorded_at, disposition_id]
 
+  # OMN-21320: one numbered step of a delegation run, published by the
+  # delegate-skill run-step recorder and consumed by node_projection_run_trace.
+  # The topic is the orchestrator contract's runtime_dispatch.run_step_event.
+  # No transform: a step carries ids, enums, timings and a short reason, never
+  # the prompt or the answer. Keyed on the run's correlation so one run's steps
+  # stay ordered.
+  delegation.run_step:
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegation-run-step.v1"
+        tier: telemetry
+        description: "One numbered step of a delegation run, for the run-trace projection"
+    partition_key_field: correlation_id
+    required_fields: [tenant_id, correlation_id, step_sequence, step_kind, started_at, outcome]
+
   # OMN-20001: strict core event envelopes; v1 retains its legacy body.
   work.ledger.typed.claim:
     fan_out:
@@ -987,3 +1001,74 @@ events:
         description: "A core typed correction work-ledger event"
     partition_key_field: ledger_id
     required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
+
+  # =========================================================================
+  # Context compaction (OMN-21112): two restricted commands, six receipts.
+  # Receipt schemas carry ids, hashes, counts, names and enums only.
+  # node_owned: the orchestrator node emits these, never a Claude Code hook, so
+  # the hook-side registry and its drift check carry no registration for them.
+  # =========================================================================
+  compaction.requested:
+    node_owned: true
+    fan_out:
+      - topic: "onex.cmd.omniintelligence.context-compaction-requested.v1"
+        tier: telemetry
+        description: "Compaction request for a session (restricted command)"
+    partition_key_field: session_id
+    required_fields: [invocation_id, session_id, cwd, trigger, input_messages_hash]
+  compaction.package:
+    node_owned: true
+    fan_out:
+      - topic: "onex.cmd.omniintelligence.context-compaction-package.v1"
+        tier: telemetry
+        description: "Compaction package reply correlated by invocation_id (restricted command)"
+    partition_key_field: invocation_id
+    required_fields: [invocation_id, action, status]
+  compaction.prepared:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.context-compaction-prepared.v1"
+        tier: telemetry
+        description: "Compaction candidate prepared receipt: ids, hashes and counts only"
+    partition_key_field: session_id
+    required_fields: [candidate_id, session_id, input_messages_hash, assembly_hash, version_vector_hash, profile_name, profile_content_hash]
+  compaction.activated:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.context-compaction-activated.v1"
+        tier: telemetry
+        description: "Compaction activated receipt: ids and hashes only"
+    partition_key_field: session_id
+    required_fields: [activation_id, candidate_id, invocation_id, session_id, trigger, model_outputs_hash, final_pack_hash, body_hash, installed_messages_hash]
+  compaction.fallback:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.context-compaction-fallback.v1"
+        tier: telemetry
+        description: "Compaction fell back to native: ids and failure class only"
+    partition_key_field: session_id
+    required_fields: [invocation_id, session_id, failure_class]
+  compaction.installed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.context-compaction-installed.v1"
+        tier: telemetry
+        description: "Compaction install confirmed: ids and hashes only"
+    partition_key_field: session_id
+    required_fields: [activation_id, session_id, boundary_uuid, observed_hash]
+  compaction.install_mismatch:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.context-compaction-install-mismatch.v1"
+        tier: telemetry
+        description: "Compaction install mismatch: ids and hashes only"
+    partition_key_field: session_id
+    required_fields: [activation_id, session_id, boundary_uuid, installed_messages_hash, observed_hash]
+  compaction.install_uncertain:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.context-compaction-install-uncertain.v1"
+        tier: telemetry
+        description: "Compaction install uncertain: ids and reason enum only"
+    partition_key_field: session_id
+    required_fields: [activation_id, session_id, reason]

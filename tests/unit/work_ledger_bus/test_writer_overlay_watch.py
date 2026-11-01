@@ -13,8 +13,8 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolBusMessage,
@@ -163,7 +163,7 @@ def test_a_declared_machine_is_served_and_attributed_without_a_reinstall(
         host = WorkLedgerAppendHost(bus, handler, writer_principals=["dev-installed"])
 
         async def serve(writers: frozenset[str]) -> bool:
-            handler.set_writer_principals(writers)
+            handler.writers.replace(writers)
             return await host.set_writer_principals(writers)
 
         watch = WriterOverlayWatch(

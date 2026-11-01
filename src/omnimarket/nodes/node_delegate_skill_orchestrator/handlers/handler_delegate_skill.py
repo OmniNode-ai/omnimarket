@@ -117,11 +117,20 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_t
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
     load_delegation_reaper_config,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_prompt_size_bound import (
+    load_prompt_size_bound,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     ProtocolDelegationIdempotencyPort,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.session_model import (
+    bind_session_model,
+    current_session_model,
+    drop_saving_priced_elsewhere,
+    request_session_model,
 )
 from omnimarket.nodes.node_delegation_output_extract_compute import (
     ModelDelegationOutputExtractRequest,
@@ -1193,10 +1202,12 @@ def _response_from_result(
         actual_cost_usd = max(
             actual_cost_usd, sum(attempt.cost_usd for attempt in attempts)
         )
+    # OMN-20557: the session model the caller named outranks the port's.
     baseline = resolve_baseline_model(
         overlay=result.get("overlay", {}),
         store=result.get("store", {}),
-        session_model=str(
+        session_model=request_session_model(request)
+        or str(
             result.get("model_cloud_baseline") or result.get("baseline_model") or ""
         ),
     )
@@ -1584,6 +1595,28 @@ class HandlerDelegateSkill:
                 # OMN-19004: nothing was attempted, so the count says zero.
                 attempts_count=0,
             )
+        # OMN-21325: the contract-declared prompt size bound, checked before
+        # any rung is resolved so an oversized task reaches no model.
+        prompt_bytes = len(request.prompt.encode("utf-8"))
+        max_prompt_bytes = load_prompt_size_bound().max_prompt_bytes
+        if prompt_bytes > max_prompt_bytes:
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    "prompt_exceeds_size_bound: "
+                    f"prompt_bytes={prompt_bytes}; "
+                    f"max_prompt_bytes={max_prompt_bytes}; "
+                    f"task_type={request.task_type}"
+                ),
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                attempts_count=0,
+            )
         execution_timeout_seconds = (
             timeout_ceiling_seconds
             if requested_timeout_seconds is None
@@ -1609,6 +1642,9 @@ class HandlerDelegateSkill:
             and requested_grace_seconds is not None
             else execution_budget.terminal_delivery_margin_seconds
         )
+        # OMN-20557 / OMN-21752: the session model rides a context variable,
+        # not a dispatch() keyword -- see session_model.py.
+        session_token = bind_session_model(request, self._dispatch_port)
         progress = ModelDelegationDispatchProgress()
         progress_token = current_dispatch_progress.set(progress)
         try:
@@ -1793,7 +1829,12 @@ class HandlerDelegateSkill:
 
         finally:
             current_dispatch_progress.reset(progress_token)
+            if session_token is not None:
+                current_session_model.reset(session_token)
 
+        result = drop_saving_priced_elsewhere(
+            result, request, session_token is not None
+        )
         return delegate_skill_terminal_from_response(
             _response_from_result(
                 request,

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""One fix, one pull request: refuse a new pull request an open one or a live CLAIM already covers (OMN-17427).
+"""One fix, one pull request: refuse shared intent, never line proximity alone.
 
 The fold reads nothing. The caller supplies the new pull request (its branch, title, body and what its
 diff changes), the open pull requests of the same repository with what each changes (the PR watcher's
@@ -8,9 +8,11 @@ records plus a ``git diff -U0`` against the merge base) and the rolling ledger t
 when any of these holds, naming the pull request to take over:
 
 - ``branch``: a pull request is already open from this branch;
-- ``lines``: an open pull request against the same base changes the same existing lines of a file, or adds
-  the same new file (three omnibase_core pull requests renamed one baseline line on 2026-10-30);
-- ``files_and_title``: it changes the same file and its title shares three distinctive words with the new
+- ``lines``: overlapping existing lines or the same added file, and the same change: changed lines at least
+  ``config.intent.min_same_change_similarity`` alike, or at least ``min_same_ticket_similarity`` alike under a
+  shared ticket (a shared ticket alone, with changed lines that share almost nothing, is one ticket over many pull
+  requests); proximity with different intent supplies only a note;
+- ``files_and_title``: it changes the same file and its title shares four distinctive words with the new
   one (two pull requests in a second repository added one dispatch on 2026-10-30);
 - ``cause_cited``: its title (a fix title) or a ``Fix-Check:`` / ``Fix-Cause:`` body line cites a check or
   cause the new pull request is for, taken from the lane's own CLAIM ``cause=`` cell, the caller's ``cause``
@@ -22,7 +24,10 @@ ledger) and the ones a repository regenerates in every pull request of a kind (t
 plan index). Neither list is code: the generic ones are ``config.generic_paths`` in this node's
 ``contract.yaml``, and the per-repository generated ones are the request's ``generated_paths``, which the
 snapshot effect reads from the deployment overlay (private repositories are named only there). Overlap in an
-authored file still counts.
+authored file needs shared intent. Stack ancestors and descendants are skipped, and the caller reads the new
+branch's diff from the newest open pull request head it contains, so ``judged_commits`` are the branch's own. The
+answer names them: ``judged_commits`` in the JSON, ``Judged N commits`` in the message. A draft without a live
+owner CLAIM supplies evidence-only notes for lines, title and cause; the same head branch still refuses.
 
 Two pull requests on the same file that change different lines, with unrelated titles, are not duplicates:
 they pass, and the overlap is reported in ``notes``. A pull request whose diff was not read passes on its
@@ -42,6 +47,7 @@ from omnimarket.handlers.handler_ledger_claims import claim_lane, live_claims
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumDuplicateEvidence,
     ModelDuplicateEvidence,
+    ModelDuplicateGuardConfig,
     ModelDuplicateGuardRules,
     ModelFileTouch,
     ModelOpenPr,
@@ -59,6 +65,8 @@ SHARED_WORDS_NEEDED: Final[int] = 4
 SHARED_WORDS_SHARE: Final[float] = 0.5
 #: Notes name this many same-file overlaps; the rest are counted.
 NOTES_SHOWN: Final[int] = 5
+#: A note names this many overlapping places of one pull request; the rest are counted.
+HITS_SHOWN: Final[int] = 3
 #: How strongly each kind says the fix is already owned; the pull request to adopt comes from the strongest.
 _STRENGTH: Final[dict[EnumDuplicateEvidence, int]] = {
     EnumDuplicateEvidence.BRANCH: 0,
@@ -130,9 +138,7 @@ _STOP_WORDS: Final[frozenset[str]] = frozenset(
         "wrongly",
     ]
 )
-_FIXISH = re.compile(r"^(?:(?:hot)?fix|repair|correct|refresh)\b|^OMN-\d+\s*:", re.I)
 _WORD = re.compile(r"[a-z][a-z0-9_]{3,}")
-_TICKET = re.compile(r"\s*\(\s*OMN-\d+\s*\)|\bOMN-\d+\b", re.I)
 _SPELLING = re.compile(r"[\s_-]+")
 _MARKER_CHECK = re.compile(r"^Fix-Check:[ \t]*(.+)$", re.M | re.I)
 _MARKER_CAUSE = re.compile(r"^Fix-Cause:[ \t]*(.+)$", re.M | re.I)
@@ -150,10 +156,32 @@ def _short(repo: str) -> str:
 
 def load_generic_paths() -> tuple[str, ...]:
     """The files every change touches, from this node's ``contract.yaml``."""
+    return load_config().generic_paths
+
+
+def load_config() -> ModelDuplicateGuardConfig:
+    """Validated configuration from this node's contract."""
     contract: dict[str, Any] = yaml.safe_load(
         (NODE_ROOT / "contract.yaml").read_text(encoding="utf-8")
     )
-    return tuple(contract["config"]["generic_paths"])
+    return ModelDuplicateGuardConfig.model_validate(contract["config"])
+
+
+_CONFIG = load_config()
+_INTENT = _CONFIG.intent
+_REPORT = _CONFIG.report
+_TICKET_WORD = re.compile(rf"\b(?:{_INTENT.ticket_pattern})\b", re.I)
+_TICKET = re.compile(
+    rf"\s*\(\s*{_TICKET_WORD.pattern}\s*\)|{_TICKET_WORD.pattern}", re.I
+)
+_FIXISH = re.compile(
+    rf"^(?:(?:hot)?fix|repair|correct|refresh)\b|^{_TICKET_WORD.pattern}\s*:", re.I
+)
+
+
+def tickets(*texts: str) -> set[str]:
+    """All ticket matches, in their canonical uppercase spelling."""
+    return {m.group().upper() for text in texts for m in _TICKET_WORD.finditer(text)}
 
 
 def distinctive_words(title: str) -> frozenset[str]:
@@ -200,9 +228,20 @@ def overlap(
     repo: str,
 ) -> tuple[list[str], list[str]]:
     """(same-line hits, shared files that are neither generic nor generated in ``repo``) between two diffs, each sorted."""
+    lines, shared, _ = _overlap(new, other, rules, repo)
+    return lines, shared
+
+
+def _overlap(
+    new: ModelPrTouch,
+    other: ModelPrTouch,
+    rules: ModelDuplicateGuardRules,
+    repo: str,
+) -> tuple[list[str], list[str], set[str]]:
     theirs: dict[str, ModelFileTouch] = {f.path: f for f in other.files}
     lines: list[str] = []
     shared: list[str] = []
+    hit_paths: set[str] = set()
     for mine in new.files:
         match = theirs.get(mine.path)
         if match is None or rules.ignores(repo, mine.path):
@@ -210,13 +249,38 @@ def overlap(
         shared.append(mine.path)
         if mine.added and match.added:
             lines.append(f"{mine.path} (both add it)")
+            hit_paths.add(mine.path)
             continue
         for a in mine.spans:
             hit = next((b for b in match.spans if a[0] <= b[1] and b[0] <= a[1]), None)
             if hit is not None:
                 lines.append(f"{mine.path}:{max(a[0], hit[0])}")
+                hit_paths.add(mine.path)
                 break
-    return sorted(lines), sorted(shared)
+    return sorted(lines), sorted(shared), hit_paths
+
+
+def _similarity(
+    new: ModelPrTouch, other: ModelPrTouch, paths: set[str]
+) -> float | None:
+    """Share of the changed-line digests two diffs have in common on ``paths``; None when either side has none."""
+    mine = {d for f in new.files if f.path in paths for d in f.digest}
+    theirs = {d for f in other.files if f.path in paths for d in f.digest}
+    if not (mine and theirs):
+        return None
+    return len(mine & theirs) / len(mine | theirs)
+
+
+def _same_intent(shared_ticket: bool, similarity: float | None) -> bool:
+    """One fix: the changes are alike enough (a shared ticket lowers the bar); unreadable digests leave a shared ticket to decide."""
+    if similarity is None:
+        return shared_ticket
+    bar = (
+        _INTENT.min_same_ticket_similarity
+        if shared_ticket
+        else _INTENT.min_same_change_similarity
+    )
+    return similarity >= bar
 
 
 def _same_words(
@@ -281,6 +345,23 @@ def _claim_prs(row: str, repo: str, open_numbers: set[int]) -> list[int]:
     return sorted(set(found))
 
 
+def _owned(pr: ModelOpenPr, repo: str, live: tuple[str, ...]) -> bool:
+    if not pr.draft:
+        return True
+    intent = tickets(pr.head_ref, pr.title)
+    for row in live:
+        cell = cells(row)
+        if cell.get("ticket", "").upper() in intent:
+            return True
+        for key in ("pr", "fix", "adopted"):
+            if any(
+                _short(name) == repo and int(number) == pr.number
+                for name, number in _PR_REF.findall(cell.get(key, ""))
+            ):
+                return True
+    return False
+
+
 class HandlerPrDuplicateGuard:
     """Fold one new pull request against the open ones and the live CLAIMs."""
 
@@ -306,7 +387,18 @@ class HandlerPrDuplicateGuard:
             row for row in live if request.lane and claim_lane(row) == request.lane
         ]
         wanted = _wanted_causes(request, repo, own_rows)
+        new_tickets = tickets(
+            request.head_ref,
+            request.title,
+            *(cells(row).get("ticket", "") for row in own_rows),
+        )
         new_words = distinctive_words(request.title)
+        chain = {request.base} if request.base is not None else set()
+        while True:
+            parents = {pr.base for pr in request.open_prs if pr.head_ref in chain}
+            if parents <= chain:
+                break
+            chain.update(parents)
 
         for pr in sorted(request.open_prs, key=lambda p: p.number):
             ref = _pr_ref(repo, pr.number)
@@ -319,15 +411,27 @@ class HandlerPrDuplicateGuard:
                     )
                 )
                 continue
+            if pr.stacked or pr.head_ref in chain:
+                continue  # a stack's own base or ancestor, or one stacked on this branch
             if request.base is not None and pr.base != request.base:
                 continue
-            if pr.head_ref == request.base:
-                continue  # the new pull request is stacked on this one
+            start = len(evidence)
             hit = False
             if request.touch is not None and pr.touch is not None:
-                lines, shared = overlap(request.touch, pr.touch, rules, repo)
+                lines, shared, hit_paths = _overlap(
+                    request.touch, pr.touch, rules, repo
+                )
                 words = sorted(new_words & distinctive_words(pr.title))
-                if lines:
+                shared_ticket = bool(new_tickets & tickets(pr.head_ref, pr.title))
+                same_intent = _same_intent(
+                    shared_ticket, _similarity(request.touch, pr.touch, hit_paths)
+                )
+                if lines and not same_intent:
+                    why = "same ticket" if shared_ticket else "other ticket"
+                    notes.append(
+                        f"{ref} also changes {_hits(lines)} but carries a different intent ({why}, different change): not the same fix"
+                    )
+                if lines and same_intent:
                     hit = True
                     evidence.append(
                         ModelDuplicateEvidence(
@@ -350,16 +454,22 @@ class HandlerPrDuplicateGuard:
                             ),
                         )
                     )
-                elif shared:
+                elif shared and not lines:
                     notes.append(
                         f"{ref} also changes {', '.join(shared)}, on other lines and under an unrelated title: not the same fix"
                     )
             elif pr.touch is None:
                 unread.append(ref)
-            if hit:
-                continue
-            cited = sorted({check for _, check in wanted if _cites(pr.title, check)})
-            marked = sorted(check for _, check in wanted & _markers(pr, repo))
+            cited = (
+                sorted({check for _, check in wanted if _cites(pr.title, check)})
+                if not hit
+                else []
+            )
+            marked = (
+                sorted(check for _, check in wanted & _markers(pr, repo))
+                if not hit
+                else []
+            )
             if cited or marked:
                 names = ", ".join(cited or marked)
                 evidence.append(
@@ -369,6 +479,12 @@ class HandlerPrDuplicateGuard:
                         detail=f"{ref} cites the same check or cause: {names}",
                     )
                 )
+            if not _owned(pr, repo, live):
+                notes.extend(
+                    f"{ref} is a draft with no live owner CLAIM and {item.detail}: evidence only, adopt or supersede it, not a refusal"
+                    for item in evidence[start:]
+                )
+                del evidence[start:]
 
         titled = _title_checks(request.title, live, repo)
         for row in live:
@@ -392,7 +508,12 @@ class HandlerPrDuplicateGuard:
                 state="clear",
                 notes=_shown(notes),
                 unread=tuple(unread),
-                message=f"no open pull request or live CLAIM in {repo} covers this change",
+                message=(
+                    f"no open pull request or live CLAIM in {repo} covers this change. "
+                    f"{_judged_text(request)}"
+                ),
+                judged_commits=request.judged_commits,
+                judged_base=request.judged_base,
             )
         ordered = sorted(
             evidence,
@@ -417,12 +538,40 @@ class HandlerPrDuplicateGuard:
             evidence=tuple(ordered),
             notes=_shown(notes),
             unread=tuple(unread),
+            judged_commits=request.judged_commits,
+            judged_base=request.judged_base,
             message=(
                 f"{target} already covers this change ({'; '.join(e.detail for e in ordered)}). "
+                f"{_judged_text(request)} "
                 "Open no second pull request: comment on it, rebase it or push to its branch, and say so on your STATUS row "
                 f"(adopted={adopt_pr or target})."
             ),
         )
+
+
+def _judged_text(request: ModelPrDuplicateGuardRequest) -> str:
+    """The commits the answer was judged on, as one sentence, capped at the contract's ``judged_commits_shown``."""
+    commits = request.judged_commits
+    if not commits:
+        return "Judged: no commits read (the branch's commits were not listed)."
+    shown = "; ".join(
+        f"{c.sha} {c.subject}".rstrip() for c in commits[: _REPORT.judged_commits_shown]
+    )
+    more = len(commits) - _REPORT.judged_commits_shown
+    if more > 0:
+        shown = f"{shown}; and {more} more"
+    start = request.judged_base or f"the base branch {request.base or ''}".rstrip()
+    noun = "commit" if len(commits) == 1 else "commits"
+    return f"Judged {len(commits)} {noun} after {start}: {shown}."
+
+
+def _hits(lines: list[str]) -> str:
+    shown = ", ".join(lines[:HITS_SHOWN])
+    return (
+        shown
+        if len(lines) <= HITS_SHOWN
+        else f"{shown} and {len(lines) - HITS_SHOWN} more"
+    )
 
 
 def _shown(notes: list[str]) -> tuple[str, ...]:
@@ -430,7 +579,7 @@ def _shown(notes: list[str]) -> tuple[str, ...]:
         return tuple(notes)
     return (
         *notes[:NOTES_SHOWN],
-        f"{len(notes) - NOTES_SHOWN} more open pull requests also change a file of this one on other lines",
+        f"{len(notes) - NOTES_SHOWN} more notes about open pull requests",
     )
 
 

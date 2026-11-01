@@ -56,7 +56,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, ClassVar, Literal, TypedDict, cast
 from uuid import UUID
 
 import yaml
@@ -233,9 +233,16 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolut
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_routing_answer_judge import (
     routing_answer_judge,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.quality_gate_record_recorder import (
+    build_quality_gate_record,
+    publish_quality_gate_record,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     ProtocolRunStepPublisher,
     RunStepRecorder,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.session_model import (
+    current_session_model,
 )
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
@@ -325,7 +332,11 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
     apply_usage_call,
 )
-from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
+from omnimarket.pricing import (
+    ModelBaselineSavings,
+    compute_baseline_savings,
+    resolve_baseline_model,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -1519,7 +1530,15 @@ class LocalDelegationDispatchPort:
     OMN-13849: dispatch runs an in-process escalation loop. On a quality-gate FAIL
     it re-dispatches to the next eligible tier (bounded by the task-class
     ``max_escalations``). Acceptance uses the deterministic gate on both paths.
+
+    OMN-21752: this port reads the caller's session model from
+    ``current_session_model``, which the handler sets around the dispatch, and
+    says so with ``reads_session_model``. It is not a keyword of ``dispatch()``,
+    because omnibase_infra's keyword-parity check holds every keyword the
+    handler's call site can send to the runtime port's signature.
     """
+
+    reads_session_model: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -3264,6 +3283,14 @@ class LocalDelegationDispatchPort:
                         ),
                     }
                 )
+            gate_record = build_quality_gate_record(
+                gate_result=gate_result,
+                task_type=task_type,
+                attempt_index=len(attempts),
+                deciding_rule=acceptance_reason.value,
+                acceptance_detail=acceptance_detail,
+            )
+            publish_quality_gate_record(self._terminal_publisher, gate_record)
             attempts.append(
                 {
                     "tier": attempt_tier,
@@ -3305,6 +3332,7 @@ class LocalDelegationDispatchPort:
                     # exactly the text that was judged.
                     "reasoning_preamble_rule": gate_result.reasoning_preamble_rule,
                     "rubric_verdict": rubric_verdict.model_dump(mode="json"),
+                    "gate_record": gate_record.model_dump(mode="json"),
                     "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
@@ -3371,6 +3399,7 @@ class LocalDelegationDispatchPort:
                     prompt_tokens=result.tokens_in,
                     completion_tokens=result.tokens_out,
                     actual_cost_usd=float(cumulative_cost_usd),
+                    session_model=current_session_model.get() or "",
                 )
                 self._project_evidence(
                     correlation_id=correlation_id,
@@ -5781,6 +5810,10 @@ class LocalDelegationDispatchPort:
                 store,
                 tenant_id=tenant_id,
                 terminal_at=terminal_at,
+                # OMN-20557: folded under the baseline this run resolved.
+                baseline_model=resolve_baseline_model(
+                    overlay={}, store={}, session_model=current_session_model.get()
+                ).model,
                 publisher=self._metering_refresh_publisher
                 or InProcessMeteringRefreshPublisher(store),
             )

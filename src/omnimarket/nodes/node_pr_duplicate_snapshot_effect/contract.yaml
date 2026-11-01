@@ -9,7 +9,7 @@ contract_version:
   minor: 0
   patch: 0
 node_version: 1.0.0
-description: Read what the duplicate-fix pull request guard folds over, from local sources only and never a GitHub search. The PR watcher's state file for the open pull requests of one repository (refused when its last_tick is older than 15 minutes), the rolling ledger named by ONEX_LEDGER_PATH, and git diff -U0 for what the new branch and each open pull request change against the merge base. The deployment overlay node_pr_duplicate_guard_compute/overlay.yaml (read from ONEX_SKILL_OVERLAY_ROOTS, then ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays) names per repository the paths it regenerates in every pull request of a kind, passed to the guard as generated_paths; an absent overlay declares none. A source it cannot read, or an overlay it cannot parse, is returned as unchecked_reason, never as no duplicate.
+description: Read what the duplicate-fix pull request guard folds over, from local sources only and never a GitHub search. The PR watcher's state file for the open pull requests of one repository (refused when its last_tick is older than 15 minutes), the rolling ledger named by ONEX_LEDGER_PATH, and git diff -U0 for what the new branch and each open pull request change against the merge base. Changed-line digests supply intent evidence; draft facts let the guard distinguish ownerless drafts. Git ancestry flags stacked ancestors and descendants, and the new diff excludes the tip-most open ancestor changes. The deployment overlay node_pr_duplicate_guard_compute/overlay.yaml (read from ONEX_SKILL_OVERLAY_ROOTS, then ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays) names per repository the paths it regenerates in every pull request of a kind, passed to the guard as generated_paths; an absent overlay declares none. A source it cannot read, or an overlay it cannot parse, is returned as unchecked_reason, never as no duplicate.
 input_model:
   name: ModelPrDuplicateSnapshotRequest
   module: omnimarket.models.model_pr_duplicate_guard
@@ -29,6 +29,12 @@ handler_routing:
     handler:
       name: HandlerPrDuplicateSnapshot
       module: omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot
+config:
+  digest:
+    min_line_chars: 4
+    prefix_chars: 12
+  stack:
+    base_rule: newest_contained_open_pr_head
 event_bus:
   subscribe_topics: []
   publish_topics: []

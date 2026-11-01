@@ -28,6 +28,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -40,6 +41,18 @@ from omnibase_core.models.projection.model_upsert_plan import (
 
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _CREDENTIAL_ROUTE_VERSIONS_STEP as _CREDENTIAL_ROUTE_VERSIONS_STEP,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _DELEGATION_ROUTING_TENANT_OVERLAY_DDL,
+    _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
+    _TENANT_INFERENCE_CREDENTIALS_DDL,
+    CredentialSqliteStore,
 )
 
 logger = logging.getLogger(__name__)
@@ -535,58 +548,6 @@ CREATE TABLE IF NOT EXISTS automation_alarm_episodes (
 )
 """
 
-# OMN-19968: the local half of the tenant BYOK credential projection's two
-# tables, declared from node_projection_tenant_credentials/migrations (0000,
-# 0001: name and provider nullable for a revoke tombstone) and
-# node_delegation_routing_reducer/migrations (0001, 0004: provider). Timestamps
-# are ISO text; the primary key and the (tenant_id, task_type) unique key back
-# the two upserts in handler_tenant_credentials_store.
-_TENANT_INFERENCE_CREDENTIALS_DDL = """
-CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
-    api_key_ref TEXT PRIMARY KEY,
-    tenant_id   TEXT NOT NULL,
-    name        TEXT,
-    provider    TEXT,
-    created_at  TEXT NOT NULL,
-    revoked_at  TEXT,
-    fingerprint TEXT,
-    set_at      TEXT,
-    expires_at  TEXT,
-    bound_host  TEXT,
-    workspace_id TEXT
-)
-"""
-
-# 0005: a file made before the fingerprint and set time existed gains them on open,
-# so a read of the exposure's declared columns never meets a missing one.
-_TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
-    "fingerprint": None,
-    "set_at": None,
-    # 0006 (OMN-20991): the key's expiry date.
-    "expires_at": None,
-    # 0007 (OMN-21012): the lab host the key is bound to.
-    "bound_host": None,
-    # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
-    "workspace_id": None,
-}
-
-_DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
-CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id    TEXT NOT NULL,
-    task_type    TEXT NOT NULL,
-    backend_id   TEXT NOT NULL,
-    provider     TEXT,
-    endpoint_url TEXT NOT NULL,
-    model_name   TEXT NOT NULL,
-    secret_ref   TEXT,
-    timeout_ms   INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0),
-    max_tokens   INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0),
-    created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL,
-    UNIQUE (tenant_id, task_type)
-)
-"""
 
 # OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
 # schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
@@ -669,8 +630,35 @@ _METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
 # of migration 0004. Its own step, not a fourth entry above: a store that has
 # already recorded the OMN-20226 step would never run that step again.
 _METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
-_METERING_SUMMARY_SAVINGS_PCT_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("savings_pct_of_counterfactual", "TEXT"),
+# OMN-21361: metering_summary's savings per measured run, the counterpart of
+# migration 0002. A store written before it has the table without the column,
+# and read_summary_row refused that row on every delegation. Its own step, for
+# the same reason as the savings share above.
+_METERING_SUMMARY_SAVINGS_PER_RUN_STEP = (
+    "omn21361_metering_summary_savings_per_measured_run_column"
+)
+# Each step adds its columns once per store, nullable with no default, so a row
+# written before them reads null. The columns are read again under the step's
+# write lock, so a fresh store, whose table already has them, and two first
+# opens that race both add nothing twice.
+_METERING_SUMMARY_COLUMN_STEPS: tuple[
+    tuple[str, tuple[tuple[str, str], ...], str], ...
+] = (
+    (
+        _METERING_SUMMARY_MEASURES_STEP,
+        _METERING_SUMMARY_ADDED_COLUMNS,
+        "added the metering-summary compression and cache columns",
+    ),
+    (
+        _METERING_SUMMARY_SAVINGS_PCT_STEP,
+        (("savings_pct_of_counterfactual", "TEXT"),),
+        "added the metering-summary savings share column",
+    ),
+    (
+        _METERING_SUMMARY_SAVINGS_PER_RUN_STEP,
+        (("savings_per_measured_run_usd", "TEXT"),),
+        "added the metering-summary savings per measured run column",
+    ),
 )
 _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
@@ -777,7 +765,7 @@ def default_evidence_db_path() -> Path:
     return _DEFAULT_EVIDENCE_DB_PATH
 
 
-class SqliteDatabaseAdapter:
+class SqliteDatabaseAdapter(CredentialSqliteStore):
     """``ProtocolProjectionDatabaseSync`` over a local SQLite file.
 
     Idempotent schema creation; additive columns inferred from the row dict so a
@@ -832,6 +820,7 @@ class SqliteDatabaseAdapter:
                 "tenant_inference_credentials",
                 _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
             )
+            self._ensure_credential_route_columns(conn)
             self._apply_store_steps(conn, self._db_path)
         except BaseException:
             conn.close()
@@ -962,28 +951,21 @@ class SqliteDatabaseAdapter:
                     "created the delegation model-routing and quality-gate views",
                 )
             )
-        if not cls._store_step_recorded(conn, _METERING_SUMMARY_MEASURES_STEP):
-            pending.append(
-                (
-                    _METERING_SUMMARY_MEASURES_STEP,
-                    cls._add_metering_summary_measure_columns,
-                    "added the metering-summary compression and cache columns",
+        for step, columns, lacking in _METERING_SUMMARY_COLUMN_STEPS:
+            if not cls._store_step_recorded(conn, step):
+                pending.append(
+                    (
+                        step,
+                        partial(cls._add_metering_summary_columns, columns=columns),
+                        lacking,
+                    )
                 )
-            )
         if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_VIEW_STEP):
             pending.append(
                 (
                     _DELEGATION_SAVINGS_VIEW_STEP,
                     cls._create_delegation_savings_view,
                     "created the delegation savings view",
-                )
-            )
-        if not cls._store_step_recorded(conn, _METERING_SUMMARY_SAVINGS_PCT_STEP):
-            pending.append(
-                (
-                    _METERING_SUMMARY_SAVINGS_PCT_STEP,
-                    cls._add_metering_summary_savings_pct_column,
-                    "added the metering-summary savings share column",
                 )
             )
         if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP):
@@ -1044,6 +1026,7 @@ class SqliteDatabaseAdapter:
                     "indexed the delegate-skill command claims by correlation",
                 )
             )
+        pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -1143,23 +1126,6 @@ class SqliteDatabaseAdapter:
                     conn.execute(statement)
             for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
                 conn.execute(trigger)
-
-    @classmethod
-    def _add_metering_summary_measure_columns(cls, conn: sqlite3.Connection) -> None:
-        """OMN-20226: give a store written before them metering_summary's
-        compression and cache columns, run once per store as a store step.
-
-        The columns are read again here, under the step's write lock, so a fresh
-        store, whose table already has them, and two first opens that race both
-        add nothing twice.
-        """
-        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_ADDED_COLUMNS)
-
-    @classmethod
-    def _add_metering_summary_savings_pct_column(cls, conn: sqlite3.Connection) -> None:
-        """OMN-20008: give a store written before it metering_summary's
-        savings_pct_of_counterfactual column, run once per store as a store step."""
-        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_SAVINGS_PCT_COLUMNS)
 
     @classmethod
     def _add_metering_summary_columns(
@@ -1553,7 +1519,7 @@ class SqliteDatabaseAdapter:
                 ).fetchall()
             else:
                 rows = conn.execute(f"SELECT * FROM {table}{suffix}").fetchall()
-            return [dict(row) for row in rows]
+            return self._decoded_credential_models(table, [dict(row) for row in rows])
         finally:
             conn.close()
 

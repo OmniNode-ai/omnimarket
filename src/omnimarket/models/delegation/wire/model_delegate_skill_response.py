@@ -109,7 +109,14 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 #
 # OMN-20168 declared ``configuration`` on the attempt below, after omniclaude's
 # pin carried the consumer that dropped it.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
+#
+# OMN-21842 adds ``gate_record``: the checks the in-process gate evaluated,
+# skipped and failed on an attempt and the rule that decided, keyed by
+# correlation id and attempt index. The port stamps it on its own attempt
+# entry and publishes it to the quality-gate-result topic; this consumer
+# accepts and drops it first (OMN-18868 consumer-first), and the declared
+# field lands once omniclaude's pin carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned", "gate_record"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -518,9 +525,9 @@ class ModelDelegateSkillResponse(BaseModel):
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
-    baseline_source: Literal["session_model", "overlay", "store", "fixed_default"] = (
-        Field(default="fixed_default")
-    )
+    baseline_source: Literal[
+        "session_model", "overlay", "store", "most_used", "fixed_default"
+    ] = Field(default="fixed_default")
     baseline_state: Literal["RESOLVED", "BASELINE_UNRESOLVED"] = Field(
         default="RESOLVED"
     )

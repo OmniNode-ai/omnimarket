@@ -5,9 +5,13 @@
 from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
     HandlerVerify,
 )
+from omnimarket.nodes.node_verify_effect.models.model_verify_input import (
+    ModelVerifyInput,
+)
 
 __all__ = [
     "HandlerVerify",
+    "ModelVerifyInput",
     "NodeVerifyEffect",
 ]
 

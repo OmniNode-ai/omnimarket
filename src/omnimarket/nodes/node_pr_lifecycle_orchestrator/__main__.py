@@ -10,7 +10,6 @@ import logging
 import sys
 from typing import cast
 
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
@@ -32,6 +31,8 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     ModelPrLifecycleStartCommand,
 )
 
+from .container.container_inmemory import bind_event_bus
+
 EVENT_TYPE_PR_LIFECYCLE_START = "omnimarket.pr-lifecycle-orchestrator-start"
 
 
@@ -47,7 +48,7 @@ def _parse_command(input_json: str) -> ModelPrLifecycleStartCommand:
 
 
 async def _run(command: ModelPrLifecycleStartCommand) -> ModelPrLifecycleResult:
-    bus = EventBusInmemory()
+    bus = bind_event_bus()
     await bus.start()
     handler = HandlerPrLifecycleOrchestrator(
         event_bus=cast(ProtocolEventBusPublisher, bus)

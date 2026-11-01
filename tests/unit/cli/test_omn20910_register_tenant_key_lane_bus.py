@@ -25,9 +25,8 @@ from omnimarket.delegated_test_loop import lane_bus
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.projection import credential_publisher
 
-# OMN-21059: every shipped row has the customer choose the model; this file
-# registers a key with no model, which a row reaches with that flag off.
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
+# OMN-21217: hosted intake requires an explicit customer model choice.
+pytestmark = pytest.mark.unit
 _VALUE = "sk-test-lane-bus-secret-never-published"
 _ENVS = (
     "ONEX_LAB_RUN_HOSTS",
@@ -106,6 +105,8 @@ def _register(*extra: str) -> Any:
             "--expires",
             "2099-01-01",
             *extra,
+            "--model",
+            "glm-5",
         ],
         input=f"{_VALUE}\n",
     )

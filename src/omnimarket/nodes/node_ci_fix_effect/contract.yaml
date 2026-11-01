@@ -80,3 +80,10 @@ metadata:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.pr-ci-fix-attempted.v1
+
+timeouts:
+  subprocess_default_s: 60  # Default bound on a subprocess call when the caller names none.
+  github_log_download_s: 60  # Bounds a GitHub job-log download and its signed-URL redirect.
+  git_inspect_s: 15  # Bounds git worktree list, diff, checkout restore, add and commit.
+  git_patch_s: 30  # Bounds git apply and patch checks and applications.
+  test_run_s: 300  # Bounds the gate test run after a patch is applied.
