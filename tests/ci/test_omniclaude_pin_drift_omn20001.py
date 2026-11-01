@@ -81,9 +81,16 @@ _EXTRA_MARKET_EVENT = (
 
 
 def _git(cwd: Path, *args: str) -> str:
+    # OMN-21588: the scrub drops the OMN-16584 conftest overrides, so restore them;
+    # a developer [tag] gpgsign = true would otherwise turn git tag into a signed tag.
     result = subprocess.run(
         ["git", "-C", str(cwd), *args],
-        env=scrub_git_location_env(os.environ),
+        env={
+            **scrub_git_location_env(os.environ),
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_EDITOR": "true",
+        },
         capture_output=True,
         text=True,
         timeout=60,
