@@ -26,23 +26,46 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
+from pathlib import Path
 from typing import Protocol
 
+from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_ticketing_epic_org_orchestrator.models.model_ticketing_epic_org import (
     ModelCreatedEpic,
     ModelOrphanedTicket,
     ModelProposedEpicGroup,
     ModelTicketingEpicOrgRequest,
     ModelTicketingEpicOrgResult,
+    ModelTicketingEpicOrgTopics,
 )
 
 _log = logging.getLogger(__name__)
 
-# Topics from contract.yaml — never inline elsewhere
-TOPIC_LINEAR_EPIC_CREATE = "onex.cmd.omnimarket.linear-epic-create.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_LINEAR_TICKET_REPARENT = "onex.cmd.omnimarket.linear-ticket-reparent.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_EPIC_ORG_COMPLETED = "onex.evt.omnimarket.ticketing-epic-org-completed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_EPIC_ORG_PROPOSAL_READY = "onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1"  # onex-topic-allow: pending contract auto-wiring
+CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def load_ticketing_epic_org_topics(
+    contract_path: Path = CONTRACT_PATH,
+) -> ModelTicketingEpicOrgTopics:
+    """Bind each topic field to the one ``event_bus.publish_topics`` entry naming it.
+
+    A field binds the declared topic that ends with ``.<event-name>.v1``, where the
+    event name is the field name with ``-`` for ``_``. Raises ``ValueError`` unless
+    exactly one declared topic matches, so the topics live only in the contract.
+    """
+    declared = contract_publish_topics(contract_path)
+    bound: dict[str, str] = {}
+    for field in ModelTicketingEpicOrgTopics.model_fields:
+        suffix = f".{field.replace('_', '-')}.v1"
+        matches = [topic for topic in declared if topic.endswith(suffix)]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{contract_path} must declare exactly one event_bus.publish_topics "
+                f"topic ending {suffix!r}, found {len(matches)}"
+            )
+        bound[field] = matches[0]
+    return ModelTicketingEpicOrgTopics(**bound)
+
 
 _PREFIX_RE = re.compile(
     r"^\s*(?:\[[^\]]+\]\s*)?(?P<prefix>[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+)-?\d*", re.ASCII
@@ -62,8 +85,13 @@ class HandlerTicketingEpicOrg:
     ``auto_approve=True``, ``dry_run=False``, and an injected adapter.
     """
 
-    def __init__(self, adapter: ProtocolEpicOrgLinearAdapter | None = None) -> None:
+    def __init__(
+        self,
+        adapter: ProtocolEpicOrgLinearAdapter | None = None,
+        topics: ModelTicketingEpicOrgTopics | None = None,
+    ) -> None:
         self._adapter = adapter
+        self.topics = load_ticketing_epic_org_topics() if topics is None else topics
 
     def handle(
         self,

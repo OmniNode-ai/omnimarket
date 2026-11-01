@@ -193,6 +193,94 @@ def test_event_source_only_is_structural_drift() -> None:
 
 
 # =============================================================================
+# Structural: node-owned events (OMN-21112)
+# =============================================================================
+
+_MARKET_YAML_SESSION_STARTED = (
+    "events:\n"
+    "  session.started:\n"
+    "    fan_out:\n"
+    '      - topic: "onex.evt.omniclaude.session-started.v1"\n'
+    "    partition_key_field: session_id\n"
+    "    required_fields: [session_id]\n"
+)
+_MARKET_YAML_COMPACTION = (
+    "  compaction.prepared:\n"
+    "{marker}"
+    "    fan_out:\n"
+    '      - topic: "onex.evt.omnimarket.context-compaction-prepared.v1"\n'
+    "    partition_key_field: session_id\n"
+    "    required_fields: [candidate_id, session_id]\n"
+)
+
+
+def _market_shapes(tmp_path: Path, marker: str) -> dict[str, EventRegistrationShape]:
+    path = tmp_path / "topics.yaml"
+    path.write_text(
+        _MARKET_YAML_SESSION_STARTED + _MARKET_YAML_COMPACTION.format(marker=marker)
+    )
+    return load_market_registrations(path)
+
+
+def _hook_side_shapes() -> dict[str, EventRegistrationShape]:
+    return {
+        "session.started": EventRegistrationShape(
+            "session.started",
+            frozenset({"onex.evt.omniclaude.session-started.v1"}),
+            "session_id",
+            ("session_id",),
+        )
+    }
+
+
+@pytest.mark.unit
+def test_node_owned_event_needs_no_hook_side_registration(tmp_path: Path) -> None:
+    registry = _market_shapes(tmp_path, "    node_owned: true\n")
+    assert set(registry) == {"session.started"}
+    report = compare_registrations(source=_hook_side_shapes(), registry=registry)
+    assert report.has_drift is False
+    topic_report = compare_topic_sets(
+        source_topics=topics_from_shapes(_hook_side_shapes()),
+        registry_topics=topics_from_shapes(registry),
+    )
+    assert topic_report.has_drift is False
+
+
+@pytest.mark.unit
+def test_event_without_node_owned_declaration_is_drift(tmp_path: Path) -> None:
+    registry = _market_shapes(tmp_path, "")
+    report = compare_registrations(source=_hook_side_shapes(), registry=registry)
+    assert report.event_registry_only == frozenset({"compaction.prepared"})
+    assert report.has_drift is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("declaration", ["false", '"true"', "1", "null"])
+def test_malformed_node_owned_declaration_is_still_drift(
+    tmp_path: Path, declaration: str
+) -> None:
+    registry = _market_shapes(tmp_path, f"    node_owned: {declaration}\n")
+    report = compare_registrations(source=_hook_side_shapes(), registry=registry)
+    assert report.event_registry_only == frozenset({"compaction.prepared"})
+    assert report.has_drift is True
+
+
+@pytest.mark.unit
+def test_node_owned_declaration_does_not_hide_hook_side_drift(tmp_path: Path) -> None:
+    registry = _market_shapes(tmp_path, "    node_owned: true\n")
+    source = _hook_side_shapes()
+    source["session.started"] = EventRegistrationShape(
+        "session.started",
+        frozenset({"onex.evt.omniclaude.session-started.v1"}),
+        "other_id",
+        ("session_id",),
+    )
+    report = compare_registrations(source=source, registry=registry)
+    assert set(report.field_diffs) == {"session.started"}
+    assert report.has_drift is True
+
+
+# =============================================================================
 # Structural: per-event field drift
 # =============================================================================
 
