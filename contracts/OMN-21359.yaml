@@ -34,7 +34,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_rubric_check_compute -q --no-cov -k json"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_tool_use_rubric.py -q --no-cov -k json"
         cwd: "."
   - id: "dod-omn21359-quotation"
     description: "A prose quotation of three or more words absent from the evidence still fails with untraceable_identifier."
@@ -42,5 +42,57 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_rubric_check_compute -q --no-cov -k quotation"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_tool_use_rubric.py -q --no-cov -k quotation"
         cwd: "."
+  - id: "dod-omn21359-deploy-rubric-runtime"
+    description: "Hosted-runner deploy smoke: dispatch the packaged rubric node through the in-process ONEX runtime. JSON classification string values remain undetermined with no identifiers, while an absent prose quotation and an invented JSON identifier fail. The JSON classification assertion fails without this PR's runtime change. No broker, model, credentials or deployed lane is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        cwd: "."
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          uv run --locked python -c '
+          import sys
+          from pathlib import Path
+          from omnimarket.delegation.rubric.contract_loader import load_delegation_class_rubrics
+          from omnimarket.nodes.node_delegation_rubric_check_compute.models import ModelRubricCheckRequest, ModelToolUseTranscript
+          answers = {
+              "json": "{\"label\": \"base-inherited\", \"reason\": \"the check also fails on the base branch\"}",
+              "prose": "The log said \"the check also fails on the base branch\" today.",
+              "identifier": "{\"label\": \"base-inherited\", \"ticket\": \"SYN-999\"}",
+          }
+          for name, answer in answers.items():
+              request = ModelRubricCheckRequest(
+                  task_class="tool_use",
+                  request_text="Classify the CI failure. Facts: check widget-tests failed on head abc123; the same check failed on the base branch. Reply with JSON",
+                  answer_text=answer,
+                  rubric=load_delegation_class_rubrics().for_class("tool_use"),
+                  transcript=ModelToolUseTranscript(declared_tools=(), tool_calls=(), turn_count=1, wall_time_ms=1),
+              )
+              (Path(sys.argv[1]) / (name + ".json")).write_text(request.model_dump_json())
+          ' "$probe_dir";
+          for case_name in json prose identifier; do
+            env ONEX_LANE=omn21359-deploy-probe "$runtime_bin/onex" node node_delegation_rubric_check_compute --input "$probe_dir/$case_name.json" --state-root "$probe_dir/$case_name-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case_name-receipt.json";
+          done;
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          expected = {
+              "json": ("UNDETERMINED", "no_identifiers"),
+              "prose": ("FAIL", "untraceable_identifier"),
+              "identifier": ("FAIL", "untraceable_identifier"),
+          }
+          for name, wanted in expected.items():
+              receipt = json.loads((Path(sys.argv[1]) / (name + "-receipt.json")).read_text())
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              row = next(row for row in receipt["result"]["criteria"] if row["criterion_id"] == "task_answer_traceable")
+              actual = (row["outcome"], row["reason_code"])
+              assert actual == wanted, (name, actual, wanted)
+              print(json.dumps({"case": name, "run_id": receipt["run_id"], "outcome": actual}))
+          ' "$probe_dir";
