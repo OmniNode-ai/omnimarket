@@ -16,7 +16,7 @@ from uuid import uuid4
 
 import pytest
 from click.testing import CliRunner
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop import lane_bus
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
