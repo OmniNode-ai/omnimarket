@@ -13,8 +13,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolBusMessage,
@@ -97,11 +97,12 @@ class _Bus(EventBusInmemory):
         on_message: Callable[[Any], Awaitable[None]],
         group_id: str,
     ) -> Callable[[], Awaitable[None]]:
-        self.groups.append((topic, group_id))
+        if not group_id.startswith("ungrouped."):
+            self.groups.append((topic, group_id))
         return await super().subscribe(topic, on_message=on_message, group_id=group_id)
 
 
-def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> None:
+def test_request_round_trips_to_accepted_receipt_with_only_the_host_groups() -> None:
     async def scenario() -> None:
         bus = _Bus()
         await bus.start()
@@ -143,13 +144,8 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
                 "local.omnimarket.node_work_ledger_landing_mirror.consume.v1"
             ]
             assert [topic for topic, _ in bus.groups[6:7]] == list(host.landing_topics)
-            groups = [group for _, group in bus.groups[7:]]
-            assert len(groups) == 2
-            assert groups[0] == groups[1]
-            assert groups[0].startswith(
-                "local.omnimarket.work_ledger_append_client.consume.v1."
-            )
-            assert len(groups[0].split(".")[-1]) == 12
+            # The caller joins no group (OMN-21818): its two terminal reads add none.
+            assert bus.groups[7:] == []
         finally:
             await caller.stop()
             await host.stop()

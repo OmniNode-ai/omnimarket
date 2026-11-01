@@ -1,0 +1,84 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21760"
+title: "omnimarket contracts_and_di literal_model_name burn-down, slice rf1400-c4: model ids come from contracts and overlays"
+summary: "Ten modules spelled model ids as literals in code. The ids are now declared once in configs/model_bindings.v1.yaml and read through omnimarket.handlers.model_binding_reader; owners take them by injection. The contracts_and_di check over src/omnimarket reports 43 literal_model_name findings before the slice and 21 after, and the ten slice modules carry none."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21760-model-bindings"
+    statement: |-
+      Model ids of the ten slice modules are declared in configs/model_bindings.v1.yaml and read through the fail-closed model_binding_reader. No slice module holds a model id literal, so the contracts_and_di check reports no literal_model_name finding on any of them. No baseline entry or suppression is added.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_model_name over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: the command of dod-omn21760-check-clean below"
+      - id: "AC2"
+        statement: "AC2: every model id comes from the owning node contract or overlay and is injected, none hard-coded in the touched code -- falsifier: uv run pytest tests/unit/test_model_bindings_omn21760.py -q --no-cov"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: lab-run receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The model binding tests pass."
+    command: "uv run pytest tests/unit/test_model_bindings_omn21760.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21760-bindings"
+    description: "Model ids are read from the declared bindings file and injected."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_model_bindings_omn21760.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21760-check-clean"
+    description: "The contracts_and_di check over the ten slice modules reports no literal_model_name finding."
+    source: "manual"
+    binds_ac: ["AC1", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_model_bindings_omn21760.py::test_slice_has_no_literal_model_names -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          paths = [
+              Path("src/omnimarket/cli/cli_delegation_cost_demo.py"),
+              Path("src/omnimarket/delegation/rubric/lab_measure.py"),
+              Path("src/omnimarket/inference/bridge_config_loader.py"),
+              Path("src/omnimarket/inference/openrouter_models.py"),
+              Path("src/omnimarket/nodes/node_delegation_rubric_check_compute/handlers/handler_delegation_route_check.py"),
+              Path("src/omnimarket/nodes/node_design_to_plan/handlers/handler_design_to_plan.py"),
+              Path("src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage.py"),
+              Path("src/omnimarket/nodes/node_navigation_history_reducer/handlers/handler_navigation_history_reducer.py"),
+              Path("src/omnimarket/nodes/node_plans_today_effect/handlers/handler_plans_today.py"),
+              Path("src/omnimarket/nodes/node_shadow_review_effect/handlers/shadow_effects.py"),
+          ]
+          assert all(path.is_file() for path in paths), "a slice module is missing"
+          validator = ValidatorContractsAndDi()
+          assert any(rule.rule_id == "literal_model_name" and rule.enabled for rule in validator.contract.rules), "literal_model_name rule is not enabled"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_model_name", "unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_model_name findings")
+          PY
+        cwd: "."
+  - id: "dod-omn21760-deploy-published-binding-reader"
+    description: "Hosted source readback at the evaluated commit: the published binding reader exposes the typed binding lookup and its fail-closed empty-value error. This checks published source, not a runtime rollout, and requires no lab endpoint or credentials."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 20 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/model_binding_reader.py" | python3 -c 'import sys; source = sys.stdin.read(); assert "def model_binding(name: str) -> str:" in source; assert "must be a non-empty string" in source'
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_model_bindings_omn21760.py -q --no-cov"
+        cwd: "."
