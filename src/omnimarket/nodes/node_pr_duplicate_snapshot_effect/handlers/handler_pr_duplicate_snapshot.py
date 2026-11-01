@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from hashlib import sha1
@@ -29,9 +30,12 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_watcher_state_path,
 )
 from omnimarket.models.model_pr_duplicate_guard import (
+    EnumStackBaseRule,
     ModelDuplicateDigestConfig,
     ModelDuplicateGuardRules,
+    ModelDuplicateStackConfig,
     ModelFileTouch,
+    ModelJudgedCommit,
     ModelOpenPr,
     ModelPrDuplicateGuardRequest,
     ModelPrDuplicateSnapshotRequest,
@@ -69,6 +73,17 @@ def load_digest_config() -> ModelDuplicateDigestConfig:
         )
     )
     return ModelDuplicateDigestConfig.model_validate(contract["config"]["digest"])
+
+
+@cache
+def load_stack_config() -> ModelDuplicateStackConfig:
+    """The stack rule from this effect's own contract."""
+    contract = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "contract.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    return ModelDuplicateStackConfig.model_validate(contract["config"]["stack"])
 
 
 class DuplicateGuardUncheckedError(Exception):
@@ -182,6 +197,26 @@ def _refresh_base(repo_dir: Path, base: str | None) -> None:
         )
 
 
+def _branch_tip(repo_dir: Path, head_ref: str) -> str | None:
+    """The branch's newest tip in ``repo_dir``: its local branch or its pushed one, whichever descends from the other.
+
+    A checkout whose local branch is behind the pushed one (the canonical clone's was, on 2026-11-01) is read at
+    the pushed tip; unpushed commits of a local branch ahead of it still win. Diverged: the local branch.
+    """
+    tips: list[str] = []
+    for ref in (f"refs/heads/{head_ref}", f"refs/remotes/origin/{head_ref}"):
+        sha = _git(repo_dir, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        if sha and sha.strip() not in tips:
+            tips.append(sha.strip())
+    if not tips:
+        return None
+    best = tips[0]
+    for tip in tips[1:]:
+        if _is_ancestor((repo_dir,), best, tip):
+            best = tip
+    return best
+
+
 def new_branch_touch(
     repo: str,
     head_ref: str,
@@ -198,14 +233,7 @@ def new_branch_touch(
     for repo_dir in (worktree, clone):
         if repo_dir is None or not repo_dir.is_dir():
             continue
-        head = next(
-            (
-                r
-                for r in (f"refs/heads/{head_ref}", f"refs/remotes/origin/{head_ref}")
-                if _resolves(repo_dir, r)
-            ),
-            None,
-        )
+        head = _branch_tip(repo_dir, head_ref)
         if head is None:
             continue
         _refresh_base(repo_dir, base)
@@ -382,31 +410,22 @@ def _new_head(head_ref: str, dirs: tuple[Path | None, ...]) -> str | None:
     for repo_dir in dirs:
         if repo_dir is None or not repo_dir.is_dir():
             continue
-        for ref in (f"refs/heads/{head_ref}", f"refs/remotes/origin/{head_ref}"):
-            sha = _git(
-                repo_dir, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"
-            )
-            if sha:
-                return sha.strip()
+        tip = _branch_tip(repo_dir, head_ref)
+        if tip:
+            return tip
     return None
 
 
-def _stack_base(
+def _contained_tips(
     state: dict[str, object],
     repo: str,
-    base: str | None,
-    head: str | None,
+    head: str,
     dirs: tuple[Path | None, ...],
-) -> str | None:
-    """Exclude the tip-most open ancestor's changes when the requested base does not name one.
-
-    Incomparable ancestors of a merge are tied by SHA so the snapshot stays deterministic.
-    """
-    if head is None:
-        return None
+) -> dict[str, str]:
+    """The open pull requests the branch contains: each one's branch name to the tip of it that is an ancestor of ``head``."""
     prs = state["prs"]
     assert isinstance(prs, dict)
-    ancestors: dict[str, str] = {}
+    contained: dict[str, str] = {}
     for record in prs.values():
         facts = record.get("facts") if isinstance(record, dict) else None
         if not isinstance(facts, dict) or facts.get("state") != "OPEN":
@@ -420,20 +439,85 @@ def _stack_base(
             dirs, str(facts.get("head_sha") or ""), str(facts.get("head_ref") or "")
         ):
             if sha != head and _is_ancestor(dirs, sha, head):
-                ancestors[str(facts.get("head_ref") or "")] = sha
-    if base in ancestors:
+                contained[str(facts.get("head_ref") or "")] = sha
+    return contained
+
+
+def _commit_time(dirs: tuple[Path | None, ...], sha: str) -> int:
+    for repo_dir in dirs:
+        if repo_dir is None or not repo_dir.is_dir():
+            continue
+        stamp = _git(repo_dir, "log", "-1", "--format=%ct", sha)
+        if stamp and stamp.strip().isdigit():
+            return int(stamp)
+    return 0
+
+
+def _stack_base(
+    contained: dict[str, str],
+    base: str | None,
+    dirs: tuple[Path | None, ...],
+) -> str | None:
+    """Where the branch's own change starts, by the contract's stack rule.
+
+    ``NEWEST_CONTAINED_OPEN_PR_HEAD``: the newest head among the contained open pull requests no other contained
+    one descends from (ties by SHA, so the snapshot stays deterministic); None when the requested base already
+    names one of them, or the branch contains none. ``BASE_BRANCH``: None always.
+    """
+    if (
+        load_stack_config().base_rule
+        is not EnumStackBaseRule.NEWEST_CONTAINED_OPEN_PR_HEAD
+    ):
         return None
-    candidates = sorted(set(ancestors.values()))
-    return next(
-        (
-            sha
-            for sha in candidates
-            if not any(
-                other != sha and _is_ancestor(dirs, sha, other) for other in candidates
-            )
-        ),
-        None,
-    )
+    if base in contained:
+        return None
+    candidates = sorted(set(contained.values()))
+    maximal = [
+        sha
+        for sha in candidates
+        if not any(
+            other != sha and _is_ancestor(dirs, sha, other) for other in candidates
+        )
+    ]
+    return max(maximal, key=lambda sha: (_commit_time(dirs, sha), sha), default=None)
+
+
+def judged_commits(
+    dirs: tuple[Path | None, ...],
+    head: str | None,
+    base: str | None,
+    diff_base: str | None,
+    contained: Iterable[str],
+) -> tuple[ModelJudgedCommit, ...]:
+    """The commits the guard judges: reachable from ``head``, newest first, past the base branch and every contained open pull request.
+
+    Empty when no checkout holds both the head and a base to count from (the diff then was not read either).
+    """
+    if head is None:
+        return ()
+    for repo_dir in dirs:
+        if repo_dir is None or not repo_dir.is_dir() or not _resolves(repo_dir, head):
+            continue
+        base_ref = _base_ref(repo_dir, base)
+        if base_ref is None and diff_base is None:
+            continue
+        excluded = [*(r for r in (base_ref, diff_base) if r), *contained]
+        text = _git(
+            repo_dir,
+            "log",
+            "--no-color",
+            "--format=%H%x09%s",
+            head,
+            *(f"^{ref}" for ref in dict.fromkeys(excluded) if _resolves(repo_dir, ref)),
+        )
+        if text is None:
+            continue
+        return tuple(
+            ModelJudgedCommit(sha=sha[:12], subject=subject)
+            for sha, _, subject in (line.partition("\t") for line in text.splitlines())
+            if sha
+        )
+    return ()
 
 
 def _overlay_candidates() -> list[Path]:
@@ -492,7 +576,8 @@ def read_request(
     dirs = (lane_dir, where)
     head = _new_head(head_ref, dirs)
     open_prs = _open_prs(state, repo, base, where, worktree=lane_dir, new_head=head)
-    diff_base = _stack_base(state, repo, base, head, dirs)
+    contained = _contained_tips(state, repo, head, dirs) if head else {}
+    diff_base = _stack_base(contained, base, dirs)
     return ModelPrDuplicateGuardRequest(
         repo=repo,
         head_ref=head_ref,
@@ -503,6 +588,8 @@ def read_request(
         cause=cause,
         now=moment,
         touch=new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base),
+        judged_commits=judged_commits(dirs, head, base, diff_base, contained.values()),
+        judged_base=diff_base[:12] if diff_base else None,
         open_prs=open_prs,
         ledger_text=ledger_text,
         generated_paths=load_generated_paths(),

@@ -1151,7 +1151,7 @@ def test_page_dashboard_takes_todays_merges_and_reds_from_the_series_and_the_lan
     assert "9 dev-branch red episodes opened today" in dash
     assert "45 repo-hours red" in dash
     assert "Shipped seven" in dash
-    assert "UTC day 2099-01-01, so far" in dash
+    assert "Series day 2099-01-01, so far" in dash
     for baked in ("232 merges", "251 of 251"):
         assert baked not in SHELL
 
@@ -1300,3 +1300,127 @@ def test_page_drawer_the_phone_sheet_is_full_width_with_a_scrim_and_the_desktop_
     assert "width:100%" in phone.split("}", 1)[0]
     assert ".scrim{display:none}" in SHELL
     assert 'el("app").inert = phone()' in SHELL
+
+
+# ----------------------------------------------------------- a declared line the record does not draw
+
+
+def _declare(tmp_path: Path, *tokens: str) -> dict[str, str]:
+    overlay = tmp_path / "effect-overlay.yaml"
+    overlay.write_text(
+        "plan_path_contains:\n" + "".join(f"  - {t}\n" for t in tokens),
+        encoding="utf-8",
+    )
+    return {load_runtime().lines_overlay.file_env: str(overlay)}
+
+
+def _record_with(tmp_path: Path, lines: list[dict[str, object]]) -> None:
+    target = tmp_path / "home" / load_runtime().source.relpath
+    target.write_text(json.dumps({**RECORD, "lines": lines}), encoding="utf-8")
+
+
+def _status(tmp_path: Path) -> dict[str, object]:
+    return cast(
+        "dict[str, object]",
+        json.loads((tmp_path / "site/publish-status.json").read_text()),
+    )
+
+
+def _step(status: dict[str, object], name: str) -> dict[str, str]:
+    steps = cast("list[dict[str, str]]", status["steps"])
+    return next(s for s in steps if s["name"] == name)
+
+
+def test_a_record_that_draws_one_of_three_declared_lines_marks_the_record_step_not_ok_and_names_the_rest(
+    tmp_path: Path,
+) -> None:
+    env = _declare(tmp_path, "alpha-plan", "beta-plan", "gamma-plan")
+    request = _request(tmp_path)
+    _record_with(tmp_path, [{"plan_path": "beta/plans/2026-10-28-beta-plan.md"}])
+    result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
+    step = _step(_status(tmp_path), load_runtime().record_step)
+    assert step["status"] == "failed"
+    assert step["detail"] == "declared lines not drawn: alpha-plan, gamma-plan"
+    assert [(s.name, s.status) for s in result.steps] == [
+        (load_runtime().record_step, "failed")
+    ]
+
+
+def test_a_declared_line_drawn_as_a_stopped_undrawn_line_counts_as_drawn(
+    tmp_path: Path,
+) -> None:
+    env = _declare(tmp_path, "alpha-plan", "beta-plan")
+    request = _request(tmp_path)
+    _record_with(
+        tmp_path,
+        [
+            {"plan_path": "beta/plans/2026-10-28-beta-plan.md"},
+            {"plan_path": "alpha-plan", "source": "undrawn"},
+        ],
+    )
+    result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
+    assert result.steps == ()
+
+
+def test_the_record_step_keeps_its_place_among_the_refresh_steps_when_it_is_flagged(
+    tmp_path: Path,
+) -> None:
+    env = _declare(tmp_path, "alpha-plan")
+    request = ModelFactoryFloorPublishRequest(
+        home=str(_home(tmp_path)), overlay=_overlay(tmp_path)
+    )
+    env["CLAUDE_PLUGIN_ROOT"] = str(tmp_path / "plugin")
+    result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ=env)
+    names = [s.name for s in result.steps]
+    assert names[-1] == load_runtime().record_step
+    assert names.count(load_runtime().record_step) == 1
+    assert result.steps[-1].status == "failed"
+    assert "alpha-plan" in result.steps[-1].detail
+
+
+def test_nothing_is_flagged_when_the_overlay_declares_nothing_readable(
+    tmp_path: Path,
+) -> None:
+    HandlerFactoryFloorPublish(LocalSsh()).handle(_request(tmp_path), environ={})
+    assert _status(tmp_path)["steps"] == []
+
+
+def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_not_as_unread() -> (
+    None
+):
+    record = {
+        **FLOOR_RECORD,
+        "lines": [
+            *FLOOR_RECORD["lines"],
+            {
+                "line_id": "alpha-plan",
+                "name": "alpha-plan",
+                "plan_path": "alpha-plan",
+                "source": "undrawn",
+                "status_pill": "stopped",
+                "percent_built": 0,
+                "stations": [],
+                "andon": {
+                    "flag": True,
+                    "reason": "plan file not found: no plan path contains alpha-plan",
+                    "causes": ["plan file not found: no plan path contains alpha-plan"],
+                },
+            },
+        ],
+    }
+    out = _run_floor(
+        {
+            "factory-floor.json": record,
+            "publish-status.json": {
+                "published_at": "2099-01-01T00:00:00Z",
+                "steps": [],
+                "lines_declared": {
+                    "state": "read",
+                    "plan_path_contains": ["two-plan", "alpha-plan"],
+                },
+            },
+        }
+    )
+    lines = out["lines"]
+    assert "Cord pulled: plan file not found: no plan path contains alpha-plan" in lines
+    assert "No plan read for this line" not in lines
