@@ -26,13 +26,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn21846-ac1-fixtures
-  description: AC1 runs the four fixtures (two invented approvals refused, a reported grant accepted, a quoted refusal accepted) through the real gate.
+  description: AC1 runs the operator_voice test files (scoped to those files so the run stays inside the hosted per-check budget), covering the four fixtures (two invented approvals refused, a reported grant accepted, a quoted refusal accepted) through the real gate.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation -k operator_voice -q --no-cov --tb=line
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_operator_voice_gate.py tests/unit/delegation/test_operator_voice_bus.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21846-ac2-marker
   description: AC2 reads the veto marker out of task_class_contracts.v1.yaml and runs the gate on every declared class.
@@ -41,7 +41,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation -k operator_voice_marker -q --no-cov --tb=line
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_operator_voice_gate.py -k operator_voice_marker -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21846-ac3-bus-decision
   description: AC3 sends the two invented-approval fixtures and the plain summary through the gate's real wiring on the in-memory bus and reads the verdict from the gate's result topic. The dev-lane receipts of the same three prompts are in the PR body; a hosted runner cannot read the lab.
@@ -59,5 +59,5 @@ dod_evidence:
   - AC1
   checks:
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q 'operator_voice'
+    check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"check_operator_voice(content, grounding_source)\" > /dev/null'"
     cwd: ${OMNI_HOME}/omnimarket
