@@ -26,6 +26,7 @@ import click
 import yaml
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.handlers.model_binding_reader import model_binding
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -47,21 +48,19 @@ from omnimarket.projection.tenant_registry_resolution import (
 _DEMO_TENANT_SLUG = "delegation-cost-demo"
 _DEMO_TENANT_UUID = "00000000-0000-4000-8000-000000020652"
 
+_CLOUD_BASELINE = {"bifrost_backend_id": "cloud-glm", "source_label": "cloud/z.ai"}
 _DEFAULT_PROFILE_SET: dict[str, Any] = {
     "profiles": {
         "local_201": {
             "local": {
                 "delegate_label": "local-qwen",
-                "model_id": "qwen3-coder-30b",
+                "model_id": model_binding("cost_demo_local_model"),
                 "model_env": "LLM_CODER_MODEL_NAME",
                 "source_label": "local/.201",
                 "marginal_cost_usd": "0.000000",
                 "usage_source": "MEASURED",
             },
-            "cloud_baseline": {
-                "bifrost_backend_id": "cloud-glm",
-                "source_label": "cloud/z.ai",
-            },
+            "cloud_baseline": _CLOUD_BASELINE,
         },
         "laptop_standalone": {
             "local": {
@@ -72,10 +71,7 @@ _DEFAULT_PROFILE_SET: dict[str, Any] = {
                 "marginal_cost_usd": "0.000000",
                 "usage_source": "MEASURED",
             },
-            "cloud_baseline": {
-                "bifrost_backend_id": "cloud-glm",
-                "source_label": "cloud/z.ai",
-            },
+            "cloud_baseline": _CLOUD_BASELINE,
         },
     }
 }
