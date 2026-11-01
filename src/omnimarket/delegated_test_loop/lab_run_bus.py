@@ -371,17 +371,17 @@ class FocusedRunBusCaller:
         bus: ProtocolLabRunBus,
         *,
         topics: ModelFocusedRunTopics | None = None,
-        group_id: str | None = None,
         wait_slack_seconds: int = 900,
     ) -> None:
-        self._bus = bus
-        self._topics = topics or load_focused_run_topics()
-        # One group per client, never shared: every client must see every
-        # terminal and pick out its own.
-        self._group_id = group_id or (
-            f"{derive_service_group_id('delegated_test_loop_client', service=GROUP_SERVICE)}"
-            f".{uuid.uuid4().hex[:12]}"
+        # Imported here: the protocol module imports this one for ProtocolLabRunBus.
+        from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
+            require_ungrouped,
         )
+
+        # No consumer group (OMN-21818): every client sees every terminal and picks out
+        # its own, so it reads them from the log end and leaves nothing on the broker.
+        self._bus = require_ungrouped(bus)
+        self._topics = topics or load_focused_run_topics()
         self._slack = wait_slack_seconds
         self._pending: dict[uuid.UUID, asyncio.Future[dict[str, object]]] = {}
         self._pending_topic: dict[uuid.UUID, str] = {}
@@ -390,8 +390,8 @@ class FocusedRunBusCaller:
     async def start(self) -> None:
         for topic in (self._topics.success, self._topics.failure):
             self._unsubscribes.append(
-                await _subscribe(
-                    self._bus, topic, self._terminal_handler(topic), self._group_id
+                await self._bus.subscribe_ungrouped(
+                    topic, self._terminal_handler(topic)
                 )
             )
 
