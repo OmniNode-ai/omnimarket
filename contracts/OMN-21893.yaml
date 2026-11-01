@@ -1,0 +1,70 @@
+schema_version: 1.0.0
+ticket_id: OMN-21893
+title: A mechanism ticket whose lane ended blocked, failed or partial with no open CLAIM after one tick is reported as owed
+summary: node_ruling_mechanism_owed_compute is a pure compute node over ledger rows. A TERMINAL with outcome blocked, failed or partial on a ticket a RULING (or a CORRECTION that re-points one) names in a mechanism-ticket= cell, with no CLAIM on that ticket after the TERMINAL and one tick elapsed, yields one owed row keyed on the ticket and the TERMINAL stamp. A handed-off TERMINAL yields none. The tick time is a request field and the handler reads no clock.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21893-owed-row
+    statement: An unfinished TERMINAL on a mechanism ticket with no CLAIM after one tick yields one owed row keyed on ticket and TERMINAL stamp, over the recorded ledger slice of 2026-10-24.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a TERMINAL with outcome blocked, failed or partial on a ticket named as mechanism-ticket= with no open CLAIM after one tick yields one owed row keyed on ticket and TERMINAL stamp, over a recorded ledger slice of 2026-10-24 -- falsifier: uv run pytest tests/nodes/node_ruling_mechanism_owed_compute -q'
+  - id: req-omn21893-handed-off
+    statement: A handed-off TERMINAL yields no owed row.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a handed-off TERMINAL yields no owed row -- falsifier: uv run pytest tests/nodes/node_ruling_mechanism_owed_compute -q -k handed_off'
+evidence_requirements:
+  - kind: tests
+    description: The node suite runs on a lab host at the pushed head.
+    command: uv run pytest tests/nodes/node_ruling_mechanism_owed_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21893-ac1
+    description: AC1 replays the recorded ledger slice of 2026-10-24 through the handler and through the registered contract, and checks the unfinished, superseded, unnamed-ticket, future-claim and one-tick cases.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_ruling_mechanism_owed_compute/test_ruling_mechanism_owed.py tests/nodes/node_ruling_mechanism_owed_compute/test_golden_chain_ruling_mechanism_owed.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21893-ac2
+    description: AC2 runs the handed-off cases, synthetic and over the recorded slice, with a blocked control on the same ledger.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_ruling_mechanism_owed_compute/test_ruling_mechanism_owed.py -q --no-cov --tb=line -k handed_off
+        cwd: .
+  - id: dod-omn21893-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published handler and contract at the evaluated commit to match this checkout. The node is pure compute with no runtime wiring in this change, so there is no running service to probe; this checks the source artifact, and the focused tests exercise the behaviour.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for module in handlers/handler_ruling_mechanism_owed.py contract.yaml; do
+            path="src/omnimarket/nodes/node_ruling_mechanism_owed_compute/$module"
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.out"
+            cmp "$path" "$readback_dir/source.out"
+          done
+          printf 'owed-compute source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ruling_mechanism_owed_compute/test_ruling_mechanism_owed.py -q --no-cov --tb=line
+        cwd: .

@@ -52,7 +52,9 @@ _TIMED_OUT = 124
 def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
     """The arguments after the runner script, in the order the workflow built them.
 
-    ``--host`` only for pinned work; ``--ref`` only with a repo.
+    ``--host`` only for pinned work; ``--ref`` only with a repo. ``--placement auto``
+    (OMN-21881) carries no ``--host``: a pinned host refuses a cloud session, so the
+    runner picks the lab host and takes a cloud session only when none admits the lane.
     """
     args = [
         "run",
@@ -67,7 +69,9 @@ def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
         "--effort",
         launch.effort,
     ]
-    if launch.host:
+    if launch.placement:
+        args += ["--placement", launch.placement]
+    elif launch.host:
         args += ["--host", launch.host]
     args += ["--parent", launch.parent, "--timeout-min", str(launch.timeout_min)]
     if launch.repo:

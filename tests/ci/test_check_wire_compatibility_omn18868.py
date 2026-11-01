@@ -14,6 +14,13 @@ boundary: ``published_at`` entered ``ModelDelegateSkillRequest`` after
 ``published_at: Extra inputs are not permitted``. A fixture can show the
 mechanism; only the real tags show it catching the actual incident.
 
+OMN-21901: the second control used to grade dev against the newest RELEASE, so
+a producer adding a field was refused until a release was cut, which the
+2026-11-01 ruling (releases are optional) rules out. It is replaced by
+``test_real_published_at_replay_through_a_dev_merge_tag_pin``: the same real
+OMN-18852 history, replayed through the dev-merge tag pin path. The first
+control keeps the release mechanism (``--grade-release-tag``) proven.
+
 WHERE THE TWO REAL-HISTORY CONTROLS ACTUALLY EXECUTE
 
 They need tags and an unshallow history, and the shard job has neither: it
@@ -38,6 +45,7 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -63,6 +71,11 @@ from check_wire_compatibility import (
 )
 from ci_summary_gate import STRICT_GATE_JOBS
 
+from omnimarket.handlers.handler_wire_consumer_pin import (
+    OUTCOME_PIN_REFUSED,
+    OUTCOME_PIN_UNRESOLVABLE,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: The last release cut BEFORE ``published_at`` entered the delegate-skill
@@ -84,22 +97,6 @@ _SKIP_REASON = (
 )
 
 
-def _tags_merged_into_head() -> list[str]:
-    """Release tags reachable from HEAD, or an empty list in a thin checkout."""
-    result = subprocess.run(
-        ["git", "tag", "--merged", "HEAD"],
-        cwd=str(REPO_ROOT),
-        env=scrub_git_location_env(os.environ),
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return []
-    return [
-        line.strip() for line in result.stdout.decode().splitlines() if line.strip()
-    ]
-
-
 def _require_tag(tag: str) -> None:
     """Skip unless *tag* itself is present in this checkout.
 
@@ -115,17 +112,6 @@ def _require_tag(tag: str) -> None:
     )
     if tag not in listed.stdout.decode():
         pytest.skip(_SKIP_REASON.format(detail=tag + " is not fetched"))
-
-
-def _require_reachable_release() -> None:
-    """Skip unless a release tag is REACHABLE from HEAD.
-
-    ``git tag --merged`` is what the gate resolves its consumer with, so this
-    is the gate's own precondition rather than a proxy for it. A shallow clone
-    fails it even with every tag fetched, because the ancestry is truncated.
-    """
-    if not _tags_merged_into_head():
-        pytest.skip(_SKIP_REASON.format(detail="no release tag is merged into HEAD"))
 
 
 FIXTURE_PACKAGE = "wirefixture"
@@ -207,6 +193,7 @@ def _run(repo: Path, *, changed: str = FIXTURE_MODULE_PATH) -> int:
         [
             "--repo-root",
             str(repo),
+            "--grade-release-tag",
             "--changed-file",
             changed,
             "--wire-root",
@@ -336,6 +323,7 @@ def test_real_published_at_replay_against_the_release_that_predates_it() -> None
             str(REPO_ROOT / "scripts" / "ci" / "check_wire_compatibility.py"),
             "--repo-root",
             str(REPO_ROOT),
+            "--grade-release-tag",
             "--tag-anchor",
             PRE_PUBLISHED_AT_RELEASE,
             "--changed-file",
@@ -446,41 +434,61 @@ def test_a_module_the_release_does_not_contain_is_noted_not_refused(
 
 
 @pytest.mark.integration
-def test_the_current_release_decodes_todays_wire_models() -> None:
-    """AC4 against reality: dev is compatible with the live released consumer.
+def test_real_published_at_replay_through_a_dev_merge_tag_pin(tmp_path: Path) -> None:
+    """OMN-21901: the pin path catches the real incident, not just a fixture.
 
-    If this fails, the gate is not wrong -- the fleet has a live consumer-first
-    violation on dev, which is exactly what the gate is for. It is asserted
-    here so that a red reading is unambiguous rather than dismissed as fixture
-    noise.
+    The previous second control graded dev against the newest RELEASE and
+    refused every producer that added a field before a release was cut, which
+    is the opposite of the ruling that releases are optional. Whether dev
+    decodes on the tags consumers REALLY pin is what the gate step itself
+    answers, from the consumers' own files. This control proves the same path
+    refuses the real OMN-18852 shape: ``v0.4.133``'s commit is given a
+    dev-merge tag name in a scratch clone and pinned by a planted consumer, and
+    the tree that carries ``published_at`` must be refused with the live
+    terminal's own words.
 
-    UNRESOLVABLE IS NOT THE SAME READING. A checkout with no reachable release
-    makes the gate answer ``WIRE_COMPAT_RELEASE_UNRESOLVABLE``, which is the
-    correct fail-closed answer for the GATE and the wrong answer for THIS
-    control: it says nothing about dev's compatibility. Distinguishing the two
-    is the whole point of the precondition.
+    Falsifier: the pin path passes a payload a deployed consumer was measured
+    refusing.
     """
-    _require_reachable_release()
+    _require_tag(PRE_PUBLISHED_AT_RELEASE)
+    clone = tmp_path / "clone"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(REPO_ROOT), str(clone)],
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        check=True,
+    )
+    pre = _git(clone, "rev-parse", f"{PRE_PUBLISHED_AT_RELEASE}^{{commit}}")
+    tag = f"dev-20260920000000-{pre[:12]}"
+    _git(clone, "tag", tag, pre)
 
-    changed: list[str] = []
-    for wire_root in WIRE_MODEL_ROOTS:
-        for path in sorted((REPO_ROOT / wire_root).glob("model_*.py")):
-            changed += ["--changed-file", f"{wire_root}/{path.name}"]
-
+    flags = _pin_files(
+        tmp_path,
+        "incident-consumer",
+        source=f'{{ git = "{OMNIMARKET_GIT}", tag = "{tag}" }}',
+        lock_source=f'{{ git = "{OMNIMARKET_GIT}?tag={tag}#{pre}" }}',
+    )
     completed = subprocess.run(
         [
             sys.executable,
             str(REPO_ROOT / "scripts" / "ci" / "check_wire_compatibility.py"),
             "--repo-root",
-            str(REPO_ROOT),
-            *changed,
+            str(clone),
+            "--changed-file",
+            WIRE_MODULE,
+            "--required-consumer",
+            "incident-consumer",
+            *flags,
         ],
         capture_output=True,
         check=False,
     )
-    assert completed.returncode == 0, (
-        completed.stdout.decode() + completed.stderr.decode()
-    )
+    stderr = completed.stderr.decode()
+    assert completed.returncode == 1, completed.stdout.decode() + stderr
+    assert OUTCOME_REFUSED in stderr
+    assert f"pin-verdict REFUSED: {tag} (pinned by incident-consumer)" in stderr
+    assert "published_at" in stderr
+    assert "Extra inputs are not permitted" in stderr
 
 
 # --------------------------------------------------------------------------
@@ -832,130 +840,396 @@ def _commit_consumer(repo: Path, *, fields: str, extra: str) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
-@pytest.mark.unit
-def test_the_pinned_consumer_is_graded_not_the_newest_release(
-    wire_repo: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An older pin still refuses a shape that the newest release accepts."""
-    old_sha = _commit_consumer(wire_repo, fields="    prompt: str\n", extra="forbid")
-    _release(
-        wire_repo,
-        tag="v1.0.0",
-        fields="    prompt: str\n    published_at: str | None = None\n",
-        extra="forbid",
+# --------------------------------------------------------------------------
+# OMN-21901 -- the baseline is the dev-merge tag each consumer pins
+# --------------------------------------------------------------------------
+
+PROMPT_ONLY = "    prompt: str\n"
+WITH_PUBLISHED_AT = "    prompt: str\n    published_at: str | None = None\n"
+OMNIMARKET_GIT = "https://github.com/OmniNode-ai/omnimarket.git"
+
+
+def _dev_tag(repo: Path, stamp: str) -> str:
+    """Cut the dev-merge tag dev-merge-tag.yml would cut for HEAD."""
+    sha = _git(repo, "rev-parse", "HEAD")
+    tag = f"dev-{stamp}-{sha[:12]}"
+    _git(repo, "tag", tag, sha)
+    return tag
+
+
+def _pin_files(
+    tmp_path: Path,
+    label: str,
+    *,
+    source: str,
+    lock_source: str | None = None,
+) -> list[str]:
+    """Write one consumer's pyproject.toml and uv.lock; return the CLI flags."""
+    pyproject = tmp_path / f"{label}.pyproject.toml"
+    pyproject.write_text(
+        f"[tool.uv.sources]\nomnimarket = {source}\n", encoding="utf-8"
     )
-    _producer(
-        wire_repo,
-        fields="    prompt: str\n    published_at: str | None = None\n",
-        extra="forbid",
+    if lock_source is None:
+        named = re.search(r'tag = "([^"]+)"', source)
+        lock_source = (
+            f'{{ git = "{OMNIMARKET_GIT}?tag={named.group(1)}" }}' if named else source
+        )
+    lock = tmp_path / f"{label}.uv.lock"
+    lock.write_text(
+        f'[[package]]\nname = "omnimarket"\nversion = "0.4.0"\n'
+        f"source = {lock_source}\n",
+        encoding="utf-8",
+    )
+    return [
+        "--consumer-pyproject",
+        f"{label}={pyproject}",
+        "--consumer-lock",
+        f"{label}={lock}",
+    ]
+
+
+def _tag_pin(tmp_path: Path, repo: Path, label: str, tag: str) -> list[str]:
+    commit = _git(repo, "rev-parse", f"{tag}^{{commit}}")
+    return _pin_files(
+        tmp_path,
+        label,
+        source=f'{{ git = "{OMNIMARKET_GIT}", tag = "{tag}" }}',
+        lock_source=f'{{ git = "{OMNIMARKET_GIT}?tag={tag}#{commit}" }}',
     )
 
+
+def _gate(repo: Path, *flags: str) -> int:
+    return main(
+        [
+            "--repo-root",
+            str(repo),
+            "--changed-file",
+            FIXTURE_MODULE_PATH,
+            "--wire-root",
+            FIXTURE_WIRE_ROOT,
+            *flags,
+        ]
+    )
+
+
+def _two_pins(wire_repo: Path, tmp_path: Path) -> tuple[str, str, list[str]]:
+    """An older pin that lacks published_at and a newer pin that has it."""
+    _commit_consumer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+    old = _dev_tag(wire_repo, "20261101000001")
+    _commit_consumer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+    new = _dev_tag(wire_repo, "20261101000002")
+    flags = [
+        *_tag_pin(tmp_path, wire_repo, "old-consumer", old),
+        *_tag_pin(tmp_path, wire_repo, "new-consumer", new),
+        "--required-consumer",
+        "old-consumer",
+        "--required-consumer",
+        "new-consumer",
+    ]
+    return old, new, flags
+
+
+@pytest.mark.unit
+def test_consumer_tag_pin_resolves_and_is_graded(
+    wire_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC1: a dev-merge tag pin resolves and is the baseline that is graded."""
+    _commit_consumer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+    tag = _dev_tag(wire_repo, "20261101000001")
+    _producer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+
+    rc = _gate(
+        wire_repo,
+        *_tag_pin(tmp_path, wire_repo, "omniclaude", tag),
+        "--required-consumer",
+        "omniclaude",
+    )
+
+    assert rc == 1
+    refused = capsys.readouterr().err
+    assert OUTCOME_REFUSED in refused
+    assert f"pin-verdict REFUSED: {tag} (pinned by omniclaude)" in refused
+    assert "published_at" in refused
+
+    _producer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+    rc = _gate(
+        wire_repo,
+        *_tag_pin(tmp_path, wire_repo, "omniclaude", tag),
+        "--required-consumer",
+        "omniclaude",
+    )
+    assert rc == 0
+    assert f"pin-verdict PASS: {tag} (pinned by omniclaude)" in capsys.readouterr().out
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("case", "source", "lock_source", "outcome"),
+    [
+        pytest.param(
+            "sha-rev",
+            f'{{ git = "{OMNIMARKET_GIT}", rev = "{"a" * 40}" }}',
+            None,
+            OUTCOME_PIN_REFUSED,
+            id="sha-pin",
+        ),
+        pytest.param(
+            "release-tag",
+            f'{{ git = "{OMNIMARKET_GIT}", tag = "v0.4.0" }}',
+            None,
+            OUTCOME_PIN_REFUSED,
+            id="release-pin",
+        ),
+        pytest.param(
+            "sha-as-tag",
+            f'{{ git = "{OMNIMARKET_GIT}", tag = "{"b" * 40}" }}',
+            None,
+            OUTCOME_PIN_REFUSED,
+            id="sha-named-as-tag",
+        ),
+        pytest.param(
+            "branch",
+            f'{{ git = "{OMNIMARKET_GIT}", branch = "dev" }}',
+            None,
+            OUTCOME_PIN_REFUSED,
+            id="branch-pin",
+        ),
+        pytest.param(
+            "registry",
+            '"0.4.320"',
+            None,
+            OUTCOME_PIN_REFUSED,
+            id="registry-release",
+        ),
+        pytest.param(
+            "lock-sha",
+            f'{{ git = "{OMNIMARKET_GIT}", tag = "dev-20261101000001-{"c" * 12}" }}',
+            f'{{ git = "{OMNIMARKET_GIT}?rev={"c" * 40}#{"c" * 40}" }}',
+            OUTCOME_PIN_REFUSED,
+            id="lock-locks-a-sha",
+        ),
+        pytest.param(
+            "lock-other-tag",
+            f'{{ git = "{OMNIMARKET_GIT}", tag = "dev-20261101000001-{"c" * 12}" }}',
+            f'{{ git = "{OMNIMARKET_GIT}?tag=dev-20261101000009-{"d" * 12}#{"d" * 40}" }}',
+            OUTCOME_PIN_REFUSED,
+            id="lock-disagrees-with-pyproject",
+        ),
+        pytest.param(
+            "unfetched",
+            f'{{ git = "{OMNIMARKET_GIT}", tag = "dev-20261101000001-{"e" * 12}" }}',
+            None,
+            OUTCOME_PIN_UNRESOLVABLE,
+            id="tag-not-in-the-repository",
+        ),
+    ],
+)
+def test_consumer_tag_refuses_a_pin_that_is_not_a_resolvable_dev_tag(
+    wire_repo: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+    source: str,
+    lock_source: str | None,
+    outcome: str,
+) -> None:
+    """AC1: a planted sha, release, branch or registry pin is refused.
+
+    A release tag exists in the repository the whole time and the producer adds
+    a field it refuses, so a fall-back to the release would read RED and a
+    fall-back that passed would read GREEN; the only acceptable answer is the
+    pin's own refusal token, and no verdict line at all.
+    """
+    _release(wire_repo, tag="v1.0.0", fields=PROMPT_ONLY, extra="forbid")
+    _producer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+
+    rc = _gate(
+        wire_repo,
+        *_pin_files(tmp_path, case, source=source, lock_source=lock_source),
+        "--required-consumer",
+        case,
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert outcome in captured.err
+    assert "pin-verdict" not in captured.err + captured.out
+    assert "v1.0.0" not in captured.err + captured.out
+
+
+@pytest.mark.unit
+def test_consumer_tag_moved_tag_is_refused(
+    wire_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tag whose name carries one sha12 but points elsewhere proves nothing."""
+    first = _commit_consumer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+    _commit_consumer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+    moved = f"dev-20261101000001-{first[:12]}"
+    _git(wire_repo, "tag", moved, "HEAD")
+    _producer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+
+    rc = _gate(
+        wire_repo,
+        *_pin_files(
+            tmp_path,
+            "omniclaude",
+            source=f'{{ git = "{OMNIMARKET_GIT}", tag = "{moved}" }}',
+        ),
+        "--required-consumer",
+        "omniclaude",
+    )
+
+    assert rc == 1
+    assert OUTCOME_PIN_UNRESOLVABLE in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_consumer_tag_missing_consumer_or_pin_fails_closed(
+    wire_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No pin, an unlisted-away consumer and an unreadable file all refuse.
+
+    The release tag below would grade green. Reaching it would be the quiet
+    green; so the gate refuses instead of grading it.
+    """
+    _release(wire_repo, tag="v1.0.0", fields=WITH_PUBLISHED_AT, extra="forbid")
+    _producer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+
+    assert _gate(wire_repo) == 1
+    assert OUTCOME_PIN_REFUSED in capsys.readouterr().err
+
+    _commit_consumer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+    tag = _dev_tag(wire_repo, "20261101000001")
     assert (
-        main(
-            [
-                "--repo-root",
-                str(wire_repo),
-                "--changed-file",
-                FIXTURE_MODULE_PATH,
-                "--wire-root",
-                FIXTURE_WIRE_ROOT,
-                "--consumer-ref",
-                old_sha,
-            ]
+        _gate(
+            wire_repo,
+            *_tag_pin(tmp_path, wire_repo, "omniclaude", tag),
+            "--required-consumer",
+            "omniclaude",
+            "--required-consumer",
+            "omnimemory",
         )
         == 1
     )
-    refused = capsys.readouterr().err
-    assert OUTCOME_REFUSED in refused
-    assert "published_at" in refused
-    assert (
-        f"pinned consumer {old_sha[:12]} cannot decode this tree's wire payloads."
-        in refused
-    )
-    assert (
-        "land a consumer that accepts the new shape on dev first, then the "
-        "consumer's pin advances to it (no release is needed)" in refused
-    )
-    assert "release a consumer" not in refused
+    assert "omnimemory" in capsys.readouterr().err
 
-    assert _run(wire_repo) == 0
-    assert OUTCOME_PASS in capsys.readouterr().out
+    flags = _tag_pin(tmp_path, wire_repo, "omniclaude", tag)
+    (tmp_path / "omniclaude.pyproject.toml").write_text("not = [toml", encoding="utf-8")
+    assert _gate(wire_repo, *flags, "--required-consumer", "omniclaude") == 1
+    assert OUTCOME_PIN_REFUSED in capsys.readouterr().err
+
+    (tmp_path / "omniclaude.pyproject.toml").unlink()
+    assert _gate(wire_repo, *flags, "--required-consumer", "omniclaude") == 1
+    assert OUTCOME_PIN_REFUSED in capsys.readouterr().err
 
 
 @pytest.mark.unit
-def test_a_pinned_consumer_ahead_of_every_release_passes_without_a_release(
+def test_consumer_tag_pins_cannot_mix_with_the_release_mode() -> None:
+    """The release path is a flag of its own and never rides along with a pin."""
+    with pytest.raises(SystemExit) as exited:
+        main(
+            [
+                "--grade-release-tag",
+                "--consumer-pyproject",
+                "omniclaude=/dev/null",
+                "--changed-file",
+                FIXTURE_MODULE_PATH,
+            ]
+        )
+    assert exited.value.code == 2
+
+
+@pytest.mark.unit
+def test_consumer_tag_no_wire_change_needs_no_pin(
     wire_repo: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A consumer on dev can accept the new shape before any release does."""
-    _release(wire_repo, tag="v1.0.0", fields="    prompt: str\n", extra="forbid")
-    new_sha = _commit_consumer(
-        wire_repo,
-        fields="    prompt: str\n    published_at: str | None = None\n",
-        extra="forbid",
-    )
-    _producer(
-        wire_repo,
-        fields="    prompt: str\n    published_at: str | None = None\n",
-        extra="forbid",
-    )
-
+    """A change outside the wire set is not blocked by a consumer's pin."""
     assert (
         main(
             [
                 "--repo-root",
                 str(wire_repo),
                 "--changed-file",
-                FIXTURE_MODULE_PATH,
+                "README.md",
                 "--wire-root",
                 FIXTURE_WIRE_ROOT,
-                "--consumer-ref",
-                new_sha,
-                "--consumer-label",
-                "omniclaude pin",
-                "--tag-anchor",
-                "nonexistent-tag-anchor",
             ]
         )
         == 0
     )
-    passed = capsys.readouterr().out
-    assert OUTCOME_PASS in passed
-    assert f"omniclaude pin {new_sha[:12]}" in passed
-
-    assert _run(wire_repo) == 1
-    assert OUTCOME_REFUSED in capsys.readouterr().err
+    assert OUTCOME_NO_WIRE_CHANGE in capsys.readouterr().out
 
 
 @pytest.mark.unit
-def test_an_unresolvable_consumer_ref_fails_closed(
-    wire_repo: Path, capsys: pytest.CaptureFixture[str]
+def test_oldest_pin_refusal_is_not_masked_by_a_newer_pin(
+    wire_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A missing pin cannot fall back to a release or claim compatibility."""
-    _release(wire_repo, tag="v1.0.0", fields="    prompt: str\n", extra="forbid")
-    _producer(
-        wire_repo,
-        fields="    prompt: str\n    published_at: str | None = None\n",
-        extra="forbid",
+    """AC2: the oldest pinned tag cannot decode the payload, so it is refused.
+
+    The newer pin accepts published_at and passes on its own; grading only the
+    newest tag would have admitted a payload the older consumer dead-letters.
+    """
+    old, new, flags = _two_pins(wire_repo, tmp_path)
+    _producer(wire_repo, fields=WITH_PUBLISHED_AT, extra="forbid")
+
+    assert _gate(wire_repo, *flags) == 1
+
+    captured = capsys.readouterr()
+    assert f"pin-verdict REFUSED: {old} (pinned by old-consumer)" in captured.err
+    assert f"pin-verdict PASS: {new} (pinned by new-consumer)" in captured.out
+    assert "published_at" in captured.err
+    assert f"oldest pin {old}" in captured.err
+    assert OUTCOME_REFUSED in captured.err
+
+    # The control: the newest pin on its own would have passed this payload.
+    assert (
+        _gate(
+            wire_repo,
+            *_tag_pin(tmp_path, wire_repo, "new-consumer", new),
+            "--required-consumer",
+            "new-consumer",
+        )
+        == 0
     )
-    missing_sha = "0" * 40
+
+
+@pytest.mark.unit
+def test_oldest_pin_passes_when_every_pin_decodes_the_payload(
+    wire_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC2: a payload every pinned consumer decodes passes, one verdict per pin."""
+    old, new, flags = _two_pins(wire_repo, tmp_path)
+    _producer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+
+    assert _gate(wire_repo, *flags) == 0
+
+    out = capsys.readouterr().out
+    assert f"pin-verdict PASS: {old} (pinned by old-consumer)" in out
+    assert f"pin-verdict PASS: {new} (pinned by new-consumer)" in out
+    assert OUTCOME_PASS in out
+    assert out.index(old) < out.index(new)
+
+
+@pytest.mark.unit
+def test_oldest_pin_two_consumers_on_one_tag_are_graded_once(
+    wire_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _commit_consumer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
+    tag = _dev_tag(wire_repo, "20261101000001")
+    _producer(wire_repo, fields=PROMPT_ONLY, extra="forbid")
 
     assert (
-        main(
-            [
-                "--repo-root",
-                str(wire_repo),
-                "--changed-file",
-                FIXTURE_MODULE_PATH,
-                "--wire-root",
-                FIXTURE_WIRE_ROOT,
-                "--consumer-ref",
-                missing_sha,
-            ]
+        _gate(
+            wire_repo,
+            *_tag_pin(tmp_path, wire_repo, "a", tag),
+            *_tag_pin(tmp_path, wire_repo, "b", tag),
+            "--required-consumer",
+            "a",
+            "--required-consumer",
+            "b",
         )
-        == 1
+        == 0
     )
-    captured = capsys.readouterr()
-    assert OUTCOME_RELEASE_UNRESOLVABLE in captured.err
-    assert missing_sha in captured.err
-    assert "wire compatibility is UNPROVEN rather than proven" in captured.err
-    assert OUTCOME_PASS not in captured.out
+    out = capsys.readouterr().out
+    assert out.count("pin-verdict PASS") == 1
+    assert "pinned by a, b" in out
