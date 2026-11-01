@@ -63,3 +63,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect tests/test_routing_sources_omn20601.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21835-deploy-node-registered
+  description: Deploy probe greps the checked-out tree for the node's onex.nodes entry point, which is absent from the base and is what makes the node discoverable by the runtime.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -c '^node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"$' pyproject.toml

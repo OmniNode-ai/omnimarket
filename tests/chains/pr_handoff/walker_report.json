@@ -64,6 +64,20 @@
       "from_state": "WAITING",
       "node": "node_pr_handoff_orchestrator",
       "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_repo-out-of-landing-scope",
+      "trigger": "evaluated_repo-out-of-landing-scope"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
+      "transition_name": "waiting_to_refused_on_evaluated_scope-unread",
+      "trigger": "evaluated_scope-unread"
+    },
+    {
+      "from_state": "WAITING",
+      "node": "node_pr_handoff_orchestrator",
+      "to_state": "REFUSED",
       "transition_name": "waiting_to_refused_on_superseded",
       "trigger": "superseded"
     },
@@ -240,6 +254,40 @@
     },
     {
       "kind": "error",
+      "path_id": "error:accepted>evaluated_repo-out-of-landing-scope",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_repo-out-of-landing-scope",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:accepted>evaluated_scope-unread",
+      "raw_path_count": 1,
+      "steps": [
+        [
+          "REQUESTED",
+          "accepted",
+          "WAITING"
+        ],
+        [
+          "WAITING",
+          "evaluated_scope-unread",
+          "REFUSED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
       "path_id": "error:accepted>evaluated_stale_head",
       "raw_path_count": 1,
       "steps": [
@@ -326,10 +374,10 @@
   ],
   "projection": "owner-component state changes, deduplicated",
   "raw_counts": {
-    "error": 13,
+    "error": 15,
     "golden": 2,
     "open": 0,
-    "paths": 15
+    "paths": 17
   },
   "schema_version": 1,
   "sync_triggers": [],

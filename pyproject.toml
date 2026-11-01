@@ -314,6 +314,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
+node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
 node_codex_gitlink_compute = "omnimarket.nodes.node_codex_gitlink_compute"
 node_codex_landing_compute = "omnimarket.nodes.node_codex_landing_compute"
@@ -568,6 +569,7 @@ node_work_ledger_append_effect = "omnimarket.nodes.node_work_ledger_append_effec
 node_work_ledger_delegation_mirror = "omnimarket.nodes.node_work_ledger_delegation_mirror"
 node_work_ledger_landing_mirror = "omnimarket.nodes.node_work_ledger_landing_mirror"
 node_canonical_clone_refresh_effect = "omnimarket.nodes.node_canonical_clone_refresh_effect"
+node_canonical_clone_dirty_converge_effect = "omnimarket.nodes.node_canonical_clone_dirty_converge_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_key_pool_expiry_alert_compute = "omnimarket.nodes.node_key_pool_expiry_alert_compute"
 node_manifest_fetch_effect = "omnimarket.nodes.node_manifest_fetch_effect"

@@ -321,7 +321,7 @@ def tls_server(tmp_path: Path) -> Iterator[tuple[int, bytes]]:
     cert_file.write_bytes(pem)
     key_file.write_bytes(key)
     server = HTTPServer(("127.0.0.1", 0), _Handler)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.load_cert_chain(cert_file, key_file)
     server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
