@@ -35,7 +35,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect/test_writes.py -k refused_write -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
 - id: dod-omn21835-ac3-identity-mismatch
   description: AC3 runs the identity-mismatch tests. A serial that differs, a product that differs, a model of the other generation and an overlay with no expected serial all refuse the write after the live system is read, with no write call and no journal record.
   source: manual
@@ -44,7 +44,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect/test_writes.py -k "identity_mismatch or identity_unconfirmed" -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
 - id: dod-omn21835-ac4-retry-not-repeated
   description: AC4 runs the retry tests. After a completed restart, after a crash that left only the intent record, and after an unknown outcome, the same request returns already_attempted and the device saw one reset only; a rejected attempt may be retried; a new approval is a new key.
   source: manual
@@ -53,7 +53,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect/test_writes.py -k "retry_not_repeated or rejected_write_may_be_retried or new_approval_is_a_new_key" -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
 - id: dod-omn21835-ac5-mocked-shapes-on-the-lab
   description: AC5 runs the whole node test directory and the routing-source inventory test on a lab host at the pushed head. The Gen8 and Gen9 shapes are synthetic resource trees built from the HPE iLO 4 data model names, no test opens a connection to anything but a loopback listener with a generated certificate.
   source: manual
@@ -62,10 +62,11 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect/test_writes.py tests/nodes/node_ilo_redfish_effect/test_reads.py tests/nodes/node_ilo_redfish_effect/test_adapters_and_models.py tests/test_routing_sources_omn20601.py -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
 - id: dod-omn21835-deploy-node-registered
   description: Deploy probe greps the checked-out tree for the node's onex.nodes entry point, which is absent from the base and is what makes the node discoverable by the runtime.
   source: manual
   checks:
   - check_type: command
     check_value: grep -c '^node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"$' pyproject.toml
+    cwd: .

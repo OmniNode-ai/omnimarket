@@ -186,7 +186,8 @@ def test_no_verb_can_reach_storage_accounts_licenses_firmware_or_log_clearing() 
 
 def test_contract_declares_no_bus_and_no_secret_values() -> None:
     raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
-    assert raw["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert "event_bus" not in raw
+    assert "handler_routing" not in raw
     assert raw["node_type"] == "effect"
     assert (
         "secrets" not in raw
@@ -321,7 +322,8 @@ def tls_server(tmp_path: Path) -> Iterator[tuple[int, bytes]]:
     cert_file.write_bytes(pem)
     key_file.write_bytes(key)
     server = HTTPServer(("127.0.0.1", 0), _Handler)
-    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert_file, key_file)
     server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
