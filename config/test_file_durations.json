@@ -2800,6 +2800,7 @@
   "tests/unit/nodes/node_database_sweep/test_dsn_and_migration_buckets.py": 0.09,
   "tests/unit/nodes/node_database_sweep/test_handler_database_sweep.py": 0.1,
   "tests/unit/nodes/node_delegate_skill_orchestrator/test_broken_venv_no_silent_paid_escalation_omn14097.py": 3.5,
+  "tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_before_inference_omn21365.py": 2.11,
   "tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_cause_is_timeout.py": 0.83,
   "tests/unit/nodes/node_delegate_skill_orchestrator/test_budget_cancel_keeps_evidence.py": 12.78,
   "tests/unit/nodes/node_delegate_skill_orchestrator/test_bus_path_provider_identity_omn17013.py": 11.25,
