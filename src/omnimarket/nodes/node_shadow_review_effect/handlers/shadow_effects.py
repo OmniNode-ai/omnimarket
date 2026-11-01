@@ -23,6 +23,7 @@ from typing import Protocol, cast
 from omnimarket.handlers.handler_packaged_contract_loader import (
     load_packaged_contract_section,
 )
+from omnimarket.handlers.model_binding_reader import model_binding
 from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review import (
     EnumShadowArm,
     EnumShadowArmStatus,
@@ -32,7 +33,7 @@ from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review impor
 )
 
 GITHUB_OWNER = "OmniNode-ai"
-GLM_MODEL = "glm-5.3"
+GLM_MODEL = model_binding("shadow_review_glm_model")
 HARNESS_LANE = "shadow-review-runner"
 HARNESS_TICKET = "OMN-20422"
 
