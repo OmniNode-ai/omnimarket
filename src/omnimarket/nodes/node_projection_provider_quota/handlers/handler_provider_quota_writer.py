@@ -20,13 +20,17 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_provider_quota.handlers.handler_projection_provider_quota import (
     HandlerProjectionProviderQuota,
 )
 from omnimarket.nodes.node_projection_provider_quota.models import (
     ModelProviderQuotaProjectionRequest,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 # $1 tenant_id, $2 credential_ref, $3 provider_id, $4 model_scope,
 # $5 observed_at, $6 window_seconds, $7 outcome, $8 http_status,
@@ -126,15 +130,10 @@ class ProviderQuotaProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
-        topic = str(data.pop("_topic", self.subscribe_topics[0]))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        data = dict(request.payload)
+        topic = request.topic_or(self.subscribe_topics[0])
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(data, meta))
 
     async def _project_one_message(
