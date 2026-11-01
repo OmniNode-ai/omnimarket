@@ -63,7 +63,7 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/scripts/test_check_dep_provenance.py tests/chains/generated/test_generated_chains.py tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/test_core_pin_principal_roles_omn21478.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn21478-pr4618-hosted-package-deploy-readback
-  description: Hosted-runner package readback checks the installed core commit against this PR's dev tag, imports both migrated product consumers, and loads the installed provenance policy. It needs only the checkout and frozen dependencies, with no credentials or services. A different core commit or a missing runtime dependency fails. This does not attest a running service rollout.
+  description: Hosted-runner package readback checks the installed core commit against PR 4661's dev tag, retaining the migrated product consumer imports and installed provenance policy checks introduced by PR 4618. It needs only the checkout and frozen dependencies, with no credentials or services. A different core commit or a missing runtime dependency fails. This does not attest a running service rollout.
   source: manual
   checks:
   - check_type: test_passes
@@ -78,9 +78,9 @@ dod_evidence:
       import tomllib
       from pathlib import Path
       source = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]["omnibase-core"]
-      assert source["tag"] == "dev-20261031000524-fc6159b98026", source
+      assert source["tag"] == "dev-20261031095720-970c1d3b03f0", source
       installed = json.loads(importlib.metadata.distribution("omnibase-core").read_text("direct_url.json"))
-      assert installed["vcs_info"]["commit_id"] == "fc6159b9802687dcf8496ac34ff13a409a6d5230", installed
+      assert installed["vcs_info"]["commit_id"] == "970c1d3b03f0075b4905e05a553fcc5aaff5afdd", installed
       for module in (
           "omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate",
           "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep",
@@ -89,6 +89,30 @@ dod_evidence:
           importlib.import_module(module)
       from scripts.check_dep_provenance import load_policy
       assert load_policy()["wrong_repo"].siblings
-      print("PR 4618 installed core and migrated runtime imports passed")
+      print("PR 4661 installed core and migrated runtime imports passed")
       PY
+    cwd: .
+- id: dod-omn21478-pr4661-core-tag-runtime
+  description: PR 4661 pins omnibase-core to dev-20261031095720-970c1d3b03f0 in pyproject.toml and uv.lock. Existing tests verify the required sibling-pins context and CI Summary registration, sibling pin agreement, provenance, generated-chain runtime compatibility, and machine principal handling without inline grants.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'PY'
+      import tomllib
+      from pathlib import Path
+      source = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]["omnibase-core"]
+      assert source["tag"] == "dev-20261031095720-970c1d3b03f0", source
+      packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+      (core,) = [package for package in packages if package["name"] == "omnibase-core"]
+      assert core["version"] == "0.47.61", core
+      assert core["source"]["git"] == source["git"] + "?tag=" + source["tag"] + "#970c1d3b03f0075b4905e05a553fcc5aaff5afdd", core
+      print("PR 4661 source and lock pin core 0.47.61 at 970c1d3b03f0075b4905e05a553fcc5aaff5afdd")
+      PY
+    cwd: .
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py tests/scripts/test_check_dep_provenance.py tests/unit/test_core_pin_principal_roles_omn21478.py tests/chains/generated/test_generated_chains.py -q --no-cov -p no:randomly
     cwd: .
