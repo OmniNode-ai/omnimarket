@@ -1,0 +1,148 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The weekly retrospective as a design: eight nodes in one chain, from the run command to the
+# rendered digest. Each crossing names the envelope model of the retrospective crossing models
+# (omnibase_core models/retrospective); both sides declare the same wire projection. The
+# reducer carries the run's state machine so core's contract walker reads it.
+design_id: weekly_retrospective
+nodes:
+  - node_name: node_retrospective_run_orchestrator
+    archetype: orchestrator
+    description: Open one retrospective run for a review week and ask for its evidence.
+  - node_name: node_retrospective_collect_effect
+    archetype: effect
+    description: Collect the week's evidence records into one immutable snapshot.
+  - node_name: node_retrospective_calculate_compute
+    archetype: compute
+    description: Calculate the cohort metrics from the evidence snapshot.
+  - node_name: node_retrospective_audit_compute
+    archetype: compute
+    description: Audit the calculated metrics against their independent intake source.
+  - node_name: node_workflow_comparison_compute
+    archetype: compute
+    description: Evaluate every experiment's success contract against the audited snapshot.
+  - node_name: node_retrospective_run_reducer
+    archetype: reducer
+    description: Fold the evaluated verdicts into the run's state.
+    state_machine:
+      version: {major: 1, minor: 0, patch: 0}
+      state_machine_name: retrospective_run_fsm
+      state_machine_version: {major: 1, minor: 0, patch: 0}
+      description: One weekly retrospective run, from opened to a rendered digest, degraded when evidence is missing or refused when a gate refuses it.
+      initial_state: opened
+      terminal_states: [rendered, degraded, refused]
+      error_states: [degraded, refused]
+      persistence_enabled: false
+      operations:
+        - {operation_name: evidence_collected, operation_type: fold, description: The collect step produced the evidence snapshot.}
+        - {operation_name: metrics_calculated, operation_type: fold, description: The calculate step computed the cohort metrics.}
+        - {operation_name: metrics_audited, operation_type: fold, description: The audit step checked the metrics against their intake source.}
+        - {operation_name: verdicts_evaluated, operation_type: fold, description: The evaluator returned one verdict per experiment.}
+        - {operation_name: digest_rendered, operation_type: fold, description: The digest was rendered from the projected verdicts.}
+        - {operation_name: evidence_missing, operation_type: fold, description: The evidence fell below its floor; the run degrades.}
+        - {operation_name: gate_refused, operation_type: fold, description: A gate refused the run.}
+      states:
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: opened, state_type: operational, description: The run is open for a review week; nothing is collected.}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: collected, state_type: operational, description: The week's evidence is one immutable snapshot.}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: calculated, state_type: operational, description: The cohort metrics are calculated from the snapshot.}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: audited, state_type: operational, description: The metrics agree with their independent intake source.}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: evaluated, state_type: operational, description: Every experiment has a verdict.}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: rendered, state_type: terminal, description: The digest is rendered from the verdicts., is_terminal: true, is_recoverable: false}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: degraded, state_type: error, description: The evidence fell below its floor; the digest says so and states no verdict it cannot support., is_terminal: true, is_recoverable: false}
+        - {version: {major: 1, minor: 0, patch: 0}, state_name: refused, state_type: error, description: A gate refused the run., is_terminal: true, is_recoverable: false}
+      transitions:
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: opened_to_collected_on_evidence_collected, from_state: opened, to_state: collected, trigger: evidence_collected, priority: 2, conditions: [{condition_name: evidence_present, condition_type: expression, expression: record_count > 0}]}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: opened_to_degraded_on_evidence_collected, from_state: opened, to_state: degraded, trigger: evidence_collected, priority: 1}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: collected_to_calculated_on_metrics_calculated, from_state: collected, to_state: calculated, trigger: metrics_calculated, priority: 2, conditions: [{condition_name: denominator_present, condition_type: expression, expression: zero_denominator_count == 0}]}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: collected_to_degraded_on_metrics_calculated, from_state: collected, to_state: degraded, trigger: metrics_calculated, priority: 1}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: calculated_to_audited_on_metrics_audited, from_state: calculated, to_state: audited, trigger: metrics_audited, priority: 2, conditions: [{condition_name: cohort_reconciled, condition_type: expression, expression: unreconciled_count == 0}]}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: calculated_to_refused_on_metrics_audited, from_state: calculated, to_state: refused, trigger: metrics_audited, priority: 1}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: audited_to_evaluated_on_verdicts_evaluated, from_state: audited, to_state: evaluated, trigger: verdicts_evaluated, priority: 2, conditions: [{condition_name: verdict_present, condition_type: expression, expression: verdict_count > 0}]}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: audited_to_degraded_on_verdicts_evaluated, from_state: audited, to_state: degraded, trigger: verdicts_evaluated, priority: 1}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: evaluated_to_rendered_on_digest_rendered, from_state: evaluated, to_state: rendered, trigger: digest_rendered, priority: 2}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: opened_to_degraded_on_evidence_missing, from_state: opened, to_state: degraded, trigger: evidence_missing, priority: 2}
+        - {version: {major: 1, minor: 0, patch: 0}, transition_name: opened_to_refused_on_gate_refused, from_state: opened, to_state: refused, trigger: gate_refused, priority: 2}
+  - node_name: node_retrospective_run_projection_effect
+    archetype: effect
+    description: Write the run's state to its projection and announce the projected revision.
+  - node_name: node_retrospective_digest_render_compute
+    archetype: compute
+    description: Render the digest with its verdicts and candidate cards from the projected run.
+crossings:
+  - crossing_id: retrospective.collect_requested
+    topic: onex.cmd.omnimarket.retrospective-collect-requested.v1
+    producer: node_retrospective_run_orchestrator
+    consumer: node_retrospective_collect_effect
+    producer_side: &collect_requested
+      envelope_model: ModelRetrospectiveCollectRequest
+      envelope_version: v1
+      key_fields:
+        - {name: run_id, field_type: str}
+        - {name: correlation_id, field_type: str}
+    consumer_side: *collect_requested
+  - crossing_id: retrospective.evidence_snapshotted
+    topic: onex.evt.omnimarket.retrospective-evidence-snapshotted.v1
+    producer: node_retrospective_collect_effect
+    consumer: node_retrospective_calculate_compute
+    producer_side: &snapshot
+      envelope_model: ModelEvidenceSnapshot
+      envelope_version: v1
+      key_fields:
+        - {name: run_id, field_type: str}
+        - {name: correlation_id, field_type: str}
+        - {name: input_hash, field_type: str}
+    consumer_side: *snapshot
+  - crossing_id: retrospective.metrics_calculated
+    topic: onex.evt.omnimarket.retrospective-metrics-calculated.v1
+    producer: node_retrospective_calculate_compute
+    consumer: node_retrospective_audit_compute
+    producer_side: *snapshot
+    consumer_side: *snapshot
+  - crossing_id: retrospective.metrics_audited
+    topic: onex.evt.omnimarket.retrospective-metrics-audited.v1
+    producer: node_retrospective_audit_compute
+    consumer: node_workflow_comparison_compute
+    producer_side: *snapshot
+    consumer_side: *snapshot
+  - crossing_id: retrospective.verdicts_evaluated
+    topic: onex.evt.omnimarket.retrospective-verdicts-evaluated.v1
+    producer: node_workflow_comparison_compute
+    consumer: node_retrospective_run_reducer
+    producer_side: &verdict_set
+      envelope_model: ModelRetrospectiveVerdictSet
+      envelope_version: v1
+      key_fields:
+        - {name: run_id, field_type: str}
+        - {name: correlation_id, field_type: str}
+        - {name: input_hash, field_type: str}
+    consumer_side: *verdict_set
+  - crossing_id: retrospective.run_state_changed
+    topic: onex.evt.omnimarket.retrospective-run-state-changed.v1
+    producer: node_retrospective_run_reducer
+    consumer: node_retrospective_run_projection_effect
+    producer_side: &run_state
+      envelope_model: ModelRetrospectiveRunState
+      envelope_version: v1
+      key_fields:
+        - {name: run_id, field_type: str}
+        - {name: correlation_id, field_type: str}
+        - {name: revision, field_type: int}
+    consumer_side: *run_state
+  - crossing_id: retrospective.run_projected
+    topic: onex.evt.omnimarket.retrospective-run-projected.v1
+    producer: node_retrospective_run_projection_effect
+    consumer: node_retrospective_digest_render_compute
+    producer_side: &run_projected
+      envelope_model: ModelRetrospectiveRunProjected
+      envelope_version: v1
+      key_fields:
+        - {name: run_id, field_type: str}
+        - {name: correlation_id, field_type: str}
+        - {name: revision, field_type: int}
+    consumer_side: *run_projected
+head:
+  topic: onex.cmd.omnimarket.retrospective-run-requested.v1
+  node_name: node_retrospective_run_orchestrator
+tail:
+  topic: onex.evt.omnimarket.retrospective-digest-rendered.v1
+  node_name: node_retrospective_digest_render_compute
