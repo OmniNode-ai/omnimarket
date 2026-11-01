@@ -21,7 +21,6 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
-from omnimarket.models.delegation.wire import model_delegate_skill_response
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
 )
@@ -325,13 +324,13 @@ _OLD_ATTEMPT = {
 
 
 def test_attempt_record_without_gate_record_still_parses() -> None:
-    """An older recording carries no gate_record; it parses and re-dumps without one."""
+    """An older recording carries no gate_record; it parses with none."""
     record = ModelDelegateSkillAttemptRecord.model_validate(_OLD_ATTEMPT)
-    assert "gate_record" not in record.model_dump(mode="json")
+    assert record.gate_record is None
 
 
 def test_attempt_record_carrying_gate_record_still_parses() -> None:
-    """Consumer first: an attempt that carries a gate record decodes (OMN-18868)."""
+    """An attempt that carries a gate record decodes it as a declared field."""
     gate_record = ModelQualityGateRecord(
         record_key=f"{uuid4()}:0",
         correlation_id=uuid4(),
@@ -347,8 +346,8 @@ def test_attempt_record_carrying_gate_record_still_parses() -> None:
         _OLD_ATTEMPT | {"gate_record": gate_record.model_dump(mode="json")}
     )
     assert record.quality_gate_passed is True
-    assert "gate_record" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
-    assert "gate_record" not in ModelDelegateSkillAttemptRecord.model_fields
+    assert record.gate_record == gate_record
+    assert "gate_record" in ModelDelegateSkillAttemptRecord.model_fields
 
 
 def test_attempt_record_with_another_unknown_key_is_still_refused() -> None:
