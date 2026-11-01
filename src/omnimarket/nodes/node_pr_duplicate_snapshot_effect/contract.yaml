@@ -33,6 +33,8 @@ config:
   digest:
     min_line_chars: 4
     prefix_chars: 12
+  stack:
+    base_rule: newest_contained_open_pr_head
 event_bus:
   subscribe_topics: []
   publish_topics: []
