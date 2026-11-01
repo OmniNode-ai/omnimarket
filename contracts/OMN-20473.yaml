@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20473"
+title: "delegation judged acceptance: the acceptance judge node turns validated verdicts into judged-acceptance events, purely"
+summary: "The acceptance judge compute node gains an events operation (handlers/build_events.py) that turns the validated primary verdicts plus the score operation's agreement and kappa into one judged-acceptance event per judged item, with no I/O and no model call. Liveness probes produce no event and an item with no delegated model key refuses the run with a typed issue."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20473-events-operation"
+    statement: |-
+      The events operation builds one judged-acceptance event per validated primary verdict, none for liveness probes, refuses an item with no delegated model key, and is pure and deterministic.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: one event per validated primary verdict, none for liveness probes, and a typed refusal for an item with no delegated model key -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k \"events_one_per_verdict or events_probe_excluded or events_missing_model_refused\" -v in omnimarket"
+      - id: "AC2"
+        statement: "AC2: building events twice from the same verdicts gives byte-identical output, and the operation performs no I/O -- falsifier: uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k \"events_deterministic or events_no_io\" -v in omnimarket"
+evidence_requirements:
+  - kind: "tests"
+    description: "The acceptance judge node tests pass."
+    command: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20473-events-built"
+    description: "One event per validated primary verdict, none for probes, a typed refusal for a missing model key."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q --no-cov -k 'events_one_per_verdict or events_probe_excluded or events_missing_model_refused'"
+        cwd: "."
+  - id: "dod-omn20473-events-pure"
+    description: "Building events twice is byte-identical and the operation performs no I/O."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -q --no-cov -k 'events_deterministic or events_no_io'"
+        cwd: "."
