@@ -33,6 +33,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_compute_config,
     load_contract,
     load_host_table,
+    load_lane_containers,
     load_linear,
     load_placed,
     load_placement,
@@ -48,6 +49,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     read_ledger_rows,
     resolve_dir,
     resolve_home,
+    runner_fleet_cause,
     write_result,
 )
 
@@ -86,6 +88,7 @@ class HandlerFactoryFloorEffect:
             overlay.plan_path_contains if overlay is not None else ()
         )
         machines = overlay.machines if overlay is not None else ()
+        container_read_line = overlay.container_read_line if overlay is not None else ""
         now = request.now or datetime.now(UTC)
         src = rt.sources
         plans_today_file = newest_dated_file(
@@ -115,10 +118,14 @@ class HandlerFactoryFloorEffect:
         titles = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_titles_glob
         )
+        fleet_path = home / src.runner_fleet_relpath
+        runner_fleet = load_runner_fleet(fleet_path)
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
-            selection=ModelFloorSelection(plan_path_contains=contains),
+            selection=ModelFloorSelection(
+                plan_path_contains=contains, container_read_line=container_read_line
+            ),
             plans=load_plans(
                 kb=Path(kb_value),
                 plans_relpath=rt.plans_relpath,
@@ -126,6 +133,8 @@ class HandlerFactoryFloorEffect:
                 header_keys=rt.plan_header_keys,
                 contains=contains,
                 plans_today=plans_today,
+                plan_refs=overlay.plan_refs if overlay is not None else (),
+                task_links=overlay.plan_task_links if overlay is not None else (),
             ),
             watcher=load_watcher(
                 home / src.watcher_relpath, now, rt.watcher_max_age_min
@@ -163,7 +172,15 @@ class HandlerFactoryFloorEffect:
                 result_chars=ls.result_chars,
             ),
             cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
-            runner_fleet=load_runner_fleet(home / src.runner_fleet_relpath),
+            runner_fleet=runner_fleet,
+            runner_fleet_cause=""
+            if runner_fleet is not None
+            else runner_fleet_cause(fleet_path),
+            lane_containers=load_lane_containers(
+                source=rt.container_source,
+                hosts=overlay.container_hosts if overlay is not None else (),
+                declarations=overlay.container_budgets if overlay is not None else (),
+            ),
         )
         result = HandlerFactoryFloor().handle(compute_request)
         target = home / rt.output.relpath

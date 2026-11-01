@@ -46,6 +46,9 @@ class ModelFloorManifestTask(BaseModel):
     depends_on: tuple[str, ...] = ()
     tickets: tuple[str, ...] = ()
     prs: tuple[str, ...] = ()
+    # True for a task read from a plan's own paragraphs: its id (T1, S3) is not unique across plans, so only its
+    # tickets and pull requests link it to the ledger and the watcher, never the bare id.
+    scoped: bool = False
 
 
 class ModelFloorManifest(BaseModel):
@@ -382,6 +385,8 @@ class ModelFactoryFloorRequest(BaseModel):
     receipts: tuple[ModelFloorReceipt, ...] | None = None
     cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
     runner_fleet: ModelFloorRunnerFleet | None = None
+    # Why runner_fleet is None, in the reader's own words; empty when it was read.
+    runner_fleet_cause: str = ""
     # One verdict per host read by node_lane_container_budget_compute; None when no host was read.
     lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
 

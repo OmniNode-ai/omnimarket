@@ -64,6 +64,8 @@ class ModelFloorLaneContainers(BaseModel):
     observed: int | None
     budget: int | None
     alarm_key: str
+    # The read's own sentence: the count against the budget, or why the host could not be read (UNKNOWN).
+    detail: str = ""
 
 
 class ModelFloorApplicationContainers(BaseModel):
@@ -308,6 +310,8 @@ class ModelFloorSources(BaseModel):
     receipts_read: bool
     cloud_accounts_read: bool
     runner_fleet_read: bool
+    # Why the runner fleet is unread, in the reader's words; empty when it was read.
+    runner_fleet_cause: str = ""
 
 
 class ModelFactoryFloorResult(BaseModel):

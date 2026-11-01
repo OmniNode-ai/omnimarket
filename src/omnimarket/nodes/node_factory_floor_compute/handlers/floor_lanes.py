@@ -228,7 +228,8 @@ def _runners(
             online=None,
             busy=None,
             observed_at="",
-            note="no runner fleet observation has been recorded",
+            note=request.runner_fleet_cause
+            or "no runner fleet observation has been recorded",
         )
     if not decl.runner_labels:
         return ModelFloorRunnersOut(

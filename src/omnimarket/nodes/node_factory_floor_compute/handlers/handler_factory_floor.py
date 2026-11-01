@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from omnimarket.models.model_factory_floor_input import (
@@ -36,6 +37,80 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_outp
     ModelFloorStation,
     ModelFloorStoppageOut,
 )
+
+
+@dataclass(frozen=True)
+class _Index:
+    """What the per-task rules look up in the ledger, read once per request (a scan per task and hold is quadratic)."""
+
+    released_prs: dict[str, frozenset[str]]
+    lane_newest: dict[str, datetime]
+    lane_terminals: dict[str, tuple[datetime, ...]]
+    # Ledger positions by task cell, by ticket, and by a task id found anywhere in the row's reason or text.
+    by_task: dict[str, tuple[int, ...]]
+    by_ticket: dict[str, tuple[int, ...]]
+    by_mention: dict[str, tuple[int, ...]]
+    # Per ticket, the newest CLAIM and the newest CLAIM by any other lane: (ts, lane, other-lane ts).
+    claim_tips: dict[str, tuple[datetime, str, datetime | None]]
+
+
+def _tip(
+    held: tuple[datetime, str, datetime | None] | None, row: ModelFloorLedgerRow
+) -> tuple[datetime, str, datetime | None]:
+    if held is None:
+        return row.ts, row.lane, None
+    ts, lane, other = held
+    if row.lane == lane:
+        return max(ts, row.ts), lane, other
+    if row.ts > ts:
+        return row.ts, row.lane, ts if other is None else max(ts, other)
+    return ts, lane, row.ts if other is None else max(row.ts, other)
+
+
+def _task_ids(plans: tuple[ModelFloorPlanInput, ...]) -> frozenset[str]:
+    ids = {row.label for plan in plans for row in plan.table_tasks}
+    ids.update(
+        task.id
+        for plan in plans
+        if plan.manifest is not None
+        for task in plan.manifest.tasks
+    )
+    return frozenset(ids)
+
+
+def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Index:
+    released: dict[str, set[str]] = {}
+    newest: dict[str, datetime] = {}
+    terminals: dict[str, list[datetime]] = {}
+    by_task: dict[str, list[int]] = {}
+    by_ticket: dict[str, list[int]] = {}
+    by_mention: dict[str, list[int]] = {}
+    tips: dict[str, tuple[datetime, str, datetime | None]] = {}
+    for position, row in enumerate(request.ledger):
+        if row.kind == "CLAIM":
+            for ticket in row.tickets:
+                tips[ticket] = _tip(tips.get(ticket), row)
+        if row.task:
+            by_task.setdefault(row.task, []).append(position)
+        for ticket in row.tickets:
+            by_ticket.setdefault(ticket, []).append(position)
+        for task_id in task_ids:
+            if task_id in row.reason or task_id in row.text:
+                by_mention.setdefault(task_id, []).append(position)
+        if row.kind == "RELEASE":
+            released.setdefault(row.re, set()).update(row.prs)
+        newest[row.lane] = max(newest.get(row.lane, row.ts), row.ts)
+        if row.kind == "TERMINAL":
+            terminals.setdefault(row.lane, []).append(row.ts)
+    return _Index(
+        released_prs={key: frozenset(value) for key, value in released.items()},
+        lane_newest=newest,
+        lane_terminals={key: tuple(value) for key, value in terminals.items()},
+        by_task={key: tuple(value) for key, value in by_task.items()},
+        by_ticket={key: tuple(value) for key, value in by_ticket.items()},
+        by_mention={key: tuple(value) for key, value in by_mention.items()},
+        claim_tips=tips,
+    )
 
 
 def _stamp(value: datetime) -> str:
@@ -93,17 +168,11 @@ def _hold_matches(
     hold: ModelFloorLedgerRow,
     task: ModelFloorManifestTask,
     prs: tuple[str, ...],
-    request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> bool:
-    released_prs = {
-        pr
-        for row in request.ledger
-        if row.kind == "RELEASE" and row.re == hold.row_id
-        for pr in row.prs
-    }
+    released_prs = index.released_prs.get(hold.row_id, frozenset())
     return (
-        hold.task == task.id
-        or _token(task.id, hold.reason)
+        (not task.scoped and (hold.task == task.id or _token(task.id, hold.reason)))
         or _intersects(hold.tickets, task.tickets)
         or any(pr in hold.prs and pr not in released_prs for pr in prs)
     )
@@ -115,8 +184,10 @@ def _task_prs(
     inferred = tuple(
         pr.key
         for pr in request.watcher.prs
-        if _token(task.id, pr.title)
-        or _token(task.id, pr.head_ref)
+        if (
+            not task.scoped
+            and (_token(task.id, pr.title) or _token(task.id, pr.head_ref))
+        )
         or _intersects(task.tickets, pr.tickets)
     )
     return tuple(sorted(set(task.prs + inferred)))
@@ -126,10 +197,19 @@ def _task_rows(
     task: ModelFloorManifestTask,
     scope: tuple[str, ...],
     request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> tuple[ModelFloorLedgerRow, ...]:
+    by_ticket = (p for ticket in task.tickets for p in index.by_ticket.get(ticket, ()))
+    if task.scoped:
+        return tuple(request.ledger[position] for position in sorted(set(by_ticket)))
+    candidates = {
+        *index.by_task.get(task.id, ()),
+        *index.by_mention.get(task.id, ()),
+        *by_ticket,
+    }
     return tuple(
         row
-        for row in request.ledger
+        for row in (request.ledger[position] for position in sorted(candidates))
         if row.task == task.id
         or _token(task.id, row.reason)
         or _intersects(row.tickets, task.tickets)
@@ -138,12 +218,13 @@ def _task_rows(
 
 
 def _live_claim(
-    rows: tuple[ModelFloorLedgerRow, ...], request: ModelFactoryFloorRequest
+    rows: tuple[ModelFloorLedgerRow, ...],
+    request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> ModelFloorLedgerRow | None:
     def live(row: ModelFloorLedgerRow) -> bool:
-        lane_rows = tuple(r for r in request.ledger if r.lane == row.lane)
-        closed = any(r.kind == "TERMINAL" and r.ts >= row.ts for r in lane_rows)
-        newest = max(r.ts for r in lane_rows)
+        closed = any(ts >= row.ts for ts in index.lane_terminals.get(row.lane, ()))
+        newest = index.lane_newest[row.lane]
         return not closed and request.generated_at - newest <= timedelta(
             minutes=request.config.live_claim_minutes
         )
@@ -161,8 +242,9 @@ def _evidence(
     scope: tuple[str, ...],
     holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> tuple[ItemState, str] | None:
-    rows = _task_rows(task, scope, request)
+    rows = _task_rows(task, scope, request, index)
     terminal = max(
         (row for row in rows if row.kind == "TERMINAL"),
         key=_row_key,
@@ -180,11 +262,11 @@ def _evidence(
         return "done", f"terminal {terminal.outcome}"
     if task.tickets and all(linear.get(t) == "completed" for t in task.tickets):
         return "done", "Linear done"
-    matching = tuple(h for h in holds if _hold_matches(h, task, prs, request))
+    matching = tuple(h for h in holds if _hold_matches(h, task, prs, index))
     for hold in matching:
         if _andon(hold, request.config):
             return "stop", f"andon hold {hold.row_id}: {hold.reason}"
-    claim = _live_claim(rows, request)
+    claim = _live_claim(rows, request, index)
     if claim:
         return "active", f"claim {claim.lane}"
     open_prs = {pr.key for pr in request.watcher.prs if pr.state == "OPEN"}
@@ -227,6 +309,7 @@ def _manifest_items(
     plan: ModelFloorPlanInput,
     holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> tuple[ModelFloorItem, ...]:
     by_id = {task.id: task for task in tasks}
     prs = {task.id: _task_prs(task, request) for task in tasks}
@@ -242,7 +325,7 @@ def _manifest_items(
         evidence = (
             _gate(task, request)
             if gate
-            else _evidence(task, prs[task_id], _scope(plan), holds, request)
+            else _evidence(task, prs[task_id], _scope(plan), holds, request, index)
         )
         if evidence is None:
             unmet = tuple(
@@ -399,15 +482,17 @@ def _minutes(request: ModelFactoryFloorRequest, ts: datetime) -> int:
     return int((request.generated_at - ts).total_seconds() // 60)
 
 
-def _resumed(row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest) -> bool:
+def _resumed(row: ModelFloorLedgerRow, index: _Index) -> bool:
     """True when a lane other than the row's writer claimed one of its tickets after it: the work moved on."""
-    return any(
-        other.kind == "CLAIM"
-        and other.ts > row.ts
-        and other.lane != row.lane
-        and _intersects(other.tickets, row.tickets)
-        for other in request.ledger
-    )
+    for ticket in row.tickets:
+        tip = index.claim_tips.get(ticket)
+        if tip is None:
+            continue
+        ts, lane, other = tip
+        newest_by_another = ts if lane != row.lane else other
+        if newest_by_another is not None and newest_by_another > row.ts:
+            return True
+    return False
 
 
 def _asks_orchestrator(
@@ -421,7 +506,7 @@ def _asks_orchestrator(
 
 
 def _ledger_stops(
-    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest, index: _Index
 ) -> tuple[str, ...]:
     """Open stops the ledger records on the plan's tickets: a lane that ended blocked, an ask nobody answered."""
     config = request.config
@@ -433,7 +518,7 @@ def _ledger_stops(
     }
     stops: tuple[str, ...] = ()
     for row in sorted(request.ledger, key=_row_key):
-        if not _intersects(row.tickets, scope) or _resumed(row, request):
+        if not _intersects(row.tickets, scope) or _resumed(row, index):
             continue
         said = (row.text or row.reason)[: config.note_chars]
         age = _minutes(request, row.ts)
@@ -477,6 +562,7 @@ def _line(
     plan: ModelFloorPlanInput,
     all_holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> ModelFloorLine:
     holds = tuple(h for h in all_holds if not _exempts(h, plan, request))
     manifest = plan.manifest
@@ -492,7 +578,7 @@ def _line(
         )
     )
     items = (
-        _manifest_items(tasks, plan, holds, request)
+        _manifest_items(tasks, plan, holds, request, index)
         if has_manifest
         else tuple(_table_item(row, holds, request) for row in plan.table_tasks)
     )
@@ -504,7 +590,7 @@ def _line(
             and (
                 _intersects(hold.tickets, _scope(plan))
                 or any(
-                    _hold_matches(hold, task, item.prs, request)
+                    _hold_matches(hold, task, item.prs, index)
                     for task, item in zip(tasks, items, strict=True)
                 )
             )
@@ -517,7 +603,7 @@ def _line(
             and item.state == "stop"
         )
         + _red_prs(items, request)
-        + _ledger_stops(plan, request)
+        + _ledger_stops(plan, request, index)
     )
     if not tasks:
         causes = (
@@ -673,7 +759,8 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
         or any(text in plan.plan_path for text in request.selection.plan_path_contains)
     )
     holds = _holds(request)
-    lines = tuple(_line(plan, holds, request) for plan in selected)
+    index = _index(request, _task_ids(selected))
+    lines = tuple(_line(plan, holds, request, index) for plan in selected)
     newest = max((row.ts for row in request.ledger), default=None)
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
@@ -695,6 +782,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             receipts_read=request.receipts is not None,
             cloud_accounts_read=request.cloud_accounts is not None,
             runner_fleet_read=request.runner_fleet is not None,
+            runner_fleet_cause=request.runner_fleet_cause,
         ),
     )
 

@@ -49,6 +49,7 @@ descriptor:
   side_effects:
   - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
   - reads the rolling ledger through the plugin's reader
+  - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
   - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
   - writes the factory floor JSON to runtime.output.relpath under the registry home
 
@@ -100,6 +101,15 @@ runtime:
     lane_marker_min_id: 1000000000
     cloud_accounts_file: cloud-accounts.json
     host_table_env: ONEX_LAB_RUN_HOSTS
+  # The lane containers (application container budget): the hosts and budgets are the overlay's; each host is read over ssh with
+  # this listing command and judged by node_lane_container_budget_compute. A host that cannot be read draws UNKNOWN with the
+  # cause, never an empty count. The command names its fields: the default JSON form makes the engine compute every size.
+  container_source:
+    ssh_options: ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+    listing_command: >-
+      docker ps -a --no-trunc --format
+      '{"Names":{{json .Names}},"State":{{json .State}},"Labels":{{json .Labels}}}'
+    timeout_seconds: 90
   output:
     relpath: .claude_scratch/factory-floor/factory-floor.json
 metadata:
