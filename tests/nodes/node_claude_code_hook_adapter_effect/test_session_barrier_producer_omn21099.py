@@ -43,8 +43,8 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelHookAdapterRequest,
     ModelReceiptEvent,
 )
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_session_barrier_wait import (
-    HandlerSessionBarrierWait,
+from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+    create_handler_session_barrier_wait,
 )
 
 pytestmark = pytest.mark.unit
@@ -273,7 +273,9 @@ def test_real_orchestrator_requires_the_produced_barrier(
     source = _ProjectedJournal(journal_dir)
     build = _Build()
     orchestrator = compaction_bus(build).handler(
-        barrier_wait=HandlerSessionBarrierWait(source, deadline_s=0, poll_interval_s=0),
+        barrier_wait=create_handler_session_barrier_wait(
+            source, deadline_s=0, poll_interval_s=0
+        ),
         barrier_probe_source=source,
     )
     result = orchestrator.handle(command)

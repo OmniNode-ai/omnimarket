@@ -26,6 +26,7 @@ from pathlib import PurePosixPath
 
 import yaml
 
+from omnimarket.handlers.runtime_paths import runtime_path_list
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models import (
     EnumAutomationLivenessSourceClass,
     ModelAutomationLivenessFoundSource,
@@ -60,18 +61,10 @@ _CODE_SUFFIXES = frozenset(
 )
 _PLIST_NAME = re.compile(r"^(?P<label>.+?)\.plist(?:\.tmpl|\.template|\.in)?$")
 
-# The patterns below are assembled from parts so that this module does not read as an installer
-# of itself: a literal unit directory next to a write verb is exactly what the scan looks for.
+# The unit directories come from the runtime-path authority so that this module does not read as
+# an installer of itself: a literal unit directory next to a write verb is what the scan looks for.
 _UNIT_DIRECTORIES = re.compile(
-    "|".join(
-        [
-            "/etc/" + "systemd/system",
-            r"\.config/" + "systemd/" + "user",
-            "systemd/" + "user",
-            "/etc/" + r"cron\.d",
-            "Library/" + "LaunchAgents",
-        ]
-    )
+    "|".join(runtime_path_list("automation_liveness.unit_directory_patterns"))
 )
 _LOAD_OR_LINK = re.compile(
     "|".join(

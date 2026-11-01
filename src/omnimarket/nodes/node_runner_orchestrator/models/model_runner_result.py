@@ -12,6 +12,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.runtime_paths import runtime_path
+
 
 class EnumRunnerStatus(StrEnum):
     """GitHub API runner status."""
@@ -73,7 +75,7 @@ class ModelHostMetrics(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     disk_path: str = Field(
-        default="/var/lib/docker",
+        default_factory=lambda: runtime_path("runtime_host.ci_disk_path"),
         description="Filesystem path reported by df.",
     )
     disk_used_pct: int | None = Field(

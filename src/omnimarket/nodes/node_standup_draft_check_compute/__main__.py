@@ -12,8 +12,8 @@ import argparse
 import json
 import sys
 
-from omnimarket.nodes.node_standup_draft_check_compute.handlers.handler_standup_draft_check import (
-    HandlerStandupDraftCheck,
+from omnimarket.nodes.node_standup_draft_check_compute.container.container_standup_draft_check_compute import (
+    create_handler_standup_draft_check,
 )
 from omnimarket.nodes.node_standup_draft_check_compute.models import (
     ModelStandupDraftCheckRequest,
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as error:
             sys.stderr.write(f"STANDUP-CHECK ERROR: cannot read facts: {error}\n")
             return 2
-    result = HandlerStandupDraftCheck().handle(
+    result = create_handler_standup_draft_check().handle(
         ModelStandupDraftCheckRequest(
             text=text, facts=facts if isinstance(facts, dict) else None
         )

@@ -136,10 +136,12 @@ class TestStatePersistEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id,
-            intent_id=inp.intent_id,
-            envelope=inp.envelope,
-            emitted_at=inp.emitted_at,
+            ModelStatePersistInput(
+                correlation_id=inp.correlation_id,
+                intent_id=inp.intent_id,
+                envelope=inp.envelope,
+                emitted_at=inp.emitted_at,
+            )
         )
 
         assert result.success is True
@@ -156,10 +158,12 @@ class TestStatePersistEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id,
-            intent_id=inp.intent_id,
-            envelope=inp.envelope,
-            emitted_at=inp.emitted_at,
+            ModelStatePersistInput(
+                correlation_id=inp.correlation_id,
+                intent_id=inp.intent_id,
+                envelope=inp.envelope,
+                emitted_at=inp.emitted_at,
+            )
         )
 
         assert result.success is False
@@ -176,10 +180,12 @@ class TestStatePersistEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id,
-            intent_id=inp.intent_id,
-            envelope=inp.envelope,
-            emitted_at=inp.emitted_at,
+            ModelStatePersistInput(
+                correlation_id=inp.correlation_id,
+                intent_id=inp.intent_id,
+                envelope=inp.envelope,
+                emitted_at=inp.emitted_at,
+            )
         )
 
         assert result.success is True
@@ -192,10 +198,12 @@ class TestStatePersistEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id,
-            intent_id=inp.intent_id,
-            envelope=inp.envelope,
-            emitted_at=inp.emitted_at,
+            ModelStatePersistInput(
+                correlation_id=inp.correlation_id,
+                intent_id=inp.intent_id,
+                envelope=inp.envelope,
+                emitted_at=inp.emitted_at,
+            )
         )
 
         with pytest.raises(Exception, match="frozen"):
@@ -217,10 +225,12 @@ class TestStatePersistEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id,
-            intent_id=inp.intent_id,
-            envelope=inp.envelope,
-            emitted_at=inp.emitted_at,
+            ModelStatePersistInput(
+                correlation_id=inp.correlation_id,
+                intent_id=inp.intent_id,
+                envelope=inp.envelope,
+                emitted_at=inp.emitted_at,
+            )
         )
 
         assert result.intent_id == inp.intent_id
@@ -236,10 +246,12 @@ class TestStatePersistEffectGoldenChain:
             payload = json.loads(message.value)  # type: ignore[attr-defined]
             envelope = ModelStateEnvelope(**payload["envelope"])
             result = await handler.handle(
-                correlation_id=payload["correlation_id"],
-                intent_id=payload["intent_id"],
-                envelope=envelope,
-                emitted_at=datetime.fromisoformat(payload["emitted_at"]),
+                ModelStatePersistInput(
+                    correlation_id=payload["correlation_id"],
+                    intent_id=payload["intent_id"],
+                    envelope=envelope,
+                    emitted_at=datetime.fromisoformat(payload["emitted_at"]),
+                )
             )
             result_payload = result.model_dump(mode="json")
             published_events.append(result_payload)
@@ -304,10 +316,12 @@ class TestStatePersistEffectGoldenChain:
 
         # Step 2: Handler receives intent fields (as runtime would dispatch)
         result = await handler.handle(
-            correlation_id=intent.correlation_id,
-            intent_id=intent.intent_id,
-            envelope=intent.envelope,
-            emitted_at=intent.emitted_at,
+            ModelStatePersistInput(
+                correlation_id=intent.correlation_id,
+                intent_id=intent.intent_id,
+                envelope=intent.envelope,
+                emitted_at=intent.emitted_at,
+            )
         )
 
         # Step 3: Confirm the event
@@ -342,10 +356,12 @@ class TestStatePersistEffectGoldenChain:
                 emitted_at=datetime.now(UTC),
             )
             result = await handler.handle(
-                correlation_id=inp.correlation_id,
-                intent_id=inp.intent_id,
-                envelope=inp.envelope,
-                emitted_at=inp.emitted_at,
+                ModelStatePersistInput(
+                    correlation_id=inp.correlation_id,
+                    intent_id=inp.intent_id,
+                    envelope=inp.envelope,
+                    emitted_at=inp.emitted_at,
+                )
             )
             assert result.success is True
 

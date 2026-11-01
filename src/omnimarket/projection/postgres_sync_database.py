@@ -28,7 +28,6 @@ silently mutating a shared, migration-governed table.
 from __future__ import annotations
 
 import contextlib
-import logging
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from types import MappingProxyType
@@ -39,13 +38,12 @@ from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.stores import CredentialPgStore
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_read_tenant,
     resolve_write_tenant,
 )
-
-logger = logging.getLogger(__name__)
 
 # Strict identifier validation for table/column names composed into SQL. These
 # come from trusted internal projection constants and typed row keys (never user
@@ -70,7 +68,7 @@ def _search_path_option(schema: str) -> str:
     return f"-c search_path={_validate_identifier(schema, kind='schema')}"
 
 
-class PostgresSyncProjectionAdapter:
+class PostgresSyncProjectionAdapter(CredentialPgStore):
     """``ProtocolProjectionDatabaseSync`` over a psycopg2 Postgres connection.
 
     UPSERT keys on the conflict column(s); JSON/list/dict values are adapted to

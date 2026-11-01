@@ -19,6 +19,9 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerAppendRunner,
     ProtocolLedgerReader,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.writer_principals import (
+    WriterPrincipals,
+)
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ([^|\r\n]+) \| ")
 _BUS_ROW_TYPES = frozenset(
@@ -75,6 +78,7 @@ class HandlerWorkLedgerAppendEffect:
         sleep: Callable[[float], None] = time.sleep,
         writer_principals: Iterable[str] | None = None,
         operator_principal: str | None = None,
+        writers: WriterPrincipals | None = None,
     ) -> None:
         self._runner = runner
         self._reader = reader
@@ -85,11 +89,19 @@ class HandlerWorkLedgerAppendEffect:
         self._retry_sleep_s = retry_sleep_s
         self._sleep = sleep
         # The operator principal is a known writer too: the serve process appends
-        # the lab and delegation terminals it mirrors as that principal.
-        self._writer_principals = frozenset(writer_principals or ()) | (
-            {operator_principal} if operator_principal else set()
-        )
+        # the lab and delegation terminals it mirrors as that principal. The set is a
+        # collaborator the serve can replace; a handler given none builds its own.
         self._operator_principal = operator_principal
+        self._writers = (
+            writers
+            if writers is not None
+            else WriterPrincipals(writer_principals or (), operator_principal)
+        )
+
+    @property
+    def writers(self) -> WriterPrincipals:
+        """The known writers; the serve process replaces them when the overlay changes (OMN-21622)."""
+        return self._writers
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -145,7 +157,7 @@ class HandlerWorkLedgerAppendEffect:
                 65,
                 "unattributed: no broker principal produced this command; publish on your principal's writer topic",
             )
-        if writer_principal not in self._writer_principals:
+        if writer_principal not in self._writers:
             return receipt(
                 EnumWorkLedgerAppendStatus.REFUSED,
                 65,

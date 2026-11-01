@@ -85,3 +85,7 @@ outputs:
   malformed:
     type: int
     description: Lines that are not JSON objects.
+
+timeouts:
+  readback_poll_interval_seconds: 5  # Bounds the wait between projection readback polls.
+  readback_deadline_seconds: 60  # Bounds the whole projection readback.

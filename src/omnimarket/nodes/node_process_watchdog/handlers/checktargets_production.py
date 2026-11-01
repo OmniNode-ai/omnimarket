@@ -18,6 +18,7 @@ import socket
 import subprocess
 from typing import TYPE_CHECKING
 
+from omnimarket.handlers.network_bindings import network_host, network_port
 from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckStatus,
     EnumCheckTarget,
@@ -34,9 +35,6 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
-
-_EMIT_DAEMON_HOST = "127.0.0.1"
-_EMIT_DAEMON_PORT = 9877
 
 _LLM_ENDPOINTS: list[tuple[str, int]] = [
     ("vllm-primary", 8000),
@@ -61,7 +59,9 @@ class EmitDaemonCheckTarget:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5.0)
-            sock.connect((_EMIT_DAEMON_HOST, _EMIT_DAEMON_PORT))
+            sock.connect(
+                (network_host("emit_daemon.host"), network_port("emit_daemon.port"))
+            )
             sock.close()
             return ModelWatchdogCheckResult(
                 target=self.name,
@@ -145,10 +145,10 @@ class KafkaConsumerCheckTarget:
 class LlmEndpointCheckTarget:
     """Check LLM endpoint /health via HTTP."""
 
-    def __init__(self, label: str, port: int, host: str = "127.0.0.1") -> None:
+    def __init__(self, label: str, port: int, host: str | None = None) -> None:
         self._label = label
         self._port = port
-        self._host = host
+        self._host = host if host is not None else network_host("loopback.ipv4")
 
     @property
     def name(self) -> str:

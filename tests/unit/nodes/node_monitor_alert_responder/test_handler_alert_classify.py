@@ -8,9 +8,10 @@ No external deps; handler is pure Python.
 
 from __future__ import annotations
 
-from uuid import uuid4
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_monitor_alert_responder.handlers.handler_alert_classify import (
     HandlerAlertClassify,
@@ -58,7 +59,7 @@ class TestEscalateCriticalSeverity:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(severity="CRITICAL", pattern_matched="disk_full")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert isinstance(result, ModelAlertResponse)
         assert result.tier == "ESCALATE"
         assert result.alert_id == "test-alert-001"
@@ -69,7 +70,7 @@ class TestEscalateCriticalSeverity:
     ) -> None:
         """CRITICAL + memory pattern still escalates — severity wins."""
         event = _make_event(severity="CRITICAL", pattern_matched="oom_killer")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "ESCALATE"
 
     @pytest.mark.asyncio
@@ -77,7 +78,7 @@ class TestEscalateCriticalSeverity:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(severity="CRITICAL")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert "CRITICAL" in result.notes
 
 
@@ -92,7 +93,7 @@ class TestRecoverablePatterns:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="oom_killer_invoked")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "RECOVERABLE"
 
     @pytest.mark.asyncio
@@ -100,7 +101,7 @@ class TestRecoverablePatterns:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="high_memory_usage")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "RECOVERABLE"
 
     @pytest.mark.asyncio
@@ -110,7 +111,7 @@ class TestRecoverablePatterns:
         event = _make_event(
             pattern_matched="container_restart_detected", restart_count=2
         )
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "RECOVERABLE"
 
     @pytest.mark.asyncio
@@ -118,7 +119,7 @@ class TestRecoverablePatterns:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="kafka_connection_timeout")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "RECOVERABLE"
 
     @pytest.mark.asyncio
@@ -126,7 +127,7 @@ class TestRecoverablePatterns:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="disk_full_alert")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "RECOVERABLE"
 
     @pytest.mark.asyncio
@@ -134,7 +135,7 @@ class TestRecoverablePatterns:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(alert_id="abc-123", pattern_matched="connection_refused")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "RECOVERABLE"
         assert result.alert_id == "abc-123"
 
@@ -150,7 +151,7 @@ class TestEscalateRestartStorm:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="unknown_error", restart_count=5)
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "ESCALATE"
 
     @pytest.mark.asyncio
@@ -158,7 +159,7 @@ class TestEscalateRestartStorm:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="unknown_error", restart_count=4)
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "UNKNOWN"
 
     @pytest.mark.asyncio
@@ -166,7 +167,7 @@ class TestEscalateRestartStorm:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="unknown_error", restart_count=10)
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "ESCALATE"
         assert "restart" in result.notes.lower()
 
@@ -182,7 +183,7 @@ class TestUnknownTier:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="exotic_db_corruption")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.tier == "UNKNOWN"
 
     @pytest.mark.asyncio
@@ -190,7 +191,7 @@ class TestUnknownTier:
         self, handler: HandlerAlertClassify
     ) -> None:
         event = _make_event(pattern_matched="exotic_db_corruption")
-        result = await handler.handle(uuid4(), event)
+        result = await handler.handle(event)
         assert result.playbook_id is None
         assert result.linear_ticket_id is None
 
@@ -206,3 +207,18 @@ class TestHandlerMetadata:
 
     def test_handler_category(self, handler: HandlerAlertClassify) -> None:
         assert handler.handler_category == "EFFECT"
+
+
+def test_contract_publishes_the_alert_response_topics() -> None:
+    """The node's declared publish surface is its four response topics (OMN-21536)."""
+    contract_path = (
+        Path(__file__).resolve().parents[4]
+        / "src/omnimarket/nodes/node_monitor_alert_responder/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.monitor-alert-unhandled.v1",
+        "onex.cmd.omnimarket.alert-fix-requested.v1",
+        "onex.evt.omnimarket.alert-response-completed.v1",
+        "onex.cmd.deploy.rebuild-requested.v1",
+    ]

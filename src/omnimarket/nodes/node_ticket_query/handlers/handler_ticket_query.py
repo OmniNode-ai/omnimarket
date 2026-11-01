@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Literal
-from uuid import UUID
 
 from omnibase_spi.protocols.services.protocol_project_tracker import (
     ProtocolProjectTracker,
@@ -77,11 +76,7 @@ class HandlerTicketQuery:
             ProtocolProjectTracker  # type: ignore[type-abstract]  # Protocol used as DI key
         )
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        input_data: ModelTicketQueryInput,
-    ) -> ModelTicketQueryOutput:
+    async def handle(self, request: ModelTicketQueryInput) -> ModelTicketQueryOutput:
         """Execute a ticket query through ProtocolProjectTracker.
 
         If ``issue_id`` is set, fetches a single issue via get_issue.
@@ -89,37 +84,33 @@ class HandlerTicketQuery:
         Otherwise, lists issues via list_issues with optional filters.
 
         Args:
-            correlation_id: Trace ID for this operation.
-            input_data: Query parameters.
+            request: Query parameters.
 
         Returns:
             ModelTicketQueryOutput with matching issues.
         """
         logger.info(
-            "TicketQuery: correlation_id=%s query_set=%s has_issue_id=%s limit=%d",
-            correlation_id,
-            input_data.query is not None,
-            input_data.issue_id is not None,
-            input_data.limit,
+            "TicketQuery: query_set=%s has_issue_id=%s limit=%d",
+            request.query is not None,
+            request.issue_id is not None,
+            request.limit,
         )
         logger.debug(
             "TicketQuery: query=%r issue_id=%r",
-            input_data.query,
-            input_data.issue_id,
+            request.query,
+            request.issue_id,
         )
 
         tracker = self._resolve_tracker()
 
-        if input_data.issue_id is not None:
-            raw_issue = await tracker.get_issue(input_data.issue_id)
+        if request.issue_id is not None:
+            raw_issue = await tracker.get_issue(request.issue_id)
             raw_issues = [raw_issue]
-        elif input_data.query is not None:
-            raw_issues = await tracker.search_issues(
-                input_data.query, limit=input_data.limit
-            )
+        elif request.query is not None:
+            raw_issues = await tracker.search_issues(request.query, limit=request.limit)
         else:
             raw_issues = await tracker.list_issues(
-                filters=input_data.filters, limit=input_data.limit
+                filters=request.filters, limit=request.limit
             )
 
         issues = tuple(ModelIssueResult(**issue.model_dump()) for issue in raw_issues)
@@ -129,6 +120,6 @@ class HandlerTicketQuery:
         return ModelTicketQueryOutput(
             issues=issues,
             total=len(issues),
-            query=input_data.query,
-            issue_id=input_data.issue_id,
+            query=request.query,
+            issue_id=request.issue_id,
         )
