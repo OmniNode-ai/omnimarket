@@ -236,7 +236,8 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # delegation.disposition_recorded and its one fan-out target: 83 -> 84.
     # OMN-20001 adds the eleven work.ledger.typed.<type> v2 envelopes, held
     # byte-identical across both paths by the same assertion: 84 -> 95.
-    # OMN-21112 registers the compaction command and receipt events: 95 -> 103.
+    # OMN-21112 registers the two compaction commands and six receipt events,
+    # each held byte-identical across both paths by the same assertion: 95 -> 103.
     assert len(event_types) == 103, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
@@ -275,7 +276,7 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 86 -> 87: OMN-20012's disposition event fans out to exactly one topic.
     # 87 -> 98: OMN-20001's eleven work.ledger.typed.<type> envelopes each fan
     # out to exactly one topic.
-    # 98 -> 106: OMN-21112's eight compaction events fan out to one topic each.
+    # 98 -> 106: OMN-21112's eight compaction events each fan out to exactly one topic.
     assert total_old == total_new == 106
     enriched = sum(
         1
@@ -304,7 +305,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 83 -> 84: OMN-20012's delegation.disposition_recorded declares
     # partition_key_field delegation_correlation_id.
     # 84 -> 95: OMN-20001's eleven work.ledger.typed.<type> envelopes declare
-    # partition_key_field ledger_id. 95 -> 103: OMN-21112 compaction events are keyed.
+    # partition_key_field ledger_id.
+    # 95 -> 103: OMN-21112's compaction events declare partition_key_field
+    # (session_id, or invocation_id for compaction.package).
     assert keyed == 103, f"only {keyed}/103 new-path messages carried a partition key"
 
 
