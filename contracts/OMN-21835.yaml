@@ -70,10 +70,10 @@ dod_evidence:
   - check_type: command
     check_value: grep -c '^node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"$' pyproject.toml
     cwd: .
-- id: dod-omn21835-deploy-node-in-pr-files
-  description: Deploy probe reads the pull request's changed-file list from the GitHub API and requires the node's contract.yaml and the pyproject.toml entry-point registration to be in it, so it goes red if the node is not part of the change the runtime would load.
+- id: dod-omn21835-deploy-handler-in-head
+  description: Deploy probe reads the handler source from the GitHub contents API at the checked-out head and requires the HandlerIloRedfish class, which exists only in this change. It goes red when the handler is absent from the head the runtime would load, and it reads the committed file, not the pull request's live state.
   source: manual
   checks:
   - check_type: command
-    check_value: gh api repos/OmniNode-ai/omnimarket/pulls/4734/files --paginate --jq '.[].filename' | grep -c '^src/omnimarket/nodes/node_ilo_redfish_effect/contract.yaml$'
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ilo_redfish_effect/handlers/handler_ilo_redfish.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerIloRedfish" > /dev/null'
     cwd: .
