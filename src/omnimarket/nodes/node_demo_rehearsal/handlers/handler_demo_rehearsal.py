@@ -21,10 +21,19 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.demo_readiness import ModelRehearsalBundle
+from omnimarket.handlers.demo_probe_overlay import resolve_demo_probe_overlay
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
+from omnimarket.models.model_demo_probe import (
+    ModelDemoProbeOverlay,
+    ModelDemoProbePolicy,
+)
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_EVIDENCE_SUBDIR = "docs/evidence/demo-readiness"
+_NODE_NAME = "node_demo_rehearsal"
 
 
 def _default_omni_home() -> str:
@@ -81,6 +90,27 @@ class HandlerDemoRehearsal:
         result = await handler.handle(ModelDemoRehearsalRequest(run_id="demo-2026-05-18"))
     """
 
+    _policy: ModelDemoProbePolicy | None = None
+    _overlay: ModelDemoProbeOverlay | None = None
+
+    def __init__(
+        self,
+        *,
+        policy: ModelDemoProbePolicy | None = None,
+        overlay: ModelDemoProbeOverlay | None = None,
+    ) -> None:
+        self._policy = policy
+        self._overlay = overlay
+
+    def _probe_config(self) -> tuple[ModelDemoProbeOverlay, ModelDemoProbePolicy]:
+        if self._policy is None:
+            self._policy = ModelDemoProbePolicy.model_validate(
+                load_packaged_contract_section(_NODE_NAME, "probe_policy")
+            )
+        if self._overlay is None:
+            self._overlay = resolve_demo_probe_overlay(_NODE_NAME)
+        return self._overlay, self._policy
+
     def _resolve_evidence_dir(self, request: ModelDemoRehearsalRequest) -> Path:
         if request.evidence_dir is not None:
             return Path(request.evidence_dir)
@@ -88,12 +118,10 @@ class HandlerDemoRehearsal:
 
     async def _probe_topology(self) -> dict[str, Any]:
         """Capture runtime topology manifest. Non-fatal on failure."""
+        overlay, policy = self._probe_config()
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{dashboard_url}/api/topology")
+            async with httpx.AsyncClient(timeout=policy.timeout_seconds) as client:
+                resp = await client.get(f"{overlay.dashboard_url}/api/topology")
                 if resp.status_code == 200:
                     data: dict[str, Any] = resp.json()
                     return data
@@ -123,12 +151,10 @@ class HandlerDemoRehearsal:
 
     async def _probe_dashboard_api(self) -> dict[str, Any] | None:
         """Probe dashboard API health endpoint. Non-fatal on failure."""
+        overlay, policy = self._probe_config()
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{dashboard_url}/api/health")
+            async with httpx.AsyncClient(timeout=policy.timeout_seconds) as client:
+                resp = await client.get(f"{overlay.dashboard_url}/api/health")
                 if resp.status_code == 200:
                     health: dict[str, Any] = resp.json()
                     return health

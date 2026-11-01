@@ -542,9 +542,12 @@ def test_page_reports_decision_quality_renders_markdown_and_escapes_everything()
     assert "<script>" not in doc
     assert "<img" not in doc
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in doc
-    assert "<code>code &lt;b&gt;</code>" in doc
+    # The opening paragraph says how the report was made; it moves to the footer.
+    how = out["how"]
+    assert "<code>code &lt;b&gt;</code>" in how
+    assert "<p>Para with" not in doc
     assert "<strong>bold</strong>" in doc
-    assert "<em>italic</em>" in doc
+    assert "<em>italic</em>" in how
     assert "<ol><li>First <strong>bold</strong></li><li>Second</li></ol>" in doc
     assert "<ul><li>Item<ul><li>Nested <em>deep</em></li></ul></li></ul>" in doc
     assert "<th>A</th><th>B</th>" in doc
