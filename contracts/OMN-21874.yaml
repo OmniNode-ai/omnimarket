@@ -1,0 +1,85 @@
+schema_version: 1.0.0
+ticket_id: OMN-21874
+title: The consumer-group guard deletes long-Empty per-call groups under contract-declared limits
+summary: The consumer-group guard now reaps Empty per-call consumer groups on each 300 s tick once they have stayed Empty for the contract minimum age, bounded per run, with a broker health read after every batch, instead of only reporting past the threshold.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21874-bounded-reap
+    statement: The guard deletes only groups Empty in every run for the contract min_empty_age_seconds that match a declared reapable pattern, at most max_deletes_per_run per run in batches of batch_size.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: The guard deletes only groups Empty in every run for the contract min_empty_age_seconds that match a declared reapable pattern, at most max_deletes_per_run per run in batches of batch_size. -- falsifier: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -q'
+  - id: req-omn21874-stable-never-deleted
+    statement: A stable-named or non-Empty group is never deleted.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: A stable-named or non-Empty group is never deleted. -- falsifier: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -k never_deleted -q'
+  - id: req-omn21874-stops-on-error
+    statement: The run stops at the first delete error or unhealthy broker reading, and the limits live in contract.yaml.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: The run stops at the first delete error or unhealthy broker reading, and the limits live in contract.yaml. -- falsifier: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -k "stops or unhealthy or declared" -q'
+evidence_requirements:
+  - kind: tests
+    description: The guard suites run on a lab host at the pushed head.
+    command: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect tests/test_golden_chain_consumer_group_guard_effect.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21874-ac1
+    description: AC1 runs the reaper against an in-memory broker.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21874-ac2
+    description: AC2 runs the reaper against an in-memory broker.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -k never_deleted -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21874-ac3
+    description: AC3 runs the reaper against an in-memory broker.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -k "stops or unhealthy or declared" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21874-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published reaper and tick at the evaluated commit to match this checkout. The focused runtime tests exercise bounded reaping, protected groups, error stops and the census written by the tick with an in-memory broker. This checks the source artifact and runtime behavior, not a broker ACL grant or a host timer rollout.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for module in handlers/handler_group_reaper.py runtime_consumer_group_guard.py; do
+            path="src/omnimarket/nodes/node_consumer_group_guard_effect/$module"
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.py"
+            cmp "$path" "$readback_dir/source.py"
+          done
+          printf 'consumer-group guard source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -q --no-cov --tb=line
+        cwd: .

@@ -443,6 +443,8 @@ _SHAPE_AGNOSTIC_FLOORS = frozenset(
         "short_form_adequacy",
         # OMN-19529: number grounding constrains facts, not the output shape.
         "numbers_grounded",
+        # OMN-21846: reject-only; a grant the input never gave is wrong in any shape.
+        "operator_voice",
     }
 )
 

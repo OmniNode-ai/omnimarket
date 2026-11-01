@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Canonical Clone Dirty Converge Effect (OMN-21821)
+#
+# WHO HOSTS THIS NODE. One timer tick per host that keeps canonical clones (a launchd agent on a Mac, a
+# systemd user timer on Linux), installed by the host installer. Shared runtimes must NEVER attach it: a
+# runtime container holds no canonical clone. The typed handler is invoked locally by the host timer;
+# its empty bus topics and runtime profiles keep it outside shared runtime dispatch.
+#
+# WHAT IT DOES. The sync engine only fast-forwards a clean clone. A clone refused for tracked changes
+# stayed behind for days (a host's omniclaude, 8 days; another host's omnidash, 143103 s). One tick runs
+# the engine with its refusal bound set to the age below, so the engine names every clone refused that
+# long. Each is converged to its upstream and what it held is dropped: no rescue branch, no pin, no tar
+# (operator ruling 2026-10-31 about 20:00Z; the work is redone from its ticket). converge-canonical-clone.sh
+# resets the clone and writes the one ledger row, which names what was dropped. A clone a live lane is
+# using (an open CLAIM naming it, or a process whose working directory is inside it) is left alone.
+name: "node_canonical_clone_dirty_converge_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: []
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Saves and converges a canonical clone that has been refused for tracked changes past a declared age.
+input_model:
+  name: "ModelDirtyConvergeTickRequest"
+  module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
+  description: "One tick; carries no input."
+output_model:
+  name: "ModelDirtyConvergeTickReceipt"
+  module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge"
+  description: "Each refused clone the tick converged, skipped or failed, and the age it applied."
+handler:
+  module: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect"
+  class: "HandlerCanonicalCloneDirtyConvergeEffect"
+  input_model: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge.ModelDirtyConvergeTickRequest"
+  output_model: "omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge.ModelDirtyConvergeTickReceipt"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 1500000
+dependency_ownership:
+  registry_root: "Owned by the host timer that invokes the handler; the registry root (OMNI_HOME) of the host, never a shared runtime."
+  env: "Owned by the host timer that invokes the handler; the tick's process environment."
+runtime_dispatch:
+  external_trigger: One host timer tick invokes the typed handler with the host registry root and environment.
+metadata:
+  transport_type: local
+  description: "Hosted by one timer tick per host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-10-31"
+  tags: ["effect", "canonical-clone", "OMN-21821"]
+  related_tickets: ["OMN-21821"]
+
+timeouts:
+  # A canonical clone refused for tracked changes this long is saved and converged. The same value is
+  # handed to the sync engine as its refusal bound, so the engine reports the clone (REFUSED_TOO_LONG)
+  # at exactly this age. A host overlay replaces it with ONEX_CLONE_DIRTY_CONVERGE_AFTER_S in the
+  # tick's environment.
+  dirty_converge_after_seconds: 14400
+  dirty_converge_engine_seconds: 900  # Bounds one engine pass over every clone.
+  dirty_converge_rescue_push_seconds: 120  # Bounds the push of one rescue branch.
+  dirty_converge_script_seconds: 300  # Bounds one converge-canonical-clone.sh run.
+
+# Where the tick finds the engine and the converge script, relative to the registry root (OMNI_HOME),
+# and how it names what it writes. Nothing here names a machine.
+dirty_converge:
+  engine: omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py
+  converge_script: omniclaude/scripts/converge-canonical-clone.sh
+  ticket: OMN-21821
+  lane: canonical-clone-sync
+  tracking_branches: [main, dev, master]
+  max_listed: 8  # Paths and commits named in the ledger row; the rest are counted.
