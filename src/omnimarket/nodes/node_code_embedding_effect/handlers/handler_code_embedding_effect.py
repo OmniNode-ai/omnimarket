@@ -22,10 +22,12 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_request import (
     ModelCodeEmbeddingRequest,
 )
@@ -42,8 +44,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Topic bindings from contract.yaml event_bus
-TOPIC_CODE_ENTITIES_EXTRACTED: str = "onex.evt.omnimarket.code-entities-extracted.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_CODE_EMBEDDED: str = "onex.evt.omnimarket.code-embedded.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_CODE_ENTITIES_EXTRACTED: str = contract_topic(
+    _CONTRACT, "subscribe_topics", "code-entities-extracted.v1"
+)
+TOPIC_CODE_EMBEDDED: str = contract_topic(
+    _CONTRACT, "publish_topics", "code-embedded.v1"
+)
 
 DEFAULT_QDRANT_COLLECTION = "code_patterns"
 DEFAULT_EMBEDDING_BATCH_SIZE = 50
