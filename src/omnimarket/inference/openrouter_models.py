@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """OpenRouter free-tier model catalog.
 
-Defines the known free models available through OpenRouter, organized by tier.
+Reads the known free models available through OpenRouter, organized by tier, from
+the ``openrouter_free_models`` section of ``configs/model_bindings.v1.yaml``.
 All model_id values include the ``:free`` suffix required by OpenRouter routing.
 """
 
@@ -12,6 +13,8 @@ import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
+
+from omnimarket.handlers.model_binding_reader import model_binding_section
 
 
 class EnumOpenRouterTier(StrEnum):
@@ -38,106 +41,22 @@ class ModelOpenRouterModelConfig(BaseModel):
     disabled_reason: str | None = None
 
 
-_OPENROUTER_MODELS: tuple[ModelOpenRouterModelConfig, ...] = (
-    # --- Small free tier ---
-    ModelOpenRouterModelConfig(
-        model_id="nvidia/llama-3.1-nemotron-nano-8b-v1:free",
-        display_name="Nemotron Nano 9B v2",
-        parameter_count="9B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.SMALL_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="nvidia/llama-3.1-nemotron-nano-12b-v1:free",
-        display_name="Nemotron Nano 12B v2 VL",
-        parameter_count="12B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.SMALL_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="featherless/qwerky-72b:free",
-        display_name="Laguna XS.2",
-        parameter_count="72B",
-        context_window=32_768,
-        tier=EnumOpenRouterTier.SMALL_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="microsoft/mai-ds-r1:free",
-        display_name="MAI DS R1",
-        parameter_count="20B",
-        context_window=163_840,
-        tier=EnumOpenRouterTier.SMALL_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="openrouter/cypher-alpha:free",
-        display_name="Cobuddy",
-        parameter_count="unknown",
-        context_window=1_048_576,
-        tier=EnumOpenRouterTier.SMALL_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="google/gemma-3-27b-it:free",
-        display_name="Gemma 4 26B A4B IT",
-        parameter_count="27B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.SMALL_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    # --- Large free tier ---
-    ModelOpenRouterModelConfig(
-        model_id="qwen/qwen3-coder:free",
-        display_name="Qwen3 Coder 480B",
-        parameter_count="480B",
-        context_window=262_144,
-        tier=EnumOpenRouterTier.LARGE_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="deepseek/deepseek-r1:free",
-        display_name="DeepSeek R1",
-        parameter_count="671B",
-        context_window=163_840,
-        tier=EnumOpenRouterTier.LARGE_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="google/gemma-3n-e4b-it:free",
-        display_name="Gemma 4 31B IT",
-        parameter_count="31B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.LARGE_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="nvidia/llama-3.3-nemotron-super-49b-v1:free",
-        display_name="Nemotron 3 Super",
-        parameter_count="49B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.LARGE_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="qwen/qwen3-235b-a22b:free",
-        display_name="Qwen 3.6 Plus",
-        parameter_count="235B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.LARGE_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-    ModelOpenRouterModelConfig(
-        model_id="thudm/glm-4-9b-chat:free",
-        display_name="GLM 4.5 Air",
-        parameter_count="9B",
-        context_window=131_072,
-        tier=EnumOpenRouterTier.LARGE_FREE,
-        availability=EnumModelAvailability.AVAILABLE,
-    ),
-)
+def _load_openrouter_models() -> tuple[ModelOpenRouterModelConfig, ...]:
+    """Build the catalog from the ``openrouter_free_models`` section of the model bindings."""
+    return tuple(
+        ModelOpenRouterModelConfig(
+            model_id=row["model_id"],
+            display_name=row["display_name"],
+            parameter_count=row["parameter_count"],
+            context_window=row["context_window"],
+            tier=EnumOpenRouterTier(row["tier"]),
+            availability=EnumModelAvailability.AVAILABLE,
+        )
+        for row in model_binding_section("openrouter_free_models")
+    )
+
+
+_OPENROUTER_MODELS: tuple[ModelOpenRouterModelConfig, ...] = _load_openrouter_models()
 
 
 def get_openrouter_models(
