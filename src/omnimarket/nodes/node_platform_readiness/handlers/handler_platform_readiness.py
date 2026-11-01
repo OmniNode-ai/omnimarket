@@ -21,12 +21,24 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SOW_PHASE2_REQUIRED_TOPICS: list[str] = [
-    "onex.evt.omnibase-infra.savings-estimated.v1",  # onex-topic-allow: contract-declared
-    "onex.evt.omnibase-infra.routing-decision.v1",  # onex-topic-allow: contract-declared
-    "onex.evt.omnibase-infra.baselines-computed.v1",  # onex-topic-allow: contract-declared
-    "onex.evt.omnimarket.build-loop-dod-checked.v1",  # onex-topic-allow: contract-declared
-]
+from omnimarket.nodes.contract_topics import contract_section
+
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _sow_phase2_required_topics() -> list[str]:
+    """Return the SOW Phase 2 topics the node contract declares for probing."""
+    declared = contract_section(_CONTRACT, "probed_topics")
+    if not isinstance(declared, list) or not declared:
+        raise ValueError(f"{_CONTRACT}: probed_topics must be a non-empty list")
+    if not all(isinstance(t, str) for t in declared):
+        raise ValueError(f"{_CONTRACT}: probed_topics must hold strings")
+    return [str(t) for t in declared]
+
+
+# The readiness dimension PROBES these topics; it never consumes them, so the
+# contract declares them under ``probed_topics``, not ``event_bus``.
+SOW_PHASE2_REQUIRED_TOPICS: list[str] = _sow_phase2_required_topics()
 
 _INFRA_SSH_TARGET_ENV_VAR = "ONEX_INFRA_SSH_TARGET"
 
