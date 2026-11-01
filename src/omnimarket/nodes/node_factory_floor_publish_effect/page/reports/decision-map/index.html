@@ -77,11 +77,12 @@ footer{font-size:.82rem;color:var(--muted);display:grid;gap:6px;border-top:1px s
 .snap{background:var(--surface);border:1px dashed var(--rule);border-radius:6px;padding:10px 14px;font-size:.86rem;color:var(--muted)}
 *{box-sizing:border-box}
 </style>
+<style>html.embed .hazard,html.embed .nav,html.embed h1{display:none}html.embed .wrap{padding-block:14px 20px}</style>
 </head>
 <body>
 <div class="wrap">
   <section class="lede">
-    <nav class="nav" aria-label="Reports"><a href="../">All reports</a></nav>
+    <nav class="nav" aria-label="Reports"><a href="../">All reports</a><a href="../../">Factory floor</a></nav>
     <div class="eyebrow">Operator decision ledger · 30 Sep to 30 Oct 2026</div>
     <h1>October Decision Map</h1>
     <p>Problems the system ran into, the decisions they led to, and whether each problem came back after the change. Problems are clustered from friction, correction and failed-lane rows on the work ledger; decisions are the operator's recorded rulings and consents, normalized and cleaned.</p>
@@ -133,6 +134,7 @@ footer{font-size:.82rem;color:var(--muted);display:grid;gap:6px;border-top:1px s
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" integrity="sha384-J7Q85oZE4GJ/e7+n2aOQsLXfDwwfnA8S2nZAL5BpFsfpCF84zQD7LroZ/dMnLgex" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.2/lib/elk.bundled.js" integrity="sha384-/FjsS2O22zscq93IrPa2D4sEO84oam6LzXXdy92KPQwKiOiNFKYFq58FNlueyQEJ" crossorigin="anonymous"></script>
 <script>
+if (typeof location !== "undefined" && document.documentElement && /[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
 const OUT={delivered:["Delivered","--ok"],partial:["Partly built","--part"],"not built":["Not built","--none"],reversed:["Reversed","--rev"],unknown:["No change named","--unk"]};
 const oc=o=>OUT[o]||OUT.unknown, tok=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));

@@ -443,7 +443,7 @@ def test_discovery_node_deploy_surface_is_registered() -> None:
     )
     scripts = {ep.name: ep.value for ep in entry_points(group="console_scripts")}
     assert scripts["onex-architecture-discovery"].endswith(
-        "handler_architecture_discovery_cli:main"
+        "runtime_architecture_discovery_cli:main"
     )
     contract = yaml.safe_load((NODE / "contract.yaml").read_text())
     assert contract["runtime_profiles"] == ["main"]

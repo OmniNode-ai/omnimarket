@@ -96,3 +96,8 @@ dod_evidence:
     description: "each replay item goes admission, call, parse, verdict with an event per step; refused, truncated, unparseable, empty, failed and unanswered items are degraded"
     command: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect -q"
     pass_criteria: "the event chain per item in order; a refused item is never submitted; a failed call releases its reservation; a diff that no longer matches the manifest is refused"
+
+# The in-memory event bus the batch entry point runs on; container/container_inmemory.py binds it.
+in_memory_bindings:
+  event_bus_environment: local
+  event_bus_group: claude-review-batch

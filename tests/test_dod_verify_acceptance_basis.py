@@ -120,6 +120,8 @@ def _run(
     behavior_extra: bool = False,
     setup: Callable[[Path], None] | None = None,
     ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
+    no_ticket_reader: bool = False,
+    execution_audience: str = "hosted",
 ) -> ModelDodVerifyState:
     omni_home = tmp_path / "omni_home"
     (omni_home / "omnimarket" / "tests").mkdir(parents=True)
@@ -166,12 +168,16 @@ def _run(
         correlation_id=uuid.uuid4(),
         ticket_id="OMN-20999",
         contract_path=str(path),
-        execution_audience="hosted",
+        execution_audience=execution_audience,
         requested_at=datetime.now(tz=UTC),
     )
     # OMN-20858: unless the caller records its own ticket, the ticket is
-    # unchanged since the contract was accepted.
-    reader = ticket_reader or ticket_matching_contract(path)
+    # unchanged since the contract was accepted. OMN-21676: ``no_ticket_reader``
+    # runs the verifier the way the hosted job and the local Done gate do, with
+    # nothing injected.
+    reader = (
+        None if no_ticket_reader else ticket_reader or ticket_matching_contract(path)
+    )
     state = HandlerDodVerify(ticket_reader=reader)._handle_typed(command)
     assert isinstance(state, ModelDodVerifyState)
     state_executed = executed
