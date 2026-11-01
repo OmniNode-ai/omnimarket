@@ -1106,6 +1106,7 @@
   "tests/nodes/node_remote_lane_effect/test_golden_chain_remote_lane_effect.py": 0.22,
   "tests/nodes/node_remote_lane_effect/test_run_retention.py": 0.06,
   "tests/nodes/node_remote_lane_handoff_compute/test_remote_lane_handoff.py": 0.1,
+  "tests/nodes/node_replay_bundle_writer_effect/test_replay_bundle_writer.py": 1.02,
   "tests/nodes/node_repo_health_repair_effect/test_golden_chain_repo_health_repair_effect.py": 0.01,
   "tests/nodes/node_repo_health_repair_effect/test_handler_repo_health_repair_effect.py": 0.05,
   "tests/nodes/node_repo_health_repair_effect/test_lane_intake.py": 0.04,
