@@ -12,6 +12,12 @@ from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation imp
 from omnimarket.models.delegation_acceptance_judge.model_acceptance_cell_event import (
     ModelAcceptanceCellEvent,
 )
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_event_call import (
+    ModelAcceptanceEventCall,
+)
+from omnimarket.models.delegation_acceptance_judge.model_acceptance_event_judge import (
+    ModelAcceptanceEventJudge,
+)
 from omnimarket.models.delegation_acceptance_judge.model_acceptance_item import (
     ModelAcceptanceItem,
 )
@@ -21,6 +27,9 @@ from omnimarket.models.delegation_acceptance_judge.model_acceptance_receipt_join
 from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
     ModelAcceptanceVerdict,
 )
+from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.model_acceptance_agreement import (
+    ModelAcceptanceAgreement,
+)
 
 
 class ModelAcceptanceJudgeRequest(BaseModel):
@@ -29,6 +38,8 @@ class ModelAcceptanceJudgeRequest(BaseModel):
     render:  ``items``, ``seed`` and an optional ``cell_cap``; returns the primary and second-judge batches.
     check:   ``batch_item_ids`` and ``reply_text``; returns the validated verdicts or the issues.
     score:   ``items``, ``primary_verdicts``, ``secondary_verdicts``, ``cell_events`` and ``receipts``.
+    events:  ``items``, ``primary_verdicts``, ``agreement`` (the score result's), ``event_calls`` and
+             ``event_judge``; returns one judged-acceptance event per validated primary verdict.
     ``rubric_yaml`` is the text of delegation_acceptance_judge_rubric.v1.yaml: the caller reads the
     file and passes its content, because the node does no I/O.
     """
@@ -46,6 +57,9 @@ class ModelAcceptanceJudgeRequest(BaseModel):
     secondary_verdicts: tuple[ModelAcceptanceVerdict, ...] = ()
     cell_events: tuple[ModelAcceptanceCellEvent, ...] = ()
     receipts: tuple[ModelAcceptanceReceiptJoin, ...] = ()
+    agreement: ModelAcceptanceAgreement | None = None
+    event_calls: tuple[ModelAcceptanceEventCall, ...] = ()
+    event_judge: ModelAcceptanceEventJudge | None = None
 
     @model_validator(mode="after")
     def _operation_has_its_inputs(self) -> ModelAcceptanceJudgeRequest:
@@ -57,6 +71,13 @@ class ModelAcceptanceJudgeRequest(BaseModel):
         elif self.operation is EnumAcceptanceOperation.CHECK:
             if not self.batch_item_ids:
                 raise ValueError("check needs the batch item ids")
+        elif self.operation is EnumAcceptanceOperation.EVENTS:
+            if not self.items or not self.primary_verdicts:
+                raise ValueError("events needs items and primary verdicts")
+            if self.agreement is None:
+                raise ValueError("events needs the score operation's agreement")
+            if self.event_judge is None:
+                raise ValueError("events needs the identity of the judge run")
         elif not self.items or not self.primary_verdicts:
             raise ValueError("score needs items and primary verdicts")
         return self

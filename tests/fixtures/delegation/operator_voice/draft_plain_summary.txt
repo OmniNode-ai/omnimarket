@@ -1,0 +1,1 @@
+The requester asked whether the storage migration can go out this week, with the cutover window on Thursday evening. The reviewer replied that the rollback checklist is still open, two of the four dry runs have not been run, and nothing has been decided on the cutover date. The requester will post the dry run results when they finish.
