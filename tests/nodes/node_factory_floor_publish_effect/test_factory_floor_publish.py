@@ -79,6 +79,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         remote_dir=str(tmp_path / "site"),
         serve_url="http://example.invalid:8088/",
         bus_lane="lane-x",
+        history_root=str(tmp_path / "kept"),
     )
 
 
@@ -133,7 +134,10 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
-            ssh_target=target, remote_dir="/srv/site", serve_url="u"
+            ssh_target=target,
+            remote_dir="/srv/site",
+            serve_url="u",
+            history_root="/srv/site",
         )
 
 
@@ -141,7 +145,10 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
-            ssh_target="lab-web", remote_dir=path, serve_url="u"
+            ssh_target="lab-web",
+            remote_dir=path,
+            serve_url="u",
+            history_root="/srv/site",
         )
 
 
@@ -185,11 +192,14 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "publish-status.json",
         "factory-floor.json",
     )
+    # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
     assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
         False,
         False,
         False,
+        False,
         True,
+        False,
     ]
     evidence = json.loads((tmp_path / "state/last-run.json").read_text())
     assert evidence["record_generated_at"] == RECORD["generated_at"]
