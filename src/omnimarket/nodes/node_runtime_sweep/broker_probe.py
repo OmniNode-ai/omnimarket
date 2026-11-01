@@ -32,9 +32,14 @@ probe therefore returns ONLY groups whose state proves attached members
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from omnibase_infra.enums.enum_infra_transport_type import EnumInfraTransportType
 from omnibase_infra.errors import InfraConnectionError, ModelInfraErrorContext
+
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 
 __all__ = ["collect_live_consumer_groups"]
 
@@ -42,8 +47,12 @@ _log = logging.getLogger(__name__)
 
 # Wall-clock budget for the broker round-trip. A CI/skill invocation must fail
 # fast rather than hang indefinitely against an unreachable broker.
-_ADMIN_REQUEST_TIMEOUT_S = 10.0
-_ADMIN_RESULT_TIMEOUT_S = 15.0
+_TIMEOUTS = cast(
+    "dict[str, float]", load_packaged_contract_section("node_runtime_sweep", "timeouts")
+)
+
+_ADMIN_REQUEST_TIMEOUT_S: float = _TIMEOUTS["admin_request_timeout_seconds"]
+_ADMIN_RESULT_TIMEOUT_S: float = _TIMEOUTS["admin_result_timeout_seconds"]
 
 # Group states that prove NO attached consumer members — a group in one of
 # these states is a dead/idle corpse, not a live consumer. Mirrors

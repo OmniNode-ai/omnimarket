@@ -203,3 +203,13 @@ externally_consumed_topics:
   - onex.evt.omnimarket.session-bootstrap-completed.v2
   # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_session_bootstrap/handlers/handler_session_bootstrap.py
   - onex.evt.omnimarket.session-cron-health-violation.v1
+
+timeouts:
+  pr_list_timeout_seconds: 30  # Bounds the gh pr list probe.
+  golden_chain_timeout_seconds: 120  # Bounds the golden chain sweep probe.
+  pre_commit_timeout_seconds: 120  # Bounds the pre-commit run probe.
+  overseer_verify_timeout_seconds: 120  # Bounds the overseer verifier probe.
+  build_dispatch_pulse_budget_seconds: 300  # Tick budget of the build-dispatch-pulse cron.
+  merge_sweep_budget_seconds: 600  # Tick budget of the merge-sweep cron.
+  overseer_verify_budget_seconds: 120  # Tick budget of the overseer-verify cron.
+  contract_verify_budget_seconds: 120  # Tick budget of the contract-verify cron.
