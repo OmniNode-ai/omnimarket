@@ -12,11 +12,11 @@ requirements:
       Each hand step of principal-issuer bring-up is one node command; a host, path or version comes from the request, never from a contract.
     acceptance:
       - id: "AC1"
-        statement: "AC1: one command delivers the overlay to the issuer host and the env file carries PRINCIPAL_ISSUER_OVERLAY_FILE, read back from the host -- falsifier: uv run pytest tests/unit/nodes -q -k overlay_delivery"
+        statement: "AC1: one command delivers the overlay to the issuer host and the env file carries PRINCIPAL_ISSUER_OVERLAY_FILE, read back from the host -- falsifier: uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "The focused node tests pass."
-    command: "uv run pytest tests/unit/nodes -q --no-cov -k overlay_delivery"
+    command: "uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -28,7 +28,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes -q --no-cov -k overlay_delivery"
+        check_value: "uv run pytest tests/unit/nodes/node_issuer_overlay_delivery_effect/test_overlay_delivery.py -q --no-cov"
         cwd: "."
   - id: "dod-omn21899-deploy-probe-overlay-delivery"
     description: "Deploy probe: the model file GitHub serves at the checked-out commit declares the overlay env var name; it is absent at the merge base, so the content read answers false there."
