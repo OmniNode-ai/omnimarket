@@ -23,11 +23,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.contract_topics import contract_topic
+from omnimarket.nodes.node_projection_llm_cost.handlers.compute_cost_rates import (
+    load_compute_cost_rates,
+)
 from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
     build_llm_call_metrics_row,
 )
@@ -170,48 +172,15 @@ class HandlerProjectionLlmCost:
         ):
             return 0.0
 
-        rates = self._load_compute_cost_rates()
+        rates = load_compute_cost_rates(
+            self._pricing_manifest_path or _default_pricing_manifest_path()
+        )
         rate = rates.get(event.gpu_type)
         if rate is None:
             return 0.0
 
         hourly_rate = rate["electricity_per_hour"] + rate["amortization_per_hour"]
         return round((event.gpu_seconds / 3600.0) * hourly_rate * event.gpu_count, 10)
-
-    def _load_compute_cost_rates(self) -> dict[str, dict[str, float]]:
-        manifest_path = self._pricing_manifest_path or _default_pricing_manifest_path()
-        if manifest_path is None or not manifest_path.exists():
-            return {}
-
-        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            return {}
-        raw_compute_cost = raw.get("compute_cost", {})
-        if not isinstance(raw_compute_cost, dict):
-            return {}
-
-        rates: dict[str, dict[str, float]] = {}
-        for gpu_type, entry in raw_compute_cost.items():
-            if not isinstance(gpu_type, str) or not isinstance(entry, dict):
-                continue
-            electricity = _float_or_none(entry.get("electricity_per_hour"))
-            amortization = _float_or_none(entry.get("amortization_per_hour"))
-            if electricity is None or amortization is None:
-                continue
-            rates[gpu_type] = {
-                "electricity_per_hour": electricity,
-                "amortization_per_hour": amortization,
-            }
-        return rates
-
-
-def _float_or_none(value: Any) -> float | None:
-    if isinstance(value, bool):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _default_pricing_manifest_path() -> Path | None:

@@ -58,3 +58,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/validators/test_contract_topic_graph.py tests/validators/test_event_registry_drift.py tests/unit/nodes/test_contract_topic_resolution_omn21721.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn21721-deploy-probe"
+    description: "Deploy probe. The projection handler at the checked-out commit takes TOPIC_LLM_CALL_COMPLETED from its node contract through contract_topic; the probe reads it from GitHub at that commit and exits nonzero on a tree where the topic is still a string literal. It verifies published source only; a rollout of the runtime and a subscriber readback are not covered."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_llm_cost/handlers/handler_projection_llm_cost.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "TOPIC_LLM_CALL_COMPLETED: str = contract_topic(" > /dev/null'
+        cwd: "."
