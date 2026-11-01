@@ -70,6 +70,9 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
     ModelDelegationOutputFile,
     ModelDelegationOutputManifest,
 )
+from omnimarket.models.delegation.wire.model_quality_gate_record import (
+    ModelQualityGateRecord,
+)
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -346,6 +349,16 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     configuration: ModelAttemptConfiguration | None = Field(
         default=None,
         description="Call parameters and context strategy this attempt was sent with.",
+    )
+    gate_record: ModelQualityGateRecord | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The checks the gate evaluated, skipped and failed on this attempt "
+            "and the rule that decided, keyed by correlation id and attempt "
+            "index. None when no gate judged the attempt, and for a recording "
+            "made before the field existed."
+        ),
     )
 
     @model_validator(mode="after")
