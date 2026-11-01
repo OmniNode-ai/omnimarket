@@ -109,6 +109,15 @@ config:
   cloud_no_push_lamp_text: Cloud sessions are ending without a pull request
   cloud_ready_logins: [ok]
   cloud_sessions_limit: 8
+  # A declared line the build cannot draw is drawn stopped with one of these causes, never left out.
+  undrawn_not_found_cause: plan file not found
+  undrawn_no_tasks_cause: no task table
+  # A line is stopped while the newest CLAIM or TERMINAL on one of its tickets is a TERMINAL ending in one of these
+  # outcomes, or while a MSG to one of these recipients (a to= cell that starts with it) has no row of an answering
+  # kind (re= the MSG's id) and no CLAIM by another lane on its tickets after it.
+  stop_outcomes: [blocked]
+  ask_recipients: [orchestrator]
+  ask_answer_kinds: [ACK, RELEASE]
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:
