@@ -119,7 +119,7 @@ PARK_FIX = (
     "peer already on it); gates still decide, no bypass; the tick dispatches nothing"
 )
 UNREAD_HOST_FIX = (
-    "read {host}'s live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; "
+    "read {host}'s live capacity with `python3 <omni plugin>/scripts/onex_lab_run.py --hosts --lane <lane>` (/omni:lab-run; "
     "it runs nothing); a free slot "
     "there takes a lane through the remote-lane runner, whose placement receipt refreshes this line; a host "
     "that cannot be read is a lab fault to name to the operator, never free and never full"
@@ -908,7 +908,7 @@ def _claude_blocked_host(
 
 LIVE_UNREAD_FIX = (
     "rerun the tick; if the probe stays unreadable, read {host}'s live capacity with "
-    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts` (/omni:lab-run; it runs nothing); a host that "
+    "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts --lane <lane>` (/omni:lab-run; it runs nothing); a host that "
     "cannot be read is a lab fault to name to the operator, never free and never full"
 )
 PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"

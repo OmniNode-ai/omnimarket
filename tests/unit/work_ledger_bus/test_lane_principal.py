@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.lane_client_transport_binding import (
     bind_lane_client_transport,
 )
