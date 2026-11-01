@@ -11,12 +11,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+from omnimarket.models.replay_bundle import ModelBundleFile
 from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest import (
     REPLAY_ROOT_ENV,
     ManifestRefusalError,
-)
-from omnimarket.nodes.node_context_compaction_manifest_compute.models import (
-    ModelBundleFile,
 )
 
 __all__ = ["read_bundle_files", "replay_root_from_env", "write_bundle_files"]

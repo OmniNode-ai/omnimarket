@@ -117,6 +117,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_t
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
     load_delegation_reaper_config,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_prompt_size_bound import (
+    load_prompt_size_bound,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     ProtocolDelegationIdempotencyPort,
 )
@@ -1590,6 +1593,28 @@ class HandlerDelegateSkill:
                     EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
                 ),
                 # OMN-19004: nothing was attempted, so the count says zero.
+                attempts_count=0,
+            )
+        # OMN-21325: the contract-declared prompt size bound, checked before
+        # any rung is resolved so an oversized task reaches no model.
+        prompt_bytes = len(request.prompt.encode("utf-8"))
+        max_prompt_bytes = load_prompt_size_bound().max_prompt_bytes
+        if prompt_bytes > max_prompt_bytes:
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    "prompt_exceeds_size_bound: "
+                    f"prompt_bytes={prompt_bytes}; "
+                    f"max_prompt_bytes={max_prompt_bytes}; "
+                    f"task_type={request.task_type}"
+                ),
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
                 attempts_count=0,
             )
         execution_timeout_seconds = (
