@@ -70,4 +70,6 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -c 'context-compaction-' src/omnimarket/nodes/node_emit_daemon/registries/topics.yaml | grep -qx 8"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov"
     binds_ac: ["AC3"]

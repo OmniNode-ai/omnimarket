@@ -20,13 +20,14 @@ class ModelFactoryFloorPublishOverlay(BaseModel):
     remote_dir: str = Field(min_length=1)
     serve_url: str = Field(min_length=1)
     bus_lane: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    history_root: str = Field(min_length=1)
 
-    @field_validator("remote_dir")
+    @field_validator("remote_dir", "history_root")
     @classmethod
     def _absolute_posix(cls, value: str) -> str:
         path = PurePosixPath(value)
         if not path.is_absolute() or ".." in path.parts or "\n" in value:
-            raise ValueError("remote_dir must be an absolute path without '..'")
+            raise ValueError("a remote path must be an absolute path without '..'")
         return value
 
 
@@ -122,6 +123,31 @@ class ModelPublishNames(BaseModel):
     process_health: str = Field(min_length=1)
     delegation: str = Field(min_length=1)
     status: str = Field(min_length=1)
+
+
+class ModelHistoryRetention(BaseModel):
+    """How long snapshots are kept. A snapshot younger than ``days`` is never pruned; ``max_count`` caps the total by
+    pruning the oldest past-window snapshots, so the total may exceed it while every snapshot is inside the window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    days: int = Field(gt=0)
+    max_count: int = Field(gt=0)
+
+
+class ModelPublishHistory(BaseModel):
+    """The append-only history of the record, kept beside the live record on the serving host.
+
+    A snapshot is ``<subdirectory>/<stem>-<timestamp><suffix>`` under the overlay's ``history_root``, where the stem and
+    suffix are the record's published name split at its last dot, and the timestamp is the UTC publish time in
+    ``timestamp_format`` (a strftime format with no ``/`` or whitespace that sorts as time and stays unique per publish).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    subdirectory: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    timestamp_format: str = Field(min_length=1, pattern=r"^[A-Za-z0-9%_-]+$")
+    retention: ModelHistoryRetention
 
 
 class ModelPublishTransport(BaseModel):
@@ -235,6 +261,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
     names: ModelPublishNames
     transport: ModelPublishTransport
+    history: ModelPublishHistory
     reports: ModelReportsRuntime
 
 
@@ -270,6 +297,8 @@ class ModelFactoryFloorPublishResult(BaseModel):
     steps: tuple[ModelPublishStepResult, ...]
     process_health_published: bool
     delegation_published: bool = False
+    history_snapshot: str = ""
+    history_pruned: tuple[str, ...] = ()
 
 
 class ModelReportsPublishRequest(BaseModel):

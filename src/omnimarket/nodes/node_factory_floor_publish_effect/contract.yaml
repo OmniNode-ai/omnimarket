@@ -55,6 +55,7 @@ descriptor:
   - reads the factory floor JSON and the packaged pages (the tab page and the factory floor page)
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
+  - writes a timestamped snapshot of the record under the history subdirectory on the serving host, and removes past-window snapshots beyond the declared count there
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
   - writes last-run.json into the tick's state directory
 
@@ -137,6 +138,16 @@ runtime:
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
+  # The record's history: every publish also stores the record as a timestamped snapshot under <history_root>/<subdirectory>/
+  # (history_root is the overlay's, normally the serving directory), written to a temporary name and renamed in without
+  # replacing an existing name. A snapshot is never rewritten. Pruning removes only snapshots older than days, oldest
+  # first and only while the snapshot count exceeds max_count; it never touches the live record or a younger snapshot.
+  history:
+    subdirectory: history
+    timestamp_format: "%Y%m%dT%H%M%S%fZ"
+    retention:
+      days: 30
+      max_count: 5000
   # The reports site (OMN-21733): an index at reports/index.html that reads reports/manifest.json, and one page per
   # report. A report's data is a file under the registry home that a node (or, for a snapshot, a lane) wrote;
   # as_of_key names the JSON key that holds the data's own time, else the file's modified time is the age and the
