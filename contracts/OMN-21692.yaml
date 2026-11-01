@@ -49,7 +49,6 @@ dod_evidence:
       come from the network authority. This checks published source, not a live
       runtime rollout, and needs no lab endpoint, broker or credentials.
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: |-
