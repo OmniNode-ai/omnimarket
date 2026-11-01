@@ -1,88 +1,51 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Refuse a wire change the LAST RELEASED consumer cannot decode (OMN-18868).
+"""Refuse a wire change any pinned first-party consumer cannot decode (OMN-18868, OMN-21901).
 
 THE DEFECT THIS EXISTS TO CLOSE
 
 ``omnimarket#2692`` added ``published_at`` to ``ModelDelegateSkillRequest``.
-Every test in this repository passed, and they could not have done otherwise:
-**in a test the producer and the consumer are the same commit.** The DEPLOYED
-consumer was an older released wheel whose model is ``extra="forbid"``, so it
-refused the payload at the decode boundary and dead-lettered every delegate
-(OMN-18852). At 2026-09-20T01:43:38Z a delegate through the sanctioned wrapper
-terminalised on the failure topic with ``ModelBoundaryFailureTerminal`` and the
-reason ``published_at: Extra inputs are not permitted``. OMN-18633 is the same
-class on a different field name, which is the argument for a gate rather than
-a third one-off fix.
-
-771 golden-chain files did not catch it. Version skew IS the defect, and a
-single-commit test cannot express a version skew.
-
-Worse, the version numbers were no help either: the OMN-18852 postmortem
-records producer and consumer BOTH reporting ``0.4.134``, because the consumer
-image had been baked fifteen minutes earlier from a different tree. So a
-version comparison -- which this repository already has, in
-``scripts/check_release_identity.py`` -- structurally could not have caught it.
-Only decoding the new shape with the old model can.
+Every test here passed, because **in a test the producer and the consumer are
+the same commit.** The DEPLOYED consumer was an older wheel whose model is
+``extra="forbid"``, so it refused the payload at the decode boundary and
+dead-lettered every delegate (OMN-18852, ``published_at: Extra inputs are not
+permitted``). Version numbers were no help either: producer and consumer BOTH
+reported ``0.4.134``. Only decoding the new shape with the old model catches it.
 
 WHAT THIS GATE DOES
 
-For every wire model module a pull request changes, it
+For every wire model module a pull request changes, it reads the dev-merge tag
+each declared consumer pins for omnimarket (``omnimarket.handlers.
+handler_wire_consumer_pin``: the consumer's own ``pyproject.toml`` and
+``uv.lock``, never a release, never a sha), materialises each distinct tag's
+``src/`` out of git, asks the WORKING TREE which keys each wire model can emit,
+pushes those keys through EACH pinned tag's own ``model_validate`` in a
+subprocess rooted in that tag's tree, and fails when ANY pin refuses, printing
+one verdict per pin.
 
-1. resolves the LAST RELEASED version from the release tags this tree descends
-   from, never from the working tree;
-2. materialises that release's ``src/`` out of git into a scratch directory;
-3. asks the WORKING TREE, in its own subprocess, which keys each wire model can
-   emit;
-4. pushes those keys through the RELEASED model's own ``model_validate``, in a
-   second subprocess whose ``sys.path`` is rooted in the released tree; and
-5. fails the pull request on the released validator's own refusal, naming the
-   field, the model and the released version that refused it.
-
-This is the mechanical form of the consumer-first rule -- a consumer able to
-accept the new shape must be RELEASED before the producer that emits it -- which
-until now existed only as intent.
-
-PINNED CONSUMER (OMN-19998)
-
-Omniclaude pins omnimarket by commit and the lab venvs track dev, so CI passes
-the commit omniclaude pins with ``--consumer-ref``. That commit is graded
-instead of the last tag. A pin older than the last tag is graded as-is because
-it is what runs; no release is needed to advance the consumer on dev.
+Each pin is graded on its own: an older pin knows fewer fields, so the OLDEST
+pin is the strict baseline and grading only the newest would admit a payload an
+older consumer refuses. ``PINNED_CONSUMERS`` names the consumers whose pin must
+be supplied; leaving one out of the CI step fails the gate instead of shrinking
+it. ``--grade-release-tag`` keeps the older mechanism (highest release tag the
+tree descends from) for the real-history controls only; CI never passes it.
 
 WHAT IT DELIBERATELY DOES NOT DO
 
-**It does not grade values, only keys.** Every key in the replay payload carries
-one placeholder string and only ``extra_forbidden`` and ``missing`` errors are
-findings; see ``_wire_compat_probe.PROBE_PLACEHOLDER`` for the full argument.
-Synthesising a type-correct value per annotation would mean shipping a factory
-library, and every gap in it would redden a pull request that broke nothing --
-which is how a gate gets switched off.
-
-**It grades the MAXIMAL shape the producer can emit**, so a new optional field
-is a finding even when the producer excludes it while unset. That is not
-over-strictness, it is the rule: ``published_at`` carries
-``exclude_if=lambda value: value is None`` TODAY and is still refused by a
-pre-``published_at`` consumer the moment anything stamps it -- and stamping it
-is the entire reason the field exists. The remedy the gate is steering toward
-is the correct one: release the consumer first.
-
-**It grades top-level keys only.** A nested model's own shape change is graded
-when that nested model's module is itself part of the changed wire set, not
-transitively through its parent. A change to a wire model's nested type that
-lives OUTSIDE the wire package is out of scope and is named here rather than
-left for a reader to discover.
-
-**There is no waiver list.** One was considered and rejected: a waiver is the
-hole the gate exists to close, and the sanctioned escape is the release order
-the gate is enforcing.
+**It does not grade values, only keys** (see ``_wire_compat_probe.
+PROBE_PLACEHOLDER``). **It grades the MAXIMAL shape the producer can emit**, so
+a new optional field is a finding even while unset: a pre-``published_at``
+consumer refuses it the moment anything stamps it. **It grades top-level keys
+only**; a nested model is graded when its own module is in the changed wire set.
+**There is no waiver list**: the sanctioned escape is the consumer-first order
+the gate enforces.
 
 FAIL-CLOSED, EVERYWHERE
 
-An unresolvable release, a release whose module will not import, or a probe
-that resolved the wrong copy of a module each exit non-zero with their own
-outcome token. A gate that cannot run must never read as a gate that passed:
-that shape -- the quiet green -- is the failure class this whole epic is about.
+An unreadable or non-tag pin, an unresolvable tag or release, a module that will
+not import, or a probe that resolved the wrong copy of a module each exit
+non-zero with their own outcome token. A gate that cannot run must never read as
+a gate that passed.
 """
 
 from __future__ import annotations
@@ -97,6 +60,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
+
+from omnimarket.handlers.handler_wire_consumer_pin import (
+    GateError,
+    HandlerWireConsumerPin,
+    consumer_files,
+    report_pin_verdicts,
+)
+from omnimarket.models.model_wire_consumer_pin import (
+    ModelPinBaseline,
+    ModelWireConsumerPinRequest,
+)
 
 #: Directories, relative to the repository root, whose ``model_*.py`` modules
 #: are wire payload contracts.
@@ -124,16 +98,16 @@ OUTCOME_RELEASE_UNRESOLVABLE = "WIRE_COMPAT_RELEASE_UNRESOLVABLE"
 OUTCOME_RELEASE_UNREADABLE = "WIRE_COMPAT_RELEASE_UNREADABLE"
 OUTCOME_PROBE_FAILED = "WIRE_COMPAT_PROBE_FAILED"
 
+#: First-party consumers whose omnimarket pin the gate must read and grade.
+#:
+#: Declared here, like ``WIRE_MODEL_ROOTS``, rather than inferred, so a consumer
+#: dropping out of the CI step turns the gate RED instead of silently shrinking
+#: it. A consumer joins this list once its pin is a dev-merge tag; one that
+#: still pins a sha or a release would refuse every wire change until it moves.
+PINNED_CONSUMERS: tuple[str, ...] = ("omniclaude",)
+
+
 _PROBE = Path(__file__).with_name("_wire_compat_probe.py")
-
-
-class GateError(Exception):
-    """A condition the gate cannot grade, carrying its own outcome token."""
-
-    def __init__(self, outcome: str, detail: str) -> None:
-        super().__init__(detail)
-        self.outcome = outcome
-        self.detail = detail
 
 
 @dataclass(frozen=True)
@@ -149,12 +123,12 @@ class Finding:
     def render(self, released: str) -> str:
         if self.error_type == "extra_forbidden":
             reason = (
-                f"the released consumer {self.model} at {released} REFUSES the "
+                f"the consumer {self.model} at {released} REFUSES the "
                 f"key {self.field!r}: {self.message}"
             )
         else:
             reason = (
-                f"the released consumer {self.model} at {released} REQUIRES the "
+                f"the consumer {self.model} at {released} REQUIRES the "
                 f"key {self.field!r}, which this tree no longer emits: "
                 f"{self.message}"
             )
@@ -203,25 +177,9 @@ def _git(args: list[str], *, cwd: Path) -> str:
 def _published_tags(root: Path, anchor: str) -> list[str]:
     """Return the release tags this tree DESCENDS FROM (the OMN-18443 rule).
 
-    Anchoring on ``git tag --merged`` rather than ``git tag --list`` is not a
-    style choice, it is a correctness one this repository already paid for:
-    on a ``pull_request`` event the tree is pinned at trigger time while the
-    tag list is fetched at run time, so the plain list can contain releases cut
-    from lineages the tree does not contain. ``check_release_identity.py``
-    carries the measured incident. A gate that resolved "the released consumer"
-    from a lineage this tree never touched would replay against a model that
-    was never the one skewed against it.
-
-    **This gate does NOT take that module's shallow-clone fallback, and the
-    difference is deliberate.** There, a shallow clone's thinner ``--merged``
-    answer is the PERMISSIVE direction, so falling back to the full tag list is
-    stricter. Here the arithmetic inverts: fewer reachable tags resolve an
-    OLDER released consumer, an older consumer knows FEWER fields, and the
-    replay is therefore MORE likely to refuse. ``git tag --list`` is the
-    permissive direction for this gate -- it can resolve a NEWER consumer than
-    anything this tree descends from and pass a payload nothing deployed can
-    decode. So ``--merged`` is used unconditionally, and an anchor git cannot
-    resolve at all raises rather than widening the set.
+    ``git tag --merged`` and never ``--list``, with no shallow-clone fallback: a
+    thinner answer resolves an OLDER consumer, which knows fewer fields and so
+    refuses more, which is this gate's strict direction.
     """
     return _git(["tag", "--merged", anchor], cwd=root).splitlines()
 
@@ -490,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--base",
         default=None,
-        help="Base ref; the changed set is 'git diff --name-only <base>...HEAD'.",
+        help="Changed set is 'git diff --name-only <base>...HEAD'.",
     )
     parser.add_argument(
         "--changed-file",
@@ -499,125 +457,135 @@ def main(argv: list[str] | None = None) -> int:
         help="Repo-relative path, repeatable; replaces the git diff (tests).",
     )
     parser.add_argument(
+        "--consumer-pyproject",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="A consumer's pyproject.toml, one per consumer.",
+    )
+    parser.add_argument(
+        "--consumer-lock",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="The same consumer's uv.lock; it must lock the same tag.",
+    )
+    parser.add_argument(
+        "--required-consumer",
+        action="append",
+        default=None,
+        help="Consumer whose pin must be supplied; defaults to PINNED_CONSUMERS.",
+    )
+    parser.add_argument(
+        "--grade-release-tag",
+        action="store_true",
+        help="Grade the highest release tag --tag-anchor descends from (the real-history controls only; CI never passes it).",
+    )
+    parser.add_argument(
         "--tag-anchor",
         default="HEAD",
-        help="Commit whose reachable release tags count as published.",
-    )
-    parser.add_argument(
-        "--consumer-ref",
-        default=None,
-        help="Consumer commit-ish to grade instead of the last release tag.",
-    )
-    parser.add_argument(
-        "--consumer-label",
-        default="pinned consumer",
-        help="Display label for --consumer-ref (messages only).",
+        help="Commit whose reachable release tags count as published (--grade-release-tag only).",
     )
     parser.add_argument(
         "--wire-root",
         action="append",
         default=None,
-        help="Repo-relative wire directory, repeatable; defaults to the "
-        "declared WIRE_MODEL_ROOTS.",
+        help="Repo-relative wire directory, repeatable; defaults to WIRE_MODEL_ROOTS.",
     )
     args = parser.parse_args(argv)
+    if args.grade_release_tag and (args.consumer_pyproject or args.consumer_lock):
+        parser.error("--grade-release-tag cannot be combined with a consumer pin")
 
     root = Path(args.repo_root).resolve()
     wire_roots = tuple(args.wire_root) if args.wire_root else WIRE_MODEL_ROOTS
-
+    pins: tuple[ModelPinBaseline, ...] = ()
+    released: tuple[str, Version] | None = None
     try:
         modules = changed_wire_modules(
             root, base=args.base, explicit=args.changed_file, wire_roots=wire_roots
         )
         if not modules:
             print(
-                f"{OUTCOME_NO_WIRE_CHANGE}: this change touches no wire payload "
-                f"model under {', '.join(wire_roots)}."
+                f"{OUTCOME_NO_WIRE_CHANGE}: this change touches no wire payload model under {', '.join(wire_roots)}."
             )
             return 0
-
-        if args.consumer_ref is not None:
-            try:
-                released_ref = _git(
-                    ["rev-parse", "--verify", f"{args.consumer_ref}^{{commit}}"],
-                    cwd=root,
-                )
-            except ValueError as exc:
-                raise GateError(
-                    OUTCOME_RELEASE_UNRESOLVABLE,
-                    f"git could not resolve consumer ref {args.consumer_ref!r} "
-                    f"({exc}); the pinned consumer model cannot be resolved, "
-                    "so wire compatibility is UNPROVEN rather than proven",
-                ) from exc
-            released_tag = f"{args.consumer_label} {released_ref[:12]}"
-            released_version = None
+        if args.grade_release_tag:
+            released = resolve_released_tag(root, args.tag_anchor)
+            refs = [released[0]]
         else:
-            released_tag, released_version = resolve_released_tag(root, args.tag_anchor)
-            released_ref = released_tag
+            pins = _read_pins(root, args)
+            refs = [pin.tag for pin in pins]
+        graded_by_ref: list[tuple[list[Finding], list[str]]] = []
         with tempfile.TemporaryDirectory(prefix="wire-compat-") as raw:
-            workdir = Path(raw)
-            released_src = materialise_release(root, released_ref, workdir / "release")
-            findings, notes = evaluate(
-                root=root,
-                tree_src=root / SRC_DIR,
-                released_src=released_src,
-                released_tag=released_tag,
-                modules=modules,
-                workdir=workdir,
-            )
+            for index, ref in enumerate(refs):
+                workdir = Path(raw) / str(index)
+                workdir.mkdir()
+                released_src = materialise_release(root, ref, workdir / "release")
+                graded_by_ref.append(
+                    evaluate(
+                        root=root,
+                        tree_src=root / SRC_DIR,
+                        released_src=released_src,
+                        released_tag=ref,
+                        modules=modules,
+                        workdir=workdir,
+                    )
+                )
     except GateError as exc:
         print(f"{exc.outcome}: {exc.detail}", file=sys.stderr)
         return 1
 
     graded = ", ".join(module for _, module in modules)
+    if released is not None:
+        return _report_release(released, *graded_by_ref[0], graded)
+    code, lines = report_pin_verdicts(
+        [
+            (pin, [f.render(pin.tag) for f in found], notes)
+            for pin, (found, notes) in zip(pins, graded_by_ref, strict=True)
+        ],
+        graded,
+    )
+    for is_error, text in lines:
+        print(text, file=sys.stderr if is_error else sys.stdout)
+    return code
+
+
+def _read_pins(root: Path, args: argparse.Namespace) -> tuple[ModelPinBaseline, ...]:
+    """Hand the consumers' own pin files to the pin handler; return its baselines."""
+    request = ModelWireConsumerPinRequest(
+        repo_root=str(root),
+        consumers=consumer_files(args.consumer_pyproject, args.consumer_lock),
+        required=tuple(args.required_consumer or PINNED_CONSUMERS),
+    )
+    return HandlerWireConsumerPin().handle(request).baselines
+
+
+def _report_release(
+    released: tuple[str, Version],
+    findings: list[Finding],
+    notes: list[str],
+    graded: str,
+) -> int:
+    tag, version = released
     for note in notes:
         print(f"note: {note}")
-
-    if findings:
-        if args.consumer_ref is not None:
-            print(
-                f"{OUTCOME_REFUSED}: {released_tag} cannot decode this tree's "
-                "wire payloads.",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"{OUTCOME_REFUSED}: the last released consumer ({released_tag}, "
-                f"version {released_version}) cannot decode this tree's wire "
-                f"payloads.",
-                file=sys.stderr,
-            )
-        for finding in findings:
-            print(finding.render(released_tag), file=sys.stderr)
-        if args.consumer_ref is not None:
-            print(
-                "\nConsumer-first is the remedy, not a waiver: land a consumer "
-                "that accepts the new shape on dev first, then the consumer's "
-                "pin advances to it (no release is needed).",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                "\nConsumer-first is the remedy, not a waiver: release a consumer "
-                "that accepts the new shape BEFORE merging the producer that emits "
-                "it. Until that release exists, every deployed consumer running "
-                f"{released_tag} dead-letters this payload at its decode boundary, "
-                "which is OMN-18852 verbatim.",
-                file=sys.stderr,
-            )
-        return 1
-
-    if args.consumer_ref is not None:
+    if not findings:
         print(
-            f"{OUTCOME_PASS}: {released_tag} decodes every wire "
-            f"payload emitted by {graded}."
+            f"{OUTCOME_PASS}: released consumer {tag} decodes every wire payload emitted by {graded}."
         )
-    else:
-        print(
-            f"{OUTCOME_PASS}: released consumer {released_tag} decodes every wire "
-            f"payload emitted by {graded}."
-        )
-    return 0
+        return 0
+    print(
+        f"{OUTCOME_REFUSED}: the last released consumer ({tag}, version {version}) cannot decode this tree's wire payloads.",
+        file=sys.stderr,
+    )
+    for finding in findings:
+        print(finding.render(tag), file=sys.stderr)
+    print(
+        "\nConsumer-first is the remedy, not a waiver: release a consumer that accepts the new shape BEFORE merging the producer that emits it. "
+        f"Until that release exists, every deployed consumer running {tag} dead-letters this payload at its decode boundary, which is OMN-18852 verbatim.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 if __name__ == "__main__":

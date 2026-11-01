@@ -131,7 +131,7 @@ def test_page_time_new_york_floor_page_shows_local_time_with_zone() -> None:
         NOW_NEW_YORK,
         "America/New_York",
     )
-    assert "Record computed Oct 31, 10:04 PM EDT" in out["stamp"]
+    assert "Record computed 10:04 pm ET" in out["stamp"]
     assert "UTC" not in out["stamp"]
 
 
