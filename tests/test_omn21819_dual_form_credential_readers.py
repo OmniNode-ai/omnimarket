@@ -26,6 +26,7 @@ import pytest
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     GATEWAY_PROVIDER,
     ClaudeReviewGateway,
+    select_host_keys,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
     TENANT_CREDENTIALS_TABLE,
@@ -39,6 +40,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
 )
+from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 
 pytestmark = pytest.mark.unit
 
@@ -219,7 +221,12 @@ HOST = "mac-1"
 
 
 def gw_key(
-    tenant: str, ref: str, *, revoked: bool = False, host: str = HOST
+    tenant: str,
+    ref: str,
+    *,
+    revoked: bool = False,
+    host: str = HOST,
+    expires: datetime | None = None,
 ) -> dict[str, Any]:
     return {
         "tenant_id": tenant,
@@ -228,7 +235,7 @@ def gw_key(
         "name": ref,
         "bound_host": host,
         "revoked_at": NOW if revoked else None,
-        "expires_at": None,
+        "expires_at": expires,
     }
 
 
@@ -286,10 +293,14 @@ class FakeStore(FakeReader):
         super().__init__(tables)
         self.upserts: list[tuple[str, dict[str, Any]]] = []
 
+        self.scopes: list[str | None] = []
+
     def upsert_returning(
-        self, table: str, conflict: str, row: dict[str, Any], **_: Any
+        self, table: str, conflict: str, row: dict[str, Any], **kw: Any
     ) -> dict[str, Any]:
         self.upserts.append((table, row))
+        if table == OVERLAY_TABLE:
+            self.scopes.append(kw.get("tenant"))
         return row
 
 
@@ -359,3 +370,177 @@ def test_revocation_keeps_the_exact_read_without_a_mirror_row() -> None:
         {"api_key_ref": REF_A, "tenant_id": SLUG}, cast(Any, store)
     )
     assert blanked_route_tenants(store) == []
+
+
+# --- mirror controls, per reader: only one unique, agreeing, valid row aliases ---
+
+
+class MirrorAs(FakeStore):
+    """The mirror answers as given (or raises), whatever the filter asked."""
+
+    def __init__(self, tables: dict[str, list[dict[str, Any]]], mirror: object) -> None:
+        super().__init__(tables)
+        self.mirror = mirror
+
+    def query(
+        self, table: str, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        if table != TENANT_REGISTRY_MIRROR_TABLE:
+            return super().query(table, filters)
+        if isinstance(self.mirror, Exception):
+            raise self.mirror
+        return [dict(r) for r in cast(list[dict[str, Any]], self.mirror)]
+
+
+MIRROR_CONTROLS = {
+    "missing": [],
+    "ambiguous": [
+        {"tenant_slug": SLUG, "tenant_uuid": UUID_},
+        {"tenant_slug": SLUG, "tenant_uuid": OTHER_UUID},
+    ],
+    "disagreeing": [{"tenant_slug": OTHER_SLUG, "tenant_uuid": UUID_}],
+    "malformed-uuid": [{"tenant_slug": SLUG, "tenant_uuid": "not-a-uuid"}],
+    "malformed-slug": [{"tenant_slug": "Not A Slug!", "tenant_uuid": UUID_}],
+    "raising": RuntimeError("mirror unavailable"),
+}
+
+
+def controlled(
+    mirror: object,
+    creds: list[dict[str, Any]],
+    routes: list[dict[str, Any]] | None = None,
+) -> MirrorAs:
+    return MirrorAs(
+        {TENANT_CREDENTIALS_TABLE: creds, OVERLAY_TABLE: routes or []}, mirror
+    )
+
+
+@pytest.mark.parametrize("name", list(MIRROR_CONTROLS))
+def test_selected_model_keeps_the_exact_read_under_every_mirror_control(
+    name: str,
+) -> None:
+    db = controlled(MIRROR_CONTROLS[name], [cred(UUID_, REF_A, models=["model-1"])])
+    # The existing fail-closed sentinel for a tenant key it cannot read.
+    assert model(db, SLUG) == BYOK_MODEL_UNRESOLVED
+    assert model(db, UUID_) == "model-1"
+
+
+@pytest.mark.parametrize("name", list(MIRROR_CONTROLS))
+def test_pool_keeps_the_exact_read_under_every_mirror_control(name: str) -> None:
+    db = controlled(MIRROR_CONTROLS[name], [cred(UUID_, REF_B)])
+    assert pool(db, SLUG, overlay=REF_A) == REF_A
+    assert pool(db, UUID_, overlay=REF_A) == REF_B
+
+
+@pytest.mark.parametrize("name", list(MIRROR_CONTROLS))
+def test_gateway_keeps_the_exact_read_under_every_mirror_control(name: str) -> None:
+    db = controlled(MIRROR_CONTROLS[name], [gw_key(UUID_, REF_B)])
+    assert gateway_refs(cast(FakeReader, db), SLUG) == []
+    assert gateway_refs(cast(FakeReader, db), UUID_) == [REF_B]
+
+
+@pytest.mark.parametrize("name", list(MIRROR_CONTROLS))
+def test_revocation_keeps_the_exact_read_under_every_mirror_control(
+    name: str,
+) -> None:
+    store = controlled(MIRROR_CONTROLS[name], [], routes=[route(UUID_, REF_A)])
+    apply_credential_revoked(
+        {"api_key_ref": REF_A, "tenant_id": SLUG}, cast(Any, store)
+    )
+    assert blanked_route_tenants(store) == []
+    store = controlled(MIRROR_CONTROLS[name], [], routes=[route(UUID_, REF_A)])
+    apply_credential_revoked(
+        {"api_key_ref": REF_A, "tenant_id": UUID_}, cast(Any, store)
+    )
+    assert blanked_route_tenants(store) == [UUID_]
+
+
+# --- mixed forms: both stored forms at once ---
+
+
+def test_selected_model_prefers_the_row_in_the_requested_form() -> None:
+    db = reader(
+        [
+            cred(SLUG, REF_A, models=["by-name"]),
+            cred(UUID_, REF_A, models=["by-uuid"]),
+        ]
+    )
+    assert model(db, SLUG) == "by-name"
+    assert model(db, UUID_) == "by-uuid"
+
+
+@pytest.mark.parametrize("request_form", [SLUG, UUID_])
+def test_revocation_blanks_the_routes_in_both_forms(request_form: str) -> None:
+    store = FakeStore(
+        {
+            OVERLAY_TABLE: [route(SLUG, REF_A), route(UUID_, REF_A)],
+            TENANT_CREDENTIALS_TABLE: [],
+            TENANT_REGISTRY_MIRROR_TABLE: MIRROR,
+        }
+    )
+    apply_credential_revoked(
+        {"api_key_ref": REF_A, "tenant_id": request_form}, cast(Any, store)
+    )
+    assert blanked_route_tenants(store) == sorted([SLUG, UUID_])
+
+
+@pytest.mark.parametrize("request_form", [SLUG, UUID_])
+@pytest.mark.parametrize("stored_form", [SLUG, UUID_])
+def test_revocation_scopes_each_route_write_to_the_route_s_own_tenant(
+    request_form: str, stored_form: str
+) -> None:
+    store = FakeStore(
+        {
+            OVERLAY_TABLE: [route(stored_form, REF_A)],
+            TENANT_CREDENTIALS_TABLE: [],
+            TENANT_REGISTRY_MIRROR_TABLE: MIRROR,
+        }
+    )
+    apply_credential_revoked(
+        {"api_key_ref": REF_A, "tenant_id": request_form}, cast(Any, store)
+    )
+    assert store.scopes == [stored_form]
+    (blanked,) = [r for t, r in store.upserts if t == OVERLAY_TABLE]
+    assert {k: v for k, v in blanked.items() if k != "secret_ref"} == {
+        k: v for k, v in route(stored_form, REF_A).items() if k != "secret_ref"
+    }
+
+
+@pytest.mark.parametrize("request_form", [SLUG, UUID_])
+def test_gateway_drops_an_expired_key_stored_in_the_other_form(
+    request_form: str,
+) -> None:
+    other = UUID_ if request_form == SLUG else SLUG
+    db = reader(
+        [
+            gw_key(other, REF_A, expires=NOW - timedelta(days=1)),
+            gw_key(other, REF_B, expires=NOW + timedelta(days=1)),
+        ]
+    )
+    assert gateway_refs(db, request_form) == [REF_B]
+
+
+def test_gateway_lists_a_key_stored_in_both_forms_once() -> None:
+    db = reader([gw_key(SLUG, REF_A), gw_key(UUID_, REF_A)])
+    assert gateway_refs(db, SLUG) == [REF_A]
+    assert gateway_refs(db, UUID_) == [REF_A]
+
+
+@pytest.mark.parametrize("request_form", [SLUG, UUID_])
+def test_gateway_filter_keeps_another_tenants_rows_out_of_the_alias(
+    request_form: str,
+) -> None:
+    # The filter on its own, as a widened catalog read would reach it: rows of
+    # both tenants in both forms; only this tenant's forms may pass.
+    rows = [
+        gw_key(SLUG, REF_A),
+        gw_key(UUID_, REF_B),
+        gw_key(OTHER_SLUG, REF_X),
+        gw_key(OTHER_UUID, REF_X + "y"),
+    ]
+    keys = select_host_keys(
+        rows, tenant_id=request_form, host=HOST, now=NOW, tenant_forms=(SLUG, UUID_)
+    )
+    assert sorted(k.api_key_ref for k in keys) == sorted([REF_A, REF_B])
+    exact = select_host_keys(rows, tenant_id=request_form, host=HOST, now=NOW)
+    assert [k.api_key_ref for k in exact] == [REF_A if request_form == SLUG else REF_B]

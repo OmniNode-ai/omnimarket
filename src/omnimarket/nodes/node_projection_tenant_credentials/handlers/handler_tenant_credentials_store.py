@@ -336,7 +336,9 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
             OVERLAY_TABLE,
             "tenant_id,task_type",
             {**kept, "secret_ref": None},
-            tenant=tenant,
+            # The route's own stored form, which can differ from the event's
+            # (OMN-21819); the tenant GUC must match the row it rewrites.
+            tenant=str(route["tenant_id"]),
             # The row exists, so only the DO UPDATE arm runs; created_at is
             # named for the INSERT arm's NOT NULL check and is never rewritten.
             insert_only_columns=frozenset({"created_at"}),

@@ -152,3 +152,58 @@ async def test_revoke_without_a_mirror_row_keeps_the_exact_read_real_postgres() 
             apply_credential_revoked, {"api_key_ref": ref, "tenant_id": SLUG}, adapter()
         )
         assert await _routes_left(conn, ref) == before
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revoked_as", [SLUG, TENANT_UUID])
+async def test_revoke_blanks_routes_stored_in_both_forms_real_postgres(
+    revoked_as: str,
+) -> None:
+    async with _schema() as (conn, schema):
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror (tenant_slug, tenant_uuid, status)"
+            " VALUES ($1, $2::uuid, 'active')",
+            SLUG,
+            TENANT_UUID,
+        )
+        ref = f"cred_{SLUG}_{uuid4().hex}"
+
+        def adapter() -> PostgresSyncProjectionAdapter:
+            return PostgresSyncProjectionAdapter(_dsn(), schema=schema)
+
+        await asyncio.to_thread(
+            apply_credential_registered, _registered(SLUG, ref), adapter()
+        )
+        # The same route as the writer's later stage would stamp it: the
+        # registry UUID in place of the name, every other column the same.
+        columns = [
+            row["column_name"]
+            for row in await conn.fetch(
+                "SELECT column_name FROM information_schema.columns"
+                " WHERE table_schema = $1"
+                " AND table_name = 'delegation_routing_tenant_overlay'"
+                " AND is_identity = 'NO' AND is_generated = 'NEVER'"
+                " AND coalesce(column_default, '') NOT LIKE 'nextval(%'"
+                " ORDER BY ordinal_position",
+                schema,
+            )
+        ]
+        selected = ", ".join(
+            "$1::text" if column == "tenant_id" else column for column in columns
+        )
+        await conn.execute(
+            f"INSERT INTO delegation_routing_tenant_overlay ({', '.join(columns)})"
+            f" SELECT {selected} FROM delegation_routing_tenant_overlay"
+            " WHERE tenant_id = $2 AND secret_ref = $3",
+            TENANT_UUID,
+            SLUG,
+            ref,
+        )
+        assert await _routes_left(conn, ref) == 2
+        await asyncio.to_thread(
+            apply_credential_revoked,
+            {"api_key_ref": ref, "tenant_id": revoked_as},
+            adapter(),
+        )
+        assert await _routes_left(conn, ref) == 0
