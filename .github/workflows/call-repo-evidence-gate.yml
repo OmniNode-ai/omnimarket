@@ -15,11 +15,15 @@
 # Read-only contents and pull-requests permissions are all this caller needs;
 # checkout and verification belong to the reusable, with no caller secrets.
 # The dev-merge tag of omnibase_core makes the reusable a fixed ref (the repo's
-# ruling is tags, never full commit shas); verifier-version pins the released
-# verifier used to read the caller's contracts. The pin is advanced by this
-# repository's node_receipt_gate_pin_advance_compute (OMN-20134), which edits the
-# uses line and RECEIPT_GATE_PIN_TAG in tests/ci/receipt_gate_pin.py (and the
-# characterization golden).
+# ruling is tags, never full commit shas); verifier-tag is the omnimarket dev-merge
+# tag the reusable installs the verifier from, which reads the caller's contracts.
+# The reusable resolves the tag to its commit and refuses a moved tag, a tag not on
+# omnimarket dev, or one that does not descend from its floor commit, so no
+# released package version decides the verifier. The reusable pin is advanced by
+# this repository's node_receipt_gate_pin_advance_compute (OMN-20134), which edits
+# the uses line and RECEIPT_GATE_PIN_TAG in tests/ci/receipt_gate_pin.py (and the
+# characterization golden); verifier-tag moves by hand to a newer omnimarket
+# dev-merge tag.
 #
 # The job id is the context prefix: repo-evidence / dod-verify carries the
 # verdict, so do not add a job name. The reusable also reports a
@@ -32,17 +36,17 @@
 # reusable's difference step classified this head's verdict against OCC's on
 # the same head. The pilot met its bar and dev branch protection no longer
 # requires an OCC context, so compare-with-occ is "false": the step would
-# otherwise wait for an OCC verdict and fail closed without one. verifier-version
-# stays a release that ships the classifier (node_dod_verify occ-difference,
-# omnimarket#3277), so a rollback turns the step back on with this one input.
+# otherwise wait for an OCC verdict and fail closed without one. verifier-tag
+# stays an omnimarket dev-merge tag that ships the classifier (node_dod_verify
+# occ-difference, omnimarket#3277), so a rollback turns the step back on with this
+# one input.
 #
-# verifier-version 0.4.305 is the release omnibase_infra and omnibase_core run.
-# It ships the refusal of a contract that leaves a criterion unbound
-# (omnimarket#3511, first released in 0.4.303; OMN-20070), which 0.4.294 predates.
-# The pinned reusable refuses a verifier-version below 0.4.303 before installing it
-# (VERIFIER_FLOOR, omnibase_core#1932; OMN-20032), so a later re-pin of this input
-# to an older verifier fails the install step instead of admitting a partly bound
-# contract.
+# verifier-tag descends from the floor commit e565ba5ba00c, which ships the refusal
+# of a contract that leaves a criterion unbound (omnimarket#3511; OMN-20070). The
+# pinned reusable refuses a tag that does not descend from that commit before
+# installing it (omnibase_core#2203; OMN-21676), so a later re-pin of this input to
+# an older tag fails the install step instead of admitting a partly bound contract.
+# The verifier-version input is a warned migration fallback and is not passed.
 
 name: Repo Evidence Gate
 
@@ -61,8 +65,8 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@dev-20261030152335-66d35d2283c3 # omnibase_core dev-merge tag; carries the fix-parent control fallback (OMN-20134)
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@dev-20261101005012-ac2f26e3e5bf # omnibase_core dev-merge tag
     with:
       evidence-source: caller
-      verifier-version: 0.4.305
+      verifier-tag: dev-20261101000200-949993edf3b7
       compare-with-occ: "false"

@@ -231,10 +231,6 @@ node_test_generator_compute ticket_id
 node_ticket_research_enrichment_compute onex.evt.omnimarket.ticket-research-enrichment-completed.v1
 node_ticket_work extra_status
 node_ticket_work phase_reached
-node_ticketing_epic_org_orchestrator onex.cmd.omnimarket.linear-epic-create.v1
-node_ticketing_epic_org_orchestrator onex.cmd.omnimarket.linear-ticket-reparent.v1
-node_ticketing_epic_org_orchestrator onex.evt.omnimarket.ticketing-epic-org-completed.v1
-node_ticketing_epic_org_orchestrator onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1
 node_ticketing_insights_compute onex.evt.omnimarket.ticketing-insights-completed.v1
 node_tool_reuse_matcher_compute candidate_tools
 node_tool_reuse_matcher_compute failure_reason

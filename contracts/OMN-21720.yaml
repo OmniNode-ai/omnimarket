@@ -1,0 +1,90 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21720"
+title: "omnimarket contracts_and_di literal_topic burn-down, slice rf1245-c2: topics come from the node contract or overlay through DI"
+summary: "The ticketing epic-org orchestrator handler named its four publish topics as string literals. It now binds them from event_bus.publish_topics of its own contract.yaml into a typed ModelTicketingEpicOrgTopics through load_ticketing_epic_org_topics, which refuses a missing or ambiguous match, and the handler takes an injected topics overlay through its constructor, falling back to the contract binding. The contracts_and_di check over src/omnimarket reports 182 literal_topic findings before the slice and 178 after, zero on the handler, with no baseline entry or suppression added; the four now-fixed compliance-sweep baseline keys of the handler are removed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21720-topics-from-contract"
+    statement: |-
+      The ticketing epic-org handler holds no topic literal; each topic it names equals the one publish topic its node contract declares for that event.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_topic over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+  - id: "req-omn21720-injected"
+    statement: |-
+      Every topic is bound from the node contract by load_ticketing_epic_org_topics, which refuses a missing or ambiguous match, and an injected topics overlay wins over the contract binding.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: every moved topic is taken through an injected parameter bound from the node contract or overlay and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+  - id: "req-omn21720-proof"
+    statement: |-
+      The slice lands as one PR titled with this ticket id; as a cloud lane, the cloud CI of the PR is its evidence in place of lab proof.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract topic binding, injection, refusal and checker tests and the node's existing tests pass."
+    command: "uv run pytest tests/unit/nodes/node_ticketing_epic_org_orchestrator/test_topics_from_contract.py tests/nodes/node_ticketing_epic_org_orchestrator/test_ticketing_epic_org_orchestrator.py -q --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21720-checker-clean"
+    description: "The contracts_and_di check reports no literal_topic finding on the handler."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_ticketing_epic_org_orchestrator/test_topics_from_contract.py -q --no-cov -n 0 -k contracts_and_di"
+        cwd: "."
+  - id: "dod-omn21720-topics-injected"
+    description: "The loader binds every field to a declared publish topic, refuses a missing or ambiguous one, and an injected overlay wins."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_ticketing_epic_org_orchestrator/test_topics_from_contract.py -q --no-cov -n 0"
+        cwd: "."
+  - id: "dod-omn21720-cloud-ci"
+    description: "The node's unit tests pass at the PR head in the PR's cloud CI."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_ticketing_epic_org_orchestrator/test_topics_from_contract.py tests/nodes/node_ticketing_epic_org_orchestrator/test_ticketing_epic_org_orchestrator.py -q --no-cov -n 0"
+        cwd: "."
+  - id: "dod-omn21720-deploy-source-readback"
+    description: |-
+      Hosted source-artifact deploy readback at the evaluated commit. Fetch the
+      published handler and refuse one that holds a topic string literal or lacks
+      the contract loader binding. This reads the published source artifact; it
+      does not assert that a running service has rolled out.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_ticketing_epic_org_orchestrator/test_topics_from_contract.py -q --no-cov -n 0"
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          directory="$(mktemp -d)";
+          trap 'rm -rf "$directory"' EXIT;
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_ticketing_epic_org_orchestrator/handlers/handler_ticketing_epic_org.py" -o "$directory/handler.py"
+          python3 - "$directory/handler.py" <<'PY'
+          import ast
+          from pathlib import Path
+          import sys
+
+          tree = ast.parse(Path(sys.argv[1]).read_text())
+          literals = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("onex.")]
+          assert not literals, f"published handler still holds topic literals: {literals}"
+          assert any(isinstance(node, ast.FunctionDef) and node.name == "load_ticketing_epic_org_topics" for node in ast.walk(tree)), "published handler lacks the contract topic loader"
+          print("Published epic-org topic binding readback: PASS")
+          PY
+        cwd: "."
