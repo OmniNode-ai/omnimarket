@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from omnimarket.models.context_install_confirm import ModelInstallConfirmResult
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_compaction_receipts.handlers.handler_projection_compaction_receipts import (
     HandlerProjectionCompactionReceipts,
 )
@@ -21,7 +22,10 @@ from omnimarket.nodes.node_projection_compaction_receipts.models import (
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE = "omninode_internal.compaction_receipts"
 _COLUMNS = (
@@ -90,17 +94,12 @@ class CompactionReceiptsProjectionWriter(BaseProjectionRunner):
             )
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        topic = str(input_data.get("_topic", self.subscribe_topics[0]))
-        meta = MessageMeta(
-            topic=topic,
-            partition=int(input_data.get("_partition", 0)),
-            offset=int(input_data.get("_offset", 0)),
-            fallback_id=str(input_data.get("_fallback_id", "")),
-        )
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        topic = request.topic_or(self.subscribe_topics[0])
+        meta = request.message_meta(topic)
         data = {
             key: value
-            for key, value in input_data.items()
+            for key, value in request.payload.items()
             if key not in {"_topic", "_partition", "_offset", "_fallback_id", "_db"}
         }
         # Validate the entire result and fold before connecting or writing any row.

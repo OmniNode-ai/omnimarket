@@ -82,7 +82,7 @@ class HandlerInfisicalHttp:
         client_id: SecretStr,
         client_secret: SecretStr,
         exchange: HttpExchange,
-        timeout_seconds: float = 5.0,
+        timeout_seconds: float,
     ) -> None:
         self._address = address.rstrip("/")
         self._project_id = project_id
@@ -244,7 +244,7 @@ class HandlerInfisicalHttp:
             return False
         return True
 
-    async def close(self, timeout_seconds: float = 30.0) -> None:
+    async def close(self, timeout_seconds: float | None = None) -> None:
         del timeout_seconds
         self._token = None
         self._token_expires_at = 0.0

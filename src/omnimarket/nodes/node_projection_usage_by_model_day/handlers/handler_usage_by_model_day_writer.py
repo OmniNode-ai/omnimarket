@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
     HandlerProjectionUsageByModelDay,
 )
@@ -24,7 +25,10 @@ from omnimarket.nodes.node_projection_usage_by_model_day.models import (
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 
 _INSERT_CALL = """
@@ -252,16 +256,11 @@ class UsageByModelDayProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no DLQ publisher configured for {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         topics = self.subscribe_topics
-        data = dict(input_data)
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        data = dict(request.payload)
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(topic, data, meta))
 
     async def _project_one_message(

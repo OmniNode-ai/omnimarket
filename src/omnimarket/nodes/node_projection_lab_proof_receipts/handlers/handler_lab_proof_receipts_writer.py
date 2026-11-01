@@ -20,6 +20,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_lab_proof_receipts.handlers.handler_projection_lab_proof_receipts import (
     HandlerProjectionLabProofReceipts,
 )
@@ -29,7 +30,10 @@ from omnimarket.nodes.node_projection_lab_proof_receipts.models import (
     ModelLabProofReceiptRow,
 )
 from omnimarket.projection.envelope import strip_runner_injected_keys
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE_LAB_PROOF_RECEIPTS = "omninode_internal.lab_proof_receipts"
 
@@ -134,13 +138,13 @@ class LabProofReceiptsProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         # The in-process dispatch hands over the payload with the delivery's
         # topic, partition and offset beside it. This projection publishes no
         # snapshot delta, so none of them is needed past this point.
         data = {
             key: value
-            for key, value in input_data.items()
+            for key, value in request.payload.items()
             if key not in {"_topic", "_partition", "_offset", "_fallback_id"}
         }
         return asyncio.run(self._project_one_message(data))
