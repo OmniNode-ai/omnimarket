@@ -129,3 +129,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_deploy -q --no-cov --tb=line
     cwd: .
+- id: dod-omn21890-deploy-probe-contract
+  description: 'Deploy probe: the node contract GitHub serves at the checked-out commit binds HandlerBranchPrune; the file is absent at the merge base, so the content read fails there.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_branch_prune_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | contains("HandlerBranchPrune")' | grep -qx true
+    cwd: .
