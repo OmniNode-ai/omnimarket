@@ -1197,6 +1197,27 @@ class HandlerLlmDelegationCall:
                 quota_observation=observation,
                 secret_source=secret_source,
             )
+        except httpx.TransportError as exc:
+            # OMN-21313: the connection broke after the endpoint was chosen --
+            # the server closed it without a response (RemoteProtocolError) or
+            # reset it (ReadError). A rung killed mid-call lands here. Timeouts
+            # are typed above (TimeoutException is a TransportError), so this
+            # is the endpoint-gone case: retryable, same class as an outage.
+            error_message = str(exc) or type(exc).__name__
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=0,
+                error_message=error_message,
+            )
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                error_message,
+                quota_observation=observation,
+                secret_source=secret_source,
+            )
         except SecretResolutionError as exc:
             # OMN-18696 AC1: the backend DECLARES a credential and nothing
             # resolves for it, so no call was made. Caught here, ahead of the

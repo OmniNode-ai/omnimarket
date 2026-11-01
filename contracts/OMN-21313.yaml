@@ -1,0 +1,58 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21313"
+title: "A delegation rung killed mid-call is typed failure_class=unknown, not model_unavailable"
+summary: "HandlerLlmDelegationCall typed only httpx.TimeoutException and httpx.HTTPStatusError ahead of its bare except Exception, so a server that closed or reset the connection after the chat POST (httpx.RemoteProtocolError, httpx.ReadError) was recorded unknown. An httpx.TransportError branch now records it model_unavailable with the error text kept."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21313-transport-error-typed"
+    statement: |-
+      A provider call whose server closes or resets the connection without a response is recorded model_unavailable with the error text kept.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a provider call whose server closes the connection without a response (httpx.RemoteProtocolError, and a connection reset after the request was sent) is recorded with failure_class=model_unavailable and the error text kept, not unknown -- falsifier: uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q"
+  - id: "req-omn21313-receipt-regression"
+    statement: |-
+      The recorded receipt error of run cf7e176d-9213-42c2-ac8d-610571ace8bd is typed model_unavailable.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a regression test built from the recorded receipt of run cf7e176d-9213-42c2-ac8d-610571ace8bd (attempt error \"Server disconnected without sending a response.\", scrubbed) fails on f9bc19a9105a and passes on the fix -- falsifier: uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q -k receipt_cf7e176d"
+evidence_requirements:
+  - kind: "tests"
+    description: "The rung-killed failure-class tests pass."
+    command: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21313-stub-server-closes-socket"
+    description: "A live stub server that accepts the chat POST and closes (FIN) or resets (RST) the socket yields model_unavailable with the error text kept; a control stub that answers succeeds."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21313-deploy-transport-error-branch"
+    description: "Read the published delegation call handler at the checked-out revision and require its httpx.TransportError branch. This hosted-runner probe fails on an unreadable revision or a handler without the branch. It verifies published source; runtime rollout remains required before ticket closure."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_llm_delegation_call.py" | grep -F "except httpx.TransportError as exc:"'
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21313-receipt-cf7e176d"
+    description: "The receipt error 'Server disconnected without sending a response.' raised at the transport boundary is typed model_unavailable."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_killed_mid_call_failure_class.py -q --no-cov -k receipt_cf7e176d"
+        cwd: "."

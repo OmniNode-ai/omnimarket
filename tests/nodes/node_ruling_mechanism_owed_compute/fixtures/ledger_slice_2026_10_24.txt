@@ -1,0 +1,89 @@
+# Recorded ledger slice around 2026-10-24, projected to structural cells only.
+# Free text, verbatim operator words, hosts, paths, run ids, request ids and principals were dropped by the scrub; every kept row is a real row.
+# Tick of the recorded replay: 2026-10-24T13:30:00Z. The last row is later than that tick on purpose.
+2026-09-14T11:38:53Z | RULING | lane=orchestrator | text=scrubbed
+2026-09-26T14:03:27Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | amends=2026-09-26T10:37:49Z | text=scrubbed
+2026-09-27T16:43:38Z | CORRECTION | lane=ruling-mechanisms-83 | mechanism-ticket=OMN-18616 | corrects=2026-09-14T11:38:53Z | text=scrubbed
+2026-09-28T01:47:23Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | amends=2026-09-26T14:03:27Z | text=scrubbed
+2026-09-28T01:58:06Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | amends=2026-09-26T14:03:27Z | text=scrubbed
+2026-09-28T01:58:17Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | amends=2026-09-26T14:03:27Z | text=scrubbed
+2026-09-28T06:22:09Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | amends=2026-09-26T14:03:27Z | text=scrubbed
+2026-09-28T06:24:10Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | amends=2026-09-26T14:03:27Z | text=scrubbed
+2026-09-28T06:26:05Z | RULING | lane=orchestrator-83 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | amends=2026-09-26T14:03:27Z | text=scrubbed
+2026-09-29T12:29:46Z | RULING | lane=orchestrator-0c2f | ticket=OMN-18595 | mechanism-ticket=OMN-18595 | kind=process | text=scrubbed
+2026-10-09T04:10:56Z | RULING | lane=orchestrator-9f8a | mechanism-ticket=OMN-20413 | kind=process | text=scrubbed
+2026-10-16T17:44:31Z | RULING | lane=orchestrator-bb1a | ticket=OMN-19998 | mechanism-ticket=OMN-19998 | kind=process | amends=2026-09-14T11:38:53Z | text=scrubbed
+2026-10-20T21:56:19Z | RULING | lane=orchestrator-31d9 | ticket=OMN-17427 | mechanism-ticket=OMN-17427 | kind=process | text=scrubbed
+2026-10-22T00:27:09Z | CORRECTION | lane=ruling-mechanisms-0020 | ticket=OMN-21288 | mechanism-ticket=OMN-21288 | kind=process | corrects=2026-10-20T21:56:19Z | ruling-lane=orchestrator-31d9 | text=scrubbed
+2026-10-23T17:13:55Z | RULING | lane=orchestrator-31d9 | ticket=OMN-18594 | mechanism-ticket=OMN-18594 | kind=process | text=scrubbed
+2026-10-24T11:21:16Z | CLAIM | lane=landing-L16418 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T11:26:03Z | CLAIM | lane=fill-wip-land-omnimarket-20261024T1123Z | ticket=OMN-17427 | priority=mvp-landing | text=scrubbed
+2026-10-24T11:37:28Z | CLAIM | lane=landing-L16426 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T11:40:01Z | CLAIM | lane=landing-cause-L16427 | ticket=OMN-20413 | text=scrubbed
+2026-10-24T11:41:16Z | CLAIM | lane=landing-L16428 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T11:48:27Z | CLAIM | lane=landing-cause-L16429 | ticket=OMN-20413 | text=scrubbed
+2026-10-24T11:48:31Z | CLAIM | lane=nuc-runners-1150 | ticket=OMN-17427 | parent=orchestrator-31d9 | text=scrubbed
+2026-10-24T11:48:33Z | CLAIM | lane=dropped-work-audit-1150 | ticket=OMN-17427 | parent=orchestrator-31d9 | text=scrubbed
+2026-10-24T11:49:11Z | CLAIM | lane=landing-L16430 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T11:49:35Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1137Z | ticket=OMN-18595 | priority=other | text=scrubbed
+2026-10-24T11:49:35Z | CLAIM | lane=cause-stuck-omnibase_core-20261024T1148Z | ticket=OMN-18595 | priority=other | text=scrubbed
+2026-10-24T11:49:50Z | CLAIM | lane=fill-eval-run-routing-correctness-bcea810d0398-1-20261024T1135Z | ticket=OMN-17427 | priority=other | text=scrubbed
+2026-10-24T11:49:52Z | CLAIM | lane=fill-repair-host-tick-prrp-snapshot-publish-20261024T1147Z | ticket=OMN-17427 | priority=process-fix | text=scrubbed
+2026-10-24T11:50:45Z | TERMINAL | lane=cause-stuck-omnibase_core-20261024T1148Z | ticket=OMN-18595 | outcome=skipped-owned | closes-CLAIM=2026-10-24T11:49:35Z | text=scrubbed
+2026-10-24T11:50:56Z | TERMINAL | lane=fill-wip-land-omnimarket-20261024T1123Z | ticket=OMN-17427 | outcome=blocked | closes-CLAIM=2026-10-24T11:26:03Z | text=scrubbed
+2026-10-24T11:50:56Z | TERMINAL | lane=nuc-runners-1150 | ticket=OMN-17427 | outcome=blocked | closes-CLAIM=2026-10-24T11:48:31Z | text=scrubbed
+2026-10-24T11:51:08Z | TERMINAL | lane=cause-stuck-omnibase_core-20261024T1137Z | ticket=OMN-18595 | outcome=skipped-owned | closes-CLAIM=2026-10-24T11:49:35Z | text=scrubbed
+2026-10-24T11:51:15Z | TERMINAL | lane=landing-L16426 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T11:37:28Z | text=scrubbed
+2026-10-24T11:52:48Z | TERMINAL | lane=landing-L16428 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T11:41:16Z | text=scrubbed
+2026-10-24T11:55:14Z | TERMINAL | lane=fill-repair-host-tick-prrp-snapshot-publish-20261024T1147Z | ticket=OMN-17427 | outcome=blocked | closes-CLAIM=2026-10-24T11:49:52Z | text=scrubbed
+2026-10-24T11:56:34Z | TERMINAL | lane=landing-cause-L16427 | ticket=OMN-20413 | outcome=handed-off | closes-CLAIM=2026-10-24T11:40:01Z | text=scrubbed
+2026-10-24T11:56:57Z | TERMINAL | lane=landing-cause-L16429 | ticket=OMN-20413 | outcome=handed-off | closes-CLAIM=2026-10-24T11:48:27Z | text=scrubbed
+2026-10-24T11:57:26Z | CLAIM | lane=landing-L16431 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T11:58:07Z | CLAIM | lane=landing-L16432 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T11:58:41Z | CLAIM | lane=one-runtime-fold-1245 | ticket=OMN-21288 | parent=orchestrator-31d9 | priority=process-fix | text=scrubbed
+2026-10-24T12:00:21Z | TERMINAL | lane=fill-eval-run-routing-correctness-bcea810d0398-1-20261024T1135Z | ticket=OMN-17427 | outcome=done | closes-CLAIM=2026-10-24T11:49:50Z | text=scrubbed
+2026-10-24T12:00:33Z | CLAIM | lane=fill-pr-land-omnibase_infra-5312-20261024T1158Z | ticket=OMN-18594 | priority=mvp-landing | text=scrubbed
+2026-10-24T12:00:34Z | CLAIM | lane=onoff-pilot-finish-1215 | ticket=OMN-21155 | parent=orchestrator-31d9 | priority=mvp-landing | text=scrubbed
+2026-10-24T12:01:14Z | CLAIM | lane=merge-stall-diagnose-1300 | ticket=OMN-19998 | parent=orchestrator-31d9 | priority=process-fix | text=scrubbed
+2026-10-24T12:02:44Z | TERMINAL | lane=dropped-work-audit-1150 | ticket=OMN-17427 | outcome=done | closes-CLAIM=2026-10-24T11:48:33Z | text=scrubbed
+2026-10-24T12:05:32Z | CLAIM | lane=landing-L16434 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:06:06Z | CLAIM | lane=landing-L16435 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:06:22Z | TERMINAL | lane=landing-L16432 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T11:58:07Z | text=scrubbed
+2026-10-24T12:06:44Z | TERMINAL | lane=fill-pr-land-omnibase_infra-5312-20261024T1158Z | ticket=OMN-18594 | outcome=blocked | closes-CLAIM=2026-10-24T12:00:33Z | text=scrubbed
+2026-10-24T12:08:44Z | TERMINAL | lane=onoff-pilot-finish-1215 | ticket=OMN-21155 | outcome=blocked | closes-CLAIM=2026-10-24T12:00:34Z | text=scrubbed
+2026-10-24T12:11:27Z | TERMINAL | lane=landing-L16418 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T11:21:16Z | text=scrubbed
+2026-10-24T12:11:53Z | TERMINAL | lane=merge-stall-diagnose-1300 | ticket=OMN-19998 | outcome=done | closes-CLAIM=2026-10-24T12:01:14Z | text=scrubbed
+2026-10-24T12:13:19Z | CLAIM | lane=landing-L16437 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:13:47Z | CLAIM | lane=landing-L16438 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:14:36Z | CLAIM | lane=landing-L16436 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:15:23Z | TERMINAL | lane=landing-L16430 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T11:49:11Z | text=scrubbed
+2026-10-24T12:16:17Z | TERMINAL | lane=landing-L16438 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:13:47Z | text=scrubbed
+2026-10-24T12:16:33Z | TERMINAL | lane=landing-L16434 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:05:32Z | text=scrubbed
+2026-10-24T12:17:16Z | CLAIM | lane=cloud-placement-restore-1325 | ticket=OMN-17427 | parent=orchestrator-31d9 | priority=process-fix | text=scrubbed
+2026-10-24T12:18:35Z | CLAIM | lane=floor-diagnose-omnibase_core-20261024T1217Z | ticket=OMN-19998 | priority=other | text=scrubbed
+2026-10-24T12:18:53Z | CLAIM | lane=occi-hotpatch-1305 | ticket=OMN-17427 | parent=orchestrator-31d9 | priority=process-fix | text=scrubbed
+2026-10-24T12:21:30Z | TERMINAL | lane=floor-diagnose-omnibase_core-20261024T1217Z | ticket=OMN-19998 | outcome=done | closes-CLAIM=2026-10-24T12:18:35Z | text=scrubbed
+2026-10-24T12:25:38Z | CLAIM | lane=landing-L16441 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:26:53Z | TERMINAL | lane=occi-hotpatch-1305 | ticket=OMN-17427 | outcome=partial | closes-CLAIM=2026-10-24T12:18:53Z | text=scrubbed
+2026-10-24T12:29:00Z | CLAIM | lane=landing-L16439 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:29:35Z | CLAIM | lane=landing-L16442 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:31:03Z | TERMINAL | lane=landing-L16439 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:29:00Z | text=scrubbed
+2026-10-24T12:32:24Z | TERMINAL | lane=landing-L16442 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:29:35Z | text=scrubbed
+2026-10-24T12:32:31Z | TERMINAL | lane=landing-L16436 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:14:36Z | text=scrubbed
+2026-10-24T12:32:48Z | TERMINAL | lane=landing-L16437 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:13:19Z | text=scrubbed
+2026-10-24T12:33:16Z | CLAIM | lane=landing-L16443 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:35:30Z | TERMINAL | lane=landing-L16431 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T11:57:26Z | text=scrubbed
+2026-10-24T12:36:37Z | CLAIM | lane=fill-pr-land-omnibase_infra-5311-20261024T1217Z | ticket=OMN-17292 | priority=mvp-landing | text=scrubbed
+2026-10-24T12:37:52Z | CLAIM | lane=landing-L16444 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:42:59Z | TERMINAL | lane=fill-pr-land-omnibase_infra-5311-20261024T1217Z | ticket=OMN-17292 | outcome=blocked | closes-CLAIM=2026-10-24T12:36:37Z | blocker=exposure-reader-coverage | text=scrubbed
+2026-10-24T12:43:24Z | TERMINAL | lane=landing-L16444 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:37:52Z | text=scrubbed
+2026-10-24T12:46:38Z | CLAIM | lane=landing-L16447 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:47:49Z | TERMINAL | lane=landing-L16447 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:46:38Z | text=scrubbed
+2026-10-24T12:48:01Z | TERMINAL | lane=landing-L16443 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:33:16Z | text=scrubbed
+2026-10-24T12:48:16Z | CLAIM | lane=landing-L16446 | ticket=OMN-19998 | text=scrubbed
+2026-10-24T12:49:51Z | TERMINAL | lane=landing-L16435 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:06:06Z | text=scrubbed
+2026-10-24T12:51:35Z | CLAIM | lane=dod-closeout-sweep | ticket=OMN-17427 | text=scrubbed
+2026-10-24T12:51:45Z | TERMINAL | lane=landing-L16446 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:48:16Z | text=scrubbed
+2026-10-24T12:52:12Z | TERMINAL | lane=one-runtime-fold-1245 | ticket=OMN-21288 | outcome=blocked | closes-CLAIM=2026-10-24T11:58:41Z | text=scrubbed
+2026-10-24T12:56:30Z | TERMINAL | lane=landing-L16441 | ticket=OMN-19998 | outcome=handed-off | closes-CLAIM=2026-10-24T12:25:38Z | text=scrubbed
+2026-10-24T15:26:32Z | CLAIM | lane=fold-step1-push-1445 | ticket=OMN-21288 | parent=orchestrator-31d9 | priority=mvp-landing | text=scrubbed
