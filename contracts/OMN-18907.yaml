@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18907"
+title: "Producer-derived test fixtures: refuse hand-written event-payload dicts in projection and consumer tests, with a measured fence"
+summary: "A projection or consumer test that hand-writes the event payload its producer emits stays green while production changes. node_handwritten_event_payload_check_effect walks the syntax tree of the in-scope fixture tests and refuses a hand-written payload dict. A fence table holds the files that hand-write one today: a row that no longer matches is a hard failure, so the table cannot be topped up. A scan floor fails a scan that finds far fewer files than the tree has. The check runs in a pre-commit hook and in the lint job, which is a strict gate of the CI Summary required context on dev. The ambiguous tier (row dicts versus payload dicts) is report-only."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn18907-refuse-handwritten-payload"
+    statement: |-
+      A hand-written event-payload dict in an in-scope fixture test is refused, and a producer-derived fixture passes unchanged.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the validator refuses a hand-written event-payload dict in any in-scope test directory and passes a producer-derived fixture unchanged -- falsifier: uv run pytest tests/ci/test_handwritten_event_payload_check.py -k Ac1 -q --no-cov asserts the eight-key _attempt() form is refused with exit 1 and its keys named"
+  - id: "req-omn18907-fence"
+    statement: |-
+      The fence is a fence and not a baseline: a row that no longer matches fails.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the fence is a fence, not a baseline -- falsifier: uv run pytest tests/ci/test_handwritten_event_payload_check.py -k Ac2 -q --no-cov deletes a fenced row's file and asserts a non-zero exit on the stale row"
+  - id: "req-omn18907-scan-floor"
+    statement: |-
+      The scan proves it ran.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the scan proves it ran -- falsifier: uv run pytest tests/ci/test_handwritten_event_payload_check.py -k Ac3 -q --no-cov runs the validator on a tree below the floor and asserts a non-zero exit naming the floor, and on the live tree asserts exit zero with a scanned-file count at or above it"
+  - id: "req-omn18907-required-context"
+    statement: |-
+      The gate is wired to a required context in the same pull request.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the gate is wired to a required context in the same pull request -- falsifier: uv run pytest tests/ci/test_handwritten_event_payload_check.py -k Ac4 -q --no-cov fails when the lint job step, the pre-commit hook or lint's place in the CI Summary strict list is removed"
+evidence_requirements:
+  - kind: "tests"
+    description: "The gate's tests and its golden chain pass."
+    command: "uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn18907-refusal"
+    description: "A hand-written payload dict is refused and a producer-derived fixture passes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_handwritten_event_payload_check.py -q --no-cov -k Ac1"
+        cwd: "."
+  - id: "dod-omn18907-fence"
+    description: "A stale fence row, a fixed site still listed and a new site in a fenced file all fail."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_handwritten_event_payload_check.py -q --no-cov -k Ac2"
+        cwd: "."
+  - id: "dod-omn18907-scan-floor"
+    description: "A tree below the floor fails naming the floor, and the live tree passes at or above it."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_handwritten_event_payload_check.py -q --no-cov -k Ac3"
+        cwd: "."
+  - id: "dod-omn18907-wiring"
+    description: "The lint job and the pre-commit hook run the node, and lint is a strict CI Summary gate."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_handwritten_event_payload_check.py -q --no-cov -k Ac4"
+        cwd: "."
