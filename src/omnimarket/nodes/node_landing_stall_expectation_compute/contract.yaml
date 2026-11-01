@@ -20,6 +20,17 @@ description: >
   episode and single alarm do the rest, and the alarm text carries the match
   key, the minutes waited and the controller's last decision text.
 
+  OMN-21880. The node also opens a stall from snapshot rows (operation
+  open_stall): one required context red on a share of the open pull requests of
+  a repository opens one stall, which is due one exception row and one cause
+  lane at the exception time and one question at the question time, and closes
+  after consecutive clear snapshots. The thresholds come from this node's
+  overlay, ``<root>/node_landing_stall_expectation_compute/overlay.yaml`` under
+  ONEX_SKILL_OVERLAY_ROOTS (share_percent, min_open_prs, exception_minutes,
+  question_minutes, clear_snapshots, aggregate_contexts); there is no packaged
+  value. The rule is pure and nothing dispatches from it yet: the controller
+  wiring is a later slice, checked against formal/landing_stall.
+
 input_model: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold.ModelLandingStallFoldRequest
 output_model: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold.ModelLandingStallFoldResult
 
@@ -33,6 +44,13 @@ handler_routing:
       event_model:
         name: ModelLandingStallFoldRequest
         module: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold
+    - operation: open_stall
+      handler:
+        name: HandlerLandingStallOpen
+        module: omnimarket.nodes.node_landing_stall_expectation_compute.handlers.handler_landing_stall_open
+      event_model:
+        name: ModelLandingStallOpenRequest
+        module: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_open
 
 handler:
   module: omnimarket.nodes.node_landing_stall_expectation_compute.handlers.handler_landing_stall_expectation
@@ -67,6 +85,10 @@ externally_consumed_topics:
 dod_evidence:
   - test: tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_replay_2026_10_19.py
     description: "Replaying the 2026-10-19 held cause of a private plugin repository opens one TRIGGER_UNANSWERED episode, raises one alarm naming the cause, the repository, the minutes and the last decision text, and clears it on merge"
+  - test: tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py
+    description: "Replaying the recorded 2026-10-31 snapshot rows opens one stall on the shared context by 10:45Z and escalates it at the overlay's times; replaying 12 ordinary days opens none; the thresholds come from the node's overlay and none is a literal in code"
+  - test: tests/formal/test_landing_stall_model.py
+    description: "The TLA+ model of the stall rule passes and each of its 18 mutants violates the one property it targets"
   - test: tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_fold.py
     description: "Stalling transitions open an expectation at the first hold, moving ones answer it, a version bump moves only on merge or release, an unrouted subject is reported"
 
