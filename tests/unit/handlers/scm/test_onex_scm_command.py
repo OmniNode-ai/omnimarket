@@ -88,6 +88,7 @@ class FakeBus:
 
     def __init__(self, *, fail_writes: bool = False, answer: bool = True) -> None:
         self.published: list[tuple[str, dict[str, Any]]] = []
+        self.groups: set[str] = set()
         self._subscribers: dict[str, list[_Callback]] = {}
         self._offset = 41
         self._fail_writes = fail_writes
@@ -125,12 +126,19 @@ class FakeBus:
         group_id: str | None = None,
     ) -> Callable[[], Awaitable[None]]:
         assert on_message is not None
+        if group_id is not None:
+            self.groups.add(group_id)
         self._subscribers.setdefault(topic, []).append(on_message)
 
         async def unsubscribe() -> None:
             self._subscribers[topic].remove(on_message)
 
         return unsubscribe
+
+    async def subscribe_ungrouped(
+        self, topic: str, on_message: _Callback
+    ) -> Callable[[], Awaitable[None]]:
+        return await self.subscribe(topic, on_message=on_message)
 
     def _respond(
         self, topic: str, payload: dict[str, Any]

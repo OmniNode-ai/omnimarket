@@ -4,7 +4,8 @@
 
 Like lab work, topics come only from the node contract, and terminals name
 their command's envelope as parent. One host group and one queue worker
-serialize commands; each caller uses its own terminal consumer group.
+serialize commands; a caller joins no consumer group (OMN-21818): it reads the
+two terminals ungrouped, so an append leaves nothing on the broker.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendRequest,
     ModelWorkLedgerTerminalRefused,
 )
+from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 from omnimarket.nodes.node_work_ledger_append_effect.handlers import terminal_refused
 from omnimarket.nodes.node_work_ledger_bus_mirror import (
     HandlerWorkLedgerBusMirror,
@@ -675,13 +677,9 @@ class WorkLedgerAppendCaller:
         topics: ModelWorkLedgerAppendTopics | None = None,
         principal: str,
     ) -> None:
-        self._bus = bus
+        self._bus = require_ungrouped(bus)
         self._topics = topics or load_work_ledger_append_topics()
         self._command_topic = self._topics.writer_command_topic(principal)
-        self._group = (
-            f"{derive_service_group_id('work_ledger_append_client', service=GROUP_SERVICE)}"
-            f".{uuid.uuid4().hex[:12]}"
-        )
         self._pending: dict[
             uuid.UUID, asyncio.Future[tuple[str, dict[str, object]]]
         ] = {}
@@ -694,11 +692,12 @@ class WorkLedgerAppendCaller:
     async def start(self) -> None:
         if self._unsubscribes:
             return
+        # No consumer group: an append reads two terminals from the log end and leaves
+        # nothing on the broker (OMN-21818; 12,907 Empty groups on the dev broker came
+        # from one group per append).
         for topic in (self._topics.success, self._topics.failure):
             self._unsubscribes.append(
-                await _subscribe(
-                    self._bus, topic, self._terminal(topic), self._group, "latest"
-                )
+                await self._bus.subscribe_ungrouped(topic, self._terminal(topic))
             )
 
     async def stop(self) -> None:
