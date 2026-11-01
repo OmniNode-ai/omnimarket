@@ -31,8 +31,8 @@ handler:
   class: HandlerIloRedfish
   input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
 
-handler_routing:
-  default_handler: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish:HandlerIloRedfish
+# No handler_routing and no event_bus block: the node is called in process by the
+# operator's lab tooling, not by a bus command, so runtime auto-wiring must not attach it.
 
 descriptor:
   node_archetype: effect
@@ -50,10 +50,6 @@ config:
     type: str
     default: "ILO_{HOST}_{ROLE}_{FIELD}"
     description: "Template of the lab secret store keys that hold a host's iLO accounts. Names only; the values live in the store."
-
-event_bus:
-  subscribe_topics: []
-  publish_topics: []
 
 metadata:
   transport_type: in_process
