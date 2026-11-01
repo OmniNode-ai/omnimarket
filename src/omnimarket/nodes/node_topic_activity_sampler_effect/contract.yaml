@@ -79,3 +79,6 @@ dependencies:
 
 metadata:
   transport_type: kafka
+
+timeouts:
+  fetch_timeout_seconds: 5.0  # Bounds each broker metadata and offset fetch.

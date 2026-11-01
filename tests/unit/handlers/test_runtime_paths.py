@@ -158,7 +158,7 @@ def test_slice_has_no_literal_path_findings() -> None:
         root
         / "src/omnimarket/nodes/node_lab_disk_growth_effect/handlers/handler_lab_uv_cache_colocate.py",
         root
-        / "src/omnimarket/nodes/node_landing_tlc_receipt_effect/handlers/handler_landing_tlc_receipt_cli.py",
+        / "src/omnimarket/nodes/node_landing_tlc_receipt_effect/runtime_landing_tlc_receipt_cli.py",
         root / "src/omnimarket/nodes/node_merge_sweep_compute/__main__.py",
         root / "src/omnimarket/nodes/node_merge_sweep_compute/consumer.py",
         root

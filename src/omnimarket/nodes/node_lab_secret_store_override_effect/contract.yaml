@@ -73,3 +73,9 @@ metadata:
     - "secret-store"
   related_tickets:
     - "OMN-20688"
+
+# The groups of the in-memory transports the local render command publishes and reads over;
+# container/container_inmemory.py binds them.
+in_memory_bindings:
+  publisher_group: lab-render-publisher
+  terminal_group: lab-render-terminal

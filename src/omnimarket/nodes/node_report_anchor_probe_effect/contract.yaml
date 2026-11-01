@@ -126,3 +126,6 @@ dod_evidence:
 
 metadata:
   transport_type: inmemory
+
+timeouts:
+  subprocess_timeout_seconds: 30  # Bounds each git cat-file and gh pr view call.

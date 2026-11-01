@@ -111,3 +111,7 @@ metadata:
     - "OMN-20422"
   related_tickets:
     - "OMN-20422"
+
+timeouts:
+  git_timeout_seconds: 120.0  # Bounds each git call against the canonical clone.
+  refresh_timeout_seconds: 300  # Bounds the canonical clone refresh.
