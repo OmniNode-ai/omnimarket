@@ -70,3 +70,10 @@ dod_evidence:
   - check_type: command
     check_value: grep -c '^node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"$' pyproject.toml
     cwd: .
+- id: dod-omn21835-deploy-node-in-pr-files
+  description: Deploy probe reads the pull request's changed-file list from the GitHub API and requires the node's contract.yaml and the pyproject.toml entry-point registration to be in it, so it goes red if the node is not part of the change the runtime would load.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api repos/OmniNode-ai/omnimarket/pulls/4734/files --paginate --jq '.[].filename' | grep -c '^src/omnimarket/nodes/node_ilo_redfish_effect/contract.yaml$'
+    cwd: .
