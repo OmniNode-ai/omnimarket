@@ -1,10 +1,10 @@
 # ruff: noqa: SIM115, T201
+import os
+
 import yaml
 
-src = "/app/config/delegation/routing_tiers.yaml"
-d = yaml.safe_load(open(src))
+d = yaml.safe_load(open("/app/config/delegation/routing_tiers.yaml"))
 d["tiers"] = [t for t in d["tiers"] if t["name"] == "local"]
 print([t["name"] for t in d["tiers"]], [k for k in d if k != "tiers"])
-yaml.safe_dump(
-    d, open("/tmp/omn20032/routing_tiers_local_only.yaml", "w"), sort_keys=False
-)
+out = f"{os.environ['OMN20032_WORK_DIR']}/routing_tiers_local_only.yaml"
+yaml.safe_dump(d, open(out, "w"), sort_keys=False)
