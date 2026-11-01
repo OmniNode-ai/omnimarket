@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -32,6 +33,11 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_section,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_projection_live_events.handlers.handler_live_events import (
     KNOWN_PROJECTION_TABLES,
     HandlerLiveEventsProjectionRunner,
@@ -41,8 +47,17 @@ from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_li
 )
 from omnimarket.projection.runner import MessageMeta
 
-LIVE_EVENTS_TOPIC = "onex.snapshot.projection.live-events.v1"
-NODE_HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"
+_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def _topic(topics: tuple[str, ...], name: str) -> str:
+    """The one topic of *topics* the node contract declares for event *name*."""
+    (topic,) = (t for t in topics if f".{name}." in t)
+    return topic
+
+
+LIVE_EVENTS_TOPIC = _topic(contract_publish_topics(_CONTRACT), "live-events")
+NODE_HEARTBEAT_TOPIC = _topic(contract_subscribe_topics(_CONTRACT), "node-heartbeat")
 
 
 def _mock_db_returning(row: dict[str, Any]) -> Any:
@@ -158,9 +173,24 @@ class TestHandlerLiveEventsProjectionRunnerHandleShim:
         assert ok is True
 
 
-DELEGATE_SKILL_TOPIC = "onex.cmd.omnimarket.delegate-skill.v1"
-DELEGATION_REQUEST_TOPIC = "onex.cmd.omnibase-infra.delegation-request.v1"
-LIVE_EVENTS_DLQ_TOPIC = "onex.dlq.omnimarket.projection-live-events-malformed.v1"
+DELEGATE_SKILL_TOPIC = _topic(contract_subscribe_topics(_CONTRACT), "delegate-skill")
+DELEGATION_REQUEST_TOPIC = _topic(
+    contract_subscribe_topics(_CONTRACT), "delegation-request"
+)
+
+
+def _dlq_topic() -> str:
+    topics = contract_section(_CONTRACT, "event_bus", "dlq_topics")
+    if (
+        not isinstance(topics, list)
+        or len(topics) != 1
+        or not isinstance(topics[0], str)
+    ):
+        raise ValueError(f"{_CONTRACT}: event_bus.dlq_topics must hold one topic")
+    return topics[0]
+
+
+LIVE_EVENTS_DLQ_TOPIC = _dlq_topic()
 
 
 class _RecordingConsumer:
