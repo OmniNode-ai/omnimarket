@@ -232,3 +232,14 @@ externally_consumed_topics:
   - onex.evt.omnimarket.session-orchestrator-completed.v1
   # consumed off-graph by omnimarket/src/omnimarket/nodes/node_session_orchestrator/consumer.py
   - onex.evt.omnimarket.session-orchestrator-failed.v1
+
+timeouts:
+  pr_list_timeout_seconds: 30  # Bounds the gh pr list probe.
+  postgres_probe_timeout_seconds: 10  # Bounds the ssh psql probe.
+  golden_chain_timeout_seconds: 60  # Bounds the golden chain sweep run.
+  docker_ps_timeout_seconds: 15  # Bounds the ssh docker ps probe.
+  plugin_list_timeout_seconds: 15  # Bounds the claude plugin list probe.
+  deploy_agent_probe_timeout_seconds: 15  # Bounds the ssh deploy-agent probe.
+  redpanda_health_timeout_seconds: 20  # Bounds the ssh redpanda health probe.
+  git_rev_list_timeout_seconds: 10  # Bounds each git rev-list count.
+  linear_graphql_timeout_seconds: 15  # Bounds each Linear GraphQL request.

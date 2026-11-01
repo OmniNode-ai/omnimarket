@@ -15,6 +15,7 @@ import yaml
 from omnimarket.models.model_metering_summary_refresh_requested import (
     ModelMeteringSummaryRefreshRequested,
 )
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_metering_summary import (
     ModelMeteringSummaryFoldRequest,
     ModelMeteringSummaryRow,
@@ -27,7 +28,10 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projecti
     HandlerProjectionMeteringSummary,
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 from omnimarket.projection.tenant_isolation import resolve_write_tenant
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
@@ -98,7 +102,7 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         # share no required field, so the shape names the command.
         return "refresh_id" in data and "records" not in data
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         # The in-process dispatch hands the handler the envelope's own context
         # beside the payload, and the set it adds is not closed: on the dev lane
         # it also carried `_db`, `_event_type`, `_envelope_id` and
@@ -109,15 +113,15 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         # the prefix, not a name list, is what separates context from payload.
         data = {
             k: v
-            for k, v in input_data.items()
+            for k, v in request.payload.items()
             if k not in {"_topic", "_partition", "_offset", "_fallback_id"}
             and not k.startswith("_")
         }
-        if self._is_store_refresh(input_data.get("_topic"), data):
+        if self._is_store_refresh(request.topic, data):
             refresh = ModelMeteringSummaryRefreshRequested.model_validate(data)
             return asyncio.run(self._refresh_one_message(refresh))
-        request = ModelMeteringSummaryFoldRequest.model_validate(data)
-        return asyncio.run(self._project_one_message(request))
+        fold_request = ModelMeteringSummaryFoldRequest.model_validate(data)
+        return asyncio.run(self._project_one_message(fold_request))
 
     async def _project_one_message(
         self, request: ModelMeteringSummaryFoldRequest
