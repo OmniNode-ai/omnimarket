@@ -450,6 +450,15 @@ handler_execution_budget:
 consume_concurrency:
   max_in_flight_records: 8
 
+# OMN-21325: the largest prompt, in UTF-8 bytes, a delegate-skill request may
+# carry. A larger request is refused before any model call with a failed
+# terminal (terminal_failure_cause refused_before_dispatch, error_message
+# prompt_exceeds_size_bound). The handler enforces it, so the in-process port
+# and the deployed consumer refuse the same request. 262144 is 256 KiB; the
+# eval case P8 was 300027 bytes (62291 input tokens) and ran to completion.
+prompt_size_bound:
+  max_prompt_bytes: 262144
+
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH
     required: false
