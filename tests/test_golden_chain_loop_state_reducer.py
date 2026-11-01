@@ -28,6 +28,9 @@ from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_intent imp
 from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_state import (
     ModelBuildLoopState,
 )
+from omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_request import (
+    ModelLoopStateReduceRequest,
+)
 
 CMD_TOPIC = "onex.cmd.omnimarket.loop-state-reduce.v1"
 COMPLETED_TOPIC = "onex.evt.omnimarket.loop-state-reduced.v1"
@@ -211,7 +214,9 @@ class TestLoopStateReducerGoldenChain:
 
         async def on_command(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
-            result = handler.handle(payload)
+            result = handler.handle(
+                ModelLoopStateReduceRequest.model_validate(payload)
+            ).model_dump(mode="json")
             completed_events.append(result)
             await event_bus.publish(
                 COMPLETED_TOPIC,

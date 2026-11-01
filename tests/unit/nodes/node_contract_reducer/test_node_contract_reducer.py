@@ -6,12 +6,17 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_contract_reducer.handlers import handler_contract_reducer
 from omnimarket.nodes.node_contract_reducer.handlers.handler_contract_reducer import (
     HandlerContractReducer,
+)
+from omnimarket.nodes.node_contract_reducer.models.model_reducer_input import (
+    ModelReducerInput,
 )
 from omnimarket.nodes.node_contract_reducer.models.model_reducer_result import (
     ModelReducerResult,
@@ -194,27 +199,27 @@ class TestHandleWrapper:
     def test_handle_returns_dict(self) -> None:
         h = HandlerContractReducer()
         out = h.handle(
-            {
-                "current_state": {"current_step": "step_a"},
-                "user_response": "ok",
-                "contract_transitions": LINEAR_TRANSITIONS,
-            }
+            ModelReducerInput(
+                current_state={"current_step": "step_a"},
+                user_response="ok",
+                contract_transitions=LINEAR_TRANSITIONS,
+            )
         )
-        assert isinstance(out, dict)
-        assert out["next_step"] == "step_b"
-        assert out["is_terminal"] is False
+        assert isinstance(out, ModelReducerResult)
+        assert out.next_step == "step_b"
+        assert out.is_terminal is False
 
     def test_handle_result_matches_reduce(self) -> None:
         h = HandlerContractReducer()
         direct = h.reduce({"current_step": "step_c"}, "ok", LINEAR_TRANSITIONS)
         via_handle = h.handle(
-            {
-                "current_state": {"current_step": "step_c"},
-                "user_response": "ok",
-                "contract_transitions": LINEAR_TRANSITIONS,
-            }
+            ModelReducerInput(
+                current_state={"current_step": "step_c"},
+                user_response="ok",
+                contract_transitions=LINEAR_TRANSITIONS,
+            )
         )
-        assert via_handle == direct.model_dump(mode="json")
+        assert via_handle == direct
 
 
 # ---------------------------------------------------------------------------
@@ -243,3 +248,23 @@ class TestReducerIsPure:
         h = HandlerContractReducer()
         result = h.reduce({"current_step": "step_a"}, "ok", LINEAR_TRANSITIONS)
         assert isinstance(result, ModelReducerResult)
+
+
+class TestContractFsm:
+    """The contract's lifecycle FSM names the states a reduction moves through."""
+
+    def test_a_reduction_request_moves_idle_to_reduced(self) -> None:
+        contract_path = (
+            Path(handler_contract_reducer.__file__).resolve().parents[1]
+            / "contract.yaml"
+        )
+        fsm = yaml.safe_load(contract_path.read_text(encoding="utf-8"))["state_machine"]
+        request = next(
+            t
+            for t in fsm["transitions"]
+            if t["transition_name"] == "idle_to_reduced_on_contract_reducer_request"
+        )
+        assert fsm["initial_state"] == "idle"
+        assert request["from_state"] == "idle"
+        assert request["to_state"] == "reduced"
+        assert fsm["terminal_states"] == ["failed"]

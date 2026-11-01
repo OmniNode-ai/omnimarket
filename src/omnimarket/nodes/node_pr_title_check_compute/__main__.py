@@ -9,8 +9,8 @@ import sys
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_pr_title_check_compute.handlers.handler_pr_title_check import (
-    HandlerPrTitleCheck,
+from omnimarket.nodes.node_pr_title_check_compute.container import (
+    container_pr_title_check_compute,
 )
 from omnimarket.nodes.node_pr_title_check_compute.models.model_pr_title_check import (
     ModelPrTitleCheckRequest,
@@ -25,7 +25,9 @@ def main() -> int:
         sys.stderr.write(f"PR_TITLE_CHECK_BAD_REQUEST:{exc}\n")
         return 2
 
-    result = HandlerPrTitleCheck().handle(request)
+    result = container_pr_title_check_compute.build_handler_pr_title_check().handle(
+        request
+    )
     for line in result.output_lines:
         sys.stdout.write(line + "\n")
     return result.exit_code

@@ -28,6 +28,9 @@ from omnimarket.models.context_pack_render.model_context_pack_render_message imp
 from omnimarket.models.model_session_stream_barrier import (
     ModelSessionStreamBarrierProbe,
 )
+from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+    create_handler_context_compaction_orchestrator,
+)
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers import (
     handler_context_compaction_orchestrator as handler_module,
 )
@@ -39,9 +42,6 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers.compaction_r
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_compaction_pack_build import (
     build_pack_command,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
-    HandlerContextCompactionOrchestrator,
 )
 
 from .test_session_barrier_wait import BARRIER, _request, _Source
@@ -140,7 +140,9 @@ def test_compaction_pack_build_barrier_no_arg_binding(monkeypatch):
     assert binding.barrier_poll_interval_s == 0.5
     monkeypatch.delenv("ONEX_CONTEXT_SOURCE_TENANT_ID")
     assert load_compaction_runtime_binding().tenant_id is None
-    result = HandlerContextCompactionOrchestrator().handle(_request(barrier_id=None))
+    result = create_handler_context_compaction_orchestrator().handle(
+        _request(barrier_id=None)
+    )
     assert (
         result.fallback.failure_class
         == EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
@@ -197,7 +199,7 @@ def test_compaction_pack_build_barrier_no_arg_resolves_lazily_once(
     monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
     bus = compaction_bus(_PackOrchestrator())
     source = _Source([_probe((1, 2, 3), (1, 2, 3))])
-    handler = HandlerContextCompactionOrchestrator(
+    handler = create_handler_context_compaction_orchestrator(
         event_publisher=bus.publisher,
         event_consumer=bus.consumer,
         barrier_probe_source=source,
@@ -239,7 +241,7 @@ def test_compaction_pack_build_barrier_no_default_bypass(
 ):
     monkeypatch.delenv("OMNINODE_INTERNAL_DB_URL", raising=False)
     bus = compaction_bus(_PackOrchestrator())
-    handler = HandlerContextCompactionOrchestrator(
+    handler = create_handler_context_compaction_orchestrator(
         bus.publisher, bus.consumer, binding=_binding()
     )
     assert handler._barrier_wait is not None

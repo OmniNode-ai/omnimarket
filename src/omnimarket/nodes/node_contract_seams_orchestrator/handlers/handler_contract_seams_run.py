@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.contracts.model_contract_workflow_definition import (
     ModelContractWorkflowDefinition,
 )
@@ -33,6 +32,9 @@ from omnibase_core.models.validation.model_contract_walk_report import (
 from pydantic import JsonValue
 
 from omnimarket.models.contract_seams_design import ModelContractSeamsDesign
+from omnimarket.nodes.node_contract_seams_orchestrator.container.container_inmemory import (
+    bind_event_bus,
+)
 from omnimarket.nodes.node_contract_seams_orchestrator.emit_contracts import (
     ModelEmitConfig,
     ModelEmittedContract,
@@ -192,9 +194,7 @@ class HandlerContractSeamsRun:
         bus: ProtocolContractSeamsBus = (
             self._bus
             if self._bus is not None
-            else EventBusInmemory(
-                environment="contract-seams", group=self._config.drive_consumer_group
-            )
+            else bind_event_bus(group=self._config.drive_consumer_group)
         )
         await bus.start()
         state = _RunState(request=request, bus=bus, runner=HandlerContractNodeStep(bus))
