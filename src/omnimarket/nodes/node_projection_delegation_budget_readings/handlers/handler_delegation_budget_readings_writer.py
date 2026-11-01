@@ -19,6 +19,7 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_delegation_budget_readings.handlers.handler_projection_delegation_budget_readings import (
     HandlerProjectionDelegationBudgetReadings,
 )
@@ -137,17 +138,13 @@ class DelegationBudgetReadingsProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         topics = self.subscribe_topics
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
+        return asyncio.run(
+            self._project_one_message({**request.payload, "_topic": topic}, meta)
         )
-        return asyncio.run(self._project_one_message({**data, "_topic": topic}, meta))
 
     async def _project_one_message(
         self, data: dict[str, Any], meta: MessageMeta
