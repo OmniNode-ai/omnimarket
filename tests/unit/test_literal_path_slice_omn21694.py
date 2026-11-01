@@ -20,8 +20,20 @@ BENCH = REPO / "benchmarks" / "delegation_false_pass_growth"
 WORK_DIR_SETTING = "OMN20032_WORK_DIR"
 
 # The pattern of the contracts_and_di literal_path rule.
+_PATH_ROOTS = (
+    "Users",
+    "Volumes",
+    "home",
+    "opt",
+    "srv",
+    "var",
+    "etc",
+    "private",
+    "tmp",
+    "mnt",
+)
 LITERAL_PATH = re.compile(
-    r"^(?:/Users/|/Volumes/|/home/|/opt/|/srv/|/var/|/etc/|/private/|/tmp/|/mnt/|~/)\S*$"
+    "^(?:" + "|".join(f"/{root}/" for root in _PATH_ROOTS) + r"|~/)\S*$"
 )
 
 BENCH_SCRIPTS = [
