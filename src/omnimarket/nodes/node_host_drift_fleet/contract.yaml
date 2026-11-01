@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_fleet
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read fleet heartbeat and resolution history with stable groups per host,
+  then fold a persisted fleet projection.
+input_model:
+  name: ModelHostDriftFleetRequest
+  module: omnimarket.nodes.node_host_drift_fleet.models.model_host_drift_fleet_request
+output_model:
+  name: ModelHostDriftFleetResult
+  module: omnimarket.nodes.node_host_drift_fleet.models.model_host_drift_fleet_result
+handler:
+  module: omnimarket.nodes.node_host_drift_fleet.handlers.handler_host_drift_fleet
+  class: HandlerHostDriftFleet
+  input_model: omnimarket.nodes.node_host_drift_fleet.models.ModelHostDriftFleetRequest
+  output_model: omnimarket.nodes.node_host_drift_fleet.models.ModelHostDriftFleetResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_drift_fleet.handlers.handler_host_drift_fleet:HandlerHostDriftFleet
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerHostDriftFleet
+      module: omnimarket.nodes.node_host_drift_fleet.handlers.handler_host_drift_fleet
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnibase-internal.host-drift-heartbeat.v1
+  - onex.evt.omnibase-internal.host-drift-resolved.v1
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with injected bus, clock and state store.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 60000
+replay:
+  deterministic: true
+  description: Replay discards the previous projection and reuses the same consumer
+    group. Earliest applies only when committed offsets are absent.
+metadata:
+  transport_type: kafka
+  description: Read fleet heartbeat and resolution history with stable groups per
+    host, then fold a persisted fleet projection.
+  created: '2026-10-31'
+  tags:
+  - effect
+  - host-drift-fleet
+  - OMN-21867
+  related_tickets:
+  - OMN-21867
+caller_subscription:
+  mode: stable_group_per_host
+  group_id_template: '{prefix}.{host}'
+  auto_offset_reset: earliest
+externally_produced_topics:
+  - topic: onex.evt.omnibase-internal.host-drift-heartbeat.v1
+    producer: the scheduled host drift check on each host, run by the host's own timer, not a node contract in this package
+  - topic: onex.evt.omnibase-internal.host-drift-resolved.v1
+    producer: the scheduled host drift check on each host, run by the host's own timer, not a node contract in this package

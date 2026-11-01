@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-21867
+title: The host_drift_fleet drift effect moves to omnimarket as a contract-driven node that reads with one stable group per host
+summary: The host drift fleet reader minted a new consumer group on every replay (a 12-hex uuid in the group id). The fleet read and fold now live in omnimarket as node_host_drift_fleet, which reads with one stable group per host built from an overlay prefix and the host key, and the old entry point is left untouched until the new node runs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21867-fleet-node
+    statement: omnimarket carries a contract-driven host drift fleet node that reads with one stable consumer group per host.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket carries node_host_drift_fleet with a contract.yaml, an overlay for host-specific values, injected dependencies and typed models, and no host name or path in code -- falsifier: uv run pytest -k host_drift_fleet_contract in omnimarket, red when the contract or overlay is missing or a host literal appears in the handler'
+      - id: AC2
+        statement: 'AC2: a replay reads with an ungrouped subscription or one stable group id per host -- falsifier: uv run pytest -k groups_per_call in omnimarket, red on a handler that mints a group per replay and green on the fix'
+      - id: AC3
+        statement: 'AC3: N replays create at most one consumer group per host, proven on the in-memory bus and on Redpanda -- falsifier: uv run pytest -k host_drift_fleet_replays in omnimarket, the Redpanda case counting groups with the admin client before and after 20 replays'
+      - id: AC4
+        statement: 'AC4: the superseded launchd drift entry point is unchanged by the PR and the PR body names the retirement step -- falsifier: git diff --stat origin/main in the repository that holds it is empty for the lane, and uv run pytest -k host_drift_fleet_contract passes'
+evidence_requirements:
+  - kind: tests
+    description: The node suite runs on a lab host at the pushed head, the Redpanda case against a lab broker.
+    command: uv run pytest tests/nodes/node_host_drift_fleet -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21867-ac1-contract
+    description: AC1 checks the contract, the overlay example, the typed models and a source scan for host and topic literals.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_host_drift_fleet -k host_drift_fleet_contract -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21867-ac2-groups-per-call
+    description: AC2 records every consumer group a replay subscribes with and asserts one stable id per host; a handler that mints a group per replay fails it.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_host_drift_fleet -k groups_per_call -m "not kafka" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21867-ac3-replays
+    description: AC3 runs twenty replays per host on the in-memory bus; the Redpanda case counts groups with the admin client before and after.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_host_drift_fleet -k host_drift_fleet_replays -m "not kafka" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21867-ac4-entry-point
+    description: AC4 leaves the superseded entry point's repository untouched; this PR changes only omnimarket, and the contract test passes.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_host_drift_fleet -k host_drift_fleet_contract -q --no-cov --tb=line
+        cwd: .
