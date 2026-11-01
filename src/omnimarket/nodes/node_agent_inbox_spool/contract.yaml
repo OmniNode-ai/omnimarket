@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_inbox_spool
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read the work-ledger MSG events with one stable consumer group per host
+  and write a local spool entry and an unread marker for each addressed lane.
+input_model:
+  name: ModelAgentInboxSpoolRequest
+  module: omnimarket.nodes.node_agent_inbox_spool.models.model_agent_inbox_spool_request
+output_model:
+  name: ModelAgentInboxSpoolResult
+  module: omnimarket.nodes.node_agent_inbox_spool.models.model_agent_inbox_spool_result
+handler:
+  module: omnimarket.nodes.node_agent_inbox_spool.handlers.handler_agent_inbox_spool
+  class: HandlerAgentInboxSpool
+  input_model: omnimarket.nodes.node_agent_inbox_spool.models.ModelAgentInboxSpoolRequest
+  output_model: omnimarket.nodes.node_agent_inbox_spool.models.ModelAgentInboxSpoolResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with an injected bus and clock.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 60000
+replay:
+  deterministic: true
+  description: A replay reuses the same consumer group and skips every row id already
+    spooled or delivered, so it never raises an unread marker twice.
+metadata:
+  transport_type: kafka
+  description: Read the work-ledger MSG events with one stable consumer group per host
+    and write a local spool entry and an unread marker for each addressed lane.
+  created: '2026-11-01'
+  tags:
+  - effect
+  - agent-inbox-spool
+  - OMN-21902
+  related_tickets:
+  - OMN-21902
+caller_subscription:
+  mode: stable_group_per_host
+  topics:
+  - onex.evt.omnimarket.work-ledger-msg.v2
+  group_id_template: '{prefix}-{host}'
+  auto_offset_reset: earliest

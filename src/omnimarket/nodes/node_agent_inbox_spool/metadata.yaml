@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_inbox_spool
+version: 1.0.0
+description: Read the work-ledger MSG events with one stable consumer group per host
+  and write a local spool entry and an unread marker for each addressed lane.
+pack: distributed_validation
+node_role: effect
+display_name: Agent Inbox Spool
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_agent_inbox_spool: omnimarket.nodes.node_agent_inbox_spool
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+- omnibase_infra
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- agent-inbox-spool
