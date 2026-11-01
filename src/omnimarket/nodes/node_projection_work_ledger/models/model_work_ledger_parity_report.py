@@ -31,6 +31,10 @@ class ModelParityMismatch(BaseModel):
         ..., description="row_id for row mismatches, entity_key for state."
     )
     detail: str = ""
+    row_type: str | None = Field(
+        default=None,
+        description="Row type (STATUS, HOLD, ...) of a row-level mismatch; None for a state mismatch or a row whose type cannot be read (OMN-21885).",
+    )
 
 
 class EnumParityLossClass(StrEnum):
@@ -94,6 +98,10 @@ class ModelWorkLedgerParityReport(BaseModel):
         ..., description="Canonical rows in the file within the window."
     )
     projection_rows: int
+    file_rows_by_kind: dict[str, int] = Field(
+        default_factory=dict,
+        description="Canonical rows in the file within the window per row type (OMN-21885).",
+    )
     unemittable_rows: int = Field(
         ..., description="File rows with a legacy or tool-internal type, never emitted."
     )
