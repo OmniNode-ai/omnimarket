@@ -28,7 +28,11 @@ import subprocess
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 logger = logging.getLogger(__name__)
+
+_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")
 
 _DOCSTRING_PARENTS = (
     ast.Module,
@@ -103,7 +107,7 @@ class DocstringCommentDiffClassifier:
                 ["git", "-C", str(worktree), "merge-base", self._base_ref, "HEAD"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=_TIMEOUTS.get("git_probe_s"),
             )
             if merge_base.returncode != 0:
                 logger.debug(
@@ -118,7 +122,7 @@ class DocstringCommentDiffClassifier:
                     ["git", "-C", str(worktree), "show", f"{base_sha}:{rel_path}"],
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=_TIMEOUTS.get("git_probe_s"),
                 )
                 if show.returncode != 0:
                     # New file — nothing to compare against; not document-class.
