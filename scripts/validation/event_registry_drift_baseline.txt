@@ -92,24 +92,6 @@ event_registry_only work.obligation.abandoned
 # have suppressed a live, correct registration on every host to silence one
 # host's stale checkout.
 
-# --- OMN-19550 full-content capture: omnimarket lands first ----------------
-# content.captured is added here first because omniclaude cannot mirror it
-# until it exists on omnimarket dev: omniclaude's registry-consistency job
-# checks its EVENT_REGISTRY and its capture-contract mirror against a fresh
-# omnimarket@dev checkout. The hook half (OMN-19551) adds the event to
-# EVENT_REGISTRY and TopicBase; once it is on omniclaude dev these two lines
-# are stale and are deleted.
-registry_only onex.cmd.omniintelligence.content-captured.v1
-event_registry_only content.captured
-# --- OMN-19513 all-hooks capture: omnimarket lands first -------------------
-# hook.event and its topic are added here first for the same reason as the
-# OMN-19550 block above: omniclaude's registry-consistency job checks its
-# EVENT_REGISTRY against a fresh omnimarket@dev checkout. The omniclaude
-# producer PR adds the event to EVENT_REGISTRY and TopicBase; once it is on
-# omniclaude dev these two lines are stale and are deleted.
-registry_only onex.evt.omniclaude.hook-event.v1
-event_registry_only hook.event
-
 # --- OMN-19513 work-ledger row events -----------------------------------------
 # Emit-daemon-only BY DESIGN, like the work-obligation events above: the emitters
 # are the onex-ledger dual write and the ledger-emit skill, not a Claude Code
@@ -160,3 +142,13 @@ event_registry_only delegate_skill.failed
 # registration to mirror. Shrinks if a hook ever constructs one; never grows.
 registry_only onex.evt.omnimarket.delegation-disposition-recorded.v1
 event_registry_only delegation.disposition_recorded
+
+# --- OMN-21320: delegation run steps -------------------------------------------
+# Emit-only BY DESIGN, like the OMN-20012 dispositions above: the producer is the
+# delegate-skill run-step recorder publishing through node_event_emit_effect,
+# never a Claude Code hook, so there is no hook-side registration to mirror.
+# Shrinks if a hook ever constructs one; never grows. The stale OMN-19550 and
+# OMN-19513 blocks are deleted in the same change, as their own comments direct
+# (omniclaude's pinned revision now declares both events), so the list shrinks.
+registry_only onex.evt.omnimarket.delegation-run-step.v1
+event_registry_only delegation.run_step
