@@ -440,6 +440,7 @@ node_topic_activity_sampler_effect = "omnimarket.nodes.node_topic_activity_sampl
 node_dead_letter_prune_effect = "omnimarket.nodes.node_dead_letter_prune_effect"
 node_consumer_flow_prune_effect = "omnimarket.nodes.node_consumer_flow_prune_effect"
 node_prune_binding_effect = "omnimarket.nodes.node_prune_binding_effect"
+node_branch_prune_effect = "omnimarket.nodes.node_branch_prune_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
@@ -1134,6 +1135,7 @@ onex-ledger-reconcile = "omnimarket.nodes.node_ledger_reconcile_orchestrator.__m
 onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_effect.runtime_lab_secret_store_override_cli:main"
 onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main"
 onex-claude-pool-refill = "omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill:main"
+onex-branch-prune = "omnimarket.nodes.node_branch_prune_effect.runtime_branch_prune_cli:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
