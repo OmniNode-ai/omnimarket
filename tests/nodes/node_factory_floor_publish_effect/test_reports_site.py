@@ -103,6 +103,7 @@ def _request(tmp_path: Path) -> ModelReportsPublishRequest:
             remote_dir=str(tmp_path / "site"),
             serve_url="http://example.invalid:8088/",
             bus_lane="lane-x",
+            history_root=str(tmp_path / "kept"),
         ),
         now=NOW,
     )
@@ -286,7 +287,8 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
     overlay = tmp_path / "overlay.yaml"
     overlay.write_text(
         f"ssh_target: lab-web\nremote_dir: {tmp_path / 'site'}\n"
-        "serve_url: http://example.invalid:8088/\nbus_lane: lane-x\n",
+        "serve_url: http://example.invalid:8088/\nbus_lane: lane-x\n"
+        f"history_root: {tmp_path / 'kept'}\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY", str(overlay))
