@@ -909,6 +909,20 @@ events:
     partition_key_field: delegation_correlation_id
     required_fields: [tenant_id, delegation_correlation_id, disposition, reason_code, caller_lane, artifact_kind, recorded_at, disposition_id]
 
+  # OMN-21320: one numbered step of a delegation run, published by the
+  # delegate-skill run-step recorder and consumed by node_projection_run_trace.
+  # The topic is the orchestrator contract's runtime_dispatch.run_step_event.
+  # No transform: a step carries ids, enums, timings and a short reason, never
+  # the prompt or the answer. Keyed on the run's correlation so one run's steps
+  # stay ordered.
+  delegation.run_step:
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegation-run-step.v1"
+        tier: telemetry
+        description: "One numbered step of a delegation run, for the run-trace projection"
+    partition_key_field: correlation_id
+    required_fields: [tenant_id, correlation_id, step_sequence, step_kind, started_at, outcome]
+
   # OMN-20001: strict core event envelopes; v1 retains its legacy body.
   work.ledger.typed.claim:
     fan_out:

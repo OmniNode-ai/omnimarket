@@ -38,5 +38,5 @@ for name, (coder, heavy) in {
     "dev.local202": (a, b),
     "dev.local202b": (b, b),
 }.items():
-    with open(f"/tmp/omn20032/{name}.bifrost.yaml", "w") as fh:
+    with open(f"{os.environ['OMN20032_WORK_DIR']}/{name}.bifrost.yaml", "w") as fh:
         yaml.safe_dump(overlay(coder, heavy), fh, sort_keys=False)
