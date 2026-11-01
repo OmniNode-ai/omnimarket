@@ -53,11 +53,20 @@ dod_evidence:
           assert not findings, findings
           '
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21801-cloud-ci"
-    description: "Cloud lane: the hosted CI of the PR at its head is the evidence in place of a lab receipt (lab_exempt_paths cloud_ci rules)."
+  - id: "dod-omn21801-lab-tests"
+    description: "The timeout and guard regression tests run on the checked-out code, including constructor injection, team-page truncation and receipt-gated completion. The landing worker also runs this selection on the lab host."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
-      - check_type: "command"
-        check_value: "test -s contracts/OMN-21801.yaml"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_omn21801_linear_triage_timeouts.py tests/nodes/node_linear_triage/test_omn_16536_demotion_ratchet.py tests/test_omn_15373_no_ungated_linear_done_policy.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21801-hosted-timeout-deploy-readback"
+    description: "Hosted source readback of the owning node contract at the checked-out commit, reachable from the hosted runner without credentials or a lab network. All six former timeout values must be present; the pre-change contract has none. This verifies the published source, not a service rollout."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --max-time 20 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_linear_triage/contract.yaml" | uv run --frozen python -c "import sys, yaml; actual = yaml.safe_load(sys.stdin).get(\"timeouts\"); expected = dict(linear_graphql_timeout_seconds=30.0, github_rest_timeout_seconds=30.0, github_graphql_timeout_seconds=30.0, occ_git_timeout_seconds=15.0, dod_verify_timeout_seconds=300.0, local_git_timeout_seconds=60.0); print(actual); assert actual == expected, (actual, expected)"'
+        cwd: "."

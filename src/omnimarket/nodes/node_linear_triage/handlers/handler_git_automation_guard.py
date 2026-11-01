@@ -34,7 +34,9 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
+    LinearHttpClient,
+)
 from omnimarket.nodes.node_linear_triage.models.model_git_automation_guard import (
     ModelGitAutomationAuditReport,
     ModelGitAutomationException,
@@ -45,8 +47,6 @@ from omnimarket.nodes.node_linear_triage.services.git_automation_guard import (
 )
 
 _log = logging.getLogger(__name__)
-
-_TIMEOUTS = load_node_timeouts("node_linear_triage")
 
 # Page sizes are deliberately small: Linear rejects the nested
 # teams -> gitAutomationStates -> state query above a complexity budget of
@@ -85,16 +85,8 @@ class GitAutomationProbe(Protocol):
     def fetch(self) -> dict[str, Any]: ...
 
 
-class LinearGitAutomationProbe:
+class LinearGitAutomationProbe(LinearHttpClient):
     """Live probe against the Linear GraphQL API. The only networked class here."""
-
-    def __init__(self, api_key: str, *, timeout: float | None = None) -> None:
-        self._api_key = api_key
-        self._timeout = (
-            timeout
-            if timeout is not None
-            else _TIMEOUTS.get("linear_graphql_timeout_seconds")
-        )
 
     def fetch(self) -> dict[str, Any]:
         payload = json.dumps({"query": _QUERY}).encode()
