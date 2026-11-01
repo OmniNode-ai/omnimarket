@@ -13,8 +13,8 @@ from uuid import uuid4
 
 import pytest
 from click.testing import CliRunner
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus, event_type_for
 from omnimarket.delegated_test_loop.lane_bus import BusKind
