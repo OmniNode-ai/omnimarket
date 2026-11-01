@@ -33,12 +33,14 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.projection.handler_shim import (
     INJECTED_OFFSET_KEY,
     INJECTED_PARTITION_KEY,
     PENDING_UPSTREAM_INJECTED_KEYS,
     RUNTIME_INJECTED_KEYS,
 )
+from omnimarket.projection.runner import BaseProjectionRunner
 
 pytestmark = pytest.mark.unit
 
@@ -76,15 +78,27 @@ def test_the_walk_finds_the_writers_at_all() -> None:
 
 
 def test_every_inprocess_writer_reads_both_source_coordinates() -> None:
-    """The reader contract, asserted on source rather than by running Kafka.
+    """The reader contract, asserted on structure rather than by running Kafka.
 
-    Each writer's synchronous entry pops both keys out of the injected dict.
-    A writer that stopped doing so would publish fixed coordinates again and
-    re-enter the first-writer-wins failure, silently.
+    A projection runner has no ``handle`` of its own: the one synchronous entry
+    is ``BaseProjectionRunner.handle``, which splits the injected dict through
+    ``ModelProjectionRequest.from_injected``. So the guard is that no
+    runner overrides that entry (a runner that did could stop reading the keys
+    and publish fixed coordinates again, silently re-entering the
+    first-writer-wins failure), and that the split itself carries both keys.
+    A writer that is not a projection runner keeps its own ``handle``, and its
+    source must still read both keys.
     """
     import inspect
 
     for writer in _inprocess_writers():
+        if issubclass(writer, BaseProjectionRunner):
+            assert "handle" not in vars(writer), (
+                f"{writer.__name__} overrides handle; the coordinates are read "
+                "once, in BaseProjectionRunner.handle, and an override can drop them"
+            )
+            assert writer.handle is BaseProjectionRunner.handle
+            continue
         source = inspect.getsource(writer.handle)
         assert INJECTED_PARTITION_KEY in source, (
             f"{writer.__name__}.handle does not read {INJECTED_PARTITION_KEY!r}; "
@@ -95,6 +109,21 @@ def test_every_inprocess_writer_reads_both_source_coordinates() -> None:
             "its deltas would carry a fixed offset and every one after the "
             "first for a given key would be dropped as a replay"
         )
+
+
+def test_the_shared_split_reads_both_source_coordinates() -> None:
+    """The single reader every projection runner shares carries both keys."""
+    request = ModelProjectionRequest.from_injected(
+        {
+            "_topic": "t",
+            INJECTED_PARTITION_KEY: 3,
+            INJECTED_OFFSET_KEY: 4242,
+            "field": "kept",
+        }
+    )
+    assert (request.partition, request.offset) == (3, 4242)
+    assert request.has_coordinates
+    assert request.payload == {"field": "kept"}
 
 
 def test_a_writer_stamps_the_injected_coordinates_onto_its_meta() -> None:
