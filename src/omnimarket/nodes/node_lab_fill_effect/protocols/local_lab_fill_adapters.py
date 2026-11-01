@@ -210,6 +210,25 @@ class LocalLedgerReader:
             raise LabFillPortError(f"ledger unreadable: {exc}") from exc
         return None
 
+    def newest_cloud_claim(self, ledger_path: str) -> str | None:
+        """The timestamp of the newest CLAIM row carrying a ``host=cloud`` cell (OMN-21881)."""
+        path = Path(os.path.expandvars(ledger_path))
+        newest: str | None = None
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    cells = [c.strip() for c in line.split("|")]
+                    if (
+                        len(cells) > 2
+                        and cells[1] == "CLAIM"
+                        and "host=cloud" in cells
+                        and (newest is None or cells[0] > newest)
+                    ):
+                        newest = cells[0]
+        except OSError as exc:
+            raise LabFillPortError(f"ledger unreadable: {exc}") from exc
+        return newest
+
 
 class LocalApprovedWork:
     """The declared approved-work list (version 1): its depth, every row, and one row by id."""

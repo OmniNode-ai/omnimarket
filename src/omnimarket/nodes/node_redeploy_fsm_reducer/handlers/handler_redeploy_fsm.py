@@ -9,7 +9,7 @@ breaker. No I/O, no bus, no DB — the reducer only updates the FSM state
 projection; the orchestrator publishes the transition events over the bus.
 
 Dispatch:
-  The runtime delivers a ``ModelEventEnvelope`` whose payload is a
+  The runtime adapter unwraps the event and hands the handler the typed
   ``ModelRedeployAdvanceCommand``. The handler returns
   ``ModelHandlerOutput.for_reducer`` carrying the advanced ``ModelRedeployState``
   as its projection.
@@ -17,12 +17,9 @@ Dispatch:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
     TERMINAL_PHASES,
@@ -136,37 +133,20 @@ class HandlerRedeployFsm:
     """Pure reducer: fold one phase-advance event into the FSM state projection."""
 
     async def handle(
-        self, envelope: ModelEventEnvelope[Any]
+        self, request: ModelRedeployAdvanceCommand
     ) -> ModelHandlerOutput[None]:
         """Advance the FSM by one phase and emit the new state as a projection."""
-        command = _coerce_command(envelope.payload)
         new_state, _event = advance(
-            command.state,
-            phase_success=command.phase_success,
-            error_message=command.error_message,
+            request.state,
+            phase_success=request.phase_success,
+            error_message=request.error_message,
         )
         return ModelHandlerOutput.for_reducer(
-            input_envelope_id=envelope.envelope_id,
-            correlation_id=(
-                envelope.correlation_id or command.state.correlation_id or uuid4()
-            ),
+            input_envelope_id=uuid4(),
+            correlation_id=request.state.correlation_id,
             handler_id=HANDLER_ID,
             projections=(new_state,),
         )
-
-
-def _coerce_command(payload: Any) -> ModelRedeployAdvanceCommand:
-    """Coerce the dispatched payload into a ``ModelRedeployAdvanceCommand``."""
-    if isinstance(payload, ModelRedeployAdvanceCommand):
-        return payload
-    if isinstance(payload, Mapping):
-        return ModelRedeployAdvanceCommand.model_validate(dict(payload))
-    if hasattr(payload, "model_dump"):
-        return ModelRedeployAdvanceCommand.model_validate(payload.model_dump())
-    raise TypeError(
-        f"redeploy FSM payload must be ModelRedeployAdvanceCommand or a mapping; "
-        f"got {type(payload).__name__}"
-    )
 
 
 __all__: list[str] = [

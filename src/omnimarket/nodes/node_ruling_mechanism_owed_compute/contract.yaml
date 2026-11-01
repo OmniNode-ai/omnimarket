@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ruling_mechanism_owed_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Pure compute over rolling-ledger rows. A TERMINAL with outcome blocked, failed
+  or partial on a ticket named in a mechanism-ticket= cell of a RULING (or of a
+  CORRECTION that re-points one), with no CLAIM on that ticket after the TERMINAL
+  and at least one tick elapsed, yields exactly one owed row keyed on the ticket
+  and the TERMINAL stamp. A handed-off or done TERMINAL yields none. The tick
+  time is a request field; the handler reads no clock, file or environment, and
+  ignores rows later than the tick, so a replay is identical.
+input_model:
+  name: ModelRulingMechanismOwedRequest
+  module: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed
+output_model:
+  name: ModelRulingMechanismOwedResult
+  module: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed
+handler:
+  module: omnimarket.nodes.node_ruling_mechanism_owed_compute.handlers.handler_ruling_mechanism_owed
+  class: HandlerRulingMechanismOwed
+  input_model: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed.ModelRulingMechanismOwedRequest
+  output_model: omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed.ModelRulingMechanismOwedResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ruling_mechanism_owed_compute.handlers.handler_ruling_mechanism_owed:HandlerRulingMechanismOwed
+  handlers:
+    - operation: compute_ruling_mechanism_owed
+      topic: onex.cmd.omnimarket.ruling-mechanism-owed-requested.v1
+      handler:
+        name: HandlerRulingMechanismOwed
+        module: omnimarket.nodes.node_ruling_mechanism_owed_compute.handlers.handler_ruling_mechanism_owed
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  rows: {type: list, required: true, description: "Raw ledger rows, live file and archive rolls."}
+  tick_at: {type: str, required: true, description: "Caller-supplied ISO-Z tick time; rows later than it are ignored."}
+  tick_interval_seconds: {type: int, required: false, description: "One tick, default 1800."}
+outputs:
+  tick_at: {type: str}
+  owed: {type: list, description: "One row per ticket and TERMINAL stamp: key, ticket, terminal_at, lane, outcome, blocker, rulings."}
+  awaiting_tick: {type: list, description: "Keys of unfinished TERMINALs not yet one tick old."}
+  mechanism_ticket_count: {type: int}
+terminal_event: onex.evt.omnimarket.ruling-mechanism-owed-computed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ruling-mechanism-owed-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ruling-mechanism-owed-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ruling-mechanism-owed-computed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.ruling-mechanism-owed-computed.v1
+metadata:
+  transport_type: inmemory
+  description: Owed rows for mechanism tickets abandoned after an unfinished TERMINAL
+  author: OmniNode Team
+  created: "2026-11-01"

@@ -2148,30 +2148,30 @@ jobs:
         # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
         # so safe, but red for the wrong reason.
         run: uv sync --locked
-      - name: Every changed wire payload must decode on omniclaude's pinned omnimarket commit (OMN-18868, OMN-19998)
-        # OMN-19998 (operator ruling 2026-10-16T07:34:18Z): omniclaude consumes
-        # omnimarket by a git pin on a dev commit, not by a release, so the
-        # deployed consumer is the commit omniclaude's uv.lock pins on its dev
-        # branch. That commit is graded instead of the last release tag. An
-        # unreadable pin fails closed; it never falls back to a tag.
+      - name: Every changed wire payload must decode on every pinned consumer's dev-merge tag (OMN-18868, OMN-21901)
+        # OMN-21901 (operator ruling 2026-11-01T17:05:10Z): releases are
+        # optional and internal consumers run from dev-merge tags. The baseline
+        # is the dev-merge tag each first-party consumer pins in its own
+        # pyproject.toml and uv.lock, graded pin by pin so the OLDEST pin stays
+        # the strict one. A sha, a branch, a release, an unreadable file or a
+        # tag that does not resolve fails closed; nothing falls back to a
+        # release, and the script itself refuses a consumer left out of this
+        # step (PINNED_CONSUMERS).
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
         run: |
           set -euo pipefail
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
-          lock="$(curl -fsSL --retry 3 https://raw.githubusercontent.com/OmniNode-ai/omniclaude/dev/uv.lock)"
-          pin="$(printf '%s\n' "$lock" | grep -oE 'omnimarket\.git\?rev=[0-9a-f]{40}' | head -1 | sed 's/.*rev=//')"
-          if [[ ! "$pin" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::WIRE_COMPAT_RELEASE_UNRESOLVABLE: no omnimarket commit pin found in omniclaude dev's uv.lock; the deployed consumer is unknown, so wire compatibility is unproven"
-            exit 1
-          fi
-          git cat-file -e "${pin}^{commit}" || git fetch --quiet origin "$pin"
-          echo "Consumer: omniclaude dev pins omnimarket at $pin"
+          git fetch --quiet --tags origin || true
+          pins="$(mktemp -d)"
+          consumer_dev=https://raw.githubusercontent.com/OmniNode-ai/omniclaude/dev
+          curl -fsSL --retry 3 -o "${pins}/omniclaude.pyproject.toml" "${consumer_dev}/pyproject.toml"
+          curl -fsSL --retry 3 -o "${pins}/omniclaude.uv.lock" "${consumer_dev}/uv.lock"
           uv run python scripts/ci/check_wire_compatibility.py \
             --base "origin/${BASE}" \
-            --consumer-ref "$pin" \
-            --consumer-label "omniclaude's pinned omnimarket"
+            --consumer-pyproject "omniclaude=${pins}/omniclaude.pyproject.toml" \
+            --consumer-lock "omniclaude=${pins}/omniclaude.uv.lock"
       - name: The two real-history controls must EXECUTE here (OMN-18868)
         # These two replay the OMN-18852 incident against this repository's
         # own tags, and they need what only this job's checkout has. The
@@ -4287,11 +4287,12 @@ jobs:
           sparse-checkout: |
             scripts/ci/ci_summary_gate.py
             scripts/ci/ci_summary_external_producers.json
+            scripts/ci/ci_summary_sweep_non_pr_events.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json scripts/ci/
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json .ci-summary-head/scripts/ci/ci_summary_sweep_non_pr_events.json scripts/ci/
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:
