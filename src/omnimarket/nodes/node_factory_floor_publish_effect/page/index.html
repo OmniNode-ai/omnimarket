@@ -322,7 +322,16 @@ function ageMs(iso){
   return Number.isNaN(t) ? null : Date.now() - t;
 }
 function sinceText(iso){ const ms = ageMs(iso); return ms == null ? "unread" : ageText(ms); }
-function clock(iso){ const t = Date.parse(iso); return Number.isNaN(t) ? "" : new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC"; }
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+const DAY_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {year: "numeric", month: "2-digit", day: "2-digit"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
+function localDay(ms){ const p = Object.fromEntries(DAY_FMT.formatToParts(new Date(ms)).map(x => [x.type, x.value])); return `${p.year}-${p.month}-${p.day}`; }
+// Minute counts in the record were measured when it was computed; this adds the time since, so they read against the real clock.
+let recordAt = NaN;
+function sinceRecord(){ return Number.isNaN(recordAt) ? 0 : Math.max(0, Date.now() - recordAt); }
+function liveMs(min){ return num(min) * 60000 + sinceRecord(); }
 
 // ---- Tabs: the hash names the tab (and, for the floor, a place on it); the last tab is kept per browser.
 function remembered(){
@@ -589,7 +598,7 @@ function laneRow(l, tab){
   return `<a class="lrow" href="${drillHref("lane", esc(safeId(l.lane)), tab)}" title="${esc([l.ticket, l.title, l.status_full].filter(Boolean).join(" · "))}">
     <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}${l.engine === "codex" ? " · Codex" : ""}</span>
     <span class="doing">${doing}</span>
-    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
+    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
   </a>`;
 }
 
@@ -606,7 +615,7 @@ function bayCard(m, byId){
   const tone = rd ? (m.stale ? "warn" : "ok") : "idle";
   const cls = rd ? "" : m.state === "repair" || m.state === "out" ? " repair" : " unreadbay";
   const cap = m.cap == null ? null : num(m.cap);
-  const age = m.read_age_min == null ? "" : ` · ${ageText(num(m.read_age_min) * 60000)} ago`;
+  const age = m.read_age_min == null ? "" : ` · ${m.read_at ? sinceText(m.read_at) : ageText(liveMs(m.read_age_min))} ago`;
   let body;
   if (rd){
     const cells = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}" title="${esc(l.lane)}"></i>`);
@@ -665,9 +674,9 @@ function todayCard(floor, health){
   const mt = metric(day, "merges.total"), mp = metric(day, "merges.product");
   const re = metric(day, "reds.episodes_opened"), rh = metric(day, "reds.hours_red");
   const pm = metric(prev, "merges.total");
-  const utcToday = new Date().toISOString().slice(0, 10);
+  const today = localDay(Date.now());
   const dayNote = !day ? "The process-health series is not published, so the day's counts are unread."
-    : `UTC day ${esc(day.date)}${day.partial ? ", so far" : ""}${day.window && day.window.end ? ` (to ${esc(String(day.window.end).slice(11, 16))} UTC)` : ""}${day.date !== utcToday ? `. <b class="age-stale">This is not today (${esc(utcToday)}): the series is behind.</b>` : ""}`;
+    : `Series day ${esc(day.date)}${day.partial ? ", so far" : ""}${day.window && day.window.end ? ` (to ${esc(clock(day.window.end))})` : ""}${day.date < today ? `. <b class="age-stale">This is not today (${esc(today)}): the series is behind.</b>` : ""}`;
   const redLanes = (floor.lanes || []).filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN"));
   const merged = (floor.shipped || []).slice(0, 6);
   const mergeTime = p => { const t = /merged (\S+)/.exec(p.detail || ""); return t ? sinceText(t[1]) + " ago" : esc(p.detail || ""); };
@@ -958,6 +967,7 @@ function renderTabs(p, d){
 // ---- Header: the record's age
 function renderStamp(rec){
   const gen = Date.parse(rec.generated_at);
+  recordAt = gen;
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
   el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${clock(rec.generated_at)} · ${ageText(age)} old`;
   const banner = el("banner");
