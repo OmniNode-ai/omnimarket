@@ -79,6 +79,13 @@ requirements:
         statement: "AC4: configs/network_bindings.yaml holds each host, address and port and handlers/network_bindings.py resolves it by dotted reference, failing closed on a missing file, key or wrong shape, and the binding sites build the in-memory implementations -- falsifier: uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
       - id: "AC5"
         statement: "AC5: the contracts_and_di check reports no inmemory_outside_injection, literal_host, literal_ip or literal_port finding on the modules of the slice -- falsifier: the command of dod-omn21623-network-clean below"
+  - id: req-omn21623-handler-binding-sites
+    statement: A node builds its handlers only in its binding module; every caller in the node uses the factory, and behaviour, arguments and defaults are unchanged.
+    acceptance:
+    - id: AC13
+      statement: 'AC13: the contracts_and_di check reports no handler_hand_construction finding in the thirteen node directories of the slice -- falsifier: the command of dod-omn21623-hand-construction-clean below'
+    - id: AC14
+      statement: 'AC14: the tests of the thirteen nodes pass with the factories in place -- falsifier: the command of dod-omn21623-node-tests below'
 evidence_requirements:
   - kind: "tests"
     description: "The binding-site tests and the existing tests of the touched nodes pass."
@@ -101,6 +108,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The authority tests and the tests of the touched nodes pass."
     command: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+  - kind: tests
+    description: The tests of the touched nodes pass.
+    command: uv run pytest tests/unit/nodes/node_claim_resolver/test_handler_claim_resolver.py tests/unit/nodes/node_claim_resolver/test_claim_resolver_canonical_replay.py tests/nodes/node_capsule_effectiveness_feedback_reducer/test_golden_chain_capsule_effectiveness_feedback.py tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -449,3 +459,74 @@ dod_evidence:
           print("Published network-binding authority readback: emit_daemon.port PASS")
           '
         cwd: "."
+  - id: dod-omn21623-node-tests
+    description: The focused tests of the touched nodes pass.
+    source: manual
+    binds_ac:
+    - AC14
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_claim_resolver/test_handler_claim_resolver.py tests/unit/nodes/node_claim_resolver/test_claim_resolver_canonical_replay.py tests/nodes/node_capsule_effectiveness_feedback_reducer/test_golden_chain_capsule_effectiveness_feedback.py tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn21623-hand-construction-clean
+    description: The pinned contracts_and_di validator scans every source module in the thirteen node directories and reports no handler_hand_construction finding. Missing directories, incomplete scans, a disabled rule, parse errors and validator failures refuse the evidence.
+    source: manual
+    binds_ac:
+    - AC13
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_cdi_handler_binding_sites_b.py -q --no-cov
+      cwd: ${OMNI_HOME}/omnimarket
+    - check_type: command
+      check_value: |-
+        uv run --frozen python - <<'PY'
+        from pathlib import Path
+        from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+        nodes = [
+        "node_adoption_recovery_effect",
+        "node_aislop_sweep",
+        "node_architecture_discovery_orchestrator",
+        "node_baseline_compare",
+        "node_board_truth_reconcile_effect",
+        "node_branch_protection_audit_effect",
+        "node_build_loop_orchestrator",
+        "node_bus_audit_compute",
+        "node_capsule_effectiveness_feedback_reducer",
+        "node_capture_silence_watch_effect",
+        "node_cause_claim_ownership_effect",
+        "node_ci_watch",
+        "node_claim_resolver",
+        ]
+        paths = []
+        for node in nodes:
+            root = Path("src/omnimarket/nodes") / node
+            assert root.is_dir(), f"slice node missing: {root}"
+            sources = sorted(
+                path for path in root.rglob("*.py")
+                if not {"tests", "test", "fixtures", "__pycache__"}.intersection(path.relative_to(root).parts)
+            )
+            assert sources, f"slice node has no source modules: {root}"
+            paths.extend(sources)
+        validator = ValidatorContractsAndDi()
+        assert any(rule.rule_id == "handler_hand_construction" and rule.enabled for rule in validator.contract.rules), "handler_hand_construction rule is not enabled"
+        result = validator.validate(paths)
+        assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+        offenders = [str(issue) for issue in result.issues if issue.rule_name in {"handler_hand_construction", "unparseable_file"}]
+        print(f"contracts_and_di: {result.metadata.files_processed} source modules in {len(nodes)} nodes checked; handler_hand_construction or parse findings: {len(offenders)}")
+        assert not offenders, "\n".join(offenders)
+        PY
+      cwd: .
+  - id: dod-omn21623-deploy-published-binding-readback
+    description: 'Hosted-runner source-artifact readback: fetch the claim resolver binding module at the
+
+      evaluated published commit and require it to declare its factory. A missing factory
+
+      fails the command. No lab service, credentials or broker is required. This checks
+
+      the published source artifact and does not assert a live runtime rollout.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_claim_resolver/container/container_claim_resolver.py" | grep -q "def build_handler_claim_resolver"
+      cwd: .
