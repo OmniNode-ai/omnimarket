@@ -7,11 +7,20 @@ Migrated from singular topic suffix fields to standard event_bus.subscribe_topic
 list format per OMN-1746 for EventBusSubcontractWiring compatibility.
 """
 
+from pathlib import Path
+
 from pydantic import BaseModel, ConfigDict, Field
 
-TOPIC_INTENT_CLASSIFIED = "onex.evt.omniintelligence.intent-classified.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_INTENT_CLASSIFIED_DLQ = "onex.evt.omniintelligence.intent-classified-dlq.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_INTENT_STORED = "onex.evt.omnimemory.intent-stored.v1"  # onex-topic-allow: pending contract auto-wiring
+from omnimarket.nodes.contract_topics import contract_topic
+
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_INTENT_CLASSIFIED = contract_topic(
+    _CONTRACT, "subscribe_topics", "intent-classified.v1"
+)
+TOPIC_INTENT_CLASSIFIED_DLQ = contract_topic(
+    _CONTRACT, "publish_topics", "intent-classified-dlq.v1"
+)
+TOPIC_INTENT_STORED = contract_topic(_CONTRACT, "publish_topics", "intent-stored.v1")
 
 
 # omnimemory-model-exempt: handler config
