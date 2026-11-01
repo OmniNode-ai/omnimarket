@@ -624,6 +624,14 @@ function indexLanes(lanes){
 
 function unreadSpan(why){ return `<span class="unread">unread${why ? ` (${esc(why)})` : ""}</span>`; }
 
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
+// Minute counts in the record were measured when it was computed; this adds the time since, so they read against the real clock.
+let recordAt = NaN;
+function liveMs(min){ return num(min) * 60000 + (Number.isNaN(recordAt) ? 0 : Math.max(0, Date.now() - recordAt)); }
+
 function sinceText(iso){
   const t = Date.parse(iso);
   return Number.isNaN(t) ? "unread" : ageText(Date.now() - t);
@@ -657,16 +665,16 @@ function laneHTML(l){
     <summary title="${esc(hover)}">
       <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}</span>
       <span class="tt">${title}</span>
-      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "engine unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</span>
+      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "engine unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}</span>
       <span class="doing">${doing}</span>
       <span class="when">${l.status_source === "status" ? "newest status" : "claim, no status yet"} ${esc(sinceText(l.status_at))} ago · running ${esc(sinceText(l.started_at))}</span>
     </summary>
     <div class="lane-body"><dl>
       <dt>Ticket</dt><dd>${esc(l.ticket || "none named")}${l.title ? ` · ${esc(l.title)}${esc(titleNote)}` : ""}</dd>
       <dt>Newest row</dt><dd>${l.status_full ? esc(l.status_full) : unreadSpan("the lane wrote no text")}</dd>
-      <dt>Written</dt><dd>${esc(l.status_at)} UTC · ${esc(sinceText(l.status_at))} ago</dd>
+      <dt>Written</dt><dd>${esc(clock(l.status_at))} · ${esc(sinceText(l.status_at))} ago</dd>
       <dt>Claimed for</dt><dd>${l.claim_full ? esc(l.claim_full) : unreadSpan("")}</dd>
-      <dt>Running</dt><dd>${esc(sinceText(l.started_at))} since ${esc(l.started_at)} UTC</dd>
+      <dt>Running</dt><dd>${esc(sinceText(l.started_at))} since ${esc(clock(l.started_at))}</dd>
       <dt>Pull request</dt><dd>${l.pr ? `${esc(l.pr)}${l.pr_title ? ` · ${esc(l.pr_title)}` : ""}${l.pr_ci_note ? ` · ${esc(l.pr_ci_note)}` : ""}` : "none written yet"}</dd>
       <dt>Builds</dt><dd>${stationLink(l)}</dd>
     </dl></div>
@@ -707,7 +715,7 @@ function machineHTML(m, byId){
     gauge("CI runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
     gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the lanes`, null, "placement markers not read")
   ].join("") : "";
-  const age = m.read_age_min == null ? "" : `${ageText(num(m.read_age_min) * 60000)} ago`;
+  const age = m.read_at ? `${sinceText(m.read_at)} ago` : m.read_age_min == null ? "" : `${ageText(liveMs(m.read_age_min))} ago`;
   return `<article class="mbay${cls}" id="bay-${safeId(m.host)}" aria-label="${esc(m.label)}">
     <div class="mbay-top"><b>${esc(m.label)}</b><span class="pill">${esc(stateWord)}${age ? ` · ${esc(age)}` : ""}</span></div>
     ${slots}
@@ -721,8 +729,8 @@ function cloudHTML(cloud, lanes){
   const live = lanes.filter(l => l.placement === "cloud");
   const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span>
       <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}</small></li>`).join("");
-  const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
-  const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${esc(x.since)} UTC</small></div>`).join("");
+  const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(s.open ? liveMs(s.run_minutes) : num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
+  const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${esc(clock(x.since))}</small></div>`).join("");
   return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
     <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
     ${lamps}
@@ -773,7 +781,7 @@ document.addEventListener("click", ev => {
 });
 
 function prList(items){
-  const row = p => `<li><span>${esc(p.title)} (${esc(p.pr)})</span><span>${esc(p.detail || p.line_id)}</span></li>`;
+  const row = p => `<li><span>${esc(p.title)} (${esc(p.pr)})</span><span>${esc(String(p.detail || p.line_id).replace(/\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?Z/g, t => clock(t)))}</span></li>`;
   if (!items.length) return `<ul class="list"><li><span class="empty">None</span><span></span></li></ul>`;
   const rest = items.slice(5);
   return `<ul class="list">${items.slice(0, 5).map(row).join("")}</ul>` + (rest.length ? `<details class="more"><summary>Show the other ${rest.length}</summary><ul class="list">${rest.map(row).join("")}</ul></details>` : "");
@@ -789,7 +797,7 @@ function renderDelegation(d, err){
   const total = Math.max(1, d.outcomes.reduce((a, o) => a + num(o.count), 0));
   const w = d.window || {};
   host.innerHTML = `
-    <p class="muted">${esc(num(d.total, total))} delegation calls${w.start && w.end ? ` from ${esc(String(w.start).slice(11, 16))} to ${esc(String(w.end).slice(11, 16))} UTC` : ""}.</p>
+    <p class="muted">${esc(num(d.total, total))} delegation calls${w.start && w.end ? ` from ${esc(clock(w.start))} to ${esc(clock(w.end))}` : ""}.</p>
     <div class="stack" role="img" aria-label="${esc(d.outcomes.map(o => num(o.count) + " " + o.label).join(", "))}">${d.outcomes.map(o => `<b style="width:${(num(o.count) / total * 100).toFixed(1)}%;background:${TONE[o.tone] || TONE.idle}"></b>`).join("")}</div>
     <div class="legend">${d.outcomes.map(o => `<span><i style="background:${TONE[o.tone] || TONE.idle}"></i>${esc(num(o.count))} ${esc(o.label)}</span>`).join("")}</div>
     ${Array.isArray(d.routes) && d.routes.length ? `<ul class="list">${d.routes.map(r => `<li><span>${esc(r.label)}</span><span>${esc(num(r.done))} of ${esc(num(r.total))}</span></li>`).join("")}</ul>` : ""}
@@ -832,7 +840,7 @@ function ageSpan(iso){
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return `<span class="unread">${esc(iso || "unread")}</span>`;
   const ms = Date.now() - t;
-  return `<span class="${ms > STALE_MIN * 60000 ? "age-stale" : ""}">${esc(ageText(ms))} ago</span> <small>${esc(new Date(t).toISOString().replace("T", " ").slice(0, 16))} UTC</small>`;
+  return `<span class="${ms > STALE_MIN * 60000 ? "age-stale" : ""}">${esc(ageText(ms))} ago</span> <small>${esc(clock(iso))}</small>`;
 }
 
 function renderSources(s, status){
@@ -865,10 +873,11 @@ function renderSources(s, status){
 let last = "";
 function render(parts){
   const rec = parts.record;
-  const key = JSON.stringify([rec, parts.status, parts.health && parts.health.generated_at, parts.delegation]);
+  const key = JSON.stringify([rec, parts.status, parts.health && parts.health.generated_at, parts.delegation, Math.floor(Date.now() / 60000)]);
   const gen = Date.parse(rec.generated_at);
+  recordAt = gen;
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
-  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${new Date(gen).toISOString().replace("T", " ").slice(0, 16)} UTC · ${ageText(age)} old`;
+  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${clock(rec.generated_at)} · ${ageText(age)} old`;
   const banner = el("banner");
   if (age != null && age > STALE_MIN * 60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
   else { banner.hidden = true; }

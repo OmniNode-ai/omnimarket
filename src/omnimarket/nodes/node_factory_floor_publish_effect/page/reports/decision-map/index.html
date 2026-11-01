@@ -137,6 +137,10 @@ footer{font-size:.82rem;color:var(--muted);display:grid;gap:6px;border-top:1px s
 if (typeof location !== "undefined" && document.documentElement && /[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
 const OUT={delivered:["Delivered","--ok"],partial:["Partly built","--part"],"not built":["Not built","--none"],reversed:["Reversed","--rev"],unknown:["No change named","--unk"]};
 const oc=o=>OUT[o]||OUT.unknown, tok=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE="en-US";
+const TIME_FMT=new Intl.DateTimeFormat(TIME_LOCALE,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZoneName:"short"});
+function clock(iso){const t=Date.parse(/T[\d:.]+$/.test(String(iso))?iso+"Z":iso);return Number.isNaN(t)?"":TIME_FMT.format(new Date(t))}
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const short=(s,n)=>{s=String(s||"");return s.length>n?s.slice(0,n-1)+"…":s};
 let D,R={},P={},cy=null,view="prob";
@@ -230,7 +234,7 @@ function show(id){const s=document.getElementById("side");
      ${spark(p.days)}<div class="mini"><div class="eyebrow">Decisions it led to</div>${ls.length?ls.map(l=>`<button data-id="${l.d}">${esc(short(R[l.d].q,90))}<br><span class="note">${l.b.replace("_"," ")}${l.w?" · "+esc(l.w.slice(0,4).join(", ")):""} · after: ${esc(l.note||"not measured")}${l.ba!=null?` (${l.ba}/h to ${l.aa}/h)`:""}</span></button>`).join(""):'<span class="note">None. No recorded decision addresses this problem.</span>'}</div>`;
   }else{const r=R[id],o=oc(r.outcome),ps=D.plinks.filter(l=>l.d===id);
     const rel=D.edges.filter(e=>e.f===id||e.t===id).map(e=>e.f===id?`${e.r?"reverses":e.k} ${e.t.slice(0,10)}`:`${e.r?"reversed by":e.k==="amends"?"amended by":e.k==="extends"?"extended by":e.k+" by"} ${e.f.slice(0,10)}`);
-    let fx="";if(r.fx){const f=r.fx;fx=`<div class="fx"><div><b>Change:</b> ${esc(f.change)}</div><div class="note">Took effect ${esc((f.at||"").replace("T"," "))} UTC · ${esc(f.measure)}: ${f.b??"–"}/h before, ${f.a??"–"}/h after</div><div><b>Effect on that measure:</b> ${esc(f.v)}${f.lean==="helped"||f.lean==="hurt"?` (leans ${f.lean}, not enough to call)`:""}</div></div>`}
+    let fx="";if(r.fx){const f=r.fx;fx=`<div class="fx"><div><b>Change:</b> ${esc(f.change)}</div><div class="note">Took effect ${esc(clock(f.at||""))} · ${esc(f.measure)}: ${f.b??"–"}/h before, ${f.a??"–"}/h after</div><div><b>Effect on that measure:</b> ${esc(f.v)}${f.lean==="helped"||f.lean==="hurt"?` (leans ${f.lean}, not enough to call)`:""}</div></div>`}
     s.innerHTML=`<div class="eyebrow">Decision ${r.date}</div><h3>${esc(r.q)}</h3><dl><dt>Decided</dt><dd>${esc(r.d)}</dd><dt>Area</dt><dd>${esc(r.area)} · ${esc(r.kind)}</dd><dt>Status</dt><dd>${esc(r.status)}</dd>
      <dt>Outcome</dt><dd><span class="badge" style="background:var(${o[1]})">${o[0]}</span></dd>${rel.length?`<dt>Links</dt><dd>${esc(rel.join(" · "))}</dd>`:""}</dl>${fx}
      <div class="mini"><div class="eyebrow">Problems behind it</div>${ps.length?ps.map(l=>`<button data-id="${l.p}">${esc(P[l.p].name)}<br><span class="note">${l.b.replace("_"," ")} · after: ${esc(l.note||"not measured")}</span></button>`).join(""):'<span class="note">No problem on the ledger links to this decision.</span>'}</div>`;}

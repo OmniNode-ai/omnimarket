@@ -108,7 +108,11 @@ function ageText(ms){
   return h < 48 ? (h < 10 ? h.toFixed(1) : Math.round(h)) + " hours ago" : Math.round(h/24) + " days ago";
 }
 const day = iso => iso ? String(iso).slice(0,10) : "?";
-const when = iso => iso ? String(iso).slice(0,16).replace("T"," ") + " UTC" : "?";
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
+const when = iso => iso && clock(iso) ? clock(iso) : "?";
 
 function fmtNum(v, kind){
   if (kind === "ratio") return (v*100).toFixed(0) + "%";

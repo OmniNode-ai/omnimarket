@@ -149,6 +149,10 @@ function render(md){
   el("toc").innerHTML = toc.map(([id, t]) => `<a href="#${id}">${inline(t)}</a>`).join("");
 }
 
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
 function ageText(ms){
   const m = Math.max(0, Math.round(ms/60000));
   if (m < 120) return m + " minutes";
@@ -164,7 +168,7 @@ async function age(){
     const row = ((m.reports || []).find(x => x.id === REPORT_ID) || {}).data;
     const d = row && row[0];
     if (!d || d.status !== "read") throw new Error("the manifest lists the report as unread");
-    el("stamp").textContent = "Report file modified " + d.as_of.slice(0,16).replace("T"," ") + " UTC, " + ageText(Date.now() - Date.parse(d.as_of)) + " ago";
+    el("stamp").textContent = "Report file modified " + clock(d.as_of) + ", " + ageText(Date.now() - Date.parse(d.as_of)) + " ago";
   } catch (e) {
     el("stamp").textContent = "Age of the report unread (" + e.message + ")";
   }

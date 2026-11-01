@@ -428,6 +428,7 @@ def _run_page(page: Path, files: dict[str, str]) -> dict[str, str]:
         capture_output=True,
         check=False,
         timeout=60,
+        env={**os.environ, "TZ": "UTC"},
     )
     assert done.returncode == 0, done.stderr.decode()
     return cast(
@@ -551,7 +552,9 @@ def test_page_reports_decision_quality_renders_markdown_and_escapes_everything()
     assert "&lt;img src=x onerror=alert(1)&gt;" in doc
     assert 'href="#' in out["toc"]
     assert "Section two" in out["toc"]
-    assert "Report file modified 2026-10-31 08:11 UTC" in out["stamp"]
+    assert "Report file modified Oct 31, 8:11 AM UTC" in out["stamp"].replace(
+        "\u202f", " "
+    )
 
 
 def test_page_reports_process_health_shows_unread_never_zero() -> None:
