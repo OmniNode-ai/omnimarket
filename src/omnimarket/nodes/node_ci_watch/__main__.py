@@ -17,8 +17,8 @@ import argparse
 import sys
 import uuid
 
+from omnimarket.nodes.node_ci_watch.container import container_ci_watch
 from omnimarket.nodes.node_ci_watch.handlers.handler_ci_watch import (
-    HandlerCiWatch,
     ModelCiWatchCommand,
 )
 
@@ -48,7 +48,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = HandlerCiWatch()
+    handler = container_ci_watch.build_handler_ci_watch()
     result = handler.handle(command)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
