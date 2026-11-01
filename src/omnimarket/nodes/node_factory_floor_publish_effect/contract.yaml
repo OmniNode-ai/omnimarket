@@ -51,10 +51,10 @@ descriptor:
   idempotent: true
   timeout_ms: 900000
   side_effects:
-  - runs the lab host reading, the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
-  - reads the factory floor JSON and the packaged page
+  - runs the lab host reading, the pool read of the machines (which writes its own receipt), the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
+  - reads the factory floor JSON and the packaged pages (the tab page and the factory floor page)
   - reads the factory floor effect's overlay for the declared lines and the delegation counts file when there is one
-  - writes the page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
+  - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
   - writes last-run.json into the tick's state directory
 
@@ -70,8 +70,12 @@ descriptor:
 # source as unread. The factory floor effect is last and required: without a record nothing is published.
 runtime:
   home_env: OMNI_HOME
+  plugin_root_env: CLAUDE_PLUGIN_ROOT
   overlay_file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY
+  # The site's page is the tab page (the dashboard and the four tabs); the factory floor artwork is its own page, drawn
+  # inside the Factory floor tab, so both are packaged and both are published.
   page_relpath: page/index.html
+  floor_page_relpath: page/floor/index.html
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
@@ -92,6 +96,14 @@ runtime:
     timeout_seconds: 120
     argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
     output_relpath: .claude_scratch/lab-run/hosts.json
+  # The landing placement's pool read of every machine (load, memory, swap, cap, or UNREADABLE), the one the
+  # throughput tick reads; it writes its receipt (hosts-probe/latest.json in the remote-lane directory), which
+  # node_factory_floor_effect reads for the machine bays. It takes about 30 seconds: every host is probed over its link.
+  - name: pool
+    kind: command
+    required: false
+    timeout_seconds: 180
+    argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
     kind: copy
     required: false
@@ -112,6 +124,7 @@ runtime:
     args: ["--home", "{home}"]
   names:
     page: index.html
+    floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json
     delegation: delegation.json

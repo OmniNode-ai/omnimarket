@@ -54,3 +54,8 @@ metadata:
     Operator callers own a local checkout, operator env, host lock and Docker
     daemon. Their command and correlated terminal traverse the canonical core
     in-memory bus on that host. No deploy-agent topic is consumed or bypassed.
+
+# The in-memory event bus the operator deploy command runs on; container/container_inmemory.py binds it.
+in_memory_bindings:
+  event_bus_environment: operator
+  event_bus_group: runtime-deploy
