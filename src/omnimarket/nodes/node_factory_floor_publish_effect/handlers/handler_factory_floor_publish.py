@@ -20,7 +20,7 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -36,6 +36,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishRequest,
     ModelFactoryFloorPublishResult,
     ModelFactoryFloorPublishRuntime,
+    ModelPublishHistory,
     ModelPublishStep,
     ModelPublishStepResult,
 )
@@ -77,20 +78,71 @@ def load_runtime(contract_path: Path = OWN_CONTRACT) -> ModelFactoryFloorPublish
     return ModelFactoryFloorPublishContract.model_validate(raw).runtime
 
 
-def remote_write_command(remote_dir: str, name: str) -> str:
+def remote_write_command(remote_dir: str, name: str, *, exclusive: bool = False) -> str:
     """The remote shell command that stores stdin as ``remote_dir/name`` atomically.
 
     The bytes go to a dot-named temporary file in the final file's own directory (``name`` may carry
     sub-directories, which are created) and are renamed over the final name; when the write fails the temporary
-    file is removed and the previous final file is left as it was.
+    file is removed and the previous final file is left as it was. ``exclusive`` refuses to replace an existing final
+    file (the append-only history), leaving it as it was.
     """
     final = PurePosixPath(remote_dir) / name
     tmp = final.parent / f".{final.name}.tmp"
     q_dir, q_final, q_tmp = (shlex.quote(str(p)) for p in (final.parent, final, tmp))
+    guard = f"[ ! -e {q_final} ] && " if exclusive else ""
+    move = "mv -n" if exclusive else "mv -f"
     return (
-        f"umask 022 && mkdir -p {q_dir} && "
-        f"{{ cat > {q_tmp} && mv -f {q_tmp} {q_final}; }} || {{ rm -f {q_tmp}; exit 1; }}"
+        f"umask 022 && mkdir -p {q_dir} && {guard}"
+        f"{{ cat > {q_tmp} && {move} {q_tmp} {q_final}; }} || {{ rm -f {q_tmp}; exit 1; }}"
     )
+
+
+def snapshot_name(
+    history: ModelPublishHistory, record_name: str, moment: datetime
+) -> str:
+    """``<subdirectory>/<stem>-<UTC timestamp><suffix>`` for the record file ``record_name`` published at ``moment``."""
+    stem, dot, ext = PurePosixPath(record_name).name.rpartition(".")
+    if not dot:
+        stem, ext = ext, ""
+    stamp = moment.astimezone(UTC).strftime(history.timestamp_format)
+    return f"{history.subdirectory}/{stem}-{stamp}{dot}{ext}"
+
+
+def _snapshot_time(
+    history: ModelPublishHistory, record_name: str, file_name: str
+) -> datetime | None:
+    """The UTC time a history file name carries, or ``None`` when it is not one of this record's snapshots."""
+    stem, dot, ext = PurePosixPath(record_name).name.rpartition(".")
+    if not dot:
+        stem, ext = ext, ""
+    head, tail = f"{stem}-", f"{dot}{ext}"
+    if not (file_name.startswith(head) and file_name.endswith(tail)):
+        return None
+    stamp = file_name[len(head) : len(file_name) - len(tail)]
+    try:
+        return datetime.strptime(stamp, history.timestamp_format).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def prunable_snapshots(
+    history: ModelPublishHistory,
+    record_name: str,
+    file_names: Sequence[str],
+    now: datetime,
+) -> tuple[str, ...]:
+    """The snapshot file names to remove: past the window, oldest first, only while the count exceeds ``max_count``.
+
+    A name that is not a snapshot of this record is never listed, and a snapshot inside the window never is.
+    """
+    cutoff = now.astimezone(UTC) - timedelta(days=history.retention.days)
+    dated = sorted(
+        (t, n)
+        for n in file_names
+        if (t := _snapshot_time(history, record_name, n)) is not None
+    )
+    excess = len(dated) - history.retention.max_count
+    return tuple(n for t, n in dated if t < cutoff)[: max(excess, 0)]
 
 
 def write_atomic(path: Path, data: bytes) -> None:
@@ -105,15 +157,12 @@ def _tail(raw: bytes) -> str:
     return " | ".join(raw.decode("utf-8", "replace").strip().splitlines()[-3:])
 
 
-def copy_to_server(
-    run: Runner,
+def ssh_argv(
     rt: ModelFactoryFloorPublishRuntime,
     overlay: ModelFactoryFloorPublishOverlay,
-    name: str,
-    payload: bytes,
-) -> None:
-    """Store ``payload`` as ``name`` under the serving host's directory over ssh; a failure leaves the old file."""
-    argv = [
+    remote_command: str,
+) -> list[str]:
+    return [
         "ssh",
         "-o",
         "BatchMode=yes",
@@ -121,9 +170,30 @@ def copy_to_server(
         f"ConnectTimeout={rt.transport.connect_timeout_seconds}",
         "--",
         overlay.ssh_target,
-        remote_write_command(overlay.remote_dir, name),
+        remote_command,
     ]
-    done = run(argv, payload, rt.transport.transfer_timeout_seconds)
+
+
+def copy_to_server(
+    run: Runner,
+    rt: ModelFactoryFloorPublishRuntime,
+    overlay: ModelFactoryFloorPublishOverlay,
+    name: str,
+    payload: bytes,
+    *,
+    root: str | None = None,
+    exclusive: bool = False,
+) -> None:
+    """Store ``payload`` as ``name`` under the serving host's directory (``root`` when given) over ssh; a failure leaves the old file."""
+    done = run(
+        ssh_argv(
+            rt,
+            overlay,
+            remote_write_command(root or overlay.remote_dir, name, exclusive=exclusive),
+        ),
+        payload,
+        rt.transport.transfer_timeout_seconds,
+    )
     if done.returncode != 0:
         raise PublishRefusedError(
             f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "
@@ -172,7 +242,11 @@ class HandlerFactoryFloorPublish:
                     )
 
         data = self._read_record(home / rt.source.relpath)
-        generated_at = str(json.loads(data)["generated_at"])
+        record = json.loads(data)
+        generated_at = str(record["generated_at"])
+        results = self._flag_undrawn(
+            results, rt, self._declared_fragments(rt, env), record["lines"]
+        )
         page = (NODE_DIR / rt.page_relpath).read_bytes()
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         health = self._read_process_health(home / rt.process_health_relpath)
@@ -199,8 +273,20 @@ class HandlerFactoryFloorPublish:
         if delegation is not None:
             files.append((rt.names.delegation, delegation))
         files.append((rt.names.data, data))
+        # The snapshot is stored before the live record, so a record that is shown has always been kept.
+        snapshot = snapshot_name(rt.history, rt.names.data, now)
+        copy_to_server(
+            self._run,
+            rt,
+            overlay,
+            snapshot,
+            data,
+            root=overlay.history_root,
+            exclusive=True,
+        )
         for name, payload in files:
             self._copy(rt, overlay, name, payload)
+        pruned = self._prune_history(rt, overlay, now)
 
         digest = hashlib.sha256(data).hexdigest()
         if request.state_dir:
@@ -219,7 +305,43 @@ class HandlerFactoryFloorPublish:
             steps=tuple(results),
             process_health_published=health is not None,
             delegation_published=delegation is not None,
+            history_snapshot=snapshot,
+            history_pruned=pruned,
         )
+
+    def _prune_history(
+        self,
+        rt: ModelFactoryFloorPublishRuntime,
+        overlay: ModelFactoryFloorPublishOverlay,
+        now: datetime,
+    ) -> tuple[str, ...]:
+        """Remove the past-window snapshots the retention allows; only files inside the history subdirectory are named."""
+        directory = str(PurePosixPath(overlay.history_root) / rt.history.subdirectory)
+        listing = self._run(
+            ssh_argv(rt, overlay, f"ls -1 -- {shlex.quote(directory)}"),
+            None,
+            rt.transport.transfer_timeout_seconds,
+        )
+        if listing.returncode != 0:
+            raise PublishRefusedError(
+                f"listing the history failed with exit {listing.returncode}: {_tail(listing.stderr)}; "
+                "nothing was pruned"
+            )
+        found = listing.stdout.decode("utf-8", "replace").split("\n")
+        doomed = prunable_snapshots(rt.history, rt.names.data, found, now)
+        if not doomed:
+            return ()
+        paths = " ".join(shlex.quote(f"{directory}/{n}") for n in doomed)
+        done = self._run(
+            ssh_argv(rt, overlay, f"rm -f -- {paths}"),
+            None,
+            rt.transport.transfer_timeout_seconds,
+        )
+        if done.returncode != 0:
+            raise PublishRefusedError(
+                f"pruning the history failed with exit {done.returncode}: {_tail(done.stderr)}"
+            )
+        return doomed
 
     def _step(
         self,
@@ -343,10 +465,10 @@ class HandlerFactoryFloorPublish:
         return data
 
     @staticmethod
-    def _declared_lines(
+    def _declared_fragments(
         rt: ModelFactoryFloorPublishRuntime, env: Mapping[str, str]
-    ) -> dict[str, object]:
-        """Which plans the factory floor effect's overlay declares as lines, or why that is unread."""
+    ) -> tuple[str, ...] | None:
+        """The plan texts the factory floor effect's overlay declares as lines, or ``None`` when that is unread."""
         try:
             declared = load_structured_overlay(
                 rt.lines_overlay.overlay_id,
@@ -355,14 +477,46 @@ class HandlerFactoryFloorPublish:
                 file_env=rt.lines_overlay.file_env,
             )
         except NodeOverlayError:
+            return None
+        return declared.plan_path_contains
+
+    @staticmethod
+    def _declared_lines(
+        rt: ModelFactoryFloorPublishRuntime, env: Mapping[str, str]
+    ) -> dict[str, object]:
+        """Which plans the factory floor effect's overlay declares as lines, or why that is unread."""
+        tokens = HandlerFactoryFloorPublish._declared_fragments(rt, env)
+        if tokens is None:
             return {
                 "state": "unread",
                 "reason": "the factory floor effect's overlay is missing or invalid",
             }
-        return {
-            "state": "read",
-            "plan_path_contains": list(declared.plan_path_contains),
-        }
+        return {"state": "read", "plan_path_contains": list(tokens)}
+
+    @staticmethod
+    def _flag_undrawn(
+        results: list[ModelPublishStepResult],
+        rt: ModelFactoryFloorPublishRuntime,
+        declared: tuple[str, ...] | None,
+        lines: Sequence[object],
+    ) -> list[ModelPublishStepResult]:
+        """Mark the record step not ok, naming the declared lines the record does not draw."""
+        drawn = [line for line in lines if isinstance(line, dict)]
+        missing = [
+            token
+            for token in declared or ()
+            if not any(token in str(line.get("plan_path", "")) for line in drawn)
+        ]
+        if not missing:
+            return results
+        flagged = ModelPublishStepResult(
+            name=rt.record_step,
+            status="failed",
+            detail="declared lines not drawn: " + ", ".join(missing),
+        )
+        if any(r.name == rt.record_step for r in results):
+            return [flagged if r.name == rt.record_step else r for r in results]
+        return [*results, flagged]
 
     def _copy(
         self,
@@ -404,6 +558,8 @@ __all__ = [
     "PublishRefusedError",
     "copy_to_server",
     "load_runtime",
+    "prunable_snapshots",
     "remote_write_command",
     "run_process",
+    "snapshot_name",
 ]
