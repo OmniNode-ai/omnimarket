@@ -31,8 +31,8 @@ def test_host_drift_fleet_contract_bindings() -> None:
     assert contract["metadata"]["related_tickets"]
     assert contract["event_bus"] == {
         "subscribe_topics": [
-            "onex.evt.omnibase-internal.host-drift-heartbeat.v1",
-            "onex.evt.omnibase-internal.host-drift-resolved.v1",
+            "onex.evt.omnimarket.host-drift-heartbeat.v1",
+            "onex.evt.omnimarket.host-drift-resolved.v1",
         ],
         "publish_topics": [],
     }
