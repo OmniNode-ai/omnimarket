@@ -16,6 +16,9 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorPlanInput,
     ModelFloorTableTask,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_containers import (
+    with_application_containers,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
     build_cloud,
     build_lanes,
@@ -675,7 +678,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
         generated_at=_stamp(request.generated_at),
-        lines=lines + _undrawn(request),
+        lines=with_application_containers(request, lines + _undrawn(request)),
         floor=_floor(request, selected, lines),
         sources=ModelFloorSources(
             watcher_last_tick=_stamp(request.watcher.last_tick),
