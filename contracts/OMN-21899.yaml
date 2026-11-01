@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21899"
+title: "Host bring-up automation units: overlay delivery, issuer build, ledger-copy check, standing reconcile, cap in config"
+summary: "Five principal-issuer bring-up steps become nodes in omnimarket, each a contract, a handler and a test written first. The gated recreate, the mint and the host-row flip are held behind the bring-up model and are written as contracts with plan tests only."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21899-bringup-units"
+    statement: |-
+      Each hand step of principal-issuer bring-up is one node command; a host, path or version comes from the request, never from a contract.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: one command delivers the overlay to the issuer host and the env file carries PRINCIPAL_ISSUER_OVERLAY_FILE, read back from the host -- falsifier: uv run pytest tests/unit/nodes -q -k overlay_delivery"
+      - id: "AC2"
+        statement: "AC2: the issuer image build names the source sha in a label and writes a rollback tag, from a branch or a tag -- falsifier: uv run pytest tests/unit/nodes -q -k issuer_image_build"
+      - id: "AC3"
+        statement: "AC3: a recreate is refused when the check against a ledger copy names an issued principal absent from the overlay -- falsifier: uv run pytest tests/unit/nodes -q -k recreate_refuses_undeclared"
+      - id: "AC4"
+        statement: "AC4: the standing reconcile flags an undeclared principal and passes when the overlay and the issuer ledger agree -- falsifier: uv run pytest tests/unit/nodes -q -k overlay_reconcile"
+      - id: "AC5"
+        statement: "AC5: the per-login cap is read from config, and the image holds no cap value -- falsifier: uv run pytest tests/unit/nodes -q -k login_cap_in_config"
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused node tests pass."
+    command: "uv run pytest tests/unit/nodes -q --no-cov -k \"overlay_delivery or issuer_image_build or recreate_refuses_undeclared or overlay_reconcile or login_cap_in_config\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21899-overlay-delivery"
+    description: "The focused test for AC1 passes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes -q --no-cov -k overlay_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21899-issuer-image-build"
+    description: "The focused test for AC2 passes."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes -q --no-cov -k issuer_image_build"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21899-recreate-refuses-undeclared"
+    description: "The focused test for AC3 passes."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes -q --no-cov -k recreate_refuses_undeclared"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21899-overlay-reconcile"
+    description: "The focused test for AC4 passes."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes -q --no-cov -k overlay_reconcile"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21899-login-cap-in-config"
+    description: "The focused test for AC5 passes."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes -q --no-cov -k login_cap_in_config"
+        cwd: "${OMNI_HOME}/omnimarket"

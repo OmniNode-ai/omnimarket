@@ -341,6 +341,7 @@ node_release_pin_guard_compute = "omnimarket.nodes.node_release_pin_guard_comput
 node_lab_claude_token_effect = "omnimarket.nodes.node_lab_claude_token_effect"
 node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
+node_issuer_overlay_delivery_effect = "omnimarket.nodes.node_issuer_overlay_delivery_effect"
 node_secret_store_effect = "omnimarket.nodes.node_secret_store_effect"
 node_lab_fill_plan_compute = "omnimarket.nodes.node_lab_fill_plan_compute"
 node_lab_fill_effect = "omnimarket.nodes.node_lab_fill_effect"
