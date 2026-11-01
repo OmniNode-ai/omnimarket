@@ -39,6 +39,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC1"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn21801_linear_triage_timeouts.py -k no_literal_timeout_finding -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |-
           uv run --frozen python -c '
@@ -64,7 +67,6 @@ dod_evidence:
   - id: "dod-omn21801-hosted-timeout-deploy-readback"
     description: "Hosted source readback of the owning node contract at the checked-out commit, reachable from the hosted runner without credentials or a lab network. All six former timeout values must be present; the pre-change contract has none. This verifies the published source, not a service rollout."
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: |-
