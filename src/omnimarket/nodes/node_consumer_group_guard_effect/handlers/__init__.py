@@ -1,0 +1,1 @@
+"""Consumer-group census handler."""

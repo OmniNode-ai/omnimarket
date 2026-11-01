@@ -6,6 +6,7 @@ import re
 
 from pydantic import JsonValue
 
+from omnimarket.handlers.model_binding_reader import model_binding
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.enum_route_check_outcome import (
     EnumRouteCheckOutcome,
 )
@@ -119,7 +120,11 @@ class HandlerDelegationRouteCheck:
             if request.lane:
                 expect("lane", doc.get("lane"), request.lane)
             expect("backend_id", doc.get("backend_id"), request.pin)
-            expect("model", terminal.get("model_name"), request.model or "Qwen3.8-27B")
+            expect(
+                "model",
+                terminal.get("model_name"),
+                request.model or model_binding("route_check_local_model"),
+            )
             expect("routing_tier", doc.get("routing_tier"), "local")
             expect("accepted attempt backend_id", acc.get("backend_id"), request.pin)
             expect("secret_source", terminal.get("secret_source"), None)
@@ -133,7 +138,7 @@ class HandlerDelegationRouteCheck:
             expect(
                 "model",
                 terminal.get("model_name"),
-                request.model or "gemini-2.5-flash-lite",
+                request.model or model_binding("route_check_cheap_cloud_model"),
             )
             expect("routing_tier", doc.get("routing_tier"), "cheap_cloud")
             expect(

@@ -59,6 +59,7 @@ from typing import Final
 
 from pydantic import SecretStr
 
+from omnimarket.handlers.model_binding_reader import model_binding_section
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceBridgeConfig,
 )
@@ -88,11 +89,9 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 # model_id is always resolved from the env var — no hardcoded defaults.
 # If the model-name env var is unset, model_id resolves to "" and the
 # downstream API call will fail immediately with an invalid-model error.
-_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = (
-    ("qwen3-coder", "LLM_CODER_URL", "LLM_CODER_MODEL_NAME"),
-    ("qwen3-14b", "LLM_CODER_FAST_URL", "LLM_CODER_FAST_MODEL_NAME"),
-    ("deepseek-r1", "LLM_DEEPSEEK_R1_URL", "LLM_DEEPSEEK_R1_MODEL_NAME"),
-    ("qwen3-next", "LLM_QWEN3_NEXT_URL", "LLM_QWEN3_NEXT_MODEL_NAME"),
+_MODEL_KEY_REGISTRY: Final[tuple[tuple[str, str, str], ...]] = tuple(
+    (row["key"], row["url_env"], row["model_env"])
+    for row in model_binding_section("bridge_model_keys")
 )
 
 # The ``glm`` key's provider, as the bifrost contract declares it (OMN-17103).
