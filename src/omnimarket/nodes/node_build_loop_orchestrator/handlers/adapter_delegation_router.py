@@ -28,6 +28,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 
 logger = logging.getLogger(__name__)
@@ -352,7 +353,9 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         _add_endpoint_config(
             configs,
             tier=EnumModelTier.GEMINI_CLI,
-            base_url="cli://gemini",  # sentinel: dispatched via subprocess, not HTTP
+            base_url=service_endpoint_url(
+                "transport_sentinels.gemini_cli_url"
+            ),  # sentinel: dispatched via subprocess, not HTTP
             model_id=gemini_cli_model,
             api_key=gemini_key,
             max_tokens=8192,

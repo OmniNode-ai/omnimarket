@@ -1228,7 +1228,6 @@ def _dispatch_build_loop(
     from typing import cast
     from uuid import uuid4
 
-    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
     from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
         ProtocolEventBusPublisher,
     )
@@ -1239,9 +1238,12 @@ def _dispatch_build_loop(
     from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
         HandlerBuildLoopOrchestrator,
     )
+    from omnimarket.nodes.node_overnight.container.container_inmemory import (
+        bind_event_bus,
+    )
 
     handler = HandlerBuildLoopOrchestrator(
-        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+        event_bus=cast(ProtocolEventBusPublisher, bind_event_bus())
     )
     build_cmd = ModelLoopStartCommand(
         correlation_id=uuid4(),
