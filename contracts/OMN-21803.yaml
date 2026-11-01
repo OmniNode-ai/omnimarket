@@ -1,0 +1,77 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21803"
+title: "omnimarket contracts_and_di literal_topic burn-down, slice rf1550-c5"
+summary: "Seven node handler and model modules named their event-bus topics as string literals. Each now resolves its topic from the owning node contract's event_bus section through contract_topic, a helper added to the shared omnimarket.nodes.contract_topics module, so the topic string lives only in the contract. The literal_topic count over the findings of these modules drops to zero with no baseline entry or suppression."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21803-topics-from-contract"
+    statement: |-
+      The seven slice modules hold no topic literal and each topic constant equals the single topic its node contract declares in event_bus.subscribe_topics or event_bus.publish_topics.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_topic over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+  - id: "req-omn21803-injected"
+    statement: |-
+      Every topic comes from the owning node contract and is read through contract_topic, which refuses a missing or ambiguous match; none is hard-coded in the touched code.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: every topic comes from the owning node contract or overlay and is injected, none hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+  - id: "req-omn21803-lab-proof"
+    statement: |-
+      The slice lands as one PR whose body carries the lab run of the tests at the PR head.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The topic resolution tests and the touched nodes' own tests pass."
+    command: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21803-contract-topics"
+    description: "Each slice constant equals the topic its node contract declares and the module holds no topic literal."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21803-helper"
+    description: "contract_topic refuses a missing, ambiguous or unsupported match."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py -q --no-cov -k refuses"
+        cwd: "."
+  - id: "dod-omn21803-lab"
+    description: "The unit tests pass on the lab at the PR head."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21803-deploy-import-check"
+    description: "Hosted-runner deploy smoke: a disposable Python 3.13 container runs the topic-resolution tests against this checkout and its locked dependencies, mounted read-only. All seven modules must resolve their constants from their owning contracts, contain no topic literals, and reject missing or ambiguous matches. The container has no network. This checks the evaluated checkout in an isolated runtime, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          dependencies="$(uv run --frozen --python 3.13 python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" &&
+          docker run --rm --network none --user "$(id -u):$(id -g)" \
+            --tmpfs /tmp/contract-topics-venv:rw,mode=1777 \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace \
+            --mount "type=bind,source=$dependencies,target=/tmp/contract-topics-venv/lib/python3.13/site-packages,readonly" \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \
+            sh -ec 'python -m venv --without-pip /tmp/contract-topics-venv
+              exec /tmp/contract-topics-venv/bin/python -m pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py \
+                -q --no-cov -p no:cacheprovider --basetemp=/tmp/contract-topics-tests --refuse-skips'
+        cwd: "."
