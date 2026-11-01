@@ -27,12 +27,20 @@ def test_default_binding_reads_projected_barrier(
     assert request.barrier_id is not None
     emitted_at = datetime(2026, 10, 23, 13, 37, 41, tzinfo=UTC)
     rows: list[tuple[object, ...]] = [
-        (stream, sequence, None, None, None, None)
+        (
+            stream,
+            sequence,
+            None,
+            None,
+            None,
+            None,
+            "bound-lane" if sequence == 3 else None,
+        )
         for stream in ("lineage", "content")
         for sequence in (1, 2, 3)
     ]
     rows.extend(
-        (stream, None, request.barrier_id, 3, None, emitted_at)
+        (stream, None, request.barrier_id, 3, None, emitted_at, None)
         for stream in ("lineage", "content")
     )
     executions: list[tuple[object, tuple[object, ...]]] = []
@@ -70,9 +78,9 @@ def test_default_binding_reads_projected_barrier(
     wait, source = binding_module.bind_compaction_ports(binding)
 
     assert wait.wait(request).outcome == "met"
-    assert source.read(
-        request.session_id, request.barrier_id
-    ).source_revision == emitted_at.isoformat().replace("+00:00", "Z")
+    probe = source.read(request.session_id, request.barrier_id)
+    assert probe.source_revision == emitted_at.isoformat().replace("+00:00", "Z")
+    assert probe.lane == "bound-lane"
     assert connect_calls == [(dsn, {"connect_timeout": 3})] * 2
     assert len(connections) == 2
     assert all(conn.closed for conn in connections)

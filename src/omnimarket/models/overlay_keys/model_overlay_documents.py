@@ -12,7 +12,14 @@ overlay resolves a role to a directory name.
 
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 # A registry root as a probe script quotes it: no quote, backtick, space or ``$(``.
 RegistryRoot = Annotated[
@@ -64,7 +71,18 @@ class ModelLabHostRow(_ModelOverlayBase):
     codex: bool = False
     available: bool = True
     unavailable_reason: str | None = None
+    # A collaborator machine: it takes no lane bound to a lane the non-contributor rows bind, only
+    # one bound to its own ``lane_binding``, and only while ``lane_ready`` says that lane can take a
+    # lane (the remote-lane placement node judges it).
     contributor: bool = False
+    # The lane a lane on this host is bound to. Omitted: ``ledger_bus_lane``, which is also where
+    # the host writes the work ledger. A contributor row names its own lane here.
+    lane_binding: str | None = None
+    # Whether ``lane_binding`` can take a lane today. Fail closed: a contributor row is not ready
+    # until a data change says it is, and ``lane_not_ready_reason`` is the sentence every refusal
+    # prints until then.
+    lane_ready: bool = False
+    lane_not_ready_reason: str | None = None
     push: bool = True
     cap: int | None = Field(default=None, ge=1)
     reserve: int | None = Field(default=None, ge=0)
@@ -82,6 +100,31 @@ class ModelLabHostRow(_ModelOverlayBase):
     lab_work_root: str | None = None
     report_retention_days: int | None = Field(default=None, ge=1)
     clones: tuple[ModelLabHostClone, ...] = ()
+    # What the host can take, read by lab work placement (OMN-17232) next to ``available``. Flat
+    # columns, because the plugin's table reader is a flat ``key: value`` parser. An omitted column
+    # means the default in the lab-work node contract's ``placement.host_defaults``.
+    # ``avx2``: the host runs wheels built with AVX2 (an Ivy Bridge host does not).
+    avx2: bool | None = None
+    # ``min_free_gb``: this host's own memory admission bar for a unit, replacing the caller's bar.
+    min_free_gb: float | None = Field(default=None, ge=0)
+    # ``job_kinds``: the work kinds (test, build, lint, code_draft, other) the host takes; omitted: all.
+    job_kinds: tuple[NonEmptyStr, ...] | None = None
+    # ``max_weight``: the heaviest unit weight the host takes (the contract's ``placement.weights``).
+    max_weight: NonEmptyStr | None = None
+    # ``speed``: a measured figure, relative to h101 on the same suite (1.0); ranks the host.
+    speed: float | None = Field(default=None, gt=0)
+
+
+class ModelUnitNeedsRule(_ModelOverlayBase):
+    """A unit of ``repo`` (a repository name without its owner; ``kind`` narrows it) needs these host capabilities.
+
+    The public lab-work placement contract carries the rules that name public repositories; a private
+    repository's rule is data of the table, next to the host rows that declare the capability."""
+
+    repo: NonEmptyStr
+    kind: NonEmptyStr | None = None
+    needs: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
+    reason: NonEmptyStr
 
 
 class ModelLabHostsTable(_ModelOverlayBase):
@@ -90,6 +133,36 @@ class ModelLabHostsTable(_ModelOverlayBase):
     hosts: Annotated[tuple[ModelLabHostRow, ...], Field(min_length=1)]
     # The declared bus lane the pool serves lab work on; carried by the table shape, not an overlay key.
     bus_lane: str | None = None
+    # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
+    # carried by the table shape, not an overlay key.
+    unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+
+    @model_validator(mode="after")
+    def _contributor_lane_is_its_own(self) -> "ModelLabHostsTable":
+        """A contributor row declares a lane of its own: none a non-contributor row binds."""
+        house = {
+            h.lane_binding or h.ledger_bus_lane
+            for h in self.hosts
+            if not h.contributor and (h.lane_binding or h.ledger_bus_lane)
+        }
+        for host in self.hosts:
+            if not host.contributor:
+                continue
+            if host.lane_binding is None:
+                raise ValueError(
+                    f"contributor host {host.name} declares no lane_binding"
+                )
+            if host.lane_binding in house:
+                raise ValueError(
+                    f"contributor host {host.name} binds {host.lane_binding}, "
+                    "the lane the non-contributor hosts bind"
+                )
+            if not host.lane_ready and not host.lane_not_ready_reason:
+                raise ValueError(
+                    f"contributor host {host.name} is not lane_ready and "
+                    "declares no lane_not_ready_reason"
+                )
+        return self
 
 
 class ModelLabHostsOverlay(ModelLabHostsTable):

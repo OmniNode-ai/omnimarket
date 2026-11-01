@@ -43,10 +43,6 @@ PIN_PAIRS: tuple[tuple[str, str, str], ...] = (
         "github.com/OmniNode-ai/omnibase_core",
     ),
 )
-# canonical-file-shape is not a pair: its CI job reads core through a dev-merge tag
-# (OMN-21331), which _CI_PIN_RE does not match, so the 40-hex pins of the other
-# jobs said nothing about it. tests/ci/test_core_validators_wired_omn21500.py
-# holds the hook rev equal to that job's tag.
 
 _CI_PIN_RE = re.compile(
     r"omnibase-core\s*@\s*git\+https://github\.com/OmniNode-ai/omnibase_core"

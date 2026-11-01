@@ -47,6 +47,41 @@ handler_routing:
         name: TenantCredentialsProjectionWriter
         module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
       handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+    # OMN-21217: this node's own committed credential rows, read back so a replay
+    # rebuilds the registry; applied only when not older than the stored row.
+    - topic: onex.evt.omnimarket.tenant-credential-state.v1
+      message_category: event
+      operation: tenant_credentials_projection_writer
+      handler:
+        name: TenantCredentialsProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+    # OMN-21217: this node's own committed route rows, read back the same way;
+    # applied only when not older than the stored route, and never onto a key
+    # already revoked here.
+    - topic: onex.evt.omnimarket.tenant-routing-overlay-state.v1
+      message_category: event
+      operation: tenant_credentials_projection_writer
+      handler:
+        name: TenantCredentialsProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+
+# OMN-21217: the credential write paths this node owns beside its runtime
+# writer. Descriptive bindings only; handler_routing above is what routes.
+credential_writes:
+  deployed_projection:
+    handler:
+      name: HandlerTenantCredentialsProjectionRunner
+      module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+  local_store:
+    handler:
+      name: apply_credential_registered
+      module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store
+  route_write:
+    handler:
+      name: HandlerCredentialRouteWrite
+      module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write
 
 terminal_event: onex.evt.omnimarket.tenant-credential-projection-applied.v1
 
@@ -120,8 +155,17 @@ event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.credential-registered.v1
     - onex.evt.omnimarket.credential-revoked.v1
+    # OMN-21217: the compacted credential-state topic this node publishes (see
+    # projection_api.exposures); subscribing to it is the registry's reconcile
+    # path under scripts/ci/check_registry_projection_reconcile.py.
+    - onex.evt.omnimarket.tenant-credential-state.v1
+    - onex.evt.omnimarket.tenant-routing-overlay-state.v1
   publish_topics:
     - onex.evt.omnimarket.tenant-credential-projection-applied.v1
+    # OMN-21217: this node publishes its committed rows to its own two state
+    # topics (the bus-backed exposures below) and reads them back above.
+    - onex.evt.omnimarket.tenant-credential-state.v1
+    - onex.evt.omnimarket.tenant-routing-overlay-state.v1
   dlq_topics:
     - onex.dlq.omnimarket.tenant-credential-projection-malformed.v1
 
@@ -130,47 +174,147 @@ externally_consumed_topics:
 
 projection_api:
   expose: true
-  topic: "onex.snapshot.projection.tenant-credentials.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
-  key_grain: "mutable"
-  table: "tenant_inference_credentials"
-  schema: "public"
-  columns:
-    - "api_key_ref"
-    - "tenant_id"
-    - "name"
-    - "provider"
-    - "created_at"
-    - "revoked_at"
-    # 0005: a locally set key's fingerprint prefix (8 hex of sha256) and set time.
-    - "fingerprint"
-    - "set_at"
-    # 0006 (OMN-20991): the key's expiry date, for routing and the pool alert.
-    - "expires_at"
-    # 0007 (OMN-21012): the lab host whose Claude account owns the key.
-    - "bound_host"
-    # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
-    - "workspace_id"
-  order_by: "created_at DESC"
-  freshness_column: "created_at"
-  limit: 200
-  # OMN-15800: served from the bus-fed SnapshotCache, never from Postgres
-  # directly -- same posture as node_projection_registration.
-  bus_backed: true
-  key_columns:
-    - "api_key_ref"
-  # OMN-15797 AC2: every row in this exposure belongs to exactly one tenant
-  # (tenant_id is NOT NULL, stamped by credential_publisher from the gateway's
-  # verified tenant identity), and the rows are BYOK credential references.
-  # Before this declaration the serving path returned every tenant's rows to
-  # any unscoped caller with a plain 200 -- this table carries no RLS in v1
-  # (see migration 0000), so nothing else was scoping it either. Declaring the
-  # tenant column makes the serving path refuse rather than answer unscoped.
-  tenant_column: "tenant_id"
-  # OMN-17199 left a "consumers: none" opt-out here until a per-tenant surface
-  # rendered these rows. The local Credentials page is that surface: it reads
-  # one tenant's refs through the tenant-scoped serving path above (OMN-19985),
-  # so the opt-out is deleted and the exposure-reader gate checks the reader.
-
+  exposures:
+    - topic: "onex.snapshot.projection.tenant-credentials.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: "tenant_inference_credentials"
+      schema: "public"
+      columns:
+        - "api_key_ref"
+        - "tenant_id"
+        - "name"
+        - "provider"
+        - "created_at"
+        - "revoked_at"
+        # 0005: a locally set key's fingerprint prefix (8 hex of sha256) and set time.
+        - "fingerprint"
+        - "set_at"
+        # 0006 (OMN-20991): the key's expiry date, for routing and the pool alert.
+        - "expires_at"
+        # 0007 (OMN-21012): the lab host whose Claude account owns the key.
+        - "bound_host"
+        # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
+        - "workspace_id"
+      order_by: "created_at DESC"
+      freshness_column: "created_at"
+      limit: 200
+      # OMN-15800: served from the bus-fed SnapshotCache, never from Postgres
+      # directly -- same posture as node_projection_registration.
+      bus_backed: true
+      key_columns:
+        - "api_key_ref"
+      # OMN-15797 AC2: every row in this exposure belongs to exactly one tenant
+      # (tenant_id is NOT NULL, stamped by credential_publisher from the gateway's
+      # verified tenant identity), and the rows are BYOK credential references.
+      # Before this declaration the serving path returned every tenant's rows to
+      # any unscoped caller with a plain 200 -- this table carries no RLS in v1
+      # (see migration 0000), so nothing else was scoping it either. Declaring the
+      # tenant column makes the serving path refuse rather than answer unscoped.
+      tenant_column: "tenant_id"
+      # OMN-17199 left a "consumers: none" opt-out here until a per-tenant surface
+      # rendered these rows. The local Credentials page is that surface: it reads
+      # one tenant's refs through the tenant-scoped serving path above (OMN-19985),
+      # so the opt-out is deleted and the exposure-reader gate checks the reader.
+    # OMN-21217: the credential registry's compacted source (OMN-17446). Every
+    # row this node commits -- a register, a model-list replace, a revoke -- is
+    # published here, keyed by tenant and key reference, and this node
+    # subscribes to it and applies a row only when its version is at least the
+    # stored one. A replay from the start of this topic therefore rebuilds
+    # tenant_inference_credentials even after the credential-registered and
+    # credential-revoked events have aged off their time-retained topics. The
+    # row never carries a secret: only the reference the secret store holds.
+    - topic: "onex.evt.omnimarket.tenant-credential-state.v1"
+      # Compaction is declared, not inferred from the name: the topic
+      # provisioner creates the topic with this config, and the reconcile gate
+      # (scripts/ci/check_registry_projection_reconcile.py) reads it.
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: "tenant_inference_credentials"
+      schema: "public"
+      columns:
+        - "api_key_ref"
+        - "tenant_id"
+        - "name"
+        - "provider"
+        - "created_at"
+        - "revoked_at"
+        - "fingerprint"
+        - "set_at"
+        - "expires_at"
+        - "bound_host"
+        - "workspace_id"
+        # The key's own ordered model choices: routing binds a pooled key to
+        # them, so a rebuilt registry without them would refuse the key.
+        - "models"
+        - "version"
+      order_by: "created_at DESC"
+      freshness_column: "created_at"
+      limit: 200
+      # The key reference is unique and never changes, so a cursor walk over it
+      # visits every credential exactly once.
+      cursor_column: "api_key_ref"
+      bus_backed: true
+      key_columns:
+        - "tenant_id"
+        - "api_key_ref"
+      tenant_column: "tenant_id"
+      consumers: none
+      consumers_reason: >-
+        This topic is the credential registry's own compacted source: the
+        owning node reads it back to rebuild tenant_inference_credentials, and
+        no surface renders it. The Credentials page reads the tenant-credentials
+        exposure above.
+    # OMN-21217: the routing overlay registry's compacted source (OMN-17446).
+    # Every route row this node commits -- minted, replaced, or un-pointed by
+    # a revoke -- is published here, keyed by tenant and task type, and this
+    # node subscribes to it and applies a row only when its version is at
+    # least the stored one. secret_ref is the key's reference, never the key.
+    - topic: "onex.evt.omnimarket.tenant-routing-overlay-state.v1"
+      # Compaction is declared, not inferred from the name: the topic
+      # provisioner creates the topic with this config, and the reconcile gate
+      # (scripts/ci/check_registry_projection_reconcile.py) reads it.
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: "delegation_routing_tenant_overlay"
+      schema: "public"
+      columns:
+        - "id"
+        - "tenant_id"
+        - "task_type"
+        - "backend_id"
+        - "provider"
+        - "endpoint_url"
+        - "model_name"
+        - "secret_ref"
+        - "timeout_ms"
+        - "max_tokens"
+        - "models"
+        - "version"
+        - "created_at"
+        - "updated_at"
+      order_by: "updated_at DESC"
+      freshness_column: "updated_at"
+      limit: 200
+      # The row id is unique and never changes, so a cursor walk over it
+      # visits every route exactly once.
+      cursor_column: "id"
+      bus_backed: true
+      key_columns:
+        - "tenant_id"
+        - "task_type"
+      tenant_column: "tenant_id"
+      consumers: none
+      consumers_reason: >-
+        This topic is the routing overlay registry's own compacted source: the
+        owning node reads it back to rebuild delegation_routing_tenant_overlay,
+        and no surface renders it. Routing reads the table itself.
 metadata:
   transport_type: kafka
 
@@ -182,3 +326,17 @@ externally_produced_topics:
     producer: "the gateway value->ref exchange (omnimarket.projection.credential_publisher.register_inference_credential), not a node contract"
   - topic: onex.evt.omnimarket.credential-revoked.v1
     producer: "the gateway value->ref exchange (omnimarket.projection.credential_publisher.revoke_inference_credential), not a node contract"
+
+# OMN-21753 (under OMN-21288): when the one-runtime fold moves this writer from
+# its own container into the runtime, the runtime's consumer group starts from
+# the committed offsets of the container's group,
+# {env}.omnimarket-projections.tenant-credentials-writer.consume.v1, instead of the bus default
+# (latest), so events published while the container is stopped and the runtime
+# has not yet joined are projected. The container's runner reads a partition it
+# never committed from the earliest offset, and the handover does the same.
+# omnibase_infra's HandlerContractSubscribePreflight reads this key.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: tenant-credentials-writer
+  from_version: v1
+  from_auto_offset_reset: earliest

@@ -1,0 +1,24 @@
+name: node_projection_receipt_gate_pin_friction
+version: "1.0.0"
+description: >
+  Folds one observation of a receipt-gate pin pull request into its row (the caller's
+  pin kind, the time from the core tag to the pull request, the time to merge, fix
+  pushes, CI re-runs and refusals) and returns a friction event when the updater
+  failed or the pull request was touched (OMN-20134).
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies: []
+tags:
+  - reducer
+  - ci
+  - pin
+  - receipt-gate
+  - OMN-20134
+pack: "ci"
+display_name: "Projection: Receipt Gate Pin Friction"
+node_role: "reducer"

@@ -30,7 +30,9 @@ What each GitHub event contributes (``None`` = "says nothing"):
 - ``workflow_run``: one workflow-run observation carrying the run id and the
   workflow's name, which no check-run delivery names (OMN-20743).
 - ``push``: branch-ref-advanced for a watched refs/heads/<branch>, excluding
-  deletions. Branch observations are published on the branch-head topic.
+  deletions. Branch observations are published on the branch-head topic. The
+  creation of a ``dev-<UTC14>-<sha12>`` tag (refs/tags/..., ``created``) yields
+  one dev-merge-tag observation on its own topic (OMN-20134).
 - anything else (ping, check_suite, status, ...): nothing.
 
 Known gap, owned by the reconciler (OMN-19493): deliveries can arrive out of
@@ -58,6 +60,7 @@ from omnimarket.models.model_github_pr_state_observation import (
 from omnimarket.nodes.node_github_webhook_ingress_effect.models import (
     ModelGitHubBranchHeadObservation,
     ModelGitHubCheckRunObservation,
+    ModelGitHubDevMergeTagObservation,
     ModelGitHubPrMergedObservation,
     ModelGitHubWorkflowRunObservation,
 )
@@ -148,6 +151,7 @@ def _fold_workflow_run(
             workflow=name,
             head_sha=head_sha,
             status=status,
+            run_attempt=_optional_attempt(run.get("run_attempt")),
             delivery_id=delivery_id,
             github_event="workflow_run",
             as_of=_time(run.get("updated_at")) or received_at,
@@ -162,6 +166,8 @@ def _fold_push(
     watched_branches: frozenset[str],
 ) -> tuple[BaseModel, ...]:
     ref = _str(payload.get("ref"))
+    if ref and ref.startswith("refs/tags/"):
+        return _fold_tag_push(delivery_id, payload, received_at, ref)
     if not ref or not ref.startswith("refs/heads/") or payload.get("deleted") is True:
         return ()
     branch = ref.removeprefix("refs/heads/")
@@ -182,6 +188,34 @@ def _fold_push(
             as_of=received_at,
             sha=sha,
             before_sha=_str(payload.get("before")),
+        ),
+    )
+
+
+_DEV_MERGE_TAG = re.compile(r"^dev-\d{14}-[0-9a-f]{12}$")
+
+
+def _fold_tag_push(
+    delivery_id: UUID,
+    payload: Mapping[str, object],
+    received_at: datetime,
+    ref: str,
+) -> tuple[BaseModel, ...]:
+    """A created dev-merge tag; any other tag, and a deletion or move, is nothing."""
+    tag = ref.removeprefix("refs/tags/")
+    if payload.get("created") is not True or not _DEV_MERGE_TAG.match(tag):
+        return ()
+    sha = _str(payload.get("after"))
+    if sha is None:
+        raise WebhookFoldError("push.after missing or not a non-empty string")
+    return (
+        ModelGitHubDevMergeTagObservation(
+            repo=_repo(payload),
+            tag=tag,
+            sha=sha,
+            delivery_id=delivery_id,
+            github_event="push",
+            as_of=received_at,
         ),
     )
 
@@ -439,6 +473,13 @@ def _red_check_runs(
             )
         )
     return observations
+
+
+def _optional_attempt(value: object) -> int | None:
+    """The run's attempt number when GitHub reports a positive integer, else nothing."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
 
 
 def _repo(payload: Mapping[str, object]) -> str:

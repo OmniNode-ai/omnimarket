@@ -86,10 +86,16 @@ from typing import Any
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
+from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
 from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
+from omnimarket.models.lane_brief.enum_lane_engine import EnumLaneEngine
+from omnimarket.models.model_backlog_item import (
+    REPO_KINDS_CONTEXT_KEY,
+    backlog_item_refusal,
+)
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
@@ -728,11 +734,21 @@ class HandlerIdleSlotFill:
         sends: list[dict[str, Any]] = []
         skipped: list[dict[str, str]] = []
         dropped: list[dict[str, str]] = []
+        backlog_mismatched = 0
+        item_context = {REPO_KINDS_CONTEXT_KEY: tuple(request.repo_required_kinds)}
         for item in candidates(
             request.lines,
             request.backlog,
             request.generated,
         ):
+            # OMN-21475 (T-S3, SM-00): an item that is not a backlog item, a prose engine above all, is
+            # counted and skipped; the fill never picks an engine for it.
+            if why := backlog_item_refusal(item, context=item_context):
+                backlog_mismatched += 1
+                skipped.append(
+                    {"key": item["key"], "why": f"backlog-item-invalid: {why}"}
+                )
+                continue
             if item["kind"] == "ruling-relaunch" and not item["repo"]:
                 skipped.append(
                     {
@@ -743,6 +759,9 @@ class HandlerIdleSlotFill:
                 continue
             if why := fixer_hold_reason(item, request.fixer_holds):
                 dropped.append({"key": item["key"], "why": why})
+                continue
+            if request.wip_refusal and (why := request.wip_refusal(item)):
+                skipped.append({"key": item["key"], "why": why})
                 continue
             if request.fixer_holds_unread and (
                 item["repo"] or item["kind"] != "lab-repair"
@@ -877,7 +896,7 @@ class HandlerIdleSlotFill:
             pinned = required in (
                 "claude",
                 "sonnet",
-                "claude-sonnet",
+                EnumLaneEngine.CLAUDE_SONNET.value,
             ) or claude_required(item.get("brief", ""))
             if required == "codex":
                 if pinned:
@@ -992,6 +1011,7 @@ class HandlerIdleSlotFill:
             claude_left + codex_left + glm_left,
             glm_only,
             dropped,
+            backlog_mismatched,
         )
 
 
@@ -2008,6 +2028,13 @@ class HandlerLabFill:
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
         holds, holds_unread = read_fixer_holds(request.now, os.environ)
+        wip_sources = request.sources or default_sources(request.now, os.environ)
+        wip_refusal, wip_finding = fill_wip_gate(
+            ledger_tickets=wip_sources.ledger_tickets if wip_sources else None,
+            watcher_state=watcher,
+            now=(_stamp(request.now) or datetime.min).replace(tzinfo=UTC),
+            environ=os.environ,
+        )
         decision = HandlerIdleSlotFill().handle(
             ModelIdleSlotFillRequest(
                 now=request.now,
@@ -2030,9 +2057,13 @@ class HandlerLabFill:
                 completed=completed,
                 fixer_holds=holds,
                 fixer_holds_unread=holds_unread,
+                repo_required_kinds=overlay.repo_required_kinds(),
+                wip_refusal=wip_refusal,
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
+        if wip_finding:
+            found.append(wip_finding)
         if holds_unread:
             found.append(
                 (
@@ -2094,6 +2125,8 @@ class HandlerLabFill:
                         completed=completed,
                         fixer_holds=holds,
                         fixer_holds_unread=holds_unread,
+                        repo_required_kinds=overlay.repo_required_kinds(),
+                        wip_refusal=wip_refusal,
                     )
                 )
         if decision.dropped:
@@ -2200,6 +2233,11 @@ class HandlerLabFill:
                     f"free={decision.claude_free}+{decision.codex_only_free}"
                     + (f"+{decision.glm_only_free}" if decision.glm_only_free else "")
                     + f" sweep_planned={planned}"
+                    + (
+                        f" backlog_mismatched={decision.backlog_mismatched}"
+                        if decision.backlog_mismatched
+                        else ""
+                    )
                     + (
                         f" placing={'+'.join(f'{k}:{v}' for k, v in sorted(placing.items()))}"
                         if placing

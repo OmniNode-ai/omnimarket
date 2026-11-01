@@ -12,7 +12,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_deployment_evidence_reducer.handlers.handler_deployment_evidence_reducer
   class: HandlerDeploymentEvidenceReducer
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
+  input_model: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
 
 handler_routing:
   handlers:
@@ -23,11 +23,11 @@ handler_routing:
 
 input_model:
   name: ModelEvidenceValidationResult
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  module: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result
   description: "Append-only evidence validation event consumed by the reducer."
 output_model:
   name: ModelDeploymentReadinessResult
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result
+  module: omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result
   description: "Derived deployment readiness projection state."
 
 descriptor:
@@ -94,6 +94,9 @@ projection_api:
   expose: true
   exposures:
     - topic: "onex.snapshot.projection.deployment-evidence.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: "deployment_evidence_projection"
       schema: "public"
@@ -115,6 +118,9 @@ projection_api:
       freshness_column: "updated_at"
       limit: 500
     - topic: "onex.snapshot.projection.deployment-readiness.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: "deployment_readiness_projection"
       schema: "public"

@@ -55,6 +55,7 @@ event_bus:
     - "onex.evt.github.branch-head.v1"
     - "onex.evt.github.check-run.v1"
     - "onex.evt.github.workflow-run.v1"
+    - "onex.evt.github.dev-merge-tag.v1"
     - "onex.evt.github.webhook-delivery-refused.v1"
 # The delivery is not produced by any node contract: the onex-api door
 # (POST /v1/github/webhook) publishes it and omnibase_infra's
@@ -89,6 +90,9 @@ published_events:
   - topic: "onex.evt.github.workflow-run.v1"
     event_type: "GitHubWorkflowRunObservation"
     description: "A workflow run's id and workflow name as it is requested, runs and completes, which no check-run delivery names (OMN-20743)."
+  - topic: "onex.evt.github.dev-merge-tag.v1"
+    event_type: "GitHubDevMergeTagObservation"
+    description: "A dev-<UTC14>-<sha12> tag was pushed to a repository: its name and tagged commit (OMN-20134), the event node_receipt_gate_pin_advance_effect advances the receipt-gate callers on."
 # The FAILURE terminal. A refused delivery raises a typed error; the consume
 # boundary dead-letters the command and publishes its failure terminal HERE.
 # Without this declaration the boundary answers at the first output topic of

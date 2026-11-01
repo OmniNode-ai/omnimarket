@@ -17,16 +17,15 @@ import asyncio
 import json
 import sys
 
-from omnimarket.nodes.node_hook_chain_probe_effect.handlers.handler_hook_chain_probe import (
-    HandlerHookChainProbe,
-)
 from omnimarket.nodes.node_hook_chain_probe_effect.models.model_hook_chain_probe import (
     ModelHookChainProbeRequest,
 )
 
+from .container.container_hook_chain_probe_effect import build_handler_hook_chain_probe
+
 
 async def _run(request: ModelHookChainProbeRequest) -> int:
-    result = await HandlerHookChainProbe().handle(request)
+    result = await build_handler_hook_chain_probe().handle(request)
     sys.stdout.write(json.dumps(result.model_dump(mode="json"), indent=2) + "\n")
     return 0 if result.chain_complete else 1
 

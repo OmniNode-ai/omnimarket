@@ -109,6 +109,9 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.registration.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "node_service_registry"
   schema: "public"
@@ -140,3 +143,17 @@ metadata:
 externally_produced_topics:
   - topic: onex.evt.platform.node-state-change.v1
     producer: "the runtime host's node registration/heartbeat emitter in omnibase_infra, not a node contract"
+
+# OMN-21753 (under OMN-21288): when the one-runtime fold moves this writer from
+# its own container into the runtime, the runtime's consumer group starts from
+# the committed offsets of the container's group,
+# {env}.omnimarket-projections.registration-writer.consume.v1, instead of the bus default
+# (latest), so events published while the container is stopped and the runtime
+# has not yet joined are projected. The container's runner reads a partition it
+# never committed from the earliest offset, and the handover does the same.
+# omnibase_infra's HandlerContractSubscribePreflight reads this key.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: registration-writer
+  from_version: v1
+  from_auto_offset_reset: earliest

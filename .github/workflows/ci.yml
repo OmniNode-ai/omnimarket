@@ -342,7 +342,7 @@ jobs:
           queue_rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/dev?per_page=100" \
             --jq '[.[] | select(.type == "merge_queue")] | length')"
           if [ "$queue_rules" = "0" ]; then
-            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the full suite ran on the pull request. Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
+            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the pull request ran its selected tests, which are the full suite only when the change forces it (OMN-17232). Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
             exit 0
           fi
           echo "::error::No verified full-suite pass for this dev tree; heavy tests stay in the queue."
@@ -357,11 +357,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -394,10 +394,10 @@ jobs:
       - name: TODO format check
         run: |
           # Every TODO/FIXME/HACK comment in src/ must carry a ticket reference.
-          # omnibase_core owns the rule: this is the handler the no-untracked-todos
+          # omnibase_core owns the rule: this is the node runtime the no-untracked-todos
           # pre-commit hook runs. It prints file:line for each violation and exits 1.
           find src/ -name '*.py' -not -path '*/tests/*' -print0 \
-            | xargs -0 uv run python -m omnibase_core.handlers.handler_todo_format
+            | xargs -0 uv run python -m omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format
       # NOTE: This step requires PR #75 (OMN-7922, fix legacy contracts) to be merged
       # before it is active in CI. The build_loop_orchestrator handler still contains
       # hardcoded onex.evt.* constants until OMN-7922 migrates them to contract-declared
@@ -474,23 +474,16 @@ jobs:
       # OMN-17427: how every `uses:` ref is pinned is omnibase_core's check-action-pins,
       # with this repository's rule values in .action-pin-overlay.yaml. A third-party
       # ref is a full 40-hex commit sha; a first-party ref is a dev-merge tag. The
-      # core ref is read from the pre-commit hook's rev, so the hook and this step
-      # hold one tag. The overlay's known exceptions only shrink against the pull
-      # request base.
+      # core ref is the dev-merge tag the pre-commit hook's rev names. The overlay's
+      # known exceptions only shrink against the pull request base. SYNC with
+      # pre-commit hook 'check-action-pins'.
       - name: GitHub Actions pin check
         env:
+          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029044430-3f33be0d5364"
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           set -u
-          core_rev="$(uv run --no-project --with pyyaml python -c '
-          import yaml
-          config = yaml.safe_load(open(".pre-commit-config.yaml"))
-          revs = [r["rev"] for r in config["repos"] if any(h["id"] == "check-action-pins" for h in r["hooks"])]
-          assert len(revs) == 1, revs
-          print(revs[0])
-          ')"
-          ACTION_PINS_CORE="omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@${core_rev}"
           args=()
           base="${PR_BASE:-${MQ_BASE:-}}"
           if [ -n "$base" ] && git fetch --no-tags --depth=1 origin "$base"; then
@@ -551,7 +544,7 @@ jobs:
       - name: Duplicate registry IDs gate (enforce)
         run: |
           test -f .duplicate-id-registries.yaml
-          uv run python -m omnibase_core.validation.validator_duplicate_config_ids \
+          uv run python -m omnibase_core.nodes.node_duplicate_config_ids_check_compute.runtime_duplicate_config_ids_check \
             --manifest .duplicate-id-registries.yaml --repo-root .
       # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
       # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/
@@ -968,34 +961,15 @@ jobs:
         run: |
           uv run python scripts/ci/check_rls_read_tenant_seam.py --selftest
           uv run python scripts/ci/check_rls_read_tenant_seam.py
-      # Canonical handler-shape GROWTH RATCHET fan-out (OMN-14355/OMN-14368/OMN-14372).
-      # compliance_sweep checks handler hygiene but is blind to handler SHAPE, so a
-      # non-canonical handler passes green CI. This classifies each omnimarket node's
-      # contract-declared handler (definition B: typed-payload handle(request)->
-      # response, adapted by the shared runtime, no envelope in the core), WARNs the
-      # committed baseline's debt (scripts/ci/canonical_handler_shape_baseline.py),
-      # and HARD-FAILS a NEW non-canonical node or baseline growth. Sourced from the
-      # already-cloned sibling omnibase_core checkout (same pattern as "Stub
-      # implementation check" above) since the classifier lives at omnibase_core's
-      # repo-root scripts/ci/, not the installed package. Runs --full (not the
-      # default --scope changed): the classifier's diff-scoped git-diff runs with
-      # cwd = the classifier's OWN repo (omnibase_core parents[2]), which is wrong
-      # for a fan-out invocation against this sibling checkout, so --full avoids
-      # that mismatch (this job's classification is cheap: ~365 nodes, sub-second).
-      # No pre-commit mirror yet: pre-commit's language:python remote-hook install
-      # only ships the installed src/omnibase_core/ package (verified — the
-      # classifier isn't importable that way), and language:script has no dep
-      # isolation (needs pydantic/pyyaml); see OMN-14563 for the real fix
-      # (relocate the classifier into an installed omnibase_core module). This
-      # CI-only pattern already matches several sibling gates in this same job
-      # list (compliance-sweep, runtime-sweep, aislop-sweep, coverage-sweep-gate).
-      - name: Canonical handler-shape ratchet (OMN-14355 fan-out)
-        run: |
-          uv run python ../omnibase_core/scripts/ci/canonical_handler_shape.py \
-            --package omnimarket --src-root src \
-            --baseline scripts/ci/canonical_handler_shape_baseline.py \
-            --receipts-dir scripts/ci/adequacy_receipts \
-            --full
+      # OMN-21536: omnibase_core replaced its scripts/ci/canonical_handler_shape.py ratchet with
+      # the handler_shape validator (omnibase_core.validation.validator_handler_shape) and deleted the
+      # script, so the sibling checkout at the pinned core tag no longer holds it and the step that
+      # ran it here (OMN-14355 fan-out) failed with a missing file. The validator carries no
+      # baseline: run over this repository's handlers it reports the debt that
+      # scripts/ci/canonical_handler_shape_baseline.py records, so wiring it here as a gate needs a
+      # baselined run of its own. That is open work for the handler-shape owner; until it lands this
+      # job holds no growth ratchet over handler shape, and the flip-bundle seam gate below still
+      # runs from the pinned core checkout.
 
       # Fail-closed flip-bundle SEAM gate fan-out (OMN-14809 / OMN-15340 / OMN-15344).
       # The ratchet above proves a node's SHAPE. It is structurally blind to whether the
@@ -1116,11 +1090,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -1269,11 +1243,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -1723,11 +1697,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -1860,14 +1834,14 @@ jobs:
         # v<version> tag yet. Otherwise clone the release tag as before.
         run: |
           ref=$(grep -A2 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^source = { git = "[^"]*?tag=\([^#"]*\)#.*/\1/p')
-          [ -n "$ref" ] || ref="v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
+          [ -n "$ref" ] || ref="$(awk -v p=omnibase-infra '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)"
           git clone --depth=1 --branch "$ref" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2274,9 +2248,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2313,9 +2287,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2804,17 +2778,17 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Clone omnibase_core
         run: |
-          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
           OMNIBASE_CORE_SHA=$(git -C ../omnibase_core rev-parse HEAD)
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
       - name: Clone omnibase_compat
         run: |
-          git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
           OMNIBASE_COMPAT_SHA=$(git -C ../omnibase_compat rev-parse HEAD)
           echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
       - name: Clone omnimemory
         run: |
-          git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+          git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
           OMNIMEMORY_SHA=$(git -C ../omnimemory rev-parse HEAD)
           echo "omnimemory pinned to: $OMNIMEMORY_SHA"
       - name: Install uv
@@ -2897,11 +2871,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2933,11 +2907,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -2965,11 +2939,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -3011,11 +2985,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -3362,11 +3336,11 @@ jobs:
           fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_core
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omninode-memory"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
       - name: Install uv (dependency cache — OMN-14680)
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
@@ -3921,7 +3895,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261023085853-9d65b648bff5"
+      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029151319-6e0a5eee541a"
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
@@ -3940,7 +3914,7 @@ jobs:
           set -u
           ratchet() {
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
-              python -m omnibase_core.validators.canonical_file_shape "$@"
+              python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape "$@"
           }
           mkdir -p bin tests
           printf '#!/bin/sh\necho planted\n' > bin/zz_canary_planted
@@ -3969,11 +3943,11 @@ jobs:
           if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
             base="$(git merge-base "$base" HEAD)"
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
-              python -m omnibase_core.validators.canonical_file_shape --base "$base" --head HEAD
+              python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape --base "$base" --head HEAD
           else
             echo "no base revision on this event; checking the tree against the baseline only"
             uv run --no-project --with "$CANONICAL_FILE_SHAPE_CORE" \
-              python -m omnibase_core.validators.canonical_file_shape --head HEAD
+              python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape --head HEAD
           fi
 
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
@@ -4036,62 +4010,6 @@ jobs:
           fi
           uv run --no-project --with "$RUNNER_PLACEMENT_CORE" \
             python -m omnibase_core.handlers.handler_public_runner_placement_cli "${args[@]}"
-
-  # OMN-21500: omnibase_core's generic validators run in CI as the hook ids of
-  # .pre-commit-config.yaml, so this job and the local hooks name one core
-  # dev-merge tag and cannot drift. Unconditional: no needs/if; registered in
-  # ci_summary_gate.py STRICT_GATE_JOBS.
-  core-validators:
-    name: Core Validators (OMN-21500)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
-        with:
-          fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
-        with:
-          python-version: "3.12"
-      - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
-        with:
-          version: "0.8.3"
-      - name: Positive control (planted defects refused)
-        run: |
-          set -u
-          printf 'import datetime\n\nNOW = datetime.datetime.utcnow()\n' > zz_planted_utcnow.py
-          printf 'import sqlite3\n\nCONNECTION = sqlite3.connect(":memory:")\n' > zz_planted_sqlite3.py
-          for pair in check-no-utcnow:zz_planted_utcnow.py check-no-raw-sqlite3:zz_planted_sqlite3.py; do
-            hook="${pair%%:*}"
-            planted="${pair#*:}"
-            if uvx pre-commit@4.5.1 run "$hook" --files "$planted"; then
-              echo "POSITIVE CONTROL FAILED: $hook accepted $planted"
-              exit 1
-            fi
-            echo "positive control: $hook refused $planted"
-          done
-          rm zz_planted_utcnow.py zz_planted_sqlite3.py
-      # None of these validators has a baseline, so each judges the files the
-      # change touches, the same set the pre-commit hooks see.
-      - name: Run the core validators over the files this change touches
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          MQ_BASE: ${{ github.event.merge_group.base_sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-        run: |
-          set -u
-          base="${PR_BASE:-${MQ_BASE:-${PUSH_BEFORE:-}}}"
-          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            base="HEAD^"
-          fi
-          from_ref="$(git merge-base "$base" HEAD)"
-          for hook in check-no-utcnow check-no-raw-sqlite3 check-no-direct-kafka-producer \
-            check-local-paths-compute check-hardcoded-model-config-compute \
-            check-ai-slop; do
-            uvx pre-commit@4.5.1 run "$hook" --from-ref "$from_ref" --to-ref HEAD
-          done
 
   # OMN-19998: the guard has both refusal and passing-pin controls, including
   # the actual lane-launch and controller-brief callers. Required by CI Summary.
@@ -4356,12 +4274,14 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: .ci-summary-head
-          sparse-checkout: scripts/ci/ci_summary_gate.py
+          sparse-checkout: |
+            scripts/ci/ci_summary_gate.py
+            scripts/ci/ci_summary_external_producers.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py scripts/ci/ci_summary_gate.py
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json scripts/ci/
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:

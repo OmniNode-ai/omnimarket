@@ -13,17 +13,22 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+from omnimarket.nodes.node_host_pool_alarm_effect.container.container_host_pool_alarm_effect import (
+    create_node_host_pool_alarm_effect,
+)
+
 ROOT = Path(__file__).resolve().parents[3]
 NODE = "omnimarket.nodes.node_host_pool_alarm_effect"
 handler = importlib.import_module(f"{NODE}.handler")
 models = importlib.import_module(f"{NODE}.models")
-node = importlib.import_module(f"{NODE}.node")
+
 NOW = datetime(2026, 10, 21, 16, 55, 0, tzinfo=UTC)
 TIMEOUT = "rc=255 timed out after 20s"
 
 
 def reading(error: str | None = None, **cells):
-    return models.ModelHostPoolReading("host-a", 16, error, **cells)
+    return ModelHostPoolReading("host-a", 16, error, **cells)
 
 
 def tick(tmp_path: Path, *readings, minutes: int = 0, emit: bool = True):
@@ -35,7 +40,7 @@ def tick(tmp_path: Path, *readings, minutes: int = 0, emit: bool = True):
         emit,
         plugin_repo="plugin-repo-a",
     )
-    return node.NodeHostPoolAlarmEffect().handle(request)
+    return create_node_host_pool_alarm_effect().handle(request)
 
 
 def rows(tmp_path: Path) -> list[dict]:
@@ -109,7 +114,7 @@ def test_a_host_the_table_marks_down_is_not_alarmed_and_loses_its_streak(tmp_pat
     assert (
         tick(
             tmp_path,
-            models.ModelHostPoolReading("host-a", 16, TIMEOUT, available=False),
+            ModelHostPoolReading("host-a", 16, TIMEOUT, available=False),
         ).found
         == []
     )
@@ -178,8 +183,8 @@ def test_an_emitting_tick_without_a_plugin_repo_is_one_unknown_and_the_missing_l
     request = models.ModelHostPoolAlarmRequest(
         [reading(TIMEOUT)], NOW, tmp_path / "state", tmp_path / "queue", True
     )
-    node.NodeHostPoolAlarmEffect().handle(request)
-    result = node.NodeHostPoolAlarmEffect().handle(
+    create_node_host_pool_alarm_effect().handle(request)
+    result = create_node_host_pool_alarm_effect().handle(
         models.ModelHostPoolAlarmRequest(
             [reading(TIMEOUT)],
             NOW + timedelta(minutes=1),

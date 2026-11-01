@@ -1,0 +1,153 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Receipt Gate Pin Advance Effect (OMN-20134)
+#
+# The effect half of the receipt-gate pin mechanism. A dev-merge tag pushed to
+# the source repository (omnibase_core) arrives as onex.evt.github.dev-merge-tag.v1.
+# The handler reads the source repository's dev tags (git, from its clone), reads
+# every caller's pin-site files at its base head, has
+# node_receipt_gate_pin_advance_compute plan the advance from the callers
+# declared in that node's contract, and for each stale caller publishes one
+# branch whose single commit holds the pin line and its test constant, then
+# opens the pull request through node_github_repo_write_effect (the pr_create
+# command `onex scm pr-create` publishes). The write node's own mode, quota
+# floor, expected-head guard and idempotency key apply.
+#
+# A caller already on the newest gate gets nothing. An existing branch is
+# reused and the write node returns an open pull request for the head replayed,
+# so a redelivered tag opens nothing twice. A port that cannot answer raises: the
+# runtime dead-letters the trigger instead of advancing half the callers.
+#
+# Friction measurement (OMN-20134, ruling 2026-10-31T00:13:02Z "we should measure
+# friction overtime"): the handler returns the completed event and then one
+# PinOutcomeEvent per caller outcome, which the runtime's fan-out routes to
+# onex.evt.omnimarket.receipt-gate-pin-outcome.v1. Each carries the caller's pin
+# kind (sha or tag), the core tag, the seconds from the tag to the pull request
+# and a refusal class when the pull request could not be opened.
+# node_projection_receipt_gate_pin_friction folds those with the merge and CI
+# observations into one row per pin pull request.
+name: node_receipt_gate_pin_advance_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: on the source repository's dev-merge tag event, open one pull request
+  per receipt-gate caller whose pinned gate differs from the newest tag's,
+  editing the pin line and its test constant in one commit, through
+  node_github_repo_write_effect. Answers with one completed event naming each
+  pull request, each caller left unjudged and the tag it acted on.
+
+input_model:
+  name: ModelDevMergeTagEvent
+  module: omnimarket.nodes.node_receipt_gate_pin_advance_effect.models.model_receipt_gate_pin_advance_effect
+
+output_model:
+  name: ModelReceiptGatePinAdvanceCompleted
+  module: omnimarket.nodes.node_receipt_gate_pin_advance_effect.models.model_receipt_gate_pin_advance_effect
+
+# enforce publishes the branches and opens the pull requests; dry_run plans and
+# reports. A request may force dry_run; it can never force enforce.
+pin_advance_effect_config:
+  mode: enforce
+  source_clone_root_env: OMNI_HOME
+  fetch_tags: true
+  bus_lane_env: ONEX_GITHUB_GATEWAY_BUS_LANE
+  default_bus_lane: dev
+  bus_timeout_s: 90
+  # How a failed pull request's error text is classed for the friction
+  # measurement (OMN-20134). First match wins; a failure matching none takes
+  # default_refusal_class. A refusal found later on the open pull request (a red
+  # audit or guard check, a conflict) is classed by node_projection_receipt_gate_pin_friction.
+  refusal_classes:
+    - refusal_class: conflict
+      pattern: 'HTTP (409|422)|already exists|not a fast.?forward|conflict'
+    - refusal_class: audit
+      pattern: 'audit'
+    - refusal_class: guard
+      pattern: 'refused|quota|floor|expected.?head|mode|guard'
+  default_refusal_class: other
+
+placement:
+  mode: any
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub token that reads each caller's pin-site files and publishes the pin branch through the Git Data API. The pull request itself is opened by node_github_repo_write_effect under its own identity."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.evt.github.dev-merge-tag.v1
+  publish_topics:
+    - onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
+    - onex.evt.omnimarket.receipt-gate-pin-outcome.v1
+
+# Produced by node_github_webhook_ingress_effect, which folds a signed push
+# delivery of a dev-<UTC14>-<sha12> tag into this event. Declared here as the
+# edge the contract-topic-graph gate reads.
+externally_produced_topics:
+  - topic: onex.evt.github.dev-merge-tag.v1
+    producer: "node_github_webhook_ingress_effect, from the signed push delivery of a dev-merge tag"
+
+consumed_events:
+  - topic: onex.evt.github.dev-merge-tag.v1
+    event_type: "GitHubDevMergeTag"
+    message_category: "EVENT"
+    description: "A dev-<UTC14>-<sha12> tag was pushed to a repository; only the policy's source repository starts an advance."
+
+published_events:
+  - event_type: "ReceiptGatePinAdvanceCompleted"
+    topic: onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
+    description: "The advance ran for the tag: one result per caller that needed a pull request, the callers the planner could not judge, or why nothing ran."
+  - event_type: "PinOutcomeEvent"
+    topic: onex.evt.omnimarket.receipt-gate-pin-outcome.v1
+    description: "One typed event per caller outcome (opened, replayed, refused, failed) with the caller's pin kind (sha or tag), the core tag, the time from the tag to the pull request, and any refusal class; node_projection_receipt_gate_pin_friction keeps them as rows."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "receipt_gate_pin.advance"
+      message_category: "event"
+      handler:
+        name: "HandlerReceiptGatePinAdvanceEffect"
+        module: "omnimarket.nodes.node_receipt_gate_pin_advance_effect.handlers.handler_receipt_gate_pin_advance_effect"
+      event_model:
+        name: "ModelDevMergeTagEvent"
+        module: "omnimarket.nodes.node_receipt_gate_pin_advance_effect.models.model_receipt_gate_pin_advance_effect"
+      topic: onex.evt.github.dev-merge-tag.v1
+      description: "Advance every stale receipt-gate caller pin to the newest source-repository dev tag."
+
+terminal_event: onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
+
+runtime_dispatch:
+  terminal_events:
+    success: onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Receipt gate pin advance EFFECT - one pull request per stale caller (OMN-20134)"
+  author: "OmniNode Team"
+  created: "2026-10-30"
+  tags:
+    - "effect"
+    - "ci"
+    - "pin"
+    - "receipt-gate"
+    - "OMN-20134"
+  related_tickets:
+    - "OMN-20134"

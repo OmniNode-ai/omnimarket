@@ -12,6 +12,8 @@
 # Fail-closed: any missing required key raises KeyError at startup.
 
 github:
+  # Web origin: repository pages, clone remotes and release downloads.
+  web_url: "https://github.com"
   rest_url: "https://api.github.com"
   graphql_url: "https://api.github.com/graphql"
 
@@ -31,3 +33,22 @@ dharma:
   # Dharma Evaluation Runs API origin (OMN-20088). The trajectory evaluation
   # effect builds only the paths Dharma's published OpenAPI document names.
   api_url: "https://www.dharma-ai.io"
+
+pypi:
+  # Package index origin; the dod-verify release check appends the JSON API path
+  # (governance-plane read, no model routing authority).
+  base_url: "https://pypi.org"
+
+claude:
+  # Claude web origin; cloud-session pages live under /code/.
+  web_url: "https://claude.ai"
+
+json_schema:
+  # Dialect URI a JSON Schema document names in its "$schema" key.
+  draft_2020_12_url: "https://json-schema.org/draft/2020-12/schema"
+
+transport_sentinels:
+  # Pseudo-URLs that name a transport which is not HTTP. No network call is made
+  # to any of them; they are carried in endpoint fields and source paths.
+  gemini_cli_url: "cli://gemini"
+  inmemory_ui_component_prefix: "in-memory://ui_component/"

@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
@@ -18,10 +20,10 @@ from omnimarket.models.bus_binding import (
     EnumBusBindingState,
     ModelBusBindingDecision,
 )
-from omnimarket.nodes.node_exception_queue_effect.handler import (
-    HandlerExceptionEmit,
-    HandlerExceptionQueue,
-    HandlerExceptionResolve,
+from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+    create_handler_exception_emit,
+    create_handler_exception_queue,
+    create_handler_exception_resolve,
 )
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionEmitRequest,
@@ -53,9 +55,22 @@ def read_record(state_dir: Path, lane: str) -> dict[str, Any]:
 def _write_record(state_dir: Path, lane: str, record: dict[str, Any]) -> None:
     path = state_path(state_dir, lane)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(record, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    tmp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.stem}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp = Path(handle.name)
+            handle.write(json.dumps(record, sort_keys=True))
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
 
 
 def observe(state_dir: Path, decision: ModelBusBindingDecision) -> None:
@@ -95,7 +110,7 @@ def raise_alarm(
         if overdue
         else f"durable bus health read failed: {decision.reason}"
     )
-    result = HandlerExceptionEmit().handle(
+    result = create_handler_exception_emit().handle(
         ModelExceptionEmitRequest(
             state_dir=state_dir / "exception-queue",
             row=ModelExceptionRow(
@@ -180,7 +195,7 @@ def _report_refused(
             message = " ".join(str(refusal.get("message", "")).split())[:300]
         except (OSError, ValueError, AttributeError):
             message = "refusal unreadable"
-        HandlerExceptionEmit().handle(
+        create_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=state_dir / "exception-queue",
                 row=ModelExceptionRow(
@@ -219,7 +234,7 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
         return
     queue_dir = state_dir / "exception-queue"
     refused = _report_refused(state_dir, decision, record["outage_started_at"])
-    opened = HandlerExceptionQueue().handle(
+    opened = create_handler_exception_queue().handle(
         ModelExceptionQueueRequest(queue_dir, "orchestrator")
     )
     how = (
@@ -233,7 +248,7 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
             and row["key"] == f"lane={decision.lane}"
             and row["source"] == SOURCE
         ):
-            HandlerExceptionResolve().handle(
+            create_handler_exception_resolve().handle(
                 ModelExceptionResolveRequest(
                     queue_dir,
                     row["id"],

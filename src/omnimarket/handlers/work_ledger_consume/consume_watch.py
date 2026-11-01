@@ -230,15 +230,15 @@ class ConsumeWatch:
 
     def _raise_alarm(self, reason: str) -> str:
         """One decision row on the exception queue for the episode, the path the bus binding uses."""
-        from omnimarket.nodes.node_exception_queue_effect.handler import (
-            HandlerExceptionEmit,
+        from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+            create_handler_exception_emit,
         )
         from omnimarket.nodes.node_exception_queue_effect.models import (
             ModelExceptionEmitRequest,
             ModelExceptionRow,
         )
 
-        result = HandlerExceptionEmit().handle(
+        result = create_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=self._state_dir / "exception-queue",
                 row=ModelExceptionRow(

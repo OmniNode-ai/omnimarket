@@ -22,14 +22,14 @@ description: >
   Pure reducer: delta(state, event) -> (new_state, intents[]).
 
 input_model:
-  name: ModelBuildLoopEvent
-  module: omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_event
-  description: "Event from a completed build loop phase."
+  name: ModelLoopStateReduceRequest
+  module: omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_request
+  description: "Current FSM state and the event from a completed build loop phase."
 
 output_model:
-  name: ModelBuildLoopState
-  module: omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_state
-  description: "New FSM state after applying the event."
+  name: ModelLoopStateReduceResult
+  module: omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_result
+  description: "New FSM state after applying the event, and the intents to emit."
 
 handler_routing:
   routing_strategy: operation_match

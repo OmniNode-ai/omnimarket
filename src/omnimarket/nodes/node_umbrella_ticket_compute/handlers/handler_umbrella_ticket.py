@@ -9,9 +9,9 @@ umbrella PR, so its title gives it none: 10 of the 29 open PRs red on dod-verify
 This is the one definition of the umbrella ticket set and of the ``Umbrella evidence: <reason>`` line, read by
 ``lane_brief.py check`` (exit 3), the remote-lane runner before placement and CLAIM (``umbrella-refused``, exit 2) and
 ``landing_text.py guard-create`` (exit 3). A lane that may open or push a PR mints a child ticket in the launching
-session first (a headless lab lane cannot mint, OMN-21021). On a day the create gate's lane intake budget is spent it
-carries ``Umbrella evidence: lane_intake_budget`` instead, and adds its own requirement and dod_evidence item to the
-umbrella's contract.
+session first (a headless lab lane cannot mint, OMN-21021). Creating a ticket is never refused by count (RULING
+2026-10-30T00:03:58Z), so a lane that cannot mint carries an ``Umbrella evidence: <reason>`` line naming why, and adds
+its own requirement and dod_evidence item to the umbrella's contract.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ from omnimarket.nodes.node_umbrella_ticket_compute.models.model_umbrella_ticket 
 )
 
 EVIDENCE_PREFIX = "Umbrella evidence:"
-BUDGET_REASON = "lane_intake_budget"  # the create gate's refusal when the day's lane intake budget is spent
 # A line of its own, optionally a list item; a placeholder reason (`<reason>`) or a prose mention is no evidence.
 EVIDENCE_RE = re.compile(
     rf"^[ \t]*(?:[-*] )?{re.escape(EVIDENCE_PREFIX)}[ \t]*(?P<reason>[^\s<`][^\n]*?)[ \t]*$",
@@ -47,19 +46,13 @@ WHY = (
 )
 LANE_FIX = (
     "mint a child ticket with /omni:create-ticket (parent {umbrella}) in the launching session and pass it with "
-    "--ticket; when the create gate refuses with "
-    + BUDGET_REASON
-    + ", carry the line `"
+    "--ticket; a lane that cannot mint carries the line `"
     + EVIDENCE_PREFIX
-    + " "
-    + BUDGET_REASON
-    + "` in the brief and have the lane add its own requirement and dod_evidence item to "
+    + " <reason>` in the brief and adds its own requirement and dod_evidence item to "
     "contracts/{umbrella}.yaml with a test-side path that fails at the merge base"
 )
 PR_FIX = (
-    "title the PR with the lane's own child ticket; when the create gate refused that mint with "
-    + BUDGET_REASON
-    + ", carry a line `"
+    "title the PR with the lane's own child ticket; failing that, carry a line `"
     + EVIDENCE_PREFIX
     + " <reason>` in the body and add the PR's own requirement and "
     "dod_evidence item to contracts/{umbrella}.yaml with a test-side path that fails at the merge base"
@@ -96,6 +89,10 @@ def brief_refusals(
     umbrella_tickets: Sequence[str] | None = None,
 ) -> tuple[str, ...]:
     """``lane_brief.py check``: the refusal of a brief whose CLAIM ticket is an umbrella ticket on a PR-opening lane."""
+    from omnimarket.nodes.node_umbrella_ticket_compute.container.container_umbrella_ticket_compute import (
+        create_handler_umbrella_ticket,
+    )
+
     ticket = claim_ticket(parts)
     request = ModelUmbrellaTicketRequest(
         tickets=(ticket,) if ticket else (),
@@ -105,15 +102,19 @@ def brief_refusals(
         if umbrella_tickets is not None
         else None,
     )
-    return HandlerUmbrellaTicket().handle(request).refusals
+    return create_handler_umbrella_ticket().handle(request).refusals
 
 
 def pr_refusal(
     ticket: str, body: str, *, umbrella_tickets: Sequence[str] | None = None
 ) -> str:
     """``landing_text.py guard-create``: the refusal of a PR whose only title ticket is an umbrella ticket, or ""."""
+    from omnimarket.nodes.node_umbrella_ticket_compute.container.container_umbrella_ticket_compute import (
+        create_handler_umbrella_ticket,
+    )
+
     return "".join(
-        HandlerUmbrellaTicket()
+        create_handler_umbrella_ticket()
         .handle(
             ModelUmbrellaTicketRequest(
                 tickets=(ticket,),

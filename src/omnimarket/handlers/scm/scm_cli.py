@@ -19,7 +19,7 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  pr-thread-reply, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  pr-thread-reply, pr-thread-resolve, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready and pr-close take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
@@ -35,7 +35,9 @@ answer, 69 the bus could not be opened, 75 no terminal event in time (the
 outcome is unknown: read before retrying; a write retried with the same
 idempotency key is not written twice).
 Gateway reads retry on no terminal or bus unavailability for up to three total
-attempts, pausing 20 seconds between attempts; writes make one attempt (OMN-21396).
+attempts, pausing 20 seconds between attempts (OMN-21396). Writes retry only when
+the broker reports no consumer, checking that evidence after each timeout;
+other unanswered writes and bus-open failures stop immediately (OMN-21646).
 With ``--bus inmemory``, the selected contract is hosted in this process by
 the runtime dispatcher before the command is published.
 
@@ -83,6 +85,10 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
 )
+from omnimarket.handlers.scm.scm_duplicate_guard import (
+    duplicate_check_command,
+    refuse_or_continue,
+)
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
@@ -110,6 +116,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
 EXIT_FAILED: Final[int] = 1
 EXIT_USAGE: Final[int] = 2
 EXIT_LOCAL_UNANSWERED: Final[int] = 3
+EXIT_DUPLICATE: Final[int] = 4
 EXIT_BUS_UNAVAILABLE: Final[int] = 69
 EXIT_NO_TERMINAL: Final[int] = 75
 READ_RETRY_PAUSE_S: Final[float] = 20.0
@@ -141,6 +148,21 @@ def _emit(answer: ModelScmAnswer, *, attempts: int | None = None) -> int:
     return EXIT_FAILED if answer.outcome == "failed" else 0
 
 
+def _write_has_no_consumer(exc: TimeoutError) -> bool:
+    """A write is republished only when the broker shows no consumer on its command topic.
+
+    A recreated effects runtime holds no consumer for the minutes it takes to
+    rejoin its group, so a write made then reaches nobody. The command carries
+    its idempotency key, so one republished to the rejoined consumer writes
+    once. A consumer that is present, or evidence that cannot be read, is not
+    that case: the first command may be running, and nothing is republished.
+    """
+    return (
+        isinstance(exc, ScmNoTerminalError)
+        and exc.evidence.reason == "no_consumer_for_topic"
+    )
+
+
 def _call_bus(
     spec: ModelScmVerb,
     repo: str,
@@ -158,13 +180,14 @@ def _call_bus(
                 timeout_s=timeout_s,
             )
 
-    max_attempts = 3 if spec.node is EnumScmNode.GATEWAY else 1
+    max_attempts = 3
+    is_read = spec.node is EnumScmNode.GATEWAY
     attempt = 1
     while True:
         try:
             terminal = asyncio.run(main())
         except TimeoutError as exc:
-            if attempt == max_attempts:
+            if attempt == max_attempts or not (is_read or _write_has_no_consumer(exc)):
                 click.echo(
                     json.dumps(
                         {
@@ -185,7 +208,7 @@ def _call_bus(
         except (LabRunBusError, InfraConnectionError) as exc:
             # A broker that refuses this principal a topic (an ACL) lands here too.
             click.echo(f"bus: {exc}", err=True)
-            if attempt == max_attempts:
+            if attempt == max_attempts or not is_read:
                 return EXIT_BUS_UNAVAILABLE
         else:
             failed = (
@@ -586,6 +609,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_close": ("run", "claims_dir"),
     "pr_comment": ("body", "body_file"),
     "pr_thread_reply": ("thread", "body", "body_file"),
+    "pr_thread_resolve": ("review_thread",),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
         "name",
@@ -649,6 +673,14 @@ _OPTION_DECORATORS: Final[
         help="Where this host's claim registry keeps the claim you took "
         "($ONEX_PR_CLAIMS_DIR, else $ONEX_STATE_DIR/pr-queue/claims). The claim "
         "is read here and sent on the command; the directory itself is not.",
+    ),
+    "review_thread": click.option(
+        "--review-thread",
+        "review_thread_id",
+        required=True,
+        help="The GraphQL node id of the review thread (PRRT_...; "
+        "`onex scm pr-threads` lists them). Refused unless the thread has a "
+        "reply from the fixing lane.",
     ),
     "thread": click.option(
         "--thread",
@@ -735,6 +767,19 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             if not sep or not key:
                 raise click.UsageError(f"--input {item!r} is not KEY=VALUE")
             inputs[key] = value
+        if spec.operation == EnumRepoWriteOperation.PR_CREATE:
+            # One fix, one pull request (OMN-17427): a duplicate or an unreadable check opens nothing.
+            refused = refuse_or_continue(
+                repo=repo,
+                head=str(fields["head"]),
+                base=_optional_str(fields.get("base")),
+                title=_optional_str(fields.get("title")),
+                body=body,
+                lane=lane,
+                watcher_state=watcher_state,
+            )
+            if refused is not None:
+                sys.exit(refused)
         run = fields.pop("run", None)
         claims_dir = fields.pop("claims_dir", None)
         claim = (
@@ -871,12 +916,14 @@ for _spec in SCM_VERBS:
     )
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
+scm_group.add_command(duplicate_check_command)
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 
 
 __all__: list[str] = [
     "EXIT_BUS_UNAVAILABLE",
+    "EXIT_DUPLICATE",
     "EXIT_FAILED",
     "EXIT_LOCAL_UNANSWERED",
     "EXIT_NO_TERMINAL",

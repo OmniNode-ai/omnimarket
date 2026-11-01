@@ -16,12 +16,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from omnimarket.models.model_engine_experiment import (
-    ENGINE_LADDER,
-    ModelEngineExperimentRow,
-)
+from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
+from omnimarket.models.model_engine_ladder import ladder_of
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -60,6 +58,25 @@ class ModelRemoteLaneHostReading(BaseModel):
     # The lock hash of this host's dispatch venv. None: the reader did not read it (an old
     # producer); on a drift-judged request that is VENV_UNKNOWN, never a pass.
     dispatch_venv_hash: str | None = Field(default=None, min_length=1)
+    # The host-swapping measurement of the throughput tick (OMN-17232): the probe's own paging
+    # readings, and whether the tick's host pool alarm still holds ``host-swapping`` open for
+    # this host (it resolves after two clean reads, so a host that pages in bursts stays flagged
+    # between bursts). None / False: an old producer, which places as before.
+    swap_in_kb_s: float | None = None
+    mem_psi_avg60: float | None = None
+    mem_pressure: int | None = None
+    swap_alarm_open: bool = False
+    # A collaborator machine (the host table's ``contributor: true``). It takes a lane only bound to
+    # its own collaborator lane, never to a lane the non-contributor hosts bind, and only while that
+    # lane can take a lane. False: an ordinary pool host, judged as before.
+    contributor: bool = False
+    # The lane a lane on this host is bound to (the host table's ``lane_binding``, else its
+    # ``ledger_bus_lane``). None: the row declares none, so a contributor host takes no lane.
+    bus_lane: str | None = None
+    # The host table's ``lane_ready`` and ``lane_not_ready_reason``: whether ``bus_lane`` can take a
+    # lane today. Fail closed: a contributor row is not ready until its data says so.
+    lane_ready: bool = False
+    lane_not_ready_reason: str | None = None
 
 
 class ModelRemoteLaneAttempt(BaseModel):
@@ -75,9 +92,9 @@ class ModelRemoteLaneAttempt(BaseModel):
 
     @field_validator("engine")
     @classmethod
-    def validate_engine(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("engine must be in ENGINE_LADDER")
+    def validate_engine(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("engine must be a rung of the engine ladder")
         return value
 
 
@@ -104,9 +121,9 @@ class ModelRemoteLaneLadder(BaseModel):
 
     @field_validator("ceiling")
     @classmethod
-    def validate_ceiling(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("ceiling must be in ENGINE_LADDER")
+    def validate_ceiling(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("ceiling must be a rung of the engine ladder")
         return value
 
 
@@ -138,6 +155,8 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     ladder: ModelRemoteLaneLadder | None = None
     # The same reason for a request without ladder facts (the legacy single-engine placement).
     escalation_reason: str | None = None
+    # The lane the lane is bound to, when the caller binds it. None: the host's own ``bus_lane``.
+    lane: str | None = Field(default=None, min_length=1)
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):

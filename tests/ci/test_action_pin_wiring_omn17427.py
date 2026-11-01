@@ -4,8 +4,8 @@
 
 The rule (third-party refs pinned to a full sha, first-party refs a dev-merge tag)
 lives in omnibase_core; its tests cover each ref class. These tests cover what
-belongs to this repository: the overlay carries the rule values, the CI step reads
-the core dev-merge tag from the pre-commit hook's rev, and no workflow ref of an
+belongs to this repository: the overlay carries the rule values, the pre-commit
+hook and the CI step name the same core dev-merge tag, and no workflow ref of an
 organisation the overlay names is a sha unless the overlay lists it with a reason.
 """
 
@@ -53,18 +53,16 @@ def test_overlay_carries_the_rule_values() -> None:
     assert overlay["first_party_main"] == "fail"
 
 
-def test_hook_rev_is_a_dev_merge_tag_and_ci_reads_it_from_the_hook() -> None:
+def test_hook_and_ci_name_the_same_core_dev_merge_tag() -> None:
     pattern = re.compile(str(_overlay()["tag_pattern"]))
     rev = _hook_rev()
     assert pattern.fullmatch(rev), f"hook rev {rev!r} is not a dev-merge tag"
-    ci_text = CI.read_text(encoding="utf-8")
-    start = ci_text.index("- name: GitHub Actions pin check")
-    step = ci_text[start : ci_text.index("\n      - name:", start + 1)]
-    assert ".pre-commit-config.yaml" in step
-    assert f"{CORE_URL}@${{core_rev}}" in step
-    assert re.search(r"omnibase_core@dev-\d", step) is None, (
-        "the CI step holds its own core tag instead of reading the hook's rev"
+    step = re.search(
+        rf"ACTION_PINS_CORE: \"omnibase-core @ git\+{re.escape(CORE_URL)}@(\S+)\"",
+        CI.read_text(encoding="utf-8"),
     )
+    assert step is not None, "ci.yml has no ACTION_PINS_CORE env"
+    assert step.group(1) == rev
 
 
 def test_every_known_exception_is_a_sha_with_a_reason() -> None:

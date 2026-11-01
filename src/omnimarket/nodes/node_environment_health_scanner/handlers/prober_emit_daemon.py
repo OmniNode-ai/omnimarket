@@ -11,6 +11,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.handlers.runtime_paths import runtime_path
 from omnimarket.nodes.node_environment_health_scanner.handlers.handler_environment_health_scanner import (
     EnumHealthFindingSeverity,
     EnumSubsystem,
@@ -22,7 +23,9 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
     EnumReadinessStatus,
 )
 
-_DEFAULT_SOCKET = os.environ.get("ONEX_EMIT_DAEMON_SOCKET", "/tmp/onex_emit.sock")  # contract-config-ok: config  # fmt: skip
+_DEFAULT_SOCKET = os.environ.get(  # contract-config-ok: config
+    "ONEX_EMIT_DAEMON_SOCKET", runtime_path("emit_daemon.health_probe_socket_path")
+)
 _STALE_THRESHOLD_SECONDS = 3600  # last publish >1h ago = WARN
 
 

@@ -1,0 +1,107 @@
+schema_version: 1.0.0
+ticket_id: OMN-21475
+title: 'T-S3: typed backlog item in the lab fill, and the engine ladder as a contract field'
+summary: The lab fill validates each backlog item as ModelBacklogItem and counts and skips the ones that fail; classify_sm_00 reads those crossings; the engine ladder is config.engine_ladder of node_remote_lane_compute
+  and the constant is deleted; the fill declares its protocol dependencies.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-typed-backlog-item
+  statement: The fill never dispatches on a guessed engine, and the engine ladder has one home, the contract.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: An item with a prose engine is skipped and counted, never dispatched on a guessed engine -- falsifier: the pytest case asserting the skipped count is 1 and no lane is chosen'
+  - id: AC2
+    statement: 'AC2: An item requiring the family `claude` is valid and resolves through the adopted policy to `sonnet`, and a lane that ran Sonnet reads matched at SM-01 and SM-02 while one that ran Opus
+      reads mismatched -- falsifier: the healthy family-to-Sonnet control and its Opus counterpart'
+  - id: AC3
+    statement: 'AC3: The result carries `backlog_mismatched` -- falsifier: the golden-chain test in `test_golden_chain_idle_slot_fill_effect.py` asserts the field'
+  - id: AC4
+    statement: 'AC4: `classify_sm_00` exists in `node_seam_classify_compute` and reads `ModelBacklogItem` crossings, the factory line contract''s `sm_00` node changes from `gap: GAP-1` to `shape: ModelBacklogItem`,
+      and its fixture copy is updated -- falsifier: the pytest case over a window with two malformed items, and the fixture-copy comparison test of T-S1 updated in the same PR'
+  - id: AC5
+    statement: 'AC5: The engine ladder moves from the constant `ENGINE_LADDER` to the contract field `config.engine_ladder` of `node_remote_lane_compute`, read through the contract loader -- falsifier:
+      no source file holds the constant, and a fixture contract with `claude-opus-9` added to the ladder makes an item requiring it valid'
+  - id: AC6
+    statement: 'AC6: Bindings: the fill declares BKL, LED, CHG, HST, SRC, BUS and CLK in `protocol_dependencies` -- falsifier: the fill runs under the `local` and `lab` profiles and projects identically,
+      and a stub that reorders rows, drops a row or moves a source time across the window boundary fails the comparison'
+evidence_requirements:
+- kind: tests
+  description: T-S3 tests.
+  command: uv run pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/node_remote_lane_compute tests/nodes/node_seam_classify_compute tests/nodes/node_seam_read_orchestrator -q --no-cov --tb=line
+- kind: manual
+  description: 'deploy: read the shared backlog crossing at this head from the public repository and run its fill and seam behavior tests on a hosted runner.'
+  command: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21475-ac1
+  description: AC1 bound to its test.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py -q --no-cov --tb=line -k "prose"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-ac2
+  description: AC2 bound to its test.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py -q --no-cov --tb=line -k "sonnet
+      or policy"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-ac3
+  description: AC3 bound to its test.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_golden_chain_idle_slot_fill_effect.py -q --no-cov --tb=line -k "golden_chain"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-ac4
+  description: AC4 bound to its test.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py tests/nodes/node_seam_read_orchestrator/test_handler_seam_read_plan.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-ac5
+  description: AC5 bound to its test.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_contract.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py -q --no-cov --tb=line -k "ladder or fixture_contract"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-ac6
+  description: AC6 bound to its test.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fill_binding_parity.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-deploy-backlog-crossing
+  description: 'Hosted deploy readback: the public repository at this exact head must contain the shared backlog model; the fill and SM-00 must still reject malformed items and accept policy engines without cross-node model reach-ins. No lab service is required.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_no_cross_node_reach_in.py tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/model_backlog_item.py" | grep -q '^class ModelBacklogItem(BaseModel):'
+    cwd: .

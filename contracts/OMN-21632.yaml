@@ -1,0 +1,88 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21632"
+title: "Plans carry a human-readable companion: the plan audit refuses a new plan with a task catalogue and no linked companion"
+summary: "The plan audit node now holds a contract-declared rule: a Markdown plan with a task catalogue whose state_as_of is on or after 2026-10-31 must link a non-empty companion file named after the plan with the readable suffix from its top. Older plans are not subject to the rule and no baseline file is added; the date and suffix are data in the node contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21632-companion-rule"
+    statement: |-
+      A plan with a task catalogue and a state_as_of on or after the contract's effective date fails the audit unless it links an existing non-empty companion within the first lines; a plan dated before that date is not failed by the rule.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a plan with a task catalogue and state_as_of on or after 2026-10-31 and no linked companion fails the audit, and the same plan with a linked non-empty companion passes -- falsifier: uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py -q fails the planted-fixture case"
+      - id: "AC2"
+        statement: "AC2: a plan with state_as_of before 2026-10-31 is not failed by the companion rule, and the date, suffix and link window are data in the node contract -- falsifier: the same test file fails the before-effective-date case"
+evidence_requirements:
+  - kind: "tests"
+    description: "The planted failing fixture and the passing, unlinked, empty and before-date cases."
+    command: "uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py tests/integration/node_plan_audit_compute/test_plan_audit_compute_state_coverage.py tests/integration/node_plan_audit_compute/test_plan_audit_multiparam.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21632-audit"
+    description: "The audit's companion cases pass; the must-fail control reverts the merged companion-rule implementation."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py tests/integration/node_plan_audit_compute/test_plan_audit_compute_state_coverage.py tests/integration/node_plan_audit_compute/test_plan_audit_multiparam.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21632-deploy-companion-runtime"
+    description: |-
+      Hosted-runner deploy smoke: execute this checkout's plan-audit handler and
+      node contract in a disposable Python 3.13 container with read-only source.
+      Install only the handler's Pydantic and PyYAML dependencies at the versions
+      in uv.lock. A new catalogue plan without a companion must FAIL, a linked
+      companion with an H1 must PASS, an empty companion must FAIL, and an older
+      plan must PASS without a companion. This checks an isolated runtime of the
+      evaluated source, not a production rollout; no broker or lab route is needed.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |
+          docker run --rm \
+            --mount "type=bind,source=$PWD/src,target=/workspace/src,readonly" \
+            --workdir /tmp --env PYTHONDONTWRITEBYTECODE=1 \
+            --env PYTHONPATH=/workspace/src \
+            ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \
+            uv run --no-project --with pydantic==2.13.5 --with PyYAML==6.0.3 python -c '
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute import HandlerPlanAuditCompute
+          from omnimarket.nodes.node_plan_audit_compute.models.model_plan_audit_compute_request import ModelPlanAuditComputeRequest
+
+          handler = HandlerPlanAuditCompute()
+          with TemporaryDirectory() as directory:
+              root = Path(directory)
+              plan = root / "plan.md"
+              companion = root / "plan.readable.md"
+              body = "# Plan\nOMN-21632\nverified: 2026-10-31 via deploy-smoke\n## Tasks\n### Task 1\nImplement.\n"
+              def audit(state, linked):
+                  link = "[Readable](plan.readable.md)\n" if linked else ""
+                  plan.write_text("state_as_of: " + state + "\n" + link + body, encoding="utf-8")
+                  return handler.handle(ModelPlanAuditComputeRequest(plan_path=str(plan)))
+              missing = audit("2026-10-31", False)
+              assert missing.verdict == "FAIL", missing.model_dump_json()
+              assert any(c.name == "companion_readable" and not c.passed for c in missing.checks)
+              companion.write_text("# Readable plan\nImplement the task.\n", encoding="utf-8")
+              linked = audit("2026-10-31", True)
+              assert linked.verdict == "PASS", linked.model_dump_json()
+              assert any(c.name == "companion_readable" and c.passed for c in linked.checks)
+              companion.write_text(" \n", encoding="utf-8")
+              empty = audit("2026-10-31", True)
+              assert empty.verdict == "FAIL", empty.model_dump_json()
+              companion.unlink()
+              older = audit("2026-10-30", False)
+              assert older.verdict == "PASS", older.model_dump_json()
+              assert any(c.name == "companion_readable" and "not required" in c.detail for c in older.checks)
+          print("Plan-audit container readback: missing=FAIL linked=PASS empty=FAIL older=PASS")
+          '
+        cwd: "."

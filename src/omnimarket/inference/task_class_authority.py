@@ -391,16 +391,15 @@ class ModelShortPromptSelection(BaseModel):
 class ModelTaskClassExecutionBudget(BaseModel):
     """Declared ceiling and terminal margin for one task class.
 
-    The ceiling stays at or below 240 seconds, under the deployed dispatch
-    port's 300-second wait, so the handler's own deadline fires before the
-    port gives up on it. The delivery margin belongs to the terminal waiter,
-    not the model execution deadline. (The bound moved here from the onex
-    CLI's mirror model, OMN-19407.)
+    Each class declares its own ceiling, at most 900 s, and a site overlay may
+    override it per class (OMN-21344). The runtime port's wait and the handler
+    bound follow the largest declared class. The delivery margin belongs to
+    the terminal waiter. (Bound moved here from the CLI mirror, OMN-19407.)
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
+    task_class_timeout_ceiling_seconds: int = Field(ge=1, le=900)
     terminal_delivery_margin_seconds: int = Field(ge=1)
     requested_timeout_grace_seconds: int | None = Field(
         default=None,
@@ -1115,13 +1114,10 @@ class ModelTaskClassAuthority(BaseModel):
         return None
 
     def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
-        """Return the declared handler budget for ``task_class``, or refuse."""
-        try:
-            return self.execution_budgets[task_class]
-        except KeyError as exc:
-            raise ValueError(
-                f"no declared execution budget for task class: {task_class}"
-            ) from exc
+        """The declared budget for ``task_class``, a site overlay's when it sets one."""
+        from omnimarket.handlers.execution_budget_overlay import resolve_for_authority
+
+        return resolve_for_authority(self, task_class).budget
 
     def unroutable_refusal(self, task_class: str) -> str | None:
         """Return the refusal for a class declared unroutable, in the contract's words."""

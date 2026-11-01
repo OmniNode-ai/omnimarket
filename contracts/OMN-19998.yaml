@@ -221,6 +221,21 @@ requirements:
     acceptance:
       - id: "AC41"
         statement: "AC41: catalogue validation passes with Super present in the historical capture or absent as on 2026-10-27; Super is absent from backend declarations, rules, defaults and tiers and cannot be pinned; edited packaged rule orders are neutral local defaults; an unlisted new rung, placement peer or onboarding default still fails -- falsifier: uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py -q fails at the merge base when Super is removed from the captured catalogue"
+  - id: "req-sibling-clone-at-locked-ref"
+    statement: "A CI job clones each sibling at the ref uv.lock pins: the git tag of a tag pin, or v<version> for a release. A lock that pins a lab dev tag (a version with no release tag) no longer fails every cloning job with exit 128."
+    acceptance:
+      - id: "AC42"
+        statement: "AC42: the clone ref expression the workflows run prints dev-20261028111658-97c5d1c2802a for a uv.lock omnibase-core entry pinned by that git tag, v0.5.7 for a registry entry, v<version> for a git source with no tag, and refuses an absent package; no workflow derives the clone ref from the lock version -- falsifier: uv run pytest tests/ci/test_sibling_clone_ref_omn19998.py -q fails at the merge base, where the clone steps read v<version>"
+  - id: "req-concurrent-bus-binding-state-writes"
+    statement: "Concurrent bus-binding observations write through separate temporary files in the state directory, atomically replace the lane record, and clean temporary files when serialization or replacement fails."
+    acceptance:
+      - id: "AC43"
+        statement: "AC43: sixteen writers each persist fifty records without an exception, the final lane record parses as JSON, and serialization or replacement failure preserves the previous record without temporary files -- falsifier: uv run pytest tests/unit/bus_binding/test_recovery_writes.py -q --no-cov fails with recovery.py at the merge base"
+  - id: "req-cause-ownership-counts-judged-prs"
+    statement: "The cause-claim ownership node counts as members of a shared red only the open PRs the throughput tick's repo-status verdict counts (OPEN, not a draft, not held-excluded), so a rewritten shared_red_unowned line and its cause-lane FIX never name a draft."
+    acceptance:
+      - id: "AC44"
+        statement: "AC44: landing_open_records keeps an OPEN non-draft PR and drops a draft, a held-excluded PR and a merged PR, and HandlerCauseClaimOwnership.handle passes only the kept PRs to claim_owners_of_check -- falsifier: uv run pytest tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_skips_drafts_omn19998.py -q fails with handler.py at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -942,4 +957,83 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env UV_FROZEN=true uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-sibling-clone-at-locked-ref"
+    description: "The sibling clone ref comes from the lock's git tag for a tag pin and from v<version> for a release; the lock expression the workflows run resolves to that ref for omnibase-core, and no workflow still reads the clone ref from the lock version."
+    source: "manual"
+    binds_ac: ["AC42"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/ci/test_sibling_clone_ref_omn19998.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-concurrent-bus-binding-state-writes"
+    description: "The concurrent-write regression and both failure-cleanup tests exercise the state writer changed by this PR. The writer with one shared temporary name fails the regression and replacement-failure cleanup test."
+    source: "manual"
+    binds_ac: ["AC43"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_recovery_writes.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-bus-binding-state-deploy-probe"
+    description: "Hosted-runner deploy readback imports the checked-out package and writes one lane's real state files from sixteen concurrent processes. It refuses child failures, invalid final JSON, or leaked temporary files; it needs no lab service or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          env UV_FROZEN=true PYTHONDONTWRITEBYTECODE=1 uv run python - <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          child = """
+          import sys
+          from pathlib import Path
+          from omnimarket.handlers.bus_binding import recovery
+          root, writer = Path(sys.argv[1]), int(sys.argv[2])
+          for iteration in range(50):
+              recovery._write_record(root, "dev", {"lane": "dev", "writer": writer, "iteration": iteration})
+          """
+          with TemporaryDirectory(prefix="bus-binding-deploy-") as directory:
+              children = [subprocess.Popen([sys.executable, "-c", child, directory, str(writer)]) for writer in range(16)]
+              results = [process.wait(timeout=60) for process in children]
+              assert results == [0] * 16, results
+              path = Path(directory) / "bus-binding" / "dev.json"
+              record = json.loads(path.read_text(encoding="utf-8"))
+              assert record["lane"] == "dev", record
+              assert record["writer"] in range(16), record
+              assert record["iteration"] == 49, record
+              assert list(path.parent.iterdir()) == [path]
+          print("bus-binding deploy readback: 16 processes, 800 writes, valid final JSON, no temporary files")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-cause-ownership-skips-drafts"
+    description: "The focused tests read the cause-claim ownership node's open-PR filter and its handle() call. Both fail with handler.py at the merge base, where every OPEN record, drafts included, reaches claim_owners_of_check."
+    source: "manual"
+    binds_ac: ["AC44"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_skips_drafts_omn19998.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-cause-owner-drafts-deploy-probe"
+    description: "Hosted-runner deploy readback imports the checked-out cause-claim ownership handler and reads the 2026-10-31 omnibase_infra shape (two non-draft PRs and one held-excluded draft red on one check); it refuses any member set other than the two non-draft PRs and needs no lab service or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          env UV_FROZEN=true PYTHONDONTWRITEBYTECODE=1 uv run python - <<'PY'
+          from omnimarket.nodes.node_cause_claim_ownership_effect import handler
+          red = {"red": ["Hostile Review Thread Gate"]}
+          state = {
+              "prs": {
+                  "omnibase_infra#5469": {"facts": {"state": "OPEN", "draft": False}, "cls": "red", "ci": red},
+                  "omnibase_infra#5475": {"facts": {"state": "OPEN", "draft": False}, "cls": "red", "ci": red},
+                  "omnibase_infra#5237": {"facts": {"state": "OPEN", "draft": True}, "cls": "held-excluded", "ci": red},
+              }
+          }
+          members = sorted(handler.landing_open_records(state))
+          assert members == ["omnibase_infra#5469", "omnibase_infra#5475"], members
+          print("cause ownership deploy readback: members", " ".join(members))
+          PY
         cwd: "${OMNI_HOME}/omnimarket"

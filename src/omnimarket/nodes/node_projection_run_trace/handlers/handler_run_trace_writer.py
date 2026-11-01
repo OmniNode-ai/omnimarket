@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +15,7 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_trace import (
     HandlerProjectionRunTrace,
 )
@@ -21,7 +23,10 @@ from omnimarket.nodes.node_projection_run_trace.models import ModelDelegationRun
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
     async_resolve_write_tenant_uuid,
@@ -72,13 +77,14 @@ def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
 class RunTraceProjectionWriter(BaseProjectionRunner):
     """Store each step under its (tenant, run, sequence) key and publish accepted rows."""
 
-    onex_runtime_inprocess_dispatch = True
-
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
+        self._standalone_db_tables = tuple(
+            self._contract.get("db_io", {}).get("db_tables", [])
+        )
         exposures = load_projection_exposures_from_contract(
             self._contract, str(self._contract["name"]), path
         )
@@ -105,16 +111,11 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no DLQ publisher configured for {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         topics = self.subscribe_topics
-        data = dict(input_data)
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        data = dict(request.payload)
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(topic, data, meta))
 
     async def _project_one_message(
@@ -141,17 +142,24 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
         payload.pop("_db", None)
         # ValidationError must reach the runtime's POISON/DLQ classifier.
         step = self._derive.handle(ModelDelegationRunStep.model_validate(payload))
-        async with self.db.pool.acquire() as conn, conn.transaction():
-            # OMN-19972: resolve on write, as the delegation writer does. A
-            # bundle's dispatch port stamps the install's tenant slug, and every
-            # reader scopes by the uuid the tenant mirror holds for it. An
-            # identity nobody can resolve raises, which reaches the runtime's
-            # POISON path; it is never stored under a default.
-            tenant = await async_resolve_write_tenant_uuid(
-                conn, step.tenant_id, event_timestamp=step.started_at
-            )
-            if tenant is None:
-                raise ValueError("a run step must name its tenant")
+        # OMN-19972: resolve on write, as the delegation and savings writers do,
+        # through the mirror's own read binding. A bundle's dispatch port stamps
+        # the install's tenant slug, and every reader scopes by the uuid the
+        # mirror holds for it. The tenant writer role holds nothing on the
+        # mirror, and one pool is one login role. An identity nobody can
+        # resolve raises, which reaches the runtime's POISON path; it is never
+        # stored under a default.
+        tenant = await async_resolve_write_tenant_uuid(
+            self.db_for("tenant_registry_mirror", operation="read"),
+            step.tenant_id,
+            event_timestamp=step.started_at,
+        )
+        if tenant is None:
+            raise ValueError("a run step must name its tenant")
+        async with (
+            self.db_for("run_trace", operation="write").pool.acquire() as conn,
+            conn.transaction(),
+        ):
             await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant)
             inserted = await conn.fetch(
                 _INSERT_STEP,
@@ -200,3 +208,9 @@ class RunTraceProjectionWriter(BaseProjectionRunner):
 
 
 __all__ = ["RunTraceProjectionWriter"]
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
+    asyncio.run(RunTraceProjectionWriter().run())

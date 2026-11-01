@@ -1,0 +1,145 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21217"
+title: "Hosted credential intake preserves ordered models with versioned replacement"
+summary: >-
+  T5 only: hosted intake and the existing credential-registered event carry an
+  ordered models list and expected_version. The model alias remains a one-entry
+  list. Intake refuses an empty choice before secret storage. Overlay writes
+  replace the whole list atomically when the expected version matches; a stale
+  or missing-row version is refused. Legacy writes increment the version, and
+  a stale revoke cannot overwrite a newer registration. SQLite and PostgreSQL
+  retain the same list/version semantics. Real PostgreSQL proof must come from
+  the hosted CI service, not a database started on the shared lab host. T6
+  routing and T7 dashboard management remain separate changes after T5 merges.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: [events, protocols, public_api]
+requirements:
+  - id: "req-hosted-ordered-model-list"
+    statement: "The hosted credential path retains the customer's ordered choices and refuses stale whole-list replacements."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          A hosted credential created with two models projects them in order;
+          two replacements with the same expected_version apply only one,
+          leaving exactly its list. A create with no chosen model is refused
+          as not_chosen before secret storage. The CLI accepts repeated --model.
+          A revoke based on an older version preserves a newer registration.
+          Falsifiers exercise actual concurrent SQLite writers and the real
+          PostgreSQL projection SQL; skipped database tests are not proof.
+  - id: "req-snapshot-exposure-cleanup-policy"
+    statement: "Every onex.snapshot exposure declares its own cleanup policy instead of taking the broker default."
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          Every onex.snapshot exposure in omnimarket's node contracts declares
+          its own cleanup.policy on that same exposure item, compact everywhere
+          except node_projection_consumer_flow, which keeps compact,delete. A
+          policy on a sibling item of the same contract does not count.
+evidence_requirements:
+  - kind: "tests"
+    description: "Intake ordering and refusal, whole-list version conflict, concurrent SQLite writers, revoke/register interleaving and repeated CLI model options."
+    command: "uv run pytest tests/test_tenant_credential_model_list.py tests/test_tenant_credential_model_list_store.py tests/test_tenant_credential_revoke_interleaving.py tests/unit/cli/test_omn21217_register_models.py -q -n 0 --no-cov"
+  - kind: "tests"
+    description: >-
+      Real PostgreSQL types and ordered-list replacement through the actual
+      projection runner. Execute with the existing hosted integration Postgres
+      service. ci.yml integration-guard also runs the marked cases and rejects
+      missing-service silent skips. A service-less local skip is unverified.
+    command: "uv run pytest tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::test_ordered_models_compare_and_swap_real_postgres tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::test_sync_ordered_models_concurrent_replace_real_postgres -q -n 0 --no-cov --junitxml=omn21217-postgres.xml && uv run python scripts/ci/check_integration_skips.py --junit omn21217-postgres.xml"
+  - kind: "tests"
+    description: "A walk of every node contract that fails on any onex.snapshot exposure lacking a cleanup.policy on that item, with a sibling-item negative control and a consumer_flow positive control."
+    command: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
+dod_evidence:
+  - id: "dod-omn21217-t5-ordered-list-and-cas"
+    description: "Test-first intake, CLI and real SQLite versioned replacement, plus stale-revoke and legacy-model backfill regressions."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_tenant_credential_model_list.py tests/test_tenant_credential_model_list_store.py tests/test_tenant_credential_revoke_interleaving.py tests/unit/cli/test_omn21217_register_models.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-t5-real-postgres"
+    description: "Actual PostgreSQL projection write-path tests under the hosted CI service; zero tests or missing-service skips fail the companion JUnit check."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::test_ordered_models_compare_and_swap_real_postgres tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::test_sync_ordered_models_concurrent_replace_real_postgres -q -n 0 --no-cov --junitxml=omn21217-postgres.xml && uv run python scripts/ci/check_integration_skips.py --junit omn21217-postgres.xml"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-credential-state-compacted-source"
+    description: >-
+      The credential registry's compacted source (OMN-17446): every committed
+      register and revoke publishes its whole versioned row, never a secret, to
+      the keyed onex.evt.omnimarket.tenant-credential-state.v1 topic the
+      owning node subscribes to; applying a row never overwrites a newer stored
+      version, never un-revokes and never republishes. On the hosted Postgres
+      service a replay of the published rows into an empty schema rebuilds the
+      source registry exactly, in either delivery order. The routing overlay
+      rows do the same on onex.evt.omnimarket.tenant-routing-overlay-state.v1,
+      both topics declare cleanup.policy compact, and the reconcile gate
+      classes a topic by that declared policy.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21217_credential_state_topic.py::TestContract::test_s1_the_reconcile_gate_no_longer_refuses_the_credential_registry -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21217_credential_state_topic.py tests/test_omn21217_overlay_state_topic.py --deselect tests/test_omn21217_credential_state_topic.py::TestContract::test_s1_the_reconcile_gate_no_longer_refuses_the_credential_registry -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21217_credential_state_replay_postgres.py -q -n 0 --no-cov --junitxml=omn21217-state.xml && uv run python scripts/ci/check_integration_skips.py --junit omn21217-state.xml"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-gate-reads-declared-cleanup-policy"
+    description: >-
+      The registry reconcile gate classes a subscribed topic by the
+      cleanup.policy the repo's contracts declare for it: compact counts,
+      compact,delete and delete do not, an undeclared topic counts as
+      time-retained whatever its name, and conflicting declarations are an
+      input error.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn17446_registry_projection_reconcile_gate.py -q -n 0 --no-cov -k 'TestADeclaredCleanupPolicyDecides or undeclared_snapshot or declared_compacted'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-deploy-probe-state-topics"
+    description: >-
+      Deploy probe. GitHub serves the credentials node contract at the
+      checked-out commit with its state topics' declared cleanup.policy;
+      the probe reads it from GitHub at that commit and exits nonzero on a
+      tree without it, so it fails at the merge base. This proves source
+      identity only, not a running deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
+  - id: "dod-omn21217-snapshot-exposure-cleanup-policy"
+    description: >-
+      Every onex.snapshot exposure item declares its own cleanup.policy; the
+      walk fails on dev before this change, where 69 exposure items in 51
+      contracts declare none.
+    source: "manual"
+    binds_ac:
+      - "AC4"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-deploy-probe-snapshot-policy"
+    description: >-
+      Deploy probe. GitHub serves node_ab_compare_reducer's contract at the
+      checked-out commit with its snapshot exposure's declared cleanup.policy;
+      the probe reads it from GitHub at that commit and exits nonzero on a tree
+      without it, so it fails at the merge base. This proves source identity
+      only, not a running deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_reducer/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""

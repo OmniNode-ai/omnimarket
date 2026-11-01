@@ -40,6 +40,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from omnimarket.config.env_flags import require_legacy_merge_arm_enabled
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input import (
     ModelAutoMergeInput,
 )
@@ -50,7 +51,9 @@ from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_result impo
 logger = logging.getLogger(__name__)
 
 # Poll interval for CI readiness (seconds)
-_POLL_INTERVAL_S = 60
+_POLL_INTERVAL_S: float = load_node_timeouts("node_auto_merge_effect").get(
+    "poll_interval_s"
+)
 
 # mergeStateStatus values that mean "keep polling"
 _POLL_STATES = {"BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS", "UNKNOWN"}

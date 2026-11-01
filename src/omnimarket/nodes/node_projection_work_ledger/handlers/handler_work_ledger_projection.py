@@ -51,6 +51,7 @@ from omnimarket.handlers.work_ledger_fold import (
     fold_row,
     rows_for_records,
 )
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
 )
@@ -73,7 +74,10 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_proje
     ModelWorkLedgerProjectionResult,
 )
 from omnimarket.projection.envelope import strip_runner_injected_keys
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 ROWS_TABLE = "omninode_internal.work_ledger_rows"
 STATE_TABLE = "omninode_internal.work_ledger_state"
@@ -226,18 +230,13 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             )
         return declared
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal projection shim: one injected message, one write."""
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         with self._dispatch_lock:
-            written = self._run(self._project_one_message(topic, input_data, meta))
+            written = self._run(self._project_one_message(topic, request.payload, meta))
         # ``rows_upserted`` is the key the runtime's write-path guard reads.
         return {"rows_upserted": written}
 

@@ -16,13 +16,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_lab_work_topics
-from omnimarket.lab_work.placement import EnumPlacementDecision, EnumRefusalReason
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
+from omnimarket.nodes.node_lab_placement_compute.handlers import HandlerLabPoolPlace
+from omnimarket.nodes.node_lab_placement_compute.models import (
+    EnumPlacementDecision,
+    EnumRefusalReason,
+)
 from omnimarket.nodes.node_lab_work_unit_effect import (
     EnumLabWorkUnitStatus,
     HandlerHostCapacityAdvertiseEffect,
@@ -39,6 +44,27 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
 )
 
 pytestmark = pytest.mark.unit
+
+#: The host table the bus tests place against: the hosts they run, all available.
+HOST_TABLE = tuple(
+    ModelLabHostRow(name=name, target=name) for name in ("h105", "h106", "h202")
+)
+
+
+@pytest.fixture
+def host_table_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The host table file the CLI reads through ONEX_LAB_RUN_HOSTS."""
+    table = tmp_path / "lab_run_hosts.yaml"
+    table.write_text(
+        "hosts:\n"
+        + "".join(
+            f"  - name: {row.name}\n    target: {row.target}\n" for row in HOST_TABLE
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
+    return table
+
 
 SHA = "4c3985a451847571e2cebd06a6edf1940069946e"
 
@@ -112,7 +138,13 @@ def test_host_runs_only_units_addressed_to_it_and_answers_with_the_receipt() -> 
         )
         await host_a.start()
         await host_b.start()
-        caller = LabWorkCaller(bus, wait_slack_seconds=5)
+        caller = LabWorkCaller(
+            bus,
+            wait_slack_seconds=5,
+            placer=HandlerLabPoolPlace(
+                table_source=lambda: ModelLabHostsTable(hosts=HOST_TABLE)
+            ),
+        )
         await caller.start()
         await host_a.advertise_once()
         await host_b.advertise_once()
@@ -285,7 +317,7 @@ def test_local_runner_runs_the_command_at_the_sha_and_keeps_the_log(
     assert not (tmp_path / "work" / "runs" / request.work_unit_id).exists()
 
 
-def test_cli_run_exits_69_when_no_pool_host_advertises() -> None:
+def test_cli_run_exits_69_when_no_pool_host_advertises(host_table_env: Path) -> None:
     from click.testing import CliRunner
 
     from omnimarket.lab_work import cli
@@ -313,7 +345,7 @@ def test_cli_run_exits_69_when_no_pool_host_advertises() -> None:
 
 
 def test_cli_run_exits_75_when_every_host_is_over_the_load_bar(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, host_table_env: Path
 ) -> None:
     from click.testing import CliRunner
 
@@ -357,6 +389,7 @@ def test_cli_run_exits_75_when_every_host_is_over_the_load_bar(
 
     monkeypatch.setattr(cli, "open_lab_run_bus", open_busy_pool)
     monkeypatch.setattr(LabWorkCaller, "dispatch", unexpected_dispatch)
+
     result = CliRunner().invoke(
         cli.lab_work_group,
         [
@@ -396,7 +429,13 @@ def test_caller_ignores_malformed_capacity_advertisements(malformed: bytes) -> N
         stamp = datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
         bus = EventBusInmemory(environment="local", group="lab-work-malformed-test")
         await bus.start()
-        caller = LabWorkCaller(bus, now=lambda: stamp)
+        caller = LabWorkCaller(
+            bus,
+            now=lambda: stamp,
+            placer=HandlerLabPoolPlace(
+                table_source=lambda: ModelLabHostsTable(hosts=HOST_TABLE)
+            ),
+        )
         await caller.start()
         try:
             await bus.publish(caller.topics.capacity, b"h202", malformed)
@@ -424,7 +463,13 @@ def test_caller_rejects_an_advertisement_with_zero_total_slots() -> None:
         stamp = datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
         bus = EventBusInmemory(environment="local", group="lab-work-zero-slots-test")
         await bus.start()
-        caller = LabWorkCaller(bus, now=lambda: stamp)
+        caller = LabWorkCaller(
+            bus,
+            now=lambda: stamp,
+            placer=HandlerLabPoolPlace(
+                table_source=lambda: ModelLabHostsTable(hosts=HOST_TABLE)
+            ),
+        )
         await caller.start()
         try:
             valid = HandlerHostCapacityAdvertiseEffect(

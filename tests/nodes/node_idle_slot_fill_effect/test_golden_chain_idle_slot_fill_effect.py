@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import is_dataclass
+from dataclasses import fields, is_dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any, get_type_hints
@@ -74,6 +74,9 @@ def test_contract_golden_chain() -> None:
     )
     assert isinstance(result, result_class)
     assert result.sends == []
+    # OMN-21475 (T-S3): the result carries the count of items that failed ModelBacklogItem.
+    assert "backlog_mismatched" in {f.name for f in fields(result_class)}
+    assert result.backlog_mismatched == 0
 
 
 def test_the_node_is_an_onex_nodes_entry_point() -> None:

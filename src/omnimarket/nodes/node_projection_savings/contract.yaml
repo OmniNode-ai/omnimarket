@@ -151,6 +151,9 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: savings_estimates
       schema: public
@@ -212,6 +215,9 @@ projection_api:
       key_columns:
         - id
     - topic: onex.snapshot.projection.delegation.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: projection_delegation_savings
       schema: public
@@ -292,6 +298,9 @@ projection_api:
     # rows (savings_estimates source / empty tier) are excluded from the
     # denominator but still counted in task_count.
     - topic: onex.snapshot.projection.delegation.savings-series.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: projection_delegation_savings_series
       schema: public
@@ -308,6 +317,9 @@ projection_api:
       freshness_column: bucket
       limit: 365
     - topic: onex.snapshot.projection.cost.savings-overview.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: projection_cost_savings_overview
       schema: public
@@ -368,3 +380,17 @@ projection_api:
 metadata:
   transport_type: kafka
   delegate_skill_baseline_model_source: pricing_manifest
+
+# OMN-21753 (under OMN-21288): when the one-runtime fold moves this writer from
+# its own container into the runtime, the runtime's consumer group starts from
+# the committed offsets of the container's group,
+# {env}.omnimarket-projections.savings-writer.consume.v1, instead of the bus default
+# (latest), so events published while the container is stopped and the runtime
+# has not yet joined are projected. The container's runner reads a partition it
+# never committed from the earliest offset, and the handover does the same.
+# omnibase_infra's HandlerContractSubscribePreflight reads this key.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: savings-writer
+  from_version: v1
+  from_auto_offset_reset: earliest

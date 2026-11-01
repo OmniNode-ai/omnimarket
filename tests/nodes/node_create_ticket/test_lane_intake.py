@@ -3,8 +3,7 @@
 """Lane intake for the nodes that open Linear items (OMN-17942).
 
 Every item opened from a lane or node context is labelled, stamped on its first
-line with its lane, refused without a lane identity, and counted against a
-per-day budget. The vocabulary and the budget belong to the omniclaude policy;
+line with its lane and refused without a lane identity. The vocabulary belongs to the omniclaude policy;
 these tests pin what the nodes do with them, with a stand-in guard script for the
 real one (whose own rules are tested in omniclaude).
 
@@ -148,7 +147,7 @@ def test_a_create_with_no_lane_is_not_stamped_so_the_guard_refuses_it(
     assert guard.inputs[0]["description"] == "plain"
 
 
-def test_a_dry_run_asks_the_guard_not_to_spend_the_budget(
+def test_a_dry_run_and_a_real_create_ask_the_guard_the_same_way(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("ONEX_LANE", "lane-a")
@@ -162,9 +161,8 @@ def test_a_dry_run_asks_the_guard_not_to_spend_the_budget(
     )
     handler.handle(ModelCreateTicketRequest(title="t", description="b", dry_run=True))
     seen = json.loads(echo.read_text(encoding="utf-8"))
-    assert seen["argv"] == ["--node", "--no-record"]
+    assert seen["argv"] == ["--node"]
     assert seen["lane"] == "lane-a"
-    # Control: a real create records, so it passes no --no-record.
     handler.handle(ModelCreateTicketRequest(title="t", description="b"))
     assert json.loads(echo.read_text(encoding="utf-8"))["argv"] == ["--node"]
 

@@ -3,7 +3,9 @@
 #!/usr/bin/env python3
 
 """
-Ticket pipeline node: runs a ticket through start, its phases and completion.
+This module handles the ticket pipeline orchestration.
+It manages the lifecycle of ticket processing tasks including start,
+completion, and phase transitions.
 """
 
 from .handlers import HandlerTicketPipeline

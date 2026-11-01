@@ -611,3 +611,28 @@ metadata:
     - "OMN-10889"
     - "OMN-10903"
     - "OMN-10604"
+
+# The receipt-window readback belongs to the delegation node, alongside the
+# requested-timeout policy it measures. It never dispatches. It reads the lab
+# projection that node_projection_delegation_budget_readings folds from the
+# delegate-skill terminals the deployed lane publishes, so it runs from any lab
+# host and needs no access to the machine whose CLI invoked the run (OMN-17427).
+# The host, port and credentials are not here: the overlay or the secret store
+# sets dsn_env on the host that runs the readback.
+budget_readback:
+  handler:
+    name: HandlerBudgetReadback
+    module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback
+  source:
+    relation: omninode_internal.delegation_budget_readings
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    binding_ref: omninode_runtime_service
+    populated_by: omnimarket.nodes.node_projection_delegation_budget_readings
+  local_state_root: "--state-root (explicit, local runs only), else shared runtime resolver (ONEX_STATE_DIR, then ONEX_STATE_ROOT), else ~/.onex_state"
+  window_hours: 24
+  grace_source: configs/task_class_contracts.v1.yaml
+  exit_codes:
+    pass: 0
+    over_budget_plus_grace: 1
+    nothing_measured: 2
+    unrunnable: 3

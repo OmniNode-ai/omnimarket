@@ -43,6 +43,7 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.network_bindings import network_host
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     resolve_local_byok_model_chooser,
@@ -711,7 +712,7 @@ def _is_upstream_unavailable(exc: Exception) -> bool:
 def _is_self_hosted_endpoint(endpoint_url: str) -> bool:
     """Whether ``endpoint_url`` is a lab or local model server (OMN-20299)."""
     host = (urlparse(endpoint_url).hostname or "").lower()
-    if host == "localhost":
+    if host == network_host("loopback.name"):
         return True
     try:
         address = ipaddress.ip_address(host)

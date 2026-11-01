@@ -17,12 +17,18 @@ PRECOMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 NEW_CORE_REV = "031148215620031436cba30619bbae67c0bb38ad"
-CANONICAL_FILE_SHAPE_REV = "dev-20261023085853-9d65b648bff5"
 OLD_CORE_REV = "7f20b97895f01996c5858dde385ba8991c06e708"
+# The canonical-file-shape hook has its own omnibase_core block, pinned to a dev-merge tag.
+FILE_SHAPE_HOOK_REV = "dev-20261029151319-6e0a5eee541a"
 CORE_REPO_SUFFIX = "omnibase_core"
 FILE_SHAPE_HOOK_ID = "canonical-file-shape"
 
 CORE_PIN = re.compile(r"omnibase_core@([0-9a-f]{7,40})")
+FILE_SHAPE_CI_PIN = re.compile(
+    r"^\s*CANONICAL_FILE_SHAPE_CORE:\s*\"omnibase-core\s*@\s*git\+https://"
+    r"github\.com/OmniNode-ai/omnibase_core@([0-9a-zA-Z._-]+)\"",
+    re.MULTILINE,
+)
 
 
 def _hook_ids(repo: dict[object, object]) -> list[object]:
@@ -52,7 +58,13 @@ def _core_hook_revs() -> list[str]:
 
 
 def test_precommit_core_hook_rev_is_new_rev() -> None:
-    assert _core_hook_revs() == [CANONICAL_FILE_SHAPE_REV]
+    assert _core_hook_revs() == [FILE_SHAPE_HOOK_REV]
+
+
+def test_ci_file_shape_job_pins_the_hook_rev() -> None:
+    pins = FILE_SHAPE_CI_PIN.findall(CI_WORKFLOW.read_text(encoding="utf-8"))
+    assert pins == [FILE_SHAPE_HOOK_REV]
+    assert pins == _core_hook_revs()
 
 
 def test_ci_core_pins_are_all_new_rev() -> None:

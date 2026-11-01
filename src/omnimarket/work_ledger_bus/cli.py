@@ -49,6 +49,9 @@ from omnimarket.handlers.work_ledger_consume.consume_watch import (
     load_consume_watch_policy,
     readiness_probe,
 )
+from omnimarket.handlers.work_ledger_consume.writer_overlay_watch import (
+    follow_overlay_writers,
+)
 from omnimarket.lab_work.bus import _bytes, _subscribe
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.bus_binding import EnumBusBinding
@@ -88,10 +91,7 @@ def _writer_principals(
     ctx: click.Context, param: click.Parameter, values: tuple[str, ...]
 ) -> tuple[str, ...]:
     return tuple(
-        principal
-        for value in values
-        for principal in re.split(r"[,\s]+", value)
-        if principal
+        name for value in values for name in re.split(r"[,\s]+", value) if name
     )
 
 
@@ -153,10 +153,8 @@ def serve_command(
         )
     topics = load_work_ledger_append_topics()
     try:
-        for principal in writer_principal:
+        for principal in (*writer_principal, *filter(None, [operator_principal])):
             topics.writer_command_topic(principal)
-        if operator_principal is not None:
-            topics.writer_command_topic(operator_principal)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     logging.basicConfig(
@@ -206,6 +204,10 @@ def serve_command(
                 writer_principals=writer_principal,
                 operator_principal=operator_principal,
             )
+
+            # OMN-21622: the overlay's machine rows are writers too, followed while serving,
+            # so a newly declared machine never needs this unit rendered again.
+            writers = await follow_overlay_writers(host, handler, writer_principal)
             await host.start()
             # OMN-20275: retake the subscriptions when the broker drops the group; degraded and alarmed.
             watch = ConsumeWatch(
@@ -234,6 +236,7 @@ def serve_command(
             try:
                 await stop.wait()
             finally:
+                await writers.stop()
                 await watch.stop()
                 if capture is not None:
                     await capture.stop()

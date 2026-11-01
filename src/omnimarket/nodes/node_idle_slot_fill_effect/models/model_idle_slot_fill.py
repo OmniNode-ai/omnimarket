@@ -7,10 +7,24 @@ Frozen dataclasses, not pydantic: the request carries callables and the tick pas
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Preserve the existing idle-fill import paths for callers of the shared crossing.
+from omnimarket.models.model_backlog_item import (
+    POLICY_CONTEXT_KEY as POLICY_CONTEXT_KEY,
+)
+from omnimarket.models.model_backlog_item import (
+    REPO_KINDS_CONTEXT_KEY as REPO_KINDS_CONTEXT_KEY,
+)
+from omnimarket.models.model_backlog_item import (
+    ModelBacklogItem as ModelBacklogItem,
+)
+from omnimarket.models.model_backlog_item import (
+    backlog_item_refusal as backlog_item_refusal,
+)
 
 
 @dataclass(frozen=True)
@@ -61,6 +75,12 @@ class ModelIdleSlotFillRequest:
     )  # experiment key -> "<lane> at <ended_at>"
     fixer_holds: Mapping[str, str] = field(default_factory=dict)
     fixer_holds_unread: str = ""
+    # Kinds whose items must name a repository (ModelBacklogItem), read by the caller from the
+    # idle_slot_fill overlay; none by default.
+    repo_required_kinds: Collection[str] = ()
+    # Work-in-progress admission: a candidate's reason to wait, or None to go on (the
+    # wip_admission node; none judges nothing).
+    wip_refusal: Callable[[Mapping[str, Any]], str | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +92,9 @@ class ModelIdleSlotFillResult:
     idle_after: int = 0
     glm_only_free: int = 0
     dropped: list[dict[str, str]] = field(default_factory=list)
+    # Items that failed ModelBacklogItem (a prose engine, a missing repository): each is also in
+    # ``skipped`` with its reason, and none is dispatched (OMN-21475).
+    backlog_mismatched: int = 0
 
 
 @dataclass(frozen=True)

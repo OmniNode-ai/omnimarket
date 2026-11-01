@@ -35,9 +35,11 @@ class EnumFullSuiteReason(StrEnum):
     NO_NARROWABLE_SELECTION = "no_narrowable_selection"
 
 
+# OMN-17232: a directory under tests/ (trailing slash) or one test file that
+# always_selected_paths names; changed-test narrowing still emits directories only.
 TestPath = Annotated[
     str,
-    StringConstraints(pattern=r"^tests(/[A-Za-z0-9_./-]+)?/$|^tests/$"),
+    StringConstraints(pattern=r"^tests(/[A-Za-z0-9_./-]+)?/$|^tests/[\w/]+\.py$"),
 ]
 ModuleName = Annotated[
     str,

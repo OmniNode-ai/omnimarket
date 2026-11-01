@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import sys
 
-from omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision import (
-    HandlerTypedDecision,
+from omnimarket.nodes.node_typed_decision_effect.container.container_typed_decision_effect import (
+    create_handler_typed_decision,
 )
 from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision import (
     EnumTypedDecisionDecider,
@@ -30,7 +30,7 @@ _EXIT_NOT_MODEL = 3
 
 def main() -> int:
     request = ModelTypedDecisionRequest.model_validate_json(sys.stdin.read())
-    result = HandlerTypedDecision().handle(request)
+    result = create_handler_typed_decision().handle(request)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0 if result.decided_by is EnumTypedDecisionDecider.MODEL else _EXIT_NOT_MODEL
 

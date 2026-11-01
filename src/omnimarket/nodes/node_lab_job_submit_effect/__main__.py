@@ -31,9 +31,11 @@ from omnimarket.delegated_test_loop.lane_bus import (
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.lab_job import ModelLabJobSpec
 from omnimarket.nodes.node_lab_job_submit_effect import (
-    HandlerLabJobSubmitEffect,
     ModelLabJobSubmitReceipt,
     load_lab_job_submitted_topic,
+)
+from omnimarket.nodes.node_lab_job_submit_effect.container import (
+    container_lab_job_submit_effect,
 )
 
 EXIT_REFUSED = 65
@@ -83,7 +85,9 @@ def submit_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            return await HandlerLabJobSubmitEffect(opened).handle(spec)
+            return await container_lab_job_submit_effect.build_handler_lab_job_submit_effect(
+                opened
+            ).handle(spec)
 
     try:
         receipt = asyncio.run(publish())

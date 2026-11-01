@@ -365,11 +365,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # ProviderQuotaProjectionWriter (OMN-20154) is the quota-state writer,
     # dispatched once per consumed provider-quota observation.
     #
-    # RunTraceProjectionWriter (OMN-19987) follows, on the same reviewed terms.
-    # It is the only writer of run_trace, dispatched once per consumed run-step
-    # event by the runtime auto-wiring, with no dedicated writer deployment, so
-    # undeclared it would be dispatched by nobody. Its node's pure fold,
-    # HandlerProjectionRunTrace, does NOT declare the capability.
+    # RunTraceProjectionWriter (OMN-19987) declared it until OMN-19972 made it
+    # a standalone runner under its own runtime profile, so it reads the tenant
+    # mirror through its own binding; it no longer declares the capability.
     #
     # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed usage
@@ -408,6 +406,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched once per consumed event by runtime auto-wiring on its
     # standalone writer operation; the per-node walk above proves no pure
     # handler in those nodes also declares the capability.
+    # DelegationBudgetReadingsProjectionWriter is its node's only DB writer,
+    # dispatched once per consumed event by runtime auto-wiring.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -438,12 +438,12 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "WorktreeReconcileProjectionWriter",
         "UsageByModelDayProjectionWriter",
         "HandlerRoutingFeedbackWriter",
-        "RunTraceProjectionWriter",
         "LiveEventsProjectionWriter",
         "RegistrationProjectionWriter",
         "SavingsProjectionWriter",
         "TenantCredentialsProjectionWriter",
         "TenantMirrorProjectionWriter",
+        "DelegationBudgetReadingsProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
@@ -526,7 +526,7 @@ def test_concurrent_dispatch_threads_share_one_loop_and_one_pool(
     assert all(result["rows_upserted"] == 1 for result in results)
     assert len(loops) == 1
     assert cast("_RecordingAdapter", writer.db).connects == 1
-    assert writer._dispatch_thread is not threading.current_thread()
+    assert writer._dispatch.thread is not threading.current_thread()
 
 
 @pytest.mark.unit

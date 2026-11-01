@@ -96,14 +96,24 @@ class HandlerContextCompactionOrchestrator:
         barrier_probe_source: ProtocolSessionBarrierProbeSource | None = None,
         binding: ModelCompactionRuntimeBinding | None = None,
         monotonic: Callable[[], float] = time.monotonic,
+        pack_build: HandlerCompactionPackBuildBus | None = None,
+        stream_barrier: HandlerSessionStreamBarrier | None = None,
     ) -> None:
         binding = binding if binding is not None else load_compaction_runtime_binding()
         topics = load_compaction_pack_topics()
-        self._pack_build = None
-        self._probe_source = None
+        self._pack_build = pack_build
+        self._probe_source = barrier_probe_source if pack_build is not None else None
+        if stream_barrier is None:
+            from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+                create_handler_session_stream_barrier,
+            )
+
+            stream_barrier = create_handler_session_stream_barrier()
+        self._stream_barrier = stream_barrier
         self._barrier_wait = barrier_wait
         if (
-            event_publisher is not None
+            pack_build is None
+            and event_publisher is not None
             and event_consumer is not None
             and binding.tenant_id is not None
         ):
@@ -112,7 +122,11 @@ class HandlerContextCompactionOrchestrator:
             )
             if self._barrier_wait is None:
                 self._barrier_wait = bound_wait
-            self._pack_build = HandlerCompactionPackBuildBus(
+            from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+                create_handler_compaction_pack_build_bus,
+            )
+
+            self._pack_build = create_handler_compaction_pack_build_bus(
                 event_publisher,
                 event_consumer,
                 ModelContextAccess(tenant_id=binding.tenant_id),
@@ -179,7 +193,7 @@ class HandlerContextCompactionOrchestrator:
             or probe.barrier_id != request.barrier_id
         ):
             raise ValueError("session barrier probe identity does not match request")
-        if HandlerSessionStreamBarrier().handle(probe).outcome != "met":
+        if self._stream_barrier.handle(probe).outcome != "met":
             return ModelContextCompactionBuildOutcome(
                 failure_class=EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
             )
@@ -193,7 +207,10 @@ class HandlerContextCompactionOrchestrator:
                 failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
             )
         return self._pack_build.build(
-            request, source_revision=probe.source_revision, deadline=deadline
+            request,
+            source_revision=probe.source_revision,
+            deadline=deadline,
+            lane=probe.lane,
         )
 
     async def handle_async(

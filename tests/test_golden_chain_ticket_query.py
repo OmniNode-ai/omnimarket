@@ -58,10 +58,7 @@ class TestTicketQueryGoldenChain:
         )
         handler = _handler_with_tracker(tracker)
 
-        result = await handler.handle(
-            correlation_id=uuid4(),
-            input_data=ModelTicketQueryInput(query="OMN-8771", limit=10),
-        )
+        result = await handler.handle(ModelTicketQueryInput(query="OMN-8771", limit=10))
 
         tracker.search_issues.assert_awaited_once_with("OMN-8771", limit=10)
         tracker.list_issues.assert_not_awaited()
@@ -77,10 +74,9 @@ class TestTicketQueryGoldenChain:
         handler = _handler_with_tracker(tracker)
 
         result = await handler.handle(
-            correlation_id=uuid4(),
-            input_data=ModelTicketQueryInput(
+            ModelTicketQueryInput(
                 filters={"state": "Todo", "team": "Omninode"}, limit=50
-            ),
+            )
         )
 
         tracker.list_issues.assert_awaited_once_with(
@@ -96,10 +92,7 @@ class TestTicketQueryGoldenChain:
         tracker.get_issue = AsyncMock(return_value=_make_issue("OMN-8771"))
         handler = _handler_with_tracker(tracker)
 
-        result = await handler.handle(
-            correlation_id=uuid4(),
-            input_data=ModelTicketQueryInput(issue_id="OMN-8771"),
-        )
+        result = await handler.handle(ModelTicketQueryInput(issue_id="OMN-8771"))
 
         tracker.get_issue.assert_awaited_once_with("OMN-8771")
         tracker.search_issues.assert_not_awaited()
@@ -113,10 +106,7 @@ class TestTicketQueryGoldenChain:
         tracker.search_issues = AsyncMock(return_value=[])
         handler = _handler_with_tracker(tracker)
 
-        result = await handler.handle(
-            correlation_id=uuid4(),
-            input_data=ModelTicketQueryInput(query="nonexistent-xyz"),
-        )
+        result = await handler.handle(ModelTicketQueryInput(query="nonexistent-xyz"))
 
         tracker.search_issues.assert_awaited_once()
         tracker.list_issues.assert_not_awaited()

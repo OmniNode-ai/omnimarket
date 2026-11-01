@@ -21,6 +21,9 @@ import pytest
 import yaml
 
 from omnimarket.events.emit_client import EmitClient, default_socket_path
+from omnimarket.nodes.node_emit_daemon.emit_lifecycle import (
+    EmitLifecycle,
+)
 from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
     ModelQueuedEvent,
@@ -38,6 +41,7 @@ from omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon import (
 )
 from omnimarket.nodes.node_emit_daemon.models.model_daemon_state import (
     EnumEmitDaemonPhase,
+    ModelEmitDaemonCommand,
 )
 from omnimarket.nodes.node_emit_daemon.models.model_durability import (
     EnumDurabilityTier,
@@ -449,46 +453,78 @@ class TestTransforms:
 # =============================================================================
 
 
-class TestHandlerEmitDaemon:
-    """Test lifecycle FSM handler."""
+class TestEmitLifecycle:
+    """Test lifecycle FSM state machine."""
 
     def test_initial_state_is_idle(self) -> None:
-        handler = HandlerEmitDaemon()
-        assert handler.phase == EnumEmitDaemonPhase.IDLE
+        lifecycle = EmitLifecycle()
+        assert lifecycle.phase == EnumEmitDaemonPhase.IDLE
 
     def test_full_lifecycle(self) -> None:
-        handler = HandlerEmitDaemon()
-        handler.transition_to_binding("/tmp/test.sock", 12345)
-        assert handler.phase == EnumEmitDaemonPhase.BINDING
+        lifecycle = EmitLifecycle()
+        lifecycle.transition_to_binding("/tmp/test.sock", 12345)
+        assert lifecycle.phase == EnumEmitDaemonPhase.BINDING
 
-        handler.transition_to_listening()
-        assert handler.phase == EnumEmitDaemonPhase.LISTENING
+        lifecycle.transition_to_listening()
+        assert lifecycle.phase == EnumEmitDaemonPhase.LISTENING
 
-        handler.transition_to_draining()
-        assert handler.phase == EnumEmitDaemonPhase.DRAINING
+        lifecycle.transition_to_draining()
+        assert lifecycle.phase == EnumEmitDaemonPhase.DRAINING
 
-        event = handler.transition_to_stopped(events_published=10, events_dropped=2)
-        assert handler.phase == EnumEmitDaemonPhase.STOPPED
+        event = lifecycle.transition_to_stopped(events_published=10, events_dropped=2)
+        assert lifecycle.phase == EnumEmitDaemonPhase.STOPPED
         assert event.events_published == 10
 
     def test_invalid_transition_raises(self) -> None:
-        handler = HandlerEmitDaemon()
+        lifecycle = EmitLifecycle()
         with pytest.raises(ValueError, match="Cannot transition"):
-            handler.transition_to_listening()
+            lifecycle.transition_to_listening()
 
     def test_circuit_breaker(self) -> None:
-        handler = HandlerEmitDaemon()
-        assert not handler.is_circuit_broken()
+        lifecycle = EmitLifecycle()
+        assert not lifecycle.is_circuit_broken()
 
         for i in range(3):
-            handler.transition_to_failed(f"error {i}")
-        assert handler.is_circuit_broken()
+            lifecycle.transition_to_failed(f"error {i}")
+        assert lifecycle.is_circuit_broken()
 
     def test_reset(self) -> None:
-        handler = HandlerEmitDaemon()
-        handler.transition_to_binding("/tmp/test.sock", 123)
-        handler.reset()
-        assert handler.phase == EnumEmitDaemonPhase.IDLE
+        lifecycle = EmitLifecycle()
+        lifecycle.transition_to_binding("/tmp/test.sock", 123)
+        lifecycle.reset()
+        assert lifecycle.phase == EnumEmitDaemonPhase.IDLE
+
+
+class TestHandlerEmitDaemon:
+    """The handler dispatches lifecycle commands onto the lifecycle it is given."""
+
+    def test_start_then_stop_moves_the_injected_lifecycle(self) -> None:
+        lifecycle = EmitLifecycle()
+        handler = HandlerEmitDaemon(lifecycle)
+
+        started = handler.handle(
+            ModelEmitDaemonCommand(action="start", socket_path="/tmp/t.sock")
+        )
+        assert started.phase == EnumEmitDaemonPhase.LISTENING
+        assert lifecycle.phase == EnumEmitDaemonPhase.LISTENING
+
+        stopped = handler.handle(
+            ModelEmitDaemonCommand(action="stop", events_published=4, events_dropped=1)
+        )
+        assert stopped.phase == EnumEmitDaemonPhase.STOPPED
+        assert stopped.events_published == 4
+        assert lifecycle.phase == EnumEmitDaemonPhase.STOPPED
+
+    def test_status_reports_the_lifecycle_state_without_moving_it(self) -> None:
+        lifecycle = EmitLifecycle()
+        handler = HandlerEmitDaemon(lifecycle)
+        assert (
+            handler.handle(ModelEmitDaemonCommand()).phase == EnumEmitDaemonPhase.IDLE
+        )
+        assert lifecycle.phase == EnumEmitDaemonPhase.IDLE
+
+    def test_a_handler_built_without_a_lifecycle_owns_a_fresh_one(self) -> None:
+        assert HandlerEmitDaemon().lifecycle.phase == EnumEmitDaemonPhase.IDLE
 
 
 # =============================================================================

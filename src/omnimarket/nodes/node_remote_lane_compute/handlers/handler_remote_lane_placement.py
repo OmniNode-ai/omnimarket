@@ -16,6 +16,11 @@ A port of the remote-lane runner's ``eligible``, ``choose_codex`` and the shared
   the admitted host the Codex bar passes with the most free capacity, then memory,
   then the name.
 
+Collaborator machines (OMN-21599, operator RULING 2026-10-30T16:45:31Z): a host whose reading is a
+``contributor`` takes a lane only bound to the lane its own row declares, never to a lane the
+non-contributor hosts bind, and only while that lane can take a lane (``lane_ready``). Otherwise its
+verdict names the reason and the host takes no lane; it is never given a house-lane one.
+
 Dispatch-venv drift (OMN-20862): when the launching host's dispatch-venv lock hash and
 a host's differ, the host takes no lane. A lane that finds no host only because of that
 is answered VENV_DRIFT, naming both hashes with one reconcile intent for the drifted
@@ -31,22 +36,31 @@ A lane declaring a capability the Codex sandbox cannot grant skips the Codex run
 RULING 2026-10-28T13:32:09Z makes Sonnet the default and admits Opus only with an
 escalation_reason (complexity:<B4 or above> or sonnet-failed:<run or lane>), for legacy
 requests and pinned routes alike; a failed Sonnet attempt is itself that reason.
+
+Paging hosts (OMN-17232): a host the throughput tick's host-swapping check flags (the same
+``swap_reasons`` the host pool alarm applies to the probe's swap-in, memory PSI and macOS pressure
+readings) has zero free lane slots, for either engine, until the alarm resolves it after two clean
+reads (``swap_alarm_open``). At 2026-10-30T01:25Z a lab host paged at load 30 to 58 and swap-in up to
+167 MB/s while the pool counted it 6 to 9 free Claude slots, so ``--placement auto`` never overflowed
+to a cloud session.
 """
 
 from __future__ import annotations
 
+from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
     CODEX_UNGRANTABLE_CAPABILITIES,
-    ENGINE_LADDER,
     ESCALATING_OUTCOMES,
     LOW_RISK_CLASSES,
     NO_ENGINE,
     QUOTA_FREE_RUNGS,
     RUNG_GATES,
-    RUNG_HOST_ENGINE,
     ModelEngineExperimentRow,
 )
+from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
@@ -67,6 +81,75 @@ from ..models import (
 
 _VENV_DRIFT = "venv-drift"
 _VENV_UNKNOWN = "venv-unknown"
+
+
+def swap_refusal(reading: ModelRemoteLaneHostReading) -> str | None:
+    """Why the tick's host-swapping check keeps this host off, else None.
+
+    The reasons are the host pool alarm's own (``swap_reasons`` over its bounds); an alarm still open
+    for the host keeps it off between bursts until two clean reads resolve it.
+    """
+    reasons = swap_reasons(
+        ModelHostPoolReading(
+            host=reading.name,
+            lane_cap=reading.lane_cap,
+            error=None,
+            swap_in_kb_s=reading.swap_in_kb_s,
+            mem_psi_avg60=reading.mem_psi_avg60,
+            mem_pressure=reading.mem_pressure,
+        )
+    )
+    if reasons:
+        return f"host-swapping: {'; '.join(reasons)}"
+    if reading.swap_alarm_open:
+        return "host-swapping: alarm open until two clean reads"
+    return None
+
+
+def contributor_lane_refusal(
+    request: ModelRemoteLanePlacementRequest, reading: ModelRemoteLaneHostReading
+) -> str | None:
+    """Why a collaborator machine takes no lane here, else None (a host that is not one is never judged).
+
+    Operator RULING 2026-10-30T16:45:31Z: work may run on a collaborator's machine, but never in the
+    lane the house works in and breaks; the collaborators have a lane of their own. So a contributor
+    host takes a lane only bound to the lane its row declares, that lane must not be one the
+    non-contributor hosts bind, and it must be able to take a lane. Every name is the host table's:
+    no host and no lane is written here.
+    """
+    if not reading.contributor:
+        return None
+    bound = reading.bus_lane
+    if bound is None:
+        return "contributor-host: its row declares no lane to bind, so it takes no lane"
+    house = {r.bus_lane for r in request.readings if not r.contributor and r.bus_lane}
+    if bound in house:
+        return (
+            f"contributor-host: its row binds {bound}, the lane the house hosts bind; "
+            f"a collaborator machine takes no {bound}-lane work"
+        )
+    asked = request.lane or bound
+    if asked != bound:
+        return (
+            f"contributor-host: a {asked}-bound lane is refused; "
+            f"its lanes bind {bound} only"
+        )
+    if not reading.lane_ready:
+        return (
+            f"contributor-host: its lane {bound} cannot take a lane yet: "
+            f"{reading.lane_not_ready_reason or 'no reason declared'}"
+        )
+    return None
+
+
+def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
+    """The free lane slots the pool counts for this host: none while the host is swapping."""
+    return 0 if swap_refusal(reading) is not None else reading.lane_slots
+
+
+def pool_lane_slots(readings: tuple[ModelRemoteLaneHostReading, ...]) -> dict[str, int]:
+    """Every host's free lane slots as the pool counts them."""
+    return {reading.name: effective_lane_slots(reading) for reading in readings}
 
 
 def _rank(reading: ModelRemoteLaneHostReading) -> float:
@@ -127,6 +210,10 @@ def _select(
             reasons[reading.name] = "auth-expired"
         elif reading.name in blocked:
             reasons[reading.name] = blocked[reading.name]
+        elif (collaborator := contributor_lane_refusal(request, reading)) is not None:
+            reasons[reading.name] = collaborator
+        elif (swapping := swap_refusal(reading)) is not None:
+            reasons[reading.name] = swapping
         elif reading.lane_admission_refusal is not None:
             reasons[reading.name] = f"admission: {reading.lane_admission_refusal}"
         elif request.pinned_host and reading.name != request.pinned_host:
@@ -183,9 +270,11 @@ def _escalation_reason(ladder: ModelRemoteLaneLadder) -> str | None:
     return None
 
 
-def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
+def _rung_reason(
+    engines: ModelEngineLadder, ladder: ModelRemoteLaneLadder, rung: str
+) -> str | None:
     """The first route or readiness rule that refuses a rung."""
-    if ENGINE_LADDER.index(rung) > ENGINE_LADDER.index(ladder.ceiling):
+    if engines.index(rung) > engines.index(ladder.ceiling):
         return "above-route-ceiling"
     if refusal := lane_model_refusal(
         rung, escalation_reason=_escalation_reason(ladder)
@@ -229,7 +318,14 @@ def _experiment(
 
 
 class HandlerRemoteLanePlacement:
-    """Choose the host for one remote lane from the pool's evaluated readings."""
+    """Choose the host for one remote lane from the pool's evaluated readings.
+
+    The engine ladder is the ``config.engine_ladder`` of this node's contract, read once at
+    composition (OMN-21475); a caller may inject a validated ladder.
+    """
+
+    def __init__(self, engines: ModelEngineLadder | None = None) -> None:
+        self._engines = load_engine_ladder() if engines is None else engines
 
     def handle(
         self, request: ModelRemoteLanePlacementRequest
@@ -245,16 +341,16 @@ class HandlerRemoteLanePlacement:
                 return last_result.model_copy(
                     update={"experiment": _experiment(ladder, None)}
                 )
-            start = ENGINE_LADDER.index(last.engine) + 1
+            start = self._engines.index(last.engine) + 1
         rungs: list[ModelRemoteLaneRungVerdict] = []
-        for rung in ENGINE_LADDER[start:]:
-            reason = _rung_reason(ladder, rung)
+        for rung in self._engines.rungs[start:]:
+            reason = _rung_reason(self._engines, ladder, rung)
             if reason is not None:
                 rungs.append(ModelRemoteLaneRungVerdict(engine=rung, reason=reason))
                 continue
             placement_request = request.model_copy(
                 update={
-                    "engine": RUNG_HOST_ENGINE[rung],
+                    "engine": self._engines.host_engine(rung),
                     "ladder": None,
                     "escalation_reason": _escalation_reason(ladder),
                     **(
@@ -270,7 +366,7 @@ class HandlerRemoteLanePlacement:
                 return result.model_copy(
                     update={
                         "rung": rung,
-                        "engine": RUNG_HOST_ENGINE[rung],
+                        "engine": self._engines.host_engine(rung),
                         "rungs": tuple(rungs),
                         "experiment": _experiment(ladder, rung),
                     }

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decision quality</title>
+<link rel="icon" href="data:,">
+<style>
+/* Layout: a reading column with a contents list, then the report as written. The report is Markdown that a lane
+   wrote; this page renders it in the browser after escaping every character of it. */
+:root{
+  --floor:#eceee9; --panel:#fbfbf8; --ink:#1c2320; --muted:#5b6660; --rule:#cdd3cc; --steel:#4b5c68;
+  --safety:#d9a300; --stop:#c3352b; --belt:#3a403d; --link:#24475d; --code:#e4e8e2;
+  --f-display:"Arial Narrow",Impact,sans-serif;
+  --f-body:system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39; --steel:#90a4b3;
+  --safety:#f0c232; --stop:#ef5b4f; --belt:#0f1211; --link:#9cc7e3; --code:#2a322e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39; --steel:#90a4b3;
+  --safety:#f0c232; --stop:#ef5b4f; --belt:#0f1211; --link:#9cc7e3; --code:#2a322e; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--floor);color:var(--ink);font:16px/1.65 var(--f-body)}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:26px}
+a{color:var(--link)}
+a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+.eyebrow{font:500 .72rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
+.nav{font-size:.86rem;display:flex;flex-wrap:wrap;gap:6px 16px}
+header{display:grid;gap:12px}
+.note{font-size:.88rem;color:var(--muted);max-width:72ch}
+.banner{border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
+.banner[hidden]{display:none}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:32px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:minmax(0,1fr)}}
+.toc{position:sticky;top:16px;display:grid;gap:6px;font-size:.84rem;max-height:90vh;overflow:auto}
+@media (max-width:860px){.toc{position:static}}
+.toc a{text-decoration:none;color:var(--muted)} .toc a:hover{color:var(--link)}
+.doc{min-width:0}
+.doc h1,.doc h2,.doc h3{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.01em;line-height:1.1;text-wrap:balance;margin:1.8em 0 .5em}
+.doc h1{font-size:clamp(1.9rem,5vw,2.8rem);margin-top:0;font-weight:800}
+.doc h2{font-size:1.45rem;font-weight:800;border-top:1px solid var(--rule);padding-top:.8em}
+.doc h3{font-size:1.1rem;font-weight:600}
+.doc p,.doc ul,.doc ol{margin:0 0 1em;max-width:78ch}
+.doc ul,.doc ol{padding-left:1.4em}
+.doc li{margin:.25em 0}
+.doc code{font:.88em var(--f-mono);background:var(--code);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
+.tw{overflow-x:auto;margin:0 0 1.2em;max-width:100%}
+.doc table{border-collapse:collapse;font-size:.84rem;width:100%}
+.doc th{font:500 .7rem/1.2 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+.doc td{padding:5px 8px;border-bottom:1px dashed var(--rule);vertical-align:top}
+footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px}
+</style>
+<style>html.embed .hazard,html.embed .nav,html.embed h1{display:none}html.embed .wrap{padding-block:14px 20px}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="hazard" aria-hidden="true"></div>
+    <nav class="nav"><a href="../">All reports</a><a href="../../">Factory floor</a></nav>
+    <div class="eyebrow" id="stamp">Reading the report</div>
+    <p class="note">A lane's written report on how the operator's October rulings held up. It is a snapshot, not a node's output: its age is the report file's modified time, shown above and on the reports index. It names roles, not people.</p>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <div class="layout">
+    <nav class="toc" id="toc" aria-label="Contents"></nav>
+    <article class="doc" id="doc"><p class="note">Reading the report.</p></article>
+  </div>
+  <footer>
+    <div class="hazard" aria-hidden="true"></div>
+    <p>Rendered in this browser from decision-quality.md; every character of the source is escaped before it reaches the page.</p>
+  </footer>
+</div>
+<script>
+if (typeof location !== "undefined" && document.documentElement && /[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
+const REPORT_FILE = "decision-quality.md";
+const MANIFEST_FILE = "../manifest.json";
+const REPORT_ID = "decision_quality";
+const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const el = id => document.getElementById(id);
+
+// Inline: code spans first (their content is literal), then bold and italic on what is left. Input is escaped first.
+function inline(text){
+  return text.split("`").map((part, i) => {
+    const safe = esc(part);
+    if (i % 2 === 1) return `<code>${safe}</code>`;
+    return safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<em>$2</em>");
+  }).join("");
+}
+function cells(line){
+  let t = line.trim();
+  if (t.startsWith("|")) t = t.slice(1);
+  if (t.endsWith("|")) t = t.slice(0, -1);
+  return t.split("|").map(c => c.trim());
+}
+const isSep = line => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line);
+const slug = (s, n) => "s" + n + "-" + s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+
+function render(md){
+  const lines = md.replace(/\r\n?/g, "\n").split("\n");
+  const out = [], toc = [];
+  let i = 0, n = 0;
+  while (i < lines.length){
+    const line = lines[i];
+    if (!line.trim()){ i++; continue; }
+    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    if (h){
+      const level = h[1].length, id = slug(h[2], ++n);
+      if (level === 2) toc.push([id, h[2]]);
+      out.push(`<h${level} id="${id}">${inline(h[2])}</h${level}>`);
+      i++; continue;
+    }
+    if (line.trim().startsWith("|") && i+1 < lines.length && isSep(lines[i+1])){
+      const head = cells(line);
+      i += 2;
+      const body = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")){ body.push(cells(lines[i])); i++; }
+      out.push(`<div class="tw"><table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${
+        body.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(line)){
+      const stack = [];
+      let html = "";
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])){
+        const m = /^(\s*)([-*]|\d+\.)\s+(.*)$/.exec(lines[i]);
+        const depth = Math.floor(m[1].length / 2), tag = /\d/.test(m[2]) ? "ol" : "ul";
+        let text = m[3];
+        i++;
+        while (i < lines.length && lines[i].trim() && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*]|\d+\.)\s+/.test(lines[i])){ text += " " + lines[i].trim(); i++; }
+        while (stack.length > depth + 1){ html += `</li></${stack.pop()}>`; }
+        if (stack.length === depth + 1){ html += "</li>"; }
+        else { while (stack.length < depth + 1){ stack.push(tag); html += `<${tag}>`; } }
+        html += `<li>${inline(text)}`;
+      }
+      while (stack.length){ html += `</li></${stack.pop()}>`; }
+      out.push(html);
+      continue;
+    }
+    const para = [line.trim()];
+    i++;
+    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|\s*\|)/.test(lines[i]) && !/^\s*([-*]|\d+\.)\s+/.test(lines[i])){ para.push(lines[i].trim()); i++; }
+    out.push(`<p>${inline(para.join(" "))}</p>`);
+  }
+  el("doc").innerHTML = out.join("\n");
+  el("toc").innerHTML = toc.map(([id, t]) => `<a href="#${id}">${inline(t)}</a>`).join("");
+}
+
+function ageText(ms){
+  const m = Math.max(0, Math.round(ms/60000));
+  if (m < 120) return m + " minutes";
+  const h = m/60;
+  return h < 48 ? Math.round(h) + " hours" : Math.round(h/24) + " days";
+}
+
+async function age(){
+  try {
+    const r = await fetch(MANIFEST_FILE, {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const m = await r.json();
+    const row = ((m.reports || []).find(x => x.id === REPORT_ID) || {}).data;
+    const d = row && row[0];
+    if (!d || d.status !== "read") throw new Error("the manifest lists the report as unread");
+    el("stamp").textContent = "Report file modified " + d.as_of.slice(0,16).replace("T"," ") + " UTC, " + ageText(Date.now() - Date.parse(d.as_of)) + " ago";
+  } catch (e) {
+    el("stamp").textContent = "Age of the report unread (" + e.message + ")";
+  }
+}
+
+async function load(){
+  const banner = el("banner");
+  try {
+    const r = await fetch(REPORT_FILE, {cache:"no-store"});
+    if (r.status === 404) throw new Error("the report is not published");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    render(await r.text());
+  } catch (e) {
+    banner.hidden = false;
+    banner.textContent = "The report could not be read (" + e.message + ").";
+  }
+}
+age();
+load();
+</script>
+</body>
+</html>

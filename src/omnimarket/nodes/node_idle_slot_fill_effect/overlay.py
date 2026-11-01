@@ -81,3 +81,12 @@ def experiment_designs(
     environ: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     return list(_field("experiment_designs", environ))
+
+
+def repo_required_kinds(
+    environ: Mapping[str, str] | None = None,
+) -> frozenset[str]:
+    """Kinds whose backlog items must name a repository; an overlay that lists none requires none."""
+    declaration = load_structured_overlay(OVERLAY_ID, ModelIdleSlotFillOverlay, environ)
+    kinds = declaration.repo_required_kinds if declaration is not None else None
+    return frozenset(kinds or ())

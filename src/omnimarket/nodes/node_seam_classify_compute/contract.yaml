@@ -4,8 +4,9 @@
 #
 # Pure compute: handle(ModelSeamClassifyRequest) -> ModelSeamClassifyResult. It takes facts and
 # `now`, reads no clock, file, network or protocol, and so declares no protocol_dependencies.
-# Created with operation_match routing and no seam operations: each later seam reader is its
-# own compute node with an edge in the contract of node_seam_read_orchestrator.
+# Created with operation_match routing and no seam operations (OMN-21459). OMN-21475 (T-S3)
+# registers classify_sm_00 (backlog items against ModelBacklogItem) and the engine reads of
+# classify_sm_01 and classify_sm_02; later seam readers add their operations here.
 name: node_seam_classify_compute
 contract_name: node_seam_classify_compute
 node_name: node_seam_classify_compute
@@ -16,8 +17,9 @@ lifecycle: experimental
 runtime_profiles: [main]
 
 description: >
-  Route a seam classify operation to its classifier. No seam operation is registered here; an
-  unregistered operation refuses naming it.
+  Route a seam classify operation to its classifier. Registered: classify_sm_00 (ModelBacklogItem
+  crossings), classify_sm_01 and classify_sm_02 (the model a lane ran against the adopted lane model
+  policy); an unregistered operation refuses naming it.
 
 handler:
   module: omnimarket.nodes.node_seam_classify_compute.handlers.handler_seam_classify
@@ -26,7 +28,19 @@ handler:
 
 handler_routing:
   routing_strategy: operation_match
-  handlers: []
+  handlers:
+    - operation: classify_sm_00
+      handler:
+        name: HandlerSeamClassify
+        module: omnimarket.nodes.node_seam_classify_compute.handlers.handler_seam_classify
+    - operation: classify_sm_01
+      handler:
+        name: HandlerSeamClassify
+        module: omnimarket.nodes.node_seam_classify_compute.handlers.handler_seam_classify
+    - operation: classify_sm_02
+      handler:
+        name: HandlerSeamClassify
+        module: omnimarket.nodes.node_seam_classify_compute.handlers.handler_seam_classify
 
 descriptor:
   node_archetype: compute
