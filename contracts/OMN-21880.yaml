@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-21880
+title: A repo-wide red on one required context opens a stall and, after 60 minutes, one cause lane runs while the controller sends no more repair workers (model first, no controller wiring yet)
+summary: A TLA+ model of the stall rule with a mutant per invariant and a design verdict, and a pure stall-opening extension of node_landing_stall_expectation_compute that opens the stall from snapshot rows with its thresholds in the node's overlay. Nothing is wired into the landing controller.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21880-model
+    statement: The TLA+ model of the stall rule passes and each mutant fails.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the TLA+ model of the stall rule passes and each mutant fails, and a design verdict is recorded on this ticket -- falsifier: uv run pytest tests/formal -k landing_stall -q and a ticket with no verdict comment'
+  - id: req-omn21880-replay
+    statement: Replaying the recorded 31 October rows opens the stall by 10:45Z and replaying ordinary days opens none.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: replaying the recorded 31 October rows opens the stall by 10:45Z and replaying 14 ordinary days opens none -- falsifier: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k stall_replay -q'
+  - id: req-omn21880-overlay
+    statement: The thresholds come from the overlay and none is a literal in code.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the 80 percent, five PR and 60 minute thresholds come from the overlay and none is a literal in code -- falsifier: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k thresholds_from_overlay -q'
+evidence_requirements:
+  - kind: tests
+    description: The model, replay and overlay suites run at the pushed head.
+    command: uv run pytest tests/formal -k landing_stall tests/unit/nodes/node_landing_stall_expectation_compute tests/nodes/node_landing_stall_expectation_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21880-ac1
+    description: AC1 reads the committed TLC results for the model, its design configs and its mutants.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal -k landing_stall -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21880-ac2
+    description: AC2 replays the recorded rows of 2026-10-31 and of 12 ordinary days through the pure fold.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k stall_replay -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21880-ac3
+    description: AC3 reads the thresholds from a node overlay and scans the new code for the ruling's numbers.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k thresholds_from_overlay -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21880-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published handler and overlay reader at the evaluated commit to match this checkout. It checks the source artifact only; nothing here runs on a runtime and nothing is wired into the controller.
+    source: manual
+    binds_ac:
+      - AC2
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for module in handlers/handler_landing_stall_open.py overlay.py; do
+            path="src/omnimarket/nodes/node_landing_stall_expectation_compute/$module"
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.py"
+            cmp "$path" "$readback_dir/source.py"
+          done
+          printf 'landing stall source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -q --no-cov --tb=line
+        cwd: .

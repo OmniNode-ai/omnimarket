@@ -755,6 +755,12 @@ jobs:
       # SYNC with pre-commit hook 'andon-stop-model'.
       - name: Andon stop model and verdict (OMN-21442)
         run: uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-21880: the landing stall model (formal/landing_stall) passes its design
+      # configs, each property fails on a one-knob mutation, the results match the
+      # committed model, configs and outputs, and the verdict names the model's digest.
+      # SYNC with pre-commit hook 'landing-stall-model'.
+      - name: Landing stall model and verdict (OMN-21880)
+        run: uv run pytest tests/formal/test_landing_stall_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-20601: routing decisions come from overlays, never from omnimarket code
       # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
       # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
