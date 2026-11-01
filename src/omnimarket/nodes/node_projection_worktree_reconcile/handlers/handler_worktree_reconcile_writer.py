@@ -11,13 +11,17 @@ from typing import Any
 import yaml
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRunCompletedEvent
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_worktree_reconcile.handlers.handler_projection_worktree_reconcile import (
     HandlerProjectionWorktreeReconcile,
 )
 from omnimarket.nodes.node_projection_worktree_reconcile.models import (
     ModelWorktreeReconcileProjectionRequest,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 _UPSERT = """
     INSERT INTO omninode_internal.worktree_reconcile_hosts (
@@ -56,15 +60,10 @@ class WorktreeReconcileProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
-        topic = str(data.pop("_topic", ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        data = dict(request.payload)
+        topic = request.topic_or("")
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(topic, data, meta))
 
     async def _project_one_message(

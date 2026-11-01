@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TypeVar
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.contract_topics import contract_subscribe_topics
 from omnimarket.nodes.node_projection_pr_state.contract_topics import (
     CONTRACT_PATH,
@@ -23,7 +24,10 @@ from omnimarket.nodes.node_projection_pr_state.handlers.pr_state_fold import (
 from omnimarket.nodes.node_projection_pr_state.models.model_pr_state_fold_request import (
     ModelPrStateFoldRequest,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 _TABLE = "omninode_internal.pr_state"
 _UPSERT = f"""
@@ -71,15 +75,10 @@ class PrStateProjectionWriter(BaseProjectionRunner):
             raise ValueError("contract subscribe_topics disagree with PR state topics")
         return list(declared)
 
-    def handle(self, input_data: dict[str, object]) -> dict[str, int]:
-        data = dict(input_data)
-        topic = str(data.pop("_topic", self.subscribe_topics[0]))
-        meta = MessageMeta(
-            partition=int(str(data.pop("_partition", 0))),
-            offset=int(str(data.pop("_offset", 0))),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, int]:
+        data = dict(request.payload)
+        topic = request.topic_or(self.subscribe_topics[0])
+        meta = request.message_meta(topic)
         with self._dispatch_lock:
             written = self._run(self._project_one_message(topic, data, meta))
         return {"rows_upserted": written}

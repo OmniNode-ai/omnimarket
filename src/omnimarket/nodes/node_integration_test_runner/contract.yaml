@@ -93,3 +93,9 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.integration-test-runner-completed.v1
+
+# The in-memory event bus of the DI profiles: the group both share and the environment the LOCAL
+# profile runs in; the fallback environment is the profile's own value. container/container_inmemory.py binds it.
+in_memory_bindings:
+  event_bus_group: integration-test-runner
+  local_profile_environment: test

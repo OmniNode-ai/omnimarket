@@ -35,7 +35,7 @@ a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
 .eyebrow{font:500 .72rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
 .muted{color:var(--muted)}
-.nav{font-size:.86rem}
+.nav{font-size:.86rem;display:flex;flex-wrap:wrap;gap:6px 16px}
 header{display:grid;gap:14px}
 .lede{max-width:72ch;color:var(--muted)}
 .banner{border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
@@ -72,12 +72,13 @@ svg.s .gap{stroke:var(--rule);stroke-width:1}
 details summary{cursor:pointer;color:var(--muted);font-size:.8rem}
 footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px}
 </style>
+<style>html.embed .hazard,html.embed .nav,html.embed h1{display:none}html.embed .wrap{padding-block:14px 20px}</style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="hazard" aria-hidden="true"></div>
-    <nav class="nav"><a href="../">All reports</a></nav>
+    <nav class="nav"><a href="../">All reports</a><a href="../../">Factory floor</a></nav>
     <div class="eyebrow" id="stamp">Reading the process-health series</div>
     <h1>Process before and after</h1>
     <p class="lede" id="lede">The daily process measures since 15 October, with the factory reset marked, and a comparison of the hours before the reset with the same number of hours after it.</p>
@@ -90,6 +91,7 @@ footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px}
   </footer>
 </div>
 <script>
+if (typeof location !== "undefined" && document.documentElement && /[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
 const DATA_FILE = "../../process-health.json";
 const POLL_MS = 60000;
 const GREY_PREFIXES = ["merges.", "delegation.", "lanes.terminals", "lanes.share_done", "lanes.share_handed_off", "friction.measured_lease_minutes"];
