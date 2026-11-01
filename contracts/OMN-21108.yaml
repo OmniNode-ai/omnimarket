@@ -24,6 +24,15 @@ requirements:
         statement: "AC9: a missing ONEX_CONTEXT_REPLAY_ROOT in pinned mode fails with a typed error, and sources with no timestamp fail with NO_SOURCE_TIMESTAMP -- falsifier: either returns ok."
       - id: "AC11"
         statement: "AC11 (live half): live mode returns REPO_STATE as unavailable and never fills it from the request's cwd -- falsifier: a live REPO_STATE artifact."
+  - id: "req-replay-bundle-writer"
+    statement: "The replay bundle writer persists manifest-builder files under a private overlay root and verifies the bytes it reads back."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: every manifest-builder bundle file is written under the host's overlay-declared root, read back byte-identically and verified against the manifest pins; falsifier: a missing file, different bytes or an unverified successful result."
+      - id: "AC13"
+        statement: "AC13: corrupted read-back bytes or a mismatched manifest pin return refused_hash_mismatch with zero verified cases; falsifier: either input returns written."
+      - id: "AC14"
+        statement: "AC14: an absent host root or unset home expansion returns refused_root_undeclared, and a path escaping the root returns refused_outside_root before any write; falsifier: a successful result or an escaping write."
 evidence_requirements:
   - kind: "tests"
     description: "The carry-rule fixture table, the pinned bundle reads and the contract tests."
@@ -89,11 +98,26 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_contracts.py -q -p no:randomly --no-cov"
   - id: "dod-omn21108-replay-bundle-writer"
-    description: "node_replay_bundle_writer_effect writes the manifest builder's bundle_files under the overlay-declared root and re-hashes every file; a corrupted file or a pinned-hash mismatch is a typed refusal, and an undeclared root has no default."
+    description: "AC12: the writer persists every manifest-builder file under the overlay root, reads back identical bytes and verifies every pin; its contract declares the handler and topics."
     source: "manual"
+    binds_ac: ["AC12"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_replay_bundle_writer_effect/test_replay_bundle_writer.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_replay_bundle_writer_effect/test_replay_bundle_writer.py -q -p no:randomly --no-cov -k 'writes_every_file or the_contract or the_node_source'"
+  - id: "dod-omn21108-writer-hash-refusals"
+    description: "AC13: corruption on write and a mismatched manifest pin both return refused_hash_mismatch."
+    source: "manual"
+    binds_ac: ["AC13"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_replay_bundle_writer_effect/test_replay_bundle_writer.py -q -p no:randomly --no-cov -k 'corrupted_file or pinned_hash_mismatch'"
+  - id: "dod-omn21108-writer-root-refusals"
+    description: "AC14: absent or undeclared overlay roots, missing home expansion and a path escape fail before writing."
+    source: "manual"
+    binds_ac: ["AC14"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_replay_bundle_writer_effect/test_replay_bundle_writer.py -q -p no:randomly --no-cov -k 'no_default_root or unset_home_variable or path_escaping'"
   - id: "dod-omn21108-deploy-container-pinned-read"
     description: "Hosted deploy probe. An ephemeral Python 3.12 uv bookworm container (including Git for the locked infra dependency) installs the read-only checkout without dev dependencies, builds a one-boundary replay bundle with the T0.2 manifest builder under /tmp, reads OPERATOR_WORDS_UNRECORDED through the product handler and asserts the operator prompt is carried verbatim with status resolved, and that an unset replay root is the typed REPLAY_ROOT_MISSING error. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"
@@ -131,3 +155,55 @@ dod_evidence:
           miss = H(env={}).handle(q())
           assert miss.error_message.startswith("REPLAY_ROOT_MISSING"), miss
           print(res.entries[0].text_sha256, dict(res.entry_counts))'
+  - id: "dod-omn21108-deploy-writer-disk-readback"
+    description: "Hosted deploy probe: install the locked product without dev dependencies, build one replay case, write it through the default local filesystem under a temporary overlay root, read every file back from disk and require one verified case. A wrong pin and an undeclared host must be refused. No private overlay or lab service is required; the merge base has no writer module."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import json
+          import tempfile
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          import yaml
+
+          from omnimarket.nodes.node_context_compaction_manifest_compute import models as M
+          from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest import HandlerReplayManifestBuilder as B
+          from omnimarket.nodes.node_replay_bundle_writer_effect.handlers.handler_replay_bundle_writer import HandlerReplayBundleWriter as W
+          from omnimarket.nodes.node_replay_bundle_writer_effect.models import ModelReplayBundleWriteRequest as Q
+
+
+          def t(minute):
+              return datetime(2025, 2, 15, 0, minute, tzinfo=UTC)
+
+
+          def r(i, kind, minute, content):
+              return M.ModelCapturedRecord(event_id=i, session_id="s", content_kind=kind, emitted_at=t(minute), content=content)
+
+
+          words = "keep the retry budget"
+          spec = M.ModelCaseSpec(case_id="c", finding="f", census_status="CONFIRMED", census_ref="x", session_id="s", boundary_pre_event_ids=("pre",), expected_statements=(M.ModelExpectedStatement(statement_id="S", prompt_event_id="op", required_spans=(words,)),), post_boundary_evidence=(M.ModelPostBoundaryEvidence(event_id="late", kind="RESTATED", required_spans=("retry",)),), question="q", expected_answer="a")
+          pre = M.ModelHookBoundaryEvent(event_id="pre", session_id="s", hook_event_name=M.EnumBoundaryHook.PRE, emitted_at=t(40), trigger="manual")
+          built = B().handle(M.ModelBuildManifestRequest(specs=(spec,), events=(pre,), records=(r("op", "operator_prompt", 10, words), r("late", "prompt", 50, "retry again")), ledger_files=(M.ModelLedgerFile(name="l.md", content=b"2025-02-15T00:01:00Z | STATUS | lane=a | x\n"),), census_ref="x"))
+          with tempfile.TemporaryDirectory(prefix="omn21108-writer-") as tmp:
+              home = Path(tmp)
+              overlay = home / "overlay.yaml"
+              overlay.write_text(yaml.safe_dump({"schema": "replay_root.v1", "hosts": {"probe": {"root": "$HOME/bundle"}}}))
+              request = Q(manifest_yaml=built.manifest_yaml, bundle_files=built.bundle_files, overlay_path=str(overlay), host_id="probe")
+              writer = W(environ={"HOME": tmp})
+              result = writer.handle(request)
+              assert result.status.value == "written" and result.cases_verified == 1, result
+              assert len(result.files) == len(built.bundle_files) > 0 and all(f.verified for f in result.files), result
+              for file in built.bundle_files:
+                  assert (home / "bundle" / file.path).read_bytes() == file.content
+              manifest = yaml.safe_load(built.manifest_yaml)
+              manifest["cases"][0]["transcript_chain"]["sha256"] = "0" * 64
+              mismatch = writer.handle(request.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)}))
+              assert mismatch.status.value == "refused_hash_mismatch" and mismatch.cases_verified == 0, mismatch
+              missing = writer.handle(request.model_copy(update={"host_id": "undeclared"}))
+              assert missing.status.value == "refused_root_undeclared" and missing.root is None, missing
+              print(json.dumps({"status": result.status.value, "cases_verified": result.cases_verified, "files_verified": len(result.files), "pin_mismatch": mismatch.status.value, "undeclared_root": missing.status.value}, sort_keys=True))
+          '
