@@ -1,0 +1,401 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Bring-up Orchestrator target graph (OMN-21883)
+#
+# The 57 declared bring-up targets of the host bring-up dependency graph plan,
+# stages A to G (4, 7, 15, 8, 7, 9 and 7). Each row holds its stage, its needs, a
+# read-only already-satisfied check, a falsifier and an enum action, and loads
+# through load_bringup_graph in node_host_bringup_plan_compute; a row missing any
+# of them fails the load. The rows hold shape and no value: a check subject is
+# a symbolic identifier, and no host, address, path or version appears here.
+#
+# GENERATED. Do not edit by hand. Name, stage, needs and falsifier are read from
+# the plan's graph section; the check kind and action are classified by the
+# generator. Rewrite with:
+#   uv run python -m omnimarket.nodes.node_host_bringup_orchestrator.runtime_generate_target_rows --plan <plan file> --write
+# Top targets: up (stages A to F) and storage-up (stage G, which needs up).
+name: "node_host_bringup_orchestrator"
+node_type: "ORCHESTRATOR_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+lifecycle: experimental
+description: "The declared host bring-up target graph: 57 targets, each with a check, a falsifier and an enum action."
+input_model:
+  name: "ModelHostBringupPlanRequest"
+  module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
+  description: "The declared target rows and each target's observed check result."
+output_model:
+  name: "ModelHostBringupPlan"
+  module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
+  description: "Planned steps in need order with skip or act per target, or the refusals."
+handler:
+  module: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan"
+  class: "HandlerHostBringupPlan"
+  input_model: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan.ModelHostBringupPlanRequest"
+  output_model: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan.ModelHostBringupPlan"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan:HandlerHostBringupPlan"
+  handlers:
+    - operation: "plan_host_bringup"
+      handler:
+        name: "HandlerHostBringupPlan"
+        module: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan"
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+dod_evidence:
+  PYTEST:
+    description: "the 57 rows load, count 4, 7, 15, 8, 7, 9 and 7 per stage, and a planted row without a falsifier is refused"
+    command: "uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q"
+    pass_criteria: "every test passes"
+targets:
+  - name: card
+    stage: A
+    needs: []
+    check: {kind: declaration_valid, subject: card}
+    falsifier: "a row with no role is refused and names the field"
+    action: stop
+  - name: ssh-config
+    stage: A
+    needs: [card]
+    check: {kind: transport_answers, subject: ssh_config}
+    falsifier: "remove the alias; only this target and what needs it run"
+    action: local_include
+  - name: declared
+    stage: A
+    needs: [card]
+    check: {kind: declaration_drift, subject: declared}
+    falsifier: "delete one derived row on a branch; the check names that surface and row"
+    action: data_pr
+  - name: adopted
+    stage: A
+    needs: [declared]
+    check: {kind: revision_current, subject: adopted}
+    falsifier: "a stale clone reads unsatisfied"
+    action: adopt_merged
+  - name: reservations
+    stage: B
+    needs: [card]
+    check: {kind: person_confirmed, subject: reservations}
+    falsifier: "a row with no confirmation reads unsatisfied even when iLO answers"
+    action: person_step
+  - name: ilo-access
+    stage: B
+    needs: [reservations]
+    check: {kind: management_read, subject: ilo_access}
+    falsifier: "a wrong serial stops the run before any later target"
+    action: person_step
+  - name: firmware-settings
+    stage: B
+    needs: [ilo-access]
+    check: {kind: management_read, subject: firmware_settings}
+    falsifier: "one changed setting reads unsatisfied"
+    action: management_write
+  - name: volumes
+    stage: B
+    needs: [firmware-settings]
+    check: {kind: management_read, subject: volumes}
+    falsifier: "a layout unlike the row reads unsatisfied"
+    action: person_step
+  - name: os-installed
+    stage: B
+    needs: [volumes, ssh-config]
+    check: {kind: transport_answers, subject: os_installed}
+    falsifier: "a closed port reads unsatisfied"
+    action: person_step
+  - name: host-key
+    stage: B
+    needs: [os-installed]
+    check: {kind: person_confirmed, subject: host_key}
+    falsifier: "an unconfirmed or changed key stops every target that uses ssh"
+    action: person_step
+  - name: key-login
+    stage: B
+    needs: [host-key, ssh-config]
+    check: {kind: transport_answers, subject: key_login}
+    falsifier: "a host that asks for a password reads unsatisfied"
+    action: person_step
+  - name: root-access
+    stage: C
+    needs: [key-login]
+    check: {kind: transport_answers, subject: root_access}
+    falsifier: "sudo asking for a password reads unsatisfied and prints one line"
+    action: person_step
+  - name: machine-identity
+    stage: C
+    needs: [root-access]
+    check: {kind: host_state, subject: machine_identity}
+    falsifier: "a planted wrong serial stops the run with no write"
+    action: stop
+  - name: hostname
+    stage: C
+    needs: [machine-identity]
+    check: {kind: host_state, subject: hostname}
+    falsifier: "a changed hostname reads unsatisfied"
+    action: line_in_file
+  - name: apt-sources
+    stage: C
+    needs: [machine-identity]
+    check: {kind: file_state, subject: apt_sources}
+    falsifier: "a wrong fingerprint is refused"
+    action: apt_source
+  - name: data-layout
+    stage: C
+    needs: [machine-identity]
+    check: {kind: file_state, subject: data_layout}
+    falsifier: "a wrong owner reads unsatisfied"
+    action: directory
+  - name: docker-config
+    stage: C
+    needs: [data-layout]
+    check: {kind: file_state, subject: docker_config}
+    falsifier: "a differing file follows the policy, never a silent overwrite"
+    action: file_content
+  - name: packages
+    stage: C
+    needs: [apt-sources, docker-config]
+    check: {kind: package_installed, subject: packages}
+    falsifier: "a removed package reads unsatisfied"
+    action: apt_packages
+  - name: docker-running
+    stage: C
+    needs: [packages]
+    check: {kind: service_active, subject: docker_running}
+    falsifier: "a stopped service reads unsatisfied"
+    action: service_enabled
+  - name: account-grants
+    stage: C
+    needs: [docker-running]
+    check: {kind: group_member, subject: account_grants}
+    falsifier: "a user manager without the group reads unsatisfied"
+    action: group_member
+  - name: system-services
+    stage: C
+    needs: [packages]
+    check: {kind: service_active, subject: system_services}
+    falsifier: "a disabled service reads unsatisfied"
+    action: service_enabled
+  - name: memory-guard
+    stage: C
+    needs: [packages]
+    check: {kind: file_state, subject: memory_guard}
+    falsifier: "a differing drop-in reads unsatisfied"
+    action: file_content
+  - name: bwrap-userns
+    stage: C
+    needs: [packages]
+    check: {kind: host_state, subject: bwrap_userns}
+    falsifier: "no namespace reads unsatisfied"
+    action: file_content
+  - name: launcher-key
+    stage: C
+    needs: [machine-identity]
+    check: {kind: file_state, subject: launcher_key}
+    falsifier: "a commented line reads unsatisfied"
+    action: line_in_file
+  - name: tailnet
+    stage: C
+    needs: [hostname, system-services]
+    check: {kind: host_state, subject: tailnet}
+    falsifier: "a logged-out daemon reads unsatisfied"
+    action: tailnet_login
+  - name: sshd-key-only
+    stage: C
+    needs: [launcher-key, tailnet]
+    check: {kind: host_state, subject: sshd_key_only}
+    falsifier: "a run with no proof writes nothing; a failed second session restores the file"
+    action: guarded_sshd_dropin
+  - name: lab-dirs
+    stage: D
+    needs: [data-layout]
+    check: {kind: file_state, subject: lab_dirs}
+    falsifier: "a broken link reads unsatisfied"
+    action: directory
+  - name: user-tools
+    stage: D
+    needs: [lab-dirs]
+    check: {kind: package_installed, subject: user_tools}
+    falsifier: "an old version reads unsatisfied"
+    action: tool_install
+  - name: clones
+    stage: D
+    needs: [user-tools]
+    check: {kind: checkout_state, subject: clones}
+    falsifier: "a missing clone is restored with `origin` on GitHub, no local path"
+    action: clone_repository
+  - name: venvs
+    stage: D
+    needs: [clones]
+    check: {kind: checkout_state, subject: venvs}
+    falsifier: "a broken venv reads unsatisfied"
+    action: sync_environment
+  - name: plugin-tree
+    stage: D
+    needs: [clones]
+    check: {kind: checkout_state, subject: plugin_tree}
+    falsifier: "a tree older than the pin reads unsatisfied"
+    action: install_plugin_tree
+  - name: lane-guard
+    stage: D
+    needs: [plugin-tree, memory-guard]
+    check: {kind: unit_status, subject: lane_guard}
+    falsifier: "a stopped timer reads unsatisfied"
+    action: host_unit_install
+  - name: lane-account
+    stage: D
+    needs: [user-tools, account-grants, bwrap-userns]
+    check: {kind: unit_status, subject: lane_account}
+    falsifier: "one MISSING item reads unsatisfied"
+    action: host_unit_install
+  - name: lane-env
+    stage: D
+    needs: [venvs]
+    check: {kind: file_state, subject: lane_env}
+    falsifier: "`REMOTE-LANE-HOST-ENV-ABSENT` reproduces on a removed file"
+    action: file_content
+  - name: store-identity
+    stage: E
+    needs: [lane-env, adopted]
+    check: {kind: credential_resolves, subject: store_identity}
+    falsifier: "a missing identity reads unsatisfied"
+    action: store_credential
+  - name: bus-logins
+    stage: E
+    needs: [store-identity]
+    check: {kind: credential_resolves, subject: bus_logins}
+    falsifier: "a revoked login reads unsatisfied"
+    action: mint_login
+  - name: broker-grants
+    stage: E
+    needs: [bus-logins, adopted]
+    check: {kind: credential_resolves, subject: broker_grants}
+    falsifier: "a dropped grant reads missing and a surplus grant reads undeclared"
+    action: apply_broker_grants
+  - name: claude-pool
+    stage: E
+    needs: [store-identity, user-tools, adopted]
+    check: {kind: credential_resolves, subject: claude_pool}
+    falsifier: "a revoked label moves to the next"
+    action: refill_claude_pool
+  - name: codex-login
+    stage: E
+    needs: [user-tools]
+    check: {kind: credential_resolves, subject: codex_login}
+    falsifier: "the probe reads none"
+    action: store_credential
+  - name: github-login
+    stage: E
+    needs: [user-tools]
+    check: {kind: credential_resolves, subject: github_login}
+    falsifier: "a removed credential reads unsatisfied and the clone sync fails"
+    action: store_credential
+  - name: delegation-key
+    stage: E
+    needs: [store-identity]
+    check: {kind: credential_resolves, subject: delegation_key}
+    falsifier: "an absent key reads unsatisfied"
+    action: store_credential
+  - name: facts-declared
+    stage: F
+    needs: [key-login, adopted]
+    check: {kind: declaration_drift, subject: facts_declared}
+    falsifier: "a mismatch reads unsatisfied"
+    action: data_pr
+  - name: ram-filesystem
+    stage: F
+    needs: [facts-declared, root-access, data-layout]
+    check: {kind: unit_status, subject: ram_filesystem}
+    falsifier: "a missing mount reads unsatisfied"
+    action: host_unit_install
+  - name: host-units
+    stage: F
+    needs: [venvs, lane-guard, broker-grants, github-login, store-identity]
+    check: {kind: unit_status, subject: host_units}
+    falsifier: "a unit whose latest run failed reads unsatisfied"
+    action: host_unit_install
+  - name: collaborator-accounts
+    stage: F
+    needs: [host-units]
+    check: {kind: host_state, subject: collaborator_accounts}
+    falsifier: "n/a on a skipped role"
+    action: role_action
+  - name: load-measured
+    stage: F
+    needs: [ram-filesystem, host-units]
+    check: {kind: measurement_current, subject: load_measured}
+    falsifier: "measured, never estimated: no value without its sar and fio record"
+    action: run_workload
+  - name: lab-work-serve
+    stage: F
+    needs: [load-measured, lane-account, claude-pool, codex-login, github-login, delegation-key]
+    check: {kind: unit_status, subject: lab_work_serve}
+    falsifier: "a stop ages out within 40 s"
+    action: host_unit_install
+  - name: verify
+    stage: F
+    needs: [lab-work-serve, sshd-key-only, collaborator-accounts]
+    check: {kind: runbook_verified, subject: verify}
+    falsifier: "any one failing item stops the flip"
+    action: stop
+  - name: in-service
+    stage: F
+    needs: [verify]
+    check: {kind: table_row, subject: in_service}
+    falsifier: "a flip with no receipt is refused by CI (T14)"
+    action: data_pr
+  - name: up
+    stage: F
+    top: true
+    needs: [in-service]
+    check: {kind: aggregate, subject: up}
+    falsifier: "any unsatisfied need"
+    action: no_action
+  - name: nvme-fitted
+    stage: G
+    needs: [packages]
+    check: {kind: host_state, subject: nvme_fitted}
+    falsifier: "a missing drive reads unsatisfied"
+    action: person_step
+  - name: data-volume
+    stage: G
+    needs: [nvme-fitted, machine-identity, root-access]
+    check: {kind: host_state, subject: data_volume}
+    falsifier: "a wrong serial refuses before any write"
+    action: prepare_volume
+  - name: data-moved
+    stage: G
+    needs: [data-volume]
+    check: {kind: host_state, subject: data_moved}
+    falsifier: "a planted writer stops the action before the copy; a kill at any phase resumes at that phase and loses nothing"
+    action: move_data_roots
+  - name: storage-verified
+    stage: G
+    needs: [data-moved, ram-filesystem, verify]
+    check: {kind: measurement_current, subject: storage_verified}
+    falsifier: "a slower p99, or a measurement older than the cut-over, stops the raise"
+    action: rerun_targets
+  - name: cap-raised
+    stage: G
+    needs: [storage-verified]
+    check: {kind: measurement_current, subject: cap_raised}
+    falsifier: "a cap with no measurement is refused"
+    action: data_pr
+  - name: ci-capacity
+    stage: G
+    needs: [storage-verified, host-units]
+    check: {kind: fleet_healthy, subject: ci_capacity}
+    falsifier: "a runner off the fleet reads unsatisfied"
+    action: deploy_runners
+  - name: storage-up
+    stage: G
+    top: true
+    needs: [up, cap-raised, ci-capacity]
+    check: {kind: aggregate, subject: storage_up}
+    falsifier: "any unsatisfied need"
+    action: no_action

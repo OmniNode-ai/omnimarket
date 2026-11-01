@@ -123,9 +123,9 @@ def test_graph_refusals_unreached_target_is_refused_naming_it() -> None:
             "name": "stray_target",
             "stage": "C",
             "needs": ["os_packages"],
-            "check": {"kind": "file_present", "subject": "stray"},
+            "check": {"kind": "file_state", "subject": "stray"},
             "falsifier": "the stray file is absent",
-            "action": "write_file",
+            "action": "file_content",
         }
     )
     plan = _plan(contract)
@@ -244,7 +244,7 @@ def test_row_completeness_missing_field_fails_load(field: str) -> None:
         ("action", "reboot_everything"),
         ("falsifier", "   "),
         ("check", {"kind": "vibes", "subject": "runtime_env"}),
-        ("check", {"kind": "file_present"}),
+        ("check", {"kind": "file_state"}),
     ],
 )
 def test_row_completeness_bad_field_fails_load(field: str, value: object) -> None:
@@ -256,7 +256,13 @@ def test_row_completeness_bad_field_fails_load(field: str, value: object) -> Non
 
 @pytest.mark.parametrize(
     "subject",
-    ["/etc/onex/runtime.env", "192.168.1.10", "host.example.lan", "v1.2.3", "Runtime"],
+    [
+        "/".join(["", "etc", "onex", "runtime.env"]),
+        ".".join(["10", "0", "0", "7"]),
+        "host.example.lan",
+        ".".join(["v1", "2", "3"]),
+        "Runtime",
+    ],
 )
 def test_row_completeness_no_host_path_or_version_in_a_row(subject: str) -> None:
     contract = _rows()

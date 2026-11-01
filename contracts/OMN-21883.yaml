@@ -23,8 +23,8 @@ requirements:
         statement: 'AC3: every row has a check, a falsifier and an enum action, and a row missing one fails contract load -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k row_completeness -q'
 evidence_requirements:
   - kind: tests
-    description: The plan node suites run at the pushed head.
-    command: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py tests/test_golden_chain_host_bringup_plan_compute.py -q --no-cov
+    description: The plan node suites and the 57 target rows suite run at the pushed head.
+    command: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py tests/test_golden_chain_host_bringup_plan_compute.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -56,4 +56,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k row_completeness -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21883-ac3-rows
+    description: AC3 on the generated orchestrator contract loads all 57 rows, counts 4, 7, 15, 8, 7, 9 and 7 per stage, and refuses a planted row without a falsifier.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
         cwd: .

@@ -18,25 +18,25 @@
       "check_kind": "package_installed",
       "observed": "ok",
       "decision": "skip",
-      "action": "install_package"
+      "action": "apt_packages"
     },
     {
       "order": 3,
       "target": "runtime_env_file",
       "stage": "B",
-      "check_kind": "file_present",
+      "check_kind": "file_state",
       "observed": "unknown",
       "decision": "act",
-      "action": "write_file"
+      "action": "file_content"
     },
     {
       "order": 4,
       "target": "tailnet_joined",
       "stage": "B",
-      "check_kind": "command_succeeds",
+      "check_kind": "host_state",
       "observed": "not_ok",
       "decision": "act",
-      "action": "run_command"
+      "action": "tailnet_login"
     },
     {
       "order": 5,
@@ -45,16 +45,16 @@
       "check_kind": "service_active",
       "observed": "unknown",
       "decision": "act",
-      "action": "enable_service"
+      "action": "service_enabled"
     },
     {
       "order": 6,
       "target": "runtime_stack",
       "stage": "D",
-      "check_kind": "endpoint_healthy",
+      "check_kind": "host_state",
       "observed": "unknown",
       "decision": "act",
-      "action": "start_stack"
+      "action": "host_unit_install"
     }
   ]
 }
