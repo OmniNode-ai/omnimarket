@@ -21,6 +21,7 @@ rows:
   - {node: node_flow_measures_compute, protocols: []}
   - {node: node_remote_lane_compute, protocols: []}
   - {node: node_pr_handoff_decision_compute, protocols: []}
+  - {node: node_pr_handoff_orchestrator, protocols: []}
   - {node: node_plugin_bump_stuck_compute, protocols: []}
   - {node: node_landing_worker_engine_compute, protocols: []}
   - {node: node_throughput_tick_decision_compute, protocols: []}
@@ -57,6 +58,7 @@ checked_nodes:
   - node_flow_measures_compute
   - node_remote_lane_compute
   - node_pr_handoff_decision_compute
+  - node_pr_handoff_orchestrator
   - node_plugin_bump_stuck_compute
   - node_landing_worker_engine_compute
   - node_throughput_tick_decision_compute

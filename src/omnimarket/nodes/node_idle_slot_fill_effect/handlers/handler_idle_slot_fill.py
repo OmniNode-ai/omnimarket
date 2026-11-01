@@ -78,18 +78,36 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.handler_lab_fill_live_tickets import (
+    LabFillLiveReadError,
+    Post,
+    linear_post,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
 from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
-from omnimarket.models.lab_fill import ModelLabFillTicketFacts
+from omnimarket.models.lab_fill import (
+    EnumLabFillTicketDrop,
+    ModelLabFillCriteriaReadRequest,
+    ModelLabFillCriteriaReadResult,
+    ModelLabFillLiveDescription,
+    ModelLabFillTicketFacts,
+)
 from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
 from omnimarket.models.lane_brief.enum_lane_engine import EnumLaneEngine
 from omnimarket.models.model_backlog_item import (
@@ -1395,8 +1413,16 @@ def _issue(issue: dict[str, Any]) -> dict[str, Any]:
         "project": project.get("name", "") if isinstance(project, dict) else project,
         "repo": issue.get("repo") or "",
         "pillar": issue.get("pillar"),
-        "description": str(issue.get("description") or issue.get("body") or ""),
+        "description": _snapshot_description(issue),
     }
+
+
+def _snapshot_description(issue: dict[str, Any]) -> str | None:
+    """The description the snapshot carries; None when it carries no such field (unread, not empty)."""
+    for key in ("description", "body"):
+        if key in issue and issue[key] is not None:
+            return str(issue[key])
+    return None
 
 
 def _closed(issue: dict[str, Any]) -> bool:
@@ -1746,11 +1772,96 @@ def ledger_tickets(
     return claimed, readbacks
 
 
-def omnimarket_ticket_rule() -> Callable[[dict[str, Any]], dict[str, Any]]:
-    """The ticket plan rule of this package (omnimarket#4384), called in process with the facts as a JSON-shaped mapping."""
+# Live criteria read for tickets the snapshot carried no description for (a typed request and result).
+_CRITERIA_QUERY = """
+query LabFillLiveCriteria($numbers: [Float!], $first: Int) {
+  issues(first: $first, filter: {team: {key: {eq: "OMN"}}, number: {in: $numbers}}) {
+    nodes {
+      identifier
+      description
+    }
+  }
+}
+"""
+
+
+def _criteria_nodes(answer: Mapping[str, object]) -> list[object]:
+    issues = answer.get("issues")
+    nodes = issues.get("nodes") if isinstance(issues, dict) else None
+    if not isinstance(nodes, list):
+        raise LabFillLiveReadError("Linear returned malformed nodes")
+    return nodes
+
+
+def read_live_descriptions(
+    tickets: Sequence[str], *, post: Post = linear_post
+) -> tuple[ModelLabFillLiveDescription, ...]:
+    """Read the description of each requested ticket Linear returns, in request order."""
+    if not tickets:
+        return ()
+    answer = post(
+        _CRITERIA_QUERY,
+        {
+            "numbers": [int(ticket.removeprefix("OMN-")) for ticket in tickets],
+            "first": len(tickets),
+        },
+    )
+    requested = set(tickets)
+    found: dict[str, str] = {}
+    for node in _criteria_nodes(answer):
+        if not isinstance(node, dict):
+            raise LabFillLiveReadError("Linear returned malformed ticket")
+        identifier = node.get("identifier")
+        description = node.get("description")
+        if not isinstance(identifier, str):
+            raise LabFillLiveReadError("Linear returned malformed identifier")
+        if description is not None and not isinstance(description, str):
+            raise LabFillLiveReadError("Linear returned malformed description")
+        # a ticket Linear holds with no description reads as empty: read, no criteria
+        if identifier in requested:
+            found[identifier] = description or ""
+    return tuple(
+        ModelLabFillLiveDescription(id=ticket, description=found[ticket])
+        for ticket in tickets
+        if ticket in found
+    )
+
+
+def read_criteria(
+    request: ModelLabFillCriteriaReadRequest, *, post: Post = linear_post
+) -> ModelLabFillCriteriaReadResult:
+    """Fail closed: an unreadable Linear leaves every requested ticket unread."""
+    try:
+        descriptions = read_live_descriptions(request.tickets, post=post)
+    except LabFillLiveReadError as exc:
+        return ModelLabFillCriteriaReadResult(error=str(exc)[:200])
+    return ModelLabFillCriteriaReadResult(descriptions=descriptions)
+
+
+def omnimarket_ticket_rule(
+    criteria_post: Post | None = None,
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """The ticket plan rule of this package (omnimarket#4384), called in process with the facts as a JSON-shaped mapping.
+
+    Tickets the snapshot carried no description for are read live once; an unreadable Linear leaves them criteria-unread."""
+    post = linear_post if criteria_post is None else criteria_post
 
     def rule(facts: dict[str, Any]) -> dict[str, Any]:
-        plan = plan_ticket_backlog(ModelLabFillTicketFacts.model_validate(facts))
+        parsed = ModelLabFillTicketFacts.model_validate(facts)
+        plan = plan_ticket_backlog(parsed)
+        unread = tuple(
+            drop.id
+            for drop in plan.drops
+            if drop.reason is EnumLabFillTicketDrop.CRITERIA_UNREAD
+        )
+        if unread:
+            read = read_criteria(
+                ModelLabFillCriteriaReadRequest(tickets=unread), post=post
+            )
+            if read.descriptions:
+                plan = plan_ticket_backlog(
+                    parsed.model_copy(update={"live_descriptions": read.descriptions})
+                )
         return plan.model_dump(mode="json")
 
     return rule

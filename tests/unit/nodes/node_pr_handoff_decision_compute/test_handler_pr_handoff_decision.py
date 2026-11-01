@@ -52,6 +52,7 @@ def _decide(
             request=b.request(CID, **(request or {})),
             observation=obs,
             ledger_holds=holds,
+            landing_scope=(b.REPO,),
             now=b.at(now_offset),
         )
     )
@@ -239,6 +240,9 @@ def test_an_observation_of_another_pr_is_a_programming_error() -> None:
     with pytest.raises(ValueError, match="is not"):
         HandlerPrHandoffDecision().handle(
             ModelPrHandoffDecisionRequest(
-                request=b.request(CID), observation=other, now=b.at(60)
+                request=b.request(CID),
+                observation=other,
+                landing_scope=(b.REPO,),
+                now=b.at(60),
             )
         )
