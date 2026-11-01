@@ -26,6 +26,7 @@ from omnimarket.models.pr_handoff import (
     EnumPrHandoffState,
     ModelPrHandoffFailed,
     ModelPrHandoffHandedOff,
+    ModelPrHandoffLandingScopeReading,
     ModelPrHandoffLedgerAppended,
 )
 from omnimarket.models.work_ledger_append import (
@@ -296,6 +297,54 @@ async def test_missing_lab_comment_is_refused() -> None:
 async def test_hold_marker_on_the_live_pr_is_refused() -> None:
     cid, run = await _refused_on_observation(labels=["do-not-merge"])
     await _assert_refused(cid, run, E.HELD)
+
+
+@chain_obligation("error:accepted>evaluated_repo-out-of-landing-scope")
+async def test_repository_outside_the_landing_scope_is_refused() -> None:
+    cid = b.new_cid()
+    run = await b.drive(
+        [],
+        [(b.request(cid), cid)],
+        landing_scope=ModelPrHandoffLandingScopeReading(repos=("acme-gadgets",)),
+    )
+    assert_error_chain(
+        run.events,
+        expected_event_types=[REQUESTED, ACCEPTED_EVT, FAILED],
+        terminal_fields={
+            "error_code": E.REPO_OUT_OF_LANDING_SCOPE,
+            "terminal_state": S.REFUSED,
+            "handoff_key": b.KEY,
+            "ledger_request_id": None,
+            "live_head_sha": None,
+        },
+        correlation_id=cid,
+        bus_history_count=await run.bus_history_count(),
+    )
+    assert run.ledger.requests == []
+
+
+@chain_obligation("error:accepted>evaluated_scope-unread")
+async def test_missing_landing_scope_is_refused() -> None:
+    cid = b.new_cid()
+    run = await b.drive(
+        [],
+        [(b.request(cid), cid)],
+        landing_scope=ModelPrHandoffLandingScopeReading(),
+    )
+    assert_error_chain(
+        run.events,
+        expected_event_types=[REQUESTED, ACCEPTED_EVT, FAILED],
+        terminal_fields={
+            "error_code": E.SCOPE_UNREAD,
+            "terminal_state": S.REFUSED,
+            "handoff_key": b.KEY,
+            "ledger_request_id": None,
+            "live_head_sha": None,
+        },
+        correlation_id=cid,
+        bus_history_count=await run.bus_history_count(),
+    )
+    assert run.ledger.requests == []
 
 
 @chain_obligation("error:accepted>evaluated_withheld")

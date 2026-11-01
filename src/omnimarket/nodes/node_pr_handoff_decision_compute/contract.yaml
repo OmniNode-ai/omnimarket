@@ -10,7 +10,8 @@
 # names the error chain). No clock, no file, no network.
 #
 # Rule order (pr-handoff handoff_row.sh's, with the head rule split):
-#   landing scope given, repo not in it -> refuse repo-out-of-landing-scope (first, needs no observation)
+#   landing scope absent, unreadable or invalid -> refuse scope-unread
+#   repo not in landing scope   -> refuse repo-out-of-landing-scope (needs no observation)
 #   no observation              -> wait pr_not_observed
 #   closed or merged            -> refuse pr_not_open
 #   bot release-train PR        -> refuse withheld
