@@ -96,9 +96,6 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
-from omnimarket.models.delegation.wire.model_quality_gate_record import (
-    ModelQualityGateRecord,
-)
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -745,17 +742,6 @@ def _attempt_record_with_lineage(**values: Any) -> ModelDelegateSkillAttemptReco
         return ModelDelegateSkillAttemptRecord(**(values | _lineage_fields({})))
 
 
-def _gate_record(raw: dict[str, object]) -> ModelQualityGateRecord | None:
-    """The port's gate record on one attempt; None when absent or malformed."""
-    raw_record = raw.get("gate_record")
-    if not isinstance(raw_record, dict):
-        return None
-    try:
-        return ModelQualityGateRecord.model_validate(raw_record)
-    except ValidationError:
-        return None
-
-
 def _attempt_records(
     result: dict[str, object],
 ) -> list[ModelDelegateSkillAttemptRecord]:
@@ -914,7 +900,6 @@ def _attempt_records(
                     if raw.get("substituted_from_backend_id") is not None
                     else None
                 ),
-                gate_record=_gate_record(raw),
             )
         )
     return records

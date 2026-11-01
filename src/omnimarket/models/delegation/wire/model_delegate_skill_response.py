@@ -70,9 +70,6 @@ from omnimarket.models.delegation.wire.model_delegation_output_files import (
     ModelDelegationOutputFile,
     ModelDelegationOutputManifest,
 )
-from omnimarket.models.delegation.wire.model_quality_gate_record import (
-    ModelQualityGateRecord,
-)
 from omnimarket.models.delegation.wire.model_response_source_attempt import (
     ModelResponseSourceAttempt,
 )
@@ -112,7 +109,13 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 #
 # OMN-20168 declared ``configuration`` on the attempt below, after omniclaude's
 # pin carried the consumer that dropped it.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
+#
+# OMN-21842 adds ``gate_record``: the checks the in-process gate evaluated,
+# skipped and failed on an attempt and the rule that decided, keyed by
+# correlation id and attempt index. The consumer accepts it here first; the
+# declared field and the producer that stamps it land once omniclaude's pin
+# carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned", "gate_record"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
@@ -349,16 +352,6 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     configuration: ModelAttemptConfiguration | None = Field(
         default=None,
         description="Call parameters and context strategy this attempt was sent with.",
-    )
-    gate_record: ModelQualityGateRecord | None = Field(
-        default=None,
-        exclude_if=lambda value: value is None,
-        description=(
-            "The checks the gate evaluated, skipped and failed on this attempt "
-            "and the rule that decided, keyed by correlation id and attempt "
-            "index. None when no gate judged the attempt, and for a recording "
-            "made before the field existed."
-        ),
     )
 
     @model_validator(mode="after")

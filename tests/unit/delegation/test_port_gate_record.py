@@ -18,8 +18,10 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.models.delegation.wire import model_delegate_skill_response
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
 )
@@ -164,10 +166,13 @@ def _dispatch(
 
 
 def _attempt_gate_records(result: dict[str, object]) -> list[ModelQualityGateRecord]:
+    """The gate records the port wrote onto its attempt records, in ladder order."""
+    attempts = result["attempts"]
+    assert isinstance(attempts, list)
     return [
-        attempt.gate_record
-        for attempt in _attempt_records(result)
-        if attempt.gate_record is not None
+        ModelQualityGateRecord.model_validate(attempt["gate_record"])
+        for attempt in attempts
+        if isinstance(attempt, dict) and attempt.get("gate_record") is not None
     ]
 
 
@@ -311,14 +316,52 @@ def test_port_gate_record_without_bus(
     assert publish_quality_gate_record(_BrokenBus(), record) is False
 
 
+_OLD_ATTEMPT = {
+    "tier": "local",
+    "backend_id": "local-coder",
+    "model_id": "m",
+    "quality_gate_passed": True,
+}
+
+
 def test_attempt_record_without_gate_record_still_parses() -> None:
     """An older recording carries no gate_record; it parses and re-dumps without one."""
-    old = {
-        "tier": "local",
-        "backend_id": "local-coder",
-        "model_id": "m",
-        "quality_gate_passed": True,
-    }
-    record = ModelDelegateSkillAttemptRecord.model_validate(old)
-    assert record.gate_record is None
+    record = ModelDelegateSkillAttemptRecord.model_validate(_OLD_ATTEMPT)
     assert "gate_record" not in record.model_dump(mode="json")
+
+
+def test_attempt_record_carrying_gate_record_still_parses() -> None:
+    """Consumer first: an attempt that carries a gate record decodes (OMN-18868)."""
+    gate_record = ModelQualityGateRecord(
+        record_key=f"{uuid4()}:0",
+        correlation_id=uuid4(),
+        attempt_index=0,
+        task_type="code_generation",
+        passed=True,
+        fail_category="pass",
+        quality_score=1.0,
+        checks_skipped=("passes_existing_tests",),
+        deciding_rule="accepted",
+    )
+    record = ModelDelegateSkillAttemptRecord.model_validate(
+        _OLD_ATTEMPT | {"gate_record": gate_record.model_dump(mode="json")}
+    )
+    assert record.quality_gate_passed is True
+    assert "gate_record" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert "gate_record" not in ModelDelegateSkillAttemptRecord.model_fields
+
+
+def test_attempt_record_with_another_unknown_key_is_still_refused() -> None:
+    """Only the named forthcoming key is accepted; any other is still refused."""
+    with pytest.raises(ValidationError, match=r"extra_forbidden|Extra inputs"):
+        ModelDelegateSkillAttemptRecord.model_validate(_OLD_ATTEMPT | {"surprise": 1})
+
+
+def test_port_gate_record_rides_a_decodable_attempt_ladder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The handler decodes the port's attempts while they carry the gate record."""
+    result = _dispatch(_port(monkeypatch, tmp_path, _NoBus()), uuid4())
+
+    assert len(_attempt_gate_records(result)) == 1
+    assert len(_attempt_records(result)) == 1

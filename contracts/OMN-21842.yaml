@@ -58,7 +58,6 @@ dod_evidence:
   - id: "dod-omn21842-deploy-record-model"
     description: "The evaluated GitHub head serves the gate record model; the behavior tests run the port without a broker or lab service."
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: |-
