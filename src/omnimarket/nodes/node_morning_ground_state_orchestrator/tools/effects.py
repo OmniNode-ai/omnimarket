@@ -21,6 +21,8 @@ from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 from .base import (
     ArtifactKey,
     ModelNoInput,
@@ -868,7 +870,10 @@ def kb_open_pr(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
         timeout=180,
     )
     text = f"{done['stdout']}\n{done['stderr']}"
-    url = re.search(r"https://github\.com/\S+/pull/(\d+)", text)
+    url = re.search(
+        re.escape(service_endpoint_url("github.web_url")) + r"/\S+/pull/(\d+)",
+        text,
+    )
     if not url:
         return {"opened": False, **done}
     record: dict[str, JsonValue] = {

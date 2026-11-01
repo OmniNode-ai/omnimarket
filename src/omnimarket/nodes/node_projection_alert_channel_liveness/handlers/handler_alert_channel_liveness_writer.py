@@ -27,6 +27,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_alert_channel_liveness.handlers.handler_projection_alert_channel_liveness import (
     HandlerProjectionAlertChannelLiveness,
 )
@@ -110,14 +111,14 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
             return
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        has_coordinates = "_partition" in input_data and "_offset" in input_data
-        partition = int(input_data.pop("_partition", 0))
-        offset = int(input_data.pop("_offset", 0))
-        fallback = str(input_data.pop("_fallback_id", ""))
+        topic = request.topic_or(topics[0] if topics else "")
+        has_coordinates = request.has_coordinates
+        partition = request.partition
+        offset = request.offset
+        fallback = request.fallback_id
         if not fallback and has_coordinates:
             fallback = deterministic_correlation_id(topic, partition, offset)
         # Missing coordinates must not collapse unrelated probes onto offset
@@ -125,7 +126,7 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
         meta = MessageMeta(
             partition=partition, offset=offset, fallback_id=fallback, topic=topic
         )
-        return asyncio.run(self._project_one_message(topic, input_data, meta))
+        return asyncio.run(self._project_one_message(topic, request.payload, meta))
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta

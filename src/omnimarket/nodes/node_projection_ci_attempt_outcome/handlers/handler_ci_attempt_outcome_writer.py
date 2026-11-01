@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_projection_ci_attempt_outcome import (
     HandlerProjectionCiAttemptOutcome,
 )
@@ -30,7 +31,10 @@ from omnimarket.nodes.node_projection_ci_attempt_outcome.models import (
     ModelCiAttemptOutcomeProjectionRequest,
     ModelCiAttemptOutcomeRow,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE_CI_ATTEMPT_OUTCOME = "omninode_internal.ci_attempt_outcome"
 
@@ -130,17 +134,12 @@ class CiAttemptOutcomeProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
-        return asyncio.run(self._project_one_message(topic, input_data, meta))
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
+        return asyncio.run(self._project_one_message(topic, request.payload, meta))
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
