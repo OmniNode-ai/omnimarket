@@ -6,12 +6,15 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Pure definition-B blind acceptance judging of delegated output (OMN-20429). Three
+  Pure definition-B blind acceptance judging of delegated output (OMN-20429). Four
   operations over the versioned rubric in delegation_acceptance_judge_rubric.v1.yaml.
   render turns items into judge batches (liveness probes excluded, long text shortened,
   a seeded sample for the second judge). check validates one judge reply against the
   item ids it had to answer. score compares the two judges (Cohen's kappa, sample size)
-  and builds the model by task type matrix of true accept rate beside terminal_ok.
+  and builds the model by task type matrix of true accept rate beside terminal_ok. events turns
+  the validated primary verdicts and the score operation's agreement and kappa into one
+  judged-acceptance event per judged item (liveness probes excluded, an item with no delegated
+  model key refused).
   The caller passes the rubric text and runs the judges; this node reads no file and calls
   no model. It is an offline measurement, not an acceptance gate.
 
@@ -39,7 +42,7 @@ inputs:
   operation:
     type: str
     required: true
-    description: render, check or score.
+    description: render, check, score or events.
   rubric_yaml:
     type: str
     required: true
@@ -80,6 +83,18 @@ inputs:
     type: tuple
     required: false
     description: Every delegation event of the cells, without text, for terminal_ok (score).
+  agreement:
+    type: ModelAcceptanceAgreement
+    required: false
+    description: The score operation's agreement and kappa between the judges, copied into each event (events).
+  event_calls:
+    type: tuple
+    required: false
+    description: Per item, the delegated model key, tier, correlation id and call time (events).
+  event_judge:
+    type: ModelAcceptanceEventJudge
+    required: false
+    description: Tenant, judge run, judge model, rubric hash, origin and judgment time the events carry (events).
 
 outputs:
   operation:
@@ -114,6 +129,8 @@ outputs:
     type: int
   report_markdown:
     type: str
+  judged_events:
+    type: tuple
 
 terminal_event: onex.evt.omnimarket.delegation-acceptance-judged.v1
 

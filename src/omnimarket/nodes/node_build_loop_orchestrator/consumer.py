@@ -89,8 +89,8 @@ async def _invoke_build_loop(cmd: dict[str, Any]) -> dict[str, Any]:
         LiveVerifyHandler,
         _build_event_bus,
     )
-    from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
-        HandlerBuildLoopOrchestrator,
+    from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+        build_build_loop_orchestrator,
     )
     from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command import (
         ModelOrchestratorStartCommand,
@@ -107,7 +107,7 @@ async def _invoke_build_loop(cmd: dict[str, Any]) -> dict[str, Any]:
         requested_at=datetime.now(tz=UTC),
     )
 
-    orchestrator = HandlerBuildLoopOrchestrator(
+    orchestrator = build_build_loop_orchestrator(
         closeout=LiveCloseoutHandler(),
         verify=LiveVerifyHandler(),
         rsd_fill=LiveRsdFillHandler(),

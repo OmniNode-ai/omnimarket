@@ -14,7 +14,7 @@ from omnimarket.models.model_factory_floor_input import (
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
-LineSource = Literal["manifest", "plan-task-table"]
+LineSource = Literal["manifest", "plan-task-table", "undrawn"]
 
 
 class ModelFloorItem(BaseModel):
@@ -54,7 +54,11 @@ class ModelFloorAndon(BaseModel):
 
 
 class ModelFloorLine(BaseModel):
-    """One car on the line: a selected plan."""
+    """One car on the line: a selected plan, or a declared line no plan could be read for.
+
+    For ``source`` undrawn there is no plan: ``plan_path`` holds the declared text itself, so a reader that pairs a
+    declared text with the line whose path contains it pairs this line, and the andon carries the cause.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
