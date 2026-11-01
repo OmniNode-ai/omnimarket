@@ -15,6 +15,16 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: every receipt event schema contains no free-text content field -- falsifier: a string field other than an id, hash, enum or name."
+  - id: "req-registry-drift"
+    statement: "The compaction commands and receipts are registered in the emit-daemon registry as node-owned events and the drift validator passes."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: `event_registry_drift` passes -- falsifier: drift reported."
+  - id: "req-topics-consumed"
+    statement: "Each compaction topic exists on the dev lane and a test publish is consumed by its declared subscriber."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: on the dev lane, each topic exists and a test publish of each type is consumed by its declared subscriber -- falsifier: a missing topic or an unconsumed record."
 evidence_requirements:
   - kind: "tests"
     description: "The receipt schema tests, including the free-text schema walk and its positive control."
@@ -47,3 +57,19 @@ dod_evidence:
               print(sorted(ids))
           else:
               raise SystemExit("free text accepted")'
+  - id: "dod-omn21112-ac1-registry-drift"
+    description: "AC1: the drift validator tests pass against the omniclaude revision pinned in ci.yml with the eight compaction events registered in topics.yaml as node-owned, no baseline entry added; the node-owned tests include a malformed declaration that still reports drift."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21112-ac3-topics-registered"
+    description: "AC3 (registry half, hosted): topics.yaml registers the two commands and six receipts. The dev-lane publish and consume readback is recorded in the PR body and the ticket comment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c 'context-compaction-' src/omnimarket/nodes/node_emit_daemon/registries/topics.yaml | grep -qx 8"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_event_registry_drift.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC3"]
