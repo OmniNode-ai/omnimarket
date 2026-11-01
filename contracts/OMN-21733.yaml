@@ -183,7 +183,7 @@ dod_evidence:
     binds_ac: ["AC13"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_drawer"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_drawer"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-drawer-deploy"
     description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires drillContent, which draws the drill-down panel and is absent from the base page."
