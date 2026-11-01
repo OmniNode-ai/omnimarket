@@ -41,8 +41,8 @@ from omnimarket.events.board_truth import (
     ModelBoardTruthOutput,
     ModelLedgerClaimFact,
 )
-from omnimarket.nodes.node_board_truth_compute.handlers.handler_board_truth import (
-    HandlerBoardTruth,
+from omnimarket.nodes.node_board_truth_reconcile_effect.container.container_board_truth_reconcile_effect import (
+    build_handler_board_truth,
 )
 from omnimarket.nodes.node_board_truth_reconcile_effect.models.model_board_reconcile_input import (
     ModelBoardReconcileInput,
@@ -200,7 +200,7 @@ class HandlerBoardTruthReconcile:
         ledger_claims = self._read_ledger(request)
         bundles = tuple(self._merge_claims(b, ledger_claims) for b in request.tickets)
 
-        projection = HandlerBoardTruth().handle(
+        projection = build_handler_board_truth().handle(
             ModelBoardTruthInput(
                 correlation_id=request.correlation_id,
                 evaluated_at=request.evaluated_at,
