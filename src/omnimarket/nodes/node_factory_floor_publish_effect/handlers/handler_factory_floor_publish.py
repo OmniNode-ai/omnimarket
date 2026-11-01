@@ -174,6 +174,7 @@ class HandlerFactoryFloorPublish:
         data = self._read_record(home / rt.source.relpath)
         generated_at = str(json.loads(data)["generated_at"])
         page = (NODE_DIR / rt.page_relpath).read_bytes()
+        floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         health = self._read_process_health(home / rt.process_health_relpath)
         delegation = self._read_delegation(home / rt.delegation_relpath)
         status = json.dumps(
@@ -189,6 +190,7 @@ class HandlerFactoryFloorPublish:
 
         # The record goes last: a reader that gets the new record always finds a page that reads it.
         files: list[tuple[str, bytes]] = [
+            (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.status, status),
         ]
