@@ -61,7 +61,6 @@ dod_evidence:
   - id: "dod-omn21803-deploy-import-check"
     description: "Hosted-runner deploy smoke: a disposable Python 3.13 container runs the topic-resolution tests against this checkout and its locked dependencies, mounted read-only. All seven modules must resolve their constants from their owning contracts, contain no topic literals, and reject missing or ambiguous matches. The container has no network. This checks the evaluated checkout in an isolated runtime, not a production rollout."
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: |
