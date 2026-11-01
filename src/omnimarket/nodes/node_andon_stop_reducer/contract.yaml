@@ -88,7 +88,7 @@ config:
       - {id: repository-without-lander, label: B, detector: "floor, stuck-green, repo-status, SM-07", scope_key_kind: repository}
       - {id: host-bound-ruling-drifted, label: C, detector: "drift check, host drift", scope_key_kind: host}
       - {id: ruling-drifted, label: D, detector: drift check, scope_key_kind: ruling}
-      - {id: seam-mismatch, label: E, detector: any MISSING seam, scope_key_kind: seam}
+      - {id: seam-mismatch, label: E, detector: "seam reading, verdict MISSING", scope_key_kind: seam}
     writer_roles:
       open: detector
       lease_granted: swarm_lane

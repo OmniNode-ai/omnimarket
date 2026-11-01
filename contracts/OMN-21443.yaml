@@ -52,7 +52,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac1_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac1_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac2
   description: AC2 bound to its pytest cases.
@@ -61,7 +61,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac2_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac2_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac3
   description: AC3 bound to its pytest cases.
@@ -70,7 +70,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac3_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py -q --no-cov -k test_ac3_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac4
   description: AC4 bound to its pytest cases.
@@ -79,7 +79,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac4_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac4_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac5
   description: AC5 bound to its pytest cases.
@@ -88,7 +88,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac5_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac5_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac6
   description: AC6 bound to its pytest cases.
@@ -97,7 +97,7 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac6_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac6_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac7
   description: AC7 bound to its pytest cases.
@@ -106,7 +106,7 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac7_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac7_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac8
   description: AC8 bound to its pytest cases.
@@ -115,7 +115,7 @@ dod_evidence:
   - AC8
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac8_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer/test_andon_stop.py tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac8_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-ac9
   description: AC9 bound to its pytest cases.
@@ -124,7 +124,7 @@ dod_evidence:
   - AC9
   checks:
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_andon_stop_reducer tests/nodes/node_exception_queue_effect -q --no-cov -k test_ac9_
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_exception_queue_effect/test_andon_stop_queue.py -q --no-cov -k test_ac9_
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21443-deploy-local-runtime
   description: Hosted deploy smoke dispatches the installed reducer through the ONEX CLI with an in-memory backend and checks a lease applied by the swarm lane and a lease from the wrong role refused. No
