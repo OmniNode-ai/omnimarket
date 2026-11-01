@@ -33,9 +33,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # pyproject.toml [tool.uv.sources] pins at that commit.
 # 091013fd7adb: omnibase_infra dev at omnimarket#4598's pin.
 # 4284f5bf5587: omnibase_infra#5483, which moves infra to core fc6159b98026.
+# 3f93a2cc6f6c: omnibase_infra#5536, which moves infra to core 5bb91ae7e720.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
+    ("3f93a2cc6f6c", "dev-20261031202655-5bb91ae7e720"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -105,8 +107,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra#5483 and core fc6159b98026."""
+    """The lock moves with the newest recorded row: infra#5536 and core 5bb91ae7e720."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261031054837-4284f5bf5587"
+    assert infra_tag == "dev-20261101125736-3f93a2cc6f6c"
