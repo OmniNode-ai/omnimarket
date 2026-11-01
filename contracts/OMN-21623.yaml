@@ -79,6 +79,13 @@ requirements:
         statement: "AC4: configs/network_bindings.yaml holds each host, address and port and handlers/network_bindings.py resolves it by dotted reference, failing closed on a missing file, key or wrong shape, and the binding sites build the in-memory implementations -- falsifier: uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
       - id: "AC5"
         statement: "AC5: the contracts_and_di check reports no inmemory_outside_injection, literal_host, literal_ip or literal_port finding on the modules of the slice -- falsifier: the command of dod-omn21623-network-clean below"
+  - id: req-omn21623-handler-binding-sites
+    statement: A node builds its handlers only in its binding module; every caller in the node uses the factory, and behaviour, arguments and defaults are unchanged.
+    acceptance:
+    - id: AC13
+      statement: 'AC13: the contracts_and_di check reports no handler_hand_construction finding in the thirteen node directories of the slice -- falsifier: the command of dod-omn21623-hand-construction-clean below'
+    - id: AC14
+      statement: 'AC14: the tests of the thirteen nodes pass with the factories in place -- falsifier: the command of dod-omn21623-node-tests below'
 evidence_requirements:
   - kind: "tests"
     description: "The binding-site tests and the existing tests of the touched nodes pass."
@@ -101,6 +108,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The authority tests and the tests of the touched nodes pass."
     command: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+  - kind: tests
+    description: The tests of the touched nodes pass.
+    command: uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -449,3 +459,34 @@ dod_evidence:
           print("Published network-binding authority readback: emit_daemon.port PASS")
           '
         cwd: "."
+  - id: dod-omn21623-node-tests
+    description: The focused tests of the touched nodes pass.
+    source: manual
+    binds_ac:
+    - AC14
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn21623-hand-construction-clean
+    description: The contracts_and_di check over the thirteen node directories reports no handler_hand_construction finding.
+    source: manual
+    binds_ac:
+    - AC13
+    checks:
+    - check_type: command
+      check_value: '! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_adoption_recovery_effect src/omnimarket/nodes/node_aislop_sweep src/omnimarket/nodes/node_architecture_discovery_orchestrator src/omnimarket/nodes/node_baseline_compare src/omnimarket/nodes/node_board_truth_reconcile_effect src/omnimarket/nodes/node_branch_protection_audit_effect src/omnimarket/nodes/node_build_loop_orchestrator src/omnimarket/nodes/node_bus_audit_compute src/omnimarket/nodes/node_capsule_effectiveness_feedback_reducer src/omnimarket/nodes/node_capture_silence_watch_effect src/omnimarket/nodes/node_cause_claim_ownership_effect src/omnimarket/nodes/node_ci_watch src/omnimarket/nodes/node_claim_resolver  2>&1 | grep -q handler_hand_construction'
+      cwd: .
+  - id: dod-omn21623-deploy-published-binding-readback
+    description: 'Hosted-runner source-artifact readback: fetch the claim resolver binding module at the
+
+      evaluated published commit and require it to declare its factory. A missing factory
+
+      fails the command. No lab service, credentials or broker is required. This checks
+
+      the published source artifact and does not assert a live runtime rollout.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_claim_resolver/container/container_claim_resolver.py" | grep -q "def build_handler_claim_resolver"
+      cwd: .
