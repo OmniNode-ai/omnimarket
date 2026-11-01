@@ -63,12 +63,12 @@ dod_evidence:
           ci="$(curl --fail --silent --show-error --location --max-time 60 "${root}/node_ci_fix_effect/handlers/handler_ci_fix.py")";
           delegated="$(curl --fail --silent --show-error --location --max-time 60 "${root}/node_pr_delegated_fix_effect/handlers/handler_delegated_fix.py")";
           classifier="$(curl --fail --silent --show-error --location --max-time 60 "${root}/node_pr_delegated_fix_effect/handlers/diff_classifier.py")";
-          printf '%s\n' "$ci" | grep -Fq '_TIMEOUTS = load_node_timeouts("node_ci_fix_effect")';
-          printf '%s\n' "$ci" | grep -Fq 'timeout=_TIMEOUTS.get("test_run_s")';
-          printf '%s\n' "$delegated" | grep -Fq '_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")';
-          printf '%s\n' "$delegated" | grep -Fq 'timeout=_TIMEOUTS.get("polish_cli_s")';
-          printf '%s\n' "$classifier" | grep -Fq '_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")';
-          printf '%s\n' "$classifier" | grep -Fq 'timeout=_TIMEOUTS.get("git_probe_s")';
+          printf '%s\n' "$ci" | grep -F '_TIMEOUTS = load_node_timeouts("node_ci_fix_effect")' > /dev/null;
+          printf '%s\n' "$ci" | grep -F 'timeout=_TIMEOUTS.get("test_run_s")' > /dev/null;
+          printf '%s\n' "$delegated" | grep -F '_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")' > /dev/null;
+          printf '%s\n' "$delegated" | grep -F 'timeout=_TIMEOUTS.get("polish_cli_s")' > /dev/null;
+          printf '%s\n' "$classifier" | grep -F '_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")' > /dev/null;
+          printf '%s\n' "$classifier" | grep -F 'timeout=_TIMEOUTS.get("git_probe_s")' > /dev/null;
           printf 'Published timeout reader wiring verified at %s\n' "$head_sha"
         cwd: "."
       - check_type: "test_passes"
