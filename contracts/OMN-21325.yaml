@@ -53,3 +53,15 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn21325-deploy-prompt-size-bound-wired
+  description: Deploy probe reads the delegate-skill handler and contract from GitHub at the checked-out commit and requires the handler to refuse an oversized prompt and the contract to declare the bound. This source read fails when either is absent; it does not claim a running lane.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'prompt_exceeds_size_bound'
+    cwd: .
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F 'max_prompt_bytes: 262144'
+    cwd: .
