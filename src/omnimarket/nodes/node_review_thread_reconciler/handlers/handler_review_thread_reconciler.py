@@ -13,15 +13,20 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_review_thread_reconciler.protocols.protocol_github_client import (
     ProtocolGitHubReviewClient,
 )
 
-TOPIC_EVT_THREAD_REOPENED = "onex.evt.omnimarket.review-thread-reopened.v1"  # onex-topic-allow: contract-declared
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_EVT_THREAD_REOPENED = contract_topic(
+    _CONTRACT, "publish_topics", "review-thread-reopened.v1"
+)
 
 if TYPE_CHECKING:
     from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory

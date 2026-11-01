@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# model_bindings.v1.yaml -- the model ids that omnimarket code binds, declared here
+# and read through omnimarket.handlers.model_binding_reader. Code names no model id:
+# each owner reads its section and takes the value by injection (OMN-21760).
+# Fail-closed: a missing section or key raises at the first read.
+
+openrouter_free_models:
+  # Every model_id carries the ":free" suffix OpenRouter routing requires.
+  - model_id: "nvidia/llama-3.1-nemotron-nano-8b-v1:free"
+    display_name: "Nemotron Nano 9B v2"
+    parameter_count: "9B"
+    context_window: 131072
+    tier: small_free
+  - model_id: "nvidia/llama-3.1-nemotron-nano-12b-v1:free"
+    display_name: "Nemotron Nano 12B v2 VL"
+    parameter_count: "12B"
+    context_window: 131072
+    tier: small_free
+  - model_id: "featherless/qwerky-72b:free"
+    display_name: "Laguna XS.2"
+    parameter_count: "72B"
+    context_window: 32768
+    tier: small_free
+  - model_id: "microsoft/mai-ds-r1:free"
+    display_name: "MAI DS R1"
+    parameter_count: "20B"
+    context_window: 163840
+    tier: small_free
+  - model_id: "openrouter/cypher-alpha:free"
+    display_name: "Cobuddy"
+    parameter_count: "unknown"
+    context_window: 1048576
+    tier: small_free
+  - model_id: "google/gemma-3-27b-it:free"
+    display_name: "Gemma 4 26B A4B IT"
+    parameter_count: "27B"
+    context_window: 131072
+    tier: small_free
+  - model_id: "qwen/qwen3-coder:free"
+    display_name: "Qwen3 Coder 480B"
+    parameter_count: "480B"
+    context_window: 262144
+    tier: large_free
+  - model_id: "deepseek/deepseek-r1:free"
+    display_name: "DeepSeek R1"
+    parameter_count: "671B"
+    context_window: 163840
+    tier: large_free
+  - model_id: "google/gemma-3n-e4b-it:free"
+    display_name: "Gemma 4 31B IT"
+    parameter_count: "31B"
+    context_window: 131072
+    tier: large_free
+  - model_id: "nvidia/llama-3.3-nemotron-super-49b-v1:free"
+    display_name: "Nemotron 3 Super"
+    parameter_count: "49B"
+    context_window: 131072
+    tier: large_free
+  - model_id: "qwen/qwen3-235b-a22b:free"
+    display_name: "Qwen 3.6 Plus"
+    parameter_count: "235B"
+    context_window: 131072
+    tier: large_free
+  - model_id: "thudm/glm-4-9b-chat:free"
+    display_name: "GLM 4.5 Air"
+    parameter_count: "9B"
+    context_window: 131072
+    tier: large_free
+
+# key -> (url env var, model_id env var); the keys are logical model keys of the bridge.
+bridge_model_keys:
+  - {key: "qwen3-coder", url_env: "LLM_CODER_URL", model_env: "LLM_CODER_MODEL_NAME"}
+  - {key: "qwen3-14b", url_env: "LLM_CODER_FAST_URL", model_env: "LLM_CODER_FAST_MODEL_NAME"}
+  - {key: "deepseek-r1", url_env: "LLM_DEEPSEEK_R1_URL", model_env: "LLM_DEEPSEEK_R1_MODEL_NAME"}
+  - {key: "qwen3-next", url_env: "LLM_QWEN3_NEXT_URL", model_env: "LLM_QWEN3_NEXT_MODEL_NAME"}
+
+# Default routing policy for Phase 2 LLM commands of the merge-sweep triage node.
+# It must match omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy.
+triage_routing_policy:
+  primary: "deepseek-r1-14b"
+  fallback: "qwen3-coder-30b"
+  fallback_allowed_roles: [ci_fixer, thread_reply, conflict_hunk]
+  max_tokens: 2048
+  temperature: 0.0
+  ci_override:
+    primary: "deepseek-r1-14b"
+
+bindings:
+  design_to_plan_model_key: "qwen3-coder"
+  plans_today_glm_model: "glm-5.3-flash"
+  shadow_review_glm_model: "glm-5.3"
+  navigation_embedding_model: "Qwen3-Embedding-8B"
+  cost_demo_local_model: "qwen3-coder-30b"
+  lab_measure_rater_role: "blind_model:claude-opus-5-5"
+  route_check_local_model: "Qwen3.8-27B"
+  route_check_cheap_cloud_model: "gemini-2.5-flash-lite"

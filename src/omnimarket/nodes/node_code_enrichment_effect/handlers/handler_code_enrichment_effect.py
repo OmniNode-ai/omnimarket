@@ -24,10 +24,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_request import (
     ModelCodeEnrichmentRequest,
 )
@@ -44,8 +46,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Topic bindings from contract.yaml event_bus
-TOPIC_CODE_ENTITIES_EXTRACTED: str = "onex.evt.omnimarket.code-entities-extracted.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_CODE_ENRICHED: str = "onex.evt.omnimarket.code-enriched.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_CODE_ENTITIES_EXTRACTED: str = contract_topic(
+    _CONTRACT, "subscribe_topics", "code-entities-extracted.v1"
+)
+TOPIC_CODE_ENRICHED: str = contract_topic(
+    _CONTRACT, "publish_topics", "code-enriched.v1"
+)
 
 DEFAULT_ENRICHMENT_BATCH_SIZE = 25
 DEFAULT_CONFIDENCE_THRESHOLD = 0.7
