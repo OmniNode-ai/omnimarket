@@ -9,7 +9,7 @@ contract_version:
   minor: 0
   patch: 0
 node_version: 1.0.0
-description: One fix, one pull request. Fold a new pull request (branch, title, body, what its diff changes) against the open pull requests of its repository (the PR watcher's records and what each diff changes) and the rolling ledger, and answer adopt, naming the pull request to take over, when an open one is already from the branch, changes overlapping lines with the same ticket or materially the same change, changes the same file under the same distinctive title words, cites the same check or cause, or when another lane holds a live CLAIM with the same cause= cell; otherwise clear. Files every change touches and files a repository regenerates in every pull request of a kind (config.generic_paths here, generated_paths in the deployment overlay) never count as overlap. Stack ancestors and descendants are skipped. Drafts without a live owner CLAIM supply evidence-only notes except for the same head branch. Pure; the callers (onex scm pr-create and onex scm pr-duplicate-check) read the snapshot.
+description: One fix, one pull request. Fold a new pull request (branch, title, body, what its diff changes) against the open pull requests of its repository (the PR watcher's records and what each diff changes) and the rolling ledger, and answer adopt, naming the pull request to take over, when an open one is already from the branch, changes overlapping lines with the same ticket or materially the same change, changes the same file under the same distinctive title words, cites the same check or cause, or when another lane holds a live CLAIM with the same cause= cell; otherwise clear. Files every change touches and files a repository regenerates in every pull request of a kind (config.generic_paths here, generated_paths in the deployment overlay) never count as overlap. Stack ancestors and descendants are skipped, and the branch is judged on its own change, named in judged_commits. Overlapping lines under a shared ticket count as one fix only when their changed lines share at least config.intent.min_same_ticket_similarity; with no shared ticket, config.intent.min_same_change_similarity. Drafts without a live owner CLAIM supply evidence-only notes except for the same head branch. Pure; the callers (onex scm pr-create and onex scm pr-duplicate-check) read the snapshot.
 input_model:
   name: ModelPrDuplicateGuardRequest
   module: omnimarket.models.model_pr_duplicate_guard
@@ -36,6 +36,9 @@ config:
   intent:
     ticket_pattern: OMN-[0-9]+
     min_same_change_similarity: 0.6
+    min_same_ticket_similarity: 0.1
+  report:
+    judged_commits_shown: 12
   generic_paths:
   - '*.lock'
   - package-lock.json
