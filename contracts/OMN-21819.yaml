@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21819"
+title: "The tenant-credentials writer uses registry UUIDs without breaking existing named rows"
+summary: "Stage 1 of the delivery order: the four credential reads accept both a tenant name and its registry UUID before the writer switches to UUID stamping. A shared read-side helper returns the counterpart form from one unique, validated tenant_registry_mirror row; a missing, ambiguous, malformed or disagreeing mirror leaves each reader on its existing exact-string read. Routing credential choice and the key pool (tenant_key_selection.py), the review gateway's query and its tenant filter, and the revocation route lookup read both forms. The writer stage, the replay and the lab exposure readback are later stages."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21819-dual-form-readers"
+    statement: |-
+      Before UUID stamping is enabled, the routing credential-choice, key-pool, review-gateway and revocation reads accept both a tenant name and its registry UUID without changing the established tenant, expiry or revocation decisions.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: Before UUID stamping is enabled, routing credential-choice, key-pool, review-gateway and revocation reads accept both a tenant name and its registry UUID without changing the established tenant, expiry or revocation decisions -- falsifier: uv run pytest on dual-form reader cases with active, expired, revoked and other-tenant rows finds a missing eligible row, an admitted ineligible row or a cross-tenant result in any of the four reads."
+evidence_requirements:
+  - kind: "tests"
+    description: "The dual-form credential reader tests pass."
+    command: "uv run pytest tests/test_omn21819_dual_form_credential_readers.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21819-dual-form-readers"
+    description: "Each of the four credential reads finds the tenant's rows in either stored form, keeps revocation, expiry, host and tenant limits, and keeps its exact read without a unique mirror pair."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21819_dual_form_credential_readers.py -q --no-cov"
+        cwd: "."

@@ -30,6 +30,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
+from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write import (
     HandlerCredentialRouteWrite,
     HandlerCredentialRowWrite,
@@ -276,7 +277,16 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
                 ),
                 sql_expression_columns={"created_at": _NOW, "revoked_at": _NOW},
             )
-    for route in db.query(OVERLAY_TABLE, {"tenant_id": tenant, "secret_ref": ref}):
+    # OMN-21819: a route may be stamped with the tenant's name or its registry
+    # UUID; blank the revoked key's route in whichever form holds it.
+    routes = [
+        route
+        for tenant_form in sync_tenant_identity_forms(db, tenant)
+        for route in db.query(
+            OVERLAY_TABLE, {"tenant_id": tenant_form, "secret_ref": ref}
+        )
+    ]
+    for route in routes:
         # Schema versions are integers; generic projection rows erase that type.
         if isinstance(db, ProtocolCredentialRouteWrite):
             # The read can precede another registration. CAS must occur at the
