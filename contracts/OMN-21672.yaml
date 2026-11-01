@@ -33,12 +33,12 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -k unbuildable_store -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21672-resolver-error"
-    description: "An arbitrary resolver error still exposes nothing."
+    description: "Configuration errors name the missing variable while arbitrary resolver errors still expose nothing. Both cases must pass so this distinction fails on the unfixed handler."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -k resolver_error -q --no-cov"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -k 'unbuildable_store or resolver_error' -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21672-deploy-handler-source"
     description: "Hosted runtime probe: dispatch the packaged write node with an Infisical mapping and a missing environment slug. The real resolver must return credential_unavailable naming INFISICAL_ENVIRONMENT_SLUG, without exposing the synthetic secret or sending a request. Bootstrap validation refuses before any network call. This checks the evaluated checkout through the in-process runtime, not a production rollout. AC1 remains bound to its behavior test."
