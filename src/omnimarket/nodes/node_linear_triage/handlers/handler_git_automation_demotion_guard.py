@@ -51,6 +51,9 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.nodes.node_linear_triage.handlers.handler_linear_triage import (
+    LinearHttpClient,
+)
 from omnimarket.nodes.node_linear_triage.models.model_git_automation_demotion_guard import (
     ModelDemotionAuditReport,
     ModelTeamAutomationProbe,
@@ -138,17 +141,13 @@ class LinearPerTeamTransport(Protocol):
         """Return one team's raw ``gitAutomationStates`` nodes."""
 
 
-class LinearGraphQLPerTeamTransport:
+class LinearGraphQLPerTeamTransport(LinearHttpClient):
     """Live two-phase transport against the Linear GraphQL API.
 
     The only networked class in this module. A GraphQL ``errors`` block is
     raised rather than returned, so a partial or error response can never be
     mistaken for an empty-and-therefore-clean result.
     """
-
-    def __init__(self, api_key: str, *, timeout: float = 30.0) -> None:
-        self._api_key = api_key
-        self._timeout = timeout
 
     def _post(self, query: str, variables: dict[str, Any] | None = None) -> Any:
         payload = json.dumps({"query": query, "variables": variables or {}}).encode()
