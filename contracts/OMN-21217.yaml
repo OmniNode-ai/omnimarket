@@ -37,6 +37,16 @@ requirements:
           its own cleanup.policy on that same exposure item, compact everywhere
           except node_projection_consumer_flow, which keeps compact,delete. A
           policy on a sibling item of the same contract does not count.
+  - id: "req-composed-boot-demand-start-probe"
+    statement: "The composed-runtime-boot job proves the delegate-skill orchestrator joins its consumer group on demand."
+    acceptance:
+      - id: "AC5"
+        statement: >-
+          the composed-runtime-boot job proves the delegate-skill orchestrator
+          joins on demand: it publishes one schema-valid delegate-skill request
+          that is refused before dispatch, and requires a live orchestrator
+          consumer group and that request's own refusal terminal
+          (refused_before_dispatch, attempts_count 0), read committed
 evidence_requirements:
   - kind: "tests"
     description: "Intake ordering and refusal, whole-list version conflict, concurrent SQLite writers, revoke/register interleaving and repeated CLI model options."
@@ -51,6 +61,9 @@ evidence_requirements:
   - kind: "tests"
     description: "A walk of every node contract that fails on any onex.snapshot exposure lacking a cleanup.policy on that item, with a sibling-item negative control and a consumer_flow positive control."
     command: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
+  - kind: "tests"
+    description: "The composed-runtime-boot probe step's own run: text, unmodified, against a stub broker; at the merge base the step only lists consumer groups and sends no request, so the demand-start and terminal tests fail there."
+    command: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov"
 dod_evidence:
   - id: "dod-omn21217-t5-ordered-list-and-cas"
     description: "Test-first intake, CLI and real SQLite versioned replacement, plus stale-revoke and legacy-model backfill regressions."
@@ -139,6 +152,31 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_reducer/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
+  - id: "dod-omn21217-composed-boot-demand-start-probe"
+    description: >-
+      The tests run the step's own run: text, unmodified, against a stub broker
+      with docker on PATH replaced; at the merge base the step only lists
+      consumer groups and sends no request, so the demand-start and terminal
+      tests fail there. It is a source-level proof of the step's logic, not a
+      running deployment. The file's 33 tests run as four selections that
+      together cover every test, so each check stays inside the verifier's
+      30-second per-check budget, and each selection fails at the merge base.
+    source: "manual"
+    binds_ac:
+      - "AC5"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'never_passes or no_offsets'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'no_member or stops_short'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'completed_topic or another_request or no_terminal or another_terminals_text or no_group_owns or joins_on_demand'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'not (never_passes or no_offsets or no_member or stops_short or completed_topic or another_request or no_terminal or another_terminals_text or no_group_owns or joins_on_demand)'"
+        cwd: "${OMNI_HOME}/omnimarket"
 emergency_bypass:
   enabled: false
   justification: ""
