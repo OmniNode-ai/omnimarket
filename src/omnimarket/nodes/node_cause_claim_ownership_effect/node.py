@@ -17,6 +17,8 @@ class NodeCauseClaimOwnershipEffect:
     def handle(
         self, request: ModelCauseClaimOwnershipRequest
     ) -> ModelCauseClaimOwnershipResult:
-        from .handler import HandlerCauseClaimOwnership
+        from .container.container_cause_claim_ownership_effect import (
+            build_handler_cause_claim_ownership,
+        )
 
-        return HandlerCauseClaimOwnership().handle(request)
+        return build_handler_cause_claim_ownership().handle(request)
