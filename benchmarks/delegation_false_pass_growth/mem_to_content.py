@@ -20,10 +20,10 @@ if not HOUSE:
         "ONEX_TENANT_ID is not configured: set it to the tenant id the content rows belong to"
     )
 SUFFIXES = json.loads(os.environ.get("MEM_TO_CONTENT_MODEL_SUFFIXES", "{}"))
-seen = set()
+seen, WORK_DIR = set(), os.environ["OMN20032_WORK_DIR"]
 content = []
 meta = []
-for f in sorted(glob.glob("/tmp/omn20032/genmem_*.jsonl")):
+for f in sorted(glob.glob(f"{WORK_DIR}/genmem_*.jsonl")):
     for l in open(f):
         d = json.loads(l)
         cid = d.get("correlation_id")
@@ -78,12 +78,12 @@ for f in sorted(glob.glob("/tmp/omn20032/genmem_*.jsonl")):
                 hashlib.md5(d["prompt_text"].encode()).hexdigest()[:12],
             ]
         )
-with open("/tmp/omn20032/content_mem.jsonl", "w") as fh:
+with open(f"{WORK_DIR}/content_mem.jsonl", "w") as fh:
     for c in content:
         fh.write(json.dumps(c) + "\n")
-with open("/tmp/omn20032/meta_mem.tsv", "w") as fh:
+with open(f"{WORK_DIR}/meta_mem.tsv", "w") as fh:
     csv.writer(fh, delimiter="\t", lineterminator="\n").writerows(meta)
-json.dump(sorted(seen), open("/tmp/omn20032/generated_mem_ids.json", "w"))
+json.dump(sorted(seen), open(f"{WORK_DIR}/generated_mem_ids.json", "w"))
 from collections import Counter
 
 print(len(content), Counter(c["task_type"] for c in content))
