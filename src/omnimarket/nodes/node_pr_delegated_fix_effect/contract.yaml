@@ -135,3 +135,11 @@ runtime_dispatch:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.pr-delegated-fix-completed.v1
+
+timeouts:
+  git_worktree_s: 60  # Bounds git fetch, worktree add and the default checked command.
+  ruff_s: 120  # Bounds each ruff format and ruff check --fix run.
+  git_command_s: 30  # Bounds git diff, add, commit, checkout, clean, gh pr view and the default git stdout read.
+  git_rev_parse_s: 15  # Bounds the git rev-parse HEAD read after a commit.
+  polish_cli_s: 600  # Bounds the node_pr_polish CLI re-entry.
+  git_probe_s: 30  # Bounds the diff classifier's git merge-base and git show reads.

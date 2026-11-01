@@ -1,0 +1,144 @@
+schema_version: 1.0.0
+ticket_id: OMN-21512
+title: 'T-S8b: handoff refusal on an absent scope, and its caller passes the scope'
+summary: The handoff decision refuses a request whose landing scope is absent, unreadable or invalid with the new error code scope-unread, before any other rule. node_pr_handoff_orchestrator reads the landing_scope overlay
+  when its handler is composed and passes it to every decision, so an out-of-scope handoff is refused through the orchestrator's real path. The factory line contract's sm_07 reads ModelPrHandoffDecisionRequest
+  and its fixture copies are updated. Pure local invocation; the hosted deploy smoke exercises the packaged decision node without external services.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-handoff-scope-fails-closed
+  statement: The handoff refusal fails closed on a missing scope and its caller passes the scope.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A request whose scope is absent, unreadable or invalid is refused `scope-unread` and never decided ready -- falsifier: three pytest cases'
+  - id: AC2
+    statement: 'AC2: `node_pr_handoff_orchestrator` loads `landing_scope` at composition and passes it, and an out-of-scope handoff is refused through the orchestrator''s real path -- falsifier: the pytest case
+      through the orchestrator, and the same case with the scope load removed, which must refuse `scope-unread`'
+  - id: AC3
+    statement: 'AC3: The factory line contract''s `sm_07` changes from `gap: GAP-6` to `shape: ModelPrHandoffDecisionRequest` -- falsifier: T-S1''s fixture-copy test, updated in the same PR'
+  - id: AC4
+    statement: 'AC4: Configuration: the scope is the `landing_scope` overlay -- falsifier: the same request is refused under one fixture overlay and ready under another'
+  - id: AC5
+    statement: 'AC5: Bindings: the decision stays pure, and the orchestrator keeps its declared row -- falsifier: byte-identical decisions in process and through the local in-process entry of the parity harness
+      (T-B2), and T-B1''s check over the orchestrator''s contract'
+evidence_requirements:
+- kind: tests
+  description: T-S8b tests.
+  command: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_handoff_orchestrator tests/chains/pr_handoff tests/unit/work_ledger_bus/test_pr_handoff_cli.py tests/nodes/node_seam_read_orchestrator tests/nodes/node_binding_conformance_compute -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21512-ac1
+  description: AC1 runs the three refusal cases of an absent, an unreadable and an invalid scope; none is decided ready.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_scope_unread.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21512-ac2
+  description: AC2 runs the out-of-scope handoff through the orchestrator's real path, the same handoff with the scope load removed (refused scope-unread), and the chain cases of both refusals.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_orchestrator/test_landing_scope_composition.py tests/chains/pr_handoff -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21512-ac3
+  description: AC3 runs T-S1's fixture-copy comparison, updated in the same change, and the plan diagram fixture test.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_seam_read_orchestrator/test_factory_line_contract.py tests/nodes/node_contract_diagram_compute -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21512-ac4
+  description: AC4 runs the same request refused under one fixture overlay and ready under another, both on the decision and through the orchestrator reading the overlay file.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py tests/unit/nodes/node_pr_handoff_orchestrator/test_landing_scope_composition.py -q --no-cov --tb=line -k "overlay"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21512-ac5
+  description: AC5 runs the decision byte-identical in process and through the local in-process entry of the parity harness, the decision's no-protocol contract, and the binding check over the orchestrator's contract and sources.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_orchestrator/test_landing_scope_composition.py tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov --tb=line -k "byte_identical or binding_check or protocol or listed_node"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21512-delegation-join
+  description: 'Delegation join (DS-6 and DS-7). The code in this head was drafted by Codex thread 01a1852b-ca7d-7b70-82cd-7d0ee9912083 (receipt delegation-receipts/t-s8b-0035/2026-10-29T010342Z-codex-build.json) and the commit message by `onex delegate` text step run 7d6d2268-f032-4cd6-a38a-4093751a36a6 (GLM through Claude Code). Lane t-s8b-0035 reviewed every diff and ran the focused tests. The join reads those ids against the lane receipts and the delegation_events rows for ticket OMN-21512 and caller lane t-s8b-0035, and the head sha of the pushed branch against the lab receipt row named on the PR; it is a lab readback that the hosted runner cannot reach.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      set -eu;
+      test -f "$OMNI_HOME/.claude_scratch/delegation-receipts/t-s8b-0035/2026-10-29T010342Z-codex-build.json";
+      grep -q 01a1852b-ca7d-7b70-82cd-7d0ee9912083 "$OMNI_HOME/.claude_scratch/delegation-receipts/t-s8b-0035/2026-10-29T010342Z-codex-build.json"
+    cwd: .
+- id: dod-omn21512-deploy-packaged-decision
+  description: Hosted deploy smoke dispatches the installed decision node through the ONEX CLI with an in-memory backend. Typed receipts must refuse an absent scope scope-unread before an observation, refuse an
+    out-of-scope repository repo-out-of-landing-scope, and keep the no-observation wait for an in-scope repository. No broker, credentials or lab service is required; this checks the packaged checkout rather
+    than a production rollout.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      request = {"request": {"correlation_id": "6f0c3a52-8d2b-4a51-9a50-55a1d3f2b0c4", "repo": "scope-probe", "pr_number": 1, "expected_head_sha": "abcdef0", "lane": "deploy-probe", "requesting_host": "hosted-runner", "requested_at": "2026-10-28T00:00:00Z"}, "now": "2026-10-28T00:01:00Z"}
+      for case, scope in (("refused", ["other-probe"]), ("in_scope", ["scope-probe"]), ("absent", None)):
+          payload = dict(request)
+          if scope is not None:
+              payload["landing_scope"] = scope
+          (root / f"{case}.json").write_text(json.dumps(payload))
+      ' "$probe_dir";
+      for case in refused in_scope absent; do
+        env -u PYTHONPATH ONEX_LANE=omn21512-deploy-probe "$runtime_bin/onex" node node_pr_handoff_decision_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case.receipt.json";
+      done;
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      from omnimarket.models.pr_handoff import ModelPrHandoffDecision
+      root = Path(sys.argv[1])
+      for case in ("refused", "in_scope", "absent"):
+          receipt = json.loads((root / f"{case}.receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          decision = ModelPrHandoffDecision.model_validate(receipt["result"])
+          if case == "refused":
+              assert decision.verdict.value == "refuse", decision
+              assert decision.error_code.value == "repo-out-of-landing-scope", decision
+          elif case == "in_scope":
+              assert decision.verdict.value == "wait", decision
+              assert decision.wait_reason.value == "pr_not_observed", decision
+          else:
+              assert decision.verdict.value == "refuse", decision
+              assert decision.error_code.value == "scope-unread", decision
+              assert decision.rows is None and decision.refusal_row is None, decision
+          print(json.dumps({"case": case, "run_id": receipt["run_id"], "verdict": decision.verdict.value}, sort_keys=True))
+      print("packaged handoff decision: 3 receipts verified")
+      ' "$probe_dir"
+    cwd: ${OMNI_HOME}/omnimarket
