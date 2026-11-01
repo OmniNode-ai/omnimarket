@@ -11,7 +11,7 @@ NODE_DIR = (
 )
 PAGE = (NODE_DIR / "page/floor/index.html").read_text(encoding="utf-8")
 CSS = "\n".join(re.findall(r"<style>(.*?)</style>", PAGE, re.DOTALL))
-_SCRIPT_MATCH = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL)
+_SCRIPT_MATCH = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL | re.IGNORECASE)
 assert _SCRIPT_MATCH is not None
 SCRIPT = _SCRIPT_MATCH.group(1)
 BODY = PAGE.split("</style>")[-1]
@@ -26,7 +26,7 @@ def test_floor_tab_has_no_second_summary() -> None:
 
 
 def test_floor_tab_uses_the_shared_glossary() -> None:
-    visible = re.sub(r"<script>.*?</script>", "", BODY, flags=re.DOTALL)
+    visible = re.sub(r"<script>.*?</script>", "", BODY, flags=re.DOTALL | re.IGNORECASE)
     for old in ("andon cord", "Andon board", "Shift report", "ledger row"):
         assert old.lower() not in visible.lower(), old
     assert 'stopped:"Stopped"' in SCRIPT
