@@ -110,7 +110,7 @@ evidence_requirements:
     command: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
   - kind: tests
     description: The tests of the touched nodes pass.
-    command: uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
+    command: uv run pytest tests/unit/nodes/node_claim_resolver/test_handler_claim_resolver.py tests/unit/nodes/node_claim_resolver/test_claim_resolver_canonical_replay.py tests/nodes/node_capsule_effectiveness_feedback_reducer/test_golden_chain_capsule_effectiveness_feedback.py tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -466,7 +466,7 @@ dod_evidence:
     - AC14
     checks:
     - check_type: test_passes
-      check_value: uv run pytest tests/unit/nodes/node_claim_resolver tests/nodes/node_capsule_effectiveness_feedback_reducer tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
+      check_value: uv run pytest tests/unit/nodes/node_claim_resolver/test_handler_claim_resolver.py tests/unit/nodes/node_claim_resolver/test_claim_resolver_canonical_replay.py tests/nodes/node_capsule_effectiveness_feedback_reducer/test_golden_chain_capsule_effectiveness_feedback.py tests/test_di_injection_build_loop_orchestrator.py -q --no-cov
       cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn21623-hand-construction-clean
     description: The pinned contracts_and_di validator scans every source module in the thirteen node directories and reports no handler_hand_construction finding. Missing directories, incomplete scans, a disabled rule, parse errors and validator failures refuse the evidence.
@@ -474,6 +474,9 @@ dod_evidence:
     binds_ac:
     - AC13
     checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_cdi_handler_binding_sites_b.py -q --no-cov
+      cwd: ${OMNI_HOME}/omnimarket
     - check_type: command
       check_value: |-
         uv run --frozen python - <<'PY'
