@@ -55,9 +55,10 @@ drain T3 model-before-build prerequisite), in the order one tick applies them:
 Gates are named: every gated open PR is listed with its ``gate_reasons``, and
 every open, green, CLEAN PR left with no merge on its head carries one named
 reason (a suspension, a collaborator, an open parent, a lease, a companion, the
-token); a tick that leaves one with neither raises ``LandingCoverageError``. A
-gate whose every reason's premise is a red head is released on a green, CLEAN
-head once older than ``stale_gate_seconds``, so the head takes the merge path.
+token, a lab-proof gap); a tick that leaves one with neither raises
+``LandingCoverageError``. A gate whose every reason's premise is a red head is
+released on a green, CLEAN head once older than ``stale_gate_seconds``, so the
+head takes the merge path.
 
 A fixer HOLD (a repo, or all) dispatches no worker in its scope and revokes
 every live lease there through the kill sequence; merges, reruns and branch
@@ -117,6 +118,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
     ModelLandingDecision,
     ModelLandingDegraded,
     ModelLandingGateRow,
+    ModelLandingLabProofHold,
     ModelLandingLandSkip,
     ModelLandingRecordedOutcome,
     ModelLandingViolation,
@@ -133,6 +135,10 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
     ModelLandingRerunRun,
     ModelLandingSharedCheckVerdict,
     ModelLandingWorkerResult,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_proof import (
+    EnumLandingLabProofReason,
+    lab_proof_gap,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
@@ -250,6 +256,7 @@ class _Tick:
     )
     released: set[str] = field(default_factory=set)
     skips: dict[str, EnumLandingLandSkipReason] = field(default_factory=dict)
+    lab_proof_holds: dict[str, EnumLandingLabProofReason] = field(default_factory=dict)
 
     def emit(self, action: ModelLandingAction) -> None:
         if repo_of(action.subject) in self.observe:
@@ -1599,6 +1606,17 @@ def _mergeable(p: ModelLandingPrFacts) -> bool:
 
 def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     """Merge pinned to the head; a runtime PR lands only holding the token (R6)."""
+    reason = lab_proof_gap(
+        pr=p.pr,
+        head_sha=p.head_sha,
+        cited_tickets=p.cited_tickets,
+        factory_tickets=t.facts.factory_tickets,
+        profiles=t.facts.lab_proof_profiles,
+        receipts=t.facts.lab_proof_receipts,
+    )
+    if reason is not None:
+        t.lab_proof_holds[p.pr] = reason
+        return
     if p.runtime:
         in_open_companion = any(
             c.state is EnumLandingPrState.OPEN
@@ -1940,17 +1958,18 @@ def _merged_heads(actions: Iterable[ModelLandingAction]) -> set[tuple[str, str |
 def land_coverage_gaps(
     facts: ModelLandingFacts, decision: ModelLandingDecision
 ) -> tuple[str, ...]:
-    """The open, green, CLEAN PRs with neither a merge on their head nor a named skip.
+    """The open, green, CLEAN PRs with no merge, named skip or lab-proof hold.
 
     Every path of ``_product_pr`` that does not merge an open, green, CLEAN PR
     records a named skip (a suspension or collaborator, a lease, an open parent,
-    a companion, the token), so a gap is a defect in this module, not a fleet
-    state the caller can produce.
+    a companion, the token) or a lab-proof hold, so a gap is a defect in this
+    module, not a fleet state the caller can produce.
     """
     return _uncovered(
         facts.prs,
         _merged_heads((*decision.actions, *decision.observed_actions)),
-        {(s.pr, s.head_sha) for s in decision.land_skips},
+        {(s.pr, s.head_sha) for s in decision.land_skips}
+        | {(h.pr, h.head_sha) for h in decision.lab_proof_holds},
     )
 
 
@@ -1959,7 +1978,10 @@ def _tick_coverage_gaps(
 ) -> tuple[str, ...]:
     """``land_coverage_gaps`` read off the tick, before any decision is built."""
     return _uncovered(
-        t.prs.values(), merged, {(pr, t.prs[pr].head_sha) for pr in t.skips}
+        t.prs.values(),
+        merged,
+        {(pr, t.prs[pr].head_sha) for pr in t.skips}
+        | {(pr, t.prs[pr].head_sha) for pr in t.lab_proof_holds},
     )
 
 
@@ -2063,6 +2085,7 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
 def _decision(
     t: _Tick, land_skips: tuple[ModelLandingLandSkip, ...]
 ) -> ModelLandingDecision:
+    merged = _merged_heads((*t.actions, *t.observed))
     open_subjects = {
         s
         for s, subj in ((s, t.subject(s)) for s in t.records)
@@ -2115,6 +2138,13 @@ def _decision(
             and EnumLandingSuspension.GATE in p.suspensions
         ),
         land_skips=land_skips,
+        lab_proof_holds=tuple(
+            ModelLandingLabProofHold(
+                pr=pr, head_sha=t.prs[pr].head_sha, reason=t.lab_proof_holds[pr]
+            )
+            for pr in sorted(t.lab_proof_holds)
+            if (pr, t.prs[pr].head_sha) not in merged
+        ),
         next_state=next_state,
     )
 
