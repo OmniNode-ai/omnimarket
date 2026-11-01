@@ -41,6 +41,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_lab_container_memory.handlers.handler_container_memory_fold import (
     HandlerContainerMemoryFold,
 )
@@ -192,19 +193,14 @@ class LabContainerMemoryProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no publisher for DLQ topic {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler shim: one message, one loop, one pool."""
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         # Validated before any connection: a malformed event raises here and
         # the runtime routes it to the DLQ with no pool ever opened.
-        event = ModelLaneContainerMemoryEvent.model_validate(input_data)
+        event = ModelLaneContainerMemoryEvent.model_validate(request.payload)
         written = _run(self._project_one_message(event, meta))
         # ``rows_upserted`` is the key the runtime's write-path guard reads to
         # gate the terminal event on a proven write.

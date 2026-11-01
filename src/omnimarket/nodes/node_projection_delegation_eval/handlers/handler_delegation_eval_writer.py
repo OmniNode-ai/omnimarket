@@ -22,6 +22,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval import (
     HandlerProjectionDelegationEval,
 )
@@ -34,7 +35,10 @@ from omnimarket.nodes.node_projection_delegation_eval.models import (
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 _UPSERT_ITEM = """
     INSERT INTO public.delegation_eval_items (
@@ -169,15 +173,10 @@ class DelegationEvalProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
-        topic = str(data.pop("_topic", self.subscribe_topics[0]))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        data = dict(request.payload)
+        topic = request.topic_or(self.subscribe_topics[0])
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(data, meta))
 
     async def _project_one_message(

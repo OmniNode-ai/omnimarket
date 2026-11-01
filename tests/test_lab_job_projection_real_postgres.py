@@ -189,6 +189,34 @@ def test_an_older_or_equal_seq_cannot_replace_the_state(
 
 
 @pytest.mark.integration
+def test_the_shim_strips_the_delivery_keys_before_the_event_model(
+    schema_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-21536: handle splits the runtime's delivery keys off, so the row is the same.
+
+    The event model refuses a field it does not declare. A delivery that reaches
+    ``handle`` with ``_topic``, ``_partition``, ``_offset`` and ``_fallback_id`` beside the
+    event must write the row the bare event writes.
+    """
+    event = transitioned(1, S.RUNNING)
+    bare = schema_factory("bare")
+    assert bare.writer(monkeypatch).handle(dict(event))["rows_upserted"] == 2
+
+    delivered = schema_factory("delivered")
+    writer = delivered.writer(monkeypatch)
+    delivery = {
+        **event,
+        "_topic": writer.subscribe_topics[0],
+        "_partition": 3,
+        "_offset": 41,
+        "_fallback_id": "fallback-1",
+    }
+    assert writer.handle(delivery)["rows_upserted"] == 2
+    assert delivered.state() == bare.state()
+    assert delivered.transitions() == bare.transitions()
+
+
+@pytest.mark.integration
 def test_migration_is_idempotent_and_checks_every_state(
     schema_factory: Any,
 ) -> None:
@@ -218,3 +246,37 @@ def test_migration_is_idempotent_and_checks_every_state(
             await conn.close()
 
     _run(check())
+
+
+@pytest.mark.integration
+def test_the_request_builds_the_coordinates_the_runner_dedups_on(
+    schema_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-21536: the request's message_meta is the MessageMeta the runner imports.
+
+    The model builds it from its own module, with no import of the runner, and a
+    delivery written through the runner carries the same coordinates.
+    """
+    from omnimarket.models.model_message_meta import MessageMeta
+    from omnimarket.models.model_projection_request import ModelProjectionRequest
+    from omnimarket.nodes.node_projection_lab_job.handlers.handler_lab_job_writer import (
+        LAB_JOB_TRANSITIONED_TOPIC_V1,
+    )
+    from omnimarket.projection import runner
+
+    topic = LAB_JOB_TRANSITIONED_TOPIC_V1
+    assert runner.MessageMeta is MessageMeta
+    delivery = {
+        **transitioned(1, S.RUNNING),
+        "_topic": topic,
+        "_partition": 3,
+        "_offset": 41,
+        "_fallback_id": "fallback-1",
+    }
+    meta = ModelProjectionRequest.from_injected(delivery).message_meta(topic)
+    assert meta == MessageMeta(
+        partition=3, offset=41, fallback_id="fallback-1", topic=topic
+    )
+
+    schema = schema_factory()
+    assert schema.writer(monkeypatch).handle(delivery)["rows_upserted"] == 2
