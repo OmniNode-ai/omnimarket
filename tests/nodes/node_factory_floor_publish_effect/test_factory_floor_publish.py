@@ -1152,7 +1152,7 @@ def test_page_dashboard_takes_todays_merges_and_reds_from_the_series_and_the_lan
     assert "9 dev-branch red episodes opened today" in dash
     assert "45 repo-hours red" in dash
     assert "Shipped seven" in dash
-    assert "UTC day 2099-01-01, so far" in dash
+    assert "Series day 2099-01-01, so far" in dash
     for baked in ("232 merges", "251 of 251"):
         assert baked not in SHELL
 
@@ -1423,5 +1423,7 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
         }
     )
     lines = out["lines"]
-    assert "Cord pulled: plan file not found: no plan path contains alpha-plan" in lines
+    assert (
+        "<b>Stopped:</b> plan file not found: no plan path contains alpha-plan" in lines
+    )
     assert "No plan read for this line" not in lines

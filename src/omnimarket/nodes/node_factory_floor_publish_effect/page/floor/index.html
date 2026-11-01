@@ -579,6 +579,14 @@ function indexLanes(lanes){
 
 function unreadSpan(why){ return `<span class="unread">unread${why ? ` (${esc(why)})` : ""}</span>`; }
 
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
+// Minute counts in the record were measured when it was computed; this adds the time since, so they read against the real clock.
+let recordAt = NaN;
+function liveMs(min){ return num(min) * 60000 + (Number.isNaN(recordAt) ? 0 : Math.max(0, Date.now() - recordAt)); }
+
 function sinceText(iso){
   const t = Date.parse(iso);
   return Number.isNaN(t) ? "unread" : ageText(Date.now() - t);
@@ -612,7 +620,7 @@ function laneHTML(l){
     <summary title="${esc(hover)}">
       <span class="tt">${title}</span>
       <span class="tk">Worker ${esc(l.lane)} · ${esc(l.ticket || "no ticket")}</span>
-      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "model unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent for ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</span>
+      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "model unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent for ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}</span>
       <span class="doing">${doing}</span>
       <span class="when">${l.status_source === "status" ? "newest update" : "claimed, no update yet"} ${esc(sinceText(l.status_at))} ago · running ${esc(sinceText(l.started_at))}</span>
     </summary>
@@ -667,7 +675,7 @@ function machineHTML(m, byId){
     gauge("check runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
     gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the workers`, null, "placement markers not read")
   ].join("") : "";
-  const age = m.read_age_min == null ? "" : `${ageText(num(m.read_age_min) * 60000)} ago`;
+  const age = m.read_at ? `${sinceText(m.read_at)} ago` : m.read_age_min == null ? "" : `${ageText(liveMs(m.read_age_min))} ago`;
   return `<article class="mbay${cls}" id="bay-${safeId(m.host)}" aria-label="${esc(m.label)}">
     <div class="mbay-top"><b>${esc(m.label)}</b><span class="pill">${esc(stateWord)}${age ? ` · ${esc(age)}` : ""}</span></div>
     <button type="button" class="drill" data-drill="bay-${safeId(m.host)}">Show this machine's detail</button>
@@ -682,7 +690,7 @@ function cloudHTML(cloud, lanes){
   const live = lanes.filter(l => l.placement === "cloud");
   const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span>
       <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}</small></li>`).join("");
-  const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
+  const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(s.open ? liveMs(s.run_minutes) : num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
   const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${whenSpan(x.since)}</small></div>`).join("");
   return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
     <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
@@ -853,8 +861,9 @@ function renderSources(s, status){
 let last = "";
 function render(parts){
   const rec = parts.record;
-  const key = JSON.stringify([rec, parts.status, parts.health && parts.health.generated_at, parts.delegation]);
+  const key = JSON.stringify([rec, parts.status, parts.health && parts.health.generated_at, parts.delegation, Math.floor(Date.now() / 60000)]);
   const gen = Date.parse(rec.generated_at);
+  recordAt = gen;
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
   el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${whenText(rec.generated_at)}`;
   if (!Number.isNaN(gen)) el("stamp").title = new Date(gen).toISOString().slice(0, 16).replace("T", " ") + " UTC";

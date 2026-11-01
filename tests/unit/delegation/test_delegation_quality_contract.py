@@ -148,6 +148,9 @@ def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
         # OMN-19529: number grounding, reject-only and skipped without a
         # grounding source, like identifiers_grounded above.
         "numbers_grounded",
+        # OMN-21846: reject-only; a drafted reply may not grant approval,
+        # consent or a go-ahead the input does not hold.
+        "operator_voice",
     )
     assert "docstring_present" not in decision.dod_deterministic
     assert "follows_google_style" not in decision.dod_heuristic
