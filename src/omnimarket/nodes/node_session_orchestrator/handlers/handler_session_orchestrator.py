@@ -37,12 +37,15 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_dispatch_worker import (
     EnumWorkerRole,
     ModelDispatchWorkerCommand,
@@ -51,6 +54,11 @@ from omnimarket.nodes.node_dispatch_worker import (
 )
 
 logger = logging.getLogger(__name__)
+
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_session_orchestrator", "timeouts"),
+)
 
 
 def _load_contract_topics() -> tuple[str, str, str]:
@@ -259,7 +267,7 @@ def _probe_pr_inventory() -> ModelHealthDimensionResult:
             ],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=_TIMEOUTS["pr_list_timeout_seconds"],
         )
         if result.returncode != 0:
             return ModelHealthDimensionResult(
@@ -371,7 +379,12 @@ def _fetch_golden_chain_rows() -> dict[str, dict[str, object]]:
             f"psql -U postgres -d {database} -t -A -F '|' -c \"{sql}\"",
         ]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=_TIMEOUTS["postgres_probe_timeout_seconds"],
+            )
             line = res.stdout.strip()
             if res.returncode == 0 and line:
                 values = line.split("|")
@@ -403,7 +416,7 @@ def _probe_golden_chain() -> ModelHealthDimensionResult:
             ],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=_TIMEOUTS["golden_chain_timeout_seconds"],
             cwd=run_cwd,
         )
         all_chains = {
@@ -521,7 +534,7 @@ def _probe_runtime_health() -> ModelHealthDimensionResult:
             ],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=_TIMEOUTS["docker_ps_timeout_seconds"],
         )
         if result.returncode != 0:
             return ModelHealthDimensionResult(
@@ -574,7 +587,7 @@ def _probe_plugin_currency() -> ModelHealthDimensionResult:
             ["claude", "plugin", "list", "--json"],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=_TIMEOUTS["plugin_list_timeout_seconds"],
         )
         if result.returncode != 0:
             return ModelHealthDimensionResult(
@@ -644,7 +657,7 @@ def _probe_deploy_agent() -> ModelHealthDimensionResult:
             ],
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=_TIMEOUTS["deploy_agent_probe_timeout_seconds"],
         )
         if result.returncode != 0:
             return ModelHealthDimensionResult(
@@ -721,7 +734,7 @@ def _probe_observability() -> ModelHealthDimensionResult:
             ],
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=_TIMEOUTS["redpanda_health_timeout_seconds"],
         )
         if result.returncode == 0 and "Healthy" in result.stdout:
             status = EnumDimensionStatus.GREEN
@@ -788,7 +801,7 @@ def _probe_repo_sync() -> ModelHealthDimensionResult:
                 ["git", "-C", repo_path, "rev-list", "--count", "HEAD..origin/main"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=_TIMEOUTS["git_rev_list_timeout_seconds"],
             )
             if result.returncode != 0:
                 logger.warning(
@@ -1166,7 +1179,9 @@ class HandlerSessionOrchestrator:
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(
+                req, timeout=_TIMEOUTS["linear_graphql_timeout_seconds"]
+            ) as resp:
                 data: dict[str, Any] = json.loads(resp.read().decode())
             errors = data.get("errors")
             if errors:

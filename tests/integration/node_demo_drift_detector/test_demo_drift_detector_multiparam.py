@@ -47,6 +47,7 @@ class _StubProbeDriftDetector(HandlerDemoDriftDetector):
         current_projection: dict[str, Any] | None,
         current_dashboard: dict[str, Any] | None,
     ) -> None:
+        super().__init__()
         self._current_topology = current_topology
         self._current_projection = current_projection
         self._current_dashboard = current_dashboard
