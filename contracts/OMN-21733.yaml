@@ -62,6 +62,14 @@ requirements:
         statement: "AC15: retention removes the oldest snapshots outside its day window only while their count exceeds max_count, preserving younger snapshots, unrelated files and the live record."
       - id: "AC16"
         statement: "AC16: a missing history_root is refused with NodeOverlayError before transport; the contract declares history naming and retention without a host or absolute path."
+  - id: "req-omn21733-reports-plain"
+    statement: |-
+      The three report pages open on their conclusion in plain words, use the board's type and colour tokens, and print every time in Eastern time with UTC only in a hover title; the dashboard and the floor page print every time in the viewer's own zone with the zone named, judge today by the viewer's day, and age each reading against the real clock.
+    acceptance:
+      - id: "AC17"
+        statement: "AC17: the process, decision map and decision quality pages use the board type and tokens, carry no text below twelve pixels, show Eastern time with UTC only in a title, use the glossary's plain words and open on the conclusion with the provenance folded -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q"
+      - id: "AC18"
+        statement: "AC18: the dashboard and the floor page print the record time in the viewer's zone with the zone named, warn that the series is behind only when its day is not the viewer's day, and age each reading from the real clock rather than the record time -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -229,3 +237,31 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'snapshot = snapshot_name(rt.history, rt.names.data, now)'"
+  - id: "dod-omn21733-reports-plain"
+    description: "AC17 the plain report page tests pass."
+    source: "manual"
+    binds_ac: ["AC17"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-reports-plain-deploy"
+    description: "Deploy probe reads the process page at the checked-out commit from GitHub and requires resetTitle, which prints the reset label in plain words and Eastern time and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/reports/process-health/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^const resetTitle = label =>'"
+  - id: "dod-omn21733-local-time"
+    description: "AC18 the viewer-zone time tests pass."
+    source: "manual"
+    binds_ac: ["AC18"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-local-time-deploy"
+    description: "Deploy probe reads the floor page at the checked-out commit from GitHub and requires clock(), which prints times in the viewer's zone and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function clock(iso)'"
