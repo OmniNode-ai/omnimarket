@@ -10,21 +10,21 @@ requirements:
     statement: The TLA+ model of the stall rule passes and each mutant fails.
     acceptance:
       - id: AC1
-        statement: 'AC1: the TLA+ model of the stall rule passes and each mutant fails, and a design verdict is recorded on this ticket -- falsifier: uv run pytest tests/formal -k landing_stall -q and a ticket with no verdict comment'
+        statement: 'AC1: the TLA+ model of the stall rule passes and each mutant fails, and a design verdict is recorded on this ticket -- falsifier: uv run pytest tests/formal/test_landing_stall_model.py -k landing_stall -q and a ticket with no verdict comment'
   - id: req-omn21880-replay
     statement: Replaying the recorded 31 October rows opens the stall by 10:45Z and replaying ordinary days opens none.
     acceptance:
       - id: AC2
-        statement: 'AC2: replaying the recorded 31 October rows opens the stall by 10:45Z and replaying 14 ordinary days opens none -- falsifier: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k stall_replay -q'
+        statement: 'AC2: replaying the recorded 31 October rows opens the stall by 10:45Z and replaying 14 ordinary days opens none -- falsifier: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py -k stall_replay -q'
   - id: req-omn21880-overlay
     statement: The thresholds come from the overlay and none is a literal in code.
     acceptance:
       - id: AC3
-        statement: 'AC3: the 80 percent, five PR and 60 minute thresholds come from the overlay and none is a literal in code -- falsifier: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k thresholds_from_overlay -q'
+        statement: 'AC3: the 80 percent, five PR and 60 minute thresholds come from the overlay and none is a literal in code -- falsifier: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py -k thresholds_from_overlay -q'
 evidence_requirements:
   - kind: tests
     description: The model, replay and overlay suites run at the pushed head.
-    command: uv run pytest tests/formal -k landing_stall tests/unit/nodes/node_landing_stall_expectation_compute tests/nodes/node_landing_stall_expectation_compute -q --no-cov
+    command: uv run pytest tests/formal/test_landing_stall_model.py tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_fold.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -37,7 +37,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/formal -k landing_stall -q --no-cov --tb=line
+        check_value: uv run pytest tests/formal/test_landing_stall_model.py -k landing_stall -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21880-ac2
     description: AC2 replays the recorded rows of 2026-10-31 and of 12 ordinary days through the pure fold.
@@ -46,7 +46,7 @@ dod_evidence:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k stall_replay -q --no-cov --tb=line
+        check_value: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py -k stall_replay -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21880-ac3
     description: AC3 reads the thresholds from a node overlay and scans the new code for the ruling's numbers.
@@ -55,7 +55,7 @@ dod_evidence:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -k thresholds_from_overlay -q --no-cov --tb=line
+        check_value: uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py -k thresholds_from_overlay -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21880-deploy-source-readback
     description: Hosted-runner source-artifact readback requires the published handler and overlay reader at the evaluated commit to match this checkout. It checks the source artifact only; nothing here runs on a runtime and nothing is wired into the controller.
@@ -80,5 +80,5 @@ dod_evidence:
           printf 'landing stall source readback matched %s\n' "$revision"
         cwd: .
       - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute -q --no-cov --tb=line
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_landing_stall_expectation_compute/test_landing_stall_open.py -q --no-cov --tb=line
         cwd: .
