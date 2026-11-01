@@ -117,6 +117,7 @@ class ModelPublishNames(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     page: str = Field(min_length=1)
+    floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
     delegation: str = Field(min_length=1)
@@ -223,6 +224,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
+    floor_page_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)

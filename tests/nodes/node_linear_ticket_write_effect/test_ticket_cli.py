@@ -38,7 +38,11 @@ class Bus:
     async def subscribe(
         self, topic, node_identity=None, on_message=None, *, group_id=None
     ):
-        assert on_message is not None
+        # OMN-21818: a ticket call reads its terminals with no consumer group, so a
+        # grouped subscribe is a regression that would leave an Empty group per call.
+        raise AssertionError(f"ticket CLI joined a consumer group on {topic}")
+
+    async def subscribe_ungrouped(self, topic, on_message):
         self.callbacks[topic] = on_message
 
         async def unsubscribe():
