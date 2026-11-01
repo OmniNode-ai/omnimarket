@@ -628,20 +628,20 @@ def test_page_draws_the_declared_lines_in_order_with_an_unmatched_one_unread() -
         }
     )
     lines = out["lines"]
-    assert lines.index("Line A") < lines.index("Line B") < lines.index("Line C")
-    assert "No plan read for this line" in lines
+    assert lines.index("Line B") < lines.index("Line A") < lines.index("Line C")
+    assert "2 more lines are planned but have no plan file yet" in lines
+    assert "no plan file matches" in lines
     assert "first-plan" in lines
     assert "third-plan" in lines
     assert "Frame finished" in lines
-    assert "Cord pulled: gate failed" in lines
-    assert "37% of the car built" in lines
-    assert "Line C · not in the record" in out["andon"]
+    assert "Stopped:</b> gate failed (G9)" in lines
+    assert "About 37 percent built" in lines
 
 
 def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
     out = _run_floor({"factory-floor.json": FLOOR_RECORD})
-    assert "7,311" in out["tally"]
-    assert "Machines · unread" in out["andon"]
+    assert "7,311" in out["sourceList"]
+    assert "lists no machines" in out["baysNote"]
     assert "lab-idle" in out["stopChart"]
     assert "4,321" in out["stopChart"]
     assert "Unread" in out["delegBody"]
@@ -747,14 +747,17 @@ def test_page_draws_a_bay_per_machine_with_its_lanes_against_the_cap() -> None:
     out = _run_floor({"factory-floor.json": BAYS_RECORD})
     grid = out["bayGrid"]
     assert "bay-x" in grid
-    assert '2</span> lanes placed of a cap of <span class="mono">4' in grid
+    assert (
+        '<span class="mono">2</span> of <span class="mono">4</span> worker slots in use'
+        in grid
+    )
     assert grid.count('class="cap"') >= 1
     assert "0.5" in grid
     assert "12 GB of 32" in grid
     assert "swap used" in grid
     assert "unit work" in grid
-    assert "1 placed beside the lanes" in grid
-    assert "CI runners" in grid
+    assert "1 placed beside the workers" in grid
+    assert "check runners" in grid
 
 
 def test_page_states_the_stall_and_window_the_record_judged_lanes_by() -> None:
@@ -785,12 +788,13 @@ def test_page_draws_a_lane_with_title_kind_engine_status_pr_ci_and_a_station_lin
     assert '<span class="chip">fix</span>' in grid
     assert "Claude" in grid
     assert "pushed the effect fields" in grid
-    assert "repo#7 · CI red" in grid
+    assert "failing checks" in grid
+    assert "repo#7: feat: lanes · 2 red of 150" in grid
     assert "pushed the effect fields; waiting on CI for the long full row" in grid
     assert 'data-jump="st-plan-two-1"' in grid
     assert "Line A · Then build · Part B" in grid
     assert (
-        'title="OMN-9 · Show every lane on the floor · pushed the effect fields; waiting'
+        'title="Show every lane on the floor · OMN-9 · pushed the effect fields; waiting'
         in grid
     )
 
@@ -800,11 +804,11 @@ def test_page_marks_a_stalled_lane_and_a_lane_with_no_title_or_status_as_unread(
 ):
     grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
     assert "chip stall" in grid
-    assert "stalled · silent 90 min" in grid
+    assert "stalled · silent for 90 min" in grid
     assert "ticket title unread" in grid
-    assert "no status written" in grid
-    assert "no PR yet" in grid
-    assert "no station on the lines holds this ticket" in grid
+    assert "no update written" in grid
+    assert "no change yet" in grid
+    assert "no station on the lines holds this worker" in grid
 
 
 def test_page_puts_a_lane_with_no_machine_in_its_own_bay_and_a_cloud_lane_in_the_cloud_bay() -> (
@@ -822,13 +826,11 @@ def test_page_puts_a_lane_with_no_machine_in_its_own_bay_and_a_cloud_lane_in_the
 
 
 def test_page_lights_the_andon_lamps_for_machines_lanes_and_the_cloud_stop() -> None:
-    andon = _run_floor({"factory-floor.json": BAYS_RECORD})["andon"]
-    assert "Machines · 2 lanes placed" in andon
-    assert "1 of 4 read" in andon
-    assert "1 unread, 2 in repair or out" in andon
-    assert "Lanes · 4 live" in andon
-    assert "1 stalled" in andon
-    assert "Cloud · stop" in andon
+    grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
+    assert "1 running, 1 stalled, 2 free" in grid
+    assert "mbay unread" in grid
+    assert "mbay repair" in grid
+    assert "Cloud sessions are ending without a pull request" in grid
 
 
 def test_page_shows_the_part_of_the_car_a_lane_builds_with_a_link_back_to_the_lane() -> (
@@ -837,13 +839,12 @@ def test_page_shows_the_part_of_the_car_a_lane_builds_with_a_link_back_to_the_la
     lines = _run_floor({"factory-floor.json": BAYS_RECORD})["lines"]
     assert 'id="st-plan-two-1"' in lines
     assert 'id="part-plan-two-1-b"' in lines
-    assert 'Built by <a data-jump="lane-lane-one"' in lines
+    assert 'Worker: <a data-jump="lane-lane-one"' in lines
 
 
 def test_page_without_machine_fields_says_the_bays_are_unread_never_empty() -> None:
     out = _run_floor({"factory-floor.json": FLOOR_RECORD})
-    assert "declares no machine bays" in out["baysNote"]
-    assert "Machines · unread" in out["andon"]
+    assert "lists no machines" in out["baysNote"]
 
 
 def test_page_draws_the_delegation_card_from_its_file() -> None:
