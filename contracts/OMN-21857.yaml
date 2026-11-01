@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21857"
+title: "omnimarket repo-evidence caller installs its verifier from the omnimarket dev-merge tag"
+summary: "The repo-evidence caller in omnimarket installed its verifier from a pinned omnimarket release through verifier-version. Operator ruling 2026-10-31T21:49:54Z: the definition-of-done check installs its verifier from the omnimarket dev-merge tag. omnibase_core#2203 made receipt-gate.yml accept verifier-tag, resolve it to a commit, and refuse a moved tag, a tag not on omnimarket dev, or one not descending from floor commit e565ba5ba00c. The caller now calls receipt-gate.yml at the omnibase_core dev-merge tag dev-20261101005012-ac2f26e3e5bf, passes verifier-tag dev-20261101000200-949993edf3b7 and drops verifier-version; the caller tests assert the new shape."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21857-caller-verifier-tag"
+    statement: |-
+      The omnimarket repo-evidence caller names the omnibase_core dev-merge tag of the reusable, passes the omnimarket dev-merge tag as verifier-tag and carries no verifier-version key.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: .github/workflows/call-repo-evidence-gate.yml in omnimarket calls OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@dev-20261101005012-ac2f26e3e5bf with verifier-tag dev-20261101000200-949993edf3b7 and no verifier-version key -- falsifier: uv run pytest tests/ci -q -k repo_evidence_caller"
+  - id: "req-omn21857-tests-assert-tag"
+    statement: |-
+      Every caller test that asserted verifier-version asserts verifier-tag, and no test names verifier-version as a required caller input.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: every test in omnimarket that asserted verifier-version now asserts verifier-tag and passes, and no test in tests/ names verifier-version as a required caller input -- falsifier: uv run pytest tests/ci -q and grep -rn verifier-version tests/ returning no caller assertion"
+  - id: "req-omn21857-lab-proof"
+    statement: |-
+      The tag installs on a lab host from its own uv.lock and the caller tests run as a lab-run unit.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: lab proof: the real install of tag dev-20261101000200-949993edf3b7 on the lab (clone at the tag commit, uv sync --frozen --no-dev --no-editable from its uv.lock) exits 0, and the repo caller tests run as an /omni:lab-run unit exit 0 -- falsifier: the /omni:lab-run receipt for the caller test command and the tag install command, each exit code 0"
+evidence_requirements:
+  - kind: "tests"
+    description: "The repo-evidence caller tests pass."
+    command: "uv run pytest tests/ci -q --no-cov -k repo_evidence_caller"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21857-caller-shape"
+    description: "The caller names the omnibase_core dev-merge tag for the reusable, passes a dev-merge verifier-tag and carries no verifier-version key."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py tests/ci/test_receipt_gate_caller_pin_omn20134.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21857-caller-tests"
+    description: "Every repo-evidence caller test passes against the new shape, and no test indexes verifier-version as a caller input."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py tests/ci/test_repo_evidence_caller_release_cut_repin_omn20074.py tests/ci/test_repo_evidence_writer_pin_only_repin_omn17427.py -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: "! grep -rnE --include='*.py' '\\[.verifier-version.\\]' tests/"
+        cwd: "."
+  - id: "dod-omn21857-lab-caller-tests"
+    description: "The caller tests the lab-run unit runs pass; the PR body quotes that unit's receipt and the receipt of the tag install."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21857-deploy-tag-readback"
+    description: "Hosted readback: the verifier-tag the caller passes resolves on the omnimarket remote to the commit its own suffix names."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          git ls-remote --tags https://github.com/OmniNode-ai/omnimarket.git refs/tags/dev-20261101000200-949993edf3b7 | grep -Eq '^949993edf3b7[0-9a-f]{28}[[:space:]]'
+        cwd: "."
