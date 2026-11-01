@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeReplayBundleWriterEffect (OMN-21108)
+---
+name: node_replay_bundle_writer_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Writes the bundle_files of the compaction replay manifest builder under the replay
+  root declared in the private overlay for the host, then reads every file back and
+  verifies it. The root has no default: an absent overlay, an absent host entry or an
+  empty root is refused with refused_root_undeclared. A file resolving outside the root
+  is refused before any write. After writing, each file's read-back bytes must equal
+  the bytes written and every hash the manifest pins (transcript chain, ledger
+  prefixes, ledger cuts, native summaries, prompt contents) is recomputed from the
+  read-back bytes; any mismatch is refused with refused_hash_mismatch.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: replay_bundle_write
+      handler:
+        name: HandlerReplayBundleWriter
+        module: omnimarket.nodes.node_replay_bundle_writer_effect.handlers.handler_replay_bundle_writer
+
+handler:
+  module: omnimarket.nodes.node_replay_bundle_writer_effect.handlers.handler_replay_bundle_writer
+  class: HandlerReplayBundleWriter
+  input_model: omnimarket.nodes.node_replay_bundle_writer_effect.models.ModelReplayBundleWriteRequest
+  output_model: omnimarket.nodes.node_replay_bundle_writer_effect.models.ModelReplayBundleWriteResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+io_operations:
+  - operation_type: "filesystem_write"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+  - operation_type: "filesystem_read"
+    atomic: false
+    timeout_seconds: 30
+    validation_enabled: true
+
+inputs:
+  manifest_yaml:
+    type: str
+    required: true
+  bundle_files:
+    type: list
+    required: true
+  overlay_path:
+    type: str
+    required: true
+  host_id:
+    type: str
+    required: true
+
+outputs:
+  status:
+    type: str
+    enum: [written, refused_root_undeclared, refused_outside_root, refused_hash_mismatch]
+  root:
+    type: str
+    required: false
+    nullable: true
+  files:
+    type: list
+  cases_verified:
+    type: int
+  failures:
+    type: list
+
+terminal_event: onex.evt.omnimarket.replay-bundle-write-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.replay-bundle-write-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.replay-bundle-write-completed.v1
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-21108
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.replay-bundle-write-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.replay-bundle-write-completed.v1

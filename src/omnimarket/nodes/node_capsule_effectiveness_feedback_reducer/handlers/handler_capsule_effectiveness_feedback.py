@@ -42,11 +42,13 @@ from omnimarket.events.topics import (
     CONTEXT_ROI_RUNTIME_ROW_SCORED_TOPIC_V1,
     CONTEXT_ROI_SCORE_COMPLETED_TOPIC_V1,
 )
+from omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.container.container_capsule_effectiveness_feedback_reducer import (
+    build_handler_capsule_store_projection,
+)
 from omnimarket.nodes.node_capsule_effectiveness_feedback_reducer.models.model_feedback_result import (
     ModelCapsuleFeedbackResult,
 )
 from omnimarket.nodes.node_projection_capsule_store.handlers.handler_capsule_store_projection import (
-    HandlerCapsuleStoreProjection,
     ModelCapsuleScoredEvent,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
@@ -118,7 +120,7 @@ class HandlerCapsuleEffectivenessFeedback:
 
         # Reuse the M2 projection as the SOLE capsule_store writer -- this edge
         # owns no bespoke write path.
-        self._capsule_store = HandlerCapsuleStoreProjection()
+        self._capsule_store = build_handler_capsule_store_projection()
 
     @property
     def subscribe_topic(self) -> str:

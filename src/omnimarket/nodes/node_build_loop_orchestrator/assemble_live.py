@@ -47,8 +47,9 @@ from omnimarket.inference.coding_plan_endpoint import glm_url_or_empty
 from omnimarket.nodes.node_build_loop.models.model_loop_start_command import (
     ModelLoopStartCommand,
 )
-from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
-    HandlerBuildLoopOrchestrator,
+from omnimarket.nodes.node_build_loop_orchestrator.container.container_build_loop_orchestrator import (
+    build_build_loop_orchestrator,
+    build_closeout,
 )
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.model_policy_loader import (
     ModelPolicyLoader,
@@ -70,7 +71,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     VerifyRequest,
     VerifyResult,
 )
-from omnimarket.nodes.node_closeout_effect import HandlerCloseout, ModelCloseoutInput
+from omnimarket.nodes.node_closeout_effect import ModelCloseoutInput
 
 logger = logging.getLogger(__name__)
 
@@ -289,11 +290,10 @@ def _sanitize_generated_code(content: str) -> str:
 # ---------------------------------------------------------------------------
 # Live sub-handler: Closeout (pass-through)
 # ---------------------------------------------------------------------------
+# Pass-through closeout: delegates to the closeout handler with no injections.
 class LiveCloseoutHandler:
-    """Pass-through closeout — delegates to existing HandlerCloseout with no injections."""
-
     def __init__(self) -> None:
-        self._inner = HandlerCloseout()
+        self._inner = build_closeout()
 
     async def handle(self, request: CloseoutRequest) -> CloseoutResult:
         result = await self._inner.handle(
@@ -1273,7 +1273,7 @@ async def run_build_loop(
     )
 
     # Wire sub-handlers
-    orchestrator = HandlerBuildLoopOrchestrator(
+    orchestrator = build_build_loop_orchestrator(
         closeout=LiveCloseoutHandler(),
         verify=LiveVerifyHandler(),
         rsd_fill=LiveRsdFillHandler(),
