@@ -1,0 +1,54 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21846
+title: 'delegation acceptance: a drafted reply may not grant approval, consent or a decision the source lacks (slice 40 task 40.14)'
+summary: The delegation quality gate scored a draft by shape, so a draft that granted a decision its source never granted passed (two recorded drafts scored 1.0 with the reason quality_bar_met). The gate now runs a pure operator_voice check, enabled by a veto marker (the check name in definition_of_done.heuristic) on the document, summarization, reasoning and planning classes of task_class_contracts.v1.yaml. The phrases, negation words and failure policy are declared in the gate node's contract.yaml, the result is a typed model whose finding names the check and the offending phrase, and no model judge is called.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21846-operator-voice
+  statement: A drafted reply that grants approval, consent or a go-ahead in the first person, when its source holds no such grant, is refused by the operator_voice check; a draft that reports a grant the source holds, or quotes a refusal, is accepted.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: both recorded drafts (runs b4c13901 and 41565d0c) are refused with the new operator-voice check named, a draft that reports an approval the source does contain is accepted, and a draft that quotes a refusal to approve is accepted -- falsifier: uv run pytest tests/unit/delegation -k operator_voice -q in omnimarket'
+  - id: AC2
+    statement: 'AC2: the check is enabled by a veto marker in task_class_contracts.v1.yaml on the document, summarization, reasoning and planning classes and no class outside that list is refused by it -- falsifier: uv run pytest tests/unit/delegation -k operator_voice_marker -q in omnimarket'
+  - id: AC3
+    statement: 'AC3: on the dev lane the two fixture prompts are refused with the check named in the delegation receipt, and a plain summary of the same source is accepted as the positive control -- falsifier: the lab receipts for the three prompts read back from the dev lane, with the run ids in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The operator_voice tests, run at the pushed head on a lab host.
+  command: uv run pytest tests/unit/delegation -k operator_voice -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21846-ac1-fixtures
+  description: AC1 runs the four fixtures (two invented approvals refused, a reported grant accepted, a quoted refusal accepted) through the real gate.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation -k operator_voice -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21846-ac2-marker
+  description: AC2 reads the veto marker out of task_class_contracts.v1.yaml and runs the gate on every declared class.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation -k operator_voice_marker -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21846-ac3-bus-decision
+  description: AC3 sends the two invented-approval fixtures and the plain summary through the gate's real wiring on the in-memory bus and reads the verdict from the gate's result topic. The dev-lane receipts of the same three prompts are in the PR body; a hosted runner cannot read the lab.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_operator_voice_bus.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
