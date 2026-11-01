@@ -40,7 +40,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q --no-cov -k consumer_tag or pinned_dev_tag or declared_consumer"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q --no-cov -k 'consumer_tag or pinned_dev_tag or declared_consumer'"
         cwd: "."
   - id: "dod-omn21901-oldest-pin"
     description: "A payload the older of two pinned tags cannot decode is refused while the newer passes, and a payload both decode passes with one verdict per pin; the OMN-18852 real-history replay runs through the pin path."
@@ -51,7 +51,7 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k oldest_pin"
         cwd: "."
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -m integration"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k test_the_gate_job_runs_the_real_history_controls"
         cwd: "."
   - id: "dod-omn21901-per-pin-verdicts"
     description: "The printed per-pin verdict lines name the pinned tag and the consumers that pin it, for a refusing and a passing pin; the PR comment starting Lab: head= carries the same lines for omnimarket#4614."
@@ -59,7 +59,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k oldest_pin or consumer_tag_pin_resolves"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k 'oldest_pin or consumer_tag_pin_resolves'"
         cwd: "."
   - id: "dod-omn21901-deploy-probe-pinned-consumers"
     description: "Deploy probe: the gate script GitHub serves at the checked-out commit declares PINNED_CONSUMERS; the declaration is absent at the merge base, so the content read answers false there."
