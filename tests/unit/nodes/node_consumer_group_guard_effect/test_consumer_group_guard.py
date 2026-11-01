@@ -98,3 +98,33 @@ def test_the_entry_point_exits_one_over_the_threshold(
     monkeypatch.setattr(guard, "resolve_broker", _broker)
     assert main(["--bus-lane", "dev"]) == 1
     assert '"status": "FAIL"' in capsys.readouterr().out
+
+
+def test_the_tick_writes_the_heartbeat_only_within_the_threshold(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The host installer's registry module tick passes these two flags and the lane in
+    # the environment; a bus over the threshold stops the heartbeat the liveness watch reads.
+    monkeypatch.setattr(guard, "resolve_broker", _broker)
+    monkeypatch.setenv("ONEX_CONSUMER_GROUP_GUARD_BUS_LANE", "dev")
+    tick = ["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "state")]
+    monkeypatch.setattr(guard, "read_group_states", lambda _config: {"EMPTY": LIMIT})
+    assert main(tick) == 0
+    beat = (tmp_path / "state" / "last-run.json").read_text(encoding="utf-8")
+    assert '"status": "OK"' in beat
+    monkeypatch.setattr(
+        guard, "read_group_states", lambda _config: {"EMPTY": LIMIT + 1}
+    )
+    assert main(tick) == 1
+    assert (tmp_path / "state" / "last-run.json").read_text(encoding="utf-8") == beat
+    census = (tmp_path / "state" / "census.json").read_text(encoding="utf-8")
+    assert '"status": "FAIL"' in census
+
+
+def test_the_entry_point_refuses_without_a_bus_lane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ONEX_CONSUMER_GROUP_GUARD_BUS_LANE", raising=False)
+    with pytest.raises(SystemExit) as refused:
+        main([])
+    assert refused.value.code == 2
