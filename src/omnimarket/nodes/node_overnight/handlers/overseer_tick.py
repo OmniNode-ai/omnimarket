@@ -21,14 +21,14 @@ from typing import Any
 
 import yaml
 
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightHaltCondition,
 )
 
-TOPIC_OVERSEER_TICK = (
-    "onex.evt.omnimarket.overseer-tick.v1"  # onex-topic-allow: contract-declared
-)
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_OVERSEER_TICK = contract_topic(_CONTRACT, "publish_topics", "overseer-tick.v1")
 
 logger = logging.getLogger(__name__)
 

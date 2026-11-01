@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-21818
+title: The ledger append, onex scm and focused-run callers join no consumer group, and a guard fails over the Empty-group count
+summary: The work-ledger append client, the onex scm client and the focused-run client each built a consumer group per call (12,907 and 2,866 Empty groups on the dev broker at 2026-10-31T18:09Z, of 19,154 under which the broker segfaulted three times that day). They now read their terminals ungrouped, and a new effect node counts a bus's Empty consumer groups and fails over the threshold its contract declares.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21818-callers-groupless
+    statement: The ledger append, onex scm and focused-run callers join no consumer group, and a hundred calls create at most one.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a hundred calls of each caller create at most one consumer group beyond the serving host groups -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_ledger_caller_groups_per_call.py tests/unit/handlers/scm/test_scm_caller_groups_per_call.py tests/unit/delegated_test_loop/test_lab_run_bus.py -k groups_per_call -q'
+  - id: req-omn21818-empty-group-guard
+    statement: A check reports a bus's Empty consumer-group count and fails over a threshold declared in its contract.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a planted census over the contract threshold fails, one at the threshold passes, an unreadable census fails, and the threshold is in no code constant -- falsifier: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect tests/test_golden_chain_consumer_group_guard_effect.py -q'
+evidence_requirements:
+  - kind: tests
+    description: The caller, scm, ledger-bus, focused-run, lab-work, capability and guard suites run on a lab host at the pushed head.
+    command: uv run pytest tests/unit/work_ledger_bus tests/unit/handlers/scm tests/unit/delegated_test_loop tests/unit/lab_work tests/unit/nodes/node_consumer_group_guard_effect tests/chains/pr_handoff tests/nodes/node_host_capability_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21818-ac1-callers-groupless
+    description: AC1 runs a hundred calls of each caller on an in-memory bus that records every consumer group.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/work_ledger_bus/test_ledger_caller_groups_per_call.py tests/unit/handlers/scm/test_scm_caller_groups_per_call.py tests/unit/delegated_test_loop/test_lab_run_bus.py -k groups_per_call -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21818-ac3-empty-group-guard
+    description: AC3 plants censuses around the contract threshold and an unreadable census and asserts the verdicts.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_guard.py tests/test_golden_chain_consumer_group_guard_effect.py -q --no-cov --tb=line
+        cwd: .
