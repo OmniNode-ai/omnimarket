@@ -9,8 +9,9 @@ evaluating time, all handed in. It reads no clock, no file and no network.
 The rules are pr-handoff's handoff_row.sh readiness rules, in its order, with
 these changes that are the point of this node:
 
-* a repository outside the landing scope the caller supplied is refused first,
-  without waiting for an observation, with a refusal ledger row for the caller;
+* an absent, unreadable or invalid landing scope is refused first; a repository
+  outside a valid scope is refused with a refusal ledger row for the caller,
+  without waiting for an observation;
 * the PR comes from the watcher's observation the orchestrator holds, never
   from a copy of the watcher's state file on the requesting host, so a PR the
   lane just opened is waited for instead of refused (exit 5 before);
@@ -249,10 +250,27 @@ def decide_handoff(
 ) -> ModelPrHandoffDecision:
     """The verdict for one evaluation of one handoff request."""
     request = decision_request.request
-    if (
-        decision_request.landing_scope is not None
-        and request.repo not in decision_request.landing_scope
-    ):
+    scope = decision_request.landing_scope
+    problem = decision_request.landing_scope_problem
+    if problem is not None:
+        return _refuse(
+            EnumPrHandoffErrorCode.SCOPE_UNREAD,
+            f"landing_scope is unreadable: {problem}",
+            None,
+        )
+    if scope is None:
+        return _refuse(
+            EnumPrHandoffErrorCode.SCOPE_UNREAD,
+            "landing_scope is absent",
+            None,
+        )
+    if any(not repo.strip() or repo != repo.strip() for repo in scope):
+        return _refuse(
+            EnumPrHandoffErrorCode.SCOPE_UNREAD,
+            "landing_scope is invalid: entries must be non-blank and have no surrounding whitespace",
+            None,
+        )
+    if request.repo not in scope:
         return _refuse(
             EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE,
             f"{request.repo} is outside the landing scope the caller supplied",

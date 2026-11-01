@@ -28,6 +28,7 @@ class EnumLabFillTicketDrop(StrEnum):
     OPEN_PR = "open-pr"
     CLAIMED = "claimed"
     NO_CRITERIA = "no-criteria"
+    CRITERIA_UNREAD = "criteria-unread"
 
 
 class EnumLabFillTicketSource(StrEnum):
@@ -53,6 +54,16 @@ class ModelLabFillTicketIssue(BaseModel):
     project: str = ""
     repo: str = ""
     pillar: str | None = None
+    # None: the description was never read (absent from the snapshot); "" was read and is empty.
+    description: str | None = None
+
+
+class ModelLabFillLiveDescription(BaseModel):
+    """One ticket's description as Linear reads it just before the plan."""
+
+    model_config = _FROZEN
+
+    id: str = Field(pattern=r"^OMN-[0-9]+$")
     description: str = ""
 
 
@@ -68,6 +79,7 @@ class ModelLabFillTicketFacts(BaseModel):
     claimed: tuple[str, ...] = ()
     open_pr: tuple[str, ...] = ()
     out_of_scope: tuple[str, ...] = ()
+    live_descriptions: tuple[ModelLabFillLiveDescription, ...] = ()
 
 
 class ModelLabFillTicketItem(BaseModel):
