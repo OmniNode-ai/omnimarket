@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict
 class ModelTenantRoutingOverlayBackend(BaseModel):
     """Resolved tenant-overlay backend binding for one (tenant_id, task_type).
 
-    A 1:1 field mapping of one ``delegation_routing_tenant_overlay`` row (see
-    module docstring for the AC6 seam). Frozen -- a routing decision snapshot,
+    Backend fields preserve the overlay binding; ``models`` captures the
+    selected key's ordered choices (OMN-21217 T6). This frozen snapshot is
     never mutated after resolution.
     """
 

@@ -192,7 +192,7 @@ def test_key_pool_keeps_an_undated_key_live() -> None:
 def test_key_pool_single_undated_key_preserves_the_complete_overlay(
     selector_key: str | None, stored_task_type: str
 ) -> None:
-    """AC3: the pool path preserves every field of a single-key binding."""
+    """AC3: preserve every binding field and capture its chosen models (T6)."""
     row = _overlay(_ref(1))
     row.update(task_type=stored_task_type, timeout_ms=12000, max_tokens=4096)
     reader = _Reader([row], [_cred(_ref(1), expires_at=None)])
@@ -206,7 +206,11 @@ def test_key_pool_single_undated_key_preserves_the_complete_overlay(
     )
 
     assert overlay is not None
-    assert overlay.model_dump() == {**row, "task_type": _TASK}
+    assert overlay.model_dump() == {
+        **row,
+        "task_type": _TASK,
+        "models": ("claude-model",),
+    }
     assert TENANT_CREDENTIALS_TABLE in reader.queried
 
 

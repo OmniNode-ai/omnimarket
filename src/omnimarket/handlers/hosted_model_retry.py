@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Advance a hosted customer's model list without reselecting their key."""
+"""Advance a hosted customer's model list without reselecting their key.
+
+OMN-18265: a retryable provider failure may be reissued only on the customer's
+own key; a house credential is never a lawful successor. OMN-21217 walks that
+key's captured model order before its bounded same-model retries. Neither step
+reselects the credential or consults the platform ladder.
+"""
 
 from __future__ import annotations
 

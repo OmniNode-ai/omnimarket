@@ -474,6 +474,7 @@ def test_ac6_overlay_row_to_routing_decision_field_seam() -> None:
         backend_id="acme-research-backend",
         endpoint_url="https://research.acme.example.com/v1/chat/completions",
         model_name="acme-research-model",
+        models=("acme-research-model",),
         provider="fixture-provider",
         secret_ref="tenant.acme-corp.research.api_key",
         timeout_ms=45000,
