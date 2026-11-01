@@ -21,11 +21,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_d
     ModelDelegationDispatchProgress,
 )
 
-# Stages in which a provider call of the in-flight rung was running or had
-# answered. Cancelled before them (the effect child still booting), no call
-# left this host, so none is recorded.
-_CALL_STAGES: frozenset[DispatchStage] = frozenset({"inference", "quality_gate"})
-
 current_dispatch_progress: ContextVar[ModelDelegationDispatchProgress | None] = (
     ContextVar("delegation_dispatch_progress", default=None)
 )
@@ -73,7 +68,7 @@ def budget_cancelled_result(
     call the running effect reported as failed is a rung of its own (a 429
     before a re-aimed model), and the call the budget interrupted is the last
     rung, typed ``timeout`` with no accept/climb verdict, because none was
-    reached. A port that recorded nothing yields a result naming nothing.
+    reached. A port that routed nothing yields a result naming nothing.
     """
     attempts = [dict(attempt) for attempt in progress.attempts]
     secret_source = progress.secret_source
@@ -81,9 +76,10 @@ def budget_cancelled_result(
     in_flight = progress.in_flight_attempt
     model_name = None if in_flight is None else in_flight.get("model_id")
     if in_flight is not None:
-        interrupted: dict[str, object] | None = (
-            dict(in_flight) if cancelled_stage in _CALL_STAGES else None
-        )
+        # OMN-21365: a routed rung is recorded as the timed-out attempt at any
+        # stage, including before its provider call left this host; an empty
+        # ladder made those timeouts unattributable to any rung.
+        interrupted: dict[str, object] | None = dict(in_flight)
         for call in progress.in_flight_calls:
             model_name = call.model_id
             if call.secret_source is not None:
