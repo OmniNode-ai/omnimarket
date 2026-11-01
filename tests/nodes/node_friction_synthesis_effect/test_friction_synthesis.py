@@ -121,7 +121,7 @@ def test_cli_counts_and_verifies_before_adjudication(tmp_path: Path) -> None:
     command = [
         sys.executable,
         "-m",
-        "omnimarket.nodes.node_friction_synthesis_effect.handlers.handler_friction_synthesis_cli",
+        "omnimarket.nodes.node_friction_synthesis_effect.runtime_friction_synthesis_cli",
         str(source),
     ]
     counted = subprocess.run(
@@ -170,8 +170,8 @@ def test_canonical_runtime_counts_and_refuses_tampering(tmp_path: Path) -> None:
     from omnimarket.nodes.node_friction_synthesis_effect import (
         ModelFrictionSynthesisRequest,
     )
-    from omnimarket.nodes.node_friction_synthesis_effect.handlers import (
-        handler_friction_synthesis_cli as cli,
+    from omnimarket.nodes.node_friction_synthesis_effect import (
+        runtime_friction_synthesis_cli as cli,
     )
 
     source = tmp_path / "source.json"

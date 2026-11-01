@@ -51,7 +51,7 @@ externally_consumed_topics:
 metadata:
   transport_type: kafka
 entry_point:
-  module: omnimarket.nodes.node_session_capability_digest_effect.handlers.handler_session_capability_digest_cli
+  module: omnimarket.nodes.node_session_capability_digest_effect.runtime_session_capability_digest_cli
   function: main
   stdin: one SessionStart hook JSON document
   stdout: the digest text, a STALE line with its fix, a compact pointer, or nothing

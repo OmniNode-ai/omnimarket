@@ -91,3 +91,6 @@ lifecycle: experimental
 metadata:
   ticket: OMN-17427
   transport_type: local
+
+timeouts:
+  fill_interval_seconds: 1200  # Interval between lab-fill runs.
