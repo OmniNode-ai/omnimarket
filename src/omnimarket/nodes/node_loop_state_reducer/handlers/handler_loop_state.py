@@ -15,7 +15,7 @@ Related:
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Literal
 
 from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_event import (
     EnumBuildLoopPhase,
@@ -27,6 +27,12 @@ from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_intent imp
 )
 from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_state import (
     ModelBuildLoopState,
+)
+from omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_request import (
+    ModelLoopStateReduceRequest,
+)
+from omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_result import (
+    ModelLoopStateReduceResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,21 +99,12 @@ class HandlerLoopState:
     def handler_category(self) -> HandlerCategory:
         return "COMPUTE"
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
-
-        Delegates to delta() with a ModelBuildLoopState and ModelBuildLoopEvent
-        constructed from input_data.
-        """
-        state_data = input_data.get("state", {})
-        event_data = input_data.get("event", {})
-        state = ModelBuildLoopState(**state_data)
-        event = ModelBuildLoopEvent(**event_data)
-        new_state, intents = self.delta(state, event)
-        return {
-            "state": new_state.model_dump(mode="json"),
-            "intents": [i.model_dump(mode="json") for i in intents],
-        }
+    def handle(
+        self, request: ModelLoopStateReduceRequest
+    ) -> ModelLoopStateReduceResult:
+        """Apply the request's event to its state and return both outputs."""
+        new_state, intents = self.delta(request.state, request.event)
+        return ModelLoopStateReduceResult(state=new_state, intents=intents)
 
     def delta(
         self,
