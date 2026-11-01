@@ -629,8 +629,35 @@ _METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
 # of migration 0004. Its own step, not a fourth entry above: a store that has
 # already recorded the OMN-20226 step would never run that step again.
 _METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
-_METERING_SUMMARY_SAVINGS_PCT_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("savings_pct_of_counterfactual", "TEXT"),
+# OMN-21361: metering_summary's savings per measured run, the counterpart of
+# migration 0002. A store written before it has the table without the column,
+# and read_summary_row refused that row on every delegation. Its own step, for
+# the same reason as the savings share above.
+_METERING_SUMMARY_SAVINGS_PER_RUN_STEP = (
+    "omn21361_metering_summary_savings_per_measured_run_column"
+)
+# Each step adds its columns once per store, nullable with no default, so a row
+# written before them reads null. The columns are read again under the step's
+# write lock, so a fresh store, whose table already has them, and two first
+# opens that race both add nothing twice.
+_METERING_SUMMARY_COLUMN_STEPS: tuple[
+    tuple[str, tuple[tuple[str, str], ...], str], ...
+] = (
+    (
+        _METERING_SUMMARY_MEASURES_STEP,
+        _METERING_SUMMARY_ADDED_COLUMNS,
+        "added the metering-summary compression and cache columns",
+    ),
+    (
+        _METERING_SUMMARY_SAVINGS_PCT_STEP,
+        (("savings_pct_of_counterfactual", "TEXT"),),
+        "added the metering-summary savings share column",
+    ),
+    (
+        _METERING_SUMMARY_SAVINGS_PER_RUN_STEP,
+        (("savings_per_measured_run_usd", "TEXT"),),
+        "added the metering-summary savings per measured run column",
+    ),
 )
 _DELEGATION_ROUTING_QUALITY_VIEWS_SQL: tuple[tuple[str, str], ...] = (
     ("projection_delegation_model_routing", "sqlite/delegation_model_routing_view.sql"),
@@ -923,28 +950,23 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "created the delegation model-routing and quality-gate views",
                 )
             )
-        if not cls._store_step_recorded(conn, _METERING_SUMMARY_MEASURES_STEP):
-            pending.append(
-                (
-                    _METERING_SUMMARY_MEASURES_STEP,
-                    cls._add_metering_summary_measure_columns,
-                    "added the metering-summary compression and cache columns",
+        for step, columns, lacking in _METERING_SUMMARY_COLUMN_STEPS:
+            if not cls._store_step_recorded(conn, step):
+                pending.append(
+                    (
+                        step,
+                        lambda c, cols=columns: cls._add_metering_summary_columns(
+                            c, cols
+                        ),
+                        lacking,
+                    )
                 )
-            )
         if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_VIEW_STEP):
             pending.append(
                 (
                     _DELEGATION_SAVINGS_VIEW_STEP,
                     cls._create_delegation_savings_view,
                     "created the delegation savings view",
-                )
-            )
-        if not cls._store_step_recorded(conn, _METERING_SUMMARY_SAVINGS_PCT_STEP):
-            pending.append(
-                (
-                    _METERING_SUMMARY_SAVINGS_PCT_STEP,
-                    cls._add_metering_summary_savings_pct_column,
-                    "added the metering-summary savings share column",
                 )
             )
         if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP):
@@ -1105,23 +1127,6 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     conn.execute(statement)
             for trigger in _USAGE_BY_MODEL_DAY_CURSOR_TRIGGERS:
                 conn.execute(trigger)
-
-    @classmethod
-    def _add_metering_summary_measure_columns(cls, conn: sqlite3.Connection) -> None:
-        """OMN-20226: give a store written before them metering_summary's
-        compression and cache columns, run once per store as a store step.
-
-        The columns are read again here, under the step's write lock, so a fresh
-        store, whose table already has them, and two first opens that race both
-        add nothing twice.
-        """
-        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_ADDED_COLUMNS)
-
-    @classmethod
-    def _add_metering_summary_savings_pct_column(cls, conn: sqlite3.Connection) -> None:
-        """OMN-20008: give a store written before it metering_summary's
-        savings_pct_of_counterfactual column, run once per store as a store step."""
-        cls._add_metering_summary_columns(conn, _METERING_SUMMARY_SAVINGS_PCT_COLUMNS)
 
     @classmethod
     def _add_metering_summary_columns(
