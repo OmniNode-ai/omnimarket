@@ -32,6 +32,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_projection_claude_hook_events import (
     HandlerProjectionClaudeHookEvents,
 )
@@ -43,7 +44,10 @@ from omnimarket.nodes.node_projection_claude_hook_events.models import (
     ModelClaudeHookProjectionRequest,
     ModelKnownParentToolCall,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE_EVENTS = "omninode_internal.claude_hook_events"
 TABLE_SPANS = "omninode_internal.claude_agent_spans"
@@ -249,17 +253,12 @@ class ClaudeHookEventsProjectionWriter(BaseProjectionRunner):
     def poison_dlq_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("dlq_topics", []))
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
-        return asyncio.run(self._project_one_message(topic, input_data, meta))
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
+        return asyncio.run(self._project_one_message(topic, request.payload, meta))
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta

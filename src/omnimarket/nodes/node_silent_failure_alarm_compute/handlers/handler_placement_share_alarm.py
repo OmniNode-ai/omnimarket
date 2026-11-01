@@ -16,7 +16,11 @@ reason the lane receipts report; when none reports one it says so rather than gu
 from __future__ import annotations
 
 from collections import Counter
-from typing import Literal
+from typing import Literal, cast
+
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 
 from ..models import (
     ModelLaneRefusal,
@@ -27,7 +31,12 @@ from ..models import (
 
 LANE = "silent-failure-alarm"
 TICKET = "OMN-17427"
-FILL_INTERVAL_MINUTES = 20
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_silent_failure_alarm_compute", "timeouts"),
+)
+
+FILL_INTERVAL_MINUTES = int(_TIMEOUTS["fill_interval_seconds"] // 60)
 NO_REASON = "no-refusal-reported"
 
 __all__ = ["HandlerPlacementShareAlarm", "ModelPlacementShareResult"]
