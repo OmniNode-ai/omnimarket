@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -21,18 +22,17 @@ CALLER_PATH = (
     / "call-repo-evidence-gate.yml"
 )
 
-# omnibase_core#1932: the squash commit that adds VERIFIER_FLOOR to the reusable's
-# "Install the pinned verifier" step.
-# The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
+# omnibase_core#1932 added VERIFIER_FLOOR to the reusable's "Install the pinned
+# verifier" step; omnibase_core#2203 (OMN-21676) turned it into an ancestry floor
+# for verifier-tag. The pin moved to a descendant that keeps this.
 _FLOOR_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 
-# 0.4.303 is the first omnimarket release carrying omnimarket#3511, the refusal of
-# a contract that leaves an acceptance criterion unbound.
-_VERIFIER_FLOOR = (0, 4, 303)
-
-
-def _version(text: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in text.split("."))
+# OMN-21676: the reusable decides the floor by ancestry, not by version number.
+# VERIFIER_FLOOR_SHA is omnimarket#3511's squash commit, the first to refuse a
+# contract that leaves an acceptance criterion unbound; the reusable refuses a
+# verifier-tag that does not descend from it. The caller therefore passes a
+# dev-merge tag as verifier-tag and no verifier-version.
+_DEV_MERGE_TAG = r"dev-[0-9]{14}-[0-9a-f]{12}"
 
 
 def _job() -> dict[str, object]:
@@ -45,30 +45,35 @@ def test_caller_pins_the_reusable_that_carries_the_verifier_floor() -> None:
     uses = _job()["uses"]
     assert isinstance(uses, str)
     assert uses.endswith(f"@{_FLOOR_REUSABLE_TAG}"), (
-        "pin the omnibase_core receipt-gate reusable at or past omnibase_core#1932"
+        "pin the omnibase_core receipt-gate reusable at or past omnibase_core#2203"
     )
 
 
-def test_caller_verifier_version_is_at_or_above_the_floor() -> None:
+def test_caller_verifier_tag_is_passed_to_the_floor_enforcing_reusable() -> None:
     job = _job()
-    # The version input already met the floor before this re-pin. It is only
-    # enforced when the caller invokes the reusable that carries the gate.
     assert job["uses"] == (
         "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
         f"@{_FLOOR_REUSABLE_TAG}"
-    ), "the verifier version must be passed to the floor-enforcing reusable"
+    ), "the verifier tag must be passed to the floor-enforcing reusable"
     with_inputs = job["with"]
     assert isinstance(with_inputs, dict)
-    assert _version(with_inputs["verifier-version"]) >= _VERIFIER_FLOOR, (
-        "verifier-version must be at or above the reusable's VERIFIER_FLOOR 0.4.303"
+    assert re.fullmatch(_DEV_MERGE_TAG, with_inputs["verifier-tag"]), (
+        "verifier-tag must be an omnimarket dev-merge tag"
+    )
+    assert "verifier-version" not in with_inputs, (
+        "verifier-version is a warned migration fallback, not a caller input"
     )
 
 
 @pytest.mark.parametrize(
-    ("version", "expected"),
-    [("0.4.280", False), ("0.4.302", False), ("0.4.303", True), ("0.4.305", True)],
+    ("verifier", "expected"),
+    [
+        ("0.4.305", False),
+        ("dev-20261101000200-949993edf3b", False),
+        ("dev-20261101000200-949993edf3b7", True),
+    ],
 )
-def test_floor_comparison_has_a_refusing_and_an_admitting_case(
-    version: str, expected: bool
+def test_verifier_tag_shape_has_an_admitting_and_refusing_cases(
+    verifier: str, expected: bool
 ) -> None:
-    assert (_version(version) >= _VERIFIER_FLOOR) is expected
+    assert (re.fullmatch(_DEV_MERGE_TAG, verifier) is not None) is expected
