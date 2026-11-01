@@ -123,7 +123,7 @@ jobs:
               # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
               elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
                   repository, _, commit = source["git"].partition("#")
-                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  expected = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY_OWNER']}/{name.replace('-', '_')}.git"
                   if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
                       ref = commit
               if ref is None:

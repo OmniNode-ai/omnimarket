@@ -19,7 +19,7 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 NEW_CORE_REV = "031148215620031436cba30619bbae67c0bb38ad"
 OLD_CORE_REV = "7f20b97895f01996c5858dde385ba8991c06e708"
 # The canonical-file-shape hook has its own omnibase_core block, pinned to a dev-merge tag.
-FILE_SHAPE_HOOK_REV = "dev-20261029151319-6e0a5eee541a"
+FILE_SHAPE_HOOK_REV = "dev-20261101023710-a66b5ff79cc0"
 CORE_REPO_SUFFIX = "omnibase_core"
 FILE_SHAPE_HOOK_ID = "canonical-file-shape"
 
@@ -61,10 +61,16 @@ def test_precommit_core_hook_rev_is_new_rev() -> None:
     assert _core_hook_revs() == [FILE_SHAPE_HOOK_REV]
 
 
-def test_ci_file_shape_job_pins_the_hook_rev() -> None:
-    pins = FILE_SHAPE_CI_PIN.findall(CI_WORKFLOW.read_text(encoding="utf-8"))
-    assert pins == [FILE_SHAPE_HOOK_REV]
-    assert pins == _core_hook_revs()
+def test_ci_file_shape_job_reads_the_hook_rev() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert FILE_SHAPE_CI_PIN.findall(text) == [], (
+        "the CI job holds a core tag of its own"
+    )
+    start = text.index("- name: Read the core ref from the pre-commit hook")
+    step = text[start : text.index("\n      - name:", start + 1)]
+    assert ".pre-commit-config.yaml" in step
+    assert 'h["id"] == "canonical-file-shape"' in step
+    assert "CANONICAL_FILE_SHAPE_CORE=" in step
 
 
 def test_ci_core_pins_are_all_new_rev() -> None:
