@@ -1,0 +1,88 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21851"
+title: "The duplicate guard judges a stacked branch on the commits of the pull requests it stacks on, so a stacked pull request cannot open"
+summary: "onex scm pr-create refused the stacked branch omn-21733-floor-dashboard-plain (head c4433d697) as a duplicate: the snapshot read the branch at a stale local tip instead of the pushed one, and a shared umbrella ticket made every pull request on the same line a duplicate whatever it changed. The snapshot effect reads the pushed tip when the local branch is behind it, takes the diff from the newest contained open pull request head and lists the commits it judged; the compute handler counts overlapping lines under a shared ticket as one change only when their changed lines share the contract's min_same_ticket_similarity, and names the judged commits in the JSON answer and the message. The stack rule (config.stack.base_rule), the ticket bar (config.intent.min_same_ticket_similarity) and the message cap (config.report.judged_commits_shown) are declared in the two node contracts and read through typed models."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21851-own-change"
+    statement: |-
+      A branch is judged on its own change, from the newest contained open pull request head to its head.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a branch that contains the head commits of two open pull requests and adds its own commits is judged on the diff from the newest contained open-PR head to its own head, and commits that belong to the contained pull requests never make it a duplicate of them or of pull requests touching the same lines -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k own_change -q"
+  - id: "req-omn21851-intent"
+    statement: |-
+      Same lines with a different change are not duplicates; the same change still is.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: two pull requests that touch the same lines with different intent (no shared ticket, changed-line digests below the contract's same-change threshold) are clear, and a same-ticket same-change pull request is still refused -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k \"intent or same_change\" -q"
+  - id: "req-omn21851-judged-commits"
+    statement: |-
+      The answer names the commits it judged.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the refusal names the commits it judged, in the JSON answer and in the stderr message -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k judged_commits -q"
+  - id: "req-omn21851-declared"
+    statement: |-
+      The rule is declared data read through typed models.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the stack rule and any new threshold are declared in the node contract config and read through a typed model, with no value hard-coded in the handler, and the tests run on the in-memory overlay -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -q"
+  - id: "req-omn21851-recorded"
+    statement: |-
+      The recorded refusals of 2026-11-01 are a regression test.
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: a regression test built from the recorded 2026-11-01 refusals (fixtures of the omnimarket#4727, #4730, #4731 and #4733 diff spans and the branch commit list at c4433d697, and of the the private plugin repository#1366 case) fails on the broken guard and passes on the fix -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k recorded_stack -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The duplicate guard compute and scm tests pass."
+    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21851-own-change"
+    description: "A stacked branch is judged on the diff from the newest contained open pull request head."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k own_change -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21851-intent"
+    description: "Same lines under a different change are clear; a same-ticket same-change pull request is refused."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k 'intent or same_change' -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21851-judged-commits"
+    description: "The JSON answer and the stderr message name the judged commits."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k judged_commits -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21851-declared"
+    description: "The rule and thresholds come from the node contracts through typed models; the whole compute and scm test set passes."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21851-recorded-stack"
+    description: "The recorded refusals of 2026-11-01 are clear on the fix; the PR body quotes the run on the parent commit, where they fail."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k recorded_stack -q --no-cov"
+        cwd: "."
