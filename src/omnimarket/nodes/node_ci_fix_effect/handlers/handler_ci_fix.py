@@ -40,12 +40,15 @@ from pydantic import ValidationError as _PydanticValidationError
 
 from omnimarket.config.service_endpoints import GITHUB_REST_URL
 from omnimarket.github_api import GitHubApiError, rest_json, split_repo
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_command import (
     ModelCiFixCommand,
 )
 from omnimarket.nodes.node_ci_fix_effect.models.model_ci_fix_result import CiFixResult
 
 _log = logging.getLogger(__name__)
+
+_TIMEOUTS = load_node_timeouts("node_ci_fix_effect")
 
 _CI_LOG_MAX_CHARS = 20_000
 _SOURCE_CONTEXT_MAX_FILES = 6
@@ -561,7 +564,7 @@ async def _run_subprocess(
     args: list[str],
     *,
     cwd: str | None = None,
-    timeout: float = 60.0,
+    timeout: float = _TIMEOUTS.get("subprocess_default_s"),
     label: str = "",
 ) -> tuple[int, str, str]:
     proc = await asyncio.create_subprocess_exec(
@@ -615,7 +618,9 @@ async def _fetch_ci_log(
         )
         opener = urllib.request.build_opener(_NoRedirect)
         try:
-            with opener.open(req, timeout=60) as resp:
+            with opener.open(
+                req, timeout=_TIMEOUTS.get("github_log_download_s")
+            ) as resp:
                 return cast(bytes, resp.read()).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             if exc.code not in {301, 302, 303, 307, 308}:
@@ -627,7 +632,9 @@ async def _fetch_ci_log(
                     "missing redirect location for GitHub job log"
                 ) from exc
             # GitHub returns a signed blob-storage URL; fetch it without GitHub auth headers.
-            with urllib.request.urlopen(location, timeout=60) as resp:
+            with urllib.request.urlopen(
+                location, timeout=_TIMEOUTS.get("github_log_download_s")
+            ) as resp:
                 return cast(bytes, resp.read()).decode("utf-8", errors="replace")
 
     def _download_log() -> str:
@@ -690,7 +697,7 @@ async def _resolve_pr_worktree(repo: str, pr_number: int, *, token: str) -> str 
 
     rc2, wt_out, _ = await _run_subprocess(
         ["git", "worktree", "list", "--porcelain"],
-        timeout=15.0,
+        timeout=_TIMEOUTS.get("git_inspect_s"),
         label="git worktree list",
     )
     if rc2 != 0:
@@ -724,14 +731,14 @@ async def _apply_patch(patch: str, worktree_path: str) -> None:
         rc_git_check, git_check_out, git_check_err = await _run_subprocess(
             ["git", "apply", "--check", patch_file],
             cwd=worktree_path,
-            timeout=30.0,
+            timeout=_TIMEOUTS.get("git_patch_s"),
             label="git apply --check",
         )
         if rc_git_check == 0:
             rc_git_apply, git_apply_out, git_apply_err = await _run_subprocess(
                 ["git", "apply", patch_file],
                 cwd=worktree_path,
-                timeout=30.0,
+                timeout=_TIMEOUTS.get("git_patch_s"),
                 label="git apply",
             )
             if rc_git_apply == 0:
@@ -747,7 +754,7 @@ async def _apply_patch(patch: str, worktree_path: str) -> None:
             rc_dry, dry_out, dry_err = await _run_subprocess(
                 ["patch", "-t", "-C", f"-p{strip_count}", "-i", patch_file],
                 cwd=worktree_path,
-                timeout=30.0,
+                timeout=_TIMEOUTS.get("git_patch_s"),
                 label=f"patch -p{strip_count} --check",
             )
             if rc_dry != 0:
@@ -760,7 +767,7 @@ async def _apply_patch(patch: str, worktree_path: str) -> None:
             rc_patch, patch_out, patch_err = await _run_subprocess(
                 ["patch", "-t", f"-p{strip_count}", "-i", patch_file],
                 cwd=worktree_path,
-                timeout=30.0,
+                timeout=_TIMEOUTS.get("git_patch_s"),
                 label=f"patch -p{strip_count}",
             )
             if rc_patch == 0:
@@ -789,7 +796,7 @@ async def _git_diff_changed_files(worktree_path: str) -> list[str]:
     rc, stdout, _stderr = await _run_subprocess(
         ["git", "diff", "--name-only"],
         cwd=worktree_path,
-        timeout=15.0,
+        timeout=_TIMEOUTS.get("git_inspect_s"),
         label="git diff --name-only",
     )
     if rc != 0:
@@ -801,7 +808,7 @@ async def _git_checkout_restore(worktree_path: str) -> None:
     await _run_subprocess(
         ["git", "checkout", "--", "."],
         cwd=worktree_path,
-        timeout=15.0,
+        timeout=_TIMEOUTS.get("git_inspect_s"),
         label="git checkout -- .",
     )
 
@@ -810,7 +817,7 @@ async def _git_commit(worktree_path: str, message: str) -> bool:
     rc_add, _, _ = await _run_subprocess(
         ["git", "add", "-u"],
         cwd=worktree_path,
-        timeout=15.0,
+        timeout=_TIMEOUTS.get("git_inspect_s"),
         label="git add -u",
     )
     if rc_add != 0:
@@ -818,7 +825,7 @@ async def _git_commit(worktree_path: str, message: str) -> bool:
     rc_commit, _, _ = await _run_subprocess(
         ["git", "commit", "-m", message],
         cwd=worktree_path,
-        timeout=15.0,
+        timeout=_TIMEOUTS.get("git_inspect_s"),
         label="git commit",
     )
     return rc_commit == 0
@@ -828,7 +835,7 @@ async def _run_tests(worktree_path: str) -> bool:
     rc, _out, _err = await _run_subprocess(
         ["uv", "run", "pytest", "tests/", "-x", "--tb=short"],
         cwd=worktree_path,
-        timeout=300.0,
+        timeout=_TIMEOUTS.get("test_run_s"),
         label="uv run pytest",
     )
     return rc == 0

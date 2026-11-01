@@ -62,6 +62,7 @@ from typing import Any
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
+from omnimarket.handlers.network_bindings import network_host
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.captured_secret.model_captured_secret_store_overlay import (
     CAPTURED_SECRET_STORE_BLOCK,
@@ -98,7 +99,7 @@ TIMEOUT_SECONDS: float = load_node_timeouts("node_captured_secret_store_effect")
 def _plain_http_allowed(hostname: str | None) -> bool:
     if hostname is None:
         return False
-    if hostname.lower() == "localhost":
+    if hostname.lower() == network_host("loopback.name"):
         return True
     try:
         return ipaddress.ip_address(hostname).is_loopback
