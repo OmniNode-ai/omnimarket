@@ -8,8 +8,16 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-TOPIC_DOCUMENT_INDEXED = "onex.evt.omnimemory.document-indexed.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_DOCUMENT_PARSE_FAILED = "onex.evt.omnimemory.document-parse-failed.v1"  # onex-topic-allow: pending contract auto-wiring
+from omnimarket.nodes.contract_topics import contract_topic
+
+# Topic bindings from contract.yaml event_bus.publish_topics
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_DOCUMENT_INDEXED = contract_topic(
+    _CONTRACT, "publish_topics", "document-indexed.v1"
+)
+TOPIC_DOCUMENT_PARSE_FAILED = contract_topic(
+    _CONTRACT, "publish_topics", "document-parse-failed.v1"
+)
 
 
 class ModelKreuzbergParseConfig(BaseModel):

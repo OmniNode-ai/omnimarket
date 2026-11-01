@@ -1,0 +1,201 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 86 and seed -5031185082881105105 with 16 workers on 80 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LandingStall.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LandingStall
+Starting... (2026-11-01 15:36:53)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-01 15:36:53.
+Checking temporal properties for the current state space with 3096 total distinct states at (2026-11-01 15:36:56)
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> TRUE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0)
+/\ r = (c1 :> 0)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 0)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 2: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> FALSE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 5)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 0)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 3: <Attempt line 215, col 5 to line 226, col 69 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> FALSE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 1
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 5)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 0)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 4: <Attempt line 215, col 5 to line 226, col 69 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> FALSE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 2
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 5)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 0)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 5: <Snapshot line 154, col 5 to line 211, col 79 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> TRUE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 2
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 5)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 1)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 6: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> FALSE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 2
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 4)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 1)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 7: <Tick line 147, col 5 to line 150, col 79 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> FALSE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 2
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 4)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 1)
+/\ el = (c1 :> 1)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+State 8: <Snapshot line 154, col 5 to line 211, col 79 of module LandingStall>
+/\ reads = (c1 :> 0)
+/\ fresh = (c1 :> TRUE)
+/\ wAfter = (c1 :> 0)
+/\ blocked = (c1 :> FALSE)
+/\ attempts = 2
+/\ n = (c1 :> 5)
+/\ r = (c1 :> 4)
+/\ qs = (c1 :> 0)
+/\ nopen = (c1 :> 1)
+/\ el = (c1 :> 0)
+/\ askRep = (c1 :> FALSE)
+/\ rep = (c1 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open")
+/\ openedOK = (c1 :> TRUE)
+/\ excEl = (c1 :> 2)
+/\ askEl = (c1 :> 4)
+/\ lastClose = (c1 :> 99)
+/\ lanes = (c1 :> 0)
+/\ excRows = (c1 :> 0)
+
+Back to state 6: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+
+Finished checking temporal properties in 00s at 2026-11-01 15:36:56
+52659 states generated, 3096 distinct states found, 942 states left on queue.
+Finished in 03s at (2026-11-01 15:36:56)
+exit=13

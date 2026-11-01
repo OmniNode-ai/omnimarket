@@ -177,22 +177,38 @@ class TestRedeployFsmReducerGoldenChain:
         handler = HandlerRedeployFsm()
         state = start_state(_make_command())
         command = ModelRedeployAdvanceCommand(state=state, phase_success=True)
-        envelope: ModelEventEnvelope[ModelRedeployAdvanceCommand] = ModelEventEnvelope(
-            payload=command,
-            correlation_id=state.correlation_id,
-            event_type="onex.evt.omnimarket.redeploy-phase-advance.v1",
-        )
-        output = await handler.handle(envelope)
+        output = await handler.handle(command)
 
         assert output.node_kind == EnumNodeKind.REDUCER
         assert len(output.projections) == 1
         projected = output.projections[0]
         assert isinstance(projected, ModelRedeployState)
         assert projected.current_phase == EnumRedeployPhase.SYNC_CLONES
+        assert output.correlation_id == state.correlation_id
         # REDUCER must not emit events/intents/result.
         assert output.events == ()
         assert output.intents == ()
         assert output.result is None
+
+    async def test_reducer_handle_walks_every_base_phase(self) -> None:
+        """Each successful advance through the handler lands on the next base phase."""
+        handler = HandlerRedeployFsm()
+        state = start_state(_make_command())
+        for expected in (
+            "sync_clones",
+            "update_pins",
+            "rebuild",
+            "seed_infisical",
+            "verify_health",
+            "done",
+        ):
+            output = await handler.handle(
+                ModelRedeployAdvanceCommand(state=state, phase_success=True)
+            )
+            projected = output.projections[0]
+            assert isinstance(projected, ModelRedeployState)
+            assert projected.current_phase == expected
+            state = projected
 
 
 # ---------------------------------------------------------------------------

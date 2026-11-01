@@ -65,10 +65,10 @@ class FakeLedger:
         self.rows: list[str] = []
         self.fail_after = fail_after
 
-    def __call__(self, row: str) -> tuple[bool, str]:
+    def __call__(self, payload: str) -> tuple[bool, str]:
         if self.fail_after is not None and len(self.rows) >= self.fail_after:
             return False, "ledger append exit 3: locked"
-        self.rows.append(row)
+        self.rows.extend(payload.splitlines())
         return True, "ok"
 
 
@@ -189,12 +189,13 @@ def test_reply_after_the_prompt_is_not_its_question(tmp_path: Path) -> None:
 
 def test_crash_before_the_promotion_row_resumes_without_doubles(tmp_path: Path) -> None:
     clock = Clock()
-    failing = FakeLedger(fail_after=1)
+    failing = FakeLedger(fail_after=0)
     handler = _handler(tmp_path, failing, answer=None, clock=clock)
     handler.handle(_reply())
     receipt = handler.handle(_prompt())
     assert receipt.status is EnumOperatorCaptureStatus.PENDING
-    assert [r.split(" | ")[1] for r in failing.rows] == ["STATUS"]
+    # One batched append: it is refused whole, so no row of the prompt landed.
+    assert failing.rows == []
     failing.fail_after = None
     clock.now = datetime(2026, 10, 18, 3, 40, 0, tzinfo=UTC)
     handler.retry()
