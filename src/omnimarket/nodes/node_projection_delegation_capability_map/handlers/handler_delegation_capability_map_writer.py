@@ -21,10 +21,14 @@ import yaml
 from omnimarket.models.delegation_capability_map.model_capability_map_run_recorded import (
     ModelCapabilityMapRunRecorded,
 )
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_delegation_capability_map.handlers.handler_projection_delegation_capability_map import (
     HandlerProjectionDelegationCapabilityMap,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 _UPSERT_CELL = """
     INSERT INTO public.delegation_capability_cells (
@@ -73,17 +77,12 @@ class HandlerDelegationCapabilityMapWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        data = dict(request.payload)
         # The kernel injects its synchronous adapter. This runner owns the
         # tenant-scoped async pool, connected inside the dispatch loop below.
         data.pop("_db", None)
-        meta = MessageMeta(
-            topic=str(data.pop("_topic", self.subscribe_topics[0])),
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-        )
+        meta = request.message_meta(request.topic_or(self.subscribe_topics[0]))
         return asyncio.run(self._project_one_message(data, meta))
 
     async def _project_one_message(

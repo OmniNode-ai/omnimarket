@@ -11,13 +11,17 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_routing_feedback.handlers.handler_projection_routing_feedback import (
     HandlerProjectionRoutingFeedback,
 )
 from omnimarket.nodes.node_projection_routing_feedback.models import (
     ModelRoutingFeedbackProjectionRequest,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 _UPSERT_ROUTING_FEEDBACK = """
     INSERT INTO public.delegation_routing_feedback (
@@ -62,16 +66,11 @@ class HandlerRoutingFeedbackWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        data = dict(request.payload)
         # The kernel injects a synchronous adapter; this dispatch owns its async pool.
         data.pop("_db", None)
-        meta = MessageMeta(
-            topic=str(data.pop("_topic", self.subscribe_topics[0])),
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-        )
+        meta = request.message_meta(request.topic_or(self.subscribe_topics[0]))
         return asyncio.run(self._project_one_message(data, meta))
 
     async def _project_one_message(
