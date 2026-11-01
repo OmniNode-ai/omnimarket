@@ -8,6 +8,7 @@ from omnimarket.nodes.node_ticketing_epic_org_orchestrator.models.model_ticketin
     ModelProposedEpicGroup,
     ModelTicketingEpicOrgRequest,
     ModelTicketingEpicOrgResult,
+    ModelTicketingEpicOrgTopics,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "ModelProposedEpicGroup",
     "ModelTicketingEpicOrgRequest",
     "ModelTicketingEpicOrgResult",
+    "ModelTicketingEpicOrgTopics",
 ]
