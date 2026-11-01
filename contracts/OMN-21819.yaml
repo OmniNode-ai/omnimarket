@@ -30,3 +30,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn21819_dual_form_credential_readers.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn21819-deploy-probe"
+    description: "Deploy smoke on the runtime after the deploy agent rolls this change: import the tenant-form helper from the running container, assert it returns a tenant's name and registry UUID from one agreeing mirror row and the name alone when the mirror is empty, and assert the review gateway's host-key filter accepts the tenant forms. The command exits nonzero on an image without this change, including the merge-base image. It reads deployed code, not this contract or a receipt. Hosted CI has no runtime; the local Done gate must execute this unbound deployment check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'import inspect; from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms as f; from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import select_host_keys as s; u = \"6f2b1c3e-0d4a-4f5e-9a8b-7c6d5e4f3a2b\"; D = type(\"D\", (), {\"query\": lambda self, t, p: [{\"tenant_slug\": \"acme\", \"tenant_uuid\": u}]}); E = type(\"E\", (), {\"query\": lambda self, t, p: []}); assert f(D(), \"acme\") == (\"acme\", u); assert f(D(), u) == (u, \"acme\"); assert f(E(), \"acme\") == (\"acme\",); assert \"tenant_forms\" in inspect.signature(s).parameters'"
+        cwd: "${OMNI_HOME}/omnimarket"
