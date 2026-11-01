@@ -41,6 +41,9 @@ from pydantic import BaseModel
 from omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate import (
     HandlerPrArmGate,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.container.container_inmemory import (
+    bind_row_store,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress import (
     PrLandingOrchestratorInput,
 )
@@ -73,7 +76,6 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.ports import (
     ProtocolPrLandingReducer,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.row_store import (
-    InMemoryPrLandingRowStore,
     ProtocolPrLandingRowStore,
     read_active_state_io_rows,
     run_with_cas_retry,
@@ -113,7 +115,7 @@ class HandlerPrLandingOrchestrator:
             gate_facts=gate_facts,
         )
         self._local_store: ProtocolPrLandingRowStore = (
-            store if store is not None else InMemoryPrLandingRowStore()
+            store if store is not None else bind_row_store()
         )
 
     @property

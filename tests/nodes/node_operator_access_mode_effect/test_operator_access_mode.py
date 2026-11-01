@@ -24,6 +24,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.nodes.node_operator_access_mode_effect import (
+    runtime_operator_hook_cli as cli,
+)
 from omnimarket.nodes.node_operator_access_mode_effect.handlers import (
     HandlerAccessModeDetect,
     HandlerAttentionPushGate,
@@ -36,9 +39,6 @@ from omnimarket.nodes.node_operator_access_mode_effect.handlers import (
 )
 from omnimarket.nodes.node_operator_access_mode_effect.handlers import (
     handler_access_mode_state as state_module,
-)
-from omnimarket.nodes.node_operator_access_mode_effect.handlers import (
-    handler_operator_hook_cli as cli,
 )
 from omnimarket.nodes.node_operator_access_mode_effect.handlers import (
     handler_operator_hooks_installer as installer_module,
@@ -88,7 +88,7 @@ MARKER = installer_module.MARKER
 bare_ids = reply_module.bare_ids
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-NODE_DIR = Path(cli.__file__).resolve().parents[1]
+NODE_DIR = Path(cli.__file__).resolve().parent
 LOCAL, REMOTE, HEADLESS = (
     EnumAccessMode.LOCAL,
     EnumAccessMode.REMOTE,

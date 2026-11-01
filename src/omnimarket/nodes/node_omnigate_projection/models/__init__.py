@@ -5,6 +5,9 @@
 from omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_input import (
     ModelOmniGateProjectionInput,
 )
+from omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_result import (
+    ModelOmniGateProjectionResult,
+)
 from omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_row import (
     ModelOmniGateMetricsSnapshot,
     ModelOmniGateProjectionRow,
@@ -13,5 +16,6 @@ from omnimarket.nodes.node_omnigate_projection.models.model_omnigate_projection_
 __all__ = [
     "ModelOmniGateMetricsSnapshot",
     "ModelOmniGateProjectionInput",
+    "ModelOmniGateProjectionResult",
     "ModelOmniGateProjectionRow",
 ]

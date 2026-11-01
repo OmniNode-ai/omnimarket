@@ -25,8 +25,12 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
+    ModelDeclaredLines,
     ModelFactoryFloorPublishContract,
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
@@ -160,7 +164,7 @@ class HandlerFactoryFloorPublish:
         results: list[ModelPublishStepResult] = []
         if not request.skip_refresh:
             for step in rt.steps:
-                result = self._step(step, home, overlay)
+                result = self._step(step, home, overlay, rt.plugin_root_env, env)
                 results.append(result)
                 if result.status == "failed" and step.required:
                     raise PublishRefusedError(
@@ -170,23 +174,30 @@ class HandlerFactoryFloorPublish:
         data = self._read_record(home / rt.source.relpath)
         generated_at = str(json.loads(data)["generated_at"])
         page = (NODE_DIR / rt.page_relpath).read_bytes()
+        floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         health = self._read_process_health(home / rt.process_health_relpath)
+        delegation = self._read_delegation(home / rt.delegation_relpath)
         status = json.dumps(
             {
                 "published_at": now.astimezone(UTC).isoformat(),
                 "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
                 "process_health": "published" if health is not None else "absent",
+                "delegation": "published" if delegation is not None else "absent",
+                "lines_declared": self._declared_lines(rt, env),
             },
             sort_keys=True,
         ).encode("utf-8")
 
         # The record goes last: a reader that gets the new record always finds a page that reads it.
         files: list[tuple[str, bytes]] = [
+            (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.status, status),
         ]
         if health is not None:
             files.append((rt.names.process_health, health))
+        if delegation is not None:
+            files.append((rt.names.delegation, delegation))
         files.append((rt.names.data, data))
         for name, payload in files:
             self._copy(rt, overlay, name, payload)
@@ -207,6 +218,7 @@ class HandlerFactoryFloorPublish:
             serve_url=overlay.serve_url,
             steps=tuple(results),
             process_health_published=health is not None,
+            delegation_published=delegation is not None,
         )
 
     def _step(
@@ -214,10 +226,19 @@ class HandlerFactoryFloorPublish:
         step: ModelPublishStep,
         home: Path,
         overlay: ModelFactoryFloorPublishOverlay,
+        plugin_root_env: str,
+        env: Mapping[str, str],
     ) -> ModelPublishStepResult:
         def fill(values: Sequence[str]) -> list[str]:
+            plugin_root = env.get(plugin_root_env, "").strip()
+            if not plugin_root and any("{plugin_root}" in v for v in values):
+                raise PublishRefusedError(
+                    f"{plugin_root_env} is not set (fail fast, no default): export the plugin root"
+                )
             return [
-                v.replace("{home}", str(home)).replace("{bus_lane}", overlay.bus_lane)
+                v.replace("{home}", str(home))
+                .replace("{bus_lane}", overlay.bus_lane)
+                .replace("{plugin_root}", plugin_root)
                 for v in values
             ]
 
@@ -304,6 +325,44 @@ class HandlerFactoryFloorPublish:
         ):
             return None
         return data
+
+    @staticmethod
+    def _read_delegation(path: Path) -> bytes | None:
+        """The delegation counts, or ``None`` when absent or not that shape (the page then draws the card unread)."""
+        try:
+            data = path.read_bytes()
+            record = json.loads(data)
+        except (OSError, ValueError):
+            return None
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("generated_at"), str)
+            or not isinstance(record.get("outcomes"), list)
+        ):
+            return None
+        return data
+
+    @staticmethod
+    def _declared_lines(
+        rt: ModelFactoryFloorPublishRuntime, env: Mapping[str, str]
+    ) -> dict[str, object]:
+        """Which plans the factory floor effect's overlay declares as lines, or why that is unread."""
+        try:
+            declared = load_structured_overlay(
+                rt.lines_overlay.overlay_id,
+                ModelDeclaredLines,
+                env,
+                file_env=rt.lines_overlay.file_env,
+            )
+        except NodeOverlayError:
+            return {
+                "state": "unread",
+                "reason": "the factory floor effect's overlay is missing or invalid",
+            }
+        return {
+            "state": "read",
+            "plan_path_contains": list(declared.plan_path_contains),
+        }
 
     def _copy(
         self,
