@@ -1,0 +1,262 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 20 and seed 2715170464545796383 with 16 workers on 80 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LandingStall.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LandingStall
+Starting... (2026-11-01 15:37:03)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-01 15:37:03.
+Error: Invariant NeverClosedAfterExcept is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> TRUE @@ c2 :> TRUE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0 @@ c2 :> 0)
+/\ r = (c1 :> 0 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 0 @@ c2 :> 0)
+/\ el = (c1 :> 0 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 0 @@ c2 :> 0)
+/\ excRows = (c1 :> 0 @@ c2 :> 0)
+
+State 2: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> FALSE @@ c2 :> TRUE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0 @@ c2 :> 0)
+/\ r = (c1 :> 0 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 0 @@ c2 :> 0)
+/\ el = (c1 :> 0 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 0 @@ c2 :> 0)
+/\ excRows = (c1 :> 0 @@ c2 :> 0)
+
+State 3: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> FALSE @@ c2 :> TRUE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 5 @@ c2 :> 0)
+/\ r = (c1 :> 5 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 0 @@ c2 :> 0)
+/\ el = (c1 :> 0 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 0 @@ c2 :> 0)
+/\ excRows = (c1 :> 0 @@ c2 :> 0)
+
+State 4: <Snapshot line 154, col 5 to line 211, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> TRUE @@ c2 :> TRUE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 5 @@ c2 :> 0)
+/\ r = (c1 :> 5 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 0 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 0 @@ c2 :> 0)
+/\ excRows = (c1 :> 0 @@ c2 :> 0)
+
+State 5: <Tick line 147, col 5 to line 150, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 5 @@ c2 :> 0)
+/\ r = (c1 :> 5 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 1 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 0 @@ c2 :> 0)
+/\ excRows = (c1 :> 0 @@ c2 :> 0)
+
+State 6: <Tick line 147, col 5 to line 150, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 5 @@ c2 :> 0)
+/\ r = (c1 :> 5 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 2 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "open" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 0 @@ c2 :> 0)
+/\ excRows = (c1 :> 0 @@ c2 :> 0)
+
+State 7: <Snapshot line 154, col 5 to line 211, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> TRUE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> TRUE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 5 @@ c2 :> 0)
+/\ r = (c1 :> 5 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 2 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "excepted" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 1 @@ c2 :> 0)
+/\ excRows = (c1 :> 1 @@ c2 :> 0)
+
+State 8: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+/\ reads = (c1 :> 0 @@ c2 :> 0)
+/\ fresh = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> TRUE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0 @@ c2 :> 0)
+/\ r = (c1 :> 0 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 2 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "excepted" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 1 @@ c2 :> 0)
+/\ excRows = (c1 :> 1 @@ c2 :> 0)
+
+State 9: <Snapshot line 154, col 5 to line 211, col 79 of module LandingStall>
+/\ reads = (c1 :> 1 @@ c2 :> 0)
+/\ fresh = (c1 :> TRUE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> TRUE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0 @@ c2 :> 0)
+/\ r = (c1 :> 0 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 2 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "excepted" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 1 @@ c2 :> 0)
+/\ excRows = (c1 :> 1 @@ c2 :> 0)
+
+State 10: <Env line 127, col 5 to line 134, col 79 of module LandingStall>
+/\ reads = (c1 :> 1 @@ c2 :> 0)
+/\ fresh = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> TRUE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0 @@ c2 :> 0)
+/\ r = (c1 :> 0 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 1 @@ c2 :> 0)
+/\ el = (c1 :> 2 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "excepted" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 99 @@ c2 :> 99)
+/\ lanes = (c1 :> 1 @@ c2 :> 0)
+/\ excRows = (c1 :> 1 @@ c2 :> 0)
+
+State 11: <Snapshot line 154, col 5 to line 211, col 79 of module LandingStall>
+/\ reads = (c1 :> 2 @@ c2 :> 0)
+/\ fresh = (c1 :> TRUE @@ c2 :> FALSE)
+/\ wAfter = (c1 :> 0 @@ c2 :> 0)
+/\ blocked = (c1 :> FALSE @@ c2 :> FALSE)
+/\ attempts = 0
+/\ n = (c1 :> 0 @@ c2 :> 0)
+/\ r = (c1 :> 0 @@ c2 :> 0)
+/\ qs = (c1 :> 0 @@ c2 :> 0)
+/\ nopen = (c1 :> 0 @@ c2 :> 0)
+/\ el = (c1 :> 0 @@ c2 :> 0)
+/\ askRep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ rep = (c1 :> FALSE @@ c2 :> FALSE)
+/\ wrong = FALSE
+/\ stall = (c1 :> "none" @@ c2 :> "none")
+/\ openedOK = (c1 :> TRUE @@ c2 :> TRUE)
+/\ excEl = (c1 :> 2 @@ c2 :> 2)
+/\ askEl = (c1 :> 4 @@ c2 :> 4)
+/\ lastClose = (c1 :> 2 @@ c2 :> 99)
+/\ lanes = (c1 :> 1 @@ c2 :> 0)
+/\ excRows = (c1 :> 1 @@ c2 :> 0)
+
+98052 states generated, 5296 distinct states found, 1617 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 25 and the 95th percentile is 3).
+Finished in 01s at (2026-11-01 15:37:04)
+exit=12
