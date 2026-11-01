@@ -28,6 +28,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -955,9 +956,7 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                 pending.append(
                     (
                         step,
-                        lambda c, cols=columns: cls._add_metering_summary_columns(
-                            c, cols
-                        ),
+                        partial(cls._add_metering_summary_columns, columns=columns),
                         lacking,
                     )
                 )
