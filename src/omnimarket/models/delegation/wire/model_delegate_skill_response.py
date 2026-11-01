@@ -122,7 +122,11 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 # below, so they are no longer listed here either.
 #
 # Response-source provenance is declared after its consumer-first release.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
+#
+# OMN-21344: ``budget_source`` names where a run's execution budget came from
+# (the task-class contract or a site overlay). The consumer accepts it here
+# first; the producer stamps it once omniclaude's pin carries this consumer.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"budget_source"})
 # Accept the next receiver's keys without declaring producer fields. Keep the
 # construction-failure distinction privately: its failed topic can preserve a
 # true gate flag, and its absent score must not become a measured zero.
@@ -514,9 +518,9 @@ class ModelDelegateSkillResponse(BaseModel):
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
-    baseline_source: Literal["session_model", "overlay", "store", "fixed_default"] = (
-        Field(default="fixed_default")
-    )
+    baseline_source: Literal[
+        "session_model", "overlay", "store", "most_used", "fixed_default"
+    ] = Field(default="fixed_default")
     baseline_state: Literal["RESOLVED", "BASELINE_UNRESOLVED"] = Field(
         default="RESOLVED"
     )

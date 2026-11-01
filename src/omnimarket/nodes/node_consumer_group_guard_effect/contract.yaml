@@ -1,0 +1,77 @@
+name: node_consumer_group_guard_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Counts a bus's consumer groups by state, fails when the Empty groups pass the threshold this contract declares, and deletes long-Empty per-call groups under the limits this contract declares.
+# The threshold the guard enforces (OMN-21818). The dev broker segfaulted three times
+# on 2026-10-31 holding 19,154 Empty groups and the CI bus crash-looped holding about
+# 15,400; a bus that leaks per-call groups again reaches this within hours, because the
+# broker keeps an Empty group for 24 hours.
+consumer_group_guard:
+  empty_group_max: 2000
+  # Reaping (OMN-21818). A group is deleted only when it has been Empty in every run for
+  # min_empty_age_seconds (two listings at least that far apart agree), its name matches a
+  # reapable pattern (a per-call hex suffix) and matches no protected pattern. Protected
+  # names win. Stable-named groups (host drift fleet, gateway sessions, anything unlisted)
+  # are never deleted. The broker is checked after every batch; the run stops at the first
+  # error or unhealthy reading.
+  reap:
+    enabled: true
+    min_empty_age_seconds: 600
+    max_deletes_per_run: 1000
+    batch_size: 200
+    reapable_patterns:
+      - '^local\.omnimarket\.work_ledger_append_client\.consume\.v1\.[0-9a-f]{12}(\..*)?$'
+      - '^local\.omnimarket\.scm_command_client\.consume\.v1\.[0-9a-f]{12}(\..*)?$'
+      - '^local\.omnibase_core\.runtime_local_terminal_run_[0-9a-f]{12}(_t[0-9]+)?\.consume\.v1(\..*)?$'
+      - '^local\.omnibase_core\.handlerdevheadmonitor_run_[0-9a-f]{12}\.consume\.v1(\..*)?$'
+    protected_patterns:
+      - 'host_drift_fleet'
+      - 'gateway-session'
+input_model:
+  name: ModelConsumerGroupGuardRequest
+  module: omnimarket.models.consumer_group_guard
+output_model:
+  name: ModelConsumerGroupCensus
+  module: omnimarket.models.consumer_group_guard
+handler:
+  module: omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_guard
+  class: HandlerConsumerGroupGuardEffect
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: consumer_group_guard_effect
+      handler:
+        name: HandlerConsumerGroupGuardEffect
+        module: omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_guard
+    - operation: consumer_group_reap_effect
+      handler:
+        name: HandlerConsumerGroupReaper
+        module: omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_group_reaper
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.consumer-group-guard-effect-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.consumer-group-guard-effect-completed.v1
+terminal_event: onex.evt.omnimarket.consumer-group-guard-effect-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.consumer-group-guard-effect-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.consumer-group-guard-effect-completed.v1
+metadata:
+  transport_type: http
+  additional_transports:
+    - kafka

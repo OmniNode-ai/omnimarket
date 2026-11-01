@@ -404,8 +404,8 @@ async def test_contract_auto_wires_in_the_effects_runtime(
 def test_the_tick_runs_through_the_event_bus_and_returns_its_typed_terminal(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnimarket.nodes.node_patch_apply_dispatch_effect.handlers import (
-        handler_patch_apply_dispatch_cli as cli,
+    from omnimarket.nodes.node_patch_apply_dispatch_effect import (
+        runtime_patch_apply_dispatch_cli as cli,
     )
 
     world.patch.unlink()
@@ -475,8 +475,8 @@ def test_git_reads_ignore_an_inherited_worktree_environment(
 def test_bus_tick_dispatches_with_configured_host_adapters(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnimarket.nodes.node_patch_apply_dispatch_effect.handlers import (
-        handler_patch_apply_dispatch_cli as cli,
+    from omnimarket.nodes.node_patch_apply_dispatch_effect import (
+        runtime_patch_apply_dispatch_cli as cli,
     )
 
     writer = world.root / "writer.py"
@@ -519,8 +519,8 @@ def test_ledger_writer_refusal_is_reported_and_fails_the_tick(
 def test_cli_requires_a_host_registry_and_accepts_a_configured_registry(
     world: World, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from omnimarket.nodes.node_patch_apply_dispatch_effect.handlers import (
-        handler_patch_apply_dispatch_cli as cli,
+    from omnimarket.nodes.node_patch_apply_dispatch_effect import (
+        runtime_patch_apply_dispatch_cli as cli,
     )
 
     monkeypatch.delenv("ONEX_REPO_REGISTRY", raising=False)

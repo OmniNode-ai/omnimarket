@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Pure definition-B acceptance judge: render the blind rubric, check a reply, score a run.
+"""Pure definition-B acceptance judge: render the blind rubric, check a reply, score a run, build events.
 
 No model call, no file read and no clock: a caller resolves the rubric, runs the judges and
 hands back their replies. Same request, same result.
@@ -13,6 +13,9 @@ from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation imp
 )
 from omnimarket.models.delegation_acceptance_judge.model_acceptance_judge_request import (
     ModelAcceptanceJudgeRequest,
+)
+from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.build_events import (
+    build_events,
 )
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.handlers.check_reply import (
     check_reply,
@@ -72,6 +75,25 @@ class HandlerDelegationAcceptanceJudge:
                 status=_status(len(issues)),
                 verdicts=tuple(verdicts),
                 issues=tuple(issues),
+            )
+        if request.operation is EnumAcceptanceOperation.EVENTS:
+            # The request validator guarantees both of these for the events operation.
+            assert request.agreement is not None
+            assert request.event_judge is not None
+            judged_events, event_issues = build_events(
+                request.items,
+                request.primary_verdicts,
+                request.agreement,
+                request.event_calls,
+                request.event_judge,
+                rubric,
+            )
+            return ModelAcceptanceJudgeResult(
+                operation=request.operation,
+                rubric_version=version,
+                status=_status(len(event_issues)),
+                issues=tuple(event_issues),
+                judged_events=tuple(judged_events),
             )
         agreement, rows, events, accept_rate, ok_rate, issues = score_run(
             request.items,

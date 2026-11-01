@@ -45,6 +45,8 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
+from omnimarket.handlers.network_bindings import network_host, network_port
+from omnimarket.handlers.projection_ordering import sort_for_presentation
 from omnimarket.projection.discovery import (
     build_projection_topic_map,
 )
@@ -74,7 +76,6 @@ from omnimarket.projection.read_page import (
     read_projection_page,
     read_refusal,
     serving_tenant_scope,
-    sort_for_presentation,
     unranked_order_value_refusal,
 )
 from omnimarket.projection.read_page import (
@@ -684,9 +685,8 @@ def main() -> None:
 
     uvicorn.run(
         "omnimarket.projection.api_server:app",
-        host="0.0.0.0",
-        port=3002,
-        reload=False,
+        host=network_host("all_interfaces"),
+        port=network_port("projection_api.port"),
     )
 
 

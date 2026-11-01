@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Process before and after</title>
+<link rel="icon" href="data:,">
+<style>
+/* Layout: header with the reset and the headline count, then what changed most (worse first, then better), then the
+   quality measures (before, after, verdict, daily series), then throughput and cost in a separate grey block, and
+   last a folded list of the sources that were read. Colours, type and headings are the board's; status words use the
+   darker text colours, the brighter values stay on dots, bars and borders. */
+:root{
+  --floor:#eceee9; --panel:#fbfbf8; --ink:#1c2320; --muted:#4f5a54; --rule:#cdd3cc; --steel:#4b5c68;
+  --safety:#d9a300; --ok:#2e8649; --warn:#bf7400; --stop:#c3352b; --idle:#b4bdb6; --belt:#3a403d; --link:#24475d;
+  --ok-ink:#1f6b38; --warn-ink:#8a5300; --stop-ink:#a3271f; --steel-ink:#3d4c57;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#a3aea7; --rule:#343d39; --steel:#90a4b3;
+  --safety:#f0c232; --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --idle:#4a554f; --belt:#0f1211; --link:#9cc7e3;
+  --ok-ink:#7fd394; --warn-ink:#f0b85a; --stop-ink:#ff8a7f; --steel-ink:#b3c3cf; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#a3aea7; --rule:#343d39; --steel:#90a4b3;
+  --safety:#f0c232; --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --idle:#4a554f; --belt:#0f1211; --link:#9cc7e3;
+  --ok-ink:#7fd394; --warn-ink:#f0b85a; --stop-ink:#ff8a7f; --steel-ink:#b3c3cf; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--floor);color:var(--ink);font:16px/1.55 var(--f-body)}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:30px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;text-transform:uppercase;letter-spacing:.01em}
+h1{font-size:clamp(2.1rem,6vw,3.1rem);font-weight:800;line-height:.95}
+h2{font-size:1.5rem;font-weight:800;line-height:1.1}
+h3{font-size:1.1rem;font-weight:600;letter-spacing:.03em}
+p{margin:0}
+a{color:var(--link)}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--safety);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font:600 .8125rem/1.3 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
+.muted{color:var(--muted)}
+.when{text-decoration:underline dotted;text-underline-offset:3px}
+.nav{font-size:.9rem;display:flex;flex-wrap:wrap;gap:6px 16px}
+header{display:grid;gap:14px}
+.lede{max-width:72ch;color:var(--muted)}
+.banner{border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem;color:var(--stop-ink)}
+.banner[hidden]{display:none}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:2px;background:var(--belt);border-radius:6px;overflow:hidden}
+.tile{background:var(--panel);padding:14px 16px;display:grid;gap:2px}
+.tile b{font:600 1.8rem/1 var(--f-mono);font-variant-numeric:tabular-nums}
+.tile span{font-size:.875rem;color:var(--muted)}
+.tile.better b{color:var(--ok-ink)} .tile.worse b{color:var(--stop-ink)}
+section{display:grid;gap:12px;min-width:0}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th{font:600 .8125rem/1.2 var(--f-body);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px dashed var(--rule);vertical-align:top}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td small,.chart small{color:var(--muted);font:400 .8125rem/1.3 var(--f-body)}
+.unread{color:var(--muted);font-style:italic}
+.verdict{font:600 .875rem/1.1 var(--f-body);padding:4px 8px;border-radius:3px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
+.verdict.better{color:var(--ok-ink)} .verdict.worse{color:var(--stop-ink)} .verdict.flat{color:var(--muted)} .verdict.info{color:var(--steel-ink)} .verdict.unmeasured{color:var(--muted);border-style:dashed}
+.st-read{color:var(--ok-ink);font-weight:600} .st-partial{color:var(--warn-ink);font-weight:600} .st-unread{color:var(--stop-ink);font-weight:600}
+.area{font:700 .875rem/1 var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--steel-ink);padding-top:14px}
+.grey{background:color-mix(in srgb,var(--idle) 14%,var(--panel));border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:10px;color:var(--muted)}
+.moves{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+.move{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:8px;align-content:start}
+.move h3{font-size:1.1rem}
+.move.worse{border-top:4px solid var(--stop)} .move.better{border-top:4px solid var(--ok)}
+.move.worse h3{color:var(--stop-ink)} .move.better h3{color:var(--ok-ink)}
+.move ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.move li{font-size:.95rem}
+.series{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:12px}
+.chart{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:10px 12px;display:grid;gap:4px;min-width:0}
+.chart .t{font-size:.9rem;font-weight:600}
+.chart .dir{font-size:.8125rem;color:var(--muted)}
+.chart .r{font:400 .8125rem/1.3 var(--f-body);color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.grey .chart{background:transparent}
+svg.s{width:100%;height:64px;display:block}
+svg.s .ln{fill:none;stroke:var(--steel);stroke-width:1.5}
+svg.s .pt{fill:var(--steel);stroke:var(--steel)} svg.s .pt.part{fill:var(--panel)}
+svg.s .rs{stroke:var(--warn);stroke-width:1;stroke-dasharray:3 3}
+svg.s .gap{stroke:var(--rule);stroke-width:1}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.875rem;color:var(--muted)}
+details summary{cursor:pointer;color:var(--muted);font-size:.875rem}
+details.sources>summary{font-size:1.1rem;font-weight:700;color:var(--ink);padding:6px 0}
+details.sources[open]>summary{margin-bottom:8px}
+footer{font-size:.9rem;color:var(--muted);display:grid;gap:8px}
+</style>
+<style>html.embed .hazard,html.embed .nav,html.embed h1{display:none}html.embed .wrap{padding-block:14px 20px}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="hazard" aria-hidden="true"></div>
+    <nav class="nav"><a href="../">All reports</a><a href="../../">Factory floor</a></nav>
+    <div class="eyebrow" id="stamp">Reading the process-health series</div>
+    <h1>Process before and after</h1>
+    <p class="lede" id="lede">How the factory's day-to-day work has gone since 15 October, with the factory reset marked, and a comparison of the hours before the reset with the same number of hours after it. Quality comes first; busyness and cost are context.</p>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <div id="body"><p class="muted">Reading the series.</p></div>
+  <footer>
+    <div class="hazard" aria-hidden="true"></div>
+    <p>The series is computed by the process-health node from the work log, the landing controller's records, the repository status events, the merge history and the Linear snapshot. Quality measures come first; merges, delegation and cost are context, kept in a separate grey block. A source that could not be read, or only partly, is shown as unread or partial and its measure is never drawn as a zero. A hollow point on a chart is a day whose sources were only partly read.</p>
+  </footer>
+</div>
+<script>
+if (typeof location !== "undefined" && document.documentElement && /[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
+const DATA_FILE = "../../process-health.json";
+const POLL_MS = 60000;
+const GREY_PREFIXES = ["merges.", "delegation.", "lanes.terminals", "lanes.share_done", "lanes.share_handed_off", "friction.measured_lease_minutes"];
+const VERDICT = {improved:["better","\u2713 Better"], worse:["worse","\u25bc Worse"], flat:["flat","\u2013 Flat"], informational:["info","\u2139 Context"], unmeasured:["unmeasured","? Unmeasured"]};
+const AREAS = {andon:"Times the line was stopped", bugs:"Bugs", friction:"Friction", lanes:"How workers\u2019 jobs ended", reds:"Failing checks on the shared branch", regressions:"Regressions", validation:"Validation and refusals", merges:"Merges", delegation:"Delegation"};
+const POLARITY = {lower_is_better:"lower is better", higher_is_better:"higher is better"};
+const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const el = id => document.getElementById(id);
+// Plain words (the board's glossary) and Eastern times with a relative age; UTC stays in the hover title.
+const GLOSSARY = [[/andon cords? pulled/gi,"stopped"],[/\ban andon\b/gi,"a stop"],[/\bandon\b/gi,"stop"],[/ledger rows?/gi,m=>/s$/i.test(m)?"log entries":"log entry"],[/\blanes\b/gi,"workers"],[/\blane\b/gi,"worker"],[/\bCI red\b/gi,"failing checks"],[/\bPRs\b/g,"changes"],[/\bPR\b/g,"change"]];
+const plain = s => GLOSSARY.reduce((t,[re,to]) => t.replace(re, (m, ...r) => { const off = r[r.length-2], whole = r[r.length-1], v = typeof to === "function" ? to(m) : to; const start = off === 0 || /[.!?:]\s*$/.test(whole.slice(0, off)); return start || /^[A-Z][a-z]/.test(m) ? v.charAt(0).toUpperCase() + v.slice(1) : v; }), String(s == null ? "" : s));
+const ISO_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z\b/g;
+function etText(iso){
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "?";
+  try {
+    const p = {};
+    new Intl.DateTimeFormat("en-US", {timeZone:"America/New_York", weekday:"short", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true}).formatToParts(d).forEach(x => p[x.type] = x.value);
+    return p.weekday + " " + p.day + " " + p.month + ", " + p.hour + ":" + p.minute + " " + String(p.dayPeriod).toLowerCase() + " ET";
+  } catch (e) { return d.toISOString().slice(0,16).replace("T"," ") + " UTC"; }
+}
+const utcTitle = iso => new Date(iso).toISOString().slice(0,16).replace("T"," ") + " UTC";
+function agoText(ms){
+  const m = Math.max(0, Math.round(ms/60000));
+  if (m < 2) return "just now";
+  if (m < 120) return m + " min ago";
+  const h = m/60;
+  return h < 48 ? (h < 10 ? h.toFixed(1) : Math.round(h)) + " hours ago" : Math.round(h/24) + " days ago";
+}
+const whenEt = (iso, ago) => { const d = Date.parse(iso); return isNaN(d) ? "?" : `<span class="when" title="${esc(utcTitle(iso))}">${esc(etText(iso))}</span>` + (ago ? ` <span class="ago">(${esc(agoText(Date.now() - d))})</span>` : ""); };
+const withTimes = html => html.replace(ISO_RE, iso => whenEt(iso, false));
+const pl = s => esc(plain(s));
+const dayShort = iso => { const d = new Date(String(iso).slice(0,10) + "T12:00:00Z"); return isNaN(d.getTime()) ? "?" : d.toLocaleDateString("en-US", {timeZone:"UTC", day:"numeric", month:"short"}); };
+// The reset label can carry a machine timestamp and a jargon word; show it as a plain phrase in Eastern time.
+const resetTitle = label => plain(label || "Factory reset").replace(/andon hold/gi, "stopped").replace(ISO_RE, iso => etText(iso));
+
+function fmtNum(v, kind){
+  if (kind === "ratio") return (v*100).toFixed(0) + "%";
+  if (Number.isInteger(v)) return v.toLocaleString("en-US");
+  return v.toLocaleString("en-US", {maximumFractionDigits: 1});
+}
+function fmtValue(v, status, c){
+  if (v == null || status === "unread") return `<span class="unread">unread</span>`;
+  const unit = c.kind === "ratio" ? "" : " " + pl(c.comparable_unit || c.unit || "");
+  return esc(fmtNum(v, c.kind)) + `<small>${unit}${status === "partial" ? " (partial)" : ""}</small>`;
+}
+function fmtDelta(c){
+  if (c.delta == null || c.before_status === "unread" || c.after_status === "unread") return `<span class="unread">unread</span>`;
+  const sign = c.delta > 0 ? "+" : c.delta < 0 ? "-" : "";
+  const abs = fmtNum(Math.abs(c.delta), c.kind === "ratio" ? "ratio" : "count");
+  const pct = c.delta_ratio != null && c.kind !== "ratio" ? `<small> (${c.delta_ratio > 0 ? "+" : c.delta_ratio < 0 ? "-" : ""}${Math.abs(c.delta_ratio*100).toFixed(0)}%)</small>` : "";
+  return esc(sign + abs) + pct;
+}
+const areaOf = key => key.split(".")[0];
+const isGrey = c => GREY_PREFIXES.some(p => c.key.startsWith(p));
+const dirOf = c => POLARITY[c.polarity] || "";
+
+function chart(days, c){
+  const pts = days.map(d => {
+    const m = ((d.window || {}).metrics || []).find(x => x.key === c.key);
+    return m && m.value != null && m.status !== "unread" ? {v: m.value, part: m.status !== "read" || d.partial} : null;
+  });
+  const vals = pts.filter(Boolean).map(p => p.v);
+  const dir = dirOf(c);
+  const head = `<div class="t">${pl(c.label)}</div>${dir ? `<div class="dir">${c.polarity === "lower_is_better" ? "↓" : "↑"} ${esc(dir)}</div>` : ""}`;
+  if (!vals.length) return `<div class="chart">${head}<span class="unread">unread on every day</span></div>`;
+  const lo = Math.min(0, ...vals), hi = Math.max(...vals), w = 240, h = 64, span = hi - lo || 1;
+  const x = i => 6 + i*(w-12)/Math.max(1, pts.length-1), y = v => h-6 - (v-lo)/span*(h-12);
+  let path = "", pen = false;
+  pts.forEach((p,i) => { if (!p){ pen = false; return; } path += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(p.v).toFixed(1); pen = true; });
+  const resetI = days.findIndex(d => d.is_reset_day);
+  const svg = `<svg class="s" viewBox="0 0 ${w} ${h}" role="img" aria-label="${pl(c.label)} by day, ${days.length} days${dir ? ", " + esc(dir) : ""}">
+    <line class="gap" x1="6" y1="${y(0).toFixed(1)}" x2="${w-6}" y2="${y(0).toFixed(1)}"/>
+    ${resetI >= 0 ? `<line class="rs" x1="${x(resetI).toFixed(1)}" y1="0" x2="${x(resetI).toFixed(1)}" y2="${h}"/>` : ""}
+    <path class="ln" d="${path}"/>${pts.map((p,i) => p ? `<circle class="pt${p.part?" part":""}" cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2.5"/>` : "").join("")}</svg>`;
+  return `<div class="chart">${head}${svg}<div class="r"><span>${esc(dayShort(days[0].date))}</span><span>peak <b class="mono">${esc(fmtNum(hi, c.kind))}</b> ${pl(c.kind === "ratio" ? "" : c.unit || "")}</span><span>${esc(dayShort(days[days.length-1].date))}</span></div></div>`;
+}
+
+function compTable(list){
+  let lastArea = "";
+  const rows = list.map(c => {
+    const a = areaOf(c.key);
+    const head = a !== lastArea ? `<tr><td class="area" colspan="6">${esc(AREAS[a] || plain(a))}</td></tr>` : "";
+    lastArea = a;
+    const [cls, label] = VERDICT[c.verdict] || ["flat", c.verdict];
+    const dir = dirOf(c);
+    return head + `<tr><td>${pl(c.label)}${dir ? ` <small>(${esc(dir)})</small>` : ""}${c.note ? `<details><summary>how it is measured</summary><small>${pl(c.note)}</small></details>` : ""}</td>
+      <td class="num">${fmtValue(c.before, c.before_status, c)}</td><td class="num">${fmtValue(c.after, c.after_status, c)}</td>
+      <td class="num">${fmtDelta(c)}</td><td><span class="verdict ${cls}">${esc(label)}</span></td></tr>`;
+  }).join("");
+  return `<div class="tw"><table><thead><tr><th>Measure</th><th>Before reset</th><th>After reset</th><th>Change</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// One plain line per measure: what it was, what it is now, how much it moved.
+function moveLine(c){
+  const unit = c.kind === "ratio" ? "" : " " + plain(c.comparable_unit || c.unit || "");
+  const pct = c.delta_ratio != null && c.kind !== "ratio" ? ` (${c.delta_ratio > 0 ? "+" : "-"}${Math.abs(c.delta_ratio*100).toFixed(0)}%)` : "";
+  const dir = dirOf(c);
+  return `<li><b>${pl(c.label)}</b>: <span class="mono">${esc(fmtNum(c.before, c.kind))}</span> before, <span class="mono">${esc(fmtNum(c.after, c.kind))}</span> after${esc(unit)}${esc(pct)}.${dir ? ` <small>(${esc(dir)})</small>` : ""}</li>`;
+}
+const magnitude = c => c.delta_ratio != null ? Math.abs(c.delta_ratio) : Math.abs(c.delta || 0);
+function moves(quality){
+  const usable = c => c.before != null && c.after != null && c.before_status !== "unread" && c.after_status !== "unread";
+  const top = verdict => quality.filter(c => c.verdict === verdict && usable(c)).sort((a, b) => magnitude(b) - magnitude(a)).slice(0, 5);
+  const worse = top("worse"), better = top("improved");
+  const box = (cls, title, list, none) => `<div class="move ${cls}"><h3>${title}</h3>${list.length ? `<ul>${list.map(moveLine).join("")}</ul>` : `<p class="muted">${none}</p>`}</div>`;
+  return `<div class="moves">${box("worse", "▼ Got worse", worse, "No measure got worse.")}${box("better", "✓ Got better", better, "No measure got better.")}</div>`;
+}
+
+function sourceTable(sources){
+  const rows = sources.map(s => `<tr><td><b>${pl(s.name)}</b></td><td class="st-${esc(s.status)}">${esc(s.status)}</td>
+    <td>${whenEt(s.covered_from, false)} to ${whenEt(s.covered_to, false)}</td>
+    <td class="num">${s.gap_hours != null ? esc(fmtNum(s.gap_hours, "count")) + " h" : "?"}</td>
+    <td class="num">${s.records != null ? esc(s.records.toLocaleString("en-US")) : "?"}</td><td>${pl(s.reason || "")}</td></tr>`).join("");
+  return `<div class="tw"><table><thead><tr><th>Source</th><th>Status</th><th>Covers</th><th>Gaps</th><th>Records</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function render(h){
+  const gen = Date.parse(h.generated_at);
+  el("stamp").innerHTML = "Process health · computed " + whenEt(h.generated_at, true);
+  const sm = h.summary || {}, days = h.days || [], comps = sm.comparisons || [];
+  const quality = comps.filter(c => !isGrey(c)), other = comps.filter(isGrey);
+  const measured = sm.measured !== false;
+  const before = sm.before || {}, after = sm.after || {};
+  let html = "";
+  if (!measured){
+    html += `<section><div class="banner">The before and after comparison is not measured: ${pl(sm.reason || "no reason given")}. The daily series below is still shown.</div></section>`;
+  } else {
+    html += `<section><h2>${esc(resetTitle(h.reset_label))}</h2>
+      <p class="muted">Compared: the <span class="mono">${esc(fmtNum(sm.window_hours, "count"))}</span> hours before the reset (${whenEt(before.start, false)} to ${whenEt(before.end, false)}) with the same number of hours after it (${whenEt(after.start, false)} to ${whenEt(after.end, false)}). Each figure is a rate per day or a share, so the two windows compare even where a source covers them unequally.</p>
+      <div class="tiles">
+        <div class="tile better"><b>${esc(sm.improved ?? 0)}</b><span>✓ measures better</span></div>
+        <div class="tile worse"><b>${esc(sm.worse ?? 0)}</b><span>▼ measures worse</span></div>
+        <div class="tile"><b>${esc(sm.flat ?? 0)}</b><span>– flat</span></div>
+        <div class="tile"><b>${esc(sm.unmeasured ?? 0)}</b><span>? unmeasured</span></div>
+      </div></section>`;
+    html += `<section><h2>What changed most</h2><p class="muted">The measures that moved furthest since the reset, with the direction that counts as good.</p>${moves(quality)}</section>`;
+  }
+  if (measured){
+    html += `<section><h2>Quality, before and after</h2><p class="muted">Each row shows how a measure stood before the reset, how it stands after, and whether that is better.</p>${compTable(quality)}</section>`;
+  }
+  html += `<section><h2>Quality by day</h2><p class="muted">One small chart per measure, one point per day.</p>
+    <div class="legend"><span>Dashed line: the reset day</span><span>Hollow point: a day with only part of its sources read</span><span>Gap in a line: unread</span></div>
+    <div class="series">${quality.map(c => chart(days, c)).join("")}</div></section>`;
+  if (measured){
+    html += `<section class="grey"><h2>Throughput and cost</h2><p>Context only. These are not quality: a faster or busier factory is not a better one.</p>${compTable(other)}</section>`;
+  }
+  html += `<section class="grey"><h2>Throughput and cost by day</h2><div class="series">${other.map(c => chart(days, c)).join("")}</div></section>`;
+  html += `<section><details class="sources"><summary>Sources and what was read</summary><p class="muted">Where each figure came from, what period each source covers, and whether it was read in full.</p>${sourceTable(h.sources || [])}</details></section>`;
+  el("body").innerHTML = html;
+}
+
+async function load(){
+  const banner = el("banner");
+  try {
+    const r = await fetch(DATA_FILE, {cache:"no-store"});
+    if (r.status === 404) throw new Error("the series is not published");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const h = await r.json();
+    if (!h || typeof h.generated_at !== "string" || !Array.isArray(h.days) || !h.summary) throw new Error("not a process-health series");
+    banner.hidden = true;
+    render(h);
+  } catch (e) {
+    banner.hidden = false;
+    banner.textContent = "The process-health series is unread (" + e.message + "). No figure is shown rather than a zero. Retrying every minute.";
+  }
+}
+load();
+setInterval(load, POLL_MS);
+</script>
+</body>
+</html>

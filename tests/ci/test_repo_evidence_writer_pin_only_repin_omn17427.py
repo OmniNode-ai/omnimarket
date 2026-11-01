@@ -5,12 +5,14 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 from omnimarket.occ_content_probe import classify_dependency_pin_only
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
 
 pytestmark = pytest.mark.unit
 
@@ -25,20 +27,14 @@ CALLER_PATH = (
 def test_caller_pins_the_reusable_that_derives_writer_pin_only_in_job() -> None:
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
     # The pin moved to a descendant that keeps this step: omnibase_core#1914 (OMN-20074), then omnibase_core#1932 (OMN-20032), then omnibase_core#1986 (OMN-21146), then omnibase_core#2079 (OMN-19513).
-    assert caller["jobs"]["repo-evidence"]["uses"].endswith(
-        "@dev-20261022114039-578228977721"
-    )
+    assert caller["jobs"]["repo-evidence"]["uses"].endswith(f"@{RECEIPT_GATE_PIN_TAG}")
 
 
 def test_pinned_verifier_ships_the_pin_only_classifier() -> None:
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
-    version = tuple(
-        int(part)
-        for part in caller["jobs"]["repo-evidence"]["with"]["verifier-version"].split(
-            "."
-        )
-    )
-    assert version >= (0, 4, 294)
+    inputs = caller["jobs"]["repo-evidence"]["with"]
+    assert re.fullmatch(r"dev-[0-9]{14}-[0-9a-f]{12}", inputs["verifier-tag"])
+    assert "verifier-version" not in inputs
 
 
 def test_post_release_bump_shape_is_pin_only() -> None:

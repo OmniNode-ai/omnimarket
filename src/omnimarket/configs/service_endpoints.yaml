@@ -12,6 +12,8 @@
 # Fail-closed: any missing required key raises KeyError at startup.
 
 github:
+  # Web origin: repository pages, clone remotes and release downloads.
+  web_url: "https://github.com"
   rest_url: "https://api.github.com"
   graphql_url: "https://api.github.com/graphql"
 
@@ -31,3 +33,36 @@ dharma:
   # Dharma Evaluation Runs API origin (OMN-20088). The trajectory evaluation
   # effect builds only the paths Dharma's published OpenAPI document names.
   api_url: "https://www.dharma-ai.io"
+
+pypi:
+  # Package index origin; the dod-verify release check appends the JSON API path
+  # (governance-plane read, no model routing authority).
+  base_url: "https://pypi.org"
+  # Governance-plane read of the package index; format with distribution and version.
+  release_json_template: "https://pypi.org/pypi/{distribution}/{version}/json"
+
+claude:
+  # Claude web origin; cloud-session pages live under /code/.
+  web_url: "https://claude.ai"
+  # Prefix of a cloud session page; the session id is appended to it.
+  cloud_session_url: "https://claude.ai/code/"
+
+json_schema:
+  # Dialect URI a JSON Schema document names in its "$schema" key.
+  draft_2020_12_url: "https://json-schema.org/draft/2020-12/schema"
+
+transport_sentinels:
+  # Pseudo-URLs that name a transport which is not HTTP. No network call is made
+  # to any of them; they are carried in endpoint fields and source paths.
+  gemini_cli_url: "cli://gemini"
+  inmemory_ui_component_prefix: "in-memory://ui_component/"
+
+schema_ids:
+  json_schema_draft_2020_12: "https://json-schema.org/draft/2020-12/schema"
+
+# Scheme-qualified targets and prefixes that name an in-process or logical
+# destination rather than a network endpoint.
+internal_targets:
+  gemini_cli: "cli://gemini"
+  ui_component_prefix: "in-memory://ui_component/"
+  secret_reference_prefix: "secret://onex/"

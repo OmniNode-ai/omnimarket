@@ -21,7 +21,10 @@ Failure modes each test is written against:
 * F5 two reports for one tenant's mode interleave between the read and the write;
 * F6 the exposure's topic, key or columns differ from what the Overview panel
   and the API Keys card read;
-* F8 the dashboard token reaches a served column.
+* F8 the dashboard token reaches a served column;
+* F9 the registry is read on the tenant write pool: tenant_projection_writer
+  holds no privilege on tenant_registry_mirror, so every report a runtime
+  delivers is refused with "permission denied" and nothing is stored.
 """
 
 from __future__ import annotations
@@ -31,17 +34,21 @@ import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
 import yaml
 
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer import (
+    HandlerLocalEnvironmentProjectionRunner,
     LocalEnvironmentProjectionWriter,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.tenant_registry_resolution import (
+    TenantRegistryResolutionError,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -172,12 +179,16 @@ class _Db:
         self.conn = conn
         self.pool = _Pool(conn)
 
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        """AsyncpgAdapter.fetchval: a read on its own pooled connection."""
+        return await self.conn.fetchval(sql, *args)
+
 
 def _writer(
     table: dict[tuple[str, str, str], dict[str, Any]],
     registry: dict[str, str] | None = None,
-) -> tuple[LocalEnvironmentProjectionWriter, _Conn, list[dict[str, Any]]]:
-    writer = LocalEnvironmentProjectionWriter()
+) -> tuple[HandlerLocalEnvironmentProjectionRunner, _Conn, list[dict[str, Any]]]:
+    writer = HandlerLocalEnvironmentProjectionRunner()
     conn = _Conn(table, registry)
     patch = pytest.MonkeyPatch()
     patch.setattr(writer, "_db", _Db(conn))
@@ -198,7 +209,9 @@ def _snapshot(table: dict[tuple[str, str, str], dict[str, Any]]) -> str:
     )
 
 
-def _project(writer: LocalEnvironmentProjectionWriter, report: dict[str, Any]) -> bool:
+def _project(
+    writer: HandlerLocalEnvironmentProjectionRunner, report: dict[str, Any]
+) -> bool:
     meta = MessageMeta(partition=0, offset=7, fallback_id="t", topic=STATUS_TOPIC)
     return asyncio.run(writer.project_event(STATUS_TOPIC, dict(report), meta))
 
@@ -413,7 +426,7 @@ def test_the_writer_subscribes_to_the_status_event_and_dead_letters_refusals() -
     contract = _contract()
     assert contract["event_bus"]["subscribe_topics"] == [STATUS_TOPIC]
     assert contract["event_bus"]["dlq_topics"]
-    assert LocalEnvironmentProjectionWriter().subscribe_topics == [STATUS_TOPIC]
+    assert HandlerLocalEnvironmentProjectionRunner().subscribe_topics == [STATUS_TOPIC]
 
 
 def test_runtime_dispatch_resolves_only_the_in_process_writer() -> None:
@@ -421,5 +434,146 @@ def test_runtime_dispatch_resolves_only_the_in_process_writer() -> None:
     assert [h["handler"]["name"] for h in handlers] == [
         "LocalEnvironmentProjectionWriter"
     ]
+    assert [h["handler"]["module"] for h in handlers] == [
+        LocalEnvironmentProjectionWriter.__module__
+    ]
     assert LocalEnvironmentProjectionWriter.onex_runtime_inprocess_dispatch is True
+    # The runner owns a pool, so the runtime must never dispatch it directly.
+    assert not getattr(
+        HandlerLocalEnvironmentProjectionRunner,
+        "onex_runtime_inprocess_dispatch",
+        False,
+    )
     assert _contract()["runtime_profiles"] == ["tenant-projection"]
+
+
+# ---- F9: the registry is read through its own binding, never the write pool ----
+# Measured on a lab lane 2026-10-29: tenant_projection_writer holds no
+# privilege on tenant_registry_mirror, so a registry read on the tenant write
+# pool raised "permission denied" and every runtime delivery was dead-lettered.
+
+
+class _NoMirrorConn(_Conn):
+    """The tenant write pool: the table, but no privilege on the mirror."""
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        raise PermissionError("permission denied for table tenant_registry_mirror")
+
+
+class _MirrorDb:
+    """The mirror's own read binding; records every query it answers."""
+
+    def __init__(self, registry: dict[str, str]) -> None:
+        self.registry = registry
+        self.queries: list[str] = []
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        self.queries.append(sql)
+        if "WHERE tenant_uuid" in sql:
+            found = [u for u in self.registry.values() if u == str(args[0])]
+            return UUID(found[0]) if found else None
+        if "WHERE tenant_slug" in sql:
+            found_uuid = self.registry.get(str(args[0]))
+            return UUID(found_uuid) if found_uuid else None
+        raise AssertionError(f"unexpected registry read: {sql}")
+
+
+class _TenantDb(_Db):
+    async def connect(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+
+class _Bindings:
+    def read_binding_for(self, table: str) -> str:
+        return "internal" if table == "tenant_registry_mirror" else "tenant"
+
+    def write_binding_for(self, table: str) -> str:
+        return "tenant"
+
+
+def _runtime_writer(
+    registry: dict[str, str],
+) -> tuple[
+    LocalEnvironmentProjectionWriter, _NoMirrorConn, _MirrorDb, list[dict[str, Any]]
+]:
+    """The runtime's writer, over a runner whose bindings are these stand-ins.
+
+    The runtime writer builds a fresh runner for every delivery, so the
+    stand-ins are fixed on a runner subclass rather than on one instance.
+    """
+    conn = _NoMirrorConn({}, {})
+    tenant_db = _TenantDb(conn)
+    mirror = _MirrorDb(registry)
+    published: list[dict[str, Any]] = []
+
+    class _Runner(HandlerLocalEnvironmentProjectionRunner):
+        async def _connect_standalone_databases(self) -> None:
+            # The topology's bindings: the mirror read is internal, the
+            # table's reads and writes are the tenant writer's.
+            self._standalone_bindings = _Bindings()
+            self._db_by_binding = cast(
+                "dict[str, Any]", {"internal": mirror, "tenant": tenant_db}
+            )
+
+        async def _close_standalone_databases(self) -> None:
+            return None
+
+        async def _stop_producer(self) -> None:
+            return None
+
+        async def publish_snapshot_delta(self, exposure: Any, **kwargs: Any) -> bool:
+            published.append({"topic": exposure.topic, **kwargs})
+            return True
+
+    class _Writer(LocalEnvironmentProjectionWriter):
+        runner_type = _Runner
+
+    return _Writer(), conn, mirror, published
+
+
+def _deliver(
+    writer: LocalEnvironmentProjectionWriter, report: dict[str, Any]
+) -> dict[str, Any]:
+    return writer.handle(
+        {**report, "_topic": STATUS_TOPIC, "_partition": 0, "_offset": 9}
+    )
+
+
+def test_a_runtime_delivery_reads_the_registry_through_its_own_binding() -> None:
+    """F9: a delivery confirms the tenant on the mirror's binding and stores the row."""
+    writer, conn, mirror, published = _runtime_writer({"local-test": TENANT})
+
+    result = _deliver(writer, _report("postgres", "running", T0))
+
+    assert result == {"projected": True}
+    assert list(conn.table) == [(TENANT, "compose", "postgres")]
+    assert mirror.queries
+    assert not any("tenant_registry_mirror" in sql for sql, _ in conn.statements)
+    assert [p["tenant_id"] for p in published] == [TENANT]
+
+
+def test_an_unknown_tenant_is_refused_before_the_write_pool_is_touched() -> None:
+    """F9: a tenant the mirror does not know is refused, with nothing written."""
+    writer, conn, mirror, published = _runtime_writer({})
+
+    with pytest.raises(TenantRegistryResolutionError):
+        _deliver(writer, _report("postgres", "running", T0))
+
+    assert mirror.queries
+    assert conn.statements == []
+    assert conn.table == {}
+    assert published == []
+
+
+def test_the_contract_declares_the_registry_read_on_the_internal_schema() -> None:
+    """F9: the registry read is declared, so the runtime gives it its own binding."""
+    tables = _contract()["db_io"]["db_tables"]
+    mirror = [t for t in tables if t["name"] == "tenant_registry_mirror"]
+
+    assert len(mirror) == 1
+    assert mirror[0]["schema"] == "omninode_internal"
+    assert mirror[0]["access"] == "read"
+    assert mirror[0]["database_ref"] == "application"

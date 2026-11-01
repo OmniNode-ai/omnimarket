@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# The reading half of the automation-liveness overlay completeness check (OMN-20804). The pure
+# half is node_automation_liveness_overlay_check_compute: it is handed text and judges it. This
+# node reads the private overlay, its sources declaration and the candidate files of each registry
+# clone, hands them to that compute handler and reports the findings.
+name: node_automation_liveness_overlay_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+
+description: >
+  Reads the private automation-liveness overlay, its sources declaration and every candidate file
+  of every registry repository the declaration names, runs the pure overlay completeness check on
+  that text and returns the findings, the report lines and the exit code of the command line.
+
+handler:
+  module: omnimarket.nodes.node_automation_liveness_overlay_check_effect.handlers.handler_automation_liveness_overlay_check_run
+  class: HandlerAutomationLivenessOverlayCheckRun
+  input_model: omnimarket.nodes.node_automation_liveness_overlay_check_effect.models.model_automation_liveness_overlay_check_run_request.ModelAutomationLivenessOverlayCheckRunRequest
+  output_model: omnimarket.nodes.node_automation_liveness_overlay_check_effect.models.model_automation_liveness_overlay_check_run_result.ModelAutomationLivenessOverlayCheckRunResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_overlay_run
+      handler:
+        name: HandlerAutomationLivenessOverlayCheckRun
+        module: omnimarket.nodes.node_automation_liveness_overlay_check_effect.handlers.handler_automation_liveness_overlay_check_run
+      input_model: omnimarket.nodes.node_automation_liveness_overlay_check_effect.models.model_automation_liveness_overlay_check_run_request.ModelAutomationLivenessOverlayCheckRunRequest
+      output_model: omnimarket.nodes.node_automation_liveness_overlay_check_effect.models.model_automation_liveness_overlay_check_run_result.ModelAutomationLivenessOverlayCheckRunResult
+
+entry_points:
+  console_scripts:
+    onex-automation-liveness-check: omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli:main
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects: []
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.automation-liveness-overlay-check-run-requested.v1]
+  publish_topics: [onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1]
+
+terminal_event: onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-liveness-overlay-check-run-requested.v1
+  external_trigger: "The onex-automation-liveness-check console script builds the request from its flags and prints the result."
+externally_consumed_topics: [onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1]
+
+metadata:
+  ticket: OMN-21536
+  transport_type: cli

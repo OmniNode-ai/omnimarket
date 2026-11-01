@@ -622,6 +622,17 @@ repos:
         pass_filenames: true
         stages: [pre-commit]
 
+      # A projection or consumer fixture that hand-writes the event payload its producer
+      # emits stays green while production changes. Check-only; a fenced site that no
+      # longer matches is a hard failure, and a scan below its floor fails.
+      - id: handwritten-event-payload
+        name: Fixtures derive event payloads from the producer
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
+        files: ^(tests/.*\.py|src/omnimarket/nodes/node_projection_[^/]+/tests/.*\.py|src/omnimarket/nodes/node_handwritten_event_payload_check_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
       # the topic and deriving the event type proves the edge exists; hand-typing the
       # topic string as an event_type asserts on a shape the bus never carries, because
@@ -943,13 +954,13 @@ repos:
         stages: [pre-commit]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
-      # OCC retirement S8). Runs omnibase_core's own handler, which owns this
+      # OCC retirement S8). Runs omnibase_core's own todo-format node runtime, which owns this
       # behaviour; the hook of the same id used to be pulled from the
       # onex_change_control repo block.
       - id: no-untracked-todos
         name: No untracked TODO/FIXME/HACK comments
         language: system
-        entry: uv run python -m omnibase_core.handlers.handler_todo_format
+        entry: uv run python -m omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format
         require_serial: true
         types: [python]
         stages: [pre-commit]
@@ -1311,7 +1322,7 @@ repos:
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
-      # core COMPUTE validator omnibase_core.validation.validator_routing_authority
+      # core COMPUTE node omnibase_core.nodes.node_routing_authority_check_compute
       # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py
       # and folds in the previously-unwired core validator_delegation_profile).
       # Proves the demo path resolves provider/served_model_id/endpoint_ref/
@@ -2201,7 +2212,7 @@ repos:
 
       - id: normalization-symmetry
         name: normalization-symmetry
-        entry: uv run python -m omnibase_core.validation.checker_normalization_symmetry
+        entry: uv run python -m omnibase_core.nodes.node_normalization_symmetry_check_compute.runtime_normalization_symmetry_check
         language: system
         pass_filenames: false
 

@@ -13,21 +13,134 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from fnmatch import fnmatch
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EnumDuplicateEvidence(StrEnum):
-    """Why an open pull request or a live CLAIM already owns the fix."""
+    """Shared intent outside a stack; ownerless drafts supply notes, except for BRANCH."""
 
     BRANCH = "branch"  # a pull request is already open from this branch
-    LINES = "lines"  # both change the same existing lines, or add the same new file
-    FILES_AND_TITLE = "files_and_title"  # the same file and the same words in the title
+    LINES = "lines"  # overlapping lines/new files AND a shared ticket or materially same change
+    FILES_AND_TITLE = "files_and_title"  # same file and distinctive title words; ownerless drafts only inform
     CAUSE_CITED = (
-        "cause_cited"  # the title or a Fix-Check marker cites the same check or cause
+        "cause_cited"  # same cited check or cause; ownerless drafts only inform
     )
     CLAIM = "claim"  # another lane holds a live CLAIM with the same cause= cell
+
+
+class EnumStackBaseRule(StrEnum):
+    """Where the diff a stacked branch is judged on starts."""
+
+    #: The head of the newest open pull request the branch contains; the base branch when it contains none.
+    NEWEST_CONTAINED_OPEN_PR_HEAD = "newest_contained_open_pr_head"
+    #: The base branch always: a stack is judged on every commit it holds.
+    BASE_BRANCH = "base_branch"
+
+
+class ModelDuplicateIntentConfig(BaseModel):
+    """Contract-owned ticket recognition and changed-line similarity thresholds.
+
+    Overlapping lines are one change when their changed-line digests are at least ``min_same_change_similarity``
+    alike. A shared ticket lowers that bar to ``min_same_ticket_similarity``: several pull requests of one
+    ticket edit the same line with different changes, and only changes that still share a part are one fix.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_pattern: str = Field(min_length=1)
+    min_same_change_similarity: float = Field(gt=0, le=1)
+    min_same_ticket_similarity: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _ticket_bar_is_the_lower(self) -> ModelDuplicateIntentConfig:
+        if self.min_same_ticket_similarity > self.min_same_change_similarity:
+            raise ValueError(
+                "min_same_ticket_similarity must not exceed min_same_change_similarity"
+            )
+        return self
+
+
+class ModelDuplicateReportConfig(BaseModel):
+    """How much of the judged commit list the refusal message prints (the JSON answer holds all of it)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    judged_commits_shown: int = Field(ge=1)
+
+
+class ModelDuplicateGuardConfig(BaseModel):
+    """The compute node's shipped configuration."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    generic_paths: tuple[str, ...]
+    intent: ModelDuplicateIntentConfig
+    report: ModelDuplicateReportConfig
+
+
+class ModelDuplicateStackConfig(BaseModel):
+    """The snapshot contract's rule for reading a stacked branch."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    base_rule: EnumStackBaseRule
+
+
+class ModelDuplicateDigestConfig(BaseModel):
+    """Changed-line fingerprint settings owned by the snapshot contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    min_line_chars: int = Field(ge=1)
+    prefix_chars: int = Field(ge=1, le=40)
+
+
+def _repo_key(repo: str) -> str:
+    """A repository in the one spelling rules are keyed by: short name, case folded, hyphens as underscores."""
+    return repo.strip().split("/")[-1].casefold().replace("-", "_")
+
+
+def keyed_by_repository(
+    paths: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[str, ...]]:
+    """A repository-to-paths mapping re-keyed by each repository's short name."""
+    return {_repo_key(name): files for name, files in paths.items()}
+
+
+class ModelDuplicateGuardRules(BaseModel):
+    """Which files say nothing about a shared fix, declared as data in the node's ``contract.yaml``.
+
+    ``generic_paths`` are glob patterns every kind of change touches in every repository (a lock file, a
+    changelog, a ticket contract, the ledger); each is matched against the whole path and against its last
+    segment. ``generated_paths`` maps a repository's short name to the paths that repository regenerates in
+    every pull request of a kind (a rendered index, whose count rows every plan pull request rewrites); each
+    is matched against the whole path only, so ``beta/plans/INDEX.md`` never names an ``INDEX.md`` elsewhere.
+    Overlap confined to these files is not duplication; authored overlap needs shared intent.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    generic_paths: tuple[str, ...] = ()
+    generated_paths: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @field_validator("generated_paths")
+    @classmethod
+    def _repos_are_short_names(
+        cls, value: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        return keyed_by_repository(value)
+
+    def ignores(self, repo: str, path: str) -> bool:
+        """True when ``path`` is a generic file, or one ``repo`` declares generated."""
+        name = path.rsplit("/", 1)[-1]
+        if any(fnmatch(path, p) or fnmatch(name, p) for p in self.generic_paths):
+            return True
+        return any(
+            fnmatch(path, p) for p in self.generated_paths.get(_repo_key(repo), ())
+        )
 
 
 class ModelFileTouch(BaseModel):
@@ -43,6 +156,8 @@ class ModelFileTouch(BaseModel):
     path: str = Field(min_length=1)
     added: bool = False
     spans: tuple[tuple[int, int], ...] = ()
+    #: Sorted unique sha1 prefixes of normalized, signed changed lines.
+    digest: tuple[str, ...] = ()
 
 
 class ModelPrTouch(BaseModel):
@@ -54,7 +169,10 @@ class ModelPrTouch(BaseModel):
 
 
 class ModelOpenPr(BaseModel):
-    """One open pull request as the PR watcher records it. ``touch`` is None when its diff was not read."""
+    """One open pull request with watcher draft facts and snapshot ancestry.
+
+    ``touch`` is None when its diff was not read; ``stacked`` exempts ancestors and descendants.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -64,6 +182,17 @@ class ModelOpenPr(BaseModel):
     title: str
     body: str = ""
     touch: ModelPrTouch | None = None
+    stacked: bool = False
+    draft: bool = False
+
+
+class ModelJudgedCommit(BaseModel):
+    """One commit of the branch's own change: a 12-character sha and its subject line."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sha: str = Field(min_length=1)
+    subject: str = ""
 
 
 class ModelPrDuplicateGuardRequest(BaseModel):
@@ -80,8 +209,22 @@ class ModelPrDuplicateGuardRequest(BaseModel):
     cause: str | None = None
     now: datetime
     touch: ModelPrTouch | None = None
+    #: The commits ``touch`` was read from: the branch's own, newest first, past the open pull requests it contains.
+    judged_commits: tuple[ModelJudgedCommit, ...] = ()
+    #: Where ``touch`` starts: the 12-character sha of the newest contained open pull request head, else None (the base branch).
+    judged_base: str | None = None
     open_prs: tuple[ModelOpenPr, ...] = ()
     ledger_text: str = ""
+    #: Per-repository paths the deployment declares generated (a rendered index every pull request of a kind
+    #: regenerates), read from the node's deployment overlay by the caller; the guard is pure and reads no file.
+    generated_paths: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @field_validator("generated_paths")
+    @classmethod
+    def _repos_are_short_names(
+        cls, value: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        return keyed_by_repository(value)
 
 
 class ModelDuplicateEvidence(BaseModel):
@@ -105,6 +248,9 @@ class ModelPrDuplicateGuardResult(BaseModel):
     notes: tuple[str, ...] = ()
     unread: tuple[str, ...] = ()
     message: str = ""
+    #: The commits the answer judged (echoed from the request, newest first) and the sha their diff started from.
+    judged_commits: tuple[ModelJudgedCommit, ...] = ()
+    judged_base: str | None = None
 
 
 class ModelPrDuplicateSnapshotRequest(BaseModel):

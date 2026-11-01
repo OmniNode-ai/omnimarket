@@ -45,6 +45,15 @@ requirements:
       - id: "AC3"
         statement: >-
           AC3: every work contract input pin, including the uv.lock environment pin, matches the file on disk -- falsifier: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov fails
+  - id: "req-omn21288-ledger-serve-missing-writer-topic"
+    statement: >-
+      One writer whose command topic the broker does not hold never stops the work-ledger
+      serve for the other writers (ledger host h200, 2026-10-31: the serve restarted in a
+      loop because onex.cmd.omnimarket.work-ledger-append-from-dev-jake-macbook-pro-2.v1
+      was absent from the dev broker).
+    acceptance:
+      - id: "DoD3"
+        statement: "DoD3: a writer topic whose subscribe fails is logged and skipped, the other writers keep appending, readiness is not degraded by it, and the next resubscribe takes it again; the shared command topic stays fatal -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov fails"
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
@@ -52,6 +61,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The node's tests pass."
     command: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov"
+  - kind: "tests"
+    description: "A missing writer topic does not stop the work-ledger serve."
+    command: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -176,3 +188,27 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-r4-missing-writer-topic"
+    description: "A writer topic the broker cannot serve is logged and skipped while the other writers append, and the next resubscribe retakes it. Three of the four tests fail at the merge base, where one failed writer subscribe leaves start() and the serve exits."
+    source: "manual"
+    binds_ac: ["DoD3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-missing-writer-topic-deploy-probe"
+    description: >-
+      Hosted structural deployment smoke, requiring no lab route, broker or ledger host:
+      read the work-ledger bus host at the checked-out PR head and require that it takes
+      writer topics through take_writer_topics, then run the in-memory bus tests in which
+      one writer topic refuses its subscribe. It fails against the merge base, which has
+      no writer_topics module. The ledger host's serve picks the change up only when its
+      checkout is advanced after the merge.
+    source: "manual"
+    binds_ac: ["DoD3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/work_ledger_bus/bus.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "await take_writer_topics(" > /dev/null'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"

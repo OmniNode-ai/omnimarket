@@ -349,7 +349,7 @@ requirements:
     statement: "A pull request that changes the pre-push set runs omnibase_core's hook push rehearsal before it merges."
     acceptance:
       - id: "AC62"
-        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a full 40-hex SHA, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
+        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a dev-merge tag (dev-<14 digits>-<12 hex>) that is on an omnibase_core branch, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
   - id: "req-review-finding-parse-veto"
     statement: "A blocking hostile-review finding that claims a Python, YAML or JSON file is syntactically invalid is checked by parsing that file at the pull request head, and dropped with a logged reason when it parses; findings of every other class are left as the reviewers raised them."
     acceptance:
@@ -913,11 +913,6 @@ requirements:
     acceptance:
       - id: "AC187"
         statement: "AC187: test_terminal_emit_close_uses_remaining_budget records exactly one publisher session deadline and asserts finished minus that deadline is below 0.3 seconds; both publish outcomes retain the spool and cancellation assertions, and the background-loop cancellation case passes. The source assertion check fails on the merge base, which times the whole handle call."
-  - id: "req-pre-dispatch-terminal-test-discovery-setup"
-    statement: "The pre-dispatch terminal waiter regression test runs the runtime port's real first route discovery before its 10 s terminal deadline, so that deadline times only the terminal reaching the waiter."
-    acceptance:
-      - id: "AC187"
-        statement: "AC187: test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic awaits the runtime port's route discovery before the asyncio.wait_for that keeps timeout=10 around dispatch, for the runtime port kind; the source check fails on the merge base, which times discovery inside that wait."
   - id: "req-unstated-outcome-pair"
     statement: "A delegation_events row whose terminal states neither operational_outcome nor content_verdict, and whose stored row states neither, carries the pair its own terminal evidence decides: completed/usable for an evidenced success (terminal_ok, a model and an accepted rung), the pair its cause maps to for a typed failure. A stated pair is never replaced, and the async writer reconciles a first write the way the sync writer does."
     acceptance:
@@ -1008,6 +1003,55 @@ requirements:
         statement: "AC1742713: in a second repository, #1326 against open #1320 (the same dispatch_fix_guard rewrite) is refused naming #1320, and another lane's live CLAIM with the same cause= cell refuses with that lane named -- falsifier: the fold reads clear for either planted case"
       - id: "AC1742714"
         statement: "AC1742714: a watcher state older than 15 minutes, an unset ONEX_LEDGER_PATH or a branch no checkout holds exits 3 and opens nothing -- falsifier: pr-create reaches the bus with any of the three"
+  - id: "req-ledger-facts-quoted-cause"
+    statement: "The landing ledger facts compute reads a quoted CLAIM cause cell as its quoted text and reports an owner the model refuses instead of raising."
+    acceptance:
+      - id: "AC1742715"
+        statement: "AC1742715: a CLAIM cause cell written as cause=\"omnibase_infra:Hostile Review Thread Gate\" followed by free text reads as owner OmniNode-ai/omnibase_infra with check Hostile Review Thread Gate, and an unclosed-quote CLAIM is listed in cause_owners_skipped while every other owner is returned -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -k 'quoted_cause or model_refuses' -q fails at the merge base"
+  - id: "req-core-dev-tag-repoint"
+    statement: "omnimarket resolves omnibase_core at its dev merge tag dev-20261030152335-66d35d2283c3 and omnibase_infra at dev-20261030213019-091013fd7adb, and the callers of the handler modules those releases moved run the new node homes."
+    acceptance:
+      - id: "AC1742716"
+        statement: "AC1742716: with the two pins in place, the dependency-provenance script reads its sibling list and dev-tag shape from core's first_party_ref contract rows, and the duplicate-id, todo-format, routing-authority, contract-walker and OCC port callers run core's node runtimes -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py fails at the merge base (it calls load_policy, which the old script lacks) or passes there"
+  - id: "req-host-reconcile-owns-schedule"
+    statement: "The host reconcile node owns its schedule: its contract declares an hourly repair-mode run, its overlay declares which hosts run the reconciler and what schedules it on each, the package names no host, and a host that declares the reconciler with no scheduler fails by name."
+    acceptance:
+      - id: "AC1742721"
+        statement: "AC1742721: a host that declares the reconciler with no scheduler makes schedule check and every schedule verb exit 1 naming that host, and an overlay in which every host has a scheduler exits 0 -- falsifier: tests/test_host_reconcile_schedule.py::test_a_host_that_declares_the_reconciler_with_no_scheduler_fails_naming_the_host passes with the gap host unnamed or the check exits 0 on it"
+      - id: "AC1742722"
+        statement: "AC1742722: the unit the node renders runs python -m omnimarket.nodes.node_host_reconcile_effect with the registry root and the tracked branch, never a check flag, and the arguments it passes request repair mode from the node's own entry point -- falsifier: tests/test_host_reconcile_schedule.py::test_the_rendered_unit_runs_the_node_in_repair_mode sees a check flag or a mode other than repair"
+      - id: "AC1742723"
+        statement: "AC1742723: the cadence is the contract's, once an hour, and the package names no host or address -- falsifier: tests/test_host_reconcile_schedule.py::test_the_contract_declares_an_hourly_repair_schedule and ::test_the_package_names_no_host"
+      - id: "AC1742724"
+        statement: "AC1742724: schedule install on a host whose row is systemd-user writes both units, enables the timer and fails when systemd lists no schedule, when the interpreter is missing or when any other host lacks a scheduler, and installs nothing for a host scheduled by another owner -- falsifier: the install tests of tests/test_host_reconcile_schedule.py"
+  - id: "req-terminal-wait-excludes-route-discovery"
+    statement: "The pre-dispatch failure terminal test runs the runtime port's real route discovery before its terminal wait, so the 10 second deadline times only dispatch and the terminal, not the cold parse of every node contract."
+    acceptance:
+      - id: "AC1742725"
+        statement: "AC1742725: test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic awaits the runtime port's own route resolution before asyncio.wait_for and keeps the wait_for timeout at 10 seconds; both port kinds pass -- falsifier: the source check below fails on the merge base, whose single 10 second wait_for also covers first route discovery"
+  - id: "req-pr4603-shared-budget-readback"
+    statement: "The delegation budget projection uses the infra revision that declares its relation and grants, and the readback measures shared projection rows instead of host-local receipts by default."
+    acceptance:
+      - id: "AC460301"
+        statement: "The budget readings projection resolves its database privileges and wires through the real infra runtime with the locked dependency; the old infra pin fails Event Chain Gate collection on missing SELECT."
+      - id: "AC460302"
+        statement: "Delegate-skill terminals retain their budget and duration, refuse older and untimed deliveries, and the projection readback selects completed terminals inside the requested window and fails an over-budget run."
+      - id: "AC460303"
+        statement: "The budget readings migrations are byte-identical to the files delivered by infra#5469, including transactional reconciliation of required columns, defaults and constraints."
+  - id: "req-pr4640-test-bus-lane"
+    statement: "Integration tests use the broker from the declared test lane and refuse any other lane before constructing a producer."
+    acceptance:
+      - id: "AC1742726"
+        statement: "AC1742726: config/test_bus_lane.yaml selects a concrete lane, an ambient KAFKA_BOOTSTRAP_SERVERS naming another lane cannot change the resolved broker, and conftest uses the declared broker -- falsifier: tests/test_bus_lane_guard_omn17427.py fails its declared-lane, ambient-env or conftest-broker cases"
+      - id: "AC1742727"
+        statement: "AC1742727: every other concrete lane's broker is refused, including an aliased host with that lane's port, an undeclared broker is refused, and the declared broker is accepted -- falsifier: tests/test_bus_lane_guard_omn17427.py fails its broker-refusal or acceptance cases"
+      - id: "AC1742728"
+        statement: "AC1742728: the Kafka fixture refuses another lane's broker before constructing any producer -- falsifier: tests/test_bus_lane_guard_omn17427.py::test_kafka_probe_refuses_before_constructing_a_producer constructs a producer or does not raise BusLaneRefusalError"
+  - id: "req-core-infra-pins-move-together"
+    statement: "omnimarket pins omnibase_core at dev-20261031000524-fc6159b98026 and omnibase_infra at dev-20261031054837-4284f5bf5587, whose own omnibase-core pin is that same tag, so the sibling sources resolve to one core."
+    acceptance:
+      - id: "AC1742729"
+        statement: "AC1742729: pyproject.toml and uv.lock name the same infra and core dev merge tags, the locked core tag is the one recorded for the locked infra commit, and the lock pins the newest recorded pair (infra 4284f5bf5587, core fc6159b98026) -- falsifier: tests/ci/test_sibling_core_pin_pair_omn17427.py fails at the merge base, whose lock pins infra 091013fd7adb and core 66d35d2283c3"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -2097,7 +2141,7 @@ dod_evidence:
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_policy.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerReviewFindingPolicy", "PRE_EXISTING", "NO_EVIDENCE", "ROUND_LIMIT")); print("review finding policy deploy probe: PASS")'
   - id: "dod-omn17427-ac62-hook-push-rehearsal-caller"
-    description: "The hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin, and its path-regex selects the hook paths and no source path."
+    description: "The hook push rehearsal caller runs on pull requests and merge-queue entries at a dev-merge tag pin, and its path-regex selects the hook paths and no source path."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -2105,12 +2149,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC62"]
   - id: "dod-omn17427-hook-push-rehearsal-deploy-probe"
-    description: "Deploy probe. GitHub serves the hook push rehearsal caller at the checked-out HEAD calling omnibase_core's reusable hook push rehearsal at a full SHA with a path-regex that matches .pre-commit-config.yaml. It fails at the merge base, where the caller does not exist, and needs only GitHub access and Python on the hosted runner."
+    description: "Deploy probe. GitHub serves the hook push rehearsal caller at the checked-out HEAD calling omnibase_core's reusable hook push rehearsal at a dev-merge tag with a path-regex that matches .pre-commit-config.yaml. It fails at the merge base, where the caller does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch(r"dev-[0-9]{14}-[0-9a-f]{12}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
   - id: "dod-omn17427-ac70-review-finding-parse-veto"
     description: "A blocking 'invalid Python' finding on the omnimarket#4063 test file, which parses at its blocked head, is dropped with a reason and the verdict becomes passed; a Python, YAML or JSON file that does not parse keeps its finding."
     source: "manual"
@@ -4258,31 +4302,136 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-ac187-terminal-discovery-setup"
-    description: "This PR moves the runtime port's real route discovery out of the 10 s terminal wait in the pre-dispatch failure regression. The source check refuses the merge-base test, which discovers routes inside that wait; the focused test run passes both port kinds."
+  - id: "dod-omn17427-core-dev-tag-repoint"
+    description: "With omnibase_core at its dev merge tag dev-20261030152335-66d35d2283c3, the dependency-provenance script reads the sibling list and dev-tag shape from core's first_party_ref contract rows, the todo-format, duplicate-id, routing-authority and contract-walker callers run core's node runtimes, and the OCC contract ports, the Done-write receipt gate and the migration-conflicts consumer import their node homes. These tests fail at the merge base once the core pin moves, because the old handler modules are gone. The one yamlfmt fixpoint test is deselected because the verifier host has no yamlfmt binary and the refuse-skips flag counts its skip as a failure; it still runs in the CI gate that installs yamlfmt."
     source: "manual"
-    binds_ac: ["AC187"]
+    binds_ac: ["AC1742716"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/scripts/test_check_dep_provenance.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_duplicate_registry_ids.py tests/ci/test_todo_format_core_owner_omn20885.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_precommit_hooks_local_omn20068.py tests/test_routing_authority_gate.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py --deselect tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py::TestComputeReceiptIsYamlfmtIdempotent::test_the_deploy_receipt_is_a_yamlfmt_fixpoint -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_no_retired_model_values.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/chains/generated -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ledger-facts-quoted-cause"
+    description: "The quoted cause cell reads as its text and a refused owner is skipped and reported, not raised."
+    source: "manual"
+    binds_ac: ["AC1742715"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-host-reconcile-owns-schedule"
+    description: "The contract's hourly repair schedule, the gap check that names a host declaring the reconciler with no scheduler, the rendered unit and the install, status, run-now and uninstall verbs. The tests fail at the merge base, where the node has no schedule."
+    source: "manual"
+    binds_ac: ["AC1742721", "AC1742722", "AC1742723", "AC1742724"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_schedule.py tests/test_host_reconcile_effect.py tests/test_host_reconcile_topics.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac1742725-discovery-before-wait"
+    description: "The runtime port's real route discovery runs before the terminal wait, which keeps its 10 second deadline. The source check refuses the merge-base test, where one wait_for covered discovery and the terminal."
+    source: "manual"
+    binds_ac: ["AC1742725"]
     checks:
       - check_type: "command"
         check_value: |-
           python3 - <<'PY'
+          import ast
           from pathlib import Path
 
-          text = Path('tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py').read_text()
-          discovery = text.index('await port._resolved_routes()')
-          wait = text.index('result = await asyncio.wait_for(')
-          assert discovery < wait
-          assert 'timeout=10,' in text[wait:]
-          print('route discovery runs before the 10 s terminal wait')
+          path = Path('tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py')
+          tree = ast.parse(path.read_text())
+          test = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == 'test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic')
+          statements = {ast.unparse(node) for node in ast.walk(test)}
+          assert 'routes = await port._resolved_routes()' in statements
+          waits = [node for node in ast.walk(test) if isinstance(node, ast.Call) and ast.unparse(node.func) == 'asyncio.wait_for']
+          assert any(kw.arg == 'timeout' and ast.unparse(kw.value) == '10' for call in waits for kw in call.keywords)
+          print('route discovery runs before the 10 second terminal wait')
           PY
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-terminal-discovery-probe"
-    description: "Deploy probe. On the hosted runner, the checked-out pre-dispatch failure regression delivers the canonical terminal to the waiter through the runtime port after real route discovery. Locked dependencies and the checkout suffice; no broker or credentials, and no live deployment claim."
+  - id: "dod-omn17427-pr4603-runtime-wiring"
+    description: "The real projection operation resolver reads the locked infra topology during collection, and the runtime wires the node without missing relation privileges. The old infra pin fails collection before the selected assertion."
+    source: "manual"
+    binds_ac: ["AC460301"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_projection_delegation_budget_readings.py -q --no-cov --refuse-skips -k test_golden_chain_only_the_writer_is_routed"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-shared-budget"
+    description: "The fold and readback tests exercise terminal budgets, producer ordering, default projection selection, time-window filtering and a planted over-budget run."
+    source: "manual"
+    binds_ac: ["AC460302"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn21326_delegation_budget_readings_projection.py tests/test_omn21326_delegation_budget_readings_writer.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov --refuse-skips -k 'projection or terminal_the_lane'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-migration-parity"
+    description: "Both SQL digests bind this package's migrations to the bytes in infra dev-20261031045550-7035bd384149. The merge-base create migration has different bytes."
+    source: "manual"
+    binds_ac: ["AC460303"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn17427_budget_readings_migration_parity.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4603-deploy-probe"
+    description: "Hosted deployment artifact probe drives the checked-out projection writer through the real in-memory runtime and terminal topics, then tests the projection readback's verdict. Requires only the checkout and locked Python dependencies, with no database, broker, credentials or lab access. A missing topology grant or an incorrect fold or verdict fails this probe. This is a package readback, not a live deployment attestation."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov --refuse-skips -k 'real_handler_terminal and runtime'"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_projection_delegation_budget_readings.py tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov --refuse-skips -k 'projection or terminal_the_lane'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4640-declared-test-broker"
+    description: "The declared lane resolves to its concrete broker despite another lane's ambient environment, and conftest uses that broker."
+    source: "manual"
+    binds_ac: ["AC1742726"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_bus_lane_guard_omn17427.py -k 'declared_lane_has or ambient_env or conftest_broker' -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4640-other-brokers-refused"
+    description: "Other lanes, aliased hosts and undeclared brokers are refused; the declared broker is accepted."
+    source: "manual"
+    binds_ac: ["AC1742727"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_bus_lane_guard_omn17427.py -k 'every_other_lane or aliased_host or undeclared_broker or broker_is_accepted' -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4640-refuse-before-producer"
+    description: "The integration fixture refuses another lane before producer construction."
+    source: "manual"
+    binds_ac: ["AC1742728"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_bus_lane_guard_omn17427.py::test_kafka_probe_refuses_before_constructing_a_producer -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4640-test-bus-lane-deploy-probe"
+    description: "Hosted-runner checkout readback of the test-bus integration path: resolve the declared broker, reject other lanes and assert that refusal precedes producer construction. Requires the checkout and locked test dependencies, with no broker, database or credentials; it makes no live deployment claim."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_bus_lane_guard_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-core-infra-pin-pair"
+    description: "omnimarket moves its omnibase_core and omnibase_infra dev merge tags together: the locked core tag is the one omnibase_infra#5483 pins, pyproject.toml and uv.lock agree, and the lock pins the newest recorded infra and core pair. Fails at the merge base, which pins the older pair."
+    source: "manual"
+    binds_ac: ["AC1742729"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"

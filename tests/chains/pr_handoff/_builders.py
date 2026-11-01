@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import BaseModel
 
 from omnimarket.events.topics import (
@@ -31,6 +31,7 @@ from omnimarket.events.topics import (
 from omnimarket.models.pr_handoff import (
     EnumPrHandoffLabProofSource,
     ModelPrHandoffLabProof,
+    ModelPrHandoffLandingScopeReading,
     ModelPrHandoffLedgerAppendCommand,
     ModelPrHandoffLedgerAppended,
     ModelPrHandoffRequested,
@@ -65,6 +66,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 from tests.chains.chain_assert import ChainEvent, ChainRecorder
 
 REPO = "omnimarket"
+_DEFAULT_LANDING_SCOPE = ModelPrHandoffLandingScopeReading(repos=(REPO,))
 PR = 4242
 KEY = f"{REPO}#{PR}"
 TICKET = "OMN-20636"
@@ -244,10 +246,13 @@ class HandoffRun:
     orchestrator: HandlerPrHandoffOrchestrator = field(init=False)
     effect: HandlerPrHandoffLedgerEffect = field(init=False)
     effect_clock: datetime = T0
+    landing_scope: ModelPrHandoffLandingScopeReading = _DEFAULT_LANDING_SCOPE
 
     def __post_init__(self) -> None:
         self.recorder = ChainRecorder(self.bus)
-        self.orchestrator = HandlerPrHandoffOrchestrator(store=self.store)
+        self.orchestrator = HandlerPrHandoffOrchestrator(
+            store=self.store, landing_scope=self.landing_scope
+        )
         self.effect = HandlerPrHandoffLedgerEffect(
             appender=self.ledger, host_name="h202", clock=lambda: self.effect_clock
         )
@@ -290,13 +295,15 @@ class HandoffRun:
 async def drive(
     ledger_answers: Sequence[EnumWorkLedgerAppendStatus | None] | RealLedger,
     steps: Sequence[tuple[BaseModel, UUID]],
+    *,
+    landing_scope: ModelPrHandoffLandingScopeReading = _DEFAULT_LANDING_SCOPE,
 ) -> HandoffRun:
     ledger = (
         ledger_answers
         if isinstance(ledger_answers, RealLedger)
         else ScriptedLedger(list(ledger_answers))
     )
-    run = HandoffRun(ledger=ledger)
+    run = HandoffRun(ledger=ledger, landing_scope=landing_scope)
     for message, cid in steps:
         await run.send(message, cid=cid)
     return run

@@ -503,14 +503,17 @@ class NodeMergeSweep:
 
         from typing import cast
 
-        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
         from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
             ProtocolEventBusPublisher,
         )
 
+        from omnimarket.nodes.node_merge_sweep_compute.container.container_inmemory import (
+            bind_event_bus,
+        )
+
         noop_merge = _NoopMerge()
         try:
-            _bus = EventBusInmemory()
+            _bus = bind_event_bus()
             await _bus.start()
             orch = HandlerPrLifecycleOrchestrator(
                 inventory=_PrebuiltInventory(),

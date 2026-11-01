@@ -253,9 +253,7 @@ class TestTheMechanism:
         with pytest.raises(TaskClassSelectionError, match="selection_fallback"):
             authority.resolve_task_type("nothing matches", explicit=None)
 
-    def test_a_ceiling_that_reaches_the_port_wait_is_refused_at_load(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_ceiling_above_the_bound_is_refused_at_load(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="less_than_equal"):
             _authority(
                 tmp_path,
@@ -263,7 +261,7 @@ class TestTheMechanism:
                     "task_classes": {"a": _public(1, ["x"])},
                     "execution_budgets": {
                         "a": {
-                            "task_class_timeout_ceiling_seconds": 300,
+                            "task_class_timeout_ceiling_seconds": 901,
                             "terminal_delivery_margin_seconds": 60,
                         }
                     },
@@ -445,6 +443,8 @@ _SHAPE_AGNOSTIC_FLOORS = frozenset(
         "short_form_adequacy",
         # OMN-19529: number grounding constrains facts, not the output shape.
         "numbers_grounded",
+        # OMN-21846: reject-only; a grant the input never gave is wrong in any shape.
+        "operator_voice",
     }
 )
 

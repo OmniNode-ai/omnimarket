@@ -30,6 +30,10 @@ from omnimarket.routing.task_class_contract_path import (
 
 # OMN-19987: the --refuse-skips option, for evidence checks that must not pass
 # when their proof skipped. Importing the hooks here loads them for every run.
+from tests.bus_lane_guard import (
+    assert_broker_in_declared_lane,
+    resolve_test_bus_broker,
+)
 from tests.refuse_skips import (
     pytest_addoption as pytest_addoption,
 )
@@ -430,6 +434,9 @@ def _isolate_unit_env(
     """
     test_path = str(request.node.fspath)
     if "/tests/integration/" in test_path:
+        # OMN-17427: these tests reach a real broker, so the ambient value
+        # must not decide which one. Pin the declared test lane's broker.
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", _KAFKA_BOOTSTRAP)
         return
 
     # Clear Kafka broker env vars so unit tests never reach a live broker.
@@ -610,7 +617,9 @@ _POSTGRES_PASSWORD = os.environ.get(
 )
 _POSTGRES_DB = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
 
-_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+# OMN-17427: the integration broker is the declared test lane's, never the
+# ambient KAFKA_BOOTSTRAP_SERVERS an operator machine exports for other lanes.
+_KAFKA_BOOTSTRAP = resolve_test_bus_broker()
 
 
 def _integration_dsn() -> str:
@@ -654,6 +663,7 @@ async def integration_kafka_bootstrap(request: pytest.FixtureRequest) -> str:
         pytest.skip("integration_kafka_bootstrap requires @pytest.mark.integration")
     from aiokafka import AIOKafkaProducer
 
+    assert_broker_in_declared_lane(_KAFKA_BOOTSTRAP)
     probe = AIOKafkaProducer(bootstrap_servers=_KAFKA_BOOTSTRAP)
     try:
         await asyncio.wait_for(probe.start(), timeout=5)
@@ -724,6 +734,7 @@ async def kafka_integration_bus(
     """
     if not request.node.get_closest_marker("integration"):
         pytest.skip("kafka_integration_bus requires @pytest.mark.integration")
+    assert_broker_in_declared_lane(_KAFKA_BOOTSTRAP)
 
     config = ModelKafkaEventBusConfig(
         bootstrap_servers=_KAFKA_BOOTSTRAP,

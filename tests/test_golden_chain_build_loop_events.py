@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
@@ -40,11 +40,14 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     BuildTarget,
     ClassifyRequest,
     ClassifyResult,
+    CloseoutRequest,
     CloseoutResult,
+    DispatchRequest,
     DispatchResult,
     RsdFillRequest,
     RsdFillResult,
     ScoredTicket,
+    VerifyRequest,
     VerifyResult,
 )
 
@@ -63,16 +66,12 @@ REQUIRED_PHASES = [
 
 
 class MockCloseout:
-    async def handle(
-        self, *, correlation_id: UUID, dry_run: bool = False
-    ) -> CloseoutResult:
+    async def handle(self, request: CloseoutRequest) -> CloseoutResult:
         return CloseoutResult(success=True)
 
 
 class MockVerify:
-    async def handle(
-        self, *, correlation_id: UUID, dry_run: bool = False
-    ) -> VerifyResult:
+    async def handle(self, request: VerifyRequest) -> VerifyResult:
         return VerifyResult(all_critical_passed=True)
 
 
@@ -104,10 +103,7 @@ class MockDispatch:
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        targets: tuple[BuildTarget, ...],
-        dry_run: bool = False,
+        request: DispatchRequest,
     ) -> DispatchResult:
         return DispatchResult(
             total_dispatched=self._dispatched,

@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Every step and flag of OmniNode-ai/omnibase install.sh, against the
+# command that owns it now.
+#
+#   moved    now owned by the onex command named in owner
+#   kept     stays in install.sh (owner: install.sh), the contributor path that
+#            works from source checkouts
+#   dropped  no longer done anywhere (owner: none)
+#
+# install_sh is the section heading exactly as install.sh frames it between two
+# "# ----" lines, or the long option its argument loop accepts.
+# tests/unit/cli/test_setup_step_inventory.py fails when install.sh has a step
+# or flag with no entry here, or an entry names a step install.sh no longer has.
+source: OmniNode-ai/omnibase install.sh @ 7e5af9e6d080ea39ad65ac80e18fe5eb6a770f7f
+entries:
+  - install_sh: "0. Resolve and export OMNIBASE_PATH"
+    disposition: moved
+    owner: onex setup
+    setup_step: workspace
+    reason: >-
+      onex setup resolves the workspace root from --workspace, OMNIBASE_PATH,
+      OMNI_HOME or the root it recorded on an earlier run, and prompts for it
+      only when none of those names one. A CLI installed from a wheel has no
+      script location to derive the root from.
+  - install_sh: "0b. Choose the install path (OMN-20123)"
+    disposition: moved
+    owner: onex setup
+    setup_step: prerequisites
+    reason: >-
+      onex setup takes --path local|docker, keeps the path recorded by an
+      earlier run, and otherwise uses local without asking, because local is a
+      safe default that needs nothing installed. cloud is refused by name.
+  - install_sh: "Finish step (scripts/install_finish_step.sh)"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      The spoken greeting plays audio assets that live in the omnibase
+      checkout, which the onex wheel does not ship.
+  - install_sh: "0a. Platform check (Intel macOS builds from source)"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      The Rust and OpenSSL check guards building dependencies from source,
+      which only the source-checkout install does. Someone running onex setup
+      already installed the CLI.
+  - install_sh: "1. Check prerequisites"
+    disposition: moved
+    owner: onex setup
+    setup_step: prerequisites
+    reason: >-
+      onex setup checks the prerequisites of the chosen path (docker, the
+      compose plugin, openssl and make for docker; none for local). git, uv and
+      node stay with install.sh because only the source checkout needs them.
+  - install_sh: "1b. Provide Python 3.12+ (OMN-21167)"
+    disposition: dropped
+    owner: none
+    reason: >-
+      onex setup runs on the interpreter the package's requires-python already
+      accepted, so there is no Python left to provide.
+  - install_sh: "2. Clone repositories"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      Source clones are the contributor path. A developer who installed the CLI
+      does not need them to start delegating.
+  - install_sh: "3. Build Python environments"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      uv sync runs per source checkout, which only install.sh creates.
+  - install_sh: "4. Install Node.js dependencies"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      npm install runs in the omnidash source checkout, which only install.sh
+      creates.
+  - install_sh: "5. Install the Market skill package (Market nodes for `onex skill`)"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      The co-install runs omnibase_infra's own installer against the
+      omnibase_infra checkout's venv, which only install.sh creates.
+  - install_sh: "6. Set up environment file"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      The .env file belongs to the omnibase checkout. onex setup records the
+      workspace root in ~/.onex/setup.json instead and prints the export line.
+  - install_sh: "7. Write the runtime configuration for the chosen install path"
+    disposition: moved
+    owner: onex setup
+    setup_step: runtime_config
+    reason: >-
+      onex setup writes the same runtime_config.yaml under the workspace root,
+      atomically, never overwrites a file neither it nor install.sh wrote, and
+      leaves an identical file untouched.
+  - install_sh: "Done"
+    disposition: moved
+    owner: onex setup
+    setup_step: runtime_config
+    reason: >-
+      onex setup ends with the export line and the next commands for the chosen
+      path.
+  - install_sh: "--path"
+    disposition: moved
+    owner: onex setup
+    reason: >-
+      onex setup --path local|docker chooses the install path, same values.
+  - install_sh: "--switch-path"
+    disposition: moved
+    owner: onex setup
+    reason: >-
+      Running onex setup --path with a different value rewrites only the
+      runtime configuration it owns, which is what --switch-path did.
+  - install_sh: "--allow-brew-python"
+    disposition: dropped
+    owner: none
+    reason: >-
+      The Python provisioning step it answered is dropped (see 1b).
+  - install_sh: "--clone-only"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      Cloning is the contributor path and stays with install.sh.
+  - install_sh: "--repos"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      It belongs to --clone-only, which stays with install.sh.
+  - install_sh: "--into"
+    disposition: kept
+    owner: install.sh
+    reason: >-
+      It belongs to --clone-only, which stays with install.sh.
+  - install_sh: "--help"
+    disposition: moved
+    owner: onex setup
+    reason: >-
+      onex setup --help documents the walk; onex --help names it as the
+      quickstart.

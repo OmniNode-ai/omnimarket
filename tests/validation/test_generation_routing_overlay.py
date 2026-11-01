@@ -134,7 +134,7 @@ def test_gate_checks_base_then_exact_runtime_overlay(
         "model_routing: {served_model_id: runtime-owned}\n"
     )
     calls = []
-    monkeypatch.setattr(gate, "core_main", lambda args: calls.append(args) or 0)
+    monkeypatch.setattr(gate.core_routing, "main", lambda args: calls.append(args) or 0)
     assert gate.main(["--routing-authority", "--root", str(tmp_path)]) == 0
     assert calls == [
         [

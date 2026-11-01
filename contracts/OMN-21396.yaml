@@ -429,3 +429,35 @@ dod_evidence:
           print("opus-escalation deploy probe passed")
           PROBE
         cwd: "."
+  - id: "dod-omn21396-ac-proof-ac1"
+    description: "AC1 falsifier against the merged ladder: the engine order is code-edit, GLM, Codex, sonnet, opus; a small-fix lane with a free local slot is placed on code-edit and the same lane with no local slot on GLM. The proof file is absent at the merge base, so the base control fails."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_ac_proof_omn21396.py -q --no-cov -n 0 --refuse-skips -k ac1"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac-proof-ac2"
+    description: "AC2 falsifier: a failed, blocked-own-work or checks-red code-edit attempt is retried on GLM; a GLM ceiling refuses every higher rung; a Claude-required lane skips code-edit, GLM and Codex and starts on sonnet."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_ac_proof_omn21396.py -q --no-cov -n 0 --refuse-skips -k ac2"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac-proof-ac3"
+    description: "AC3 falsifier: a two-attempt escalation written to a temporary ledger among unrelated rows reads back exactly two STATUS kind=experiment rows, each carrying lane, engine, model, outcome, failure cause, duration and next engine."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_ac_proof_omn21396.py -q --no-cov -n 0 --refuse-skips -k ac3"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac-proof-ac4"
+    description: "AC4 falsifier: replaying the AC3 rows into the throughput tick decision prints one 24h line per engine in ladder order, nonzero for code-edit (one escalation) and GLM (one success)."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_ac_proof_omn21396.py -q --no-cov -n 0 --refuse-skips -k ac4"
+        cwd: "${OMNI_HOME}/omnimarket"

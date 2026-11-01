@@ -21,7 +21,6 @@ import sys
 from typing import cast
 from uuid import uuid4
 
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
     ProtocolEventBusPublisher,
 )
@@ -32,6 +31,8 @@ from omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill import (
 from omnimarket.nodes.node_pipeline_fill.models.model_pipeline_fill_command import (
     ModelPipelineFillCommand,
 )
+
+from .container.container_inmemory import bind_event_bus
 
 _log = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def main() -> None:
     )
 
     handler = HandlerPipelineFill(
-        event_bus=cast(ProtocolEventBusPublisher, EventBusInmemory())
+        event_bus=cast(ProtocolEventBusPublisher, bind_event_bus())
     )
 
     try:

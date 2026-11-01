@@ -1,0 +1,166 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Contract Seams Orchestrator (OMN-21627)
+#
+# Contracts and seams first for a design: write every contract, scaffold every node from
+# its own contract, match every crossing, walk and drive the event chain, sweep the golden
+# chain, and only then call the design connected. The execution graph below is the order;
+# each step names the existing node it runs and the reducer trigger it folds. The reducer
+# node_contract_seams_reducer owns the run's state machine; this node holds no state table.
+name: node_contract_seams_orchestrator
+contract_name: node_contract_seams_orchestrator
+node_name: node_contract_seams_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Run contracts and seams first for one design. Emits one contract per design node with
+  its topics and the seams each side declares, scaffolds each node from that contract
+  through node_generate_node_effect, reads the seam graph with node_seam_graph_compute and
+  matches every crossing with node_seam_match_compute, walks every declared state machine
+  with core's contract walker and drives the chain on the bound bus through the contracts
+  only, gates the chains with node_event_chain_generator_compute, sweeps the tail with
+  node_golden_chain_sweep, and folds each step into node_contract_seams_reducer. A step the
+  reducer refuses stops the run and names what refused it.
+
+handler:
+  module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_seams_run
+  class: HandlerContractSeamsRun
+  input_model: omnimarket.nodes.node_contract_seams_orchestrator.models.model_contract_seams_run.ModelContractSeamsRunRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: contract_seams_run
+      topic: onex.cmd.omnimarket.contract-seams-run-requested.v1
+      handler:
+        name: HandlerContractSeamsRun
+        module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_seams_run
+      input_model: omnimarket.nodes.node_contract_seams_orchestrator.models.model_contract_seams_run.ModelContractSeamsRunRequest
+      output_model: omnimarket.nodes.node_contract_seams_orchestrator.models.model_contract_seams_run.ModelContractSeamsRunResult
+
+input_model:
+  name: ModelContractSeamsRunRequest
+  module: omnimarket.nodes.node_contract_seams_orchestrator.models.model_contract_seams_run
+  description: The design, the empty directory its nodes are scaffolded into, and the run id.
+output_model:
+  name: ModelContractSeamsRunResult
+  module: omnimarket.nodes.node_contract_seams_orchestrator.models.model_contract_seams_run
+  description: The final state, every transition, every seam verdict, the walk issues, the driven chain and what refused the run.
+
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+protocol_dependencies:
+  - name: BUS
+    protocol: omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus
+    bind_as: event_bus
+    required: true
+  - name: CLK
+    protocol: omnimarket.protocols.protocol_clock:ProtocolClock
+    bind_as: clock
+    required: true
+
+terminal_event: onex.evt.omnimarket.contract-seams-run-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.contract-seams-run-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.contract-seams-run-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-seams-run-requested.v1
+  publish_topics:
+    - onex.cmd.omnimarket.contract-seams-transition-requested.v1
+    - onex.evt.omnimarket.contract-seams-run-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-seams-run-completed.v1
+
+config:
+  contract_seams:
+    reducer_node: node_contract_seams_reducer
+    reducer_operation: contract_seams_transition
+    # The scaffold's package layout (node_generate_node_effect): an emitted contract names
+    # the handler and request model the scaffold writes beside it.
+    handler_module_template: 'omnimarket.nodes.{node_name}.handlers.handler_{stem}'
+    handler_class_template: 'Handler{pascal}'
+    input_model_template: 'omnimarket.nodes.{node_name}.models.model_{stem}_request.Model{pascal}Request'
+    emitted_version: {major: 1, minor: 0, patch: 0}
+    emitted_lifecycle: experimental
+    # Core's contract walker (OMN-19553) reads every typed state machine the design
+    # declares. Core's ValidatorEventChainWalker (core#2165, 0.47.58) adds the topic
+    # closure checks; it replaces this reference when omnimarket's core floor reaches it.
+    contract_walker: 'omnibase_core.validation.validator_contract_walker:walk_contracts'
+    drive_timeout_seconds: 5
+    drive_consumer_group: contract-seams-drive
+    golden_chain_expected_fields: [correlation_id]
+    golden_chain_census_source: 'contract-seams-drive:in-process'
+
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: contract_seams_run
+      workflow_version: {major: 1, minor: 0, patch: 0}
+      description: Contracts and seams first for one design, from contracts to a connected chain.
+    execution_graph:
+      nodes:
+      - node_id: emit_contracts
+        node_type: COMPUTE_GENERIC
+        description: Write one contract per design node, with its topics and the seams each side declares
+        step_config: {operation: emit_contracts, trigger: contracts_emitted}
+      - node_id: scaffold_nodes
+        node_type: EFFECT_GENERIC
+        description: Scaffold each node from its own contract
+        depends_on: [emit_contracts]
+        step_config: {operation: scaffold_nodes, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_generate_node_effect, node_operation: generate_node, trigger: nodes_scaffolded}
+      - node_id: read_seam_graph
+        node_type: COMPUTE_GENERIC
+        description: Read the seam graph of the scaffolded contracts
+        depends_on: [scaffold_nodes]
+        step_config: {operation: read_seam_graph, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_seam_graph_compute, node_operation: extract}
+      - node_id: match_seams
+        node_type: COMPUTE_GENERIC
+        description: Match each crossing's producer projection against its consumer projection
+        depends_on: [read_seam_graph]
+        step_config: {operation: match_seams, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_seam_match_compute, node_operation: match, trigger: seams_read}
+      - node_id: walk_event_chain
+        node_type: COMPUTE_GENERIC
+        description: Walk the scaffolded contracts' state machines with core's contract walker and drive the chain on the bus
+        depends_on: [match_seams]
+        step_config: {operation: walk_event_chain}
+      - node_id: gate_chains
+        node_type: COMPUTE_GENERIC
+        description: Gate the driven chains against the design's chain paths
+        depends_on: [walk_event_chain]
+        step_config: {operation: gate_chains, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_event_chain_generator_compute, node_operation: gate, trigger: chains_walked}
+      - node_id: sweep_golden_chain
+        node_type: COMPUTE_GENERIC
+        description: Sweep the golden chain from the head topic to the tail event the drive captured
+        depends_on: [gate_chains]
+        step_config: {operation: sweep_golden_chain, handler: {name: HandlerContractNodeStep, module: omnimarket.nodes.node_contract_seams_orchestrator.handlers.handler_contract_steps}, node: node_golden_chain_sweep, node_operation: sweep_golden_chains, trigger: golden_chain_swept}
+      - node_id: confirm_connected
+        node_type: COMPUTE_GENERIC
+        description: The head event reached the tail
+        depends_on: [sweep_golden_chain]
+        step_config: {operation: confirm_connected, trigger: chain_connected}
+
+metadata:
+  ticket: OMN-21627
+  plan: OMN-21433
+  transport_type: inmemory
+  replaces_skill: lean_contract_seams
+
+# The environment of the in-memory event bus a run drives when none is injected; the consumer
+# group is the run configuration's drive_consumer_group. container/container_inmemory.py binds it.
+in_memory_bindings:
+  event_bus_environment: contract-seams
