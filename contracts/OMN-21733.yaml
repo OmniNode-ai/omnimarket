@@ -163,7 +163,7 @@ dod_evidence:
     binds_ac: ["AC9"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_draws"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_draws"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac11"
     description: "AC11 tab page tests pass."
