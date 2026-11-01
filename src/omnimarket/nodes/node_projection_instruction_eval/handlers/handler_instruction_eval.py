@@ -26,11 +26,15 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_instruction_eval.handlers.row_instruction_eval import (
     INSTRUCTION_EVAL_CONFLICT_COLUMNS,
     build_instruction_eval_row,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 from omnimarket.projection.tenant_isolation import require_tenant_id
 
 logger = logging.getLogger(__name__)
@@ -68,19 +72,15 @@ class InstructionEvalProjectionRunner(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to project_event via asyncio.run().
         """
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-        )
-        ok = asyncio.run(self.project_event(topic, input_data, meta))
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta()
+        ok = asyncio.run(self.project_event(topic, request.payload, meta))
         return {"projected": ok}
 
     async def project_event(

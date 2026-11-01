@@ -17,6 +17,8 @@ from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
 
 pytestmark = pytest.mark.unit
 
+_DEV_MERGE_TAG = r"dev-[0-9]{14}-[0-9a-f]{12}"
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CALLER_PATH = REPO_ROOT / ".github" / "workflows" / "call-repo-evidence-gate.yml"
 
@@ -54,8 +56,11 @@ def test_caller_workflow_shape() -> None:
     assert job["with"]["evidence-source"] == "caller", (
         "caller evidence mode is required"
     )
-    assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", job["with"]["verifier-version"]), (
-        "verifier-version must be a numeric semantic version"
+    assert re.fullmatch(_DEV_MERGE_TAG, job["with"]["verifier-tag"]), (
+        "verifier-tag must be an omnimarket dev-merge tag"
+    )
+    assert "verifier-version" not in job["with"], (
+        "verifier-version is a warned fallback; the caller passes verifier-tag only"
     )
     for key in ("steps", "secrets", "if", "name", "permissions"):
         assert key not in job, f"caller job must not declare {key}"
@@ -294,10 +299,9 @@ def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
 # protection no longer requires any OCC context, so the caller turns the
 # reusable's difference step off. With it on, the step waits for an
 # occ-preflight / eligibility verdict on the head and fails closed without one,
-# so the PR that deletes the OCC callers could never pass. The pinned verifier
-# stays a release that ships the classifier (omnimarket#3277, 0.4.294), so the
+# so the PR that deletes the OCC callers could never pass. The verifier stays an
+# omnimarket dev-merge tag that ships the classifier (omnimarket#3277), so the
 # step can be turned back on by this one input if the cut-over is rolled back.
-_DIFFERENCE_CLASSIFIER_FLOOR = (0, 4, 294)
 
 
 def test_caller_stops_comparing_with_occ_after_the_s6_cutover() -> None:
@@ -308,31 +312,48 @@ def test_caller_stops_comparing_with_occ_after_the_s6_cutover() -> None:
         'after the S6 cut-over the caller passes compare-with-occ: "false" '
         "(a quoted string input): there is no OCC verdict left to compare"
     )
-    version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
-    assert version >= _DIFFERENCE_CLASSIFIER_FLOOR, (
-        "verifier-version must ship node_dod_verify occ-difference "
-        f"(>= {'.'.join(map(str, _DIFFERENCE_CLASSIFIER_FLOOR))})"
-    )
 
 
 # OMN-20070 (AC3): omnimarket#3511 (e565ba5ba) makes the verifier refuse a
-# contract that leaves one acceptance criterion unbound, first released in
-# 0.4.303. A caller pinned before that release admits such a contract, so the
-# required repo-evidence / dod-verify check would pass a half-bound contract.
-# 0.4.305 is the release omnibase_infra and omnibase_core run: it ships that
-# refusal, the occ-difference classifier and the release-cut classifiers.
-_UNBOUND_REFUSAL_FLOOR = (0, 4, 305)
+# contract that leaves one acceptance criterion unbound. A verifier that predates
+# it admits such a contract, so the required repo-evidence / dod-verify check
+# would pass a half-bound contract. OMN-21676: the reusable decides that by
+# ancestry, not by version number: it refuses a verifier-tag that does not
+# descend from the floor commit, so the caller names a dev-merge tag and no
+# verifier-version.
 
 
-def test_caller_pins_a_verifier_that_refuses_unbound_criteria() -> None:
+def test_caller_installs_its_verifier_from_a_dev_merge_tag() -> None:
     job = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
         "repo-evidence"
     ]
-    version = tuple(int(part) for part in job["with"]["verifier-version"].split("."))
-    assert version >= _UNBOUND_REFUSAL_FLOOR, (
-        "verifier-version must ship the unbound-criteria refusal "
-        f"(omnimarket#3511, >= {'.'.join(map(str, _UNBOUND_REFUSAL_FLOOR))})"
+    assert re.fullmatch(_DEV_MERGE_TAG, job["with"]["verifier-tag"]), (
+        "verifier-tag must be dev- followed by 14 digits, a hyphen and 12 lowercase "
+        "hex digits"
     )
+    assert "verifier-version" not in job["with"], (
+        "verifier-version is a warned migration fallback, not a caller input"
+    )
+    assert re.fullmatch(_DEV_MERGE_TAG, job["uses"].rsplit("@", 1)[1]), (
+        "the reusable ref must be an omnibase_core dev-merge tag"
+    )
+
+
+@pytest.mark.parametrize(
+    ("tag", "admitted"),
+    [
+        ("dev-20261101000200-949993edf3b7", True),
+        ("0.4.305", False),
+        ("dev-20261101000200-949993edf3b", False),
+        ("dev-20261101000200-949993EDF3B7", False),
+        ("dev-2026110100020-949993edf3b7", False),
+        ("e565ba5ba00c5a9201c9eb66c0259840960f4ea4", False),
+    ],
+)
+def test_dev_merge_tag_shape_has_an_admitting_and_refusing_cases(
+    tag: str, admitted: bool
+) -> None:
+    assert (re.fullmatch(_DEV_MERGE_TAG, tag) is not None) is admitted
 
 
 # OMN-20543 (AC3): the pinned reusable is the one whose dod-verify job gives a

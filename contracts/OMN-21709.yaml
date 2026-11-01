@@ -1,0 +1,113 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21709
+title: BaseProjectionRunner hands each runner a typed ModelProjectionRequest (omnimarket#4642 contract split)
+summary: Slice 1 of the omnimarket handler-shape burn-down (omnimarket#4642). The handler-shape validator of omnibase_core reports a handler class whose handle takes a parameter that is not a typed request (noncanonical_handle). Forty-three of those were projection runners, subclasses of BaseProjectionRunner, each with handle(input_data) that popped the delivery keys the runtime injects (the topic, partition, offset and fallback id) by hand. BaseProjectionRunner.handle now splits that dict once into a ModelProjectionRequest and passes it to project_request, which each runner implements over the typed request. The base handle keeps the dict parameter because the projection arm of the shared runtime calls handle(dict), and a handle annotated with a concrete model is wired onto the typed dispatch arm instead, where the runner would stop receiving its database adapter, partition and offset. The acceptance items of this PR moved here from the shared contracts/OMN-21536.yaml.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21709-own-contract
+  statement: BaseProjectionRunner of omnimarket#4642 hands each runner a typed ModelProjectionRequest, and the PR's acceptance items live in this contract file, not in the shared contracts/OMN-21536.yaml.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: BaseProjectionRunner of omnimarket#4642 hands each runner a typed ModelProjectionRequest and the handler-shape count over the touched runners drops as the PR states -- falsifier: uv run pytest tests/unit -q over the touched modules plus the handler-shape checker re-run on the PR paths'
+  - id: AC2
+    statement: 'AC2: the PR''s acceptance items live in contracts/OMN-21709.yaml and the PR does not edit contracts/OMN-21536.yaml -- falsifier: git diff --stat origin/dev...HEAD on the PR head lists contracts/OMN-21709.yaml and not contracts/OMN-21536.yaml'
+evidence_requirements:
+- kind: tests
+  description: The shim tests, the OMN-18905 coordinate guard and the projection suites, run on a lab host at the pushed head.
+  command: uv run pytest tests/test_projection_request.py tests/test_omn18905_writers_carry_source_coordinates.py tests/test_projection_runner_nodes_declare_their_outputs.py tests/test_projection_runner.py tests/projection -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21536-ac1-no-runner-handle
+  description: AC1 scans every handler module for a BaseProjectionRunner subclass that still defines handle(input_data).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      uv run python -c "import ast,pathlib,sys; bad=[str(p) for p in pathlib.Path('src/omnimarket/nodes').rglob('handler_*.py') for c in ast.parse(p.read_text()).body if isinstance(c,ast.ClassDef) and any('BaseProjectionRunner' in ast.unparse(b) for b in c.bases) and any(isinstance(m,ast.FunctionDef) and m.name=='handle' and any(a.arg=='input_data' for a in m.args.args) for m in c.body)]; print(bad); sys.exit(1 if bad else 0)"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_projection_request.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-validator-clean-on-runners
+  description: AC1 runs the handler-shape rules of the installed omnibase_core over every handler module and fails on a noncanonical_handle finding whose class is a BaseProjectionRunner subclass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      uv run python -c "import ast,pathlib,sys,yaml; import omnibase_core.validation as v; from omnibase_core.models.contracts.subcontracts.model_validator_rule import ModelValidatorRule as R; from omnibase_core.validation.validator_handler_shape import module_facts; from omnibase_core.validation.checker_handler_shape import check_handler_shape as chk; rules=[R(**x) for x in yaml.safe_load((pathlib.Path(v.__file__).parent/'contracts'/'handler_shape.validation.yaml').read_text())['validation']['rules']]; bad=[(str(p),i.line_number) for p in pathlib.Path('src/omnimarket/nodes').rglob('handler_*.py') for i in chk(module_facts(p.as_posix(),p.read_text()),rules) if i.code=='noncanonical_handle' and i.message.split('.handle')[0] in {c.name for c in ast.parse(p.read_text()).body if isinstance(c,ast.ClassDef) and any('BaseProjectionRunner' in ast.unparse(b) for b in c.bases)}]; print(bad); sys.exit(1 if bad else 0)"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_projection_request.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac3-shim-and-node-tests
+  description: AC1 runs the shim tests, the OMN-18905 coordinate guard and every projection suite test file in separate commands to stay inside the verifier's 30-second per-check budget.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn18905_writers_carry_source_coordinates.py tests/test_projection_request.py tests/test_projection_runner.py tests/test_projection_runner_nodes_declare_their_outputs.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/projection/test_dashboard_bundle_omn19917.py tests/projection/test_dashboard_bundle_pin_omn20008.py tests/projection/test_dashboard_bundle_pin_omn20728.py tests/projection/test_dashboard_bundle_pin_omn20758.py tests/projection/test_dashboard_catalogue_serves_what_it_lists_omn20709.py tests/projection/test_omn20816_dashboard_model_keys.py tests/projection/test_omn21015_final_row_publication.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/projection/test_api_server_local_mode.py tests/projection/test_omn19988_local_environment_served.py tests/projection/test_omn20007_metering_summary_served.py tests/projection/test_omn20732_pre_lineage_store_decisions_read.py tests/projection/test_omn21015_usage_tier_share.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/projection/test_dashboard_bundle_failure_omn20705.py tests/projection/test_dashboard_bundle_pin_omn20753.py tests/projection/test_dashboard_bundle_pin_omn21469.py tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py tests/projection/test_omn19919_failure_cause_served.py tests/projection/test_omn19987_run_trace_served.py tests/projection/test_omn21015_transactional_run_write.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/projection/test_dashboard_bundle_pin_omn20752.py tests/projection/test_dashboard_bundle_pin_omn20759.py tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py tests/projection/test_dashboard_serves_routing_and_quality_omn20754.py tests/projection/test_local_serving_auth.py tests/projection/test_omn20006_usage_by_model_day_served.py tests/projection/test_omn20950_no_planted_value_in_any_response.py tests/projection/test_omn21015_review_real_boundaries.py tests/projection/test_omn21015_run_savings_decimal_text.py tests/projection/test_omn21015_run_savings_served.py tests/projection/test_omn21015_tier_models_served.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-deploy-postgres-writer-readback
+  description: Hosted deployment smoke against the verifier's disposable PostgreSQL 16 service. Refuse a missing database connection, then send a real lab-job event through BaseProjectionRunner.handle with the runtime delivery keys and compare the stored state and transition rows with the bare event's rows. Missing rows, leaked delivery keys, changed row counts or a skipped test fail the check. This reads the evaluated revision's writer against a real database; it does not assert a production rollout.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      PGPASSWORD="${INTEGRATION_POSTGRES_PASSWORD:?}" psql -X --no-password \
+        --host="${INTEGRATION_POSTGRES_HOST:-127.0.0.1}" \
+        --port="${INTEGRATION_POSTGRES_PORT:-5432}" \
+        --username="${INTEGRATION_POSTGRES_USER:-postgres}" \
+        --dbname="${INTEGRATION_POSTGRES_DB:-omnibase_infra}" \
+        --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+        --command="SELECT current_database(), 1 / (current_setting('server_version_num')::int >= 160000)::int AS postgres_16_or_later;";
+      uv run python -c "from omnimarket.nodes.node_projection_lab_job.handlers import LabJobProjectionWriter as W; from omnimarket.projection.runner import BaseProjectionRunner as B; assert 'handle' not in vars(W); assert W.handle is B.handle; print('Runtime projection writer uses the shared handle')";
+      env PYTHONDONTWRITEBYTECODE=1 uv run pytest \
+        tests/test_lab_job_projection_real_postgres.py::test_the_shim_strips_the_delivery_keys_before_the_event_model \
+        -q --no-cov --tb=line --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_lab_job_projection_real_postgres.py::test_the_shim_strips_the_delivery_keys_before_the_event_model --refuse-skips -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21709-ac2-own-contract-file
+  description: 'AC2 reads the PR''s diff against the base branch: it lists this ticket''s own contract file and does not list the shared parent contract file.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21709.yaml';
+      ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21536.yaml'
+    cwd: .
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_omn21709_own_contract_file.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
