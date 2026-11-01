@@ -1,17 +1,18 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21217"
-title: "Hosted credential intake preserves ordered models with versioned replacement"
+title: "Hosted credentials preserve ordered models and retry on the same key"
 summary: >-
-  T5 only: hosted intake and the existing credential-registered event carry an
+  T5 and T6: hosted intake and the existing credential-registered event carry an
   ordered models list and expected_version. The model alias remains a one-entry
   list. Intake refuses an empty choice before secret storage. Overlay writes
   replace the whole list atomically when the expected version matches; a stale
   or missing-row version is refused. Legacy writes increment the version, and
   a stale revoke cannot overwrite a newer registration. SQLite and PostgreSQL
   retain the same list/version semantics. Real PostgreSQL proof must come from
-  the hosted CI service, not a database started on the shared lab host. T6
-  routing and T7 dashboard management remain separate changes after T5 merges.
+  the hosted CI service, not a database started on the shared lab host. Hosted
+  routing carries the selected key's ordered models and retries within that
+  captured list on the same key. T7 dashboard management remains separate.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched: [events, protocols, public_api]
@@ -28,6 +29,16 @@ requirements:
           A revoke based on an older version preserves a newer registration.
           Falsifiers exercise actual concurrent SQLite writers and the real
           PostgreSQL projection SQL; skipped database tests are not proof.
+  - id: "req-hosted-ordered-model-retry"
+    statement: "Hosted routing follows the ordered models chosen for one customer key."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          The hosted overlay decision carries the selected key's ordered model
+          candidates. After a retryable failure of a, the next inference attempt
+          uses b on the same key, endpoint and backend identity; no model outside
+          that list or house credential is tried. The falsifier drives overlay
+          resolution, the serialized decision and the real orchestrator retry.
   - id: "req-snapshot-exposure-cleanup-policy"
     statement: "Every onex.snapshot exposure declares its own cleanup policy instead of taking the broker default."
     acceptance:
@@ -139,6 +150,20 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_reducer/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
+  - id: "dod-omn21217-t6-hosted-ordered-model-retry"
+    description: >-
+      The hosted overlay and serialized routing decision retain the selected
+      key's ordered models. A retryable failure on a dispatches b with the same
+      key, endpoint and backend identity; exhausting the choices never dispatches
+      an outside model or house credential. Controlled reader changes cannot
+      replace the captured key/list. This is handler-path proof with fake reads
+      and inference responses, not a deployed provider call.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
 emergency_bypass:
   enabled: false
   justification: ""
