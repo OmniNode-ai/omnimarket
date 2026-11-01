@@ -517,6 +517,52 @@ def test_tool_use_answer_traceable_request_passes():
     assert (row.outcome, row.reason_code) == ("PASS", "answer_traceable")
 
 
+_CLASSIFY_PROMPT = (
+    "Classify the CI failure. Facts: check widget-tests failed on head abc123; "
+    "the same check failed on the base branch. Reply with JSON"
+)
+
+
+def test_tool_use_answer_traceable_json_string_value_is_not_a_quotation():
+    row = criterion(
+        "task_answer_traceable",
+        run=transcript(),
+        prompt=_CLASSIFY_PROMPT,
+        answer='{"label": "base-inherited", "reason": "the check also fails on the base branch"}',
+    )
+    assert (row.outcome, row.reason_code) == ("UNDETERMINED", "no_identifiers")
+
+
+def test_tool_use_answer_traceable_json_fenced_string_value_is_not_a_quotation():
+    row = criterion(
+        "task_answer_traceable",
+        run=transcript(),
+        prompt=_CLASSIFY_PROMPT,
+        answer='```json\n{"reason": "the check also fails on the base branch"}\n```',
+    )
+    assert (row.outcome, row.reason_code) == ("UNDETERMINED", "no_identifiers")
+
+
+def test_tool_use_answer_traceable_json_still_checks_identifiers():
+    row = criterion(
+        "task_answer_traceable",
+        run=transcript(),
+        prompt=_CLASSIFY_PROMPT,
+        answer='{"label": "base-inherited", "ticket": "SYN-999"}',
+    )
+    assert (row.outcome, row.reason_code) == ("FAIL", "untraceable_identifier")
+
+
+def test_tool_use_answer_traceable_prose_quotation_absent_from_evidence_fails():
+    row = criterion(
+        "task_answer_traceable",
+        run=transcript(),
+        prompt=_CLASSIFY_PROMPT,
+        answer='The log said "the check also fails on the base branch" today.',
+    )
+    assert (row.outcome, row.reason_code) == ("FAIL", "untraceable_identifier")
+
+
 def test_tool_use_answer_traceable_accepted_call_argument_passes():
     run = transcript(calls=(call(output="def build_widget(): ..."),))
     row = criterion(
