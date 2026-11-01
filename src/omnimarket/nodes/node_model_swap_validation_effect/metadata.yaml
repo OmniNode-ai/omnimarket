@@ -1,0 +1,32 @@
+name: node_model_swap_validation_effect
+version: 1.0.0
+description: Evidence-only validation through a contract-configured service API
+omnibase_core_compat: '>=0.47.53,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_model_swap_validation_effect: omnimarket.nodes.node_model_swap_validation_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+- omnibase_core>=0.47.53
+- omnibase-spi>=0.23.3
+- httpx>=0.27.0
+- pydantic>=2.11.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- model-swap
+- evidence
+- experimental
+pack: delegation
+display_name: Model Swap Validation Effect
+node_role: effect
