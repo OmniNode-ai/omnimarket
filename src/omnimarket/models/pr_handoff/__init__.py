@@ -53,6 +53,10 @@ from omnimarket.models.pr_handoff.model_pr_handoff_handed_off import (
 from omnimarket.models.pr_handoff.model_pr_handoff_lab_proof import (
     ModelPrHandoffLabProof,
 )
+from omnimarket.models.pr_handoff.model_pr_handoff_landing_scope import (
+    ModelPrHandoffLandingScopeOverlay,
+    ModelPrHandoffLandingScopeReading,
+)
 from omnimarket.models.pr_handoff.model_pr_handoff_ledger_append_command import (
     ModelPrHandoffLedgerAppendCommand,
 )
@@ -79,6 +83,8 @@ __all__: list[str] = [
     "ModelPrHandoffFailed",
     "ModelPrHandoffHandedOff",
     "ModelPrHandoffLabProof",
+    "ModelPrHandoffLandingScopeOverlay",
+    "ModelPrHandoffLandingScopeReading",
     "ModelPrHandoffLedgerAppendCommand",
     "ModelPrHandoffLedgerAppended",
     "ModelPrHandoffRequested",

@@ -67,6 +67,8 @@ TRANSITIONS: Mapping[tuple[str, str], str] = {
     ("WAITING", "evaluated_held"): "REFUSED",
     ("WAITING", "evaluated_withheld"): "REFUSED",
     ("WAITING", "evaluated_pr_not_open"): "REFUSED",
+    ("WAITING", "evaluated_repo-out-of-landing-scope"): "REFUSED",
+    ("WAITING", "evaluated_scope-unread"): "REFUSED",
     ("WAITING", "superseded"): "REFUSED",
     ("WAITING", "completion_bound_expired"): "TIMED_OUT",
     ("APPENDING", "append_accepted"): "HANDED_OFF",
@@ -119,6 +121,8 @@ class NoLedgerHolds:
 class PrHandoffPorts:
     decider: ProtocolPrHandoffDecider
     holds: ProtocolPrHandoffHoldReader = field(default_factory=NoLedgerHolds)
+    landing_scope: tuple[str, ...] | None = None
+    landing_scope_problem: str | None = None
 
 
 @dataclass
@@ -303,6 +307,8 @@ class _Leg:
                 ledger_holds=self.ports.holds.holds_for(
                     request.handoff_key, request.lane
                 ),
+                landing_scope=self.ports.landing_scope,
+                landing_scope_problem=self.ports.landing_scope_problem,
                 now=now,
             )
         )

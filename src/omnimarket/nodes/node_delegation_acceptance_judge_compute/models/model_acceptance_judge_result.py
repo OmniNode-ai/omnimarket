@@ -12,6 +12,9 @@ from omnimarket.models.delegation_acceptance_judge.enum_acceptance_operation imp
 from omnimarket.models.delegation_acceptance_judge.model_acceptance_verdict import (
     ModelAcceptanceVerdict,
 )
+from omnimarket.models.delegation_acceptance_judge.model_delegation_acceptance_judged_event import (
+    ModelDelegationAcceptanceJudgedEvent,
+)
 from omnimarket.nodes.node_delegation_acceptance_judge_compute.models.enum_acceptance_run_status import (
     EnumAcceptanceRunStatus,
 )
@@ -50,3 +53,4 @@ class ModelAcceptanceJudgeResult(BaseModel):
     volume_terminal_ok_rate: float | None = None
     receipts_joined: int = 0
     report_markdown: str = ""
+    judged_events: tuple[ModelDelegationAcceptanceJudgedEvent, ...] = ()
