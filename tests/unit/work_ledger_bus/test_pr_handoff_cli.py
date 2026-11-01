@@ -19,7 +19,10 @@ from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus, event_type_for
 from omnimarket.delegated_test_loop.lane_bus import BusKind
 from omnimarket.events.topics import PR_HANDOFF_REQUESTED_TOPIC_V1
-from omnimarket.models.pr_handoff import ModelPrHandoffRequested
+from omnimarket.models.pr_handoff import (
+    ModelPrHandoffLandingScopeReading,
+    ModelPrHandoffRequested,
+)
 from omnimarket.nodes.node_pr_handoff_orchestrator.event_topics import publish_topic_for
 from omnimarket.nodes.node_pr_handoff_orchestrator.handlers import (
     HandlerPrHandoffOrchestrator,
@@ -33,12 +36,16 @@ from tests.chains.pr_handoff import _builders as b
 
 pytestmark = pytest.mark.unit
 
+LANDING_SCOPE = ModelPrHandoffLandingScopeReading(repos=(b.REPO,))
+
 
 def _with_orchestrator(
     monkeypatch: pytest.MonkeyPatch, *, answer: bool, observed: bool = False
 ) -> list[ModelPrHandoffRequested]:
     seen: list[ModelPrHandoffRequested] = []
-    orchestrator = HandlerPrHandoffOrchestrator(store=InMemoryPrHandoffRowStore())
+    orchestrator = HandlerPrHandoffOrchestrator(
+        landing_scope=LANDING_SCOPE, store=InMemoryPrHandoffRowStore()
+    )
     pending_observation = [b.observation(b.at(-5))] if observed else []
 
     @contextlib.asynccontextmanager

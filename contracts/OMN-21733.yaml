@@ -62,6 +62,24 @@ requirements:
         statement: "AC15: retention removes the oldest snapshots outside its day window only while their count exceeds max_count, preserving younger snapshots, unrelated files and the live record."
       - id: "AC16"
         statement: "AC16: a missing history_root is refused with NodeOverlayError before transport; the contract declares history naming and retention without a host or absolute path."
+  - id: "req-omn21733-undrawn-lines"
+    statement: |-
+      A declared line the board cannot draw is never silent: it is drawn stopped with its cause, the publish status names it when the record leaves it out, and a lane that ended blocked or an ask to the orchestrator nobody answered stops the line it belongs to, with its age.
+    acceptance:
+      - id: "AC17"
+        statement: "AC17: a declared plan text that matches no plan file is drawn as a stopped line with the cause plan file not found, and a matched plan with no tasks is drawn stopped with the cause no task table -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q -k 'undrawn or declared_text or no_task_table or declares_no_line'"
+      - id: "AC18"
+        statement: "AC18: the publish status marks the factory_floor step not ok and names the declared lines when the record leaves any of them out -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q -k 'one_of_three_declared'"
+      - id: "AC19"
+        statement: "AC19: a line whose lane ended blocked, or whose ask to the orchestrator has no answer, is drawn stopped with the cause and its age in minutes, and the validators line reads the pill the hold-exemption rule demands -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q -k 'blocked_terminal or unanswered or validators'"
+  - id: "req-omn21733-reports-plain"
+    statement: |-
+      The three report pages open on their conclusion in plain words, use the board's type and colour tokens, and print every time in Eastern time with UTC only in a hover title; the dashboard and the floor page print every time in the viewer's own zone with the zone named, judge today by the viewer's day, and age each reading against the real clock.
+    acceptance:
+      - id: "AC17"
+        statement: "AC17: the process, decision map and decision quality pages use the board type and tokens, carry no text below twelve pixels, show Eastern time with UTC only in a title, use the glossary's plain words and open on the conclusion with the provenance folded -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q"
+      - id: "AC18"
+        statement: "AC18: the dashboard and the floor page print the record time in the viewer's zone with the zone named, warn that the series is behind only when its day is not the viewer's day, and age each reading from the real clock rather than the record time -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -177,13 +195,29 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k refresh"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac17"
+    description: "AC17 undrawn declared lines are drawn stopped with their cause."
+    source: "manual"
+    binds_ac: ["AC17"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q --no-cov --tb=line -k 'undrawn or declared_text or no_task_table or declares_no_line'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac18"
+    description: "AC18 the publish status names a declared line the record leaves out."
+    source: "manual"
+    binds_ac: ["AC18"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k one_of_three_declared"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac13"
     description: "AC13 drawer tests pass."
     source: "manual"
     binds_ac: ["AC13"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_drawer"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_drawer"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-drawer-deploy"
     description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires drillContent, which draws the drill-down panel and is absent from the base page."
@@ -229,3 +263,45 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'snapshot = snapshot_name(rt.history, rt.names.data, now)'"
+  - id: "dod-omn21733-ac19"
+    description: "AC19 a blocked lane or an unanswered ask stops its line with the cause and the age."
+    source: "manual"
+    binds_ac: ["AC19"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q --no-cov --tb=line -k 'blocked_terminal or unanswered or validators'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-undrawn-deploy"
+    description: "Deploy probe reads the compute handler at the checked-out commit from GitHub and requires _undrawn, which draws a declared line no plan matched and is absent from the base handler."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def _undrawn('"
+  - id: "dod-omn21733-reports-plain"
+    description: "AC17 the plain report page tests pass."
+    source: "manual"
+    binds_ac: ["AC17"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-reports-plain-deploy"
+    description: "Deploy probe reads the process page at the checked-out commit from GitHub and requires resetTitle, which prints the reset label in plain words and Eastern time and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/reports/process-health/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^const resetTitle = label =>'"
+  - id: "dod-omn21733-local-time"
+    description: "AC18 the viewer-zone time tests pass."
+    source: "manual"
+    binds_ac: ["AC18"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-local-time-deploy"
+    description: "Deploy probe reads the floor page at the checked-out commit from GitHub and requires clock(), which prints times in the viewer's zone and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function clock(iso)'"
