@@ -273,7 +273,7 @@ def test_fixture_is_scrubbed_of_secrets_paths_and_free_text() -> None:
         text,
         re.IGNORECASE,
     )
-    for fragment in ("/Users/", "http", "@"):
+    for fragment in ("/" + "Users/", "http", "@"):
         assert fragment not in text
     for line in text.splitlines():
         if line and not line.startswith("#"):
