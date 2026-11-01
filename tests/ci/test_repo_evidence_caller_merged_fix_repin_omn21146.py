@@ -63,7 +63,8 @@ def test_the_repin_keeps_the_job_id_and_inputs() -> None:
     raw_inputs = job["with"]
     assert isinstance(raw_inputs, dict)
     with_inputs = dict(raw_inputs)
-    assert re.fullmatch(_DEV_MERGE_TAG, with_inputs.pop("verifier-tag"))
+    verifier_tag = with_inputs.pop("verifier-tag")
+    assert re.fullmatch(_DEV_MERGE_TAG, verifier_tag)
     assert with_inputs == {
         "evidence-source": "caller",
         "compare-with-occ": "false",
