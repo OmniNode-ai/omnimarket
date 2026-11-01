@@ -40,6 +40,7 @@ from omnimarket.events.pr_delegated_fix import (
     ModelDelegatedFixCommand,
     ModelDelegatedFixResult,
 )
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_pr_delegated_fix_effect.handlers.adapter_acceptance_telemetry import (
     EnumPlacementReason,
     JsonlAcceptanceTelemetryRecorder,
@@ -62,6 +63,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibili
 )
 
 logger = logging.getLogger(__name__)
+
+_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")
 
 _PR_POLISH_DONE_PHASE = "done"
 
@@ -225,7 +228,8 @@ class GitWorktreeResolver:
         branch = _resolve_pr_head_branch(repo, pr_number)
         candidate.parent.mkdir(parents=True, exist_ok=True)
         _run_checked(
-            ["git", "-C", str(canonical), "fetch", "origin", branch], timeout=60
+            ["git", "-C", str(canonical), "fetch", "origin", branch],
+            timeout=_TIMEOUTS.get("git_worktree_s"),
         )
         _run_checked(
             [
@@ -239,7 +243,7 @@ class GitWorktreeResolver:
                 branch,
                 f"origin/{branch}",
             ],
-            timeout=60,
+            timeout=_TIMEOUTS.get("git_worktree_s"),
         )
         return candidate
 
@@ -248,9 +252,15 @@ class RuffFixRunner:
     """Default ruff runner: ``ruff format`` then ``ruff check --fix``."""
 
     def run(self, worktree: Path) -> None:
-        _run_checked(["uv", "run", "ruff", "format", "."], cwd=worktree, timeout=120)
         _run_checked(
-            ["uv", "run", "ruff", "check", "--fix", "."], cwd=worktree, timeout=120
+            ["uv", "run", "ruff", "format", "."],
+            cwd=worktree,
+            timeout=_TIMEOUTS.get("ruff_s"),
+        )
+        _run_checked(
+            ["uv", "run", "ruff", "check", "--fix", "."],
+            cwd=worktree,
+            timeout=_TIMEOUTS.get("ruff_s"),
         )
 
 
@@ -259,26 +269,41 @@ class GitDiffAdapter:
 
     def changed_files(self, worktree: Path) -> list[str]:
         out = _git_stdout(
-            ["git", "-C", str(worktree), "diff", "--name-only", "HEAD"], timeout=30
+            ["git", "-C", str(worktree), "diff", "--name-only", "HEAD"],
+            timeout=_TIMEOUTS.get("git_command_s"),
         )
         return [line for line in out.splitlines() if line.strip()]
 
     def diff_line_count(self, worktree: Path) -> int:
         out = _git_stdout(
-            ["git", "-C", str(worktree), "diff", "--shortstat", "HEAD"], timeout=30
+            ["git", "-C", str(worktree), "diff", "--shortstat", "HEAD"],
+            timeout=_TIMEOUTS.get("git_command_s"),
         )
         return _parse_shortstat_lines(out)
 
     def commit_all(self, worktree: Path, message: str) -> str:
-        _run_checked(["git", "-C", str(worktree), "add", "-A"], timeout=30)
-        _run_checked(["git", "-C", str(worktree), "commit", "-m", message], timeout=30)
+        _run_checked(
+            ["git", "-C", str(worktree), "add", "-A"],
+            timeout=_TIMEOUTS.get("git_command_s"),
+        )
+        _run_checked(
+            ["git", "-C", str(worktree), "commit", "-m", message],
+            timeout=_TIMEOUTS.get("git_command_s"),
+        )
         return _git_stdout(
-            ["git", "-C", str(worktree), "rev-parse", "HEAD"], timeout=15
+            ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+            timeout=_TIMEOUTS.get("git_rev_parse_s"),
         )
 
     def discard_changes(self, worktree: Path) -> None:
-        _run_checked(["git", "-C", str(worktree), "checkout", "--", "."], timeout=30)
-        _run_checked(["git", "-C", str(worktree), "clean", "-fd"], timeout=30)
+        _run_checked(
+            ["git", "-C", str(worktree), "checkout", "--", "."],
+            timeout=_TIMEOUTS.get("git_command_s"),
+        )
+        _run_checked(
+            ["git", "-C", str(worktree), "clean", "-fd"],
+            timeout=_TIMEOUTS.get("git_command_s"),
+        )
 
 
 class LivePrPolishRunner:
@@ -318,7 +343,9 @@ class LivePrPolishRunner:
         if dry_run:
             argv.extend(["--no-push", "--dry-run"])
 
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, timeout=_TIMEOUTS.get("polish_cli_s")
+        )
         try:
             payload = json.loads(proc.stdout)
         except json.JSONDecodeError as exc:
@@ -335,7 +362,10 @@ class LivePrPolishRunner:
 
 
 def _run_checked(
-    argv: list[str], *, cwd: Path | str | None = None, timeout: int = 60
+    argv: list[str],
+    *,
+    cwd: Path | str | None = None,
+    timeout: float = _TIMEOUTS.get("git_worktree_s"),
 ) -> str:
     proc = subprocess.run(
         argv,
@@ -351,7 +381,9 @@ def _run_checked(
     return proc.stdout.strip()
 
 
-def _git_stdout(argv: list[str], *, timeout: int = 30) -> str:
+def _git_stdout(
+    argv: list[str], *, timeout: float = _TIMEOUTS.get("git_command_s")
+) -> str:
     return _run_checked(argv, timeout=timeout)
 
 
@@ -369,7 +401,7 @@ def _resolve_pr_head_branch(repo: str, pr_number: int) -> str:
             "--jq",
             ".headRefName",
         ],
-        timeout=30,
+        timeout=_TIMEOUTS.get("git_command_s"),
     )
     if not out:
         raise RuntimeError(f"could not resolve head branch for {repo}#{pr_number}")
