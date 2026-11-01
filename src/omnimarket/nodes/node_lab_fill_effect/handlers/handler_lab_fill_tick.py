@@ -23,6 +23,12 @@ and two re-read each ticket's Linear owner. Here the steps are code, in order:
    STATUS row reads ``none`` only when every lane made was placed). A ticket the brief
    check refuses ``park_after`` times is parked for ``park_hours`` with its reason, not
    retried every tick.
+8. OMN-21881: with the overlay's ``cloud.enabled`` flag on, a row whose ``lane_kind`` is one
+   of the overlay's ``cloud.lane_kinds`` and that node_cloud_session_placement_effect's route
+   action does not refuse goes with ``--placement auto`` and a ``Lane kind:`` brief line.
+   Every tick answers one ``cloud_line``: that verdict and why, the age of the newest
+   host=cloud CLAIM in the ledger, and the cloud credit left (``unmeasured`` when unread).
+   It retires with the cloud credit.
 7. With free slots and nothing placed for ``alarm_after`` ticks running, one diagnose
    lane is dispatched (not again within ``diagnose_cooldown_min``) and the result carries
    the alarm. The streak, the last diagnose and the parked tickets live in the memory file
@@ -40,6 +46,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaunch
+from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
+    HandlerCloudSessionPlacement,
+)
+from omnimarket.nodes.node_cloud_session_placement_effect.models import (
+    ModelCloudSessionPlacementRequest,
+)
 
 from ..models import (
     ModelLabFillLaunchRequest,
@@ -58,6 +70,7 @@ from ..protocols import (
     LabFillPortError,
     ProtocolLabFillApprovedWork,
     ProtocolLabFillClock,
+    ProtocolLabFillCloudFacts,
     ProtocolLabFillOwnerReader,
     ProtocolLabFillReceiptReader,
     ProtocolLabFillResultWriter,
@@ -189,18 +202,90 @@ def _owner(ticket: str, facts: LabFillClaimFacts | str, now: float) -> tuple[str
 
 
 def _brief(
-    request: ModelLabFillTickRequest, lane: str, row: Mapping[str, object], marker: str
+    request: ModelLabFillTickRequest,
+    lane: str,
+    row: Mapping[str, object],
+    marker: str,
+    lane_kind: str = "",
 ) -> str:
     return (
         f"# Lane {lane}: {row['ticket']}, approved {row['kind']} row {row['id']}\n\n"
         f"ROUTE: model={request.engine} effort=high\n"
         f"AUTHORITY: operator RULING {request.authority_ruling} "
         f"lane={request.authority_lane}; parent ticket {request.parent_ticket}.\n"
-        f"Parent: {request.parent}. Ticket: {row['ticket']}. Repo: {row.get('repo') or 'none'}.\n\n"
+        f"Parent: {request.parent}. Ticket: {row['ticket']}. Repo: {row.get('repo') or 'none'}.\n"
+        + (f"Lane kind: {lane_kind}\n" if lane_kind else "")
+        + "\n"
         f"{marker}\n\n"
         f"Landing: hand the PR to {request.landing_lane} with needs=land; "
         "never merge or arm it by hand.\n"
     )
+
+
+def _repo(row: Mapping[str, object]) -> str | None:
+    repo = str(row.get("repo") or "").split("/")[-1]
+    return repo if _REPO.match(repo) else None
+
+
+def cloud_eligibility(
+    request: ModelLabFillTickRequest, row: Mapping[str, object], lane: str
+) -> tuple[str, str]:
+    """``(lane_kind, "")`` when the row goes with --placement auto, else ``("", why not)``.
+
+    The kinds are the overlay's (``cloud.lane_kinds``); the last word is
+    node_cloud_session_placement_effect's route action over the brief the lane would carry.
+    """
+    kind = str(row.get("lane_kind") or "").strip().lower()
+    if not kind:
+        return "", "row declares no lane_kind"
+    if kind not in request.cloud.lane_kinds:
+        return "", (
+            f"lane kind {kind} not in overlay lane_kinds "
+            + ",".join(request.cloud.lane_kinds)
+        )
+    routed = HandlerCloudSessionPlacement().handle(
+        ModelCloudSessionPlacementRequest(
+            action="route",
+            brief=_brief(request, lane, row, "", kind),
+            repo=_repo(row),
+            model=request.engine,
+            placement="auto",
+            excluded_repos=request.cloud.excluded_repos,
+        )
+    )
+    if routed.error or routed.refusal:
+        return "", f"placement node refused: {routed.error or routed.refusal}"
+    return kind, ""
+
+
+def _age(stamp: str | None, now: float) -> str:
+    if stamp is None:
+        return "none"
+    at = _epoch(stamp)
+    if at is None:
+        return "unreadable"
+    minutes = max(0, int(now - at)) // 60
+    return f"{minutes // 60}h{minutes % 60:02d}m"
+
+
+def _credit_left(request: ModelLabFillTickRequest) -> str:
+    """The account's recorded credit through node_cloud_session_placement_effect, or ``unmeasured``."""
+    cloud = request.cloud
+    if not cloud.placement_dir or not cloud.account:
+        return "unmeasured"
+    read = HandlerCloudSessionPlacement().handle(
+        ModelCloudSessionPlacementRequest(
+            action="credit", placement_dir=cloud.placement_dir, account=cloud.account
+        )
+    )
+    remaining = (read.credit or {}).get("remaining")
+    if (
+        read.error
+        or isinstance(remaining, bool)
+        or not isinstance(remaining, int | float)
+    ):
+        return "unmeasured"
+    return f"{float(remaining):.2f}".rstrip("0").rstrip(".")
 
 
 def _join(*parts: str) -> str:
@@ -249,9 +334,11 @@ class HandlerLabFillTick:
         clock: ProtocolLabFillClock | None = None,
         memory_reader: ProtocolLabFillReceiptReader | None = None,
         memory_writer: ProtocolLabFillResultWriter | None = None,
+        cloud_facts: ProtocolLabFillCloudFacts | None = None,
     ) -> None:
         from ..protocols.local_lab_fill_adapters import (
             LocalApprovedWork,
+            LocalLedgerReader,
             LocalOwnerReader,
             LocalReceiptReader,
             LocalResultWriter,
@@ -265,6 +352,9 @@ class HandlerLabFillTick:
         self._memory_writer = (
             memory_writer if memory_writer is not None else LocalResultWriter()
         )
+        self._cloud_facts = (
+            cloud_facts if cloud_facts is not None else LocalLedgerReader()
+        )
         self._clock = default_clock(clock)
         self._launch = (
             launch if launch is not None else HandlerLabFillLaunch(clock=self._clock)
@@ -274,11 +364,46 @@ class HandlerLabFillTick:
         memory = _Memory.from_mapping(
             self._memory_reader.read(request.state_path) if request.state_path else None
         )
-        result = self._fill(request, memory)
+        cloud_notes: list[str] = []
+        result = self._fill(request, memory, cloud_notes)
+        result = result.model_copy(
+            update={"cloud_line": self._cloud_line(request, result, cloud_notes)}
+        )
         return self._settle(request, memory, result) if request.apply else result
 
+    def _cloud_line(
+        self,
+        request: ModelLabFillTickRequest,
+        result: ModelLabFillTickResult,
+        notes: Sequence[str],
+    ) -> str:
+        """One line: the placement verdict and why, the newest cloud CLAIM's age, the credit left."""
+        auto = sum(d.placement == "auto" for d in result.dispatched)
+        if not request.cloud.enabled:
+            verdict = "placement=off reason=overlay flag cloud.enabled is off"
+        elif not request.cloud.lane_kinds:
+            verdict = "placement=none reason=overlay names no lane kind"
+        elif auto:
+            verdict = f"placement=auto lanes={auto}"
+        elif notes:
+            verdict = f"placement=none reason=no eligible row ({'; '.join(notes)})"
+        else:
+            verdict = f"placement=none reason=no row reached a slot ({result.outcome})"
+        try:
+            age = _age(
+                self._cloud_facts.newest_cloud_claim(request.ledger_path),
+                self._clock.now_epoch_s(),
+            )
+        except LabFillPortError:
+            age = "unreadable"
+        line = f"cloud: {verdict} newest_cloud_claim_age={age} credit_left={_credit_left(request)}"
+        return " ".join(line.split())
+
     def _fill(
-        self, request: ModelLabFillTickRequest, memory: _Memory
+        self,
+        request: ModelLabFillTickRequest,
+        memory: _Memory,
+        cloud_notes: list[str],
     ) -> ModelLabFillTickResult:
         slots = _slots(request)
 
@@ -374,6 +499,12 @@ class HandlerLabFillTick:
                 ticket, row_id = str(row["ticket"]), str(row["id"])
                 lane = lane_name(ticket, request.run_key)
                 priority = priority_class(row, request.mvp_repos, request.process_repos)
+                cloud_kind = ""
+                if request.cloud.enabled and request.cloud.lane_kinds:
+                    cloud_kind, why_not = cloud_eligibility(request, row, lane)
+                    if why_not:
+                        cloud_notes.append(f"{ticket}: {why_not}")
+                placement = "auto" if cloud_kind else ""
                 if not request.apply:
                     dispatched.append(
                         ModelLabFillTickDispatch(
@@ -382,11 +513,17 @@ class HandlerLabFillTick:
                             row_id=row_id,
                             host=host,
                             priority=priority,
+                            placement=placement,
                         )
                     )
                     break
                 launched = self._launch_one(
-                    request, row, lane, host, lanes_left=len(slots) - i
+                    request,
+                    row,
+                    lane,
+                    host,
+                    lanes_left=len(slots) - i,
+                    cloud_kind=cloud_kind,
                 )
                 if launched.detached:
                     memory.brief_refusals.pop(ticket, None)
@@ -398,6 +535,7 @@ class HandlerLabFillTick:
                             host=host,
                             priority=priority,
                             receipt=launched.receipt,
+                            placement=placement,
                         )
                     )
                     break
@@ -590,10 +728,10 @@ class HandlerLabFillTick:
         host: str,
         *,
         lanes_left: int,
+        cloud_kind: str = "",
     ) -> ModelLabFillLaunchResult:
         ticket, row_id, kind = str(row["ticket"]), str(row["id"]), str(row["kind"])
         marker = f"APPROVED-ROW {row_id} (unresolved)"
-        repo = str(row.get("repo") or "").split("/")[-1]
         pr = str(row.get("pr") or "")
         launch = ModelLabFillLaunch(
             lane=lane,
@@ -602,17 +740,18 @@ class HandlerLabFillTick:
             host=host,
             parent=request.parent,
             timeout_min=request.timeout_min,
-            repo=repo if _REPO.match(repo) else None,
+            repo=_repo(row),
             pr=pr if _PR.match(pr) else None,
             approved_row=ModelLabFillApprovedRow(
                 id=row_id, kind=kind, ticket=ticket, marker=marker
             ),
+            placement="auto" if cloud_kind else None,
         )
         return self._launch.handle(
             ModelLabFillLaunchRequest(
                 launch=launch,
                 kind=kind,
-                brief=_brief(request, lane, row, marker),
+                brief=_brief(request, lane, row, marker, cloud_kind),
                 brief_dir=request.brief_dir,
                 ledger_path=request.ledger_path,
                 approved_work_path=request.approved_work_path,
@@ -625,6 +764,7 @@ class HandlerLabFillTick:
 
 __all__: list[str] = [
     "HandlerLabFillTick",
+    "cloud_eligibility",
     "diagnose_lane_name",
     "lane_name",
     "priority_class",
