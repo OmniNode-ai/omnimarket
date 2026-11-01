@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from importlib import resources
+from typing import Any
 
 import pytest
 import yaml
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     FocusedRunBusCaller,
@@ -259,3 +261,40 @@ async def test_a_terminal_for_another_command_arriving_mid_run_is_not_taken() ->
     receipt = await client.run(_request())
 
     assert "fixed" in receipt.junit_xml
+
+
+class _GroupRecordingBus(EventBusInmemory):
+    """The in-memory bus, noting every consumer group a subscribe asks for."""
+
+    def __init__(self) -> None:
+        super().__init__(environment="local", group="groups-per-call")
+        self.groups: set[str] = set()
+
+    async def subscribe(
+        self, *args: Any, **kwargs: Any
+    ) -> Callable[[], Awaitable[None]]:
+        group_id = kwargs.get("group_id")
+        if isinstance(group_id, str) and not group_id.startswith("ungrouped."):
+            self.groups.add(group_id)
+        return await super().subscribe(*args, **kwargs)
+
+
+async def test_groups_per_call_a_hundred_focused_runs_create_at_most_one_group() -> (
+    None
+):
+    """OMN-21818: the client reads both terminals with no group, so the host's one group is all there is."""
+    bus = _GroupRecordingBus()
+    await bus.start()
+    host = FocusedRunHost(bus, _FakeHandler())
+    await host.start()
+    host_groups = set(bus.groups)
+    for _ in range(100):
+        client = FocusedRunBusCaller(bus)
+        await client.start()
+        receipt = await client.run(_request())
+        await client.stop()
+        assert receipt.status is EnumFocusedTestRunStatus.COMPLETED
+    await host.stop()
+
+    assert len(bus.groups - host_groups) <= 1
+    assert not any("delegated_test_loop_client" in group for group in bus.groups)
