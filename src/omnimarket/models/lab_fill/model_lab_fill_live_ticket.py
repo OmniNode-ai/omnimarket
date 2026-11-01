@@ -10,6 +10,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.lab_fill.model_lab_fill_ticket import ModelLabFillLiveDescription
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
@@ -87,3 +89,20 @@ class ModelLabFillLiveGateRequest(BaseModel):
 
     tickets: tuple[Annotated[str, Field(pattern=r"^OMN-[0-9]+$")], ...]
     operator: str | None = None
+
+
+class ModelLabFillCriteriaReadRequest(BaseModel):
+    """Tickets whose description the snapshot did not carry."""
+
+    model_config = _FROZEN
+
+    tickets: tuple[Annotated[str, Field(pattern=r"^OMN-[0-9]+$")], ...]
+
+
+class ModelLabFillCriteriaReadResult(BaseModel):
+    """Descriptions Linear returned, or the reason none could be read."""
+
+    model_config = _FROZEN
+
+    descriptions: tuple[ModelLabFillLiveDescription, ...] = ()
+    error: str = ""
