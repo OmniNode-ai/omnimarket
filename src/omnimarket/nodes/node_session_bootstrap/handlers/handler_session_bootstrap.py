@@ -33,9 +33,13 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -47,11 +51,19 @@ _TOPIC_SESSION_CRON_HEALTH_VIOLATION = "onex.evt.omnimarket.session-cron-health-
 
 logger = logging.getLogger(__name__)
 
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_session_bootstrap", "timeouts"),
+)
+
+
+def _budget_ms(name: str) -> int:
+    """The cron tick budget the contract declares for ``name``, in milliseconds."""
+    return int(_TIMEOUTS[name] * 1000)
+
+
 # Advisory cost ceiling threshold for warnings
 _COST_CEILING_WARNING_THRESHOLD: float = 20.0
-
-# Cron interval for build_dispatch_pulse (minutes)
-_BUILD_DISPATCH_PULSE_INTERVAL_MIN: int = 30
 
 # Phase-1 cron name — build_dispatch_pulse is always the critical cron
 _PHASE1_CRON_NAME: str = "build-dispatch-pulse"
@@ -163,7 +175,7 @@ _REQUIRED_CRONS: list[ModelCronSpec] = [
         prompt_template_key="BUILD_DISPATCH_PULSE_PROMPT",
         cron_expression="*/30 * * * *",
         active_modes=["build"],
-        timeout_budget_ms=300000,
+        timeout_budget_ms=_budget_ms("build_dispatch_pulse_budget_seconds"),
         is_phase1=True,
         description=(
             "Pull Linear sprint, classify unworked tickets, dispatch workers via "
@@ -176,7 +188,7 @@ _REQUIRED_CRONS: list[ModelCronSpec] = [
         prompt_template_key="MERGE_SWEEP_PROMPT",
         cron_expression="*/30 * * * *",
         active_modes=["build", "close-out"],
-        timeout_budget_ms=600000,
+        timeout_budget_ms=_budget_ms("merge_sweep_budget_seconds"),
         description=(
             "Run /onex:merge_sweep — org-wide PR sweep, enable auto-merge on "
             "review-green PRs. Skill-first routing. Route LLM through .201. "
@@ -188,7 +200,7 @@ _REQUIRED_CRONS: list[ModelCronSpec] = [
         prompt_template_key="OVERSEER_VERIFY_PROMPT",
         cron_expression="11,31,51 * * * *",
         active_modes=["build", "close-out", "reporting"],
-        timeout_budget_ms=120000,
+        timeout_budget_ms=_budget_ms("overseer_verify_budget_seconds"),
         description=(
             "Run /onex:overseer_verify — 5-check overseer gate on recently-completed "
             "tickets. Use TaskList stall detection as fallback. Route LLM through .201. "
@@ -200,7 +212,7 @@ _REQUIRED_CRONS: list[ModelCronSpec] = [
         prompt_template_key="CONTRACT_VERIFY_PROMPT",
         cron_expression="7,22,37,52 * * * *",
         active_modes=["build", "close-out", "reporting"],
-        timeout_budget_ms=120000,
+        timeout_budget_ms=_budget_ms("contract_verify_budget_seconds"),
         description=(
             "Run /onex:contract_sweep drift-mode — contract health check across all "
             "repos. Route LLM through .201. Report only on drift violations; silent "

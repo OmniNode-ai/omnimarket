@@ -23,9 +23,11 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import pytest
 
-from omnimarket.handlers.session_stream_barrier import HandlerSessionStreamBarrier
 from omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity import (
     build_barrier_payload,
+)
+from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+    create_handler_session_stream_barrier,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.session_barrier_probe import (
     ModelSessionBarrierReadBinding,
@@ -248,7 +250,7 @@ def test_postgres_compaction_pack_build_barrier_waits_for_both_projection_gaps(
         "lineage": 3,
         "content": 3,
     }
-    verdict = HandlerSessionStreamBarrier().handle(probe)
+    verdict = create_handler_session_stream_barrier().handle(probe)
     assert verdict.outcome == "not_met"
     assert {state.stream: state.first_missing for state in verdict.streams} == {
         "lineage": 2,
@@ -256,7 +258,7 @@ def test_postgres_compaction_pack_build_barrier_waits_for_both_projection_gaps(
     }
 
     projected.lineage(2)
-    pending = HandlerSessionStreamBarrier().handle(
+    pending = create_handler_session_stream_barrier().handle(
         projected.source.read(projected.session_id, "compaction-barrier")
     )
     assert pending.outcome == "not_met"
@@ -268,7 +270,7 @@ def test_postgres_compaction_pack_build_barrier_waits_for_both_projection_gaps(
     )
     projected.content(2)
     closed = projected.source.read(projected.session_id, "compaction-barrier")
-    assert HandlerSessionStreamBarrier().handle(closed).outcome == "met"
+    assert create_handler_session_stream_barrier().handle(closed).outcome == "met"
     assert all(
         sorted(closed.applied[stream]) == [1, 2, 3] for stream in ("lineage", "content")
     )
@@ -286,12 +288,15 @@ def test_postgres_compaction_pack_build_barrier_redelivery_is_idempotent(
     probe = projected.source.read(projected.session_id, "compaction-barrier")
     assert probe.applied == {"lineage": (1,), "content": (1,)}
     assert len(probe.barriers) == 2
-    assert HandlerSessionStreamBarrier().handle(probe).outcome == "met"
+    assert create_handler_session_stream_barrier().handle(probe).outcome == "met"
     # A barrier identity from a different compaction cannot be substituted.
     wrong_barrier = projected.source.read(projected.session_id, "other-barrier")
     assert wrong_barrier.barriers == ()
     assert wrong_barrier.source_revision is None
-    assert HandlerSessionStreamBarrier().handle(wrong_barrier).outcome == "no_barrier"
+    assert (
+        create_handler_session_stream_barrier().handle(wrong_barrier).outcome
+        == "no_barrier"
+    )
 
 
 def test_postgres_compaction_pack_build_barrier_preserves_disabled_and_utc_revision(
@@ -307,7 +312,7 @@ def test_postgres_compaction_pack_build_barrier_preserves_disabled_and_utc_revis
     assert probe.applied == {"lineage": (1,), "content": ()}
     assert len(probe.barriers) == 1
     assert probe.barriers[0].content_capture == "disabled"
-    verdict = HandlerSessionStreamBarrier().handle(probe)
+    verdict = create_handler_session_stream_barrier().handle(probe)
     assert verdict.outcome == "disabled"
     assert verdict.streams[0].met
 
@@ -336,7 +341,7 @@ def test_postgres_compaction_pack_build_barrier_replay_backfills_old_projection_
     after = projected.source.read(projected.session_id, "compaction-barrier")
     assert after.applied == {"lineage": (1,), "content": (1,)}
     assert after.source_revision == _CUTOFF
-    assert HandlerSessionStreamBarrier().handle(after).outcome == "met"
+    assert create_handler_session_stream_barrier().handle(after).outcome == "met"
     with projected.conn.cursor() as cursor:
         cursor.execute(
             sql.SQL("SELECT count(*) FROM {}.session_content").format(
