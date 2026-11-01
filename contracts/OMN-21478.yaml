@@ -87,9 +87,9 @@ dod_evidence:
       import tomllib
       from pathlib import Path
       source = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]["omnibase-core"]
-      assert source["tag"] == "dev-20261031034124-e3433152a2f6", source
+      assert source["tag"] == "dev-20261031202655-5bb91ae7e720", source
       installed = json.loads(importlib.metadata.distribution("omnibase-core").read_text("direct_url.json"))
-      assert installed["vcs_info"]["commit_id"] == "e3433152a2f616c7d47623f29c879fd8c082acb7", installed
+      assert installed["vcs_info"]["commit_id"] == "5bb91ae7e72094a62a1198dbc92803448a05ec67", installed
       for module in (
           "omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate",
           "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep",
