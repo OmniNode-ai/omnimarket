@@ -193,6 +193,26 @@ class TestWorkflowRun:
             _fold("workflow_run", self._payload(id=None))
 
 
+class TestWorkflowRunAttempt:
+    """OMN-20134: an attempt above 1 is a CI re-run, which the pin friction measurement counts."""
+
+    def _fold_attempt(self, attempt: object) -> ModelGitHubWorkflowRunObservation:
+        payload = TestWorkflowRun()._payload("requested", run_attempt=attempt)
+        (obs,) = _fold("workflow_run", payload)
+        assert isinstance(obs, ModelGitHubWorkflowRunObservation)
+        return obs
+
+    def test_the_attempt_number_rides_the_observation(self) -> None:
+        assert self._fold_attempt(1).run_attempt == 1
+        assert self._fold_attempt(3).run_attempt == 3
+
+    @pytest.mark.parametrize("attempt", [None, 0, -1, "2", True, 1.5])
+    def test_a_missing_or_malformed_attempt_is_no_attempt(
+        self, attempt: object
+    ) -> None:
+        assert self._fold_attempt(attempt).run_attempt is None
+
+
 SECRET = "unit-test-webhook-secret"
 
 

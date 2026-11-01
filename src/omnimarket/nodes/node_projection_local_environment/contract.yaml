@@ -9,9 +9,10 @@ description: >
   with the verdict and open alert the report's time gives it and every sibling it
   re-judges, and serves those rows to the Overview Environment panel and the API
   Keys card. The tenant arrives as a canonical tenant uuid or a registry slug and
-  is confirmed against tenant_registry_mirror inside the write's transaction; the
-  row is stored under the uuid the registry records. A tenant the registry does
-  not know, or any other form, is refused to the DLQ.
+  is confirmed against tenant_registry_mirror through the mirror's own read
+  binding before the write; the row is stored under the uuid the registry
+  records. A tenant the registry does not know, or any other form, is refused to
+  the DLQ.
 runtime_profiles: [tenant-projection]
 
 handler:
@@ -54,6 +55,16 @@ db_io:
       migration: "0000_create_local_environment.sql"
       access: read_write
       role: local_environment
+    # Confirms each report's tenant. Read through the mirror's own binding, as
+    # the delegation, savings and run-trace writers read it: the tenant writer
+    # role holds nothing on this relation. NOT `tenant`: the mirror is a
+    # cross-tenant index.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_tenant_registry_mirror.sql"
+      access: read
+      role: tenant_registry_mirror
   dedupe_key: [tenant_id, mode, service]
 event_bus:
   subscribe_topics:
@@ -100,6 +111,8 @@ projection_api:
   order_by: "mode ASC, service ASC"
   cursor_column: projection_cursor
   freshness_column: updated_at
+  expected_event_interval_seconds: 15
+  serve_time_judgement: omnimarket.handlers.handler_local_environment_judgement.judge_local_services
   limit: 500
   bus_backed: true
   key_columns: [tenant_id, mode, service]

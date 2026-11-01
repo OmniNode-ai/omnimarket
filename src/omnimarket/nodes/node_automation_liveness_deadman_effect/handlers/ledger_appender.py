@@ -13,6 +13,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.liveness.model_automation_liveness_deadman import (
     ModelDeadmanEpisodeKey,
 )
@@ -22,11 +23,21 @@ _STDERR_TAIL = 200
 
 class LedgerCommandAppender:
     def __init__(
-        self, ledger: Path, command: tuple[str, ...], *, timeout_seconds: int = 60
+        self,
+        ledger: Path,
+        command: tuple[str, ...],
+        *,
+        timeout_seconds: float | None = None,
     ) -> None:
         self._ledger = ledger
         self._command = command
-        self._timeout = timeout_seconds
+        self._timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else load_node_timeouts("node_automation_liveness_deadman_effect").get(
+                "ledger_command_timeout_seconds"
+            )
+        )
 
     def find_line(self, key: ModelDeadmanEpisodeKey) -> str | None:
         needle_episode = f"| episode={key.episode_id} "
@@ -52,7 +63,7 @@ class LedgerCommandAppender:
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
-                f"ledger append timed out after {self._timeout}s"
+                f"ledger append timed out after {self._timeout:g}s"
             ) from exc
         except OSError as exc:
             raise RuntimeError(f"ledger append could not start: {exc}") from exc

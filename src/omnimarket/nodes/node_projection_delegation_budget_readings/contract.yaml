@@ -1,0 +1,85 @@
+name: projection_delegation_budget_readings
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_delegation_budget_readings.models.model_delegation_budget_reading_projection_request.ModelDelegationBudgetReadingProjectionRequest
+description: >
+  OMN-21326 AC3, moved off the operator's machine (OMN-17427). Folds every
+  delegate-skill terminal, completed or failed, into one row per correlation id
+  carrying the budget the run resolved before dispatch (requested timeout and
+  execution timeout), how long the handler took (execution_duration_ms), and
+  the envelope time the producer stamped. The deployed lane already publishes
+  these terminals on the shared bus; until now only the invoking CLI kept
+  them, as runs/<run_id>/{run.json,receipt.json} under the invoking host's
+  state root, so the AC3 readback could run only where the CLI had run.
+
+  The budget readback (node_delegate_skill_orchestrator, handler_budget_readback)
+  reads this table from any lab host through the DSN named by its own contract.
+  The row records what the terminal said; whether a run outlived its budget plus
+  grace is the readback's verdict and is never stored here.
+
+handler:
+  module: omnimarket.nodes.node_projection_delegation_budget_readings.handlers.handler_projection_delegation_budget_readings
+  class: HandlerProjectionDelegationBudgetReadings
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed. A routed pure fold receives the raw event
+    # beside the writer and dead-letters it (OMN-19721); the writer calls the
+    # fold in process (rule 7a).
+    - operation: delegation_budget_readings_projection_writer
+      handler:
+        name: DelegationBudgetReadingsProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation_budget_readings.handlers.handler_delegation_budget_readings_writer
+      handler_module: omnimarket.nodes.node_projection_delegation_budget_readings.handlers.handler_delegation_budget_readings_writer
+
+terminal_event: onex.evt.omnimarket.projection-delegation-budget-readings-applied.v1
+
+golden_path:
+  - "The deployed delegation lane publishes a delegate-skill terminal, completed or failed, with its budget_evidence and execution_duration_ms"
+  - "The writer reads the producer's envelope time and the stored row for the correlation id"
+  - "The pure fold builds the row; a redelivery or an older terminal of the same id is refused in the fold and in SQL"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-delegation-budget-readings-applied.v1"
+  - "handler_budget_readback reads the table from any lab host through the contract-declared DSN env var"
+
+dod_evidence:
+  - test: tests/test_omn21326_delegation_budget_readings_projection.py::test_a_completed_terminal_projects_its_budget_and_duration
+    description: "A completed terminal becomes one row carrying the resolved budget and the handler duration"
+  - test: tests/test_omn21326_delegation_budget_readings_projection.py::test_a_redelivery_or_older_terminal_never_replaces_a_newer_one
+    description: "The fold refuses an older terminal of the same correlation id"
+  - test: tests/test_omn21326_delegation_budget_readings_projection.py::test_an_untimed_event_is_refused_not_stamped_with_the_clock
+    description: "A terminal with no envelope time dead-letters instead of taking the write time"
+  - test: tests/test_omn21326_delegation_budget_readings_writer.py::test_the_writer_upserts_under_the_observed_at_guard
+    description: "The SQL ordering guard is on the upsert the writer runs"
+  - test: tests/test_omn21326_delegation_budget_readings_writer.py::test_the_producers_terminal_projects_verbatim
+    description: "The terminal ModelDelegateSkillCompleted serialises projects without translation"
+
+db_io:
+  db_tables:
+    - name: delegation_budget_readings
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_delegation_budget_readings.sql"
+      access: read_write
+      role: delegation_budget_readings
+  dedupe_key:
+    - correlation_id
+  ordering_key: observed_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-delegation-budget-readings-applied.v1
+  # A malformed terminal is a durable, recoverable failure signal: dropping it
+  # would leave a run that happened looking like one that never did.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-delegation-budget-readings-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-delegation-budget-readings-applied.v1
+
+metadata:
+  transport_type: kafka

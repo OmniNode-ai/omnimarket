@@ -21,6 +21,8 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelTaskDelegatedSavingsSource,
 )
+from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_savings.dlq_routing import DlqRouting
 from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import (
     HandlerCompactionSavings,
     compaction_source_from_post_compact,
@@ -35,7 +37,6 @@ from omnimarket.projection.discovery import load_projection_exposures_from_contr
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,
     dlq_topics_from_contract,
-    route_to_dlq,
 )
 from omnimarket.projection.envelope import envelope_tenant_identity
 from omnimarket.projection.models import ProjectionTableConfig
@@ -222,7 +223,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # applied one at the ``project_event`` seam -- and republishing an
         # unchanged aggregate for every malformed message would mint a record
         # per message on a compacted topic. Reset at the top of every apply.
-        self._dlq_routed = False
+        self._dlq_routing = DlqRouting()
 
     def _resolve_aggregate_exposures(
         self, exposures: tuple[ProjectionTableConfig, ...] | list[ProjectionTableConfig]
@@ -381,12 +382,11 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         consumer still commits the offset (durably captured on the DLQ, not
         reprocessed in a hot loop).
         """
-        # OMN-17426: this method returns True, so without the flag the apply
+        # OMN-17426: this method returns True, so without the DLQ mark the apply
         # seam cannot tell a quarantined event from a projected one.
-        self._dlq_routed = True
         fallback = meta.fallback_id if meta is not None else ""
         correlation_id = correlation_id_from_payload(data, fallback=fallback)
-        await route_to_dlq(
+        await self._dlq_routing.route(
             publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
             original_message=data,
@@ -416,20 +416,15 @@ class SavingsProjectionRunner(BaseProjectionRunner):
     def subscribe_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
         Delegates to project_event via asyncio.run().
         """
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
-        )
-        ok = asyncio.run(self.project_event(topic, input_data, meta))
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
+        ok = asyncio.run(self.project_event(topic, request.payload, meta))
         return {"projected": ok}
 
     @property
@@ -458,7 +453,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         commits, and republishing an unchanged aggregate for each of those
         would mint a record per malformed message on a compacted topic.
         """
-        self._dlq_routed = False
+        self._dlq_routing.begin_event()
         if topic and topic == self._topic_hook_event:
             return await self._project_compaction_savings(data, meta)
         # OMN-15583: resolve the row's tenant ONCE, here, before any branch --
@@ -470,7 +465,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # resolution the write used, never a second one.
         write_tenant = await self._resolve_row_tenant(data)
         ok = await self._apply_event(topic, data, meta, write_tenant=write_tenant)
-        if ok and not self._dlq_routed:
+        if ok and not self._dlq_routing.quarantined:
             await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
         return ok
 

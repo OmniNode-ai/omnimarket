@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.enums.enum_polish_task_class import EnumPolishTaskClass
 from omnimarket.nodes.node_polish_task_classifier.models.model_polish_classify_request import (
@@ -135,9 +134,7 @@ class HandlerPolishTaskClassifier:
         return "COMPUTE"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        request: ModelPolishClassifyRequest,
+        self, request: ModelPolishClassifyRequest
     ) -> ModelPolishClassifyResult:
         result = _classify(request)
         logger.info(

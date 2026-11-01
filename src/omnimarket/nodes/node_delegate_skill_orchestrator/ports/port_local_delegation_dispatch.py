@@ -56,7 +56,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, ClassVar, Literal, TypedDict, cast
 from uuid import UUID
 
 import yaml
@@ -124,6 +124,12 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
+from omnimarket.handlers.delegation_first_choice import first_choice_route
+from omnimarket.handlers.delegation_model_scope import (
+    model_scope_refusal,
+    model_scope_skip_reason,
+    read_model_scope,
+)
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -231,6 +237,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import 
     ProtocolRunStepPublisher,
     RunStepRecorder,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.session_model import (
+    current_session_model,
+)
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
 # (``handler_delegation_workflow.handle_gate_result`` :1240-1253). The quality-gate
@@ -319,7 +328,11 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
     apply_usage_call,
 )
-from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
+from omnimarket.pricing import (
+    ModelBaselineSavings,
+    compute_baseline_savings,
+    resolve_baseline_model,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -1513,7 +1526,15 @@ class LocalDelegationDispatchPort:
     OMN-13849: dispatch runs an in-process escalation loop. On a quality-gate FAIL
     it re-dispatches to the next eligible tier (bounded by the task-class
     ``max_escalations``). Acceptance uses the deterministic gate on both paths.
+
+    OMN-21752: this port reads the caller's session model from
+    ``current_session_model``, which the handler sets around the dispatch, and
+    says so with ``reads_session_model``. It is not a keyword of ``dispatch()``,
+    because omnibase_infra's keyword-parity check holds every keyword the
+    handler's call site can send to the runtime port's signature.
     """
+
+    reads_session_model: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -2056,6 +2077,20 @@ class LocalDelegationDispatchPort:
         local_rungs: tuple[ModelResolvedDelegationBackend, ...] = ()
         if backend_id is None and model is None and probe_walk is None:
             local_rungs = registered_local_model_routes(task_type)
+            # OMN-21346: the model the developer chose with ``onex models
+            # first`` answers before everything else; a failure carries on in
+            # the order the run would have taken without a choice.
+            chosen_first = first_choice_route(task_type)
+            if chosen_first is not None:
+                local_rungs = (
+                    chosen_first,
+                    *(
+                        rung
+                        for rung in local_rungs
+                        if (rung.backend_id, rung.model_id)
+                        != (chosen_first.backend_id, chosen_first.model_id)
+                    ),
+                )
             if local_rungs:
                 backend = local_rungs[0]
 
@@ -2196,6 +2231,50 @@ class LocalDelegationDispatchPort:
             remaining = run_deadline - self._clock()
             return remaining - next_rung_reserve >= last_attempt_seconds
 
+        # OMN-21267: the developer's local-only or free-only rule. A pin, and a
+        # probe ladder, decide the rung themselves and are not narrowed by it.
+        scope_rule = (
+            read_model_scope()
+            if pinned_backend_id is None and probe_walk is None
+            else None
+        )
+        scope_skips: list[dict[str, object]] = []
+
+        def next_in_scope(
+            skipped: ModelResolvedDelegationBackend,
+        ) -> ModelResolvedDelegationBackend | None:
+            """The model the run would have tried after ``skipped``, had it failed."""
+            local_next = next_local_rung(skipped)
+            if local_next is not None:
+                return local_next
+            if _is_customer_byok_route(skipped) and model is None:
+                chosen_next = next_chosen_model_byok_route(
+                    skipped, tried_models=frozenset(tried_byok_models)
+                )
+                if chosen_next is not None:
+                    return chosen_next
+            skipped_tier = _routing_tier_name(skipped)
+            quota = self._quota_snapshot(quota_observations)
+            sibling = self._resolve_sibling_backend(
+                current_tier=skipped_tier,
+                task_type=task_type,
+                excluded_backend_refs=frozenset(excluded_backend_refs),
+                excluded_model_ids=frozenset(quality_rejected_model_ids),
+                quota_state=quota,
+            )
+            if sibling is not None:
+                return sibling
+            excluded_tiers.add(skipped_tier)
+            return self._resolve_next_backend(
+                current_tier=skipped_tier,
+                task_type=task_type,
+                excluded_tiers=frozenset(excluded_tiers),
+                roi_overlay=roi_overlay,
+                excluded_backend_refs=frozenset(excluded_backend_refs),
+                spread_key=str(correlation_id),
+                quota_state=quota,
+            )
+
         while True:
             # OMN-19987: a backend chosen for this pass is a routing decision;
             # a retry on the backend already chosen is not a new one.
@@ -2205,6 +2284,82 @@ class LocalDelegationDispatchPort:
                 tier=_routing_tier_name(backend),
                 candidates=_route_candidates(task_type, excluded_tiers),
             )
+            # OMN-21267: a model outside the developer's rule is not sent and is
+            # not an attempt. It is named under ``skipped_rungs`` with its
+            # reason and the run moves on; a rule that leaves no model refuses
+            # the run before any provider call.
+            scope_reason = model_scope_skip_reason(
+                backend, scope_rule, is_local_rung=_is_local_ladder_rung
+            )
+            if scope_rule is not None and scope_reason is not None:
+                scope_skip: dict[str, object] = {
+                    "tier": _routing_tier_name(backend),
+                    "backend_id": backend.backend_id,
+                    "model_id": backend.model_id,
+                    "rule": scope_rule,
+                    "reason": scope_reason,
+                }
+                scope_skips.append(scope_skip)
+                skipped_rungs.append(scope_skip)
+                logger.info(
+                    "LocalDelegationDispatch: %s task_type=%s correlation=%s",
+                    scope_reason,
+                    task_type,
+                    correlation_id,
+                )
+                excluded_backend_refs.add(backend.backend_id)
+                tried_byok_models.add((backend.backend_id, backend.model_id))
+                scope_next = next_in_scope(backend) if len(scope_skips) < 64 else None
+                if scope_next is not None:
+                    backend = _with_model_choice(scope_next)
+                    continue
+                scope_refused = model_scope_refusal(scope_rule, scope_skips)
+                if not attempts:
+                    self._project_refusal(
+                        correlation_id=correlation_id,
+                        task_type=task_type,
+                        endpoint_ref=backend.endpoint_ref,
+                        model_id=backend.model_id,
+                        prompt=prompt,
+                        source_session_id=source_session_id,
+                        tenant_id=resolved_tenant_id,
+                        failure_message=str(scope_refused),
+                        attribution=attribution,
+                        trace_id=trace_id,
+                        queue_wait_ms=queue_wait_ms,
+                        started_monotonic=dispatch_started,
+                    )
+                    raise scope_refused
+                _settle_final_rung_as_terminate(attempts)
+                run_steps.terminal(
+                    succeeded=False,
+                    backend_id=backend.backend_id,
+                    model_id=backend.model_id,
+                )
+                return {
+                    "status": "failed",
+                    "content": best_content,
+                    "delegated_to": backend.endpoint_ref,
+                    "model_name": backend.model_id,
+                    "quality_gate_passed": False,
+                    "quality_score": 0.0,
+                    "quality_gates_failed": [str(scope_refused)],
+                    "error_message": str(scope_refused),
+                    "delegation_latency_ms": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "correlation_id": str(correlation_id),
+                    "escalation_count": escalation_count,
+                    "cost_usd": float(cumulative_cost_usd),
+                    "attempts": attempts,
+                    "skipped_rungs": list(skipped_rungs),
+                    "provenance": (
+                        provenance.model_dump(mode="json")
+                        if provenance is not None
+                        else None
+                    ),
+                }
             # OMN-17434: the single point on this bus-less port where a
             # backend becomes EXECUTABLE — the initial resolution (pinned or
             # tier-derived), every escalation hop, and every same-tier retry
@@ -3231,6 +3386,7 @@ class LocalDelegationDispatchPort:
                     prompt_tokens=result.tokens_in,
                     completion_tokens=result.tokens_out,
                     actual_cost_usd=float(cumulative_cost_usd),
+                    session_model=current_session_model.get() or "",
                 )
                 self._project_evidence(
                     correlation_id=correlation_id,
@@ -5641,6 +5797,10 @@ class LocalDelegationDispatchPort:
                 store,
                 tenant_id=tenant_id,
                 terminal_at=terminal_at,
+                # OMN-20557: folded under the baseline this run resolved.
+                baseline_model=resolve_baseline_model(
+                    overlay={}, store={}, session_model=current_session_model.get()
+                ).model,
                 publisher=self._metering_refresh_publisher
                 or InProcessMeteringRefreshPublisher(store),
             )

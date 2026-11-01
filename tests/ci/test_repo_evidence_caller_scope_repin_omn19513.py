@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
+
 pytestmark = pytest.mark.unit
+
+_DEV_MERGE_TAG = r"dev-[0-9]{14}-[0-9a-f]{12}"
 
 CALLER_PATH = (
     Path(__file__).resolve().parents[2]
@@ -22,7 +27,7 @@ CALLER_PATH = (
 # omnibase_core#2079 scopes evidence; #2077 gives dod-verify 60 minutes.
 # Umbrella-contract PRs had dod-verify cancelled at the 40-minute limit because
 # every carried item ran at the head and again at the merge base.
-_SCOPE_REUSABLE_TAG = "dev-20261022114039-578228977721"
+_SCOPE_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 _PREVIOUS_REUSABLE_SHA = "4d16322dae9d62f96089b93421a768fb8dd8c8fe"
 
 _REUSABLE = "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
@@ -46,8 +51,12 @@ def test_caller_no_longer_pins_the_reusable_with_the_40_minute_budget() -> None:
 
 def test_the_scope_repin_keeps_the_job_id_and_inputs() -> None:
     job = _job()
-    assert job["with"] == {
+    raw_inputs = job["with"]
+    assert isinstance(raw_inputs, dict)
+    with_inputs = dict(raw_inputs)
+    verifier_tag = with_inputs.pop("verifier-tag")
+    assert re.fullmatch(_DEV_MERGE_TAG, verifier_tag)
+    assert with_inputs == {
         "evidence-source": "caller",
-        "verifier-version": "0.4.305",
         "compare-with-occ": "false",
-    }
+    }, "the caller passes verifier-tag and no verifier-version"

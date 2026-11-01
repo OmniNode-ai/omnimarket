@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21630"
+title: "urllib3 2.7.0 in omnimarket uv.lock turns Dependency Security Scan red on every omnimarket PR, and CI Summary fails closed on it"
+summary: "Safety advisory SFTY-20260930-39688 (CVE-2026-97687, urllib3 >=1.26.0,<2.8.0) turned the Safety step of Dependency Security Scan red on every omnimarket pull request, and CI Summary's external sweep fails closed on it. uv.lock moves urllib3 from 2.7.0 to 2.8.0 and nothing else; a test asserts the lock floor."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21630-lock-floor"
+    statement: |-
+      omnimarket's uv.lock pins urllib3 2.8.0 or later, with no other package moved.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omnimarket dev uv.lock pins urllib3 2.8.0 or later, with no other package moved -- falsifier: git show origin/dev:uv.lock | grep -A1 'name = "urllib3"' prints a version below 2.8.0
+  - id: "req-omn21630-scan-clean"
+    statement: |-
+      The Safety step reports no urllib3 vulnerability on a pull request opened after the bump.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the Safety step of Dependency Security Scan reports no urllib3 vulnerability on a pull request opened after the bump -- falsifier: uv run --with safety safety check --file <(uv export --frozen --no-hashes) reports SFTY-20260930-39688
+evidence_requirements:
+  - kind: "tests"
+    description: "The lock-floor test reads uv.lock and fails while urllib3 is below 2.8.0."
+    command: "uv run pytest tests/ci/test_omn21630_urllib3_lock_floor.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21630-ac1-lock-floor"
+    description: "The lock-floor test parses uv.lock and asserts every urllib3 entry is 2.8.0 or later. Fails at the merge base, whose lock pins 2.7.0."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn21630_urllib3_lock_floor.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21630-deploy-source"
+    description: "Hosted deploy check: the lock at the checked-out commit pins urllib3 2.8.0. Needs no account, lab host or runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/uv.lock" | grep -A1 'name = "urllib3"' | grep 'version = "2.8.0"' >/dev/null
+        cwd: "."

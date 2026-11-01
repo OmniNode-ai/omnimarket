@@ -60,16 +60,17 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     BuildTarget,
     ClassifyRequest,
     ClassifyResult,
+    CloseoutRequest,
     CloseoutResult,
+    DispatchRequest,
     DispatchResult,
     RsdFillRequest,
     RsdFillResult,
     ScoredTicket,
+    VerifyRequest,
     VerifyResult,
 )
-from omnimarket.nodes.node_closeout_effect.handlers.handler_closeout import (
-    HandlerCloseout,
-)
+from omnimarket.nodes.node_closeout_effect import HandlerCloseout, ModelCloseoutInput
 
 logger = logging.getLogger(__name__)
 
@@ -294,11 +295,11 @@ class LiveCloseoutHandler:
     def __init__(self) -> None:
         self._inner = HandlerCloseout()
 
-    async def handle(
-        self, *, correlation_id: UUID, dry_run: bool = False
-    ) -> CloseoutResult:
+    async def handle(self, request: CloseoutRequest) -> CloseoutResult:
         result = await self._inner.handle(
-            correlation_id=correlation_id, dry_run=dry_run
+            ModelCloseoutInput(
+                correlation_id=request.correlation_id, dry_run=request.dry_run
+            )
         )
         return CloseoutResult(success=result.merge_sweep_completed)
 
@@ -309,10 +310,8 @@ class LiveCloseoutHandler:
 class LiveVerifyHandler:
     """Always-pass verify handler for the live loop."""
 
-    async def handle(
-        self, *, correlation_id: UUID, dry_run: bool = False
-    ) -> VerifyResult:
-        logger.info("[VERIFY] Pass-through verify (correlation_id=%s)", correlation_id)
+    async def handle(self, request: VerifyRequest) -> VerifyResult:
+        logger.info("[VERIFY] Pass-through verify (request=%s)", request)
         return VerifyResult(all_critical_passed=True)
 
 
@@ -578,14 +577,10 @@ class LiveBuildDispatchHandler:
     def __init__(self, *, dry_run_global: bool = False) -> None:
         self._dry_run_global = dry_run_global
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        targets: tuple[BuildTarget, ...],
-        dry_run: bool = False,
-    ) -> DispatchResult:
-        effective_dry_run = dry_run or self._dry_run_global
+    async def handle(self, request: DispatchRequest) -> DispatchResult:
+        correlation_id = request.correlation_id
+        targets = request.targets
+        effective_dry_run = request.dry_run or self._dry_run_global
 
         logger.info(
             "[DISPATCH] Dispatching %d targets (correlation_id=%s, dry_run=%s)",

@@ -60,6 +60,10 @@ from omnibase_core.models.task.model_task_contract import ModelTaskContract
 from omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator import (
     HandlerTaskExecutionOrchestrator,
 )
+from tests.bus_lane_guard import (
+    assert_broker_in_declared_lane,
+    resolve_test_bus_broker,
+)
 
 TOPIC_TASK_EXECUTE_START = "onex.cmd.omnimarket.task-execute-start.v1"
 TOPIC_TASK_EXECUTE_RESPONSE = "onex.evt.omnimarket.task-execute-completed.v1"
@@ -67,7 +71,7 @@ TOPIC_TASK_EXECUTE_RESPONSE = "onex.evt.omnimarket.task-execute-completed.v1"
 _FIXED_GENERATED_AT = datetime(2026, 6, 4, 12, 0, 0, tzinfo=UTC)
 
 _REDPANDA_FLAG = "RUN_REDPANDA_TASK_EXECUTE"
-_REDPANDA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
+_REDPANDA_BOOTSTRAP = resolve_test_bus_broker()
 
 
 # ---------------------------------------------------------------------------
@@ -335,11 +339,12 @@ async def _probe_redpanda() -> None:
     """Skip unless the opt-in flag is set AND a broker is actually reachable."""
     if os.environ.get(_REDPANDA_FLAG) != "1":
         pytest.skip(
-            f"set {_REDPANDA_FLAG}=1 (and KAFKA_BOOTSTRAP_SERVERS) to run the "
+            f"set {_REDPANDA_FLAG}=1 to run, against the declared test bus lane, the "
             "Redpanda task.execute integration flows"
         )
     from aiokafka import AIOKafkaProducer
 
+    assert_broker_in_declared_lane(_REDPANDA_BOOTSTRAP)
     try:
         probe = AIOKafkaProducer(bootstrap_servers=_REDPANDA_BOOTSTRAP)
         await asyncio.wait_for(probe.start(), timeout=5)

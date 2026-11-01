@@ -41,9 +41,6 @@ from typing import Any, Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import httpx
-from omnibase_compat.routing.model_routing_degraded_event import (
-    ModelRoutingDegradedEvent,
-)
 from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
 from omnibase_core.models.routing.model_llm_route_rejected_event import (
     ModelLlmRouteRejectedEvent,
@@ -55,10 +52,14 @@ from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_core.models.routing.model_served_model_name import ModelServedModelName
 from omnibase_core.models.routing.model_served_model_ref import ModelServedModelRef
 
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
     EscalationTier,
     ModelEscalationChain,
     ModelEscalationLevel,
+)
+from omnimarket.nodes.node_model_router.models.model_routing_degraded_event import (
+    ModelRoutingDegradedEvent,
 )
 from omnimarket.nodes.node_model_router.models.model_routing_request import (
     ModelRoutingRequest,
@@ -67,9 +68,16 @@ from omnimarket.nodes.node_model_router.models.model_routing_result import (
     ModelRoutingResult,
 )
 
-TOPIC_MODEL_ROUTING_DEGRADED = "onex.evt.omnimarket.model-routing-degraded.v1"  # onex-topic-allow: contract-declared
-TOPIC_MODEL_LLM_ROUTE_RESOLVED = "onex.evt.omnimarket.model-llm-route-resolved.v1"  # onex-topic-allow: pending contract auto-wiring
-TOPIC_MODEL_LLM_ROUTE_REJECTED = "onex.evt.omnimarket.model-llm-route-rejected.v1"  # onex-topic-allow: pending contract auto-wiring
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_MODEL_ROUTING_DEGRADED = contract_topic(
+    _CONTRACT, "publish_topics", "model-routing-degraded.v1"
+)
+TOPIC_MODEL_LLM_ROUTE_RESOLVED = contract_topic(
+    _CONTRACT, "publish_topics", "model-llm-route-resolved.v1"
+)
+TOPIC_MODEL_LLM_ROUTE_REJECTED = contract_topic(
+    _CONTRACT, "publish_topics", "model-llm-route-rejected.v1"
+)
 
 logger = logging.getLogger(__name__)
 

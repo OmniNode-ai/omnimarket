@@ -28,6 +28,9 @@ from omnimarket.events.pr_landing_companion import (
     EnumPrLandingCompanionOp,
     ModelPrLandingCompanionOutcome,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.container.container_inmemory import (
+    bind_two_strike_store,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
     ProtocolTwoStrikeStore,
     strike_key,
@@ -307,25 +310,6 @@ class _NoopDelegationFixAdapter:
         return f"[noop] would dispatch delegated fix on {repo}#{pr_number}"
 
 
-class _InMemoryTwoStrikeStore:
-    """Ephemeral in-memory two-strike counter for standalone/test use.
-
-    Does NOT persist across process restarts. Real merge-sweep wiring injects
-    ``JsonFileTwoStrikeStore`` via the orchestrator's ``_ensure_sub_handlers``
-    so the two-strike threshold survives across ticks (safety bar #7).
-    """
-
-    def __init__(self) -> None:
-        self._counts: dict[str, int] = {}
-
-    def get_strikes(self, key: str) -> int:
-        return self._counts.get(key, 0)
-
-    def record_failure(self, key: str) -> int:
-        self._counts[key] = self._counts.get(key, 0) + 1
-        return self._counts[key]
-
-
 def _default_head_sha_resolver(
     repo: str, pr_number: int, token: str | None
 ) -> str | None:
@@ -389,7 +373,7 @@ class HandlerPrLifecycleFix:
             delegation_fix_adapter or _NoopDelegationFixAdapter()
         )
         self._two_strike: ProtocolTwoStrikeStore = (
-            two_strike_store or _InMemoryTwoStrikeStore()
+            two_strike_store or bind_two_strike_store()
         )
         self._delegation_model_name = delegation_model_name
         # OMN-18069: report-only credential seam for the autobind outcome

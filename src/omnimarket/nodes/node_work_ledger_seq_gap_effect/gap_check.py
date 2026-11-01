@@ -12,15 +12,14 @@ from pathlib import Path
 from uuid import uuid4
 
 from omnimarket.handlers.work_ledger_seq_gap import (
-    PostgresWorkLedgerSeqReader,
     redact_database_error,
     report_from_seqs,
 )
 from omnimarket.models.model_work_ledger_seq_gap_report import (
     ModelWorkLedgerSeqGapReport,
 )
-from omnimarket.nodes.node_work_ledger_seq_gap_effect.handlers import (
-    HandlerWorkLedgerSeqGap,
+from omnimarket.nodes.node_work_ledger_seq_gap_effect.container.container_work_ledger_seq_gap_effect import (
+    create_handler_work_ledger_seq_gap,
 )
 from omnimarket.nodes.node_work_ledger_seq_gap_effect.models import (
     ModelWorkLedgerSeqGapRequest,
@@ -85,9 +84,9 @@ def main(argv: list[str] | None = None) -> int:
                 expected_max_seq=request.expected_max_seq,
             )
         else:
-            report = HandlerWorkLedgerSeqGap(
-                PostgresWorkLedgerSeqReader(dsn_env=args.dsn_env)
-            ).handle(request)
+            report = create_handler_work_ledger_seq_gap(dsn_env=args.dsn_env).handle(
+                request
+            )
         output = report.model_dump_json() if args.format == "json" else _text(report)
         sys.stdout.write(output + "\n")
         return 0 if report.exact else 1

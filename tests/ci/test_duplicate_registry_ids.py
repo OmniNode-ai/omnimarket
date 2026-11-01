@@ -18,9 +18,11 @@ from omnibase_core.models.validation.model_duplicate_id_check_spec import (
 from omnibase_core.models.validation.model_duplicate_id_manifest import (
     ModelDuplicateIdManifest,
 )
+from omnibase_core.nodes.node_duplicate_config_ids_check_compute.runtime_duplicate_config_ids_check import (
+    main,
+)
 from omnibase_core.validation.validator_duplicate_config_ids import (
     ValidatorDuplicateConfigIds,
-    main,
 )
 
 from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
@@ -111,8 +113,8 @@ def test_ci_runs_manifest_validator_in_required_lint_job() -> None:
     run = step["run"]
     assert "test -f .duplicate-id-registries.yaml" in run
     assert (
-        "uv run python -m omnibase_core.validation.validator_duplicate_config_ids"
-        in run
-    )
+        "uv run python -m omnibase_core.nodes.node_duplicate_config_ids_check_compute"
+        ".runtime_duplicate_config_ids_check"
+    ) in run
     assert "--manifest .duplicate-id-registries.yaml --repo-root ." in run
     assert "|| true" not in run

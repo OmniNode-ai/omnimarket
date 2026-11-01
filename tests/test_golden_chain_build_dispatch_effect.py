@@ -30,6 +30,9 @@ from omnimarket.nodes.node_build_dispatch_effect.handlers.handler_build_dispatch
     _TICKET_PIPELINE_EVENT_TYPE,
     HandlerBuildDispatch,
 )
+from omnimarket.nodes.node_build_dispatch_effect.models.model_build_dispatch_input import (
+    ModelBuildDispatchInput,
+)
 from omnimarket.nodes.node_build_dispatch_effect.models.model_build_target import (
     EnumBuildability,
     ModelBuildTarget,
@@ -63,8 +66,10 @@ class TestTicketPipelineStartPayloads:
         cid = uuid4()
 
         result = await handler.handle(
-            correlation_id=cid,
-            targets=(_target(),),
+            ModelBuildDispatchInput(
+                correlation_id=cid,
+                targets=(_target(),),
+            )
         )
 
         assert result.total_dispatched == 1
@@ -81,8 +86,10 @@ class TestTicketPipelineStartPayloads:
         cid = uuid4()
 
         result = await handler.handle(
-            correlation_id=cid,
-            targets=(_target("OMN-9999"),),
+            ModelBuildDispatchInput(
+                correlation_id=cid,
+                targets=(_target("OMN-9999"),),
+            )
         )
 
         dp = result.delegation_payloads[0]
@@ -93,7 +100,9 @@ class TestTicketPipelineStartPayloads:
         handler = HandlerBuildDispatch()
         cid = uuid4()
 
-        result = await handler.handle(correlation_id=cid, targets=(_target(),))
+        result = await handler.handle(
+            ModelBuildDispatchInput(correlation_id=cid, targets=(_target(),))
+        )
 
         dp = result.delegation_payloads[0]
         payload = dp.payload
@@ -111,8 +120,10 @@ class TestTicketPipelineStartPayloads:
         handler = HandlerBuildDispatch()
 
         result = await handler.handle(
-            correlation_id=uuid4(),
-            targets=(_target(),),
+            ModelBuildDispatchInput(
+                correlation_id=uuid4(),
+                targets=(_target(),),
+            )
         )
 
         for dp in result.delegation_payloads:
@@ -130,7 +141,9 @@ class TestTicketPipelineStartPayloads:
             _target("OMN-1002", "Second"),
             _target("OMN-1003", "Third"),
         )
-        result = await handler.handle(correlation_id=uuid4(), targets=targets)
+        result = await handler.handle(
+            ModelBuildDispatchInput(correlation_id=uuid4(), targets=targets)
+        )
 
         assert result.total_dispatched == 3
         assert result.total_failed == 0
@@ -148,8 +161,10 @@ class TestTicketPipelineStartPayloads:
         cycle_id = uuid4()
 
         result = await handler.handle(
-            correlation_id=cycle_id,
-            targets=(_target("OMN-2001"), _target("OMN-2002")),
+            ModelBuildDispatchInput(
+                correlation_id=cycle_id,
+                targets=(_target("OMN-2001"), _target("OMN-2002")),
+            )
         )
 
         for dp in result.delegation_payloads:
@@ -168,9 +183,11 @@ class TestDryRun:
         handler = HandlerBuildDispatch()
 
         result = await handler.handle(
-            correlation_id=uuid4(),
-            targets=(_target(),),
-            dry_run=True,
+            ModelBuildDispatchInput(
+                correlation_id=uuid4(),
+                targets=(_target(),),
+                dry_run=True,
+            )
         )
 
         assert result.total_dispatched == 1
@@ -180,9 +197,11 @@ class TestDryRun:
         handler = HandlerBuildDispatch()
 
         result = await handler.handle(
-            correlation_id=uuid4(),
-            targets=(),
-            dry_run=True,
+            ModelBuildDispatchInput(
+                correlation_id=uuid4(),
+                targets=(),
+                dry_run=True,
+            )
         )
 
         assert result.total_dispatched == 0
@@ -202,16 +221,20 @@ class TestValidation:
 
         with pytest.raises(ValueError, match="Duplicate"):
             await handler.handle(
-                correlation_id=uuid4(),
-                targets=(_target("OMN-1001"), _target("OMN-1001")),
+                ModelBuildDispatchInput(
+                    correlation_id=uuid4(),
+                    targets=(_target("OMN-1001"), _target("OMN-1001")),
+                )
             )
 
     async def test_empty_targets_returns_zero_counts(self) -> None:
         handler = HandlerBuildDispatch()
 
         result = await handler.handle(
-            correlation_id=uuid4(),
-            targets=(),
+            ModelBuildDispatchInput(
+                correlation_id=uuid4(),
+                targets=(),
+            )
         )
 
         assert result.total_dispatched == 0
@@ -251,8 +274,10 @@ class TestEventBusWiring:
         cid = uuid4()
 
         result = await handler.handle(
-            correlation_id=cid,
-            targets=(_target(),),
+            ModelBuildDispatchInput(
+                correlation_id=cid,
+                targets=(_target(),),
+            )
         )
 
         await event_bus.start()
@@ -282,8 +307,10 @@ class TestEventBusWiring:
         cid = uuid4()
 
         result = await handler.handle(
-            correlation_id=cid,
-            targets=(_target(),),
+            ModelBuildDispatchInput(
+                correlation_id=cid,
+                targets=(_target(),),
+            )
         )
 
         await event_bus.start()

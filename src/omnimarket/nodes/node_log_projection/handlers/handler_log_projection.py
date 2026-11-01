@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -85,6 +84,18 @@ class ModelLogProjectionState(BaseModel):
     )
 
 
+class ModelLogProjectionRequest(BaseModel):
+    """One log entry to project, and the state to project it onto."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entry: ModelLogEntry = Field(..., description="The log entry to project.")
+    state: ModelLogProjectionState = Field(
+        default_factory=ModelLogProjectionState,
+        description="Projection state to start from; empty when omitted.",
+    )
+
+
 class ModelLogQuery(BaseModel):
     """Query parameters for filtering log entries."""
 
@@ -153,21 +164,9 @@ class NodeLogProjection:
         )
 
     @staticmethod
-    def handle(input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
-
-        Delegates to project() with a ModelLogEntry and empty initial state,
-        returning the updated projection state.
-        """
-        state_data = input_data.pop("state", None)
-        state = (
-            ModelLogProjectionState(**state_data)
-            if state_data
-            else ModelLogProjectionState()
-        )
-        entry = ModelLogEntry(**input_data)
-        new_state = NodeLogProjection.project(entry, state)
-        return new_state.model_dump(mode="json")
+    def handle(request: ModelLogProjectionRequest) -> ModelLogProjectionState:
+        """Project the request's entry onto its state and return the new state."""
+        return NodeLogProjection.project(request.entry, request.state)
 
     @staticmethod
     def query(

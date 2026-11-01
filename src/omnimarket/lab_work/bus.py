@@ -13,7 +13,10 @@
   It reads the pool's advertisements for one window, places the unit with the
   node handler :class:`omnimarket.nodes.node_lab_placement_compute.handlers.HandlerLabPoolPlace`, publishes it, and resolves
   it from the terminal whose ``parent_envelope_id`` is the command's own
-  ``envelope_id``.
+  ``envelope_id``. It reads with no consumer group (the node contract's
+  ``caller_subscription.mode``): a caller is a one-shot reader, and a group per
+  call left about 15,400 Empty groups on the CI bus, whose offsets log the
+  broker could not replay in its memory budget (OMN-21764).
 
 Topics come from the node's ``contract.yaml`` and nowhere else. The transport
 is the same bus the focused test run uses (``open_lab_run_bus``).
@@ -32,7 +35,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -45,6 +48,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
+from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     EnumLabWorkUnitStatus,
     ModelHostCapacityAdvertisement,
@@ -53,6 +57,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models import (
     ModelLabWorkUnitRequest,
     WorkKind,
 )
+from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +101,9 @@ class ModelLabWorkTopics(BaseModel):
     failure: str
     capacity: str
     cadence_seconds: int
+    #: How the caller reads the capacity and terminal topics. Only ``ungrouped``
+    #: exists: the caller joins no consumer group, so it leaves none behind.
+    caller_subscription_mode: Literal["ungrouped"]
 
 
 class ModelLabWorkCommandFailure(BaseModel):
@@ -143,6 +151,7 @@ def load_lab_work_topics(node: str = LAB_WORK_NODE) -> ModelLabWorkTopics:
         failure=dispatch["terminal_events"]["failure"],
         capacity=capacity["capacity_topic"],
         cadence_seconds=int(capacity["cadence_seconds"]),
+        caller_subscription_mode=contract["caller_subscription"]["mode"],
     )
 
 
@@ -213,6 +222,7 @@ class LabWorkHost:
         self._progress_seconds = progress_seconds
         self._check_seconds = check_seconds
         self._clock = clock
+        self.advertiser = HostAdvertiser(self._host)
         self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
         self._beat_task: asyncio.Task[None] | None = None
@@ -240,6 +250,7 @@ class LabWorkHost:
             self._tasks.append(asyncio.create_task(self._worker(index)))
         self._tasks.append(asyncio.create_task(self._watch()))
         if advertise:
+            self.advertiser.arm()
             self._beat_task = asyncio.create_task(self._beat())
             self._tasks.append(self._beat_task)
         self._unsubscribe = await _subscribe(
@@ -283,15 +294,9 @@ class LabWorkHost:
                 "lab-work host %s: capacity unreadable, nothing published", self._host
             )
             return None
-        envelope = ModelEventEnvelope[dict[str, object]](
-            payload=ad.model_dump(mode="json"),
-            correlation_id=uuid.uuid4(),
-            event_type=event_type_for(self._topics.capacity),
+        self.advertised += await self.advertiser.publish(
+            self._bus, self._topics.capacity, ad
         )
-        await self._bus.publish(
-            self._topics.capacity, self._host.encode("utf-8"), _bytes(envelope)
-        )
-        self.advertised += 1
         return ad
 
     async def _beat(self) -> None:
@@ -347,6 +352,9 @@ class LabWorkHost:
                 )
                 held.last_logged = now
                 held.past_limit_logged = past_limit
+        if self.advertiser.silent() and not self.stuck.is_set():
+            self.stuck_unit = "<capacity advertiser>"
+            self.stuck.set()  # serve leaves non-zero on it; the log line names the silence
 
     async def _enqueue(self, message: ProtocolBusMessage) -> None:
         self._queue.put_nowait(message)
@@ -489,12 +497,9 @@ class LabWorkCaller:
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         placer: handlers.HandlerLabPoolPlace | None = None,
     ) -> None:
-        self._bus = bus
+        self._bus = require_ungrouped(bus)
         self._placer = placer or handlers.HandlerLabPoolPlace()
         self._topics = topics or load_lab_work_topics()
-        suffix = uuid.uuid4().hex[:12]
-        base = derive_service_group_id("lab_work_client", service=GROUP_SERVICE)
-        self._group = f"{base}.{suffix}"
         self._slack = wait_slack_seconds
         self._now = now
         self._ads: list[ModelHostCapacityAdvertisement] = []
@@ -508,28 +513,16 @@ class LabWorkCaller:
         return self._topics
 
     async def start(self) -> None:
-        self._unsubscribes.append(
-            await _subscribe(
-                self._bus,
-                self._topics.capacity,
-                self._on_ad,
-                f"{self._group}.cap",
-                "latest",
-            )
-        )
-        for topic in (self._topics.success, self._topics.failure):
-            self._unsubscribes.append(
-                await _subscribe(
-                    # latest: the caller collects advertisements for a window before it
-                    # sends, so its terminal subscriptions are assigned before any
-                    # receipt of its own can be published.
-                    self._bus,
-                    topic,
-                    self._terminal(topic),
-                    f"{self._group}.t",
-                    "latest",
-                )
-            )
+        # No consumer group (the contract's caller_subscription.mode): the read
+        # starts at the log end, and the bus returns only once every partition
+        # has a position, so the terminal reads are in place before any receipt
+        # of this caller's own can be published.
+        topics, subscribe = self._topics, self._bus.subscribe_ungrouped
+        self._unsubscribes += [
+            await subscribe(topics.capacity, self._on_ad),
+            await subscribe(topics.success, self._terminal(topics.success)),
+            await subscribe(topics.failure, self._terminal(topics.failure)),
+        ]
 
     async def stop(self) -> None:
         for unsubscribe in self._unsubscribes:

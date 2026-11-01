@@ -16,6 +16,11 @@ A port of the remote-lane runner's ``eligible``, ``choose_codex`` and the shared
   the admitted host the Codex bar passes with the most free capacity, then memory,
   then the name.
 
+Collaborator machines (OMN-21599, operator RULING 2026-10-30T16:45:31Z): a host whose reading is a
+``contributor`` takes a lane only bound to the lane its own row declares, never to a lane the
+non-contributor hosts bind, and only while that lane can take a lane (``lane_ready``). Otherwise its
+verdict names the reason and the host takes no lane; it is never given a house-lane one.
+
 Dispatch-venv drift (OMN-20862): when the launching host's dispatch-venv lock hash and
 a host's differ, the host takes no lane. A lane that finds no host only because of that
 is answered VENV_DRIFT, naming both hashes with one reconcile intent for the drifted
@@ -54,8 +59,8 @@ from omnimarket.models.model_engine_experiment import (
     ModelEngineExperimentRow,
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
 from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
-from omnimarket.nodes.node_host_pool_alarm_effect.models import ModelHostPoolReading
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
@@ -98,6 +103,42 @@ def swap_refusal(reading: ModelRemoteLaneHostReading) -> str | None:
         return f"host-swapping: {'; '.join(reasons)}"
     if reading.swap_alarm_open:
         return "host-swapping: alarm open until two clean reads"
+    return None
+
+
+def contributor_lane_refusal(
+    request: ModelRemoteLanePlacementRequest, reading: ModelRemoteLaneHostReading
+) -> str | None:
+    """Why a collaborator machine takes no lane here, else None (a host that is not one is never judged).
+
+    Operator RULING 2026-10-30T16:45:31Z: work may run on a collaborator's machine, but never in the
+    lane the house works in and breaks; the collaborators have a lane of their own. So a contributor
+    host takes a lane only bound to the lane its row declares, that lane must not be one the
+    non-contributor hosts bind, and it must be able to take a lane. Every name is the host table's:
+    no host and no lane is written here.
+    """
+    if not reading.contributor:
+        return None
+    bound = reading.bus_lane
+    if bound is None:
+        return "contributor-host: its row declares no lane to bind, so it takes no lane"
+    house = {r.bus_lane for r in request.readings if not r.contributor and r.bus_lane}
+    if bound in house:
+        return (
+            f"contributor-host: its row binds {bound}, the lane the house hosts bind; "
+            f"a collaborator machine takes no {bound}-lane work"
+        )
+    asked = request.lane or bound
+    if asked != bound:
+        return (
+            f"contributor-host: a {asked}-bound lane is refused; "
+            f"its lanes bind {bound} only"
+        )
+    if not reading.lane_ready:
+        return (
+            f"contributor-host: its lane {bound} cannot take a lane yet: "
+            f"{reading.lane_not_ready_reason or 'no reason declared'}"
+        )
     return None
 
 
@@ -169,6 +210,8 @@ def _select(
             reasons[reading.name] = "auth-expired"
         elif reading.name in blocked:
             reasons[reading.name] = blocked[reading.name]
+        elif (collaborator := contributor_lane_refusal(request, reading)) is not None:
+            reasons[reading.name] = collaborator
         elif (swapping := swap_refusal(reading)) is not None:
             reasons[reading.name] = swapping
         elif reading.lane_admission_refusal is not None:

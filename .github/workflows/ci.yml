@@ -342,7 +342,7 @@ jobs:
           queue_rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/dev?per_page=100" \
             --jq '[.[] | select(.type == "merge_queue")] | length')"
           if [ "$queue_rules" = "0" ]; then
-            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the full suite ran on the pull request. Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
+            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the pull request ran its selected tests, which are the full suite only when the change forces it (OMN-17232). Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
             exit 0
           fi
           echo "::error::No verified full-suite pass for this dev tree; heavy tests stay in the queue."
@@ -394,10 +394,10 @@ jobs:
       - name: TODO format check
         run: |
           # Every TODO/FIXME/HACK comment in src/ must carry a ticket reference.
-          # omnibase_core owns the rule: this is the handler the no-untracked-todos
+          # omnibase_core owns the rule: this is the node runtime the no-untracked-todos
           # pre-commit hook runs. It prints file:line for each violation and exits 1.
           find src/ -name '*.py' -not -path '*/tests/*' -print0 \
-            | xargs -0 uv run python -m omnibase_core.handlers.handler_todo_format
+            | xargs -0 uv run python -m omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format
       # NOTE: This step requires PR #75 (OMN-7922, fix legacy contracts) to be merged
       # before it is active in CI. The build_loop_orchestrator handler still contains
       # hardcoded onex.evt.* constants until OMN-7922 migrates them to contract-declared
@@ -544,7 +544,7 @@ jobs:
       - name: Duplicate registry IDs gate (enforce)
         run: |
           test -f .duplicate-id-registries.yaml
-          uv run python -m omnibase_core.validation.validator_duplicate_config_ids \
+          uv run python -m omnibase_core.nodes.node_duplicate_config_ids_check_compute.runtime_duplicate_config_ids_check \
             --manifest .duplicate-id-registries.yaml --repo-root .
       # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
       # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/
@@ -961,34 +961,15 @@ jobs:
         run: |
           uv run python scripts/ci/check_rls_read_tenant_seam.py --selftest
           uv run python scripts/ci/check_rls_read_tenant_seam.py
-      # Canonical handler-shape GROWTH RATCHET fan-out (OMN-14355/OMN-14368/OMN-14372).
-      # compliance_sweep checks handler hygiene but is blind to handler SHAPE, so a
-      # non-canonical handler passes green CI. This classifies each omnimarket node's
-      # contract-declared handler (definition B: typed-payload handle(request)->
-      # response, adapted by the shared runtime, no envelope in the core), WARNs the
-      # committed baseline's debt (scripts/ci/canonical_handler_shape_baseline.py),
-      # and HARD-FAILS a NEW non-canonical node or baseline growth. Sourced from the
-      # already-cloned sibling omnibase_core checkout (same pattern as "Stub
-      # implementation check" above) since the classifier lives at omnibase_core's
-      # repo-root scripts/ci/, not the installed package. Runs --full (not the
-      # default --scope changed): the classifier's diff-scoped git-diff runs with
-      # cwd = the classifier's OWN repo (omnibase_core parents[2]), which is wrong
-      # for a fan-out invocation against this sibling checkout, so --full avoids
-      # that mismatch (this job's classification is cheap: ~365 nodes, sub-second).
-      # No pre-commit mirror yet: pre-commit's language:python remote-hook install
-      # only ships the installed src/omnibase_core/ package (verified — the
-      # classifier isn't importable that way), and language:script has no dep
-      # isolation (needs pydantic/pyyaml); see OMN-14563 for the real fix
-      # (relocate the classifier into an installed omnibase_core module). This
-      # CI-only pattern already matches several sibling gates in this same job
-      # list (compliance-sweep, runtime-sweep, aislop-sweep, coverage-sweep-gate).
-      - name: Canonical handler-shape ratchet (OMN-14355 fan-out)
-        run: |
-          uv run python ../omnibase_core/scripts/ci/canonical_handler_shape.py \
-            --package omnimarket --src-root src \
-            --baseline scripts/ci/canonical_handler_shape_baseline.py \
-            --receipts-dir scripts/ci/adequacy_receipts \
-            --full
+      # OMN-21536: omnibase_core replaced its scripts/ci/canonical_handler_shape.py ratchet with
+      # the handler_shape validator (omnibase_core.validation.validator_handler_shape) and deleted the
+      # script, so the sibling checkout at the pinned core tag no longer holds it and the step that
+      # ran it here (OMN-14355 fan-out) failed with a missing file. The validator carries no
+      # baseline: run over this repository's handlers it reports the debt that
+      # scripts/ci/canonical_handler_shape_baseline.py records, so wiring it here as a gate needs a
+      # baselined run of its own. That is open work for the handler-shape owner; until it lands this
+      # job holds no growth ratchet over handler shape, and the flip-bundle seam gate below still
+      # runs from the pinned core checkout.
 
       # Fail-closed flip-bundle SEAM gate fan-out (OMN-14809 / OMN-15340 / OMN-15344).
       # The ratchet above proves a node's SHAPE. It is structurally blind to whether the

@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
+
 pytestmark = pytest.mark.unit
+
+_DEV_MERGE_TAG = r"dev-[0-9]{14}-[0-9a-f]{12}"
 
 CALLER_PATH = (
     Path(__file__).resolve().parents[2]
@@ -24,7 +29,7 @@ CALLER_PATH = (
 # whose contract the base had since amended failed `git apply -R` and the
 # control refused with "do not revert cleanly at the merge base".
 # The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
-_MERGED_FIX_REUSABLE_TAG = "dev-20261022114039-578228977721"
+_MERGED_FIX_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 
 # omnibase_core#1932: the previous pin, whose control counts the contract as a
 # product path.
@@ -55,8 +60,12 @@ def test_caller_no_longer_pins_the_reusable_that_reverts_contract_files() -> Non
 
 def test_the_repin_keeps_the_job_id_and_inputs() -> None:
     job = _job()
-    assert job["with"] == {
+    raw_inputs = job["with"]
+    assert isinstance(raw_inputs, dict)
+    with_inputs = dict(raw_inputs)
+    verifier_tag = with_inputs.pop("verifier-tag")
+    assert re.fullmatch(_DEV_MERGE_TAG, verifier_tag)
+    assert with_inputs == {
         "evidence-source": "caller",
-        "verifier-version": "0.4.305",
         "compare-with-occ": "false",
-    }
+    }, "the caller passes verifier-tag and no verifier-version"

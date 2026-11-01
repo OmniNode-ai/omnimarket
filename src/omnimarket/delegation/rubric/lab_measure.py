@@ -22,6 +22,7 @@ from typing import TypedDict
 from omnimarket.delegation.rubric.contract_loader import (
     load_delegation_class_rubrics,
 )
+from omnimarket.handlers.model_binding_reader import model_binding
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_rubric_check import (
     HandlerDelegationRubricCheck,
 )
@@ -68,7 +69,6 @@ class _Report(TypedDict):
     headline: dict[str, _Headline]
 
 
-_DEFAULT_ROLE = "blind_model:claude-opus-5-5"
 _DEFAULT_VERSION = "ev4-blind-v1"
 
 
@@ -98,7 +98,7 @@ def _breakdown(rows: list[tuple[ModelLabItem, EnumRubricOutcome]]) -> _Breakdown
 
 def measure(
     items: Iterable[ModelLabItem],
-    rater_role: str = _DEFAULT_ROLE,
+    rater_role: str = model_binding("lab_measure_rater_role"),
     rubric_version: str = _DEFAULT_VERSION,
 ) -> _Report:
     """Evaluate matching labelled items and retain only aggregate evidence."""
@@ -173,7 +173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Measure rubric outcomes; emit aggregate JSON counts only."
     )
     parser.add_argument("--jsonl", type=Path, required=True)
-    parser.add_argument("--rater-role", default=_DEFAULT_ROLE)
+    parser.add_argument("--rater-role", default=model_binding("lab_measure_rater_role"))
     parser.add_argument("--rubric-version", default=_DEFAULT_VERSION)
     args = parser.parse_args(argv)
     try:

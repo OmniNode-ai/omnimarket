@@ -35,7 +35,6 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.models.model_review_finding import (
     EnumFindingCategory,
@@ -48,11 +47,9 @@ from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff impor
     HandlerGithubDiffEffect,
 )
 from omnimarket.nodes.node_github_review_effect.handlers.handler_github_review_effect import (
-    HandlerGithubReviewEffect,
     build_summary_comment,
 )
 from omnimarket.nodes.node_judge_verdict_parse_compute.handlers.handler_judge_verdict_parse_compute import (
-    HandlerJudgeVerdictParseCompute,
     parse_judge_response,
 )
 from omnimarket.nodes.node_pr_review_fsm_reducer.handlers.handler_pr_review_fsm import (
@@ -63,8 +60,10 @@ from omnimarket.nodes.node_pr_review_fsm_reducer.handlers.handler_pr_review_fsm 
 from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import (
     ModelPrReviewAdvanceCommand,
 )
-from omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator import (
-    HandlerPrReviewOrchestrator,
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_github_review_effect,
+    create_handler_judge_verdict_parse_compute,
+    create_handler_pr_review_orchestrator,
 )
 from omnimarket.nodes.node_pr_review_orchestrator.models.model_pr_review_completed_event import (
     ModelPrReviewCompletedEvent,
@@ -195,12 +194,7 @@ class TestPrReviewFsmReducerGoldenChain:
         handler = HandlerPrReviewFsm()
         state = start_state(_make_request())
         command = ModelPrReviewAdvanceCommand(state=state, phase_success=True)
-        envelope: ModelEventEnvelope[ModelPrReviewAdvanceCommand] = ModelEventEnvelope(
-            payload=command,
-            correlation_id=state.correlation_id,
-            event_type="onex.evt.omnimarket.pr-review-bot-phase-advance.v1",
-        )
-        output = await handler.handle(envelope)
+        output = await handler.handle(command)
         assert output.node_kind == EnumNodeKind.REDUCER
         assert len(output.projections) == 1
         projected = output.projections[0]
@@ -243,7 +237,7 @@ class TestJudgeVerdictParseCompute:
         assert result.passed is False
 
     def test_compute_handler_returns_result(self) -> None:
-        handler = HandlerJudgeVerdictParseCompute()
+        handler = create_handler_judge_verdict_parse_compute()
         result = handler.handle(
             ModelJudgeParseRequest(
                 correlation_id=uuid4(),
@@ -272,7 +266,7 @@ class TestJudgeVerdictParseCompute:
 @pytest.mark.unit
 class TestGithubReviewEffect:
     async def test_post_threads_dry_run_emits_event(self) -> None:
-        handler = HandlerGithubReviewEffect()
+        handler = create_handler_github_review_effect()
         output = await handler.handle(
             ModelGithubReviewCommand(
                 correlation_id=uuid4(),
@@ -310,7 +304,7 @@ class TestGithubReviewEffect:
             duration_ms=10,
             completed_at=datetime.now(tz=UTC),
         )
-        handler = HandlerGithubReviewEffect()
+        handler = create_handler_github_review_effect()
         output = await handler.handle(
             ModelGithubReviewCommand(
                 correlation_id=uuid4(),
@@ -414,10 +408,10 @@ class TestPrReviewOrchestratorGoldenChain:
         -> threads (dry_run pending) -> watch -> judge -> report -> completed event.
         Output preserves the ReviewVerdict shape + terminal phase.
         """
-        orchestrator = HandlerPrReviewOrchestrator(
+        orchestrator = create_handler_pr_review_orchestrator(
             inference_adapter=_recorded_review_adapter(),
             github_diff_effect=_RecordedGithubDiffEffect(),
-            github_review_effect=HandlerGithubReviewEffect(),
+            github_review_effect=create_handler_github_review_effect(),
         )
         request = _make_request(dry_run=True)
         # Thin canonical shape (OMN-14242): handle() returns the typed
@@ -442,10 +436,10 @@ class TestPrReviewOrchestratorGoldenChain:
             async def handle(self, request):  # type: ignore[override, no-untyped-def]
                 raise RuntimeError("diff resolution exploded")
 
-        orchestrator = HandlerPrReviewOrchestrator(
+        orchestrator = create_handler_pr_review_orchestrator(
             inference_adapter=_recorded_review_adapter(),
             github_diff_effect=_BoomDiff(),
-            github_review_effect=HandlerGithubReviewEffect(),
+            github_review_effect=create_handler_github_review_effect(),
         )
         completed = await orchestrator.handle(_make_request(dry_run=True))
         assert isinstance(completed, ModelPrReviewCompletedEvent)

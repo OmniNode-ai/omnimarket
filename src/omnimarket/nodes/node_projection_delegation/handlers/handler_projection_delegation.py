@@ -78,6 +78,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_coh
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_data_source_fold import (
     HandlerDelegationDataSourceFold,
+    ModelDataSourceFoldRequest,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
     HandlerDelegationLineageFold,
@@ -978,7 +979,9 @@ class HandlerProjectionDelegation:
         correlation_id UPSERT key plus _preserve_existing_evidence.
         """
         # OMN-19448: typed synthetic provenance; the fixture seed wins.
-        data_source = HandlerDelegationDataSourceFold().handle(event, data_source)
+        data_source = HandlerDelegationDataSourceFold().handle(
+            ModelDataSourceFoldRequest(terminal=event, envelope_source=data_source)
+        )
         if data_source not in DATA_SOURCES:
             raise ValueError(
                 f"data_source must be one of {sorted(DATA_SOURCES)}, got {data_source!r}"

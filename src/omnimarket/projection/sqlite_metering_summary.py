@@ -212,6 +212,7 @@ def refresh_metering_after_terminal(
     tenant_id: str,
     terminal_at: datetime,
     publisher: ProtocolMeteringRefreshPublisher | None = None,
+    baseline_model: str | None = None,
 ) -> ModelMeteringRefreshOutcome:
     """Fold the run's UTC day and the all row, once its terminal row is durable.
 
@@ -220,19 +221,18 @@ def refresh_metering_after_terminal(
     terminal changes no byte, and a late refresh for an earlier run folds the
     same snapshot as the latest one instead of an older one.
 
-    When the tenant's all row under the resolved baseline is missing or was
+    When the tenant's all row under the run's baseline is missing or was
     priced against another manifest version, the request covers the whole
     tenant (``days=None``): a baseline or pricing change recomputes every row
     (ruling D-A), and a first refresh backfills every recorded day.
 
-    Only real runs are folded: rows the dev seed wrote are never in a stored
-    figure (OMN-19970).
+    Only real runs are folded, never the dev seed's rows (OMN-19970).
     """
     if terminal_at.utcoffset() is None:
         raise ValueError("terminal_at must be timezone aware")
     sink = publisher or InProcessMeteringRefreshPublisher(db_path)
     with metering_refresh_lock(db_path):
-        model = resolve_metering_baseline_model().model
+        model = baseline_model or resolve_metering_baseline_model().model
         baseline = resolve_baseline(model)
         version = current_pricing_manifest_version(model)
         records = read_metering_records(db_path=db_path)

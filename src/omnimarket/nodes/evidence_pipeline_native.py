@@ -7,38 +7,38 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Protocol, cast
 
-from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
+from pydantic import BaseModel
+
+from omnimarket.events.runtime_deployment import (
+    ModelRuntimeDeploymentProof,
+)
+from omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result import (
     ModelDeploymentReadinessResult,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_bundle import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_bundle import (
     ModelEvidenceBundle,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command import (
     ModelEvidencePipelineCommand,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result import (
     ModelEvidenceValidationResult,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report import (
+from omnimarket.models.evidence_pipeline.wire.model_gap_report import (
     ModelGapReport,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_occ_pr_reference import (
+from omnimarket.models.evidence_pipeline.wire.model_occ_pr_reference import (
     ModelOccPrReference,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload import (
+from omnimarket.models.evidence_pipeline.wire.model_raw_evidence_payload import (
     ModelRawEvidencePayload,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.types import (
+from omnimarket.models.evidence_pipeline.wire.types import (
     EvidenceLifecycleState,
     GapClassification,
     ReadinessState,
     TriggerSurface,
     ValidationState,
-)
-from pydantic import BaseModel
-
-from omnimarket.events.runtime_deployment import (
-    ModelRuntimeDeploymentProof,
 )
 
 VALIDATOR_VERSION = "evidence-readiness-native-v1"

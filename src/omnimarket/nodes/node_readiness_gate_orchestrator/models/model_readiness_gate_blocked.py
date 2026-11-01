@@ -11,7 +11,7 @@ decision reach ``readiness-gate-blocked``.
 
 from __future__ import annotations
 
-from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
+from omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result import (
     ModelDeploymentReadinessResult,
 )
 

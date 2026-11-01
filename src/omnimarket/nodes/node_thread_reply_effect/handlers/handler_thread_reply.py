@@ -21,7 +21,6 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
-from uuid import UUID
 
 from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
@@ -30,6 +29,7 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapterRequest
 
 from omnimarket.github_api import GitHubApiError, rest_json
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -41,6 +41,9 @@ from omnimarket.nodes.node_model_router.models.model_routing_request import (
 )
 from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event import (
     ModelThreadRepliedEvent,
+)
+from omnimarket.nodes.node_thread_reply_effect.models.model_thread_reply_request import (
+    ModelThreadReplyRequest,
 )
 
 _log = logging.getLogger(__name__)
@@ -79,9 +82,11 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 
+_MODEL_NAMES = load_node_model_names("node_thread_reply_effect")
+
 # The unchanged fast-model entry retains its declared environment configuration.
 _BASE_REGISTRY: dict[str, dict[str, str]] = {
-    "deepseek-r1-14b": {
+    _MODEL_NAMES.get("fast_model"): {
         "base_url": os.environ.get(  # contract-config-ok: config
             "LLM_CODER_FAST_URL", ""
         ),
@@ -90,7 +95,10 @@ _BASE_REGISTRY: dict[str, dict[str, str]] = {
 }
 
 # Legacy policy keys remain aliases; the contract owns URLs and served models.
-_CONTRACT_BACKENDS = {"qwen3-coder-30b": "local-coder", "glm-4.5": "cloud-glm"}
+_CONTRACT_BACKENDS = {
+    _MODEL_NAMES.get("coder_model"): "local-coder",
+    _MODEL_NAMES.get("glm_model"): "cloud-glm",
+}
 
 _THREAD_REPLY_SYSTEM_PROMPT = (
     "You are a helpful code-review assistant. Given a PR review thread, "
@@ -263,24 +271,14 @@ class HandlerThreadReply:
         )
         return not direct_post
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        pr_number: int,
-        repo: str,
-        thread_body: str,
-        routing_policy: dict[str, Any],
-        head_ref_name: str | None = None,
-    ) -> ModelThreadRepliedEvent:
+    async def handle(self, request: ModelThreadReplyRequest) -> ModelThreadRepliedEvent:
         """Post a reply to the PR review thread.
 
         Args:
-            correlation_id: Pipeline correlation ID.
-            pr_number: GitHub PR number.
-            repo: GitHub repo slug (org/repo).
-            thread_body: Full text of the review thread to reply to.
-            routing_policy: Routing policy dict from the command envelope.
-            head_ref_name: Branch name; raises ValueError if protected.
+            request: Pipeline correlation ID, GitHub PR number, GitHub repo slug
+                (org/repo), full text of the review thread to reply to, routing
+                policy dict from the command envelope and the branch name
+                (raises ValueError if protected).
 
         Returns:
             ModelThreadRepliedEvent with outcome fields.
@@ -290,6 +288,12 @@ class HandlerThreadReply:
             RuntimeError: If the LLM call fails (no bare except — fail-loud).
             RuntimeError: On GitHub post-comment failure.
         """
+        correlation_id = request.correlation_id
+        pr_number = request.pr_number
+        repo = request.repo
+        thread_body = request.thread_body
+        routing_policy = request.routing_policy
+        head_ref_name = request.head_ref_name
         if head_ref_name and _PROTECTED_BRANCH_RE.match(head_ref_name):
             raise ValueError(
                 f"Refusing to post thread reply on protected branch: {head_ref_name!r}"

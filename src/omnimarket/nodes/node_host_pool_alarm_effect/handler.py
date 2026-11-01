@@ -27,7 +27,9 @@ import os
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
 
 from .models import (
     MEM_PRESSURE_CRITICAL,
@@ -35,8 +37,14 @@ from .models import (
     SWAP_IN_BOUND_KB_S,
     ModelHostPoolAlarm,
     ModelHostPoolAlarmRequest,
-    ModelHostPoolReading,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.nodes.node_exception_queue_effect.handler import (
+        HandlerExceptionEmit,
+        HandlerExceptionQueue,
+        HandlerExceptionResolve,
+    )
 
 TICKET = "OMN-17427"
 STATE_FILE = "host-pool-alarm.json"
@@ -129,6 +137,24 @@ def probe_cells(reading: ModelHostPoolReading) -> str:
 
 
 class HandlerHostPoolAlarm:
+    def __init__(
+        self,
+        emit: HandlerExceptionEmit | None = None,
+        queue: HandlerExceptionQueue | None = None,
+        resolve: HandlerExceptionResolve | None = None,
+    ) -> None:
+        from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+            create_handler_exception_emit,
+            create_handler_exception_queue,
+            create_handler_exception_resolve,
+        )
+
+        self._emit = emit if emit is not None else create_handler_exception_emit()
+        self._queue = queue if queue is not None else create_handler_exception_queue()
+        self._resolve = (
+            resolve if resolve is not None else create_handler_exception_resolve()
+        )
+
     def handle(self, request: ModelHostPoolAlarmRequest) -> ModelHostPoolAlarm:
         if not request.readings:
             return ModelHostPoolAlarm(
@@ -239,7 +265,7 @@ class HandlerHostPoolAlarm:
                     ticket=TICKET,
                     repo=request.plugin_repo,
                 )
-                done = queue.HandlerExceptionEmit().handle(
+                done = self._emit.handle(
                     queue_models.ModelExceptionEmitRequest(
                         state_dir=where,
                         row=row,
@@ -255,15 +281,13 @@ class HandlerHostPoolAlarm:
                 if cls not in open_classes:
                     open_classes.append(cls)
             if resolve:
-                decisions = (
-                    queue.HandlerExceptionQueue()
-                    .handle(queue_models.ModelExceptionQueueRequest(where, "operator"))
-                    .rows
-                )
+                decisions = self._queue.handle(
+                    queue_models.ModelExceptionQueueRequest(where, "operator")
+                ).rows
                 for host, classes in resolve:
                     for queued in decisions:
                         if queued["key"] == host and queued["cls"] in classes:
-                            queue.HandlerExceptionResolve().handle(
+                            self._resolve.handle(
                                 queue_models.ModelExceptionResolveRequest(
                                     where,
                                     queued["id"],
@@ -333,7 +357,11 @@ def alarm(
     alarmed has its ``MISSING lab-headroom`` line dropped and every engine's slots zeroed in ``request``, so the lab fill,
     the lane queue and the Stop idle guard (which reads the printed line) do not read them as free. A read-only tick reads
     the streaks and writes nothing."""
-    found = HandlerHostPoolAlarm().handle(
+    from .container.container_host_pool_alarm_effect import (
+        create_handler_host_pool_alarm,
+    )
+
+    found = create_handler_host_pool_alarm().handle(
         ModelHostPoolAlarmRequest(
             pool, now, state_dir, emit=not read_only, runner=runner, parent=parent
         )
