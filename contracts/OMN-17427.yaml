@@ -1052,6 +1052,11 @@ requirements:
     acceptance:
       - id: "AC1742729"
         statement: "AC1742729: pyproject.toml and uv.lock name the same infra and core dev merge tags, the locked core tag is the one recorded for the locked infra commit, and the lock pins the newest recorded pair (infra 4284f5bf5587, core fc6159b98026) -- falsifier: tests/ci/test_sibling_core_pin_pair_omn17427.py fails at the merge base, whose lock pins infra 091013fd7adb and core 66d35d2283c3"
+  - id: "req-core-5bb91ae7e720-infra-pair"
+    statement: "omnimarket pins omnibase_core at dev-20261031202655-5bb91ae7e720 and omnibase_infra at dev-20261101125736-3f93a2cc6f6c (omnibase_infra#5536), whose own omnibase-core pin is that same tag, so the newest reachable core resolves to one source and the core-only bot bumps omnimarket#4652 to #4740 are superseded."
+    acceptance:
+      - id: "AC1742730"
+        statement: "AC1742730: uv.lock pins omnibase-core dev-20261031202655-5bb91ae7e720 at 5bb91ae7e72094a62a1198dbc92803448a05ec67 and omnibase-infra dev-20261101125736-3f93a2cc6f6c at 3f93a2cc6f6c18c7ad4fa6e74738908692c21449, that pair is the newest INFRA_CORE_TAGS row, and core 5bb91ae7e720 beside the previous infra 4284f5bf5587 is still named as the conflict -- falsifier: tests/ci/test_core_pin_pair_5bb91ae7e720_omn17427.py fails at the merge base, whose lock pins infra 4284f5bf5587 and core fc6159b98026"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4434,4 +4439,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-core-5bb91ae7e720-infra-pair"
+    description: "omnimarket moves to omnibase_core 5bb91ae7e720 and the omnibase_infra commit that pins it, in one change: the lock names both tags, the pair is the newest recorded row, and the previous infra beside the new core is still refused. Fails at the merge base, which pins infra 4284f5bf5587 and core fc6159b98026."
+    source: "manual"
+    binds_ac: ["AC1742730"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_core_pin_pair_5bb91ae7e720_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
