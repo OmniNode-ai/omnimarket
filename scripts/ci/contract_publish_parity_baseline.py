@@ -130,7 +130,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_test_generator_compute",
     "node_ticket_classify_compute",
     "node_ticket_pipeline",
-    "node_ticketing_epic_org_orchestrator",
     "node_tool_reuse_matcher_compute",
     "node_verification_sweep_orchestrator",
     "node_verified_dispatch_orchestrator",

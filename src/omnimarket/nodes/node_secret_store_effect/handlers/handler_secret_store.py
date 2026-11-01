@@ -45,6 +45,7 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.models.secret_store.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
     load_secret_store_overlay,
@@ -65,7 +66,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
-_REFERENCE_PREFIX = "secret://onex/"
+_REFERENCE_PREFIX = service_endpoint_url("internal_targets.secret_reference_prefix")
 _SEGMENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 #: The shapes of message the node's own adapters raise; anything else is
 #: reported by exception type alone, since a foreign store may echo a request.
