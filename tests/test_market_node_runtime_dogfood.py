@@ -378,7 +378,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # a handler, so it is routable and adds nothing.
     # node_ilo_redfish_effect is called in process by the lab tooling and has no
     # bus route, so it is experimental with no handler_routing: 27 -> 28.
-    assert summary["skipped"] == 28
+    # node_host_drift_fleet is called in process with an injected bus, clock and
+    # state store and reads with one stable group per host, not by a bus command,
+    # so it is experimental with no handler_routing: 28 -> 29.
+    assert summary["skipped"] == 29
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
