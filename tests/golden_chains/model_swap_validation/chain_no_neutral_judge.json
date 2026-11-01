@@ -1,0 +1,47 @@
+{
+  "request": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "task_type": "public-example",
+    "reference_model": "reference/large",
+    "candidate_model": "candidate/small",
+    "judge_mode": "stub",
+    "judge_backend_id": null,
+    "answer_source": "recorded",
+    "replay_set_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "quality_floor": 0.9,
+    "max_cost_usd": 1.0,
+    "work_unit_repository": "example/public"
+  },
+  "service_terminal": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "status": "failed",
+    "failure_reason": "no_neutral_judge",
+    "tool_commit": null,
+    "image_digest": null,
+    "decision": null,
+    "reported_decision": null,
+    "recommendation_effective": null,
+    "recommended_model": null,
+    "lower_bound": null,
+    "quality_floor": 0.9,
+    "gates": [],
+    "per_case": [],
+    "judge_model": null,
+    "judge_mode": "stub",
+    "gateway_calls": [],
+    "provider_reported_cost_usd": 0.0,
+    "estimated_cost_usd": 0.0,
+    "tool_estimated_cost_usd": null,
+    "tool_cost_measurement_source": "estimated_list_price",
+    "exit_code": null,
+    "tool_error_code": null,
+    "evidence_only": true
+  },
+  "expected": {
+    "status": "failed",
+    "failure_reason": "no_neutral_judge",
+    "decision": null,
+    "evidence_only": true,
+    "service_calls": 1
+  }
+}
