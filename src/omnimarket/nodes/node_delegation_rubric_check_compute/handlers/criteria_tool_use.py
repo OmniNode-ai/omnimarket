@@ -454,6 +454,21 @@ def _resolve_citations(unit: str, evidence: _Evidence) -> str:
     )
 
 
+def _is_json_answer(text: str) -> bool:
+    """An answer that is a JSON object or array, optionally inside a code fence."""
+    body = text.strip()
+    fenced = re.fullmatch(r"```[\w-]*\s*\n(.*?)\n?```", body, re.DOTALL)
+    if fenced:
+        body = fenced[1].strip()
+    if not body.startswith(("{", "[")):
+        return False
+    try:
+        json.loads(body)
+    except ValueError:
+        return False
+    return True
+
+
 def task_answer_traceable(
     request: ModelRubricCheckRequest, criterion: ModelRubricCriterion
 ) -> ModelRubricCriterionResult:
@@ -492,6 +507,9 @@ def task_answer_traceable(
     )
     evidence = _Evidence(chunks, commands, transcript.workspace_files, params)
     source = evidence.source
+    # A string value between double quotes in a JSON answer is data, not a
+    # quotation of the request (OMN-21359).
+    quotations = not _is_json_answer(request.answer_text)
     units = tuple(
         _resolve_citations(unit, evidence) for unit in answer_units(request.answer_text)
     )
@@ -499,7 +517,7 @@ def task_answer_traceable(
         dict.fromkeys(
             token
             for unit in units
-            for token in _missing(unit, source, params)
+            for token in _missing(unit, source, params, quotations=quotations)
             if not _shape_traced(token, unit, evidence)
         )
     )
@@ -516,7 +534,7 @@ def task_answer_traceable(
         dict.fromkeys(
             token
             for unit in answer_units(request.answer_text)
-            for token in _missing(unit, "", params)
+            for token in _missing(unit, "", params, quotations=quotations)
         )
     )
     if not identifiers:
