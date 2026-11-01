@@ -35,7 +35,11 @@ def _numbers(text: str, min_digits: int, ticket_pattern: str) -> tuple[str, ...]
 
 
 def _missing(
-    unit: str, source: str, params: ModelClaimsTraceableParams
+    unit: str,
+    source: str,
+    params: ModelClaimsTraceableParams,
+    *,
+    quotations: bool = True,
 ) -> tuple[str, ...]:
     ticket_ids = re.findall(params.ticket_id_pattern, unit)
     source_ids = set(re.findall(params.ticket_id_pattern, source))
@@ -67,11 +71,12 @@ def _missing(
         )
     )
     tokens.extend(re.findall(r"`([^`\n]+)`", unit))
-    tokens.extend(
-        quote
-        for quote in re.findall(r'"([^"\n]+)"', unit)
-        if len(quote.split()) >= params.min_quote_words
-    )
+    if quotations:
+        tokens.extend(
+            quote
+            for quote in re.findall(r'"([^"\n]+)"', unit)
+            if len(quote.split()) >= params.min_quote_words
+        )
     source_normalized = normalized(source)
     missing = structured_missing + [
         token for token in tokens if normalized(token) not in source_normalized

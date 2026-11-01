@@ -84,7 +84,11 @@ function ageText(ms){
   if (h < 48) return (h < 10 ? h.toFixed(1) : Math.round(h)) + " hours old";
   return Math.round(h/24) + " days old";
 }
-function stamp(iso){ return iso.length <= 10 ? iso : iso.slice(0,16).replace("T"," ") + " UTC"; }
+// Every time is drawn in the viewer's zone with the zone named; the record keeps UTC instants.
+const TIME_LOCALE = "en-US";
+const TIME_FMT = new Intl.DateTimeFormat(TIME_LOCALE, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"});
+function clock(iso){ const t = Date.parse(/T[\d:.]+$/.test(String(iso)) ? iso + "Z" : iso); return Number.isNaN(t) ? "" : TIME_FMT.format(new Date(t)); }
+function stamp(iso){ return iso.length <= 10 ? iso : clock(iso); }
 
 function dataRow(d, refresh){
   if (d.status !== "read"){
