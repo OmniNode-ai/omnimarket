@@ -1,0 +1,54 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21989
+title: Dev runtime mutation guard refuses read-only docker calls (compose up --dry-run, docker events)
+summary: The dev runtime mutation guard refused two kinds of read-only call. A compose up carrying --dry-run was classified as the mutating verb up, because the guard policy listed no dry-run rule. A docker events call was reported could-not-judge (exit 1) because the omniclaude hook ran the node with an interpreter that cannot import omnimarket, which fails every call that names docker and a lifecycle word. The node contract's guard_policy now declares compose_dry_run (flag, verbs, true values), and the handler treats a listed verb as a no-op only when the flag is a bare flag or carries a true value inside the compose call itself; every mutating verb stays refused without a grant. The hook change is a separate omniclaude pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21989-readonly-docker-calls
+  statement: Read-only docker calls and a compose up with --dry-run are classified non-mutating, a mutating verb stays refused without a grant, and a --dry-run text that is not the compose call's own switch smuggles nothing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: docker events, ps, inspect, logs, and docker compose config or up with --dry-run, aimed at the omnibase-infra project locally or over ssh, are classified non-mutating and never refused or reported could-not-judge -- falsifier: uv run pytest tests/unit/nodes/node_dev_runtime_mutation_guard_effect -k readonly_allow in omnimarket, failing on origin/dev before the fix'
+  - id: AC2
+    statement: 'AC2: every mutating verb (up without --dry-run, down, rm, restart, stop, kill, start, create) aimed at omnibase-infra stays refused without a grant -- falsifier: uv run pytest tests/unit/nodes/node_dev_runtime_mutation_guard_effect -k refuse'
+  - id: AC3
+    statement: 'AC3: a regression test built from the recorded refused calls (fixture path in the PR) fails on the unfixed guard and passes on the fix, and the hook-level test covers the same calls -- falsifier: uv run pytest tests/hooks/test_dev_runtime_mutation_guard_hook.py in omniclaude'
+evidence_requirements:
+- kind: tests
+  description: The node's unit suite, run at the pushed head.
+  command: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21989-ac1-readonly-allow
+  description: AC1 runs the read-only calls (events, ps, inspect, logs, compose config, compose up with the dry-run switch before and after the verb, by project flag, environment, compose file and over ssh) through the handler, and the recorded calls through the process entrypoint, which must exit 0. On origin/dev the up --dry-run cases fail with a REFUSE verdict; they pass on the branch.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k readonly_allow -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21989-ac2-refuse
+  description: AC2 runs every compose and docker mutating verb locally, over ssh, by environment and by compose file with no grant (refused) and with a live grant (admitted), and the shapes that put --dry-run in a text that is not the compose call's switch (=false, another command after && or in a pipeline, after the closing quote of an ssh command, after --, as an option value, on another verb).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k refuse -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21989-ac3-recorded-calls
+  description: AC3 builds the allow tests from the fixture tests/nodes/node_dev_runtime_mutation_guard_effect/fixtures/recorded_refused_calls.json, the read-only calls the check refused or could not judge on 2026-11-02, run through the handler and the process entrypoint. The omniclaude hook test covers the same calls in that repository's own pull request.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k recorded_refused_calls -q --no-cov --tb=line
+    cwd: .
