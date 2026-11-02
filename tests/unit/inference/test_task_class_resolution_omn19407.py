@@ -24,14 +24,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.inference.task_class_authority import (
     EnumTaskTypeResolution,
     ModelTaskClassAuthority,
     TaskClassSelectionError,
     load_task_class_authority,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
 pytestmark = pytest.mark.unit

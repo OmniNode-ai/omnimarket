@@ -24,20 +24,20 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group, secret_group
+from omnimarket.handlers.routing import byok_model_discovery
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import (
+    registered_local_model_routes,
+    resolve_pinned_byok_route,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import (
-    registered_local_model_routes,
-    resolve_pinned_byok_route,
 )
 from tests.unit.cli.test_model_setup_local_url_omn21162 import server
 

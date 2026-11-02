@@ -279,7 +279,6 @@ a.drill{font-size:.78rem}
     <section class="pane" id="pane-floor" role="tabpanel" aria-labelledby="tab-floor" hidden></section>
     <section class="pane" id="pane-process" role="tabpanel" aria-labelledby="tab-process" hidden></section>
     <section class="pane" id="pane-map" role="tabpanel" aria-labelledby="tab-map" hidden></section>
-    <section class="pane" id="pane-quality" role="tabpanel" aria-labelledby="tab-quality" hidden></section>
   </main>
 </div>
 
@@ -310,8 +309,7 @@ const TABS = [
   {id: "dashboard", label: "Dashboard", short: "Dashboard"},
   {id: "floor", label: "Factory floor", short: "Floor", page: "floor/?embed=1", report: "factory_floor"},
   {id: "process", label: "Process before and after", short: "Process", page: "reports/process-health/?embed=1", report: "process_health"},
-  {id: "map", label: "Decision map", short: "Map", page: "reports/decision-map/?embed=1", report: "decision_map"},
-  {id: "quality", label: "Decision quality", short: "Quality", page: "reports/decision-quality/?embed=1", report: "decision_quality"}
+  {id: "map", label: "Decision map", short: "Map", page: "reports/decision-map/?embed=1", report: "decision_map"}
 ];
 const TAB_IDS = TABS.map(t => t.id);
 
@@ -992,7 +990,7 @@ function renderTabs(p, d){
   else if (h.measured === false) setTab("process", "idle", "not measured", h.reason || "");
   else setTab("process", num(h.worse) > 0 ? "warn" : "ok", `${num(h.improved)} better, ${num(h.worse)} worse`, `${num(h.flat)} flat, ${num(h.unmeasured)} unmeasured since the reset`);
   const m = p.manifest && Array.isArray(p.manifest.reports) ? p.manifest.reports : null;
-  [["map", "decision_map"], ["quality", "decision_quality"]].forEach(([tab, rid]) => {
+  [["map", "decision_map"]].forEach(([tab, rid]) => {
     const r = m && m.find(x => x.id === rid);
     const x = r && (r.data || []).find(y => y.status === "read");
     if (!m) setTab(tab, "none", "manifest unread", "unread");

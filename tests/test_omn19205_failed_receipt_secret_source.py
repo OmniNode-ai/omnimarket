@@ -16,6 +16,9 @@ from omnimarket.enums.enum_delegation_failure_class import (
     EnumDelegationFailureClass as Failure,
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -27,9 +30,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 from tests.chains.local.harness import use_local_store
 from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     GEMMA,
