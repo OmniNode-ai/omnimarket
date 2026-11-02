@@ -169,6 +169,8 @@ not_routing_resolution_sites:
   - site: "src/omnimarket/nodes/node_launch_validity_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the mode, bus transport and read-age limit of the launch validity check; it decides whether a lane's target is still valid and chooses no backend, model or tier
 not_routing_configs:
+  - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
+    reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes
   - path: src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml

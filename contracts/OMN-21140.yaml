@@ -1,0 +1,81 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21140"
+title: "TE.3 Rungs and recording"
+summary: "Plan task TE.3 on current dev: node_extraction_rung_harness_compute replays recorded rung calls offline, strips a reasoning preamble one way, counts parse failures apart from misses and derives chunk size from a measured window. The rule and the data file are built; no window has been measured and the overlay rungs have not been reached."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-te3-rungs"
+    statement: "Each extraction rung is shown the same schema, replayed offline and sized from a measured window."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: each shortlisted rung is reachable through the existing routing contract, and a delegation call to it returns an attributed served model id equal to the contracted one -- falsifier: an attribution mismatch, or any model reached outside the contract."
+      - id: "AC2"
+        statement: "AC2: the harness shows every rung the same event schema and strips a reasoning preamble the same way; parse failures are counted apart from misses -- falsifier: a rung failed for a parse failure the parser could recover, or a count that merges the two."
+      - id: "AC3"
+        statement: "AC3: a recorded call replays byte-identically from the recording with no network access -- falsifier: a network call during replay."
+      - id: "AC4"
+        statement: "AC4: the measured window of each rung is recorded and its chunk size derived from it -- falsifier: a chunk size not traceable to a measured window."
+      - id: "AC5"
+        statement: "AC5: no lab host, port or backend is added to the public omnibase_infra -- falsifier: such a line in the diff."
+evidence_requirements:
+  - kind: "tests"
+    description: "The rung harness tests and the node contract tests."
+    command: "uv run pytest tests/nodes/node_extraction_rung_harness_compute -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21140-ac1"
+    description: "AC1, local rung only: the harness counts an attribution mismatch against the contracted model id, and a real extraction_proposer delegation call reached Qwen3.8-27B through the routing contract (recorded fixture). The overlay rungs were not reached; they are owed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_rung_harness_compute -q -p no:randomly --no-cov -k 'attribution or real_recorded'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21140-ac2"
+    description: "AC2: nine output shapes (bare, fenced, think block, answer marker, prose preamble, single object, ndjson, wrapper, close-only think) all recover to the one proposed-event schema; parse failures and misses are separate counts that never overlap."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_rung_harness_compute -q -p no:randomly --no-cov -k 'recoverable_shape or counted_apart or unterminated'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21140-ac3"
+    description: "AC3: a recording replays to the same bytes and digest with socket creation and name resolution patched to raise; a tampered recording is counted corrupt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_rung_harness_compute -q -p no:randomly --no-cov -k 'replay or tampered'"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21140-ac4"
+    description: "AC4, rule only: chunk size is derived from a measured window by the declared rule and carries the measurement id; with no measurement it is None. No window has been measured yet, so measured_windows is empty and the measurements are owed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_rung_harness_compute -q -p no:randomly --no-cov -k 'chunk or window'"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21140-ac5"
+    description: "AC5: the diff adds no line to omnibase_infra; the change is in omnimarket only and names no lab host, port or backend."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c '! git diff origin/dev --name-only | grep -q omnibase_infra'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21140-deploy-container-verify"
+    description: "Hosted probe: uv run --frozen --no-dev replays a recorded call whose answer sits behind a think block and a fence, and reports a hit with no parse failure."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import json
+          from omnimarket.models.extraction_rung import ModelChunkDerivationParams as D, ModelRungHarnessRequest as Q
+          from omnimarket.nodes.node_extraction_rung_harness_compute.handlers.handler_extraction_rung_harness import HandlerExtractionRungHarness as H, record_call
+          q = "Do not deploy."
+          e = [{"kind": "ruling", "quote": q, "event_id": "e1", "prompt_id": "p1", "covers_start": 0, "covers_end": len(q)}]
+          c = record_call(call_id="c1", prompt="p", response=("<think>x</think>```json\n" + json.dumps(e) + "\n```").encode(), served_model_id="m", expected_quotes=(q,))
+          r = H().handle(Q(rung_id="r", contracted_model_id="m", calls=(c,), derivation=D(output_reserve_tokens=1, instruction_tokens=1, safety_factor=1, overlap_chars=0)))
+          assert r.hits == 1 and r.parse_failures == 0 and r.misses == 0 and r.chunk.status == "unmeasured", r
+          print(r.verdicts[0].replayed_digest)'
