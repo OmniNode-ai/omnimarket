@@ -22,20 +22,30 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from omnimarket.handlers.bus_binding import outbox
 from omnimarket.handlers.bus_binding.detector import classify_block
 from omnimarket.handlers.bus_binding.recovery import (
     ALARM_CLASS,
     OUTAGE_CLASS,
     REFUSED_CLASS,
     SOURCE,
+    read_record,
+    settlement_policy,
 )
-from omnimarket.models.bus_binding import ModelBusBindingResolution
+from omnimarket.models.bus_binding import (
+    EnumBusBinding,
+    EnumBusBindingState,
+    ModelBusBindingDecision,
+    ModelBusBindingResolution,
+)
 from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
     create_handler_exception_emit,
+    create_handler_exception_queue,
     create_handler_exception_resolve,
 )
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionEmitRequest,
+    ModelExceptionQueueRequest,
     ModelExceptionResolveRequest,
     ModelExceptionRow,
 )
@@ -152,4 +162,49 @@ def settle_case(
     )
     return ModelBusBindingResolution(
         cls=cls, resolved=False, how=how, emitted=f"{emitted.status}:{emitted.id}"
+    )
+
+
+def settle_open_cases(
+    state_dir: Path, decision: ModelBusBindingDecision
+) -> tuple[ModelBusBindingResolution, ...]:
+    """Settle this lane's open rows of the contract's classes after a healthy durable command (OMN-21959).
+
+    The bus binding calls this once its command is done. It acts only when this command's healthy read is
+    still the lane's latest observation and the outbox is empty, so the cause is gone; a row opened by an
+    earlier process, or one whose episode this process no longer remembers, is then resolved here instead of
+    staying open until someone resolves it by hand. A decision row is never touched.
+    """
+    classes = settlement_policy().settle_on_healthy_read
+    if (
+        not classes
+        or decision.binding is not EnumBusBinding.DURABLE
+        or decision.degraded
+    ):
+        return ()
+    record = read_record(state_dir, decision.lane)
+    if (
+        record.get("state") == EnumBusBindingState.DEGRADED.value
+        or record.get("observed_at") != decision.observed_at.isoformat()
+    ):
+        return ()
+    # Include unreadable request files: ignoring one would falsely claim complete replay.
+    if any(outbox.outbox_dir(state_dir).glob("*.json")):
+        return ()
+    queue_dir = state_dir / "exception-queue"
+    if not queue_dir.is_dir():
+        return ()
+    rows = (
+        create_handler_exception_queue()
+        .handle(ModelExceptionQueueRequest(queue_dir, "orchestrator"))
+        .rows
+    )
+    ports = ActorPorts(durable_healthy=lambda: True, replay_outbox=lambda: 0)
+    return tuple(
+        settle_case(state_dir, row, ports, now=decision.observed_at)
+        for row in rows
+        if row.get("cls") in classes
+        and row.get("source") == SOURCE
+        and row.get("key") == f"lane={decision.lane}"
+        and not row.get("decision")
     )
