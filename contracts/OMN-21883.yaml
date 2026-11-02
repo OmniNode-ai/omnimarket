@@ -85,12 +85,12 @@ dod_evidence:
           '
         cwd: .
   - id: dod-omn21883-deploy-gh-api-target-rows
-    description: "Deploy probe. Reads the shipped orchestrator contract from the pull request branch through the GitHub contents API and requires the stage G target rows in it. It fails at the merge base, where the orchestrator contract does not exist (404). The hosted runner needs only its own GitHub token."
+    description: "Deploy probe. Reads the shipped orchestrator contract at the checked-out commit (git rev-parse HEAD) through the GitHub contents API and requires the stage G target rows in it. It fails at the merge base, where the orchestrator contract does not exist (404). The hosted runner needs only its own GitHub token."
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: command
         check_value: |-
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_bringup_orchestrator/contract.yaml?ref=omn-21883-bringup-t1-0111" --jq .content | base64 -d | grep -q 'stage: G'
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_bringup_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q 'stage: G'
         cwd: .
