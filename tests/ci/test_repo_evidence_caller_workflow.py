@@ -91,6 +91,54 @@ def _pytest_argv(check_value: str) -> list[str]:
     return ["uv", "run", *rest] if rest[:1] == ["pytest"] else []
 
 
+# OMN-21980: pytest options that take their value as the next token. Without
+# this, an option's value reads as a path target, and a value that happens to
+# name a directory (`-k tests`) would be accepted as the binding's selector.
+_VALUE_OPTIONS = frozenset(
+    {"-k", "-m", "-n", "-p", "-c", "--tb", "--rootdir", "--deselect", "--ignore"}
+)
+
+
+def _pytest_targets(argv: list[str]) -> list[str]:
+    """The path targets of a pytest argv, in order, with no options or option values.
+
+    `uv run pytest <dir> -k expr -q` targets `<dir>` only: `expr` is `-k`'s value
+    and the flags are not paths.
+    """
+    rest = argv[2:]
+    if rest[:1] == ["pytest"]:
+        rest = rest[1:]
+    targets: list[str] = []
+    skip = False
+    for token in rest:
+        if skip:
+            skip = False
+            continue
+        if token.startswith("-"):
+            if token in _VALUE_OPTIONS:
+                skip = True
+            continue
+        targets.append(token)
+    return targets
+
+
+def _is_repo_test_target(path: str) -> bool:
+    """Whether a selector names repository test code.
+
+    A file is named by its `.py` suffix or by a `/tests` package path. A
+    directory is a pytest target in its own right, and three bindings in two
+    merged contracts used one (OMN-21980), so an existing directory under the
+    repository root counts as well. A path that is not in the tree never does;
+    the caller still checks existence, so this only decides shape.
+    """
+    if path.endswith(".py") or path.endswith("/tests"):
+        return True
+    if Path(path).is_absolute():
+        return False
+    candidate = REPO_ROOT / path
+    return candidate.is_dir() and candidate.resolve().is_relative_to(REPO_ROOT)
+
+
 def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
     violations: list[str] = []
     criteria = {
@@ -121,8 +169,10 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
             next(
                 (
                     path
-                    for path in (token.split("::", 1)[0] for token in argv)
-                    if path.endswith(".py") or path.endswith("/tests")
+                    for path in (
+                        token.split("::", 1)[0] for token in _pytest_targets(argv)
+                    )
+                    if _is_repo_test_target(path)
                 ),
                 "",
             )
@@ -371,3 +421,53 @@ def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:
     assert uses.endswith(f"@{_DATABASE_REUSABLE_TAG}"), (
         "pin the omnibase_core reusable at or past omnibase_core#1886"
     )
+
+
+# OMN-21980: a `uv run pytest <directory>` binding is a pytest target in its own
+# right. The extractor kept only a token ending `.py` or `/tests`, so three
+# bindings in two merged contracts (OMN-20413 dod-omn20413-ac3-verdict-base-head,
+# OMN-21930 dod-omn21930-ac4 and dod-omn21930-ac6) read as unbound although every
+# directory they name is in the tree, and the repo-wide check above failed on a
+# clean dev. An absent path must still be refused, and an option's value must
+# never be read as the target.
+
+
+def _dir_selector_contract(selector: str) -> dict[str, Any]:
+    return {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-dir-selector",
+                "binds_ac": ["AC1"],
+                "checks": [
+                    {"check_type": "test_passes", "check_value": selector},
+                ],
+            }
+        ],
+    }
+
+
+def test_contract_binds_accepts_a_selector_naming_an_existing_directory() -> None:
+    contract = _dir_selector_contract(
+        "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == []
+
+
+def test_contract_binds_refuses_a_selector_naming_a_path_not_in_the_tree() -> None:
+    contract = _dir_selector_contract(
+        "uv run pytest tests/unit/nodes/node_that_does_not_exist -q"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml:dod-dir-selector: binds_ac requires uv run pytest evidence "
+        "naming an existing repo test file"
+    ]
+
+
+def test_contract_binds_does_not_read_an_option_value_as_the_target() -> None:
+    """`-k tests` names an expression, not the `tests` directory."""
+    contract = _dir_selector_contract("uv run pytest -k tests -q")
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml:dod-dir-selector: binds_ac requires uv run pytest evidence "
+        "naming an existing repo test file"
+    ]

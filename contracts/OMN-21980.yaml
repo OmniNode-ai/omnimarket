@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-21980
+title: The contract binding checker accepts a test selector that names an existing directory, so correctly bound criteria stop reading as unbound
+summary: contract_binds_violations extracted a binding's test selector by keeping the first argv token ending in .py or /tests, so a uv run pytest <directory> selector matched neither and the binding was reported unbound although the directory is in the tree. Three bindings in two merged contracts used one and the repo-wide binding check failed on a clean dev. The extractor now reads the argv's path targets, skipping options and the values they take, and accepts an existing directory under the repository root. An absent path is still refused and an option value is never read as the target. No contract file is edited by this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21980-directory-test-selector
+    statement: The selector extractor accepts a directory target and still refuses a path that is not in the tree, and each half has a test that fails without the change.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a binding whose only test_passes selector names an existing repository directory is accepted, and a selector naming a path that is absent from the tree is still refused -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q with a new case for each half, failing on the head before the extractor change and passing after'
+      - id: AC2
+        statement: 'AC2: the repo-wide binding check passes over every contracts/OMN-*.yaml on the merge base, with no violation for OMN-20413 or OMN-21930 -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q'
+evidence_requirements:
+  - kind: tests
+    description: The caller-workflow and contract-binding suite runs at the pushed head.
+    command: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21980-ac1
+    description: AC1 is three cases on the extractor itself. A contract whose selector names tests/unit/nodes/node_pr_landing_decision_compute, an existing directory, yields no violation; one naming a directory absent from the tree yields the unbound violation; and one whose only bare token is the value of -k yields it too, so an option value is never mistaken for the target. All three run against the dev extractor as the control and report the violation there.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line -k "selector or option_value"
+        cwd: .
+  - id: dod-omn21980-ac2
+    description: AC2 runs the repo-wide check over every contracts/OMN-*.yaml in the tree. It fails on a clean origin/dev with three violations across contracts/OMN-20413.yaml and contracts/OMN-21930.yaml, and passes on this head with no contract file edited.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q --no-cov --tb=line
+        cwd: .
