@@ -52,6 +52,11 @@ Runner = Callable[
 ]
 
 
+SSH_CONNECTION_ERROR = 255
+SSH_CONNECT_RETRIES = 2
+SSH_RETRY_SECONDS = 10.0
+
+
 class PublishRefusedError(RuntimeError):
     """A source, setting or transfer is missing or failed; the message names it and the fix."""
 
@@ -187,15 +192,19 @@ def copy_to_server(
     exclusive: bool = False,
 ) -> None:
     """Store ``payload`` as ``name`` under the serving host's directory (``root`` when given) over ssh; a failure leaves the old file."""
-    done = run(
-        ssh_argv(
-            rt,
-            overlay,
-            remote_write_command(root or overlay.remote_dir, name, exclusive=exclusive),
-        ),
-        payload,
-        rt.transport.transfer_timeout_seconds,
+    argv = ssh_argv(
+        rt,
+        overlay,
+        remote_write_command(root or overlay.remote_dir, name, exclusive=exclusive),
     )
+    done = run(argv, payload, rt.transport.transfer_timeout_seconds)
+    for _ in range(SSH_CONNECT_RETRIES):
+        if done.returncode != SSH_CONNECTION_ERROR:
+            break
+        # ssh's own exit 255 is a connection that did not open (2026-11-02 18:23Z: "Network is unreachable" for a few
+        # seconds on the launching Mac refused a whole 10-minute run); the remote command did not run, so it is tried again.
+        time.sleep(SSH_RETRY_SECONDS)
+        done = run(argv, payload, rt.transport.transfer_timeout_seconds)
     if done.returncode != 0:
         raise PublishRefusedError(
             f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "

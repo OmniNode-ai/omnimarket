@@ -388,7 +388,8 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
         Overlapping({"--json": (0, b"[]", b"")})
     ).handle(request, environ=PLUGIN)
     assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
-    assert all(s.status == "ok" for s in result.steps)
+    # the friction report is absent in this home, which is its own failed step
+    assert [s.name for s in result.steps if s.status != "ok"] == ["friction"]
 
 
 def test_refresh_a_step_with_a_fresh_output_is_skipped_and_a_stale_one_runs(
@@ -418,6 +419,36 @@ def test_refresh_a_freshness_gate_names_its_file_and_its_age_together() -> None:
             argv=("a",),
             fresh_relpath="f.json",
         )
+
+
+def test_transfer_retries_an_ssh_connection_error_and_gives_up_after_the_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish.time.sleep",
+        lambda _s: None,
+    )
+    request = _request(tmp_path)
+
+    class Flaky(LocalSsh):
+        def __init__(self, failures: int) -> None:
+            super().__init__()
+            self.failures = failures
+
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] == "ssh" and self.failures > 0:
+                self.failures -= 1
+                return subprocess.CompletedProcess(
+                    list(argv), 255, b"", b"Network is unreachable"
+                )
+            return super().__call__(argv, stdin, timeout)
+
+    result = HandlerFactoryFloorPublish(Flaky(2)).handle(request, environ={})
+    assert "factory-floor.json" in result.published
+    with pytest.raises(PublishRefusedError, match="exit 255"):
+        HandlerFactoryFloorPublish(Flaky(3)).handle(request, environ={})
 
 
 def test_refresh_a_required_step_failing_publishes_nothing(tmp_path: Path) -> None:
