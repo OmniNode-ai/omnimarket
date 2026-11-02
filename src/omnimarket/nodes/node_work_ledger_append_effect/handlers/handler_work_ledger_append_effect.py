@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Validate, deduplicate and append ledger rows; no bus code (OMN-20275)."""
 
+import hashlib
 import re
 import socket
 import time
@@ -245,16 +246,18 @@ class HandlerWorkLedgerAppendEffect:
         landed = _request_lines(self._require_reader().read_text(), cell)
         if len(landed) == len(rows):
             existing_rows = _request_blocks(self._require_reader().read_text(), cell)
+            requested_rows = _request_blocks(stamped_rows, cell)
             # A request that landed before OMN-19513 carries principal= right
             # after the type; its replay is the same request, not a conflict.
             if existing_rows not in (
-                _request_blocks(stamped_rows, cell),
+                requested_rows,
                 _request_blocks("".join(legacy_lines), cell),
             ):
                 return receipt(
                     EnumWorkLedgerAppendStatus.REFUSED,
                     65,
-                    "request id already belongs to different rows or principal",
+                    f"request id {request.request_id} already belongs to different rows or principal: "
+                    f"ledger digest {blocks_digest(existing_rows)}, request digest {blocks_digest(requested_rows)}",
                 )
             return receipt(
                 EnumWorkLedgerAppendStatus.DUPLICATE, 0, "already appended", landed
@@ -342,6 +345,12 @@ def _request_lines(text: str, cell: str) -> list[int]:
         for index, line in enumerate(text.splitlines(), start=1)
         if _ROW_START.match(line) and pattern.search(line)
     ]
+
+
+def blocks_digest(blocks: list[list[str]]) -> str:
+    """The sha256 of a request's rows as one text, so a clash names what each side holds."""
+    text = "\n".join(line for block in blocks for line in block)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _request_blocks(text: str, cell: str) -> list[list[str]]:

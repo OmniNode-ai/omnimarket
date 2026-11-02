@@ -17,7 +17,10 @@ class HandlerBusBindingReducer:
 
     def handle(self, request: ModelBusBindingRequest) -> ModelBusBindingResult:
         state, binding = reduce_binding_state(
-            request.prior_state, durable_healthy=request.durable_healthy
+            request.prior_state,
+            durable_healthy=request.durable_healthy,
+            pending_outbox=request.pending_outbox,
+            missing_topics=request.missing_topics,
         )
         return ModelBusBindingResult(
             state=state,
