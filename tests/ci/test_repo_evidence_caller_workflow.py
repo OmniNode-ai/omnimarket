@@ -483,3 +483,26 @@ def test_contract_binds_does_not_read_an_option_value_as_the_target() -> None:
         "OMN-0.yaml:dod-dir-selector: binds_ac requires uv run pytest evidence "
         "naming an existing repo test file"
     ]
+
+
+def test_contract_binds_refuses_a_nonexistent_test_path() -> None:
+    """A bound pytest check naming a path that does not exist is refused."""
+    contract = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-missing-path",
+                "binds_ac": ["AC1"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": "uv run pytest tests/ci/test_no_such_file_exists.py -q",
+                    }
+                ],
+            },
+        ],
+    }
+    violations = contract_binds_violations("OMN-0.yaml", contract)
+    assert violations == [
+        "OMN-0.yaml:dod-missing-path: binds_ac requires uv run pytest evidence naming an existing repo test file"
+    ]
