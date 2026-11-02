@@ -1,0 +1,91 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_skill_lifecycle
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+# This projection writes a TENANT-domain table, so its writer resolves the
+# tenant_projection binding. That binding's credential is held by exactly one
+# process, the consolidated writer that boots RUNTIME_PROFILE=tenant-projection
+# and owns every TENANT-domain projection contract. The contract is therefore
+# absent from `main` and `effects` by design, as in the provider-quota
+# projection.
+runtime_profiles: [tenant-projection]
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_skill_lifecycle.models.model_skill_lifecycle_projection.ModelSkillLifecycleProjectionRequest
+description: >
+  Replaces the omnibase_infra skill lifecycle consumer (group
+  skill-lifecycle-postgres). Writes one skill_executions row per skill-started
+  or skill-completed event, the same columns that consumer wrote, so a started
+  row and its completed row join on run_id.
+
+  ONE ROW PER EVENT, KEYED ON event_id. The producer's event id is the key.
+  An old-schema event that carries none gets a key derived from its content,
+  so redelivery reaches the same row. The write is INSERT ... ON CONFLICT
+  (event_id) DO NOTHING: replaying a topic leaves the row count unchanged.
+
+  An event missing a field the consumer required (run_id, skill_name, repo_id,
+  correlation_id, emitted_at, and status on a completed event) writes nothing.
+
+handler:
+  module: omnimarket.nodes.node_projection_skill_lifecycle.handlers.handler_projection_skill_lifecycle
+  class: HandlerProjectionSkillLifecycle
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed: a routed pure fold receives the payload but
+    # cannot prove a write. The writer calls the fold in process and reports
+    # the rows the database accepted. The sole entry names no topic, so the
+    # runtime assigns it every subscribed topic and registers a dispatcher for each.
+    - message_category: event
+      operation: skill_lifecycle_projection_writer
+      handler:
+        name: SkillLifecycleProjectionWriter
+        module: omnimarket.nodes.node_projection_skill_lifecycle.handlers.handler_skill_lifecycle_writer
+      handler_module: omnimarket.nodes.node_projection_skill_lifecycle.handlers.handler_skill_lifecycle_writer
+
+terminal_event: onex.evt.omnimarket.projection-skill-lifecycle-applied.v1
+
+golden_path:
+  - "Receive a skill-started or skill-completed event"
+  - "Fold it into one skill_executions row keyed on the producer's event id, or a content-derived key when it sent none"
+  - "Insert the row ON CONFLICT (event_id) DO NOTHING under the house tenant"
+  - "Return the accepted rows for the runtime to publish"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_skill_lifecycle.py::test_two_replays_leave_the_row_count_unchanged
+    description: "Replaying the same events twice leaves the table at the same row count"
+  - test: tests/test_golden_chain_projection_skill_lifecycle.py::test_a_random_uuid_key_would_double_the_rows_on_replay
+    description: "The key derivation is what makes replay converge"
+  - test: tests/test_omn21288_skill_lifecycle_real_postgres.py::test_two_replays_write_one_row_per_event
+    description: "The writer's statement on real Postgres writes one row per event across two replays"
+  - test: tests/test_omn21288_skill_lifecycle_in_runtime.py::test_the_contract_wires_into_the_runtime
+    description: "The real contract wires into the runtime with zero failures against the topology's declared grants"
+
+db_io:
+  db_tables:
+    - name: skill_executions
+      database_ref: application
+      schema: public
+      migration: "0001_create_skill_executions.sql"
+      access: write
+      role: skill_executions
+  dedupe_key: [event_id]
+  ordering_key: emitted_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.skill-started.v1
+    - onex.evt.omniclaude.skill-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-skill-lifecycle-applied.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-skill-lifecycle-applied.v1
+
+projection_api:
+  expose: false
+
+metadata:
+  transport_type: kafka

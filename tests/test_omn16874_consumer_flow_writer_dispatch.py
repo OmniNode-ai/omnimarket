@@ -411,6 +411,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
     # only routed handler: it composes DelegationProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
+    # SkillLifecycleProjectionWriter is the only writer of skill_executions,
+    # dispatched once per consumed skill-started or skill-completed event by
+    # runtime auto-wiring; its pure fold, HandlerProjectionSkillLifecycle, does
+    # NOT declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -436,6 +440,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
+        "SkillLifecycleProjectionWriter",
         "TopicActivityProjectionWriter",
         "WorkLedgerProjectionWriter",
         "WorktreeReconcileProjectionWriter",
