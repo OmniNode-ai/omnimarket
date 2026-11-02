@@ -1,0 +1,68 @@
+{
+  "source": "exception-queue rows of class bus-binding-outbox-refused read 2026-11-02T03:45Z, evidence cut at 300 characters by the producer; machine paths and two private clone names are replaced by neutral names",
+  "cases": [
+    {
+      "id": "2026-10-28T20:50:27Z-bus-binding-outbox-refused-1e63c013",
+      "key": "lane=dev request=cf16d896-d11f-4cef-9601-2cb5cda111fb",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host refused the queued append: ledger_lock: OMN-18274 friction guard rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1 (TERMINAL row asserts friction ('friction=package-host-dns') but no FRICTION row for lane 'codex-integration-pass-20261028T052803Z' exists in this payload, in the ledger or in its archive rolls (O",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793165393268372000_cf16d896-d11f-4cef-9601-2cb5cda111fb.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    },
+    {
+      "id": "2026-11-01T20:47:49Z-bus-binding-outbox-refused-5b687c90",
+      "key": "lane=fallback-open-prs-0200 request=c4cd74e4-7419-46bf-9d61-59db4b33af84",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): ledger_lock: OMN-18274 friction guard rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1 (TERMINAL row asserts friction ('friction=OMN-20275') but no FRICTION row for lane 'fallback-open-prs-0200' exists in this payload, in the ledger or in its archive rolls (OMN-18274). A friction se; rows lost: TERMINAL stamped 2026-10-27T02:09:23Z",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793066973098100000_c4cd74e4-7419-46bf-9d61-59db4b33af84.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    },
+    {
+      "id": "2026-11-01T20:47:49Z-bus-binding-outbox-refused-90283905",
+      "key": "lane=push-broker-memory-5396-0420 request=c94cce54-e7e0-4609-a308-2f52770039b8",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): ledger_lock: OMN-20148 worktree cell rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1: TERMINAL says worktree=removed:omni_worktrees/OMN-20275-push5396/omnibase_infra but that path still exists (OMN-20148): run onex-lane-closeout --lane <lane> --worktree <path> and paste the cell it; rows lost: TERMINAL stamped 2026-10-27T04:21:00Z",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793074870532383000_c94cce54-e7e0-4609-a308-2f52770039b8.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    },
+    {
+      "id": "2026-11-01T20:47:49Z-bus-binding-outbox-refused-b8ffe77d",
+      "key": "lane=codex-integration-pass-61 request=ab2085f4-0db7-41fc-bfe8-bb0c7e7ce6a6",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): ledger_lock: OMN-18274 friction guard rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1 (TERMINAL row asserts friction ('friction=ledger-broker-dns-unavailable') but no FRICTION row for lane 'codex-integration-pass-61' exists in this payload, in the ledger or in its archive rolls (OM; rows lost: TERMINAL stamped 2026-10-27T05:34:45Z",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793079268778377000_ab2085f4-0db7-41fc-bfe8-bb0c7e7ce6a6.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    },
+    {
+      "id": "2026-11-01T20:47:49Z-bus-binding-outbox-refused-17a09c33",
+      "key": "lane=controller-rebase-install-1150 request=015d8c5e-4366-4daa-8650-4939e45bf7ca",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): ledger_lock: OMN-20148 worktree cell rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1: TERMINAL worktree=kept:/Users/dev/Code/shared_internal/omni_worktrees/OMN-19998/plugin-clone is not the worktree the CLAIM it closes named (/Users/dev/Code/registry/omni_worktrees/OM; rows lost: TERMINAL stamped 2026-10-27T11:51:50Z",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793101943673730000_015d8c5e-4366-4daa-8650-4939e45bf7ca.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    },
+    {
+      "id": "2026-11-01T20:47:49Z-bus-binding-outbox-refused-c4300b3a",
+      "key": "lane=lean-skills-mac-1810 request=cc994e40-0073-40d0-b890-1a4f20f81f90",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): ledger_lock: OMN-18274 friction guard rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1 (TERMINAL row asserts friction ('friction=omniclaude has no prose-only skill registration: test_all_skills_have_nodes demands a node per skill and the auto-generate-skill-nodes pre-commit hook gen; rows lost: TERMINAL stamped 2026-10-27T16:19:33Z",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793117983530228000_cc994e40-0073-40d0-b890-1a4f20f81f90.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    },
+    {
+      "id": "2026-11-01T20:47:49Z-bus-binding-outbox-refused-e8b4fe65",
+      "key": "lane=codex-integration-pass-20261028T052803Z request=cf16d896-d11f-4cef-9601-2cb5cda111fb",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "ledger host h200 refused the queued append (exit_code=65): ledger_lock: OMN-18274 friction guard rejected append to docs/tracking/ROLLING_WORK_LEDGER.md -- line 1 (TERMINAL row asserts friction ('friction=package-host-dns') but no FRICTION row for lane 'codex-integration-pass-20261028T052803Z' exists in this payload, in the ledger or in its archive rolls (O; rows lost: TERMINAL stamped 2026-10-28T05:29:08Z",
+      "tried": "replayed the outbox; kept the refused request at /Users/dev/Code/registry/.onex_state/work-ledger-outbox/refused/01793165393268372000_cf16d896-d11f-4cef-9601-2cb5cda111fb.json",
+      "proposed_fix": "correct the row and append it again; the refused request is final"
+    }
+  ],
+  "ledger_claims_read_2026-11-02T04:18Z": {
+    "fallback-open-prs-0200": "2026-10-27T02:08:32Z | CLAIM | lane=fallback-open-prs-0200 | ticket=OMN-20275 | worktree=omni_worktrees/fallback-open-prs-0200/omnimarket",
+    "push-broker-memory-5396-0420": "2026-10-27T04:20:14Z | CLAIM | lane=push-broker-memory-5396-0420 | ticket=OMN-20275 | worktree=none",
+    "codex-integration-pass-61": "2026-10-27T05:33:10Z | CLAIM | lane=codex-integration-pass-61 | ticket=OMN-17427 | worktree=none",
+    "controller-rebase-install-1150": "2026-10-27T11:46:43Z | CLAIM | lane=controller-rebase-install-1150 | ticket=OMN-19998 | worktree=/Users/dev/Code/registry/omni_worktrees/OMN-19998/plugin-clone",
+    "lean-skills-mac-1810": "2026-10-27T16:11:10Z | CLAIM | lane=lean-skills-mac-1810 | ticket=OMN-21433 | worktree=/Users/dev/Code/registry/omni_worktrees/OMN-21433/omniclaude"
+  }
+}
