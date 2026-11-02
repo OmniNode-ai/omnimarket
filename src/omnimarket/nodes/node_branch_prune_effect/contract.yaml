@@ -1,0 +1,104 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_branch_prune_effect
+contract_name: node_branch_prune_effect
+node_name: node_branch_prune_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Prunes remote branches whose pull request is merged or closed (OMN-21890).
+  A branch is deleted only when its tip equals the head sha of a merged or
+  closed pull request; a branch re-created under the same name with another tip
+  is kept. Default, protected and open-pull-request branches are never deleted.
+  The keep policy (repositories in scope, protected names and patterns, age
+  floor) is read from the node overlay, never from this package. Every tip is
+  recorded before its delete and a failed record write prevents the delete.
+  Dry run is the default and issues no delete call. The source-control host and
+  the tips record are injected; the node holds no GitHub client.
+
+handler:
+  module: omnimarket.nodes.node_branch_prune_effect.handlers.handler_branch_prune
+  class: HandlerBranchPrune
+  input_model: omnimarket.nodes.node_branch_prune_effect.models.ModelBranchPruneRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: branch_prune
+      handler:
+        name: HandlerBranchPrune
+        module: omnimarket.nodes.node_branch_prune_effect.handlers.handler_branch_prune
+      handler_module: omnimarket.nodes.node_branch_prune_effect.handlers.handler_branch_prune
+      event_model: omnimarket.nodes.node_branch_prune_effect.models.ModelBranchPruneRequest
+    - operation: branch_prune.scheduled_run
+      handler:
+        name: HandlerBranchPrune
+        module: omnimarket.nodes.node_branch_prune_effect.handlers.handler_branch_prune
+      handler_module: omnimarket.nodes.node_branch_prune_effect.handlers.handler_branch_prune
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        One run per schedule trigger event, dry run unless the overlay sets
+        scheduled_dry_run to false.
+
+input_model:
+  name: ModelBranchPruneRequest
+  module: omnimarket.nodes.node_branch_prune_effect.models
+  description: Dry run flag (default true) and an as-of instant.
+
+output_model:
+  name: ModelBranchPruneResult
+  module: omnimarket.nodes.node_branch_prune_effect.models
+  description: Verdict and one decision per branch with its reason.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "branch_prune.scheduled_run"
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.branch-prune-completed.v1"
+
+terminal_event: onex.evt.omnimarket.branch-prune-completed.v1
+
+published_events:
+  - event_type: ModelBranchPruneResult
+    topic: onex.evt.omnimarket.branch-prune-completed.v1
+    description: "One prune run: a decision and reason per branch, and a verdict."
+
+# The keep policy is an overlay fact: <root>/node_branch_prune_effect/overlay.yaml
+# under a root listed in ONEX_SKILL_OVERLAY_ROOTS. No packaged fallback.
+overlay:
+  node: node_branch_prune_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  fields: [repositories, protected_names, protected_patterns, min_age_days, scheduled_dry_run]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.branch-prune-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.branch-prune-completed.v1
+    failure: onex.evt.omnimarket.branch-prune-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "contract, overlay, sha-precise, tip record, dry run, never-delete and schedule event tests"
+    command: "uv run pytest tests/test_branch_prune_effect.py -q"
+    pass_criteria: >
+      only a branch whose tip equals a merged or closed pull request head is
+      deleted; tips are recorded before deletes; dry run issues no delete
+
+metadata:
+  transport_type: http
