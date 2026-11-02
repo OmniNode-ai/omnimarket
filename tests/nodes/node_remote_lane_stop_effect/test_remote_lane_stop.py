@@ -8,6 +8,7 @@ remote_lane_stop_ended_or_unknown, remote_lane_stop_scope.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import subprocess
@@ -16,6 +17,9 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
+
+import pytest
+import yaml
 
 from omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop import (
     HandlerRemoteLaneStop,
@@ -395,8 +399,13 @@ def test_remote_lane_stop_scope_local_pid_gone_before_terminal(
         child.wait()
 
 
+@pytest.mark.parametrize("entry_point", ["command", "handler", "handler_routing"])
 def test_remote_lane_stop_lab_command(
-    receipts: Path, ledger: Path, ledger_tool: list[str], tmp_path: Path
+    receipts: Path,
+    ledger: Path,
+    ledger_tool: list[str],
+    tmp_path: Path,
+    entry_point: str,
 ) -> None:
     """Exercise the command and shell transport against a real process group.
 
@@ -429,17 +438,32 @@ def test_remote_lane_stop_lab_command(
         # real adapter's shell scripts; only its SSH prefix is local here.
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(sys.path)
-        stopped = subprocess.run(
-            [sys.executable, "-m", "omnimarket.nodes.node_remote_lane_stop_effect"],
-            input=request.model_dump_json(),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=30,
-            env=env,
-        )
-        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
-        result = json.loads(stopped.stdout)
+        if entry_point == "command":
+            stopped = subprocess.run(
+                [sys.executable, "-m", "omnimarket.nodes.node_remote_lane_stop_effect"],
+                input=request.model_dump_json(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+                env=env,
+            )
+            assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+            result = json.loads(stopped.stdout)
+        else:
+            contract_path = (
+                Path(__file__).resolve().parents[3]
+                / "src/omnimarket/nodes/node_remote_lane_stop_effect/contract.yaml"
+            )
+            contract = yaml.safe_load(contract_path.read_text())
+            if entry_point == "handler":
+                declared = contract["handler"]
+                name = declared["class"]
+            else:
+                declared = contract["handler_routing"]["handlers"][0]["handler"]
+                name = declared["name"]
+            handler_class = getattr(importlib.import_module(declared["module"]), name)
+            result = handler_class().handle(request).model_dump()
         assert result["outcome"] == "stopped"
         assert result["lane"] == LANE
         assert result["run_id"] == RUN_ID

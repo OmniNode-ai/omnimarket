@@ -26,6 +26,13 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn22098-boot-routing
+    description: The declared stop handler constructs at boot without request-specific ports, then both contract entry points stop a real process group and read its stopped TERMINAL and slot cleanup.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_handler_routing_boot_resolvable.py tests/nodes/node_remote_lane_stop_effect/test_remote_lane_stop.py -q --no-cov --tb=line -k 'boot_resolvable or remote_lane_stop_lab_command'
+        cwd: .
   - id: dod-omn22098-ac1
     description: AC1 starts a real child process, writes a fake receipt, stops the lane by name and expects the child gone and one TERMINAL outcome=stopped carrying the reason and the stopping lane and closing the lane's CLAIM.
     source: manual

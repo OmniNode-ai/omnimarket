@@ -394,3 +394,10 @@ def create_handler(
         CommandStopCloud(request.cloud_command, run) if request.cloud_command else None
     )
     return HandlerRemoteLaneStop(LocalStopTransport(run), LocalStopLedger(run), cloud)
+
+
+class HandlerRemoteLaneStopRequest:
+    """Boot-resolvable adapter that builds the stop ports from each request's overlay."""
+
+    def handle(self, request: ModelRemoteLaneStopRequest) -> ModelRemoteLaneStopResult:
+        return create_handler(request).handle(request)

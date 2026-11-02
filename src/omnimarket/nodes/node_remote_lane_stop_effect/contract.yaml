@@ -41,15 +41,15 @@ output_model:
   description: "One of stopped, already-ended, unknown-lane, refused, with a one-line message."
 handler:
   module: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop"
-  class: "HandlerRemoteLaneStop"
+  class: "HandlerRemoteLaneStopRequest"
   input_model: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop.ModelRemoteLaneStopRequest"
 handler_routing:
   routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop:HandlerRemoteLaneStop"
+  default_handler: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop:HandlerRemoteLaneStopRequest"
   handlers:
     - operation: "stop_remote_lane"
       handler:
-        name: "HandlerRemoteLaneStop"
+        name: "HandlerRemoteLaneStopRequest"
         module: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop"
       input_model: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop.ModelRemoteLaneStopRequest"
       output_model: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop.ModelRemoteLaneStopResult"
