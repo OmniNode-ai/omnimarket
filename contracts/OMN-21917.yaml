@@ -65,15 +65,15 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |
-          set -eu
-          readback_dir="$(mktemp -d)"
-          trap 'rm -rf "$readback_dir"' EXIT
-          revision="$(git rev-parse HEAD)"
-          path=src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          path=src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py;
           curl --fail --silent --show-error --location --max-time 10 \
             "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
-            --output "$readback_dir/source.py"
-          cmp "$path" "$readback_dir/source.py"
-          grep -F 'hostile review(?!\s+thread gate)' "$readback_dir/source.py"
+            --output "$readback_dir/source.py";
+          cmp "$path" "$readback_dir/source.py";
+          grep -F 'hostile review(?!\s+thread gate)' "$readback_dir/source.py";
           printf 'classifier thread-gate exclusion source readback matched %s\n' "$revision"
         cwd: .
