@@ -323,3 +323,68 @@ async def test_real_postgres_scopes_the_tombstone_on_supersession_and_observer()
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
+
+
+@pytest.mark.integration
+async def test_the_fleet_file_the_floor_reads_agrees_with_the_rows_the_database_holds(
+    tmp_path: Path,
+) -> None:
+    """OMN-21733: the observation saved for the factory floor is the one the real table now holds.
+
+    The writer saves the observation it just projected. This writes two runners through the real upsert, builds the
+    observation from the rows Postgres returns (real ``datetime`` and JSONB values, not the wire strings), saves it, and
+    reads it back through the floor's own loader, so a status the database holds cannot differ from the one the floor
+    draws.
+    """
+    from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+        load_runner_fleet_strict,
+    )
+    from omnimarket.nodes.node_projection_runner_fleet.handlers.fleet_state_file import (
+        save_observation,
+    )
+    from omnimarket.nodes.node_projection_runner_fleet.models import (
+        ModelRunnerFleetObservationWire,
+    )
+
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        await _upsert(
+            conn, name="runner-a", status="busy", observed_at=_T0, host="host-051"
+        )
+        await _upsert(
+            conn, name="runner-b", status="offline", observed_at=_T0, host="host-053"
+        )
+        stored = await conn.fetch(
+            f"SELECT runner_name, label_class, labels, host, status, observed_at "
+            f"FROM {_SCHEMA}.runner_fleet_liveness ORDER BY runner_name"
+        )
+        observation = ModelRunnerFleetObservationWire.model_validate(
+            {
+                "schema_version": "1.0.0",
+                "event_type": "runner-fleet-observation",
+                "host": "omni-201",
+                "observed_at": max(row["observed_at"] for row in stored),
+                "runners": [
+                    {
+                        "runner_name": row["runner_name"],
+                        "label_class": row["label_class"],
+                        "labels": json.loads(row["labels"]),
+                        "host": row["host"],
+                        "status": row["status"],
+                        "observed_at": row["observed_at"],
+                    }
+                    for row in stored
+                ],
+            }
+        )
+        path = tmp_path / "runner-fleet" / "runner-fleet.json"
+        save_observation(observation, path)
+        fleet = load_runner_fleet_strict(path)
+        assert fleet.observed_at == _T0
+        assert [(r.host_label, r.status) for r in fleet.runners] == [
+            (row["host"], row["status"]) for row in stored
+        ]
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
