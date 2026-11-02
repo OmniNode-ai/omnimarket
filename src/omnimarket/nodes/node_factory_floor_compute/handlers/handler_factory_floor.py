@@ -517,6 +517,25 @@ def _resumed(row: ModelFloorLedgerRow, index: _Index) -> bool:
     return False
 
 
+def _ended_long_ago(
+    row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest, index: _Index
+) -> bool:
+    """True when the row is a TERMINAL its lane never reopened and the lane has written nothing for the stall window.
+
+    The runner that closes a remote lane writes a STATUS row after the lane's own TERMINAL, so the lane's newest row of
+    any kind, not the TERMINAL itself, is what has to be older than the window.
+    """
+    if row.kind != "TERMINAL":
+        return False
+    lane_rows = (
+        request.ledger[position] for position in index.by_lane.get(row.lane, ())
+    )
+    if any(other.kind == "CLAIM" and other.ts > row.ts for other in lane_rows):
+        return False
+    newest = index.lane_newest.get(row.lane, row.ts)
+    return _minutes(request, newest) >= request.config.stall_minutes
+
+
 def _asks_orchestrator(
     row: ModelFloorLedgerRow, config: ModelFactoryFloorConfig
 ) -> bool:
@@ -557,6 +576,8 @@ def _ledger_stops(
         if row.prs and all(pr_key(pr) in merged for pr in row.prs):
             continue
         if row.tickets and set(row.tickets) <= done_tickets:
+            continue
+        if _ended_long_ago(row, request, index):
             continue
         said = (row.reason or row.text)[: config.note_chars]
         age = _minutes(request, row.ts)
@@ -656,15 +677,9 @@ def _line(
         if causes
         else ""
     )
-    non_gates = tuple(
-        item
-        for item in items
-        if not has_manifest or item.kind != request.config.gate_kind
-    )
+    # Every part of the plan's own list counts, gates included: built percent is the parts done over all of them.
     percent = (
-        100 * sum(item.state == "done" for item in non_gates) // len(non_gates)
-        if non_gates
-        else 0
+        100 * sum(item.state == "done" for item in items) // len(items) if items else 0
     )
     line_id = _line_id(plan)
     return ModelFloorLine(

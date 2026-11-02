@@ -194,7 +194,7 @@ def test_a_plan_that_matched_but_has_no_tasks_is_drawn_stopped_as_no_task_table(
 # --------------------------------------------------------------------- the ledger's open stops
 
 
-def test_a_blocked_terminal_and_an_unanswered_ask_stop_the_line_with_cause_and_age() -> (
+def test_an_unanswered_ask_stops_the_line_with_cause_and_age_and_a_long_dead_terminal_does_not() -> (
     None
 ):
     result = compute((wave_plan(),), ledger=(orchestrator_ask(), blocked_terminal()))
@@ -205,9 +205,8 @@ def test_a_blocked_terminal_and_an_unanswered_ask_stop_the_line_with_cause_and_a
         f"MSG {ASK} to orchestrator-31d9 unanswered for 857 min: Track B stopped"
         in causes[0]
     )
-    assert (
-        "lane retro-track-b ended blocked 855 min ago: Stopped at gate G0" in causes[1]
-    )
+    # The lane's TERMINAL is 855 min old, older than the stall window: it is no longer a cause.
+    assert len(causes) == 1
 
 
 def test_two_unanswered_asks_to_the_orchestrator_are_two_causes() -> None:

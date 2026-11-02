@@ -552,6 +552,18 @@ function lineFacts(L){
 
 const CAR = `<svg class="car" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:var(--c);stroke:var(--belt)" stroke-width="2"/><circle cx="17" cy="22" r="5" style="fill:var(--belt)"/><circle cx="48" cy="22" r="5" style="fill:var(--belt)"/></svg>`;
 
+// ---- Application containers per lane class, running of declared, from the line's own record; no record, no row.
+function containersText(L){
+  const c = L.application_containers;
+  if (!c || typeof c !== "object") return "";
+  const rows = Array.isArray(c.lanes) ? c.lanes : [];
+  if (!rows.length) return `<span class="unread">unread: no host could be read</span>`;
+  return rows.map(r => {
+    const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
+    return `<span title="${esc([r.host, r.detail].filter(Boolean).join(" · "))}">${esc(r.lane)} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+  }).join(" · ");
+}
+
 function lineCard(slot, i){
   const letter = "Line " + (LETTERS[i] || i + 1);
   if (!slot.line){
@@ -581,6 +593,7 @@ function lineCard(slot, i){
     <div class="belt" style="--pos:${pct}%;--c:${c}" role="img" aria-label="${f.done} of ${cells.length} parts done">${CAR}<div class="cells">${cells.map(x => `<b class="${esc(x.state)}"></b>`).join("")}</div></div>
     ${cause}
     <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(cur.name)}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
+    ${containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : ""}
     <a class="go" href="${drillHref("line", esc(safeId(L.line_id)))}">Show this line's stations and parts</a>
   </article>`;
 }
@@ -591,6 +604,20 @@ function ciChip(l){
   const word = {green: "CI green", red: "CI red", pending: "CI pending", none: "no CI runs", unread: "CI unread"}[l.pr_ci] || "CI unread";
   const merged = l.pr_state && l.pr_state !== "OPEN" && l.pr_state !== "unread" ? ` · ${String(l.pr_state).toLowerCase()}` : "";
   return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${esc(l.pr)} · ${word}${esc(merged)}</span>`;
+}
+
+// ---- Live lanes that name no machine the floor draws, grouped by the cause the record gives for each.
+const PLACE_CAUSE = {"no-host-cell": "carry no host cell", "host-not-drawn": "name a host the floor does not draw"};
+function unplacedFold(unplaced){
+  const groups = {};
+  unplaced.forEach(l => { const k = l.placement_cause || "unread"; (groups[k] = groups[k] || []).push(l); });
+  const label = (k, ls) => {
+    const named = k === "host-not-drawn" ? ls.map(l => l.named_host).filter((h, i, a) => h && a.indexOf(h) === i) : [];
+    return (PLACE_CAUSE[k] || "have no cause in the record (written before causes were recorded)") + (named.length ? ` (${named.join(", ")})` : "");
+  };
+  const keys = Object.keys(groups);
+  const head = `${plural(unplaced.length, "live lane names", "live lanes name")} no machine the floor draws: ` + keys.map(k => `${groups[k].length} ${label(k, groups[k])}`).join("; ");
+  return `<details class="fold"><summary>${esc(head)}</summary>${keys.map(k => `<p class="facts"><b>${groups[k].length} ${esc(label(k, groups[k]))}</b>: ${groups[k].map(l => esc(l.lane)).join(", ")}</p><div class="lrows">${groups[k].map(laneRow).join("")}</div>`).join("")}</details>`;
 }
 
 function laneRow(l, tab){
@@ -810,7 +837,7 @@ function renderDashboard(p){
   const unplaced = lanes.filter(l => l.placement === "unplaced");
   const bays = ms.map(m => bayCard(m, byId));
   bays.push(cloudCard(floor.cloud, lanes));
-  if (unplaced.length) bays.push(`<details class="fold"><summary>${plural(unplaced.length, "live lane names", "live lanes name")} no machine the floor draws</summary><div class="lrows">${unplaced.map(laneRow).join("")}</div></details>`);
+  if (unplaced.length) bays.push(unplacedFold(unplaced));
 
   el("dash").innerHTML = `
     <div class="board" role="list" aria-label="Right now">${board.join("")}</div>
@@ -874,6 +901,7 @@ function drillContent(d){
     return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.status_pill === "done" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.status_pill || "queued")}</span> <span class="pill wait">${fmt(num(L.percent_built))}% built</span></div>`
       + (f.stopped ? `<div class="cause"><b>Why it is stopped</b>${uniq.length ? uniq.map(c => `<span>${esc(c)}</span>`).join("") : "<span>The record flags this line stopped and gives no reason.</span>"}</div>` : "")
       + `<p class="facts">${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>`
+      + (containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : "")
       + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(s.name)}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(i.title)} · ${esc(stateWord[i.state] || i.state || "")}</li>`).join("")}</ul></li>`).join("")}</ul>`};
   }
   if (d.kind === "st" || d.kind === "part"){

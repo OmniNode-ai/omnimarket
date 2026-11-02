@@ -94,7 +94,7 @@ def test_a_lane_of_another_plan_with_the_same_word_builds_nothing_here() -> None
 def blocked_stop(**cells: Any) -> Any:
     return row(
         "TERMINAL",
-        300,
+        30,
         "ended-lane",
         outcome="blocked",
         reason="the gate refused",
