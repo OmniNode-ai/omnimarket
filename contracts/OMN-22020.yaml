@@ -56,3 +56,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_readings_feed.py -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn22020-integration-proof
+    description: Run the seam conservation, view seam reading reducer and throughput tick seam readings tests, and the contract tests of the new nodes, on a lab host at the pushed head. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22020 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests src/omnimarket/nodes/node_view_seam_reading_reducer/tests src/omnimarket/nodes/node_throughput_tick_decision_compute/tests tests/nodes/node_seam_conservation_compute tests/nodes/node_view_seam_reading_reducer tests/nodes/node_view_seam_scaffolds -q --no-cov
+        cwd: .
