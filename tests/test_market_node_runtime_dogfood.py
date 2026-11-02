@@ -139,12 +139,18 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
+    # OMN-19991: migration-only until its contract and entry point land.
+    "node_projection_local_alerts",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = set()
+MIGRATION_ONLY_NODE_DIRS: set[str] = {
+    # OMN-19991: the local alerts migrations precede its contract, which
+    # follows the omnibase_infra release that vendors them.
+    "node_projection_local_alerts",
+}
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
