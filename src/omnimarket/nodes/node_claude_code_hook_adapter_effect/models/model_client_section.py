@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.models.claude_code_binding import (
     EnumClientMaxMode,
     ModelClientBinding,
+    ModelCompactionClientBinding,
 )
 
 
@@ -21,7 +22,9 @@ class ModelClientSection(BaseModel):
 
     default_max_mode: EnumClientMaxMode = Field(default=EnumClientMaxMode.OBSERVE)
     host_max_modes: dict[str, EnumClientMaxMode] = Field(default_factory=dict)
-    bindings: tuple[ModelClientBinding, ...] = Field(default=())
+    bindings: tuple[ModelCompactionClientBinding | ModelClientBinding, ...] = Field(
+        default=()
+    )
 
     @model_validator(mode="before")
     @classmethod

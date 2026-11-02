@@ -24,6 +24,9 @@ from omnimarket.models.claude_code_binding.model_client_argument import (
 from omnimarket.models.claude_code_binding.model_client_binding import (
     ModelClientBinding,
 )
+from omnimarket.models.claude_code_binding.model_compaction_client_binding import (
+    ModelCompactionClientBinding,
+)
 
 __all__ = [
     "EnumBindingKind",
@@ -34,4 +37,5 @@ __all__ = [
     "ModelBindingRenderResult",
     "ModelClientArgument",
     "ModelClientBinding",
+    "ModelCompactionClientBinding",
 ]
