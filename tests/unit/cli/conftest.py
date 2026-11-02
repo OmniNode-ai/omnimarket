@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.handlers.routing.byok_plan_detection import ModelByokPlanDetection
 
 
 @pytest.fixture(autouse=True)

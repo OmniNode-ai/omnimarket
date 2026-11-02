@@ -34,16 +34,16 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import secret_group
-from omnimarket.inference.local_byok_credential_adapter import (
-    LocalByokCredentialStore,
-    resolve_local_byok_credential_ref,
-)
-from omnimarket.routing.customer_key_terminus import (
+from omnimarket.handlers.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
 )
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+)
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+    resolve_local_byok_credential_ref,
 )
 from omnimarket.routing.local_byok_route import substitute_local_byok_route
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref

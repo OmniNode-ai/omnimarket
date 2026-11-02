@@ -22,6 +22,9 @@ import pytest
 from pydantic import BaseModel
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
     handler_delegation_workflow as hw,
 )
@@ -42,9 +45,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]

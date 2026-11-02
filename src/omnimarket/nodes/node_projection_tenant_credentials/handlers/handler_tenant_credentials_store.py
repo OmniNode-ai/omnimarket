@@ -30,6 +30,10 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write import (
     HandlerCredentialRouteWrite,
     HandlerCredentialRowWrite,
@@ -43,10 +47,6 @@ from omnimarket.protocols.protocol_credential_route_write import (
 )
 from omnimarket.protocols.protocol_credential_row_write import (
     ProtocolCredentialRowWrite,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 

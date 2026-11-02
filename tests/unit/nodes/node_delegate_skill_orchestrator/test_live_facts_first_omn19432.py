@@ -40,6 +40,7 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.inference import task_class_authority as authority
 from omnimarket.inference.task_class_authority import (
     _DEFAULT_AUTHORITY_PATH,
@@ -57,7 +58,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_facts_first_prompt_compute.handlers.handler_facts_first_prompt import (
     FACTS_FIRST_HEADER,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _LOCAL_MODEL = "facts-first-test"
 _DRAWS = 3

@@ -3,7 +3,7 @@
 
 """Shared result model for the delegation escalation-decision COMPUTE (OMN-13476).
 
-Lives in the shared ``omnimarket.routing`` package so both the COMPUTE and the
+Lives in the shared ``omnimarket.models.delegation`` package so both the COMPUTE and the
 delegating orchestrator import it without a cross-node reach-in.
 
 The deterministic verdict: either escalate to ``next_tier_name`` or terminate

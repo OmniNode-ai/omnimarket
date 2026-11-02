@@ -32,6 +32,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialError,
     LocalByokCredentialStore,
@@ -53,7 +56,6 @@ from omnimarket.projection.credential_publisher import (
     ModelCredentialRegisteredEvent,
     ModelCredentialRevokedEvent,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.routing.local_byok_route import house_provider_slug
 
 

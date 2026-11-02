@@ -17,6 +17,13 @@ import httpx
 import pytest
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference import local_byok_credential_adapter as credentials
 from omnimarket.inference import secret_store_resolver
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
@@ -27,13 +34,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing import byok_model_discovery as discovery
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 
 # OMN-21059: every shipped row has the customer choose the model; this file
 # exercises the catalogue-pick path, which a row reaches with that flag off.

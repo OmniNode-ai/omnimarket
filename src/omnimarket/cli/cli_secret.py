@@ -50,6 +50,10 @@ from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ByokPlanNotPermittedError,
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
@@ -112,10 +116,6 @@ from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
     model_not_chosen_message,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ByokPlanNotPermittedError,
-    resolve_byok_provider_backend,
 )
 from omnimarket.routing.local_byok_route import house_provider_slug
 

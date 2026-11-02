@@ -35,6 +35,12 @@ arrive as plain values — this handler never reads env, files, the bus, or a DB
 
 from __future__ import annotations
 
+from omnimarket.models.delegation.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
+from omnimarket.models.delegation.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
     EnumMoveKind,
@@ -43,12 +49,6 @@ from omnimarket.models.delegation.model_escalation_transitions import (
 from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
     ModelTransitionDecisionRequest,
-)
-from omnimarket.routing.model_escalation_decision_request import (
-    ModelEscalationDecisionRequest,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 
 _MAX_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"

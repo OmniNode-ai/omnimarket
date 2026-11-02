@@ -14,6 +14,11 @@ from click.testing import CliRunner
 
 from omnimarket.cli import cli_secret
 from omnimarket.events.topics import CREDENTIAL_REGISTERED_TOPIC_V1
+from omnimarket.handlers.routing.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ByokPlanNotPermittedError,
+    require_byok_plan_permitted,
+)
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     CREDENTIALS_TABLE,
@@ -27,11 +32,6 @@ from omnimarket.projection.credential_publisher import (
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
-from omnimarket.routing.byok_provider_backends import (
-    ByokPlanNotPermittedError,
-    require_byok_plan_permitted,
-)
 
 # OMN-21217: hosted intake requires an explicit customer model choice.
 pytestmark = pytest.mark.unit

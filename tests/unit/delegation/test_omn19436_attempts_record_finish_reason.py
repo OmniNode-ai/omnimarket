@@ -40,6 +40,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
 )
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.inference.provider_finish_reason import TRUNCATED_RESPONSE_ERROR_MESSAGE
+from omnimarket.models.delegation.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -69,9 +72,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
