@@ -1,0 +1,32 @@
+{
+  "provenance": "The three bus-binding-outage rows open on the exception queue on 2026-11-02, recorded 2026-10-27 to 2026-10-28, with the workspace path and the broker host name replaced.",
+  "blocks": [
+    {
+      "id": "2026-10-27T16:35:12Z-bus-binding-outage-c45ae905",
+      "cls": "bus-binding-outage",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "outage_seconds=936.979; durable bus health read failed: LabRunBusError: lane 'dev' declares SASL_PLAINTEXT, declared in <workspace>/config/lab/ci_bus_lanes.yaml, and this machine holds no identity for it. Bus",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "investigate the prolonged durable binding outage; automatic recovery remains enabled"
+    },
+    {
+      "id": "2026-10-27T21:59:02Z-bus-binding-outage-c45ae905",
+      "cls": "bus-binding-outage",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "outage_seconds=1085.93; durable bus health read failed: TimeoutError: ",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "investigate the prolonged durable binding outage; automatic recovery remains enabled"
+    },
+    {
+      "id": "2026-10-28T06:01:23Z-bus-binding-outage-c45ae905",
+      "cls": "bus-binding-outage",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "outage_seconds=1896.95; durable bus health read failed: LabRunBusError: InfraConnectionError: [ONEX_CORE_205_SERVICE_UNAVAILABLE] Failed to connect to Kafka: KafkaConnectionError: Unable to bootstrap from [('<broker-host>",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "investigate the prolonged durable binding outage; automatic recovery remains enabled"
+    }
+  ]
+}
