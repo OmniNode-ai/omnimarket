@@ -78,16 +78,16 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |
-          set -eu
-          export PYTHONDONTWRITEBYTECODE=1
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
-          overlay_dir="$probe_dir/home/.onex"
-          mkdir -p "$overlay_dir"
-          printf 'secret_store:\n  provider: local\n' > "$overlay_dir/config.yaml"
-          printf '{"operation": "resolve", "reference": "secret://onex/provider/llm.openrouter.api_key"}' > "$probe_dir/request.json"
-          HOME="$probe_dir/home" onex node node_secret_store_effect --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json"
+          set -eu ;
+          export PYTHONDONTWRITEBYTECODE=1 ;
+          probe_dir="$(mktemp -d)" ;
+          trap 'rm -rf "$probe_dir"' EXIT ;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH" ;
+          overlay_dir="$probe_dir/home/.onex" ;
+          mkdir -p "$overlay_dir" ;
+          printf 'secret_store:\n  provider: local\n' > "$overlay_dir/config.yaml" ;
+          printf '{"operation": "resolve", "reference": "secret://onex/provider/llm.openrouter.api_key"}' > "$probe_dir/request.json" ;
+          env HOME="$probe_dir/home" onex node node_secret_store_effect --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json" ;
           python -c '
           import json
           import sys
