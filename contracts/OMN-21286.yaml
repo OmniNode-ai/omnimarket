@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21286"
+title: "The Friday stand-up run ends with a retrospective section and files each contributed idea as a credited Backlog ticket"
+summary: >-
+  The retrospective node already built the Friday section and one unfiled Backlog
+  draft per idea, credited by role. This change takes every value that shaped
+  them out of the handler (the weekday, the entry keys, the role vocabulary, the
+  draft state, the credit grammar and each sentence) into the contract's
+  config.standup_retrospective with a deployment overlay, so a credit can only be
+  a role of the vocabulary and never a person's name. It binds the node to a
+  command topic and a built topic, and proves the section on a Friday fixture through the run envelope (the entry
+  a thin skill calls) and both bus profiles (in-memory and Redpanda overlay).
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21286-friday-section"
+    statement: "A run whose window ends on the contract's retrospective weekday emits a section with product use, one idea or friction and one process change per person."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the standup run on a Friday emits a retrospective section with product use, one idea or friction and one process change per person"
+  - id: "req-omn21286-credited-drafts"
+    statement: "Each contributed idea becomes one Backlog ticket draft credited by a role of the vocabulary, with no person name."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: each contributed idea becomes one Backlog ticket draft credited to the contributor by role"
+evidence_requirements:
+  - kind: "tests"
+    description: "The retrospective node's tests pass: the Friday fixtures, the contract-value tests, the entry points and the in-memory profile."
+    command: "uv run pytest tests/nodes/node_standup_retrospective_compute tests/test_g2_local_invocation.py -q -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21286-ac1-friday-section"
+    description: "A Friday fixture emits the section (golden chain, node run envelope and the in-memory bus profile); a Thursday fixture emits none; moving the weekday in the overlay moves the section. Fails at the merge base, which reads a literal weekday."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_standup_retrospective_compute/test_retrospective_entry_points.py tests/nodes/node_standup_retrospective_compute/test_retrospective_contract_values.py -q -m 'not kafka'"
+  - id: "dod-omn21286-ac2-credited-drafts"
+    description: "One Backlog draft per idea or friction, credited by role, no person name; a credit outside the role vocabulary is refused and never drafted. Fails at the merge base, which credits any text in the role cell."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py::test_each_idea_is_one_backlog_draft_credited_by_role tests/nodes/node_standup_retrospective_compute/test_retrospective_contract_values.py::test_a_credit_outside_the_role_vocabulary_is_refused_and_never_drafted -q"
+  - id: "dod-omn21286-deploy-run-envelope"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node through the in-process ONEX runtime on a Friday fixture and require a successful typed receipt carrying one role-credited draft."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"until": "2026-10-02T17:50:00Z", "entries": "[{\"role\":\"operator\",\"product_use\":\"ran the drain\",\"idea\":\"show the receipt\",\"process_change\":\"pair weekly\"}]"}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21286-deploy-probe "$runtime_bin/onex" node node_standup_retrospective_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          drafts = receipt["result"]["ticket_drafts"]
+          assert len(drafts) == 1 and drafts[0]["credit"] == "operator" and drafts[0]["state"] == "Backlog", drafts
+          print(json.dumps({"run_id": receipt["run_id"], "drafts": len(drafts)}))
+          ' "$probe_dir/receipt.json"
