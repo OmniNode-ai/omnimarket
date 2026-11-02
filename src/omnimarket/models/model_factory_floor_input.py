@@ -26,6 +26,7 @@ TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unr
 PrState = Literal["OPEN", "MERGED", "CLOSED"]
 CiState = Literal["green", "red", "pending", "none", "unread"]
 StationGrouping = Literal["task", "wave"]
+EvidenceCell = Literal["task", "ticket", "pr"]
 
 
 def _aware(value: datetime) -> datetime:
@@ -369,6 +370,12 @@ class ModelFactoryFloorConfig(BaseModel):
     stop_outcomes: tuple[str, ...] = Field(min_length=1)
     ask_recipients: tuple[str, ...] = Field(min_length=1)
     ask_answer_kinds: tuple[str, ...] = Field(min_length=1)
+    # The typed cells of a ledger row that bind it to a task as evidence; a task id in a row's free text binds nothing.
+    evidence_cells: tuple[EvidenceCell, ...] = Field(min_length=1)
+    # The state= value of the STATUS row that maps a task (task=) of a plan (subject=) to its ticket= and pr=.
+    task_map_state: str = Field(min_length=1)
+    # The note a built task carries while a gate it depends on reads a fail verdict; such a task is not counted built.
+    built_ahead_of_gate_label: str = Field(min_length=1)
 
 
 class ModelFactoryFloorRequest(BaseModel):

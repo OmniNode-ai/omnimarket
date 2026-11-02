@@ -1,0 +1,23 @@
+title: Orchestration alignment
+epic: OMN-33000
+tasks:
+  - id: W0.1
+    title: W0.1 Capture the workflow identities
+    wave: "0"
+  - id: W0.2
+    title: W0.2 Measure the capture
+    wave: "0"
+  - id: G1b
+    title: G1b Results gate
+    wave: "1"
+    kind: gate
+    depends_on: [W0.1, W0.2]
+  - id: W1.1
+    title: W1.1 Report workflow-level results
+    wave: "1"
+    tickets: [OMN-33003]
+    depends_on: [G1b]
+  - id: W1.2a
+    title: W1.2a Route by workflow identity
+    wave: "1"
+    tickets: [OMN-33010]

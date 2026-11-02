@@ -15,7 +15,6 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     _index,
     _resumed,
-    _task_ids,
     compute_factory_floor,
 )
 from tests.nodes.node_factory_floor_compute.support import merge, pr, request, row
@@ -103,7 +102,7 @@ def test_resumed_agrees_with_the_definition_on_every_pair() -> None:
         row("TERMINAL", 40, "lane-a", tickets=("OMN-3",), outcome="blocked"),
     )
     asked = request(ledger=ledger)
-    index = _index(asked, _task_ids(asked.plans))
+    index = _index(asked)
 
     def by_definition(target: ModelFloorLedgerRow) -> bool:
         return any(

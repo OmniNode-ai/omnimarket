@@ -123,6 +123,16 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # Evidence for a task is a ledger row whose typed cells bind it: task= names the task, ticket= one of its tickets,
+  # pr= one of its pull requests. A task id that only appears in a row's free text or reason binds nothing.
+  evidence_cells: [task, ticket, pr]
+  # The task-to-ticket map: a STATUS row whose state= cell is this value maps the task in its task= cell, of the plan
+  # whose path contains its subject= cell (any plan when empty), to the ticket in its ticket= cell and the pull request
+  # in its pr= cell. Both join the task's own; an outcome= in done_outcomes records that the mapped work merged.
+  task_map_state: task-map
+  # A built task whose depends_on names a gate that reads a gate_fail_verdicts verdict (the gate STATUS row, its
+  # subject= the gate's wave or id) carries this note, reads wait and does not count toward the line's built percent.
+  built_ahead_of_gate_label: built ahead of gate
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

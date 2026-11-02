@@ -56,10 +56,10 @@ class _Index:
     released_prs: dict[str, frozenset[str]]
     lane_newest: dict[str, datetime]
     lane_terminals: dict[str, tuple[datetime, ...]]
-    # Ledger positions by task cell, by ticket, and by a task id found anywhere in the row's reason or text.
+    # Ledger positions by the typed cells that bind a row to a task: task=, ticket= and pr= (a mention in text binds nothing).
     by_task: dict[str, tuple[int, ...]]
     by_ticket: dict[str, tuple[int, ...]]
-    by_mention: dict[str, tuple[int, ...]]
+    by_pr: dict[str, tuple[int, ...]]
     # Per ticket, the newest CLAIM and the newest CLAIM by any other lane: (ts, lane, other-lane ts).
     claim_tips: dict[str, tuple[datetime, str, datetime | None]]
     # Ledger positions by lane, and each lane's name as words: a lane named for a task (``one-rt-t10-...``) builds it.
@@ -82,24 +82,68 @@ def _tip(
     return ts, lane, row.ts if other is None else max(row.ts, other)
 
 
-def _task_ids(plans: tuple[ModelFloorPlanInput, ...]) -> frozenset[str]:
-    ids = {row.label for plan in plans for row in plan.table_tasks}
-    ids.update(
-        task.id
-        for plan in plans
-        if plan.manifest is not None
-        for task in plan.manifest.tasks
+def _task_map(
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+) -> dict[str, tuple[tuple[str, ...], tuple[str, ...], bool]]:
+    """The task-to-ticket map STATUS rows for this plan: per task, its mapped tickets, pull requests and merged flag."""
+    found: dict[str, tuple[tuple[str, ...], tuple[str, ...], bool]] = {}
+    for row in sorted(request.ledger, key=_row_key):
+        if (
+            row.kind != "STATUS"
+            or row.state != request.config.task_map_state
+            or not row.task
+            or (row.subject and row.subject not in plan.plan_path)
+        ):
+            continue
+        tickets, prs, merged = found.get(row.task, ((), (), False))
+        found[row.task] = (
+            tuple(dict.fromkeys(tickets + row.tickets)),
+            tuple(dict.fromkeys(prs + row.prs)),
+            merged or row.outcome in request.config.done_outcomes,
+        )
+    return found
+
+
+def _with_task_map(
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+) -> tuple[ModelFloorPlanInput, frozenset[str]]:
+    """The plan with each manifest task's mapped ticket and pull request joined to its own, and the tasks mapped merged."""
+    manifest = plan.manifest
+    mapping = _task_map(plan, request)
+    if manifest is None or not mapping:
+        return plan, frozenset()
+    tasks = tuple(
+        task.model_copy(
+            update={
+                "tickets": tuple(dict.fromkeys(task.tickets + mapping[task.id][0])),
+                "prs": tuple(dict.fromkeys(task.prs + mapping[task.id][1])),
+            }
+        )
+        if task.id in mapping
+        else task
+        for task in manifest.tasks
     )
-    return frozenset(ids)
+    ids = {task.id for task in tasks}
+    merged = frozenset(
+        task_id
+        for task_id, (_t, _p, done) in mapping.items()
+        if done and task_id in ids
+    )
+    return (
+        plan.model_copy(
+            update={"manifest": manifest.model_copy(update={"tasks": tasks})}
+        ),
+        merged,
+    )
 
 
-def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Index:
+def _index(request: ModelFactoryFloorRequest) -> _Index:
     released: dict[str, set[str]] = {}
     newest: dict[str, datetime] = {}
     terminals: dict[str, list[datetime]] = {}
     by_task: dict[str, list[int]] = {}
     by_ticket: dict[str, list[int]] = {}
-    by_mention: dict[str, list[int]] = {}
+    by_pr: dict[str, list[int]] = {}
     tips: dict[str, tuple[datetime, str, datetime | None]] = {}
     by_lane: dict[str, list[int]] = {}
     for position, row in enumerate(request.ledger):
@@ -112,9 +156,8 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
             by_task.setdefault(row.task, []).append(position)
         for ticket in row.tickets:
             by_ticket.setdefault(ticket, []).append(position)
-        for task_id in task_ids:
-            if task_id in row.reason or task_id in row.text:
-                by_mention.setdefault(task_id, []).append(position)
+        for pr in row.prs:
+            by_pr.setdefault(pr_key(pr), []).append(position)
         if row.kind == "RELEASE":
             released.setdefault(row.re, set()).update(row.prs)
         newest[row.lane] = max(newest.get(row.lane, row.ts), row.ts)
@@ -126,7 +169,7 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
         lane_terminals={key: tuple(value) for key, value in terminals.items()},
         by_task={key: tuple(value) for key, value in by_task.items()},
         by_ticket={key: tuple(value) for key, value in by_ticket.items()},
-        by_mention={key: tuple(value) for key, value in by_mention.items()},
+        by_pr={key: tuple(value) for key, value in by_pr.items()},
         claim_tips=tips,
         by_lane={key: tuple(value) for key, value in by_lane.items()},
         lane_words={lane: name_tokens(lane) for lane in by_lane},
@@ -218,19 +261,18 @@ def _task_rows(
         return tuple(
             request.ledger[position] for position in sorted({*by_ticket, *named})
         )
+    # Evidence is a row whose typed cells bind it to the task; a task id that only appears in its text binds nothing.
+    cells = request.config.evidence_cells
     candidates = {
-        *index.by_task.get(task.id, ()),
-        *index.by_mention.get(task.id, ()),
-        *by_ticket,
+        *(index.by_task.get(task.id, ()) if "task" in cells else ()),
+        *(by_ticket if "ticket" in cells else ()),
+        *(
+            p
+            for pr in (task.prs if "pr" in cells else ())
+            for p in index.by_pr.get(pr_key(pr), ())
+        ),
     }
-    return tuple(
-        row
-        for row in (request.ledger[position] for position in sorted(candidates))
-        if row.task == task.id
-        or _token(task.id, row.reason)
-        or _intersects(row.tickets, task.tickets)
-        or (_token(task.id, row.text) and _intersects(row.tickets, scope))
-    )
+    return tuple(request.ledger[position] for position in sorted(candidates))
 
 
 def _live_claim(
@@ -259,6 +301,7 @@ def _evidence(
     holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
     index: _Index,
+    mapped_merged: bool = False,
 ) -> tuple[ItemState, str] | None:
     rows = _task_rows(task, scope, request, index)
     terminal = max(
@@ -273,8 +316,11 @@ def _evidence(
         record.key for record in index.records.values() if record.state == "MERGED"
     }
     linear = {issue.id: issue.status_type for issue in request.linear}
+    # Merged work outranks any lane TERMINAL: a stale blocked, partial or never-sent row cannot unbuild it.
     if is_built(task, prs, index.records):
         return "done", "PRs merged"
+    if mapped_merged:
+        return "done", "PRs merged (task-to-ticket map)"
     if terminal and unclaimed and terminal.outcome in request.config.done_outcomes:
         return "done", f"terminal {terminal.outcome}"
     if terminal and unclaimed and terminal.outcome in request.config.handoff_outcomes:
@@ -316,7 +362,8 @@ def _gate(
             for row in request.ledger
             if row.kind == "STATUS"
             and row.state == request.config.gate_state
-            and row.subject == task.wave
+            and row.subject
+            and row.subject in {task.wave, task.id}
         ),
         key=_row_key,
         default=None,
@@ -343,6 +390,7 @@ def _manifest_items(
     holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
     index: _Index,
+    mapped_merged: frozenset[str] = frozenset(),
 ) -> tuple[ModelFloorItem, ...]:
     by_id = {task.id: task for task in tasks}
     prs = {task.id: task_prs(task, _scope(plan), index.records) for task in tasks}
@@ -358,7 +406,15 @@ def _manifest_items(
         evidence = (
             _gate(task, request)
             if gate
-            else _evidence(task, prs[task_id], _scope(plan), holds, request, index)
+            else _evidence(
+                task,
+                prs[task_id],
+                _scope(plan),
+                holds,
+                request,
+                index,
+                task_id in mapped_merged,
+            )
         )
         if evidence is None and task.state is not None:
             evidence = _recorded(task.state)
@@ -376,6 +432,18 @@ def _manifest_items(
             )
         else:
             state, note = evidence
+        failed = tuple(
+            dep
+            for dep in task.depends_on
+            if dep in by_id
+            and by_id[dep].kind == request.config.gate_kind
+            and (verdict := _gate(by_id[dep], request)) is not None
+            and verdict[0] == "stop"
+        )
+        if state == "done" and not gate and failed:
+            # Built before its gate passed: shown, but not counted built while the gate reads fail.
+            label = request.config.built_ahead_of_gate_label
+            state, note = "wait", f"{label} {','.join(failed)}: {note}"
         item = ModelFloorItem(
             id=task.id,
             title=task.title or task.id,
@@ -474,6 +542,7 @@ def _task_stations(
             if task.wave
             else "",
             tickets=item.tickets,
+            prs=item.prs,
         )
         for task, item in zip(tasks, items, strict=True)
     )
@@ -518,6 +587,7 @@ def _stations(
                 tickets=tuple(
                     dict.fromkeys(t for item in members for t in item.tickets)
                 ),
+                prs=tuple(dict.fromkeys(p for item in members for p in item.prs)),
             ),
         )
     return stations
@@ -682,6 +752,7 @@ def _line(
     all_holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
     index: _Index,
+    mapped_merged: frozenset[str] = frozenset(),
 ) -> ModelFloorLine:
     holds = tuple(h for h in all_holds if not _exempts(h, plan, request))
     manifest = plan.manifest
@@ -697,7 +768,7 @@ def _line(
         )
     )
     items = (
-        _manifest_items(tasks, plan, holds, request, index)
+        _manifest_items(tasks, plan, holds, request, index, mapped_merged)
         if has_manifest
         else tuple(_table_item(row, holds, request, index) for row in plan.table_tasks)
     )
@@ -884,9 +955,11 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
         if not request.selection.plan_path_contains
         or any(text in plan.plan_path for text in request.selection.plan_path_contains)
     )
+    mapped = tuple(_with_task_map(plan, request) for plan in selected)
+    selected = tuple(plan for plan, _merged in mapped)
     holds = _holds(request)
-    index = _index(request, _task_ids(selected))
-    lines = tuple(_line(plan, holds, request, index) for plan in selected)
+    index = _index(request)
+    lines = tuple(_line(plan, holds, request, index, merged) for plan, merged in mapped)
     newest = max((row.ts for row in request.ledger), default=None)
     floor = _floor(request, selected, lines)
     lines = _running(lines, floor.lanes)

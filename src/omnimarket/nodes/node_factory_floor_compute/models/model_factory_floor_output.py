@@ -48,6 +48,8 @@ class ModelFloorStation(BaseModel):
     group: str = ""
     # The tickets of the station's own parts.
     tickets: tuple[str, ...] = ()
+    # The pull requests of the station's own parts.
+    prs: tuple[str, ...] = ()
 
 
 class ModelFloorAndon(BaseModel):
