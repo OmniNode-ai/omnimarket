@@ -23,13 +23,13 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_landing_worker_engine_compute import (
     HandlerLandingWorkerEngine,
 )
-from omnimarket.nodes.node_landing_worker_engine_compute.handlers.worker_engine_config import (
-    load_worker_engine_config,
-)
 from omnimarket.nodes.node_landing_worker_engine_compute.models import (
     ModelEngineAvailability,
     ModelLandingWorkerEngineRequest,
     ModelWorkerEngineConfig,
+)
+from omnimarket.nodes.node_landing_worker_engine_compute.overlay import (
+    load_worker_engine_config,
 )
 from tests.nodes.node_andon_stop_reducer.stop_gate_facts import facts, stop
 
