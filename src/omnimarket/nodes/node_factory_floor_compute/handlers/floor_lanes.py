@@ -187,6 +187,13 @@ def build_lanes(
         )
         cloud = host.startswith(config.cloud_host_prefix)
         placement = "cloud" if cloud else "machine" if host in declared else "unplaced"
+        cause = (
+            ""
+            if placement != "unplaced"
+            else "host-not-drawn"
+            if host
+            else "no-host-cell"
+        )
         started = (
             receipt.started_at
             if receipt is not None
@@ -226,6 +233,8 @@ def build_lanes(
                 ),
                 placement=placement,
                 host=host if placement == "machine" else "",
+                placement_cause=cause,
+                named_host=host if cause == "host-not-drawn" else "",
                 cloud_account=(receipt.account if receipt and cloud else ""),
                 started_at=_stamp(started),
                 run_minutes=_minutes(now, started),
