@@ -16,7 +16,7 @@ the committed contract does not declare:
       validation and the ENTIRE config load raised — taking every task type
       down, not just the retired one, with a pydantic ``backends.11.tier``
       message that points at a list INDEX rather than naming the culprit.
-    * ``routing/delegation_backend_resolution.py`` → ``_merge_overlay``
+    * ``handlers/routing/delegation_backend_resolution.py`` → ``_merge_overlay``
       **silently dropped** it (it iterates only the committed list), narrowing
       the routing table with no signal at all.
 
@@ -53,7 +53,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     OverlayBackendIncompleteError,
     load_bifrost_delegation_config,
 )
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
 )

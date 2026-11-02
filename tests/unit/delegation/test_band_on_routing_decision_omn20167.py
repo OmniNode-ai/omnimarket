@@ -14,6 +14,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    ModelTenantRoutingOverlayBackend,
+)
 from omnimarket.inference import task_class_authority
 from omnimarket.models.delegation.model_size_band import (
     EnumSizeBand,
@@ -36,7 +39,6 @@ from omnimarket.nodes.node_delegation_size_band_compute import (
     HandlerDelegationSizeBand,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import ModelTenantRoutingOverlayBackend
 
 pytestmark = pytest.mark.unit
 

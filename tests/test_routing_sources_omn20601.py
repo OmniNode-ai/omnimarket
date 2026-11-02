@@ -282,7 +282,7 @@ def _probe_routing_tiers_ladder(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
-    from omnimarket.routing.routing_tiers_path import (
+    from omnimarket.handlers.routing.routing_tiers_path import (
         ROUTING_TIERS_OVERLAY_NODE,
         ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
         ROUTING_TIERS_PATH_ENV_KEY,
@@ -308,13 +308,13 @@ def _probe_routing_tiers_ladder(
 def _probe_harness_routing_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from omnimarket.models.delegation.model_delegation_routing_overlay import (
-        EMPTY_DELEGATION_ROUTING_OVERLAY,
-    )
-    from omnimarket.routing.routing_tiers_path import (
+    from omnimarket.handlers.routing.routing_tiers_path import (
         DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY,
         load_delegation_routing_overlay,
         load_harness_tiers,
+    )
+    from omnimarket.models.delegation.model_delegation_routing_overlay import (
+        EMPTY_DELEGATION_ROUTING_OVERLAY,
     )
 
     monkeypatch.delenv(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY, raising=False)
@@ -360,7 +360,7 @@ def _probe_bifrost_backend_contract(
     from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
         load_bifrost_delegation_config,
     )
-    from omnimarket.routing import delegation_backend_resolution as resolution
+    from omnimarket.handlers.routing import delegation_backend_resolution as resolution
 
     contract = tmp_path / "bifrost_delegation.yaml"
     contract.write_text(_BIFROST_ONE_TIER, encoding="utf-8")
@@ -399,12 +399,12 @@ def _probe_bifrost_backend_contract(
 
 
 def _probe_task_class_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
-        handler_delegation_routing as routing,
-    )
-    from omnimarket.routing.task_class_contract_path import (
+    from omnimarket.handlers.routing.task_class_contract_path import (
         TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
         TASK_CLASS_CONTRACT_PATH_ENV_KEY,
+    )
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing,
     )
 
     monkeypatch.delenv(TASK_CLASS_CONTRACT_PATH_ENV_KEY, raising=False)
@@ -431,6 +431,11 @@ def _probe_task_class_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 def _probe_tenant_routing_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from omnimarket.handlers.routing.customer_key_terminus import EnumDelegationSurface
+    from omnimarket.handlers.routing.tenant_overlay_resolver import (
+        TENANT_OVERLAY_TABLE,
+        resolve_tenant_overlay,
+    )
     from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
         ModelDelegationRequest,
     )
@@ -438,11 +443,6 @@ def _probe_tenant_routing_overlay(
         handler_delegation_routing as routing,
     )
     from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-    from omnimarket.routing.customer_key_terminus import EnumDelegationSurface
-    from omnimarket.routing.tenant_overlay_resolver import (
-        TENANT_OVERLAY_TABLE,
-        resolve_tenant_overlay,
-    )
 
     contract = tmp_path / "bifrost_delegation.yaml"
     contract.write_text(_BIFROST_ONE_TIER, encoding="utf-8")

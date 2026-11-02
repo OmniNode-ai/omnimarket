@@ -48,6 +48,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
     ModelDelegateSkillResponse,
 )
+from omnimarket.models.routing.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -69,9 +72,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]

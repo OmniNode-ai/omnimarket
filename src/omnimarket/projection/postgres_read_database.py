@@ -13,7 +13,7 @@ Connection is LAZY (established on first ``query``) with a bounded connect
 timeout. Consumers of this adapter are fail-OPEN for TELEMETRY OUTAGES: a
 missing DSN, unreachable host, or driver error degrades to static behaviour
 rather than breaking the caller. See ``resolve_context_roi_db`` in
-``omnimarket.routing.roi_overlay`` for the factory that gates construction on
+``omnimarket.handlers.routing.roi_overlay`` for the factory that gates construction on
 the DSN env var.
 
 Tenant seam (OMN-16092) -- fail-CLOSED, and deliberately NOT covered by that

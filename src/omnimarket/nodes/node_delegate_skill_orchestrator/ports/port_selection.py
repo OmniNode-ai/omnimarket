@@ -60,13 +60,13 @@ def select_delegation_dispatch_port(
     if event_bus is None or isinstance(event_bus, EventBusInmemory):
         # Imported lazily so compile-only / payload-building paths and unit tests
         # do not require the local effect + projection stack.
+        from omnimarket.handlers.routing import dod_overlay
         from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
             resolve_local_delegation_evidence_db,
         )
         from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
             LocalDelegationDispatchPort,
         )
-        from omnimarket.routing import dod_overlay
 
         # OMN-19528: the OMN-14001 overlay seam now reads the per-(task type,
         # model) DoD pass rate, the same signal the deployed-lane routing

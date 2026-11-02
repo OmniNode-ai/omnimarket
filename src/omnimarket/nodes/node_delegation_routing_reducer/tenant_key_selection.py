@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Which pooled tenant key a routed request runs on, and that key's model.
 
-``omnimarket.routing.tenant_overlay_resolver`` calls these at the same read
+``omnimarket.handlers.routing.tenant_overlay_resolver`` calls these at the same read
 that loads the overlay (OMN-20992, OMN-21217) and re-exports every name here.
 """
 
@@ -13,11 +13,11 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
+from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 # The resolver's logger name, so these warnings read exactly as before the move.
-logger = logging.getLogger("omnimarket.routing.tenant_overlay_resolver")
+logger = logging.getLogger("omnimarket.handlers.routing.tenant_overlay_resolver")
 
 
 @runtime_checkable

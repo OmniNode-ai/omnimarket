@@ -27,6 +27,12 @@ from omnimarket.enums.enum_delegation_failure_class import (
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    resolve_byok_provider_backend,
+    select_byok_model,
+)
 from omnimarket.inference import local_byok_credential_adapter as credentials
 from omnimarket.inference.provider_response_error import (
     describe_provider_refusal,
@@ -48,12 +54,6 @@ from omnimarket.projection.credential_publisher import (
     register_inference_credential,
 )
 from omnimarket.routing import byok_model_discovery as discovery
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    ModelByokProviderBackend,
-    resolve_byok_provider_backend,
-    select_byok_model,
-)
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 from tests.chains.local.harness import (
     house_openrouter_rung,

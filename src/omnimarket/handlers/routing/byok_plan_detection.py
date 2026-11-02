@@ -74,6 +74,12 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, SecretStr
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ModelByokProviderBackend,
+    byok_automatic_plans,
+    resolve_byok_declared_plan,
+    resolve_byok_provider_backend,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
     ModelTransportResponse,
     post_chat_completion,
@@ -81,12 +87,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import 
 from omnimarket.routing.byok_model_discovery import (
     GetJson,
     discover_byok_model_sync,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ModelByokProviderBackend,
-    byok_automatic_plans,
-    resolve_byok_declared_plan,
-    resolve_byok_provider_backend,
 )
 
 logger = logging.getLogger(__name__)

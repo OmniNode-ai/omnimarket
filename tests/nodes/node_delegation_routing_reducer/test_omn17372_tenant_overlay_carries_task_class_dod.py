@@ -54,6 +54,11 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
+from omnimarket.handlers.routing.customer_key_terminus import EnumDelegationSurface
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    TENANT_OVERLAY_TABLE,
+    resolve_tenant_overlay,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateInput
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
@@ -73,11 +78,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_dod_resolution,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.routing.customer_key_terminus import EnumDelegationSurface
-from omnimarket.routing.tenant_overlay_resolver import (
-    TENANT_OVERLAY_TABLE,
-    resolve_tenant_overlay,
-)
 
 # The live BYOK tenant and its overlay row, replayed verbatim from
 # omnidash_analytics.delegation_routing_tenant_overlay (SSM SELECT, 2026-09-07).

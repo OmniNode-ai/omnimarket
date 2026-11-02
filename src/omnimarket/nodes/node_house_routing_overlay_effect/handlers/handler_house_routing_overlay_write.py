@@ -44,6 +44,8 @@ from typing import Protocol
 
 import yaml
 
+from omnimarket.handlers.routing.routing_tiers_path import resolve_routing_tiers_path
+from omnimarket.handlers.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
 from omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routing_overlay import (
     EnumHouseOverlayOperation,
     ModelHouseRoutingOverlayCommand,
@@ -51,8 +53,6 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routi
     ModelHouseRoutingOverlayReceipt,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
-from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 _CONFLICT_KEY = "tenant_id,task_type"
 
 #: Same DSN the read side resolves against
-#: (``omnimarket.routing.tenant_overlay_resolver.resolve_tenant_overlay_db``).
+#: (``omnimarket.handlers.routing.tenant_overlay_resolver.resolve_tenant_overlay_db``).
 #: One canonical Postgres this table lives in, read or written.
 _ENV_OVERLAY_STORE_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 

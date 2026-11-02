@@ -37,27 +37,27 @@ scan_scope:
 sources:
   - id: routing_tiers_ladder
     selects: the tier ladder, which backend serves each tier and each task class's use_for
-    resolver: omnimarket.routing.routing_tiers_path:resolve_routing_tiers_path
+    resolver: omnimarket.handlers.routing.routing_tiers_path:resolve_routing_tiers_path
     packaged_defaults:
       - src/omnimarket/configs/routing_tiers.yaml
     overlay: DELEGATION_ROUTING_TIERS_PATH pin, then the node_delegation_routing_reducer node overlay
     resolution_sites:
-      - "src/omnimarket/routing/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
-      - "src/omnimarket/routing/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
     precedence:
       probe: routing_tiers_ladder
   - id: harness_routing_overlay
     selects: harness backends, harness tiers and per-class escalation chains
-    resolver: omnimarket.routing.routing_tiers_path:load_delegation_routing_overlay
+    resolver: omnimarket.handlers.routing.routing_tiers_path:load_delegation_routing_overlay
     packaged_defaults: []
     overlay: DELEGATION_ROUTING_OVERLAY_PATH; unbound resolves to the empty overlay, with no packaged file
     resolution_sites:
-      - "src/omnimarket/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
     precedence:
       probe: harness_routing_overlay
   - id: bifrost_backend_contract
     selects: backends, endpoints, model names and routing rules per task class
-    resolver: omnimarket.routing.delegation_backend_resolution:_resolve_effective_bifrost_paths
+    resolver: omnimarket.handlers.routing.delegation_backend_resolution:_resolve_effective_bifrost_paths
     packaged_defaults:
       - src/omnimarket/configs/bifrost_delegation.yaml
       - src/omnimarket/configs/provider_surfaces.v1.yaml
@@ -81,7 +81,7 @@ sources:
       probe: task_class_contract
   - id: tenant_routing_overlay
     selects: a tenant's own backend per task type, chosen from the platform default and the BYOK catalogue
-    resolver: omnimarket.routing.tenant_overlay_resolver:resolve_tenant_overlay
+    resolver: omnimarket.handlers.routing.tenant_overlay_resolver:resolve_tenant_overlay
     packaged_defaults:
       - src/omnimarket/configs/byok_provider_backends.v1.yaml
     overlay: a delegation_routing_tenant_overlay row per tenant and task type
@@ -90,7 +90,7 @@ sources:
       probe: tenant_routing_overlay
   - id: roi_outcome_overlay
     selects: which tiers are skipped, from captured outcomes of the context-ROI and definition-of-done projections
-    resolver: omnimarket.routing.roi_overlay:resolve_roi_overlay
+    resolver: omnimarket.handlers.routing.roi_overlay:resolve_roi_overlay
     packaged_defaults: []
     overlay: the ModelRoutingRoiOverlay the caller threads into the reducer
     resolution_sites: []

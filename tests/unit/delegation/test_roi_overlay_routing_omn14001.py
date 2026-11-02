@@ -29,6 +29,17 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.roi_overlay import (
+    CONTEXT_ROI_TABLE,
+    ModelRoutingRoiOverlay,
+    ModelTierRoiSignal,
+    build_roi_overlay,
+    resolve_roi_lookback_rows,
+    resolve_roi_min_samples,
+    resolve_roi_overlay,
+    resolve_roi_success_floor,
+    resolve_roi_window_seconds,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_module,
 )
@@ -48,17 +59,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     tier_for_backend,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.routing.roi_overlay import (
-    CONTEXT_ROI_TABLE,
-    ModelRoutingRoiOverlay,
-    ModelTierRoiSignal,
-    build_roi_overlay,
-    resolve_roi_lookback_rows,
-    resolve_roi_min_samples,
-    resolve_roi_overlay,
-    resolve_roi_success_floor,
-    resolve_roi_window_seconds,
-)
 
 # --- Fixtures -------------------------------------------------------------------
 
@@ -845,7 +845,7 @@ def test_resolve_context_roi_db_none_without_dsn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No OMNIDASH_ANALYTICS_DB_URL → None (fail-open, the common local case)."""
-    from omnimarket.routing.roi_overlay import resolve_context_roi_db
+    from omnimarket.handlers.routing.roi_overlay import resolve_context_roi_db
 
     monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
     assert resolve_context_roi_db() is None
@@ -855,8 +855,8 @@ def test_resolve_context_roi_db_builds_lazy_adapter_with_dsn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """DSN set → a read adapter is returned WITHOUT connecting (lazy)."""
+    from omnimarket.handlers.routing.roi_overlay import resolve_context_roi_db
     from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
-    from omnimarket.routing.roi_overlay import resolve_context_roi_db
 
     monkeypatch.setenv(
         "OMNIDASH_ANALYTICS_DB_URL", "postgresql://u:p@127.0.0.1:1/omnidash_analytics"
@@ -923,6 +923,10 @@ def test_min_samples_citation_reproduces_the_measured_flip_rates() -> None:
     """
     import json
 
+    from omnimarket.handlers.routing.roi_overlay import (
+        DEFAULT_ROI_MIN_SAMPLES,
+        ROI_MIN_SAMPLES_GENERATION_STABILITY,
+    )
     from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
         ModelGenerationStabilityRequest,
     )
@@ -931,10 +935,6 @@ def test_min_samples_citation_reproduces_the_measured_flip_rates() -> None:
     )
     from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
         compute_generation_stability,
-    )
-    from omnimarket.routing.roi_overlay import (
-        DEFAULT_ROI_MIN_SAMPLES,
-        ROI_MIN_SAMPLES_GENERATION_STABILITY,
     )
 
     fixture = (

@@ -50,7 +50,7 @@ _ROUTED_TOPICS = [
 ]
 
 _PUBLISHER = "omnimarket.projection.credential_publisher"
-_RESOLVER = "omnimarket.routing.tenant_overlay_resolver"
+_RESOLVER = "omnimarket.handlers.routing.tenant_overlay_resolver"
 _SQLITE = "omnimarket.projection.sqlite_database"
 _POSTGRES = "omnimarket.projection.postgres_sync_database"
 _STORES = "omnimarket.nodes.node_projection_tenant_credentials.stores"

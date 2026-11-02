@@ -37,13 +37,13 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
     load_bifrost_delegation_config_payload,
 )
-from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
-    EnumBifrostFieldSource,
-)
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
     load_bifrost_backends_with_provenance,
+)
+from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
+    EnumBifrostFieldSource,
 )
 
 pytestmark = pytest.mark.unit

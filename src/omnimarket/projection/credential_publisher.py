@@ -65,6 +65,17 @@ from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
 )
+from omnimarket.handlers.routing.byok_plan_detection import (
+    ModelByokPlanDetection,
+    detect_byok_plan,
+)
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ANTHROPIC_WORKSPACE_ID_PATTERN,
+    byok_automatic_plans,
+    byok_routable_plans,
+    require_byok_plan_permitted,
+    resolve_byok_provider_backend,
+)
 from omnimarket.models.model_inference_credential_create_request import (
     LAB_HOST_NAME_PATTERN as LAB_HOST_NAME_PATTERN,
 )
@@ -79,17 +90,6 @@ from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model,
     model_not_chosen_message,
-)
-from omnimarket.routing.byok_plan_detection import (
-    ModelByokPlanDetection,
-    detect_byok_plan,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ANTHROPIC_WORKSPACE_ID_PATTERN,
-    byok_automatic_plans,
-    byok_routable_plans,
-    require_byok_plan_permitted,
-    resolve_byok_provider_backend,
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"

@@ -26,11 +26,7 @@ from uuid import uuid4
 import pytest
 import yaml
 
-from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
-    HandlerTenantCredentialsProjectionRunner,
-)
-from omnimarket.projection.runner import MessageMeta
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_CATALOG_SCHEMA_VERSION,
     BYOK_MODEL_UNRESOLVED,
     CATALOG_PATH,
@@ -38,11 +34,15 @@ from omnimarket.routing.byok_provider_backends import (
     load_byok_plan_catalog,
     resolve_byok_provider_backend,
 )
-from omnimarket.routing.tenant_overlay_resolver import (
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
     BYOK_ALL_TASK_TYPES,
     TENANT_OVERLAY_TABLE,
     resolve_tenant_overlay,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
+    HandlerTenantCredentialsProjectionRunner,
+)
+from omnimarket.projection.runner import MessageMeta
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
@@ -134,12 +134,14 @@ class TestCatalog:
         ``secret_ref``. If this catalog's model ever grows one, a customer's
         route could be minted pointing at a house key.
         """
-        from omnimarket.routing.byok_provider_backends import ModelByokProviderBackend
+        from omnimarket.handlers.routing.byok_provider_backends import (
+            ModelByokProviderBackend,
+        )
 
         assert "secret_ref" not in ModelByokProviderBackend.model_fields
 
     def test_catalog_refuses_a_wrong_schema_version(self, tmp_path: Path) -> None:
-        from omnimarket.routing import byok_provider_backends as mod
+        from omnimarket.handlers.routing import byok_provider_backends as mod
 
         bad = tmp_path / "byok.yaml"
         bad.write_text(
@@ -150,7 +152,7 @@ class TestCatalog:
             mod._read_catalog(bad)
 
     def test_catalog_refuses_a_duplicate_provider(self, tmp_path: Path) -> None:
-        from omnimarket.routing import byok_provider_backends as mod
+        from omnimarket.handlers.routing import byok_provider_backends as mod
 
         entry = {
             "provider": "openrouter",
@@ -552,7 +554,7 @@ class TestRoutingResolvesTenantByok:
         )
         assert overlay is not None
 
-        from omnimarket.routing.customer_key_terminus import (
+        from omnimarket.handlers.routing.customer_key_terminus import (
             CustomerKeyRefusedError,
             EnumCustomerKeyRefusalReason,
         )

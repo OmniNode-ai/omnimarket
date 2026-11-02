@@ -46,6 +46,15 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.customer_key_terminus import (
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+    lab_backend_hosts,
+)
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    ModelTenantRoutingOverlayBackend,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -58,15 +67,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     HOUSE_TENANT_UUID,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
-    lab_backend_hosts,
-)
-from omnimarket.routing.tenant_overlay_resolver import (
-    ModelTenantRoutingOverlayBackend,
 )
 
 _CUSTOMER = "acme-corp"

@@ -55,6 +55,20 @@ from pathlib import Path
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.handlers.openai_compatible_endpoint import registered_endpoint_url
+from omnimarket.handlers.routing import load_delegation_routing_overlay
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ByokPlanNotPermittedError,
+    ModelByokProviderBackend,
+    customer_provider_catalogue,
+    resolve_byok_backend_by_id,
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    load_bifrost_backends,
+    resolve_delegation_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     registered_local_byok_providers,
@@ -67,20 +81,6 @@ from omnimarket.inference.provider_quota_state import (
     ModelProviderQuotaSnapshot,
     quota_block_for_backend,
 )
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    ByokPlanNotPermittedError,
-    ModelByokProviderBackend,
-    customer_provider_catalogue,
-    resolve_byok_backend_by_id,
-    resolve_byok_provider_backend,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    load_bifrost_backends,
-    resolve_delegation_backend,
-)
-from omnimarket.routing.routing_tiers_path import load_delegation_routing_overlay
 
 logger = logging.getLogger(__name__)
 

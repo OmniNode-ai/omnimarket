@@ -31,6 +31,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    TENANT_OVERLAY_TABLE,
+    resolve_tenant_overlay,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -50,10 +54,6 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models import (
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import (
-    TENANT_OVERLAY_TABLE,
-    resolve_tenant_overlay,
-)
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 

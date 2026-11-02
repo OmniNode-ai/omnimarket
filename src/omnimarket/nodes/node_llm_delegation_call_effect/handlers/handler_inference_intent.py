@@ -44,6 +44,15 @@ from omnibase_core.models.delegation.wire import (
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.handlers.network_bindings import network_host
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    describe_model_name_source,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     resolve_local_byok_model_chooser,
@@ -81,13 +90,6 @@ from omnimarket.routing.byok_model_discovery import (
     discover_byok_model_sync,
     model_not_chosen_message,
 )
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    ModelByokProviderBackend,
-    resolve_byok_backend_by_endpoint,
-    token_limit_field_for_endpoint,
-)
-from omnimarket.routing.delegation_backend_resolution import describe_model_name_source
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 logger = logging.getLogger(__name__)

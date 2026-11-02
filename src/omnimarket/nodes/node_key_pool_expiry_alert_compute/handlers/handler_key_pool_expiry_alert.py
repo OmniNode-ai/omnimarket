@@ -4,7 +4,7 @@
 
 Pure: a tenant's catalog rows and a clock in, at most one alert out. The
 verdict follows the same liveness rule the router applies when it picks a key
-(``omnimarket.routing.tenant_overlay_resolver``): a key is live when it is not
+(``omnimarket.handlers.routing.tenant_overlay_resolver``): a key is live when it is not
 revoked and its expiry is unset or still ahead of the clock.
 """
 

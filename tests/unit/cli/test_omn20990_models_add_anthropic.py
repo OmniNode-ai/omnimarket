@@ -35,6 +35,9 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group, secret_group
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -47,7 +50,6 @@ from omnimarket.inference.protocol_config import (
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
 from omnimarket.routing import byok_model_discovery
 from omnimarket.routing.byok_model_discovery import models_request_headers
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
 # OMN-21059: every shipped row has the customer choose the model; this file
 # exercises the catalogue-pick path, which a row reaches with that flag off.
