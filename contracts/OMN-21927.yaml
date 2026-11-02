@@ -19,23 +19,23 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: node_delegation_health_compute in omnimarket has a contract.yaml, a metadata.yaml, typed input and output models with extra=forbid and a handler, and returns OK, DEGRADED with reasons, or UNREADABLE as a typed verdict from the counts alone -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute -q -k verdict_types
+          AC1: node_delegation_health_compute in omnimarket has a contract.yaml, a metadata.yaml, typed input and output models with extra=forbid and a handler, and returns OK, DEGRADED with reasons, or UNREADABLE as a typed verdict from the counts alone -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k verdict_types
       - id: "AC2"
         statement: |-
-          AC2: a regression test built from the recorded counts of 2026-11-02T00:01Z (132 of 172 timeouts, local-coder 0 attempts, local-heavy-reasoning serving the same model; fixture under tests/nodes/node_delegation_health_compute/fixtures) returns DEGRADED naming both the timeout share and the silent rung, and the same counts through the pre-fix rule read OK -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute -q -k recorded_2026_11_02T0001Z
+          AC2: a regression test built from the recorded counts of 2026-11-02T00:01Z (132 of 172 timeouts, local-coder 0 attempts, local-heavy-reasoning serving the same model; fixture under tests/nodes/node_delegation_health_compute/fixtures) returns DEGRADED naming both the timeout share and the silent rung, and the same counts through the pre-fix rule read OK -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k recorded_2026_11_02T0001Z
       - id: "AC3"
         statement: |-
-          AC3: the timeout share, the minimum run count and the expected-rung rule are read from the contract, and changing the share in the contract changes the verdict with no code change -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute -q -k declared_threshold
+          AC3: the timeout share, the minimum run count and the expected-rung rule are read from the contract, and changing the share in the contract changes the verdict with no code change -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k declared_threshold
       - id: "AC4"
         statement: |-
-          AC4: a window with fewer than the minimum runs never reads DEGRADED on timeouts, and a table without the outcome column reads as not judged with that said in the verdict -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute -q -k not_judged
+          AC4: a window with fewer than the minimum runs never reads DEGRADED on timeouts, and a table without the outcome column reads as not judged with that said in the verdict -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k not_judged
       - id: "AC5"
         statement: |-
-          AC5: the suite passes on a lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_delegation_health_compute -q
+          AC5: the suite passes on a lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC4: the node suite, including the recorded-counts regression fixture."
-    command: "uv run pytest tests/nodes/node_delegation_health_compute -q -n 0 -p no:randomly --no-cov"
+    command: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q -n 0 -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -46,7 +46,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_health_compute -k verdict_types -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k verdict_types -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21927-ac2-recorded_2026_11_02t0001z"
@@ -54,7 +54,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_health_compute -k recorded_2026_11_02T0001Z -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k recorded_2026_11_02T0001Z -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21927-ac3-declared_threshold"
@@ -62,7 +62,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_health_compute -k declared_threshold -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k declared_threshold -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21927-ac4-not_judged"
@@ -70,7 +70,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_health_compute -k not_judged -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k not_judged -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21927-ac5-suite"
@@ -78,7 +78,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_health_compute -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21927-deploy-contract-rules"
