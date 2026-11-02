@@ -92,6 +92,8 @@ dod_evidence:
 - id: dod-omn21930-merged-mapping
   description: A task row is built from the merged pull requests of the tickets it names, the watcher's merge list included; a pull request that names other tickets is not on the row, and a table row's recorded merged state is not trusted. These cases fail on this pull request's merge base.
   source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k merged_mapping -q --no-cov --tb=line
@@ -99,6 +101,8 @@ dod_evidence:
 - id: dod-omn21930-draft-pr-plan
   description: A plan only on an open pull request's head branch is drawn from the local clone's ref, and a task id the plan's prose pairs with tickets reaches its task row. These cases fail on this pull request's merge base.
   source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_factory_floor_effect/tests -k "draft_pr_plan or plan_prose" -q --no-cov --tb=line
