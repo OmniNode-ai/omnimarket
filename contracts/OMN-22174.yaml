@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22174"
+title: "The host installer installs a declared set of lab-host public keys on every pool host"
+summary: "node_lab_host_key_distribution_effect gains the install_declared_keys operation: it reads the declared public keys from the node's overlay and appends each missing one to authorized_keys on every available non-contributor pool host of the lab host table, with one receipt row per host. A second run changes nothing. Only public keys are read or written."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn22174-declared-public-keys"
+    statement: |-
+      The declared lab-host public keys are installed on every pool host from an overlay, idempotently, with a receipt per host, so h051 and h053 reach the two named hosts over ssh without a prompt.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a test shows the installer writes every declared public key from a fixture overlay into authorized_keys on each fixture pool host and a second run changes nothing -- falsifier: uv run pytest -k lab_host_public_keys_idempotent"
+      - id: "AC2"
+        statement: "AC2: the declared key set lives in an overlay and no public file holds key text or host addresses -- falsifier: uv run pytest -k lab_host_public_keys_overlay_only"
+      - id: "AC3"
+        statement: "AC3: from h051 and from h053, ssh as jonah to the two named hosts succeeds non-interactively -- falsifier: BatchMode ssh true from each of h051 and h053 to each, exit 0 for all four"
+      - id: "AC4"
+        statement: "AC4: the installer change is deployed from its branch and run once on every pool host, shown by its receipt naming each host as ok -- falsifier: the run receipt lists every pool host row as ok"
+evidence_requirements:
+  - kind: "tests"
+    description: "Idempotence, dry run, per-host refusal, overlay-only key text."
+    command: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22174-idempotent"
+    description: "A fake transport receives every declared key once per host and a second run appends nothing."
+    source: "manual"
+    binds_ac: ["AC1", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k lab_host_public_keys_idempotent"
+        cwd: "."
+  - id: "dod-omn22174-overlay-only"
+    description: "Keys resolve only from the overlay; the node's files and its test hold no key text or address."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k lab_host_public_keys_overlay_only"
+        cwd: "."
+  - id: "dod-omn22174-registration"
+    description: "The console script and the install_declared_keys handler route are declared."
+    source: "manual"
+    binds_ac: ["AC3", "AC4"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          grep -q '^onex-declared-public-keys-install = ' pyproject.toml && grep -q 'operation: install_declared_keys' src/omnimarket/nodes/node_lab_host_key_distribution_effect/contract.yaml
+        cwd: "."

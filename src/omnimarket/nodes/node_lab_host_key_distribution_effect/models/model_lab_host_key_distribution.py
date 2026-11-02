@@ -147,3 +147,66 @@ class ModelLabHostKeyDistributionResult(BaseModel):
             + (f" {pair.detail}" if pair.status == EnumPairStatus.REFUSED else "")
             for pair in self.pairs
         )
+
+
+class EnumInstallStatus(StrEnum):
+    """The outcome of one host in a declared-key install."""
+
+    OK = "ok"
+    PLANNED = "planned"
+    REFUSED = "refused"
+    SKIPPED = "skipped"
+
+
+class ModelDeclaredKeysInstallRequest(BaseModel):
+    """Install the overlay-declared public keys on every pool host of the table."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    table: ModelLabHostsTable | None = None
+    table_path: str | None = None
+    # Explicit public keys; omitted, the node's overlay supplies them.
+    public_keys: tuple[str, ...] | None = None
+    # Explicit host names; omitted, every available non-contributor host of the table.
+    hosts: tuple[str, ...] | None = None
+    dry_run: bool = False
+    local_host: str | None = None
+    timeout_s: int = Field(default=30, ge=1)
+
+    @field_validator("public_keys")
+    @classmethod
+    def validate_keys(cls, values: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        for value in values or ():
+            public_key_parts(value)
+        return values
+
+
+class ModelHostInstallReceipt(BaseModel):
+    """The receipt row of one host: how many declared keys were added or already there."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    status: EnumInstallStatus
+    keys_added: int = 0
+    keys_present: int = 0
+    detail: str = ""
+
+
+class ModelDeclaredKeysInstallResult(BaseModel):
+    """One receipt row per host in table order, and the process exit code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dry_run: bool
+    receipts: tuple[ModelHostInstallReceipt, ...] = ()
+    exit_code: int
+    refusal: str | None = None
+
+    def lines(self) -> tuple[str, ...]:
+        verb = "would-add" if self.dry_run else "added"
+        return tuple(
+            f"{r.host} {r.status.value} {verb}={r.keys_added} present={r.keys_present}"
+            + (f" {r.detail}" if r.detail else "")
+            for r in self.receipts
+        )

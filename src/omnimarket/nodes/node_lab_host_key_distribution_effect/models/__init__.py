@@ -5,9 +5,13 @@
 from __future__ import annotations
 
 from .model_lab_host_key_distribution import (
+    EnumInstallStatus,
     EnumKeyFile,
     EnumLineState,
     EnumPairStatus,
+    ModelDeclaredKeysInstallRequest,
+    ModelDeclaredKeysInstallResult,
+    ModelHostInstallReceipt,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
     ModelLabHostKeyDistributionResult,
@@ -15,9 +19,13 @@ from .model_lab_host_key_distribution import (
 )
 
 __all__ = [
+    "EnumInstallStatus",
     "EnumKeyFile",
     "EnumLineState",
     "EnumPairStatus",
+    "ModelDeclaredKeysInstallRequest",
+    "ModelDeclaredKeysInstallResult",
+    "ModelHostInstallReceipt",
     "ModelHostKeyMaterial",
     "ModelLabHostKeyDistributionRequest",
     "ModelLabHostKeyDistributionResult",

@@ -1184,6 +1184,7 @@ onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_ef
 onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main"
 onex-claude-pool-refill = "omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill:main"
 onex-host-key-distribution = "omnimarket.nodes.node_lab_host_key_distribution_effect.runtime_lab_host_key_distribution:main"
+onex-declared-public-keys-install = "omnimarket.nodes.node_lab_host_key_distribution_effect.runtime_lab_host_public_keys_install:main"
 onex-branch-prune = "omnimarket.nodes.node_branch_prune_effect.runtime_branch_prune_cli:main"
 onex-handoff-check = "omnimarket.nodes.node_handoff_check_effect.runtime_handoff_check_cli:main"
 
@@ -1694,6 +1695,7 @@ ignore = [
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_host_key_distribution_effect/runtime_lab_host_key_distribution.py" = ["T201"]
+"src/omnimarket/nodes/node_lab_host_key_distribution_effect/runtime_lab_host_public_keys_install.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_host_thermal_observe_effect/runtime_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and

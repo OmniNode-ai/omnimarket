@@ -498,7 +498,11 @@ def test_contract_and_models() -> None:
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert contract["runtime_profiles"] == []
     assert contract["descriptor"]["idempotent"] is True
-    assert contract["metadata"]["related_tickets"] == ["OMN-22115", "OMN-20348"]
+    assert contract["metadata"]["related_tickets"] == [
+        "OMN-22115",
+        "OMN-20348",
+        "OMN-22174",
+    ]
     metadata = yaml.safe_load(
         NodeLabHostKeyDistributionEffect.contract_path.with_name(
             "metadata.yaml"
