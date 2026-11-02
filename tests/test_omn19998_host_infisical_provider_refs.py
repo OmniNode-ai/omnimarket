@@ -61,7 +61,9 @@ def host(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     local = FakeStore({REF: "from-the-local-cache"})
     monkeypatch.setattr(host_store, "_host_provider_store", lambda: store)
     monkeypatch.setattr(host_store, "LocalByokCredentialStore", lambda: local)
+    monkeypatch.setattr(resolver, "LocalByokCredentialStore", lambda: local)
     yield store, local, tmp_path
+    monkeypatch.undo()
     resolver.clear_secret_store_resolver_cache()
     host_store.clear_host_provider_cache()
 
