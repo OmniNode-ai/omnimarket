@@ -5,22 +5,29 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Protocol
 
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
-if TYPE_CHECKING:
-    from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
-        ProtocolTenantOverlayReader,
-    )
-
 _logger = logging.getLogger("omnimarket.routing.tenant_overlay_resolver")
 
 
+class _CredentialRowReader(Protocol):
+    """The one read this module makes; the tenant overlay reader satisfies it.
+
+    Declared here rather than imported, because tenant_key_selection imports
+    this module: importing its reader protocol back makes a module cycle.
+    """
+
+    def query(
+        self, table: str, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]: ...
+
+
 def selected_key_models(
-    db: ProtocolTenantOverlayReader,
+    db: _CredentialRowReader,
     *,
     tenant_id: str,
     provider: str | None,

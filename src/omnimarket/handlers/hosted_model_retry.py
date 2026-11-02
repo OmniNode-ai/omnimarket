@@ -11,25 +11,43 @@ reselects the credential or consults the platform ladder.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import Protocol
 
 from omnibase_core.models.delegation.wire import ModelRoutingIntent
 
 from omnimarket.models.delegation.wire.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+    ModelDelegationRequest,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     TENANT_OVERLAY_TIER_NAME,
 )
 
-if TYPE_CHECKING:
-    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-        DelegationWorkflowState,
-    )
+
+class _CustomerRetryWorkflow(Protocol):
+    """What the retry reads and advances on the orchestrator's workflow state.
+
+    Declared here rather than imported, because the orchestrator's workflow
+    module imports this one: importing its state back makes a module cycle.
+    """
+
+    customer_route_retry_count: int
+    customer_route_retry_backend_ref: str | None
+
+    @property
+    def current_tier_name(self) -> str | None: ...
+
+    @property
+    def request(self) -> ModelDelegationRequest | None: ...
+
+    @property
+    def routing_decision(self) -> ModelRoutingDecision | None: ...
 
 
 def next_customer_retry(
-    workflow: DelegationWorkflowState,
+    workflow: _CustomerRetryWorkflow,
     *,
     max_retries_for: Callable[[str], int | None],
 ) -> ModelRoutingDecision | ModelRoutingIntent | None:

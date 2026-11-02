@@ -681,6 +681,7 @@
   "tests/nodes/node_delegation_routing_reducer/test_api_key_env_eligibility_mirrors_dispatch.py": 1.78,
   "tests/nodes/node_delegation_routing_reducer/test_bifrost_overlay_loader.py": 0.59,
   "tests/nodes/node_delegation_routing_reducer/test_contract_routing_policy.py": 0.58,
+  "tests/nodes/node_delegation_routing_reducer/test_hosted_ordered_models_omn21217.py": 0.5,
   "tests/nodes/node_delegation_routing_reducer/test_omn15628_fail_fast_config_bindings.py": 0.37,
   "tests/nodes/node_delegation_routing_reducer/test_omn15631_tenant_overlay_routing.py": 0.2,
   "tests/nodes/node_delegation_routing_reducer/test_omn17372_tenant_overlay_carries_task_class_dod.py": 1.65,
