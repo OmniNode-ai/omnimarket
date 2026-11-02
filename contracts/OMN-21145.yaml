@@ -70,6 +70,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py -q -p no:randomly --no-cov -n 0 -k 'role_factor_is_optional_on_every_binding and cli'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21145-integration-proof-model-roles"
+    description: >-
+      Run the model-role authority, optional-outage and routing-admission tests
+      on a lab host at the pushed head. A profile that requires a model-role
+      factor is accepted at the merge base, so the authority tests are red
+      there. The hosted verifier cannot dispatch lab work, so this unbound check
+      belongs to the local Done gate.
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21145 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/nodes/node_context_pack_orchestrator/test_model_role_outages.py -q -p no:randomly --no-cov -n 0
+        cwd: "."
   - id: "dod-omn21145-ac1-routing-admission"
     description: >-
       All three role fields reject a missing routing entry. Promoted internal
