@@ -6,7 +6,7 @@
 
 WHY THIS EXISTS
 ---------------
-The OMN-13412 release-identity gate (``scripts/check_release_identity.py``) says:
+The OMN-13412 release-identity gate (omnibase_core's ``check-release-identity`` hook) says:
 if a diff touches packaged source (``src/**``), ``[project].version`` MUST be
 strictly greater than the highest *published* ``vX.Y.Z`` tag. Publishing X.Y.Z
 from dev HEAD therefore **arms that gate against dev itself** — dev's version is

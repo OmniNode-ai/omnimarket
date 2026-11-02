@@ -51,6 +51,59 @@ repos:
       - id: commit-hygiene-message
         stages: [commit-msg]
         require_serial: true
+  # OMN-21940: five validators this repository used to run from its own script
+  # copies. The rule code is omnibase_core's, at this rev; only the inputs stay here.
+  # The rev is the first dev-merge tag whose check-release-identity runtime installs
+  # in a hook environment (it declares its `packaging` import; the rev of the first
+  # core block above does not). Each CI twin runs the same core runtime at this same
+  # tag (ci.yml, delegation-regression-nightly.yml, precommit-fail-loud-gate.yml,
+  # reject-leaked-literals.yml): keep those tags equal to this rev.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261101023710-a66b5ff79cc0
+    hooks:
+      # OMN-14172 integration silent-skip guard: the --selftest drives the decision
+      # over synthetic reports and validates scripts/ci/integration_skip_guard.yaml
+      # (this repo's config, read from the default path). No DB needed locally; the
+      # CI job 'integration-guard' is the full runtime gate. SYNC with ci.yml job
+      # 'integration-guard'.
+      - id: integration-skip-guard
+        require_serial: true
+        files: >-
+          ^(scripts/ci/integration_skip_guard\.yaml|
+          \.github/workflows/ci\.yml|
+          tests/test_delegation_savings_tenant_id_column_omn14058\.py|
+          tests/test_projection_delegation_tier_distribution_omn13662\.py)$
+      # OMN-17219 interpreter-resolution ratchet: fails closed when a hook `entry:`
+      # -- or a shell script it calls -- shells out to a bare `python`. Sanctioned
+      # form is `uv run python <script>`. always_run keeps the local hook's rule that
+      # it checks every commit. CI twin: precommit-fail-loud-gate.yml.
+      - id: precommit-interpreter-resolution
+        require_serial: true
+        always_run: true
+      # OMN-16344 release-identity gate: no packaged-source change on a published
+      # version without a bump. pass_filenames hands the hook the staged paths that
+      # match its files filter, which is what the local hook's --staged did; CI keeps
+      # the PR-base comparison (ci.yml job 'release-identity-gate').
+      - id: check-release-identity
+        require_serial: true
+        pass_filenames: true
+      # OMN-18790 skip-count ratchet selftest. The data file is this repo's
+      # config/skip_count_baseline.yaml; the CI job 'skip-count-ratchet' reads it
+      # with --baseline. The files filter keeps the local hook's triggers except the
+      # deleted script. SYNC with ci.yml job 'skip-count-ratchet'.
+      - id: skip-count-ratchet
+        require_serial: true
+        files: >-
+          ^(config/skip_count_baseline\.yaml|tests/ci/test_skip_count_ratchet_omn18790\.py|\.github/workflows/ci\.yml)$
+      # OMN-17320 exposed-identifier gate: a salted-SHA256 denylist of customer
+      # identifiers that must never re-enter this PUBLIC repository. The denylist is
+      # this repo's file and holds digests, never plaintext. The only escape hatch is
+      # a per-line annotation of the exposed-identifier class (ticket + reason
+      # required; see the header of .github/workflows/reject-leaked-literals.yml).
+      # CI twin: the 'Leaked Literals Gate' job (reject-leaked-literals.yml), full tree.
+      - id: exposed-identifier-gate
+        require_serial: true
+        args: [--mode, blocking, --denylist, scripts/validation/exposed_identifiers_denylist.json]
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
@@ -2229,30 +2282,6 @@ repos:
         language: system
         pass_filenames: false
 
-      # OMN-14172: integration silent-skip false-green gate. An
-      # @pytest.mark.integration real-service test that self-skips because a
-      # PROVISIONED service (Postgres) is absent is a false-green — the required
-      # Tests job goes green while the real-DB assertion never ran (the exact gap
-      # that let the OMN-14058 missing-tenant_id-column defect reach dev).
-      # The --selftest runs the gate's own logic against synthetic pass/fail
-      # JUnit reports (case (a) provisioned -> PASS, case (b) reintroduced
-      # missing-service silent skip -> RED) so the gate cannot silently regress,
-      # and validates the shipped integration_skip_guard.yaml parses. No DB
-      # needed locally — the CI job 'integration-guard' is the full runtime gate.
-      # SYNC with ci.yml job 'integration-guard' (Operating Rule #5).
-      - id: integration-skip-guard
-        name: Integration silent-skip guard selftest (OMN-14172)
-        language: system
-        entry: uv run python scripts/ci/check_integration_skips.py --selftest
-        files: >-
-          ^(scripts/ci/check_integration_skips\.py|
-          scripts/ci/integration_skip_guard\.yaml|
-          tests/ci/test_check_integration_skips\.py|
-          \.github/workflows/ci\.yml|
-          tests/test_delegation_savings_tenant_id_column_omn14058\.py|
-          tests/test_projection_delegation_tier_distribution_omn13662\.py)$
-        pass_filenames: false
-        stages: [pre-commit]
 
       # OMN-11040: Dependency health gate — blocks new CRITICAL/MAJOR dependency
       # health findings from being committed. Baseline-first: set
@@ -2384,23 +2413,6 @@ repos:
         stages: [pre-commit]
         files: ^(\.pre-commit-config\.yaml|scripts/.*\.(sh|py)|\.pre-commit-hooks/.*\.sh)$
 
-      # OMN-17219 (sibling of OMN-16958): interpreter-resolution ratchet. Fails
-      # closed the moment a hook `entry:` -- or a shell script it calls -- shells
-      # out to a bare `python`. macOS ships no bare `python` outside an activated
-      # venv, so such a hook refuses every `git commit` for anyone not inside one
-      # (reported by an external collaborator on omnimarket's one-occ-producer
-      # hook; identical class to omnimemory's validate-spdx-headers, OMN-16958).
-      # Sanctioned form is `uv run python <script>`. Wired as BOTH this hook and
-      # a CI step in .github/workflows/precommit-fail-loud-gate.yml (Operating
-      # Rule 5: enforcement, not detection).
-      - id: precommit-interpreter-resolution
-        name: Pre-commit interpreter-resolution gate (OMN-17219)
-        entry: uv run python scripts/validation/validate_precommit_interpreter.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-        files: ^(\.pre-commit-config\.yaml|scripts/.*\.(sh|py)|\.pre-commit-hooks/.*\.sh)$
 
       # OMN-14666 (D5, §3d.8): pin-parity ratchet. Fails closed the moment the
       # pre-commit `rev:` pin for a shared omnibase_core validator diverges from
@@ -2433,23 +2445,6 @@ repos:
           ^(src/omnimarket/merge_control/reason_code_classifier\.py|scripts/ci/check_merge_reason_codes\.py|tests/merge_control/fixtures/reason_codes/.*\.json)$
         stages: [pre-commit]
 
-      # OMN-16344: release-identity gate. Blocks committing a packaged-source
-      # change onto an already-published version string, which is what keeps
-      # dev's project.version permanently ahead of the last released tag the
-      # way omnibase_core (OMN-13411) and omnibase_infra (OMN-13412) already
-      # are. Without it omnimarket's dev sat at 0.4.8 — the same version as the
-      # published v0.4.8 wheel — while carrying seven commits of src/ changes,
-      # so "omnimarket 0.4.8" named two different code states. Local commits
-      # inspect the staged index; CI keeps the PR-base comparison. The script
-      # owns the Git diff/tag resolution, so pass_filenames remains false. SYNC
-      # with ci.yml job `release-identity-gate`.
-      - id: check-release-identity
-        name: No code merged onto a published version without a bump (OMN-16344)
-        entry: uv run python scripts/check_release_identity.py --staged
-        language: system
-        files: ^(src/.*\.py|pyproject\.toml)$
-        pass_filenames: false
-        stages: [pre-commit]
 
   # ---------------------------------------------------------------------------
   # RETIRED (OMN-18162, 2026-09-10): the pre-push TEST leg.
@@ -2531,20 +2526,6 @@ repos:
       # The wrapper executes the SAME validator the CI reusable workflow executes
       # (canonical copy in omniclaude, resolved via $OMNI_HOME), so local and CI
       # verdicts cannot diverge on validator logic.
-      # OMN-18790: the skip-count ratchet's own logic, driven over synthetic
-      # reports locally. The case that matters is the RED one: a reintroduced
-      # environmentally-skipped test must turn the gate red. The shipped
-      # baseline's provenance is validated in the same pass, because a baseline
-      # number with no recorded measurement is a claim, not a measurement.
-      # SYNC with ci.yml job 'skip-count-ratchet' (Operating Rule #5).
-      - id: skip-count-ratchet
-        name: Skip-count baseline ratchet selftest (OMN-18790)
-        language: system
-        entry: uv run --no-project --with pyyaml python scripts/ci/skip_count_ratchet.py --selftest
-        files: >-
-          ^(scripts/ci/skip_count_ratchet\.py|config/skip_count_baseline\.yaml|tests/ci/test_skip_count_ratchet_omn18790\.py|\.github/workflows/ci\.yml)$
-        pass_filenames: false
-        stages: [pre-commit]
       - id: reject-required-check-skip-vector
         name: Reject skip vectors on required-check workflows (OMN-15241)
         entry: .pre-commit-hooks/reject-required-check-skip-vector.sh

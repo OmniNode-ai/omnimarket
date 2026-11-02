@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """OMN-18790 — one test per acceptance-criterion falsifier for the skip-count ratchet.
 
+OMN-21940: the ratchet now runs from omnibase_core's runtime; these tests drive
+that runtime over this repository's baseline and fixtures.
+
 Ported from omnibase_infra's OMN-18776 suite (squash 77ea8d01). Epic OMN-18775
 measured five per-repo skip counts that were byte-identical across three
 consecutive CI runs each; omnimarket's ``Tests (Split 1/20)`` was one of them, at
@@ -15,6 +18,7 @@ proof of that acceptance criterion.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,7 +29,12 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "ci" / "skip_count_ratchet.py"
+# OMN-21940: the ratchet is omnibase_core's node runtime (hook id
+# ``skip-count-ratchet``); this repo owns the baseline, the fixtures and the wiring.
+RUNTIME = (
+    "omnibase_core.nodes.node_skip_count_ratchet_check_compute"
+    ".runtime_skip_count_ratchet_check"
+)
 BASELINE = REPO_ROOT / "config" / "skip_count_baseline.yaml"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "skip_count_ratchet"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -41,7 +50,7 @@ pytestmark = pytest.mark.unit
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
+        [sys.executable, "-m", RUNTIME, *args],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
@@ -201,7 +210,7 @@ def test_ac4_ratchet_job_carries_no_continue_on_error() -> None:
     # setting in prose -- a comment naming it reads as a hit to the same probe
     # that is supposed to prove its absence.
     block = text.split("\n  skip-count-ratchet:\n", 1)[1].split("\n  # ====", 1)[0]
-    assert "skip_count_ratchet.py" in block, "positive control: the block was located"
+    assert RUNTIME in block, "positive control: the block was located"
     assert "continue-on-error" not in block
 
 
@@ -353,13 +362,30 @@ def test_ac6_no_environment_variable_lowers_the_verdict(tmp_path: Path) -> None:
         "ENABLE_SKIP_COUNT_RATCHET",
         "SKIP_RATCHET_OVERRIDE",
     )
-    source = SCRIPT.read_text(encoding="utf-8")
-    assert "os.environ" not in source, (
-        "the gate must read no environment variable at all"
-    )
-    assert "getenv" not in source, "the gate must read no environment variable at all"
+    # Each name is set in turn; a lever that lowered the verdict would turn this
+    # over-the-baseline run green.
     for name in env_names:
-        assert name not in source
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                RUNTIME,
+                "--baseline",
+                str(BASELINE),
+                "--suite",
+                SUITE,
+                "--junit",
+                str(junit),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+            env={**os.environ, name: "1"},
+        )
+        assert result.returncode == 1, f"{name}: {result.stdout}{result.stderr}"
+    unset = _run("--baseline", str(BASELINE), "--suite", SUITE, "--junit", str(junit))
+    assert unset.returncode == 1, "positive control: the run is red without any lever"
 
 
 # ---------------------------------------------------------------- fail-closed
@@ -396,5 +422,16 @@ def test_unknown_suite_fails_closed(tmp_path: Path) -> None:
 def test_selftest_mode_passes_and_is_what_the_pre_commit_hook_runs() -> None:
     result = _run("--selftest")
     assert result.returncode == 0, result.stdout + result.stderr
-    hook_config = (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "skip_count_ratchet.py --selftest" in hook_config
+    # The hook is the published core id; its published args carry --selftest.
+    config = yaml.safe_load(
+        (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    )
+    hooks = [
+        hook
+        for repo in config["repos"]
+        if repo["repo"] == "https://github.com/OmniNode-ai/omnibase_core"
+        for hook in repo["hooks"]
+        if hook["id"] == "skip-count-ratchet"
+    ]
+    assert len(hooks) == 1, "the hook id resolves to the core hook repository"
+    assert "args" not in hooks[0], "the published args (--selftest) are kept"

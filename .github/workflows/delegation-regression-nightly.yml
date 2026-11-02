@@ -280,7 +280,8 @@ jobs:
       - name: Guard — zero executed live cases is a failure, not a pass (OMN-16809)
         if: always()
         run: |
-          uv run python scripts/ci/check_integration_skips.py \
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            python -m omnibase_core.nodes.node_integration_skips_check_compute.runtime_integration_skips_check \
             --junit delegation_regression_junit.xml \
             --config scripts/ci/nightly_chain_skip_guard.yaml
 

@@ -125,7 +125,7 @@ MAX_HEAL_RUN_ATTEMPT: Final[int] = 5
 _PAGE_SIZE: Final[int] = 100
 _OPEN_PR_LIMIT: Final[int] = 2000
 
-#: ``scripts/check_release_identity.py``'s refusal line. Both versions are
+#: The refusal line of omnibase_core's ``check-release-identity`` hook. Both versions are
 #: captured: the first is the merge ref's ``project.version``, the second the
 #: newest published tag reachable from it.
 RELEASE_IDENTITY_FAIL_RE: Final[re.Pattern[str]] = re.compile(
