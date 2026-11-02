@@ -38,3 +38,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn19986_local_identity.py -q --no-cov -k 'ac1_replaying or table_is_a_store_step'"
         cwd: "."
+  - id: "dod-omn19986-integration-proof"
+    description: "Migrations half of the projection step only. The pushed head ran the local_identity migration tests against a real Postgres on a lab host and exited 0: public.local_identity is keyed on tenant_id, RLS is enabled with the tenant policy and forced in a separate step, and the writer cannot delete. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-19986 -- uv run --frozen pytest tests/test_omn19986_local_identity_migrations_real_postgres.py -q --no-cov"
+        cwd: "."
