@@ -24,7 +24,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from omnimarket.models.claude_code_binding import (
+    EnumClientVerdictAction,
     ModelClientBinding,
+)
+from omnimarket.models.claude_code_binding.model_compaction_client_binding import (
+    compaction_arm,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_verdict import (
     compute_client_verdict,
@@ -41,6 +45,7 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_sess
     HandlerSessionBarrierJournal,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
+    ModelClientVerdict,
     ModelHookAdapterRequest,
     ModelHookAdapterResult,
 )
@@ -124,6 +129,17 @@ class HandlerClaudeCodeHookAdapter:
         )
 
     def handle(self, request: ModelHookAdapterRequest) -> ModelHookAdapterResult:
+        if (
+            request.binding.hook_event == "session.compact"
+            and compaction_arm(request.binding) == "off"
+        ):
+            return ModelHookAdapterResult(
+                invocation_id=self._invocation_ids(),
+                client_verdict=ModelClientVerdict(
+                    action=EnumClientVerdictAction.NATIVE
+                ),
+                hook_output=None,
+            )
         if self._client is None:
             raise RuntimeError("no receipt-mode client is bound to this handler")
         invocation_id = self._invocation_ids()
