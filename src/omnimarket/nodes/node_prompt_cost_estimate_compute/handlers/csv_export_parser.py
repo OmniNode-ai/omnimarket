@@ -5,7 +5,7 @@
 No column name lives here. The required column, the optional ones and each token
 column's accepted names, in precedence order, come from ``config.csv_import_schema``
 in the node's contract, so a name added there is read with no code change, and
-the page that tells a visitor what to upload reads the same declaration. A row
+the page can tell a visitor what to upload from the same declaration. A row
 with no token count is read by text length and says which side was estimated.
 """
 
@@ -50,7 +50,9 @@ def _count(row: dict[str, str], names: tuple[str, ...]) -> int | None:
     return None
 
 
-def parse_csv(content: str, schema: ModelCsvImportSchema) -> list[ParsedPrompt]:
+def parse_csv(
+    content: str, schema: ModelCsvImportSchema, chars_per_token: int
+) -> list[ParsedPrompt]:
     """One record per non-empty prompt row; refuses a CSV missing a required column."""
     reader = csv.DictReader(io.StringIO(content))
     fields = {name.strip().lower() for name in reader.fieldnames or ()}
@@ -75,11 +77,17 @@ def parse_csv(content: str, schema: ModelCsvImportSchema) -> list[ParsedPrompt]:
                 occurred_at=parse_iso(_first(row, optional.timestamp)),
                 prompt_text=text,
                 model=_first(row, optional.model),
-                tokens_in=tokens_in if tokens_in is not None else estimate_tokens(text),
+                tokens_in=(
+                    tokens_in
+                    if tokens_in is not None
+                    else estimate_tokens(text, chars_per_token)
+                ),
                 tokens_out=(
                     tokens_out
                     if tokens_out is not None
-                    else estimate_tokens(_first(row, optional.response))
+                    else estimate_tokens(
+                        _first(row, optional.response), chars_per_token
+                    )
                 ),
                 token_method=token_method(
                     input_estimated=tokens_in is None,

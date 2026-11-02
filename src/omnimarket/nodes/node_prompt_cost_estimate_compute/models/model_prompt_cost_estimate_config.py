@@ -3,8 +3,8 @@
 """The typed blocks the estimate reads from its contract (OMN-22126).
 
 ``config.csv_import_schema`` is the one declaration of the CSV upload shape: the
-parser reads it and so does the page that tells a visitor what to upload, so a
-file one accepts the other accepts. ``config.saving_range`` turns each pricing
+parser reads it and the page can consume it to tell a visitor what to upload.
+``config.saving_range`` turns each pricing
 manifest confidence level and each token method into the spread of the saving
 range. Neither block is restated in code.
 """
@@ -147,6 +147,8 @@ class ModelPromptCostEstimateConfig(BaseModel):
 
     csv_import_schema: ModelCsvImportSchema
     saving_range: ModelSavingRangeSpread
+    chars_per_token: int = Field(..., gt=0, strict=True)
+    chatgpt_conversation_id_fallback: str = Field(..., min_length=1)
 
 
 class ModelPromptCostEstimateOverlay(BaseModel):

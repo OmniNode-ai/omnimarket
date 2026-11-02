@@ -182,9 +182,7 @@ class HandlerPromptCostEstimate:
         self, request: ModelPromptCostEstimateRequest
     ) -> ModelPromptCostEstimateResult:
         config = self._config()
-        prompts = parse_export(
-            request.export_format, request.content, config.csv_import_schema
-        )
+        prompts = parse_export(request.export_format, request.content, config)
         baselines: dict[str, ModelCounterfactualBaseline | None] = {}
         entries: dict[str, ModelPricingEntry] = {}
 
@@ -320,7 +318,7 @@ class HandlerPromptCostEstimate:
             recommended_model=recommended,
             recommended_tier=tier,
             delegated_cost_usd=delegated,
-            saving_usd=actual - delegated,
+            saving_usd=(low + high) / 2,
             saving_usd_low=low,
             saving_usd_high=high,
         )

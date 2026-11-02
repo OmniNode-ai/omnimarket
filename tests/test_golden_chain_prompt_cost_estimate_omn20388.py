@@ -18,6 +18,7 @@ import pytest
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import ValidationError
 
+from omnimarket.models.savings_estimate import EnumSavingsBasis
 from omnimarket.nodes.node_prompt_cost_estimate_compute import (
     NOT_DELEGATED,
     PRICING_SOURCE,
@@ -126,7 +127,7 @@ def test_the_headline_is_the_sum_of_its_rows_and_task_types() -> None:
     )
     assert result.actual_cost_usd == sum(row.actual_cost_usd for row in result.rows)
     assert result.saving_usd == sum(group.saving_usd for group in result.by_task_type)
-    assert result.actual_cost_usd - result.delegated_cost_usd == result.saving_usd
+    assert result.saving_usd == (result.saving_usd_low + result.saving_usd_high) / 2
 
 
 # AC2 -----------------------------------------------------------------------
@@ -262,9 +263,9 @@ def test_delegation_is_recommended_only_when_it_is_cheaper() -> None:
 
 def test_the_result_is_labelled_estimated_and_names_its_pricing_source() -> None:
     result = _estimate(_chatgpt((_CODE_PROMPT, _CODE_REPLY, "gpt-4o")))
-    assert result.basis == "estimated"
+    assert result.basis is EnumSavingsBasis.ESTIMATED
     assert result.pricing_source == "omnibase_infra pricing_manifest.yaml"
-    assert all(row.basis == "estimated" for row in result.rows)
+    assert all(row.basis is EnumSavingsBasis.ESTIMATED for row in result.rows)
 
 
 def test_token_counts_read_from_text_are_marked_estimated_and_recorded_ones_are_not() -> (

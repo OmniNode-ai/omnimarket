@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-22126: gate the import schema and both real runtime profiles.
+name: Prompt Cost Estimate Contract
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - src/omnimarket/nodes/node_prompt_cost_estimate_compute/**
+      - tests/nodes/node_prompt_cost_estimate_compute/**
+      - tests/test_golden_chain_prompt_cost_estimate_omn20388.py
+      - .github/workflows/prompt-cost-estimate-contract.yml
+      - .pre-commit-config.yaml
+  push:
+    branches: [dev]
+    paths:
+      - src/omnimarket/nodes/node_prompt_cost_estimate_compute/**
+      - tests/nodes/node_prompt_cost_estimate_compute/**
+      - .github/workflows/prompt-cost-estimate-contract.yml
+permissions:
+  contents: read
+concurrency:
+  group: prompt-cost-estimate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prompt-cost-estimate-contract:
+    name: prompt-cost-estimate-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: "0.8.3"
+      - run: uv sync --frozen
+      - name: Import schema, token provenance and uncertainty
+        run: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -q --no-cov --refuse-skips
+      - name: In-memory profile
+        run: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -q --no-cov -m "not kafka" --refuse-skips
+      - name: Start isolated Redpanda
+        id: redpanda
+        run: >-
+          docker run --detach --rm --name prompt-cost-estimate-redpanda
+          --cpus=1 --memory=1536m -p 127.0.0.1:29926:9092
+          docker.redpanda.com/redpandadata/redpanda@sha256:82a69763bef8d8b55ea5a520fa1b38f993908ef68946819ca1aed43541824c48
+          redpanda start --mode dev-container --smp 1 --memory 1G --reserve-memory 0M
+          --kafka-addr 0.0.0.0:9092 --advertise-kafka-addr 127.0.0.1:29926
+      - name: Wait for the isolated broker
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker exec prompt-cost-estimate-redpanda rpk cluster info -X brokers=127.0.0.1:9092; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Compare real Redpanda and in-memory results, including the overlay
+        env:
+          PROMPT_COST_TEST_BUS_OVERLAY: tests/nodes/node_prompt_cost_estimate_compute/fixtures/local_redpanda_profile.yaml
+        run: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -k test_two_profile_same_result -q --no-cov --refuse-skips
+      - name: Stop isolated Redpanda
+        if: always() && steps.redpanda.outcome == 'success'
+        run: docker stop prompt-cost-estimate-redpanda

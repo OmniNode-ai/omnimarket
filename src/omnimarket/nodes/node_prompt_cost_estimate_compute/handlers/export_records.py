@@ -10,11 +10,6 @@ from datetime import UTC, datetime
 
 from omnimarket.nodes.node_prompt_cost_estimate_compute.models import EnumTokenMethod
 
-# A token count read from text length, not from the provider: about four
-# characters per token for English prose and code. Used only where the export
-# carries no counts, and every record it touches names its token method.
-_CHARS_PER_TOKEN = 4
-
 
 class ExportParseError(ValueError):
     """The upload is not the export shape it was declared as."""
@@ -49,9 +44,9 @@ class ParsedPrompt:
         )
 
 
-def estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str, chars_per_token: int) -> int:
     """Tokens for ``text`` by length; zero only for empty text."""
-    return math.ceil(len(text) / _CHARS_PER_TOKEN) if text else 0
+    return math.ceil(len(text) / chars_per_token) if text else 0
 
 
 def token_method(*, input_estimated: bool, output_estimated: bool) -> EnumTokenMethod:

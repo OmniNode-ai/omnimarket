@@ -30,7 +30,7 @@ description: >
   ONE CSV SCHEMA. config.csv_import_schema is the only declaration of the CSV
   upload shape: the required column, the optional ones, and each token column's
   accepted names in precedence order. The parser reads it from this contract
-  and so does the upload page, so a file one accepts the other accepts.
+  for the upload page to consume as a stable machine-readable declaration.
 
   ESTIMATED TOKENS ARE MARKED. An export without token counts is read by text
   length. Every row carries tokens_estimated and a token_method (reported,
@@ -42,8 +42,9 @@ description: >
   level and one per token method. pricing_basis names every manifest entry that
   priced a row, with its confidence, its source and whether its evidence is
   checked against invoices (evidence.authoritative over a non-zero
-  sample_count). saving_usd stays as the point figure at the manifest's listed
-  prices. A deployment overlay (prompt_cost_estimate) may replace saving_range;
+  sample_count). saving_usd is explicitly the midpoint of that range.
+  config.chars_per_token supplies the text-length estimation rate.
+  A deployment overlay (prompt_cost_estimate) may replace saving_range;
   the CSV schema is never overlaid.
 
   CONSENT FIRST. The request type admits only consent_given true.
@@ -75,6 +76,9 @@ descriptor:
   side_effects: []
 runtime_profiles: [main]
 config:
+  chars_per_token: 4
+  # JSON's legacy identifier key is separate from CSV aliases.
+  chatgpt_conversation_id_fallback: conversation_id
   csv_import_schema:
     schema_version: "1.0.0"
     required_columns:

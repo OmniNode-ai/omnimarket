@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Read the estimate's typed blocks from its own contract, with the overlay laid over.
 
-The CSV import schema comes from the contract alone, because the page reads the
-same declaration. The saving range comes from the contract unless a deployment
+The CSV import schema comes from the contract alone, available for the page to
+read from the same declaration. The saving range comes from the contract unless a deployment
 overlay, ``<root>/prompt_cost_estimate/overlay.yaml`` under
 ``ONEX_SKILL_OVERLAY_ROOTS``, replaces it. The handler takes a provider so a
 test, or a deployment, injects its own.

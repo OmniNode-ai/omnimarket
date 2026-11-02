@@ -731,6 +731,7 @@ node_capsule_effectiveness_feedback_reducer = "omnimarket.nodes.node_capsule_eff
 node_projection_context_roi = "omnimarket.nodes.node_projection_context_roi"
 node_projection_intent_classification = "omnimarket.nodes.node_projection_intent_classification"
 node_prompt_intent_classify_compute = "omnimarket.nodes.node_prompt_intent_classify_compute"
+node_prompt_cost_estimate_compute = "omnimarket.nodes.node_prompt_cost_estimate_compute"
 node_projection_delegation = "omnimarket.nodes.node_projection_delegation"
 node_projection_overnight = "omnimarket.nodes.node_projection_overnight"
 node_projection_baselines = "omnimarket.nodes.node_projection_baselines"

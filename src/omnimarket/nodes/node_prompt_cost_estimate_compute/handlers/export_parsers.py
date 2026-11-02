@@ -38,7 +38,7 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.export_records 
 from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
     EnumExportFormat,
     EnumTokenMethod,
-    ModelCsvImportSchema,
+    ModelPromptCostEstimateConfig,
 )
 
 __all__ = ["ExportParseError", "ParsedPrompt", "estimate_tokens", "parse_export"]
@@ -99,11 +99,14 @@ def _chatgpt_messages(
 _MIN = datetime.min.replace(tzinfo=UTC)
 
 
-def _parse_chatgpt(content: str) -> list[ParsedPrompt]:
+def _parse_chatgpt(
+    content: str, config: ModelPromptCostEstimateConfig
+) -> list[ParsedPrompt]:
+    chars_per_token = config.chars_per_token
     prompts: list[ParsedPrompt] = []
     for conversation in _conversation_list(content, "a ChatGPT export"):
         conversation_id = _string(conversation.get("id")) or _string(
-            conversation.get("conversation_id")
+            conversation.get(config.chatgpt_conversation_id_fallback)
         )
         pending: tuple[datetime | None, str] | None = None
         model = ""
@@ -114,7 +117,11 @@ def _parse_chatgpt(content: str) -> list[ParsedPrompt]:
             text = _chatgpt_text(message)
             if role == "user" and text:
                 if pending is not None:
-                    prompts.append(_text_prompt(conversation_id, pending, model, reply))
+                    prompts.append(
+                        _text_prompt(
+                            conversation_id, pending, model, reply, chars_per_token
+                        )
+                    )
                 pending = (_epoch(message.get("create_time")), text)
                 model = ""
                 reply = []
@@ -125,7 +132,9 @@ def _parse_chatgpt(content: str) -> list[ParsedPrompt]:
                 if text:
                     reply.append(text)
         if pending is not None:
-            prompts.append(_text_prompt(conversation_id, pending, model, reply))
+            prompts.append(
+                _text_prompt(conversation_id, pending, model, reply, chars_per_token)
+            )
     return prompts
 
 
@@ -134,6 +143,7 @@ def _text_prompt(
     pending: tuple[datetime | None, str],
     model: str,
     reply: list[str],
+    chars_per_token: int,
 ) -> ParsedPrompt:
     occurred_at, text = pending
     return ParsedPrompt(
@@ -141,8 +151,8 @@ def _text_prompt(
         occurred_at=occurred_at,
         prompt_text=text,
         model=model,
-        tokens_in=estimate_tokens(text),
-        tokens_out=estimate_tokens("\n".join(reply)),
+        tokens_in=estimate_tokens(text, chars_per_token),
+        tokens_out=estimate_tokens("\n".join(reply), chars_per_token),
         token_method=EnumTokenMethod.TEXT_LENGTH_BOTH,
     )
 
@@ -161,7 +171,7 @@ def _claude_text(message: dict[str, object]) -> str:
     ).strip()
 
 
-def _parse_claude(content: str) -> list[ParsedPrompt]:
+def _parse_claude(content: str, chars_per_token: int) -> list[ParsedPrompt]:
     prompts: list[ParsedPrompt] = []
     for conversation in _conversation_list(content, "a Claude export"):
         conversation_id = _string(conversation.get("uuid"))
@@ -177,13 +187,19 @@ def _parse_claude(content: str) -> list[ParsedPrompt]:
             text = _claude_text(message)
             if sender == "human" and text:
                 if pending is not None:
-                    prompts.append(_text_prompt(conversation_id, pending, "", reply))
+                    prompts.append(
+                        _text_prompt(
+                            conversation_id, pending, "", reply, chars_per_token
+                        )
+                    )
                 pending = (parse_iso(message.get("created_at")), text)
                 reply = []
             elif sender == "assistant" and pending is not None and text:
                 reply.append(text)
         if pending is not None:
-            prompts.append(_text_prompt(conversation_id, pending, "", reply))
+            prompts.append(
+                _text_prompt(conversation_id, pending, "", reply, chars_per_token)
+            )
     return prompts
 
 
@@ -257,13 +273,13 @@ def _parse_claude_code(content: str) -> list[ParsedPrompt]:
 
 
 def parse_export(
-    export_format: EnumExportFormat, content: str, csv_schema: ModelCsvImportSchema
+    export_format: EnumExportFormat, content: str, config: ModelPromptCostEstimateConfig
 ) -> list[ParsedPrompt]:
     """Read ``content`` as ``export_format``; refuse a shape that does not match."""
     if export_format is EnumExportFormat.CHATGPT_CONVERSATIONS:
-        return _parse_chatgpt(content)
+        return _parse_chatgpt(content, config)
     if export_format is EnumExportFormat.CLAUDE_CONVERSATIONS:
-        return _parse_claude(content)
+        return _parse_claude(content, config.chars_per_token)
     if export_format is EnumExportFormat.CLAUDE_CODE_JSONL:
         return _parse_claude_code(content)
-    return parse_csv(content, csv_schema)
+    return parse_csv(content, config.csv_import_schema, config.chars_per_token)

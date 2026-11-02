@@ -14,6 +14,8 @@ import to the same rows and totals.
 from __future__ import annotations
 
 import ast
+import json
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, get_args
@@ -81,7 +83,7 @@ def contract_copy() -> dict[str, Any]:
 # AC1 -------------------------------------------------------------------------
 
 
-def test_the_contract_declares_the_shipped_csv_schema() -> None:
+def test_import_schema_from_contract() -> None:
     schema = load_config().csv_import_schema
     assert schema.required_columns.model_dump() == {"prompt": ("prompt",)}
     assert schema.optional_columns.model_dump() == {
@@ -114,33 +116,35 @@ def _string_constants(path: Path) -> list[tuple[int, str]]:
     ]
 
 
-def test_no_declared_column_name_is_a_literal_in_handler_code() -> None:
+def _csv_name_literals(path: Path) -> list[tuple[int, str]]:
+    """CSV column access must use schema attributes, including future aliases."""
+    return [
+        (line, value)
+        for line, value in _string_constants(path)
+        if re.fullmatch(r"[a-z_][a-z0-9_]*", value)
+    ]
+
+
+def test_import_schema_from_contract_has_no_column_literals_in_handlers() -> None:
     """A column or alias added to handler code instead of the contract fails here.
 
-    The CSV reader and the handler are scanned for every declared name. The JSON
-    export readers in export_parsers.py read other formats' keys (ChatGPT's own
-    ``conversation_id`` key among them), so they are scanned for the required
-    column and every token alias, which no JSON reader uses.
+    Every handler is scanned for every declared name. JSON keys that overlap
+    the CSV names must also be supplied by the contract, without exceptions.
     """
     schema = load_config().csv_import_schema
     every_name = schema.accepted_names()
-    token_and_required = frozenset(
-        (
-            *schema.required_columns.prompt,
-            *schema.optional_columns.tokens_in,
-            *schema.optional_columns.tokens_out,
-        )
-    )
     handlers = NODE_DIR / "handlers"
     offenders: list[str] = []
     for path in sorted(handlers.glob("*.py")):
-        names = token_and_required if path.name == "export_parsers.py" else every_name
         offenders.extend(
             f"{path.name}:{line} {value!r}"
             for line, value in _string_constants(path)
-            if value.strip().lower() in names
+            if value.strip().lower() in every_name
         )
     assert offenders == []
+    assert _csv_name_literals(handlers / "csv_export_parser.py") == [], (
+        "An identifier literal in the CSV reader could add an undeclared alias"
+    )
 
 
 def test_the_literal_scan_catches_an_alias_written_into_code(tmp_path: Path) -> None:
@@ -149,9 +153,11 @@ def test_the_literal_scan_catches_an_alias_written_into_code(tmp_path: Path) -> 
     planted.write_text('_CSV_TOKENS_IN = ("tokens_in", "input_tokens")\n')
     found = {value for _, value in _string_constants(planted)}
     assert found & load_config().csv_import_schema.accepted_names()
+    planted.write_text('_CSV_TOKENS_IN = ("brand_new_alias_only_in_code",)\n')
+    assert _csv_name_literals(planted) == [(1, "brand_new_alias_only_in_code")]
 
 
-def test_an_alias_added_to_a_contract_copy_is_read_with_no_code_change() -> None:
+def test_import_schema_from_contract_accepts_new_alias_without_code_change() -> None:
     content = "PROMPT_TEXT,LLM,n_in,n_out\nwrite a python function,gpt-4o,1000,500\n"
     with pytest.raises(ExportParseError):
         estimate(content)
@@ -187,6 +193,32 @@ def test_aliases_are_read_in_declared_precedence_order() -> None:
     assert row.tokens_in == 7, "the reversed contract puts prompt_tokens first"
 
 
+def test_chatgpt_legacy_identifier_is_preserved_from_contract() -> None:
+    result = HandlerPromptCostEstimate().handle(
+        ModelPromptCostEstimateRequest(
+            consent_given=True,
+            export_format=EnumExportFormat.CHATGPT_CONVERSATIONS,
+            declared_model=FIXTURE_MODEL,
+            content=json.dumps(
+                [
+                    {
+                        "conversation_id": "legacy-conversation",
+                        "mapping": {
+                            "u": {
+                                "message": {
+                                    "author": {"role": "user"},
+                                    "content": {"parts": ["hello"]},
+                                }
+                            }
+                        },
+                    }
+                ]
+            ),
+        )
+    )
+    assert result.rows[0].conversation_id == "legacy-conversation"
+
+
 def test_a_name_claimed_by_two_columns_is_refused() -> None:
     contract = contract_copy()
     contract["config"]["csv_import_schema"]["optional_columns"]["tokens_out"].append(
@@ -199,7 +231,7 @@ def test_a_name_claimed_by_two_columns_is_refused() -> None:
 # AC2 -------------------------------------------------------------------------
 
 
-def test_each_row_names_how_its_tokens_were_obtained() -> None:
+def test_result_marks_estimated_and_range_token_totals() -> None:
     content = (
         "prompt,model,tokens_in,tokens_out,response\n"
         "write a python function that parses dates,gpt-4o,100,200,\n"
@@ -233,13 +265,14 @@ def test_each_row_names_how_its_tokens_were_obtained() -> None:
     )
 
 
-def test_the_saving_is_a_range_that_holds_the_point_figure() -> None:
+def test_result_marks_estimated_and_range() -> None:
     result = estimate(OWNER_CSV.read_text(encoding="utf-8"))
     spread = load_config().saving_range
     assert result.saving_usd_low <= result.saving_usd <= result.saving_usd_high
     assert result.saving_usd_low < result.saving_usd_high, (
         "every manifest entry is low confidence, so the range has width"
     )
+    assert result.saving_usd == (result.saving_usd_low + result.saving_usd_high) / 2
     for row in result.rows:
         assert row.saving_usd_low <= row.saving_usd <= row.saving_usd_high
         if row.recommended_tier == NOT_DELEGATED:
@@ -255,7 +288,7 @@ def test_the_saving_is_a_range_that_holds_the_point_figure() -> None:
     assert result.saving_usd_high == sum(row.saving_usd_high for row in result.rows)
 
 
-def test_an_estimated_token_count_widens_the_range() -> None:
+def test_result_marks_estimated_and_range_widens_for_text_tokens() -> None:
     reported = estimate(
         "prompt,model,tokens_in,tokens_out\n"
         "write a python function that parses ISO dates,gpt-4o,40,400\n"
@@ -266,13 +299,29 @@ def test_an_estimated_token_count_widens_the_range() -> None:
         f"write a python function that parses ISO dates,gpt-4o,40,{reply}\n"
     ).rows[0]
     assert (estimated.tokens_in, estimated.tokens_out) == (40, 400)
-    assert estimated.saving_usd == reported.saving_usd
+    assert estimated.actual_cost_usd == reported.actual_cost_usd
+    assert estimated.delegated_cost_usd == reported.delegated_cost_usd
     assert estimated.token_method is EnumTokenMethod.TEXT_LENGTH_OUTPUT
     assert estimated.saving_usd_high > reported.saving_usd_high
     assert estimated.saving_usd_low < reported.saving_usd_low
+    assert (
+        estimated.saving_usd
+        == (estimated.saving_usd_low + estimated.saving_usd_high) / 2
+    )
 
 
-def test_the_spread_comes_from_the_overlay_when_one_is_installed(
+def test_text_length_rate_is_injected_from_contract() -> None:
+    content = "prompt,model,response\nabcdefgh,gpt-4o,abcdefghijklmnop\n"
+    contract = contract_copy()
+    contract["config"]["chars_per_token"] = 8
+    config = config_from_contract(contract, environ={})
+    result = estimate(
+        content, handler=HandlerPromptCostEstimate(config_provider=lambda: config)
+    )
+    assert [(row.tokens_in, row.tokens_out) for row in result.rows] == [(1, 2)]
+
+
+def test_result_marks_estimated_and_range_uses_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     content = OWNER_CSV.read_text(encoding="utf-8")
@@ -295,7 +344,7 @@ def test_the_spread_comes_from_the_overlay_when_one_is_installed(
     assert contract_result.saving_usd_low < overlaid.saving_usd_low
 
 
-def test_the_spread_block_names_every_manifest_level_and_token_method() -> None:
+def test_result_marks_estimated_and_range_covers_every_confidence_and_method() -> None:
     spread = load_config().saving_range
     assert set(spread.confidence) == set(get_args(PricingConfidence))
     assert set(spread.token_method) == set(EnumTokenMethod)
@@ -305,7 +354,7 @@ def test_the_spread_block_names_every_manifest_level_and_token_method() -> None:
         ModelPromptCostEstimateConfig.model_validate(contract["config"])
 
 
-def test_the_basis_names_every_manifest_entry_that_priced_a_row() -> None:
+def test_result_marks_estimated_and_range_names_manifest_basis() -> None:
     result = estimate(OWNER_CSV.read_text(encoding="utf-8"))
     table = ModelPricingTable.from_yaml()
     used = {row.source_model for row in result.rows} | {

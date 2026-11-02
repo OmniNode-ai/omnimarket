@@ -16,13 +16,21 @@ direct call of the handler, and runs everywhere.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+import os
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
+import yaml
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+from omnibase_infra.event_bus.models.config.model_kafka_event_bus_config import (
+    ModelKafkaEventBusConfig,
+)
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.nodes.node_prompt_cost_estimate_compute import (
@@ -32,13 +40,60 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute import (
     ModelPromptCostEstimateResult,
 )
 from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.contract_config import (
+    OVERLAY_ID,
+    load_config,
     load_topics,
 )
 from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
     ModelPromptCostEstimateTopics,
 )
+from tests.bus_lane_guard import assert_broker_in_declared_lane, resolve_test_bus_broker
+from tests.node_overlay_support import install_node_overlay
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest_asyncio.fixture
+async def local_redpanda_bus() -> AsyncGenerator[EventBusKafka, None]:
+    """A real, separately declared test broker; never the ambient broker variable.
+
+    The optional overlay follows tests.bus_lane_guard's lane declarations and
+    adds a typed Kafka configuration. Without it the test uses the repository's
+    kafka_integration_bus fixture. A configured but unreachable broker fails.
+    """
+    path = Path(os.environ["PROMPT_COST_TEST_BUS_OVERLAY"])
+    broker = resolve_test_bus_broker(declaration_path=path, overlay_path=path)
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config = ModelKafkaEventBusConfig.model_validate(raw["bus"])
+    assert config.bootstrap_servers == broker
+    assert_broker_in_declared_lane(
+        config.bootstrap_servers, declaration_path=path, overlay_path=path
+    )
+    bus = EventBusKafka(config=config)
+    await bus.start()
+    try:
+        yield bus
+    finally:
+        await bus.close()
+
+
+@pytest.fixture
+def profile_bus(request: pytest.FixtureRequest) -> ProtocolBus:
+    fixture = (
+        "local_redpanda_bus"
+        if os.environ.get("PROMPT_COST_TEST_BUS_OVERLAY")
+        else "kafka_integration_bus"
+    )
+    bus: ProtocolBus = request.getfixturevalue(fixture)
+    return bus
+
+
+def install_zero_spread(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    spread = load_config(environ={}).saving_range.model_dump(mode="json")
+    for levels in spread.values():
+        for level in levels:
+            levels[level] = "0"
+    install_node_overlay(monkeypatch, tmp_path, OVERLAY_ID, {"saving_range": spread})
 
 
 class ProtocolBus(Protocol):
@@ -66,6 +121,11 @@ def requests() -> list[ModelPromptCostEstimateRequest]:
         ),
         ModelPromptCostEstimateRequest(
             consent_given=True, export_format=EnumExportFormat.CSV, content=cofounder
+        ),
+        ModelPromptCostEstimateRequest(
+            consent_given=True,
+            export_format=EnumExportFormat.CSV,
+            content="prompt,model,response\nwrite a python function,gpt-4o,an answer\n",
         ),
     ]
 
@@ -120,7 +180,23 @@ def test_the_contract_declares_the_command_and_result_topics() -> None:
 
 
 @pytest.mark.unit
-async def test_in_memory_profile_leg() -> None:
+def test_node_is_registered_for_runtime_dispatch() -> None:
+    matches = entry_points(group="onex.nodes").select(
+        name="node_prompt_cost_estimate_compute"
+    )
+    assert len(matches) == 1
+    assert next(iter(matches)).value == (
+        "omnimarket.nodes.node_prompt_cost_estimate_compute"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("zero_spread", [False, True])
+async def test_in_memory_profile_leg(
+    zero_spread: bool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    if zero_spread:
+        install_zero_spread(monkeypatch, tmp_path)
     bus = EventBusInmemory(environment="test", group="prompt-cost-estimate")
     await bus.start()
     try:
@@ -131,17 +207,29 @@ async def test_in_memory_profile_leg() -> None:
     assert over_bus == direct
     assert over_bus[0].prompts_priced == 3, "falsifier: the estimate priced rows"
     assert over_bus[2].prompts_unpriced == 3, "falsifier: the model-less CSV"
+    assert over_bus[3].prompts_tokens_estimated == 1
+    assert (over_bus[0].saving_usd_low == over_bus[0].saving_usd_high) is zero_spread
 
 
 @pytest.mark.kafka
 @pytest.mark.integration
-async def test_two_profile_same_result(kafka_integration_bus: ProtocolBus) -> None:
+@pytest.mark.parametrize("zero_spread", [False, True])
+async def test_two_profile_same_result(
+    profile_bus: ProtocolBus,
+    zero_spread: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    if zero_spread:
+        install_zero_spread(monkeypatch, tmp_path)
     memory = EventBusInmemory(environment="test", group="prompt-cost-estimate")
     await memory.start()
     try:
         in_memory = await run_profile(memory)
     finally:
         await memory.close()
-    redpanda = await run_profile(kafka_integration_bus)
+    redpanda = await run_profile(profile_bus)
     assert redpanda == in_memory
     assert redpanda[0].prompts_priced == 3, "falsifier: the estimate priced rows"
+    assert redpanda[3].prompts_tokens_estimated == 1
+    assert (redpanda[0].saving_usd_low == redpanda[0].saving_usd_high) is zero_spread

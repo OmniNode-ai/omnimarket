@@ -1,0 +1,131 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-22126
+title: The cost estimator reads a contract import schema and reports token provenance and savings ranges
+summary: The prompt cost estimate node owns the CSV schema, token estimation rate and uncertainty mapping, and exposes matching in-memory and Redpanda results.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+  - topics
+requirements:
+  - id: token-audit-import-and-estimate
+    statement: Import schema and uncertainty belong to the prompt cost estimate node contract.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the contract declares the import schema (required column prompt, optional model, token columns with every accepted alias) and the parser reads it from the contract; a test fails when a column name or alias is added to handler code only -- falsifier: uv run pytest tests/ -k test_import_schema_from_contract"
+      - id: AC2
+        statement: "AC2: the result carries per-row estimated true or false with the token method, totals with the count of estimated rows and the estimated share of tokens, and savings as a low and high range from each manifest entry's confidence with a basis list naming the entries, their confidence and whether they are checked against invoices -- falsifier: uv run pytest tests/ -k test_result_marks_estimated_and_range"
+      - id: AC3
+        statement: "AC3: a CSV with prompt, model, input_tokens and output_tokens and a CSV with prompt and tokens_in and tokens_out, with model absent, both import and give the same rows and totals for the same data -- falsifier: uv run pytest tests/ -k test_both_csv_shapes_same_result"
+      - id: AC4
+        statement: "AC4: the node gives the same result under the in-memory profile and the Redpanda-backed profile -- falsifier: uv run pytest tests/ -k test_two_profile_same_result"
+      - id: AC5
+        statement: "AC5: the merged revision runs on dev and the integration check importing both CSV shapes against it returns the same result for both -- falsifier: onex run-node node_prompt_cost_estimate_compute on the dev runtime with both fixture files, output compared"
+evidence_requirements:
+  - kind: tests
+    description: Focused import schema, uncertainty and profile proofs pass with no skips.
+    command: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -q --no-cov --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: import-schema
+    description: The parser consumes the contract, including newly injected aliases; source scanning rejects code-only names.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_import_schema_from_contract -q --no-cov --refuse-skips
+        cwd: .
+  - id: token-provenance-and-range
+    description: Estimated sides, token totals, confidence and method spreads, invoice evidence and the range midpoint are checked.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_result_marks_estimated_and_range -q --no-cov --refuse-skips
+        cwd: .
+  - id: both-csv-shapes
+    description: Both CSV fixtures produce the same rows and totals when the model-less input declares its model.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_both_csv_shapes_same_result -q --no-cov --refuse-skips
+        cwd: .
+  - id: two-real-profiles
+    description: Both transports execute the same node handler, with contract spreads and an injected zero-spread overlay. The dedicated CI job provisions the isolated broker; the local Done gate requires it too.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: env PROMPT_COST_TEST_BUS_OVERLAY=tests/nodes/node_prompt_cost_estimate_compute/fixtures/local_redpanda_profile.yaml uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -k test_two_profile_same_result -q --no-cov --refuse-skips
+        cwd: .
+  - id: deploy-probe-contract-schema
+    description: A hosted runner reads the node contract at the pushed commit; the original contract has neither import schema nor uncertainty mapping.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prompt_cost_estimate_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("csv_import_schema:") and contains("saving_range:")' | grep -qx true
+        cwd: .
+  - id: dod-omn22126-integration-proof
+    description: The pushed head ran the prompt cost estimate node's import schema, range and golden chain tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22126 -- uv run --frozen pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q --no-cov --refuse-skips
+        cwd: .
+  - id: dev-runtime-both-imports
+    description: Pending post-merge orchestrator proof. Run inside the observed dev installation with its checkout root and the merged revision. This check is deliberately excluded from hosted pre-merge evidence.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC5]
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          dev_root="${OMNIMARKET_DEV_INSTALL_ROOT:?observed dev installation checkout}"
+          merged_sha="${OMNIMARKET_MERGED_SHA:?merged revision to verify}"
+          git -C "$dev_root" merge-base --is-ancestor "$merged_sha" HEAD
+          cd "$dev_root"
+          probe_dir="$(mktemp -d)"
+          export PROMPT_COST_DEV_PROBE_DIR="$probe_dir"
+          uv run python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['PROMPT_COST_DEV_PROBE_DIR'])
+          fixtures = Path('tests/nodes/node_prompt_cost_estimate_compute/fixtures')
+          for name in ('cofounder_no_model', 'cloud_owner_tokens_in_out'):
+              request = dict(consent_given=True, export_format='csv', content=(fixtures / (name + '.csv')).read_text())
+              if name == 'cofounder_no_model':
+                  request['declared_model'] = 'gpt-4o'
+              (root / (name + '.json')).write_text(json.dumps(request))
+          PY
+          for shape in cofounder_no_model cloud_owner_tokens_in_out; do
+            uv run onex node node_prompt_cost_estimate_compute --input "$probe_dir/$shape.json" --state-root "$probe_dir/$shape.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$dev_root" > "$probe_dir/$shape.receipt.json"
+          done
+          uv run python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['PROMPT_COST_DEV_PROBE_DIR'])
+          install = Path(os.environ['OMNIMARKET_DEV_INSTALL_ROOT']).resolve()
+          results = []
+          for shape in ('cofounder_no_model', 'cloud_owner_tokens_in_out'):
+              receipt = json.loads((root / (shape + '.receipt.json')).read_text())
+              assert receipt['status'] == 'success', receipt
+              assert Path(receipt['runtime_identity']['config_source']).resolve().is_relative_to(install)
+              result = receipt['result']
+              for row in result['rows']:
+                  row.pop('model_source')
+              results.append(result)
+          assert results[0] == results[1]
+          assert results[0]['prompts_priced'] == 3
+          assert results[0]['tokens_total'] == 6750
+          print('dev installation: both CSV shapes match; 3 priced rows; 6750 tokens')
+          PY
+        cwd: .
