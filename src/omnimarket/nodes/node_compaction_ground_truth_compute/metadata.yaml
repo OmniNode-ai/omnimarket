@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_compaction_ground_truth_compute
+version: 1.0.0
+description: Derives the compaction must-survive set at a boundary instant from a pinned ledger prefix
+  with the work-ledger reducer, and audits it as a strict selection.
+pack: core
+node_role: compute
+display_name: Compaction Ground Truth Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_compaction_ground_truth_compute: omnimarket.nodes.node_compaction_ground_truth_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.11.0
+license: MIT
+tags: [compute, compaction, ground-truth, ledger]
