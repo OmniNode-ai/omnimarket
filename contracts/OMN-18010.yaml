@@ -11,7 +11,7 @@ requirements:
     statement: "Dev's package version is strictly above the highest published release tag reachable from it, and uv.lock pins the same version."
     acceptance:
       - id: "AC1"
-        statement: "scripts/check_release_identity.py in strict mode exits 0 on the bumped tree and uv.lock pins the pyproject.toml version."
+        statement: "The release-identity gate (the check-release-identity hook of omnibase_core) in strict mode exits 0 on the bumped tree and uv.lock pins the pyproject.toml version."
   - id: "req-release-staleness-heal"
     statement: "A PR's red Release Staleness copy is re-run once a release newer than the base it failed against is published."
     acceptance:
