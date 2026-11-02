@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21090"
 title: "Claude Code context service and delegation adapter (compaction mod)"
-summary: "TA.18 measured-admission increment (OMN-21119): require a final assembled-input count before a pack hash permits dispatch and refuse input above the routed ceiling. This does not complete the child or epic. This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract. TC.4 additionally offers explicit ledger sequence watermarks: it refuses gaps, duplicates and legacy NULL sequences as stale and reports the contiguous prefix reached; timestamp-pinned replay remains supported. The ownership manifest also declares omninode_internal.compaction_current_context and its cursor sequence ahead of migration delivery; no writer node or SQL is added by the ownership stage."
+summary: "TA.18 measured-admission increment (OMN-21119): require a final assembled-input count before a pack hash permits dispatch and refuse input above the routed ceiling. This does not complete the child or epic. This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The CM.1 increment (plan task CM.1) adds a transcript_jsonl case source to node_context_compaction_manifest_compute. The epic criteria are read through the Linear API on child tickets and are not bound by this contract. TC.4 additionally offers explicit ledger sequence watermarks: it refuses gaps, duplicates and legacy NULL sequences as stale and reports the contiguous prefix reached; timestamp-pinned replay remains supported. The ownership manifest also declares omninode_internal.compaction_current_context and its cursor sequence ahead of migration delivery; no writer node or SQL is added by the ownership stage."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -26,6 +26,19 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: every Track E ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track E not in state Done, read through the Linear API
+  - id: "req-omn21090-cm1-transcript-manifest"
+    statement: |-
+      The compaction case manifest has a transcript_jsonl source: it reads each compact_boundary record, its summary record and the prefix bytes from transcript files, hashes the three, attributes the lane family with its evidence, applies the typed exclusions of the plan's section 3.1 and a seeded per-session draw, lists every boundary as a case or a typed exclusion, and fails with a typed error naming ONEX_TRANSCRIPT_ROOT or ONEX_CONTEXT_REPLAY_ROOT when either is unset.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: the manifest lists, for the 30 transcripts that hold a boundary on the operator host, every boundary with its decision (case or typed exclusion) -- falsifier: a boundary absent from both lists, counted by `grep -c compact_boundary` per transcript
+      - id: "AC7"
+        statement: |-
+          AC7: re-running on the same bytes gives identical case keys -- falsifier: a differing key
+      - id: "AC8"
+        statement: |-
+          AC8: an unset required variable fails with a typed error naming it -- falsifier: `uv run pytest -k unset_replay_root`
 evidence_requirements:
   - kind: "tests"
     description: "The current-context fold tests pass."
@@ -33,6 +46,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The relation inventory tests pass with the new ownership rows and the regenerated inventory."
     command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "The transcript_jsonl manifest tests and the node's golden chain pass."
+    command: "uv run pytest tests/nodes/node_context_compaction_manifest_compute tests/test_golden_chain_context_compaction_manifest_compute.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -369,3 +385,71 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
+  - id: "dod-omn21090-ac6-every-boundary-accounted"
+    description: >-
+      CM.1 fixture evidence: for synthetic transcripts every compact_boundary record is a case or carries exactly one typed exclusion, and the per-transcript counts match the boundary records and the lines a grep for compact_boundary counts. The readback over the 30 real transcripts of the operator host is not bound here: no lab host reads them, and that readback is reported in the pull request as not run. The module fails at the merge base, where the source does not exist.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_transcript_jsonl_manifest.py -q --no-cov -k 'every_boundary_is_in_exactly_one_list or three_boundaries_one_recompaction or unparseable_lines or tampered_summary or secret_in_prefix or ledger_unpinnable or no_obligation or seeded_draw'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-ac7-identical-case-keys"
+    description: >-
+      Re-running on the same bytes gives identical case keys and manifest text; a changed prefix byte changes the key; the draw does not depend on transcript order.
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_transcript_jsonl_manifest.py -q --no-cov -k 'identical_case_keys or changed_prefix_bytes or transcript_order or seed_changes_the_draw'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-ac8-unset-variable-typed-error"
+    description: >-
+      An unset or empty ONEX_TRANSCRIPT_ROOT or ONEX_CONTEXT_REPLAY_ROOT raises MissingRequiredVariableError, a ManifestRefusalError carrying the variable name, before any transcript is read.
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov -k unset_replay_root"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-deploy-transcript-manifest"
+    description: >-
+      Hosted-runner offline probe of the packaged source: the env-driven helper reads a synthetic transcript tree under ONEX_TRANSCRIPT_ROOT, writes transcript_manifest.yaml under ONEX_CONTEXT_REPLAY_ROOT and lists the one boundary as a case. It needs no services or credentials and is not a readback of real transcripts.
+    source: "manual"
+    binds_ac: ["AC6", "AC7", "AC8"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe="$(mktemp -d)"
+          trap 'rm -rf "$probe"' EXIT
+          uv run --locked python - "$probe" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from omnimarket.handlers.context_compaction_bundle import build_transcript_manifest_from_env
+          from omnimarket.nodes.node_context_compaction_manifest_compute.models import ModelLedgerFile
+          root = Path(sys.argv[1])
+          (root / "t").mkdir()
+          rows = [
+              {"type": "user", "uuid": "u1", "sessionId": "s", "timestamp": "2026-10-20T08:00:00.000Z", "message": {"role": "user", "content": "hello"}},
+              {"type": "system", "subtype": "compact_boundary", "uuid": "b1", "sessionId": "s", "timestamp": "2026-10-20T09:00:00.000Z", "compactMetadata": {"trigger": "auto", "preTokens": 150000, "postTokens": 9000}},
+              {"type": "user", "uuid": "s1", "sessionId": "s", "timestamp": "2026-10-20T09:00:00.000Z", "isCompactSummary": True, "message": {"role": "user", "content": "summary"}},
+          ]
+          (root / "t" / "one.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+          env = {"ONEX_TRANSCRIPT_ROOT": str(root / "t"), "ONEX_CONTEXT_REPLAY_ROOT": str(root / "replay")}
+          ledger = (ModelLedgerFile(name="ledger.md", content=b"2026-10-20T08:30:00Z | MSG | lane=x | text\n"),)
+          result = build_transcript_manifest_from_env(env, ledger_files=ledger, seed="probe")
+          assert [c.boundary_uuid for c in result.cases] == ["b1"], result
+          assert (root / "replay" / "transcript_manifest.yaml").read_text() == result.manifest_yaml
+          for missing in ("ONEX_TRANSCRIPT_ROOT", "ONEX_CONTEXT_REPLAY_ROOT"):
+              try:
+                  build_transcript_manifest_from_env({k: v for k, v in env.items() if k != missing}, ledger_files=ledger, seed="probe")
+              except Exception as error:
+                  assert getattr(error, "variable", None) == missing, error
+              else:
+                  raise SystemExit("no error for unset " + missing)
+          print("ok", len(result.cases))
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
