@@ -27,6 +27,7 @@ capabilities:
   side_effect_class: write
 dependencies:
 - PyYAML>=6.0
+- omnimarket.nodes.node_ruling_mechanism_owed_compute
 authors:
 - OmniNode Platform Team
 license: MIT
