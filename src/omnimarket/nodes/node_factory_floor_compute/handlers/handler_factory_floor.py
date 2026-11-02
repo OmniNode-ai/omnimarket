@@ -329,6 +329,15 @@ def _gate(
     return None
 
 
+def _recorded(state: ItemState) -> tuple[ItemState, str] | None:
+    """The state a manifest records for a task with no other evidence; a recorded done needs a merged pull request."""
+    if state == "done":
+        return "wait", "recorded done, no merged pull request read"
+    if state == "prep":
+        return None
+    return state, f"recorded {state}"
+
+
 def _manifest_items(
     tasks: tuple[ModelFloorManifestTask, ...],
     plan: ModelFloorPlanInput,
@@ -352,6 +361,8 @@ def _manifest_items(
             if gate
             else _evidence(task, prs[task_id], _scope(plan), holds, request, index)
         )
+        if evidence is None and task.state is not None:
+            evidence = _recorded(task.state)
         if evidence is None:
             unmet = tuple(
                 dep
@@ -446,11 +457,36 @@ def _station_state(
     return "prep" if all(states.get(f) == "done" for f in feeders) else "wait"
 
 
+def _task_stations(
+    tasks: tuple[ModelFloorManifestTask, ...],
+    items: tuple[ModelFloorItem, ...],
+    config: ModelFactoryFloorConfig,
+) -> tuple[ModelFloorStation, ...]:
+    """Every task its own station: the task's state and tickets, fed by the tasks it depends on."""
+    ids = {task.id for task in tasks}
+    return tuple(
+        ModelFloorStation(
+            id=task.id,
+            name=item.title,
+            state=item.state,
+            items=(item,),
+            feeders=tuple(dict.fromkeys(d for d in task.depends_on if d in ids)),
+            group=config.station_name_template.format(wave=task.wave)
+            if task.wave
+            else "",
+            tickets=item.tickets,
+        )
+        for task, item in zip(tasks, items, strict=True)
+    )
+
+
 def _stations(
     tasks: tuple[ModelFloorManifestTask, ...],
     items: tuple[ModelFloorItem, ...],
     config: ModelFactoryFloorConfig,
 ) -> tuple[ModelFloorStation, ...]:
+    if config.station_grouping == "task":
+        return _task_stations(tasks, items, config)
     waves = tuple(dict.fromkeys(task.wave for task in tasks)) or ("",)
     station_ids = tuple(wave or config.fallback_station_id for wave in waves)
     task_station = {task.id: task.wave or config.fallback_station_id for task in tasks}
@@ -479,6 +515,10 @@ def _stations(
                 state=state,
                 items=members,
                 feeders=feeders,
+                group=config.station_name_template.format(wave=wave) if wave else "",
+                tickets=tuple(
+                    dict.fromkeys(t for item in members for t in item.tickets)
+                ),
             ),
         )
     return stations

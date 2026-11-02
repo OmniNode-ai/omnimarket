@@ -553,6 +553,7 @@ node_transcript_read_effect = "omnimarket.nodes.node_transcript_read_effect"
 node_replay_bundle_writer_effect = "omnimarket.nodes.node_replay_bundle_writer_effect"
 node_retrieval_eval_compute = "omnimarket.nodes.node_retrieval_eval_compute"
 node_extraction_verify_compute = "omnimarket.nodes.node_extraction_verify_compute"
+node_extraction_rung_harness_compute = "omnimarket.nodes.node_extraction_rung_harness_compute"
 node_extraction_fold_compute = "omnimarket.nodes.node_extraction_fold_compute"
 node_transcript_chunk_compute = "omnimarket.nodes.node_transcript_chunk_compute"
 node_context_profile_resolver_effect = "omnimarket.nodes.node_context_profile_resolver_effect"
@@ -1317,7 +1318,9 @@ omnimarket = "omnimarket.nodes"
 # OMN-17427: infra#5536 pins omnibase-core at the core tag below.
 # OMN-21826: this infra tag pins the core tag below, which carries the
 # lab_receipt validator; the two tags move together.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261102125940-858c2c689461" }
+# OMN-19991, OMN-19986: infra#5602 vendors node_projection_local_alerts and
+# node_projection_local_identity 0000-0002 byte-identical; core pin unchanged.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261102181416-beb08a83c93e" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
