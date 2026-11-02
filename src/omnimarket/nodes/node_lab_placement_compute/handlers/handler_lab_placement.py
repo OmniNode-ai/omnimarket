@@ -12,11 +12,13 @@ dies of the missing instruction set, in a wheel). A host now takes a unit only w
 2. the row is not ``available: false``;
 3. the row takes the unit's work kind (``job_kinds``, omitted: every kind);
 4. the unit's weight is no heavier than the row's ``max_weight``;
-5. the row has every capability the unit needs (``avx2``, a boolean column).
+5. the row has every capability the unit needs (``avx2`` and ``docker``, boolean columns).
 
 A unit's weight and needs come from the rules in this node's ``contract.yaml`` (``placement``)
 and from the table document's ``unit_needs`` (a private repository's rule is data of the private
-table, never of this public contract), keyed by the repository name and the work kind. The handler is pure: the table, the unit and
+table, never of this public contract), keyed by the repository name and the work kind. A caller's
+``--need docker`` is the same need: the advertised tool list is one constant on every host, so it cannot tell a
+host that takes Docker work from one that does not (operator RULING 2026-11-01T20:24:40Z). The handler is pure: the table, the unit and
 the hosts arrive in the request, and the rules are the contract's.
 """
 
@@ -37,6 +39,7 @@ from omnimarket.models.overlay_keys import (
     ModelUnitNeedsRule,
 )
 from omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement import (
+    CAPABILITY_COLUMNS,
     ModelHostTableVerdict,
     ModelLabPlacementRequest,
     ModelLabPlacementResult,
@@ -108,9 +111,11 @@ class HandlerLabPlacement:
         kind: str,
         weight: str | None,
         table_needs: tuple[ModelUnitNeedsRule, ...] = (),
+        need_tools: tuple[str, ...] = (),
     ) -> ModelUnitProfile:
         """The unit's weight (declared, else the rules' weight for its kind) and the needs its repo carries,
-        from the contract's rules and from the table document's ``unit_needs`` (private repositories)."""
+        from the contract's rules and from the table document's ``unit_needs`` (private repositories), plus any
+        tool the caller asked for that names a capability column."""
         rules = self._rules
         name = repo_name(repo)
         chosen = (
@@ -129,6 +134,9 @@ class HandlerLabPlacement:
             if rule.repo == name and rule.kind in (None, kind):
                 for need in rule.needs:
                     needs.setdefault(need, f"{need}: {rule.reason}")
+        for tool in need_tools:
+            if tool in CAPABILITY_COLUMNS:
+                needs.setdefault(tool, f"{tool}: the caller asked for it")
         return ModelUnitProfile(
             repo=name,
             kind=kind,
@@ -197,6 +205,7 @@ class HandlerLabPlacement:
             kind=request.kind,
             weight=request.weight,
             table_needs=request.unit_needs,
+            need_tools=request.need_tools,
         )
         rows = {row.name: row for row in request.table}
         return ModelLabPlacementResult(

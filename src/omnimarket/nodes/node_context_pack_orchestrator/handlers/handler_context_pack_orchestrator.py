@@ -2,20 +2,19 @@
 # SPDX-License-Identifier: MIT
 """HandlerContextPackOrchestrator: the one callable path to a context package (OMN-21110, TA.8).
 
-``handle(ModelContextPackCommand) -> ModelContextPackBuilt``. It resolves the profile by
-name, reads each tier the profile selects from the source bound to that factor through
-``ProtocolContextTierSource`` (the knowledge assembler's fan-out shape), builds the pack and
-renders it. A required tier whose source answers anything but ``resolved`` fails the build
-``REQUIRED_FACTOR_MISSING``; an optional tier's other statuses are listed per tier and the
-tier is omitted. Optional tiers that do not fit the budget are dropped lowest precedence
-first and listed in ``excluded_by_budget``. When the required tiers alone are still over
-budget, the cited entries of every required tier are charged first. Each tier is then
-selected inside its share of what is left: the newest, whole entries only and never
-truncated (OMN-21111).
-``OPERATOR_WORDS_UNRECORDED`` is carried whole (the carry rule). A cited entry that does not
-fit, or a tier left with no entry, fails the build ``TOKEN_BUDGET_EXCEEDED``. Each tier is
-read at its own revision when the request names one in ``tier_revisions``.
-When sources are omitted, handlers are loaded from the contract; explicit mappings are used as supplied.
+``handle(ModelContextPackCommand) -> ModelContextPackBuilt``. It resolves the profile by name, reads
+each tier the profile selects from the source bound to that factor through
+``ProtocolContextTierSource`` (the knowledge assembler's fan-out shape), builds the pack and renders
+it. A required tier whose source answers anything but ``resolved`` fails the build
+``REQUIRED_FACTOR_MISSING`` unless ``fails_build`` excuses it; an optional tier's other statuses are
+listed per tier and the tier is omitted. Optional tiers that do not fit the budget are dropped
+lowest precedence first and listed in ``excluded_by_budget``. When the required tiers alone are
+still over budget, the cited entries of every required tier are charged first. Each tier is then
+selected inside its share of what is left: the newest, whole entries only and never truncated
+(OMN-21111). ``OPERATOR_WORDS_UNRECORDED`` is carried whole (the carry rule). A cited entry that
+does not fit, or a tier left with no entry, fails the build ``TOKEN_BUDGET_EXCEEDED``. Each tier is
+read at its own revision when the request names one in ``tier_revisions``. When sources are omitted,
+handlers are loaded from the contract; explicit mappings are used as supplied.
 
 Identities follow plan section 6: ``candidate_id`` is uuid5 over the build's inputs,
 contracts and ``implementation_identity``; ``assembly_hash`` is the pack hash over the
@@ -84,6 +83,7 @@ from omnimarket.models.context_task_kind_rules import (
 )
 from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
     HandlerContextPackBuilder,
+    fails_build,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.protocols import (
     ProtocolContextTierSource,
@@ -379,7 +379,7 @@ class HandlerContextPackOrchestrator:
             usable = answer.status is EnumContextSourceStatus.RESOLVED and bool(entries)
             if usable:
                 entries_by_factor[factor] = entries
-            elif factor in required:
+            elif fails_build(profile, factor, answer):
                 missing.append(factor)
             tiers.append(
                 ModelContextPackTierStatus(

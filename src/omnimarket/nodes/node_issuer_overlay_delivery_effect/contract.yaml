@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_issuer_overlay_delivery_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Deliver the principal-issuer overlay to the issuer host, set PRINCIPAL_ISSUER_OVERLAY_FILE in its env file and read both back from the host. Host, paths and the overlay come from the request, never from the contract.
+input_model:
+  name: ModelOverlayDeliveryRequest
+  module: omnimarket.nodes.node_issuer_overlay_delivery_effect.models.model_overlay_delivery
+output_model:
+  name: ModelOverlayDeliveryResult
+  module: omnimarket.nodes.node_issuer_overlay_delivery_effect.models.model_overlay_delivery
+handler:
+  module: omnimarket.nodes.node_issuer_overlay_delivery_effect.handlers.handler_overlay_delivery
+  class: HandlerOverlayDelivery
+  input_model: omnimarket.nodes.node_issuer_overlay_delivery_effect.models.model_overlay_delivery.ModelOverlayDeliveryRequest
+  output_model: omnimarket.nodes.node_issuer_overlay_delivery_effect.models.model_overlay_delivery.ModelOverlayDeliveryResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_issuer_overlay_delivery_effect.handlers.handler_overlay_delivery:HandlerOverlayDelivery
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerOverlayDelivery
+      module: omnimarket.nodes.node_issuer_overlay_delivery_effect.handlers.handler_overlay_delivery
+dependencies:
+- name: ProtocolIssuerHostFiles
+  type: protocol
+  required: true
+  module: omnimarket.nodes.node_issuer_overlay_delivery_effect.protocols
+  description: Host-file transport resolved from the container by HandlerOverlayDelivery when the operation runs.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the host installer plan.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: local
+  created: '2026-11-01'
+  tags:
+  - effect
+  - overlay-delivery
+  related_tickets:
+  - OMN-21899
