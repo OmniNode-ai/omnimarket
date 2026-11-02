@@ -17,6 +17,9 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     HandlerFactoryFloor,
 )
@@ -52,6 +55,9 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     runner_fleet_cause,
     write_result,
 )
+from omnimarket.protocols.protocol_merged_running_count_reader import (
+    ProtocolMergedRunningCountReader,
+)
 
 NODE_NAME = "node_factory_floor_effect"
 OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -62,6 +68,22 @@ COMPUTE_CONTRACT = (
 
 class HandlerFactoryFloorEffect:
     """Boundary of the factory floor: every read and the one write happen here, none in the compute node."""
+
+    def __init__(
+        self, merged_running: ProtocolMergedRunningCountReader | None = None
+    ) -> None:
+        self._merged_running = merged_running
+
+    def _read_merged_running(
+        self, now: datetime
+    ) -> tuple[ModelMergedRunningCountResult | None, str]:
+        """The count and an empty cause, or None and why it was not read: a count that fails never stops the floor."""
+        if self._merged_running is None:
+            return None, "no merged-running count reader is bound"
+        try:
+            return self._merged_running.read(now), ""
+        except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
+            return None, f"{type(exc).__name__}: {exc}"
 
     def handle(
         self, request: ModelFactoryFloorRunRequest
@@ -184,6 +206,17 @@ class HandlerFactoryFloorEffect:
             ),
         )
         result = HandlerFactoryFloor().handle(compute_request)
+        merged_running, merged_running_cause = self._read_merged_running(now)
+        result = result.model_copy(
+            update={
+                "floor": result.floor.model_copy(
+                    update={"merged_running": merged_running}
+                ),
+                "sources": result.sources.model_copy(
+                    update={"merged_running_cause": merged_running_cause}
+                ),
+            }
+        )
         target = home / rt.output.relpath
         write_result(target, result.model_dump(mode="json"))
         return ModelFactoryFloorRunResult(
