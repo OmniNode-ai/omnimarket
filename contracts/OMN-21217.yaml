@@ -28,6 +28,16 @@ requirements:
           A revoke based on an older version preserves a newer registration.
           Falsifiers exercise actual concurrent SQLite writers and the real
           PostgreSQL projection SQL; skipped database tests are not proof.
+  - id: "req-hosted-ordered-model-retry"
+    statement: "Hosted routing follows the ordered models chosen for one customer key."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          The hosted overlay decision carries the selected key's ordered model
+          candidates. After a retryable failure of a, the next inference attempt
+          uses b on the same key, endpoint and backend identity; no model outside
+          that list or house credential is tried. The falsifier drives overlay
+          resolution, the serialized decision and the real orchestrator retry.
   - id: "req-snapshot-exposure-cleanup-policy"
     statement: "Every onex.snapshot exposure declares its own cleanup policy instead of taking the broker default."
     acceptance:
@@ -141,12 +151,15 @@ dod_evidence:
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_reducer/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
   - id: "dod-omn21217-t6-routing-decision-consumer-first"
     description: >-
-      Consumer first for T6. The routing decision accepts and drops a
-      model_candidates key, still refuses every other unknown key and leaves
-      the caller's payload untouched. Three of the four cases fail on dev
-      before this change. T6 declares and stamps the field only after
-      omniclaude's omnimarket pin carries this consumer.
+      Consumer first for T6, the decode step of AC2 only. The routing
+      decision accepts and drops a model_candidates key, still refuses every
+      other unknown key and leaves the caller's payload untouched. Three of
+      the four cases fail on dev before this change. It does not prove the
+      ordered retry itself; that proof is T6's
+      dod-omn21217-t6-hosted-ordered-model-retry, which declares and stamps
+      the field only after omniclaude's omnimarket pin carries this consumer.
     source: "manual"
+    binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/models/delegation/wire/test_routing_decision_consumer_first_omn21217.py -q -n 0 --no-cov"
