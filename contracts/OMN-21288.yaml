@@ -54,6 +54,13 @@ requirements:
     acceptance:
       - id: "DoD3"
         statement: "DoD3: a writer topic whose subscribe fails is logged and skipped, the other writers keep appending, readiness is not degraded by it, and the next resubscribe takes it again; the shared command topic stays fatal -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov fails"
+  - id: "req-omn21288-reaper-live-families"
+    statement: "The consumer group guard's reaper patterns match the per-run group names the dev and CI buses accumulate, and protect only the stable names."
+    acceptance:
+      - id: "AC21288101"
+        statement: "AC21288101: against the live zero-consumer names, the contract's patterns after the change classify the runtime_local_terminal_t<N>_run_<hex12> and host_drift_fleet.<host>.<hex12> names as reapable and the stable names as protected or unmatched -- falsifier: the fixture test fails on origin/dev's contract and passes on the branch"
+      - id: "AC21288104"
+        statement: "AC21288104: pre-commit passes on the branch files and the focused test passes -- falsifier: pre-commit rc != 0 on the changed files at the head, or the focused test fails"
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
@@ -212,3 +219,27 @@ dod_evidence:
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/work_ledger_bus/bus.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "await take_writer_topics(" > /dev/null'
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"
+  - id: "dod-omn21288-reaper-live-families"
+    description: "Every live per-run family is reapable and the stable names are not, through the guard's own is_reapable over the shipped contract. The test fails at the merge base, whose contract has no pattern for runtime_local_terminal_t<N>_run_<hex12>, the per-run host drift name, receipt-mode, lab_work_client, the canary or the gateway session."
+    source: "manual"
+    binds_ac: ["AC21288101"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -q --no-cov -p no:cacheprovider -k 'every_live_per_run_family'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-reaper-live-families-precommit"
+    description: "pre-commit passes on the files the change touches and the live-family test passes. That test fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC21288104"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'uv run pre-commit run --files src/omnimarket/nodes/node_consumer_group_guard_effect/contract.yaml tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py contracts/OMN-21288.yaml && uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -q --no-cov -p no:cacheprovider -k every_live_per_run_family'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-reaper-live-families-deploy-probe"
+    description: "The guard node's shipped contract at the head carries the runtime_local_terminal_t<N>_run_ pattern, read from GitHub at the exact head sha. The runtime reads this contract from the installed package, so the node picks it up when the deploy agent redeploys omnimarket."
+    source: "manual"
+    binds_ac: ["AC21288101"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_consumer_group_guard_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "runtime_local_terminal_t[0-9]+_run_" > /dev/null'

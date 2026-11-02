@@ -18,9 +18,10 @@ consumer_group_guard:
   # Reaping (OMN-21818). A group is deleted only when it has been Empty in every run for
   # min_empty_age_seconds (two listings at least that far apart agree), its name matches a
   # reapable pattern (a per-call hex suffix) and matches no protected pattern. Protected
-  # names win. Stable-named groups (host drift fleet, gateway sessions, anything unlisted)
-  # are never deleted. The broker is checked after every batch; the run stops at the first
-  # error or unhealthy reading.
+  # names win. Stable-named groups (the host drift fleet's `<prefix>.<host>` group,
+  # anything unlisted) are never deleted; the per-run `<host>.<hex12>` drift groups and
+  # the per-session gateway groups are per-call names and are reapable. The broker is
+  # checked after every batch; the run stops at the first error or unhealthy reading.
   reap:
     enabled: true
     min_empty_age_seconds: 600
@@ -30,10 +31,15 @@ consumer_group_guard:
       - '^local\.omnimarket\.work_ledger_append_client\.consume\.v1\.[0-9a-f]{12}(\..*)?$'
       - '^local\.omnimarket\.scm_command_client\.consume\.v1\.[0-9a-f]{12}(\..*)?$'
       - '^local\.omnibase_core\.runtime_local_terminal_run_[0-9a-f]{12}(_t[0-9]+)?\.consume\.v1(\..*)?$'
+      - '^local\.omnibase_core\.runtime_local_terminal_t[0-9]+_run_[0-9a-f]{12}\.consume\.v1(\..*)?$'
       - '^local\.omnibase_core\.handlerdevheadmonitor_run_[0-9a-f]{12}\.consume\.v1(\..*)?$'
+      - '^local\.omnimarket\.lab_work_client\.consume\.v1\.[0-9a-f]{12}\.(t|cap)(\..*)?$'
+      - '^receipt-mode-client\.[0-9a-f]{12}(\..*)?$'
+      - '^gateway-canary-probe-[a-z]+-[0-9a-f]{32}$'
+      - '^local\.[a-z_]+\.host_drift_fleet\.h[0-9]+\.[0-9a-f]{12}(\..*)?$'
+      - '^onex\.gateway-session\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     protected_patterns:
-      - 'host_drift_fleet'
-      - 'gateway-session'
+      - 'host_drift_fleet\.h[0-9]+(\.__t\..*)?$'
 input_model:
   name: ModelConsumerGroupGuardRequest
   module: omnimarket.models.consumer_group_guard

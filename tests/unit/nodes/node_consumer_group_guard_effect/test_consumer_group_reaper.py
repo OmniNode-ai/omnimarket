@@ -29,10 +29,28 @@ LEDGER = "local.omnimarket.work_ledger_append_client.consume.v1.0070302c2314.__t
 SCM = "local.omnimarket.scm_command_client.consume.v1.012531d317c1.__t.onex.evt.omnimarket.github-repo-write-completed.v1"
 TERMINAL = "local.omnibase_core.runtime_local_terminal_run_0043eb9dd332_t1.consume.v1.__t.onex.evt.omnimarket.delegate-skill-failed.v1"
 DEVHEAD = "local.omnibase_core.handlerdevheadmonitor_run_06ec2890bd50.consume.v1.__t.onex.cmd.omniclaude.dev-head-monitor.v1"
-DRIFT = "local.example_fleet.host_drift_fleet.h101.0cd3d50e9200.__t.onex.evt.example-fleet.host-drift-detected.v1"
+TERMINAL_T = "local.omnibase_core.runtime_local_terminal_t1_run_0066d2acb6bd.consume.v1.__t.onex.evt.omnimarket.delegate-skill-failed.v1"
+LAB_WORK = "local.omnimarket.lab_work_client.consume.v1.0123456789ab.cap.__t.onex.evt.omnimarket.lab-work-capacity.v1"
+RECEIPT = "receipt-mode-client.5525153f0632.__t.onex.evt.omnimarket.context-compaction-prepared.v1"
+CANARY = "gateway-canary-probe-local-56b55982360f41b49a7eed46e752773f"
+DRIFT_RUN = "local.example_fleet.host_drift_fleet.h105.0123456789ab.__t.onex.evt.omnimarket.host-drift-heartbeat.v1"
+DRIFT = "local.example_fleet.host_drift_fleet.h105.__t.onex.evt.omnimarket.host-drift-heartbeat.v1"
 GATEWAY = "onex.gateway-session.dc01928a-654e-4568-b42e-0123456789ab"
 STABLE = "agent-observability-postgres"
+PROJECTION = "local.omnimarket.projection_work_ledger.consume.1.1.1.__i.runtime-main.__t.onex.evt.omnimarket.x.v1"
 PER_CALL = [LEDGER, SCM, TERMINAL, DEVHEAD]
+# One live name per family the dev and CI buses accumulate (OMN-21288).
+LIVE_PER_RUN = [
+    TERMINAL,
+    TERMINAL_T,
+    DEVHEAD,
+    LAB_WORK,
+    RECEIPT,
+    CANARY,
+    DRIFT_RUN,
+    GATEWAY,
+]
+STABLE_NAMES = ["onex-deploy-agent", "onex-dlq-replay", DRIFT, PROJECTION, STABLE]
 CONFIG: Mapping[str, str] = {}
 
 
@@ -79,7 +97,7 @@ def _reaper(
 
 def _mixed() -> dict[str, str]:
     states = dict.fromkeys(PER_CALL, "EMPTY")
-    states.update({DRIFT: "EMPTY", GATEWAY: "EMPTY", STABLE: "EMPTY"})
+    states.update({DRIFT: "EMPTY", STABLE: "EMPTY"})
     states[f"{LEDGER}.live"] = "STABLE"
     return states
 
@@ -89,7 +107,12 @@ def test_the_limits_and_names_are_declared_in_the_contract() -> None:
     assert RULES.min_empty_age_seconds == 600
     assert RULES.max_deletes_per_run > 0
     assert all(is_reapable(n, RULES) for n in PER_CALL)
-    assert not any(is_reapable(n, RULES) for n in (DRIFT, GATEWAY, STABLE))
+    assert not any(is_reapable(n, RULES) for n in (DRIFT, STABLE))
+
+
+def test_every_live_per_run_family_is_reapable_and_stable_names_are_not() -> None:
+    assert all(is_reapable(n, RULES) for n in LIVE_PER_RUN)
+    assert not any(is_reapable(n, RULES) for n in STABLE_NAMES)
 
 
 def test_the_first_run_deletes_nothing_and_a_run_ten_minutes_later_deletes_the_per_call_groups(
@@ -104,7 +127,7 @@ def test_the_first_run_deletes_nothing_and_a_run_ten_minutes_later_deletes_the_p
     deleted, detail = reaper.reap(CONFIG, tmp_path)
     assert deleted == len(PER_CALL)
     assert sorted(broker.deleted) == sorted(PER_CALL)
-    assert "reaped 4" in detail
+    assert f"reaped {len(PER_CALL)}" in detail
 
 
 def test_falsifier_a_stable_named_or_non_empty_group_is_never_deleted(
@@ -116,8 +139,8 @@ def test_falsifier_a_stable_named_or_non_empty_group_is_never_deleted(
         reaper.reap(CONFIG, tmp_path)
         clock[0] += 600
     survivors = set(broker.states)
-    assert {DRIFT, GATEWAY, STABLE, f"{LEDGER}.live"} <= survivors
-    assert not set(broker.deleted) & {DRIFT, GATEWAY, STABLE, f"{LEDGER}.live"}
+    assert {DRIFT, STABLE, f"{LEDGER}.live"} <= survivors
+    assert not set(broker.deleted) & {DRIFT, STABLE, f"{LEDGER}.live"}
 
 
 def test_protected_wins_over_reapable() -> None:
