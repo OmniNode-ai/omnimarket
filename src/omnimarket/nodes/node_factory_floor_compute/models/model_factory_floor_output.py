@@ -243,7 +243,7 @@ class ModelFloorLamp(BaseModel):
 
 
 class ModelFloorCloudAccountOut(BaseModel):
-    """One cloud account: whether it is signed in, its session cap and how many sessions are open."""
+    """One cloud account: whether it is signed in, its session cap and how many of its listed sessions are open (None when the receipts could not be read)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -251,7 +251,8 @@ class ModelFloorCloudAccountOut(BaseModel):
     ready: bool
     login: str
     cap: int | None
-    open_sessions: int
+    open_sessions: int | None
+    record_note: str
     credit_remaining: float | None
     credit_read_at: str
     rate_status: str

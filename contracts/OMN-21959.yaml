@@ -69,3 +69,12 @@ dod_evidence:
       - check_type: command
         check_value: grep -F 'cls = classify_block(row)' src/omnimarket/handlers/bus_binding/exception_actor.py
         cwd: .
+  - id: dod-omn21959-ac3-recorded-outage-replay
+    description: AC3 replays all three recorded outage rows through the detector and the exception actor, checking healthy-bus resolution, one emitted row during an outage, missing-identity diagnostics, and decision-row refusal.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_outage_replay.py -q --no-cov --tb=line
+        cwd: .
