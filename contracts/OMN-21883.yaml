@@ -72,6 +72,9 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
+        cwd: .
       - check_type: command
         check_value: |-
           uv run --frozen --no-dev python -c '
@@ -90,6 +93,9 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
+        cwd: .
       - check_type: command
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_bringup_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q 'stage: G'
