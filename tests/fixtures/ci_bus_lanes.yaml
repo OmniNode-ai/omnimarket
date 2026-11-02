@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+default: inmemory
+lanes:
+  dev:
+    broker: broker.example.invalid:19092
+    security_protocol: SASL_PLAINTEXT
+    sasl_mechanism: SCRAM-SHA-256
+    broker_topology:
+      external_bootstrap_servers: broker.example.invalid:19092
+      internal_bootstrap_servers: redpanda:9092
+      runtime_environment: local
+    projection_readback:
+      dsn_env: CHAIN_CANARY_PROJECTION_DSN
+    ledger_readback:
+      dsn_env: CHAIN_CANARY_PROJECTION_DSN
+    delegation_routes:
+    - consumer: omnimarket.nodes.node_delegation_orchestrator
+      terminal_route: terminal_events
+      repository_owner: omnimarket
+  stability:
+    broker: inmemory
+  example-stability:
+    broker: 192.0.2.201:39092
+    security_protocol: PLAINTEXT
+  dogfood:
+    broker: 192.0.2.105:47092
+    security_protocol: PLAINTEXT
+    broker_topology:
+      external_bootstrap_servers: 192.0.2.105:47092
+      internal_bootstrap_servers: redpanda:9092
+      runtime_environment: dogfood
+    delegation_fault_routes:
+    - backend_id: dogfood-fault-429
+      endpoint_url: http://dogfood-delegation-fault-429:8080/v1/chat/completions
+      expected_http_status: 429
+      requested_timeout_seconds: 240
+      max_attempts: 1
+      no_escalation: true
+    - backend_id: dogfood-fault-503
+      endpoint_url: http://dogfood-delegation-fault-503:8080/v1/chat/completions
+      expected_http_status: 503
+      requested_timeout_seconds: 240
+      max_attempts: 1
+      no_escalation: true
+    delegation_routes:
+    - consumer: omnimarket.nodes.node_delegation_orchestrator
+      terminal_route: terminal_events
+      repository_owner: omnimarket
+  prod:
+    broker: inmemory
+  example-bus:
+    broker: broker.example.invalid:21092
+    security_protocol: SASL_PLAINTEXT
+    sasl_mechanism: SCRAM-SHA-256

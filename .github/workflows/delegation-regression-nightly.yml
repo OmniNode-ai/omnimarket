@@ -222,6 +222,13 @@ jobs:
       # failure it catches is the one that consumed 60 nightly runs, and it was
       # invisible because the symptom arrived nine minutes later wearing the
       # vocabulary of a delegation regression.
+      - name: Fetch the private CI bus lanes
+        uses: ./.github/actions/fetch-lane-table
+        with:
+          overlay-repo: ${{ vars.OMNI_CI_OVERLAY_REPO }}
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+
       - name: Preflight — runner placement, lane wiring, lane reachability
         run: |
           set -euo pipefail

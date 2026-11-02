@@ -1,0 +1,80 @@
+name: 'Fetch the private CI bus lane table'
+description: >-
+  OMN-20935. The CI bus lane table (lane -> broker, transport and projection readback) describes one lab's brokers, so it is private deployment config and omnimarket no longer carries the file. This reads config/lab/ci_bus_lanes.yaml from the CI overlay repository (the org Actions variable OMNI_CI_OVERLAY_REPO, a bare repository name under this owner) with a read-only App token and places the file at the workspace-relative path the caller names, which is the path the publishers and probes in this repository already read. An unset variable, an unreadable repository or a missing file fails the step: there is no in-repo lane table to fall back to. The table is data, read unpinned from the overlay's default branch and validated by each reader; nothing from it is executed.
+author: 'OmniNode'
+inputs:
+  overlay-repo:
+    description: 'The CI overlay repository name, normally vars.OMNI_CI_OVERLAY_REPO.'
+    required: true
+  app-id:
+    description: 'App id for a read-only installation token, normally secrets.ONEXBOT_APP_ID.'
+    required: true
+  private-key:
+    description: 'The App private key, normally secrets.ONEXBOT_APP_PRIVATE_KEY.'
+    required: true
+  dest:
+    description: 'Workspace-relative path the lane table is placed at, for example .lane-table/config/ci_bus_lanes.yaml.'
+    required: false
+    default: .lane-table/config/ci_bus_lanes.yaml
+outputs:
+  path:
+    description: 'The workspace-relative path the lane table was placed at (the dest input).'
+    value: ${{ steps.place.outputs.path }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve the CI overlay
+      id: overlay
+      shell: bash
+      env:
+        CI_OVERLAY_REPO: ${{ inputs.overlay-repo }}
+      run: |
+        set -euo pipefail
+        if [ -z "${CI_OVERLAY_REPO}" ]; then
+          echo "::error::no CI bus lane table configured: OMNI_CI_OVERLAY_REPO is unset, so no CI overlay supplies config/lab/ci_bus_lanes.yaml. This repository ships no lane table; put yours in a repository of your own and set OMNI_CI_OVERLAY_REPO to its name."
+          exit 1
+        fi
+        if [[ ! "${CI_OVERLAY_REPO}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::OMNI_CI_OVERLAY_REPO must be a bare repository name, got '${CI_OVERLAY_REPO}'"
+          exit 1
+        fi
+        rm -rf .lane-table-checkout
+        echo "name=${CI_OVERLAY_REPO}" >> "$GITHUB_OUTPUT"
+    - name: Mint a read-only CI overlay token
+      id: token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ steps.overlay.outputs.name }}
+        permission-contents: read
+    - name: Fetch config/lab/ci_bus_lanes.yaml from the CI overlay
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        repository: ${{ github.repository_owner }}/${{ steps.overlay.outputs.name }}
+        token: ${{ steps.token.outputs.token }}
+        path: .lane-table-checkout
+        persist-credentials: false
+        sparse-checkout: |
+          config/lab/ci_bus_lanes.yaml
+        sparse-checkout-cone-mode: false
+    - name: Place the lane table where the readers look for it
+      id: place
+      shell: bash
+      env:
+        OVERLAY_NAME: ${{ steps.overlay.outputs.name }}
+        DEST: ${{ inputs.dest }}
+      run: |
+        set -euo pipefail
+        src=".lane-table-checkout/config/lab/ci_bus_lanes.yaml"
+        if [ ! -s "$src" ]; then
+          echo "::error::the CI overlay carries no config/lab/ci_bus_lanes.yaml; no CI bus lane can be resolved"
+          exit 1
+        fi
+        echo "CI bus lane table read from ${GITHUB_REPOSITORY_OWNER}/${OVERLAY_NAME} at $(git -C .lane-table-checkout rev-parse HEAD)"
+        mkdir -p "$(dirname "$DEST")"
+        cp "$src" "$DEST"
+        rm -rf .lane-table-checkout
+        echo "path=$DEST" >> "$GITHUB_OUTPUT"
+        echo "ONEX_CI_BUS_LANES_PATH=${GITHUB_WORKSPACE}/$DEST" >> "$GITHUB_ENV"

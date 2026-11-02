@@ -259,8 +259,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--overlay",
         type=Path,
-        default=Path("config/ci_bus_lanes.yaml"),
-        help="Path to this repository's ci_bus_lanes.yaml",
+        required=True,
+        help="Path to the private CI bus lane overlay",
     )
     parser.add_argument(
         "--consumer-model",

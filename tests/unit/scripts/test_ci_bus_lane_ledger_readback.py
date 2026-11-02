@@ -33,7 +33,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-OVERLAY_PATH = REPO_ROOT / "config" / "ci_bus_lanes.yaml"
+OVERLAY_PATH = REPO_ROOT / "tests" / "fixtures" / "ci_bus_lanes.yaml"
 
 #: The one lane the chain canary's ledger readback may be declared on, for the
 #: same reason as its projection sibling: the canary is a dev-lane instrument,

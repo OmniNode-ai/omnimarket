@@ -1515,8 +1515,8 @@ override-dependencies = [
 packages = ["src/omnimarket"]
 # OMN-18931: omnibase_infra's runtime reads the lane declaration as an
 # installed package resource (omnimarket/config/ci_bus_lanes.yaml), so the
-# one checked-in copy at the repository root ships inside the wheel. There is
-# deliberately no second copy under src/.
+# neutral contract at the repository root ships inside the wheel. Its digest
+# binds the private deployment snapshot; no host values ship in the wheel.
 # OMN-19917 (plan task T2.9, decision D8 (a)): `onex dashboard` downloads a
 # prebuilt OmniDash bundle and refuses any copy whose sha256 is not the one
 # pinned below. The pin has to travel with the installed package, and the

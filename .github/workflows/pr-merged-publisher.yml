@@ -166,6 +166,13 @@ jobs:
           # (OMN-14801). Kept deliberately thin — no product graph import.
           pip install --quiet confluent-kafka click pydantic pyyaml
 
+      - name: Fetch the private CI bus lanes
+        uses: ./.github/actions/fetch-lane-table
+        with:
+          overlay-repo: ${{ vars.OMNI_CI_OVERLAY_REPO }}
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+
       - name: Publish onex.evt.github.pr-merged.v1
         # All potentially attacker-controlled inputs (branch name, PR title) are
         # passed through environment variables to prevent shell injection.

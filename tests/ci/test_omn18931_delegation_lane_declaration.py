@@ -24,7 +24,7 @@ import yaml
 pytestmark = pytest.mark.unit
 
 _REPO = Path(__file__).resolve().parents[2]
-_OVERLAY = _REPO / "config" / "ci_bus_lanes.yaml"
+_OVERLAY = _REPO / "tests" / "fixtures" / "ci_bus_lanes.yaml"
 _RESOURCE = "omnimarket/config/ci_bus_lanes.yaml"
 _ROUTE = {
     "consumer": "omnimarket.nodes.node_delegation_orchestrator",
@@ -71,7 +71,9 @@ def test_each_bounded_lane_declares_exactly_one_delegation_route(lane: str) -> N
     assert _lanes()[lane]["delegation_routes"] == [_ROUTE]
 
 
-@pytest.mark.parametrize("lane", ["stability", "stability-test", "prod", "ci-bus"])
+@pytest.mark.parametrize(
+    "lane", ["stability", "example-stability", "prod", "example-bus"]
+)
 def test_no_other_lane_declares_a_delegation_or_fault_route(lane: str) -> None:
     declaration = _lanes()[lane]
     assert "delegation_routes" not in declaration
@@ -105,4 +107,6 @@ def test_the_built_wheel_carries_the_declaration_byte_for_byte(
     wheels = list(tmp_path.glob("*.whl"))
     assert len(wheels) == 1
     with zipfile.ZipFile(wheels[0]) as wheel:
-        assert wheel.read(_RESOURCE) == _OVERLAY.read_bytes()
+        assert (
+            wheel.read(_RESOURCE) == (_REPO / "config/ci_bus_lanes.yaml").read_bytes()
+        )
