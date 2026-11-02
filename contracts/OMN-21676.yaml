@@ -69,7 +69,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -k delegated_ticket_unavailable_still_refuses"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_delegation_falsifiers.py -q --no-cov -k delegated_ticket_unavailable_still_refuses"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21676-integration-proof-trusted-check-node"
     description: "The trusted criteria check runs as the node itself through the ONEX CLI on the Done-gate host and fails closed: a request for a pull request head that is not an open head it can verify comes back merge_blocked with a CRITERIA_UNREADABLE reason, never a pass. This is supplemental local runtime coverage, with no hosted acceptance binding: it exercises an unreadable PR head, not an unreadable ticket. The new ticket_unavailable behavior is bound by dod-omn21676-falsifier-ticket-unavailable-refuses above."
