@@ -172,45 +172,89 @@ def record_replay(
     resolve_if_recovered(state_dir, decision)
 
 
-def _report_refused(
-    state_dir: Path, decision: ModelBusBindingDecision, started: str
+def _refusal_evidence(body: dict[str, Any]) -> str:
+    """What the writer needs to see: the host's words, the exit code, the host, and which rows were lost."""
+    refusal = body.get("refusal") or {}
+    message = " ".join(str(refusal.get("message", "")).split())[:300] or "unreadable"
+    kinds: list[str] = []
+    stamps: list[str] = []
+    for line in str(body.get("rows", "")).splitlines():
+        cells = [cell.strip() for cell in line.split(" | ", 2)]
+        if len(cells) >= 2 and cells[0][:2] == "20":
+            stamps.append(cells[0])
+            kinds.append(cells[1])
+    return (
+        f"ledger host {refusal.get('ledger_host', 'unknown')} refused the queued append "
+        f"(exit_code={refusal.get('exit_code', 'unknown')}): {message}; "
+        f"rows lost: {','.join(kinds) or 'unknown'} stamped {','.join(stamps) or 'unknown'}"
+    )
+
+
+def report_refused_to_writers(
+    state_dir: Path, observed_at: datetime, *, since_ns: int = 0
 ) -> int:
-    """Emit one non-decision case per request refused in this episode; return how many."""
+    """Emit one non-decision case per refused request nobody has been told about yet; return how many.
+
+    The case is keyed to the writer's lane, the one told "queued", not to the bus lane. It does not wait
+    for an outage episode to close: a refusal is reported by the replay that found it. A report is marked
+    on the refused file, so a later replay or episode does not report it twice.
+    """
     directory = outbox.outbox_dir(state_dir) / outbox.REFUSED_DIRNAME
     if not directory.is_dir():
         return 0
-    since_ns = int(datetime.fromisoformat(started).timestamp() * 1_000_000_000)
     count = 0
     for path in sorted(directory.glob("*.json")):
         try:
             queued_ns = int(path.stem.split("_", 1)[0])
             request_id = outbox.request_id_of(path)
-        except (ValueError, IndexError):
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, IndexError):
             continue
-        # Requests are queued while degraded, so a file older than the episode belongs to an earlier one.
-        if queued_ns < since_ns:
+        if (
+            queued_ns < since_ns
+            or not isinstance(body, dict)
+            or body.get("reported_at")
+        ):
             continue
-        try:
-            refusal = json.loads(path.read_text(encoding="utf-8")).get("refusal", {})
-            message = " ".join(str(refusal.get("message", "")).split())[:300]
-        except (OSError, ValueError, AttributeError):
-            message = "refusal unreadable"
+        lane = str(body.get("requested_by_lane") or "unknown")
         create_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=state_dir / "exception-queue",
                 row=ModelExceptionRow(
                     cls=REFUSED_CLASS,
-                    key=f"lane={decision.lane} request={request_id}",
+                    key=f"lane={lane} request={request_id}",
                     source=SOURCE,
-                    evidence=f"ledger host refused the queued append: {message}",
+                    evidence=_refusal_evidence(body),
                     tried=f"replayed the outbox; kept the refused request at {path}",
                     proposed_fix="correct the row and append it again; the refused request is final",
                     decision=False,
                 ),
-                now=decision.observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                now=observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             )
         )
+        body["reported_at"] = observed_at.isoformat()
+        _write_text_atomically(path, json.dumps(body, sort_keys=True))
         count += 1
+    return count
+
+
+def _write_text_atomically(path: Path, text: str) -> None:
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _refused_in_episode(state_dir: Path, started: str) -> int:
+    directory = outbox.outbox_dir(state_dir) / outbox.REFUSED_DIRNAME
+    since_ns = int(datetime.fromisoformat(started).timestamp() * 1_000_000_000)
+    count = 0
+    for path in directory.glob("*.json") if directory.is_dir() else ():
+        try:
+            queued_ns = int(path.stem.split("_", 1)[0])
+        except (ValueError, IndexError):
+            continue
+        # Requests are queued while degraded, so a file older than the episode belongs to an earlier one.
+        count += queued_ns >= since_ns
     return count
 
 
@@ -226,14 +270,16 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
     ):
         return
     # A refusal is the ledger host's final answer and the request sits in refused/, so it does not hold
-    # the episode open: it is reported below as its own case. A stopped drain or an unreplayed file does.
+    # the episode open: it is reported as its own case, by the replay that found it. A stopped drain or an
+    # unreplayed file does.
     if record.get("replay_stopped"):
         return
     # Include unreadable request files: ignoring one would falsely claim complete replay.
     if any(outbox.outbox_dir(state_dir).glob("*.json")):
         return
     queue_dir = state_dir / "exception-queue"
-    refused = _report_refused(state_dir, decision, record["outage_started_at"])
+    report_refused_to_writers(state_dir, decision.observed_at)
+    refused = _refused_in_episode(state_dir, record["outage_started_at"])
     opened = create_handler_exception_queue().handle(
         ModelExceptionQueueRequest(queue_dir, "orchestrator")
     )

@@ -1854,6 +1854,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21880: the landing stall model (formal/landing_stall) passes its design
+      # configs, each property fails on a one-knob mutation, the TLC results match the
+      # committed model, configs and outputs, and VERDICT.txt names the model's digest.
+      # Check-only. SYNC with the ci.yml lint step "Landing stall model and verdict
+      # (OMN-21880)".
+      - id: landing-stall-model
+        name: Landing stall model and verdict (OMN-21880)
+        language: system
+        entry: uv run pytest tests/formal/test_landing_stall_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/landing_stall/|tests/formal/(test_landing_stall_model\.py|landing_stall_tlc\.py)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20601: routing decisions come from overlays, never from omnimarket code.
       # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
       # precedence and routing-in-code ratchet (OMN-20601)".

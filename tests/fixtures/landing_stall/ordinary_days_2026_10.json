@@ -1,0 +1,151 @@
+{
+  "snapshots": [
+    {
+      "observed_at": "2026-10-16T23:41:17Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 9,
+      "red_by_context": {
+        "Tests (Split)": 3,
+        "Test-Failure Ratchet Gate": 3,
+        "repo-evidence / dod-verify": 3,
+        "contract-validation": 2,
+        "Integration Test Coverage": 1,
+        "runner-image-multiarch-smoke": 1
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-16T23:41:17Z: no single cause shared"
+    },
+    {
+      "observed_at": "2026-10-17T15:00:09Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 11,
+      "red_by_context": {
+        "repo-evidence / dod-verify": 1
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-17T15:00:09Z: 11 open, #5071 red on dod-verify"
+    },
+    {
+      "observed_at": "2026-10-18T00:18:11Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 11,
+      "red_by_context": {
+        "CI Summary": 2,
+        "CI Tests Gate": 1,
+        "Test-Failure Ratchet Gate": 1,
+        "Lane Census Staleness + E-5 Env Drift (OMN-13034)": 1,
+        "Integration Test Coverage": 1
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-18T00:20:07Z"
+    },
+    {
+      "observed_at": "2026-10-19T21:59:31Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 20,
+      "red_by_context": {
+        "CI Summary": 9,
+        "CI Tests Gate": 4,
+        "Test-Failure Ratchet Gate": 4,
+        "runner-image-build-smoke": 3,
+        "Lane Census Staleness + E-5 Env Drift (OMN-13034)": 2,
+        "repo-evidence / dod-verify": 2
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-19T22:00:24Z"
+    },
+    {
+      "observed_at": "2026-10-20T23:39:37Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 24,
+      "red_by_context": {
+        "CI Summary": 15,
+        "repo-evidence / dod-verify": 6,
+        "Lane Census Staleness + E-5 Env Drift (OMN-13034)": 4,
+        "Integration Test Coverage": 3,
+        "CI Tests Gate": 3,
+        "Lockfile CVE Scan (OMN-16228)": 2,
+        "CI Live Contact (OMN-18648)": 2
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-20T23:40:14Z"
+    },
+    {
+      "observed_at": "2026-10-21T07:40:00Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 37,
+      "red_by_context": {
+        "CI Summary": 24,
+        "repo-evidence / dod-verify": 11,
+        "CI Tests Gate": 8,
+        "Test-Failure Ratchet Gate": 8,
+        "contract-validation": 6,
+        "Lane Census Staleness + E-5 Env Drift (OMN-13034)": 5,
+        "Integration Test Coverage": 3,
+        "Lockfile CVE Scan (OMN-16228)": 3
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-21T07:40:23Z"
+    },
+    {
+      "observed_at": "2026-10-22T00:22:10Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 41,
+      "red_by_context": {
+        "CI Summary": 22,
+        "Lab-overlay parity tests (OMN-20934)": 21
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-22T00:21:12Z: Lab-overlay parity tests on 21/41"
+    },
+    {
+      "observed_at": "2026-10-23T15:59:24Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 23,
+      "red_by_context": {
+        "CI Summary": 14,
+        "Hostile Review Thread Gate": 8,
+        "exposure-reader-coverage": 6
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-23T16:00:19Z"
+    },
+    {
+      "observed_at": "2026-10-27T09:40:08Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 21,
+      "red_by_context": {
+        "CI Summary": 13,
+        "Hostile Review Thread Gate": 11,
+        "Application Database Domain Enforcement (OMN-15361)": 6
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-27T09:40:08Z"
+    },
+    {
+      "observed_at": "2026-10-28T12:41:05Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 8,
+      "red_by_context": {
+        "CI Summary": 7,
+        "Hostile Review Thread Gate": 5,
+        "repo-evidence / dod-verify": 4
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-28T12:41:40Z: CI Summary failure shared by all seven red PRs"
+    },
+    {
+      "observed_at": "2026-10-29T00:20:09Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 6,
+      "red_by_context": {
+        "Hostile Review Thread Gate": 4,
+        "CI Summary": 3,
+        "CI Tests Gate": 2
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-29T00:20:09Z"
+    },
+    {
+      "observed_at": "2026-10-30T15:40:05Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 10,
+      "red_by_context": {
+        "Hostile Review Thread Gate": 5,
+        "CI Summary": 3,
+        "repo-evidence / dod-verify": 2,
+        "Integration Test Coverage": 2
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-30T15:40:05Z"
+    }
+  ]
+}
