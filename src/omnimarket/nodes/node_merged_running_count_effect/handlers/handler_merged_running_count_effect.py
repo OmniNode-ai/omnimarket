@@ -7,11 +7,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountRequest,
+)
 from omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count import (
     HandlerMergedRunningCount,
-)
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
-    ModelMergedRunningCountRequest,
 )
 from omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run import (
     ModelMergedRunningCountRunRequest,

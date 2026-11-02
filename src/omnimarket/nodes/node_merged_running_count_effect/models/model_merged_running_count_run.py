@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
     ModelMrcConfig,
 )

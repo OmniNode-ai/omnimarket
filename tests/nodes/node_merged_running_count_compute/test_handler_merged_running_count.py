@@ -9,10 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count import (
-    HandlerMergedRunningCount,
-)
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountRequest,
     ModelMergedRunningCountResult,
     ModelMrcConfig,
@@ -21,6 +18,9 @@ from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_runn
     ModelMrcHost,
     ModelMrcLiveLane,
     ModelMrcPr,
+)
+from omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count import (
+    HandlerMergedRunningCount,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_contract_config import (
     load_contract_config,

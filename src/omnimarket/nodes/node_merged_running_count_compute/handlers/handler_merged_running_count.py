@@ -15,7 +15,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountRequest,
     ModelMergedRunningCountResult,
     ModelMrcConfig,

@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMrcConfig,
 )
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (

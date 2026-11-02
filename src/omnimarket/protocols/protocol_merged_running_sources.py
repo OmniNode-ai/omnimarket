@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMrcEvidence,
     ModelMrcHost,
     ModelMrcLiveLane,
