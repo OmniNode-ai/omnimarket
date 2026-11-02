@@ -1,0 +1,95 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21934"
+title: "The context_audit consumer runs as a projection node writing context_audit_events on replayed events, with the node-orphan-graph and grant gates passing"
+summary: >
+  One-runtime plan T13, omnimarket half. node_projection_context_audit replaces the
+  omnibase_infra context-audit consumer module: it reads the same five audit topics
+  and writes the same twelve context_audit_events columns, plus a deterministic
+  event_key derived from the event's Kafka coordinates, with an UPSERT on that key
+  so a second replay leaves one row per key. The contract declares publish_topics
+  beside subscribe_topics and a test names the output topic literal. The tenant
+  projection writer's grant on public.context_audit_events is declared in the
+  omnibase_infra topology instances, in a paired change. The handover from the
+  retired group context-audit-postgres is not declared: the infra handover model
+  cannot name that literal group yet, and the node's test pins the absence.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21934-orphan-graph-publish-topics"
+    statement: "The node contract declares both subscribe_topics and publish_topics, and a test names the output topic."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the contract declares publish_topics beside subscribe_topics, a test names the output topic literal, and the node-orphan-graph hook passes -- falsifier: pre-commit run node-orphan-graph --all-files exit 0 on the branch
+  - id: "req-omn21934-grants-declared"
+    statement: "The grants the auto-wiring test requires for context_audit_events are declared where the test reads them."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: the grants the node-auto-wiring-in-process test requires for context_audit_events are declared where the test reads them -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q against the branch
+  - id: "req-omn21934-replay-one-row-per-key"
+    statement: "The node writes the retired module's rows on replayed events with a deterministic key and an UPSERT."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: the node writes the same context_audit_events rows as the consumer module on replayed events with a deterministic key and UPSERT, one row per key on a second replay -- falsifier: uv run pytest tests/test_golden_chain_projection_context_audit.py tests/test_projection_context_audit_real_postgres.py -q through /omni:lab-run on a pre-PR slot, red when the key is mutated to a random uuid
+evidence_requirements:
+  - kind: "tests"
+    description: "The context-audit node replays to one row per key and its contract declares the output topic."
+    command: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21934-ac1-publish-topics"
+    description: >-
+      The node contract declares publish_topics beside subscribe_topics and the
+      golden-chain contract test names the projection-applied topic literal. It
+      fails at the merge base, which has no such node.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov -k contract_declares"
+  - id: "dod-omn21934-ac2-grants"
+    description: >-
+      The auto-wiring test finds a declared grant for the tenant projection writer
+      on public.context_audit_events. It reads the grant from the omnibase_infra
+      topology instances, so it passes only with the paired omnibase_infra change.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov"
+  - id: "dod-omn21934-ac3-replay"
+    description: >-
+      The context-audit node writes the retired module's twelve columns from the
+      five audit topics on replayed events, refuses an event missing a required
+      field before any write, and a second replay leaves one row per key. It
+      fails at the merge base, which has no such node. The node's handover from
+      the retired group is not declared: the infra handover model cannot name the
+      literal group, and the node's test pins that absence.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
+  - id: "dod-omn21934-deploy-probe"
+    description: >-
+      Hosted structural deployment smoke, requiring no lab route, broker or
+      database: read the writer at the checked-out PR head and require its
+      UPSERT on event_key, then run the golden chain. It fails against the merge
+      base, which has no such module. The runtime serves the node only after the
+      deploy step mounts it and the infra change vendors its migration.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_context_audit/handlers/handler_context_audit_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ON CONFLICT (event_key) DO UPDATE" > /dev/null'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_context_audit.py -q --no-cov"
