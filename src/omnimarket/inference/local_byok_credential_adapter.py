@@ -57,7 +57,6 @@ Related:
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 import stat
 import uuid
@@ -67,7 +66,6 @@ from typing import Final
 
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 from omnimarket.routing.byok_provider_backends import require_byok_plan_permitted
-from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
 #: no gateway has exactly one principal, so the id is a constant rather than a
@@ -108,39 +106,6 @@ CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_MODEL_TABLE} (
     PRIMARY KEY (secret_ref, position)
 )
 """
-
-
-# OMN-18695: the CONTRACT-DECLARED provider credential family, the second key
-# space this store holds. A minted ref (above) is what a customer registers by
-# PROVIDER on the gap-A path; a declared ref is what a backend's ``secret_ref``
-# names in ``bifrost_delegation.yaml`` -- ``llm.openrouter.api_key``,
-# ``llm.glm.api_key``, ``llm.gemini.api_key``, ``llm.vertex.access_token``.
-# Matched by SHAPE rather than against an enumerated list, so a new backend
-# cannot silently fall off the rule.
-_DECLARED_PROVIDER_REF: Final[re.Pattern[str]] = re.compile(
-    r"^llm\.[A-Za-z0-9_-]+\.[A-Za-z0-9_]+$"
-)
-
-
-def is_local_store_only_ref(api_key_ref: str | None) -> bool:
-    """Whether this reference may be answered ONLY by the local store.
-
-    OMN-18695. True for both key spaces this store holds, because both belong
-    to a customer rather than to the platform: a minted tenant credential
-    (OMN-18694, ``cred_<tenant>_<provider>_<uuid4hex>``) and a
-    contract-declared provider credential (``llm.<provider>.<name>``).
-
-    False for everything else, and that is deliberate rather than an
-    oversight. A reference such as ``GITHUB_TOKEN`` reaches the resolver from
-    a CI runner that has no local store and never will; re-homing it is a
-    different question with a different blast radius, and answering it here
-    would widen the rule past the credential it is about.
-    """
-    if not api_key_ref:
-        return False
-    if is_tenant_credential_ref(api_key_ref):
-        return True
-    return _DECLARED_PROVIDER_REF.fullmatch(api_key_ref) is not None
 
 
 def local_secret_remediation(api_key_ref: str) -> str:
@@ -816,7 +781,6 @@ __all__: list[str] = [
     "MODEL_CHOSEN_BY_CUSTOMER",
     "LocalByokCredentialError",
     "LocalByokCredentialStore",
-    "is_local_store_only_ref",
     "local_byok_key_test_failed",
     "local_credential_registered_at",
     "local_model_tests_path",
