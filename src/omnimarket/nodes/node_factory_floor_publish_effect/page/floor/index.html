@@ -479,6 +479,18 @@ function stationName(stations, id){
   return hit ? hit.name : id;
 }
 
+// Application containers per lane class, running of declared, from the line's own record; no record, no row.
+function containersRow(L){
+  const c = L.application_containers;
+  if (!c || typeof c !== "object") return "";
+  const rows = Array.isArray(c.lanes) ? c.lanes : [];
+  const cells = rows.map(r => {
+    const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
+    return `<span class="mono" title="${esc([r.host, r.detail].filter(Boolean).join(" · "))}">${esc(r.lane)} ${known ? `${num(r.observed)} of ${num(r.budget)}` : "unread"}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+  });
+  return `<span class="eyebrow containers">Application containers running of declared: ${cells.length ? cells.join(" · ") : "unread, no host could be read"}</span>`;
+}
+
 function renderLine(slot, i){
   const letter = "Line " + (LETTERS[i] || i + 1);
   const L = slot.line;
@@ -503,6 +515,7 @@ function renderLine(slot, i){
           ${L.andon && L.andon.flag ? `<p class="cause"><b>Stopped:</b> ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
           <div class="meter" role="img" aria-label="About ${pct} percent built"><b style="--w:${pct}%"></b></div>
           <span class="eyebrow">About <span class="mono">${pct}%</span> of the car built · station <span class="mono">${Math.min(f.cur + 1, Math.max(f.n, 1))}</span> of <span class="mono">${f.n}</span> · <span class="mono">${f.done}</span> of <span class="mono">${f.items.length}</span> parts done</span>
+          ${containersRow(L)}
         </div>
       </div>
       ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways along the belt</div>` : ""}
@@ -714,9 +727,17 @@ function renderMachines(floor){
     : "The record lists no machines: the deployment lists none, or the record was written before machines were recorded.";
   const cards = ms.map(m => machineHTML(m, byId));
   cards.push(cloudHTML(floor.cloud, lanes));
-  if (unplaced.length) cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} worker${unplaced.length === 1 ? "" : "s"}</span></div>
-    <p class="capline">These workers are live in the log, but neither their claim nor a remote receipt names a machine the floor draws.</p>
-    <div class="lanes">${unplaced.map(laneHTML).join("")}</div></article>`);
+  if (unplaced.length){
+    const groups = {};
+    unplaced.forEach(l => { const k = l.placement_cause || "unread"; (groups[k] = groups[k] || []).push(l); });
+    const cause = (k, ls) => {
+      const named = k === "host-not-drawn" ? ls.map(l => l.named_host).filter((h, i, a) => h && a.indexOf(h) === i) : [];
+      return ({"no-host-cell": "carry no host cell: no row since their claim names a host and no receipt does", "host-not-drawn": "name a host the floor does not draw"}[k] || "have no cause in the record (written before causes were recorded)") + (named.length ? ` (${named.join(", ")})` : "");
+    };
+    cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} worker${unplaced.length === 1 ? "" : "s"}</span></div>
+    <p class="capline">These workers are live in the log, but none names a machine the floor draws.</p>
+    ${Object.keys(groups).map(k => `<p class="capline"><b>${groups[k].length} ${esc(cause(k, groups[k]))}</b>: ${groups[k].map(l => esc(l.lane)).join(", ")}</p><div class="lanes">${groups[k].map(laneHTML).join("")}</div>`).join("")}</article>`);
+  }
   el("bayGrid").innerHTML = cards.join("");
 }
 
