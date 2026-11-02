@@ -33,6 +33,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from omnimarket.events.provider_quota import EnumProviderQuotaSource
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    resolve_delegation_backend,
+    resolve_timeout_seconds,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
@@ -55,11 +60,6 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    resolve_delegation_backend,
-    resolve_timeout_seconds,
-)
 
 logger = logging.getLogger(__name__)
 

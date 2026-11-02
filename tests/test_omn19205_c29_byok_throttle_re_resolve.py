@@ -24,6 +24,7 @@ from omnimarket.enums.enum_delegation_failure_class import (
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing import byok_model_discovery as discovery
 from omnimarket.inference import local_byok_credential_adapter as credentials
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
@@ -35,7 +36,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing import byok_model_discovery as discovery
 from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (
     house_openrouter_rung,

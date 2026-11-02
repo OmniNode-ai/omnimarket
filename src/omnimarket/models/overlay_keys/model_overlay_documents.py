@@ -67,6 +67,9 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
+    # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
+    fallback_targets: tuple[NonEmptyStr, ...] = ()
     local: bool = False
     codex: bool = False
     available: bool = True
@@ -116,6 +119,16 @@ class ModelLabHostRow(_ModelOverlayBase):
     max_weight: NonEmptyStr | None = None
     # ``speed``: a measured figure, relative to h101 on the same suite (1.0); ranks the host.
     speed: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _fallback_targets_are_distinct_from_target(self) -> "ModelLabHostRow":
+        """No fallback name is the row's ``target`` or repeats another."""
+        names = self.fallback_targets
+        if self.target in names or len(set(names)) != len(names):
+            raise ValueError(
+                f"lab host {self.name!r}: fallback_targets repeats target or itself: {list(names)}"
+            )
+        return self
 
 
 class ModelUnitNeedsRule(_ModelOverlayBase):

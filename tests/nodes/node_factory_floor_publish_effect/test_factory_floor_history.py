@@ -83,6 +83,7 @@ def _publish(
             serve_url="http://example.invalid:8088/",
             bus_lane="lane-x",
             history_root=str(site),
+            owner_login="owner@example.invalid",
         ),
     )
     return HandlerFactoryFloorPublish(ssh).handle(request, environ={})
