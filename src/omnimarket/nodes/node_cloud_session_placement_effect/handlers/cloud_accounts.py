@@ -30,9 +30,8 @@ CLOUD_REFUSAL_HOLD = timedelta(hours=1)
 CLOUD_ACTIVE_TTL = timedelta(hours=4)
 
 
-# Promotional credit is separate from the subscription limits shared with local work.
-CLOUD_PROMOTIONAL = "ccr_promotional"
-CLOUD_RATE_OK = frozenset({"allowed", "allowed_warning"})
+# A hold is stamped with where it came from; only a deliberate or measured hold gates placement.
+CLOUD_HOLD_STAMP = "recorded"
 CLOUD_LOGIN_OK, CLOUD_LOGIN_NONE, CLOUD_LOGIN_UNREADABLE = (
     "ok",
     "no-claude-ai-login",
@@ -178,52 +177,17 @@ def cloud_account_free(account: Mapping[str, Any], now: datetime) -> int:
     return max(0, cloud_account_cap(account) - cloud_account_running(account, now))
 
 
-def _positive_cloud_credit(account: Mapping[str, Any]) -> bool:
-    credit = account.get("credit") or {}
-    remaining = credit.get("remaining")
-    return isinstance(remaining, (int, float)) and remaining > 0
-
-
-def _spent_cloud_credit(account: Mapping[str, Any]) -> bool:
-    """An observed promotional fallback is newer than the last positive balance reading."""
-    fallback = str(account.get("promotional_fallback_at") or "")
-    credit = account.get("credit") or {}
-    return bool(fallback) and (
-        not _positive_cloud_credit(account)
-        or str(credit.get("read_at") or "") <= fallback
-    )
-
-
-def _credit_releases_warning(account: Mapping[str, Any]) -> bool:
-    """Credit may release a warning or disproven fallback, never an operator or refusal hold."""
-    rate = account.get("rate") or {}
-    kind = rate.get("type")
-    return (
-        _positive_cloud_credit(account)
-        and not _spent_cloud_credit(account)
-        and bool(kind)
-        and kind != CLOUD_PROMOTIONAL
-        and rate.get("status") in CLOUD_RATE_OK
-        and account.get("limited_why")
-        in {
-            f"draws on its {kind} subscription limit at a warning, not the cloud credit",
-            f"promotional cloud credit switched to its {kind} subscription limit",
-        }
-    )
-
-
 def cloud_account_skip(account: Mapping[str, Any], now: datetime) -> str | None:
-    """Why an account starts no cloud session now, or None."""
+    """Why an account starts no cloud session now, or None. Cloud sessions draw on the cloud credit, so a
+    subscription rate reading never gates: only the credit, a recorded hold (a start the platform refused, or
+    ``mark_cloud_limited``) and the concurrency cap do."""
     if account.get("exhausted_at"):
         return f"credit read zero at {account['exhausted_at']}"
-    refused = str(account.get("rate_refused_until") or "")
-    if refused and refused > f"{now:%Y-%m-%dT%H:%M:%SZ}":
-        return f"limited until {refused} ({account.get('rate_refused_why') or 'rate refused'})"
     until = str(account.get("limited_until") or "")
     if (
         until
         and until > f"{now:%Y-%m-%dT%H:%M:%SZ}"
-        and not _credit_releases_warning(account)
+        and account.get("limited_source") == CLOUD_HOLD_STAMP
     ):
         why = account.get("limited_why")
         return f"limited until {until}" + (f" ({why})" if why else "")
@@ -280,6 +244,21 @@ def note_cloud_start(pdir: Path, account: str, *, now: datetime | None = None) -
         return cap
 
 
+# A refusal that names a subscription or usage limit holds the account; a concurrency refusal only lowers its cap.
+CLOUD_SUBSCRIPTION_REFUSAL_RE = re.compile(
+    r"usage limit|rate.?limit|limit reached|weekly limit|quota|\b429\b|subscription",
+    re.IGNORECASE,
+)
+CLOUD_RESET_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+
+
+def _refusal_reset(why: str, now: datetime) -> str:
+    """The reset a refusal names (a later stamp in its text), else ``now`` plus CLOUD_REFUSAL_HOLD."""
+    stamp = f"{now:%Y-%m-%dT%H:%M:%SZ}"
+    named = [m for m in CLOUD_RESET_RE.findall(why) if m > stamp]
+    return max(named) if named else f"{now + CLOUD_REFUSAL_HOLD:%Y-%m-%dT%H:%M:%SZ}"
+
+
 def note_cloud_refusal(
     pdir: Path, account: str, run_id: str, why: str, *, now: datetime | None = None
 ) -> int:
@@ -294,6 +273,10 @@ def note_cloud_refusal(
         entry["cap"] = max(1, min(cloud_account_cap(entry), len(active)))
         entry["refused_at"] = f"{now:%Y-%m-%dT%H:%M:%SZ}"
         entry["refused_why"] = why[-300:]
+        if CLOUD_SUBSCRIPTION_REFUSAL_RE.search(why):
+            entry["limited_until"] = _refusal_reset(why, now)
+            entry["limited_why"] = why[-300:]
+            entry["limited_source"] = CLOUD_HOLD_STAMP
         return int(entry["cap"])
 
 
@@ -315,13 +298,12 @@ def record_cloud_rate(
     *,
     now: datetime | None = None,
 ) -> str | None:
-    """Record the rate-limit reading a session of the account carried (``rateLimitType``, ``status``,
-    ``resetsAt``). Positive recorded credit permits subscription warnings unless a later promotional fallback
-    established it was spent. Refused readings always hold until reset. Returns why it is held, or None."""
+    """Record the subscription rate reading a session of the account carried (``rateLimitType``, ``status``,
+    ``resetsAt``) as telemetry. A cloud session draws on the cloud credit, never on that subscription limit, so no
+    reading holds the account: the answer is always None (a hold comes from a refused start, ``note_cloud_refusal``)."""
     if not isinstance(rate, Mapping):
         return None
     now = now or datetime.now(UTC)
-    kind, status = str(rate.get("rateLimitType") or ""), str(rate.get("status") or "")
     resets = rate.get("resetsAt")
     until = (
         f"{datetime.fromtimestamp(float(resets), UTC):%Y-%m-%dT%H:%M:%SZ}"
@@ -329,38 +311,13 @@ def record_cloud_rate(
         else f"{now + timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}"
     )
     with _cloud_state(pdir) as state:
-        entry = state["accounts"].setdefault(account, {})
-        previous = entry.get("rate") or {}
-        stamp = f"{now:%Y-%m-%dT%H:%M:%SZ}"
-        if (
-            kind
-            and kind != CLOUD_PROMOTIONAL
-            and previous.get("type") == CLOUD_PROMOTIONAL
-        ):
-            entry["promotional_fallback_at"] = stamp
-        # Release the legacy warning before replacing its rate, so a different subscription type cannot hide it.
-        if _credit_releases_warning(entry):
-            entry.pop("limited_until", None)
-            entry.pop("limited_why", None)
-        why = None
-        if status and status not in CLOUD_RATE_OK:
-            why = f"{kind or 'rate'} limit {status}"
-            # Keep a refusal even if later warning/fallback readings replace the account's latest rate.
-            entry["rate_refused_until"], entry["rate_refused_why"] = until, why
-        elif kind and kind != CLOUD_PROMOTIONAL:
-            if _spent_cloud_credit(entry):
-                why = f"promotional cloud credit switched to its {kind} subscription limit"
-            elif status == "allowed_warning" and not _positive_cloud_credit(entry):
-                why = f"draws on its {kind} subscription limit at a warning, not the cloud credit"
-        entry["rate"] = {
-            "type": kind,
-            "status": status,
+        state["accounts"].setdefault(account, {})["rate"] = {
+            "type": str(rate.get("rateLimitType") or ""),
+            "status": str(rate.get("status") or ""),
             "resets_at": until,
-            "read_at": stamp,
+            "read_at": f"{now:%Y-%m-%dT%H:%M:%SZ}",
         }
-        if why:
-            entry["limited_until"], entry["limited_why"] = until, why
-    return why
+    return None
 
 
 # Reuse fresh verdicts: network probes can delay a pick until its ordering is stale.
@@ -520,6 +477,7 @@ def mark_cloud_limited(pdir: Path, account: str, until: str, why: str = "") -> N
     with _cloud_state(pdir) as state:
         entry = state["accounts"].setdefault(account, {})
         entry["limited_until"] = until
+        entry["limited_source"] = CLOUD_HOLD_STAMP
         if why:
             entry["limited_why"] = why
         else:
