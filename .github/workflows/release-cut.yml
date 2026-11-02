@@ -454,7 +454,7 @@ jobs:
             --body "$(printf '%s\n' \
               "## Summary" \
               "" \
-              "Automated post-release disarm step (OMN-18010, porting OMN-13912). Publishing \`${RELEASED_VERSION}\` left dev's \`[project].version\` equal to the highest published tag, which ARMS the OMN-16344 release-identity gate (\`scripts/check_release_identity.py\`) against every subsequent dev PR that touches \`src/**\`." \
+              "Automated post-release disarm step (OMN-18010, porting OMN-13912). Publishing \`${RELEASED_VERSION}\` left dev's \`[project].version\` equal to the highest published tag, which ARMS the OMN-16344 release-identity gate (omnibase_core's \`check-release-identity\` hook) against every subsequent dev PR that touches \`src/**\`." \
               "" \
               "This PR bumps \`[project].version\` to \`${TARGET}\` and re-locks \`uv.lock\`, so the gate is disarmed by the same flow that armed it rather than by whichever unrelated PR trips it first." \
               "" \

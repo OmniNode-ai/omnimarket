@@ -98,7 +98,6 @@ scripts/audit/market_node_runtime_dogfood.py
 scripts/audit/raw_env_usage_audit.py
 scripts/backfill_llm_call_metrics.sh
 scripts/check_dep_provenance.py
-scripts/check_release_identity.py
 scripts/ci/__init__.py
 scripts/ci/_wire_compat_probe.py
 scripts/ci/adequacy_receipt.py
@@ -119,7 +118,6 @@ scripts/ci/check_generated_checks_red_derivable.py
 scripts/ci/check_github_token_env_reads.py
 scripts/ci/check_golden_chain_coverage.py
 scripts/ci/check_hold_gate_selftest.py
-scripts/ci/check_integration_skips.py
 scripts/ci/check_lane_job_placement.py
 scripts/ci/check_merge_reason_codes.py
 scripts/ci/check_migration_base_before_view.py
@@ -175,7 +173,6 @@ scripts/ci/run_dep_health_sweep.py
 scripts/ci/run_quality_gate_calibration.py
 scripts/ci/run_runtime_profiles_validator.py
 scripts/ci/run_shadow_slice.py
-scripts/ci/skip_count_ratchet.py
 scripts/ci/test_selection_loader.py
 scripts/ci/test_selection_models.py
 scripts/ci/verify_pypi_pin_resolvability.py
@@ -232,7 +229,6 @@ scripts/validate_manifest.py
 scripts/validate_node_drift.py
 scripts/validate_skill_mapping_input_coverage.py
 scripts/validate_state_coverage.py
-scripts/validation/check_exposed_identifiers.py
 scripts/validation/check_internal_relation_tenant_posture.py
 scripts/validation/check_leaked_literals.sh
 scripts/validation/check_precommit_additional_dependencies.sh
@@ -245,7 +241,6 @@ scripts/validation/run_topic_lint.sh
 scripts/validation/validate_contract_overlay_boundary.py
 scripts/validation/validate_no_env_fallbacks.py
 scripts/validation/validate_precommit_fail_loud.py
-scripts/validation/validate_precommit_interpreter.py
 scripts/validation/validate_precommit_pin_parity.py
 scripts/verify_omn15359_ac3_replay.py
 src/omnimarket/__init__.py

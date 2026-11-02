@@ -1412,7 +1412,7 @@ prepush_remote_argv() {
 # This leg used to build its transplant with `git bundle create "$bundle" HEAD`,
 # which packs only the commits reachable from HEAD and NO ref under refs/tags/.
 # Every remote clone, on every host, on every push, therefore had ZERO tags --
-# and scripts/check_release_identity.py derives "the latest published version"
+# and omnibase_core's check-release-identity runtime derives "the latest published version"
 # from `git tag --list`. With no tags it silently took its "no published tag
 # yet" branch, so three tests that assert the version-ahead message went red on
 # the remote host while passing locally at the identical SHA (first seen on h101

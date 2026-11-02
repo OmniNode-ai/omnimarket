@@ -80,8 +80,11 @@ jobs:
       - name: Interpreter-resolution gate (no bare `python` in hook entries)
         working-directory: ${{ github.workspace }}
         run: |
-          uv run --no-project --with pyyaml \
-            python3 scripts/validation/validate_precommit_interpreter.py
+          # OMN-21940: omnibase_core's runtime, at the dev-merge tag the pre-commit
+          # hook 'precommit-interpreter-resolution' pins.
+          uv run --no-project \
+            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            python -m omnibase_core.nodes.node_precommit_interpreter_check_compute.runtime_precommit_interpreter_check
 
       - name: Pin-parity check (pre-commit rev vs CI-pinned SHA)
         working-directory: ${{ github.workspace }}

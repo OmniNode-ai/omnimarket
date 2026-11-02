@@ -1,0 +1,54 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21940"
+title: "omnimarket deletes its five repository copies of core validators and consumes the core hook ids (T2.2 slice)"
+summary: "Deletes the five repository copies of core validators (exposed identifiers, release identity, skip-count ratchet, integration skips, pre-commit interpreter resolution) with their local hook entries and their tests. The hook ids exposed-identifier-gate, check-release-identity, skip-count-ratchet, integration-skip-guard and precommit-interpreter-resolution resolve to the omnibase_core hook repository, and every workflow step that ran a script runs the same core runtime at the same dev-merge tag. This repository keeps only the inputs: the exposed-identifier denylist, config/skip_count_baseline.yaml and scripts/ci/integration_skip_guard.yaml. No runtime code changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21940-core-hook-ids"
+    statement: |-
+      The five hook ids resolve to the omnibase_core hook repository and no deleted script name remains in the tree.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: git grep for the five script names on the PR head returns nothing and each of the five hook ids in .pre-commit-config.yaml resolves to repo [https://github.com/OmniNode-ai/omnibase_core](<https://github.com/OmniNode-ai/omnibase_core>) -- falsifier: uv run pytest of a case that parses .pre-commit-config.yaml for the five hook ids, plus git grep for the five script paths"
+  - id: "req-omn21940-no-caller-left"
+    statement: |-
+      No test or workflow calls a deleted script, and the tests that referenced the scripts pass against the core runtimes.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: no test or workflow in the repository still calls a deleted script, and the affected tests pass -- falsifier: uv run pytest tests/unit -q over the modules that referenced the five scripts"
+evidence_requirements:
+  - kind: "tests"
+    description: "The five hook ids resolve to the core hook repository, the deleted scripts are absent, and the tests that referenced them pass."
+    command: "uv run pytest tests/ci/test_core_validator_hooks_omn21940.py tests/ci/test_skip_count_ratchet_omn18790.py tests/ci/test_nightly_chain_skip_guard.py tests/ci/test_post_release_dev_bump_omn18010.py tests/unit/scripts/test_leak_gate.py tests/unit/scripts/test_post_release_dev_bump.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21940-core-hook-ids"
+    description: "The five hook ids are declared once each, under the omnibase_core hook repository, and the five script paths are absent from the tree."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_core_validator_hooks_omn21940.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21940-no-script-name-left"
+    description: "git grep for the five script names finds nothing outside the pinned census of other repositories' check_values (tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py, verbatim data that names the omnibase_infra copy of one script by URL and is marked do-not-hand-edit). The patterns spell one underscore as a bracket class so that this file is not a hit for its own grep."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -c '! git grep -n -E \"check_exposed[_]identifiers|check_release[_]identity|skip_count_ratchet[.]py|check_integration[_]skips|validate_precommit[_]interpreter\" -- . \":(exclude)tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py\"'"
+        cwd: "."
+  - id: "dod-omn21940-affected-tests"
+    description: "The test modules that referenced the five scripts pass: the skip-count ratchet suite and the nightly chain guard suite now drive the core runtimes, the post-release bump proof runs the core release-identity runtime, and the leak-gate wrapper suite no longer copies the exposed-identifier script."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_skip_count_ratchet_omn18790.py tests/ci/test_nightly_chain_skip_guard.py tests/ci/test_post_release_dev_bump_omn18010.py tests/unit/scripts/test_leak_gate.py tests/unit/scripts/test_post_release_dev_bump.py -q --no-cov"
+        cwd: "."
