@@ -1,82 +1,83 @@
----
-schema_version: "1.0.0"
-ticket_id: "OMN-21115"
-title: "TA.13 Receipts projection and install confirmation"
-summary: "First slice: node_context_install_confirm_compute, a pure compute node running the plan section 6 boundary algorithm over a session's captured transcript records. It selects the current boundary on the active chain, extracts each boundary's replacement run (excluding preserved messages and the records /compact appends), hashes it the way the compaction orchestrator hashes installed_messages_hash, derives one immutable installation fact per activation, and reports the per-session current context with retirements. The receipts projection fold and its effect-class writer follow in a later slice."
+schema_version: 1.0.0
+ticket_id: OMN-21115
+title: TA.13 Receipts projection and install confirmation
+summary: Adds the install-confirm trigger effect node, which consumes the session-content projection's applied event, builds the request through the request compute, derives the confirmation through the install-confirm compute and publishes it on the completed topic the receipts projection folds. A rows_upserted of zero publishes nothing. The compute, fold and writer already on dev are unchanged.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-install-confirm-boundary-algorithm"
-    statement: "The boundary algorithm derives installation facts and the current context from captured compact records, order-independently and without revising a fact once derived."
+  - id: req-omn21115-ta13
+    statement: The install-confirm trigger runs on the applied event and the receipts replay uses only the fold.
     acceptance:
-      - id: "AC1"
-        statement: "AC1: on P6-recorded sessions, captured: a custom compaction yields `installed` with the boundary uuid; a tampered copy yields `install_mismatch`; custom then native (v6, corrected) keeps `installed` for the custom activation, records it `retired` at the native boundary in the current-context projection, and makes the native boundary current; an activation published before a native boundary and never installed yields `not_installed(native_compaction)`; native then custom yields `installed` for the custom one; a discarded precompute yields `not_installed(not_selected)`; a preserved message containing an older activation line is never selected; a truncated record yields `uncertain`; a resumed and a forked session (per P11c) select the boundary on their own active chain; a later captured turn with no compact record yields `uncertain(capture_gap)` -- falsifier: fixture table."
-      - id: "AC2"
-        statement: "AC2 (install-confirm slice): every permutation of a fixture record and activation set, with duplicates, yields the same installation fact per activation and the same current-context state per session -- falsifier: two permutations with different states. The per-candidate fold of prepared receipts waits on the receipts projection slice."
-      - id: "AC3"
-        statement: "AC3 (v6): no installation fact changes after it is first derived: replaying a session's events with a later boundary appended leaves every earlier activation's installation fact byte-identical -- falsifier: an installation fact that differs between the two replays."
+      - id: AC1
+        statement: "AC1: on P6-recorded sessions, captured: a custom compaction yields `installed` with the boundary uuid; a tampered copy yields `install_mismatch`; custom then native (v6, corrected) keeps `installed` for the custom activation, records it `retired` at the native boundary in the current-context projection, and makes the native boundary current; an activation published before a native boundary and never installed yields `not_installed(native_compaction)`; native then custom yields `installed` for the custom one; a discarded precompute yields `not_installed(not_selected)`; a preserved message containing an older activation line is never selected; a truncated record yields `uncertain`; a resumed and a forked session (per P11c) select the boundary on their own active chain; a later captured turn with no compact record yields `uncertain(capture_gap)` -- falsifier: fixture table"
+      - id: AC2
+        statement: "AC2: every permutation of a fixture event set, with duplicates, folds to the same state per candidate and per activation, and to the same current-context state per session -- falsifier: two permutations with different states"
+      - id: AC3
+        statement: "AC3: no installation fact changes after it is first derived: replaying a session's events with a later boundary appended leaves every earlier activation's installation fact byte-identical -- falsifier: an installation fact that differs between the two replays"
+      - id: AC4
+        statement: "AC4: the writer reports `rows_upserted` greater than zero for a replayed event set -- falsifier: zero rows with committed offsets (the rule 7a symptom)"
+      - id: AC5
+        statement: "AC5: replay rebuilds the table without invoking any node but the fold -- falsifier: a model, CLI or transcript read during replay"
 evidence_requirements:
-  - kind: "tests"
-    description: "AC1 to AC3 in the install-confirm fixture table."
-    command: "uv run pytest tests/nodes/node_context_install_confirm_compute -q -p no:randomly --no-cov"
+  - kind: tests
+    description: Trigger, compute, fold and writer suites at the pushed head.
+    command: uv run pytest tests/nodes/node_context_install_confirm_trigger_effect -q --no-cov
 emergency_bypass:
   enabled: false
-  justification: ""
-  follow_up_ticket_id: ""
+  justification: ''
+  follow_up_ticket_id: ''
 dod_evidence:
-  - id: "dod-omn21115-ac1"
-    description: "AC1: the fixture table: installed, install_mismatch, custom then native with retirement, not_installed(native_compaction), native then custom, not_installed(not_selected), preserved activation line never selected, truncated record uncertain, resumed and forked chains, capture_gap, and a P6-shaped transcript parse."
-    source: "manual"
+  - id: dod-omn21115-ac1
+    description: "AC1 is the fixture table already on dev (install-confirm and current-context fold tests, one case per line of the criterion) plus the trigger chain: an applied event with a custom compaction yields a confirmation whose installation fact is installed, equal to the compute node's result for the built request. The live captured-session leg is owed: this lane has no dev-bus login with the hook-emit grants."
+    source: manual
+    binds_ac:
+      - AC1
     checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'installed_at_its_boundary or install_mismatch or retires_it or not_installed_native or installs_the_custom or not_selected or never_selected or uncertain or own_active_chain or capture_gap or p6_shaped or mixed_session_fixture_table'"
-    binds_ac: ["AC1"]
-  - id: "dod-omn21115-ac2"
-    description: "AC2: 200 shuffled orderings of a three-boundary session's records and activations, each with duplicates added, give one serialized result."
-    source: "manual"
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute tests/nodes/node_context_compaction_receipts_fold_compute tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21115-ac2
+    description: "AC2 is the permutation-with-duplicates tests of the install-confirm compute and of the receipts and current-context folds, both on dev."
+    source: manual
+    binds_ac:
+      - AC2
     checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'every_permutation'"
-    binds_ac: ["AC2"]
-  - id: "dod-omn21115-ac3"
-    description: "AC3: appending a later native boundary leaves every earlier installation fact byte-identical."
-    source: "manual"
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py::test_every_permutation_with_duplicates_folds_to_one_result tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py::test_every_permutation_with_duplicates_folds_to_one_state tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py::test_200_permutations_with_random_duplicate_insertion -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21115-ac3
+    description: "AC3 is the append-a-later-boundary tests of the compute and of the fold, both on dev."
+    source: manual
+    binds_ac:
+      - AC3
     checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'never_changes_an_earlier_fact'"
-    binds_ac: ["AC3"]
-  - id: "dod-omn21115-contract"
-    description: "The node contract names its handler, its input and output models, and a terminal event among its publish topics."
-    source: "manual"
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py::test_appending_a_later_boundary_never_changes_an_earlier_fact tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py::test_later_boundary_preserves_earlier_activation_folds -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21115-ac4
+    description: "AC4 is the writer suite on dev plus a new chain test: a confirmation the trigger produces, replayed twice, reaches the writer and reports rows_upserted above zero with every row verdict installed; the writer suite also pins zero for a refused insert."
+    source: manual
+    binds_ac:
+      - AC4
     checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py -q -p no:randomly --no-cov -k 'contract_names'"
-  - id: "dod-omn21115-deploy-container-install-confirm"
-    description: "Hosted deploy probe. An ephemeral Python 3.12 container installs the read-only checkout into /tmp with uv sync --frozen --no-dev without omnibase-infra, whose git source needs a git executable the slim image does not carry and which the handler does not import, feeds a P6-shaped custom compaction (boundary, three chained replacement records, the /compact caveat) and its activation through the product handler, and asserts the activation is installed at the boundary uuid and is the current context. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
-    source: "manual"
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_compaction_receipts_projection_writer.py tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py::test_replayed_confirmation_is_written_with_rows_upserted_above_zero -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21115-ac5
+    description: "AC5 is a new test that blocks process spawn, network connect and file open while the fold rebuilds the receipt rows from a stored confirmation."
+    source: manual
+    binds_ac:
+      - AC5
     checks:
-      - check_type: "command"
-        check_value: |-
-          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          ghcr.io/astral-sh/uv:python3.12-bookworm-slim \
-          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
-          import uuid
-          from omnimarket.models.context_install_confirm import ModelCapturedTranscriptRecord as R, ModelInstallConfirmRequest as Q, ModelPublishedActivation as A
-          from omnimarket.models.context_pack_render import ModelContextPackRenderMessage as M
-          from omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm import HandlerContextInstallConfirm as H, observed_messages_hash as h
-          a = uuid.uuid4()
-          msgs = [("user", "legend"), ("assistant", "ok"), ("user", "trailer\nactivation_id: %s" % a)]
-          t = "2026-10-17T12:00:10Z"
-          rs = [R(uuid="b1", record_type="system", subtype="compact_boundary", logical_parent_uuid="p0", timestamp=t)]
-          p = "b1"
-          for i, (role, text) in enumerate(msgs):
-              rs.append(R(uuid="r%d" % i, parent_uuid=p, record_type=role, role=role, text=text, timestamp=t)); p = "r%d" % i
-          rs.append(R(uuid="c1", parent_uuid=p, record_type="user", role="user", text="<local-command-caveat>", is_meta=True, timestamp="2026-10-17T12:00:11Z"))
-          act = A(activation_id=a, installed_messages_hash=h(M(role=r, text=x) for r, x in msgs), published_at="2026-10-17T12:00:05Z")
-          out = H().handle(Q(session_id="s", records=tuple(rs), activations=(act,)))
-          [f] = out.facts
-          assert f.fact.value == "installed" and f.boundary_uuid == "b1", out
-          assert out.current.boundary_uuid == "b1" and out.current.activation_id == a, out
-          print(f.fact.value, f.boundary_uuid, f.observed_hash)'
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py::test_replay_runs_only_the_fold_with_no_process_network_or_transcript_read -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21115-integration-proof
+    description: The pushed head ran the trigger, install-confirm, receipts fold and writer suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live compaction leg stays owed, because this lane has no dev-bus login with the hook-emit grants.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21115 -- uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect tests/nodes/node_context_install_confirm_compute tests/nodes/node_context_compaction_receipts_fold_compute tests/test_compaction_receipts_projection_writer.py -q --no-cov
+        cwd: .

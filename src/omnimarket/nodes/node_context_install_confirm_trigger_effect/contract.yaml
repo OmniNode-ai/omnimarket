@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_context_install_confirm_trigger_effect
+version: "1.0.0"
+contract_name: node_context_install_confirm_trigger_effect
+node_name: node_context_install_confirm_trigger_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+description: >
+  Triggered by the session-content projection's applied event. Reads the event's
+  session captured compact content and published activations through
+  ProtocolSessionCompactSource, builds the request with
+  HandlerContextInstallConfirmRequest and derives the confirmation with
+  HandlerContextInstallConfirm. Only request_ready carries a confirmation, published on
+  the completed topic the receipts projection folds; not_applied (rows_upserted of zero),
+  session_unresolved, no_compact_records and all_packages_unreadable publish nothing.
+  Topics come from this contract.
+input_model:
+  name: ModelSessionContentAppliedEvent
+  module: omnimarket.models.context_install_confirm_trigger
+output_model:
+  name: ModelInstallConfirmTriggerResult
+  module: omnimarket.models.context_install_confirm_trigger
+handler:
+  module: omnimarket.nodes.node_context_install_confirm_trigger_effect.handlers.handler_context_install_confirm_trigger
+  class: HandlerContextInstallConfirmTrigger
+  input_model: omnimarket.models.context_install_confirm_trigger.ModelSessionContentAppliedEvent
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextInstallConfirmTrigger
+        module: omnimarket.nodes.node_context_install_confirm_trigger_effect.handlers.handler_context_install_confirm_trigger
+      event_model:
+        name: ModelSessionContentAppliedEvent
+        module: omnimarket.models.context_install_confirm_trigger
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.projection-session-content-applied.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-install-confirm-completed.v1
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.projection-session-content-applied.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-install-confirm-completed.v1
+terminal_event: onex.evt.omnimarket.context-install-confirm-completed.v1
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21115
+  maturity: alpha
+  tags: [context-compaction, install-confirm]
