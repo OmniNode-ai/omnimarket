@@ -536,6 +536,13 @@ class ModelLandingFacts(BaseModel):
             "there and every live lease there is revoked."
         ),
     )
+    fixer_hold_released_prs: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "owner/repo#n lifted out of a fixer HOLD by a scoped RELEASE: only these "
+            "PRs dispatch inside a held repo; the rest of the repo stays held."
+        ),
+    )
     floor_breached_repos: tuple[str, ...] = Field(
         default=(), description="Repos under their landing floor (the floor alarm)."
     )
