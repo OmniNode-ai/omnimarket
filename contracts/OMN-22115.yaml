@@ -36,25 +36,31 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k lab_host_key_distribution_idempotent"
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn22115-registration"
-    description: "The node is registered as a local-invocation node with its command line, and its contract file exists."
+    description: "The node is registered as a local-invocation node with its command line, and the focused contract test validates its handler routing, models and metadata."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
         check_value: |-
           grep -q '^node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"' pyproject.toml && test -f src/omnimarket/nodes/node_lab_host_key_distribution_effect/contract.yaml
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_key_distribution.py -q --no-cov -k contract_and_models"
+        cwd: "."
   - id: "dod-omn22115-source-readback"
-    description: "Source readback at the evaluated revision: the handler and its ssh transport are present beside the node contract. This needs no lab host and does not assert the live run; the run receipt, the ssh readback from the first host and the queue-status read are recorded on the ticket."
+    description: "Source readback at the evaluated revision: the handler and its ssh transport are present beside the node contract, and the focused tests exercise their file writes and idempotence. This supports AC2's source artifact only; it does not assert that the pull request is merged."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: |-
           grep -q 'class HandlerLabHostKeyDistribution' src/omnimarket/nodes/node_lab_host_key_distribution_effect/handlers/handler_lab_host_key_distribution.py && grep -q 'class SshHostKeyTransport' src/omnimarket/nodes/node_lab_host_key_distribution_effect/handlers/adapter_ssh_host_key_transport.py
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_key_distribution.py -q --no-cov -k 'lab_host_key_distribution_idempotent or local_adapter_reads_public_files'"
+        cwd: "."
   - id: "dod-omn22115-receipt-shape"
     description: "The result model names every ordered pair with a status of ok, planned or refused, so a run receipt that lists twelve pairs as ok is the AC3 evidence; the model case is exercised by the node tests. The live receipt is recorded on the ticket."
     source: "manual"
@@ -62,7 +68,34 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k 'dry_run or refusal or contract_and_models'"
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
+  - id: "dod-omn22115-deploy-local-runtime"
+    description: "Hosted-runner smoke invokes the packaged node through the ONEX local runtime with an in-memory backend and asserts that an unknown host is refused with exit code 2 and no pair operations. It needs no lab network or SSH credentials and does not assert a live rollout or the four-host run."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+          python -c 'import json, sys; from pathlib import Path; Path(sys.argv[1]).write_text(json.dumps({"hosts": ["scope-probe-absent"], "table": {"hosts": [{"name": "scope-probe-present", "target": "present.example.invalid"}]}, "dry_run": True}))' "$probe_dir/request.json";
+          onex node node_lab_host_key_distribution_effect --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json" || { cat "$probe_dir/receipt.json"; exit 1; };
+          python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"].endswith("ModelLabHostKeyDistributionResult"), receipt
+          result = receipt["result"]
+          assert result["exit_code"] == 2, result
+          assert result["refusal"] == "unknown host " + repr("scope-probe-absent"), result
+          assert result["pairs"] == [] and result["dry_run"] is True, result
+          print(json.dumps({"probe": "lab_host_key_distribution_scope_refusal", "run_id": receipt["run_id"], "result": result}, sort_keys=True))
+          ' "$probe_dir/receipt.json"
+        cwd: "."
   - id: "dod-omn22115-integration-proof"
     description: "The pushed head ran the node's tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
