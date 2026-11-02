@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-21949
 title: 'Model before build for the work ledger reducer as the single writer: a TLA+ model with six invariants, three negative controls and a reviewer verdict'
-summary: formal/ledger_reducer_judge is a TLA+ model of the reducer as the single writer of the work ledger (plan task L9, model before build for L10 to L13). A command passes the guard decision, one transaction, the event and receipt through a transactional outbox, and the offset commit, with a worker crash in every gap, a writer redelivery and a relay crash between publish and mark. Two adopted configs pass the six invariants (and a seventh, GuardEffective) and two liveness properties; three controls the plan names (receipt before the commit, ledger_seq outside the transaction, a guard reading a lagging projection) are each rejected by TLC on their named invariant, with five more controls and five reachability witnesses. The results are checked in under formal/ledger_reducer_judge/results. The reviewer verdict of AC3 is the review lane's and is not part of this change, so this contract binds AC1 and AC2 only.
+summary: formal/ledger_reducer_judge is a TLA+ model of the reducer as the single writer of the work ledger (plan task L9, model before build for L10 to L13). A command passes the guard decision, one transaction, the event and receipt through a transactional outbox, and the offset commit, with a worker crash in every gap, a writer redelivery and a relay crash between publish and mark. Two adopted configs pass the six invariants (and a seventh, GuardEffective) and two liveness properties; three controls the plan names (receipt before the commit, ledger_seq outside the transaction, a guard reading a lagging projection) are each rejected by TLC on their named invariant, with five more controls and five reachability witnesses. The results are checked in under formal/ledger_reducer_judge/results. The reviewer verdict of AC3 is in formal/ledger_reducer_judge/REVIEW.txt, written by the review lane.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -16,6 +16,11 @@ requirements:
     acceptance:
       - id: AC2
         statement: 'AC2: each control is rejected by TLC on its named invariant: receipt before the commit violates ReceiptTruth, ledger_seq assigned outside the transaction violates SeqGapless, a guard reading a lagging projection violates GuardSeesAllPriorRows -- falsifier: run_all.sh output listing one counterexample per control naming that invariant'
+  - id: req-omn21949-reviewer-verdict
+    statement: A reviewer lane that is neither the modelling lane nor the 2026-10-04 reviewer returns the verdict approved.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a reviewer lane that is neither the modelling lane nor the 2026-10-04 reviewer returns the verdict approved after every material finding is resolved -- falsifier: a review note beside the model and that lane''s own CLAIM and TERMINAL rows in the ledger'
 evidence_requirements:
   - kind: tests
     description: The model-results suite reads the checked-in TLC results and runs on a lab host at the pushed head.
@@ -42,6 +47,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q --no-cov --tb=line -k "rejected or plan_names or other_controls or has_a_control"
+        cwd: .
+  - id: dod-omn21949-ac3
+    description: AC3 reads the review note beside the model, written by lane ledger-l9c-1102, which names the reviewer lane, the Codex run, the commit reviewed and the verdict approved. The lane's own CLAIM and TERMINAL rows are in the rolling ledger.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: "grep -q '^VERDICT: approved' formal/ledger_reducer_judge/REVIEW.txt"
         cwd: .
   - id: dod-omn21949-integration-proof
     description: The pushed head ran the model-results suite on a lab host against the checked-in TLC outputs and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
