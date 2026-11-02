@@ -39,6 +39,7 @@ import pytest
 from omnibase_core.models.delegation.wire import EnumDelegationTerminalFailureCause
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.routing import delegation_backend_resolution as resolution_mod
 from omnimarket.local_deployment.tenant_identity import read_local_tenant_identity
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -54,7 +55,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution as resolution_mod
 from tests.test_omn19442_declared_local_model_serves_the_ladder import _LOOPBACK
 
 pytestmark = pytest.mark.unit

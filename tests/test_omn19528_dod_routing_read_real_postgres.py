@@ -25,7 +25,10 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader, build_dod_overlay
+from omnimarket.routing.dod_overlay import (
+    PostgresDodOutcomeReader,
+    build_dod_overlay,
+)
 from tests.test_omn19514_ticket_id_projection_real_postgres import _Postgres
 from tests.test_omn19514_ticket_id_projection_real_postgres import postgres as postgres
 

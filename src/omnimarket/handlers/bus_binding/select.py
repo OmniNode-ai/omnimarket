@@ -43,7 +43,8 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
-from omnimarket.handlers.bus_binding import outbox, recovery
+from omnimarket.handlers.bus_binding import exception_actor, outbox, recovery
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.handlers.bus_binding.recovery import ALARM_CLASS, raise_alarm
 from omnimarket.handlers.bus_binding.reducer import (
     reduce_binding_state,
@@ -64,6 +65,8 @@ HEALTH_READ_TIMEOUT_S: Final[float] = 8.0
 _FAILURES: Final = (LabRunBusError, InfraConnectionError, TimeoutError, OSError)
 
 TopicProbe = Callable[[ProtocolLabRunBus], Awaitable[tuple[str, ...]]]
+Alarm = Callable[[Path, ModelBusBindingDecision], str]
+Settle = Callable[[Path, ModelBusBindingDecision], object]
 
 OpenBus = Callable[
     [str, str | None, str | None, Path | None],
@@ -177,15 +180,26 @@ def read_state(state_dir: Path, lane: str) -> EnumBusBindingState:
 
 
 async def replay_outbox(
-    bound: BoundBus, state_dir: Path, send: outbox.Sender, *, limit: int = 50
+    bound: BoundBus,
+    state_dir: Path,
+    send: outbox.Sender,
+    *,
+    limit: int = 50,
+    guard: GuardPorts | None = None,
 ) -> outbox.DrainResult:
-    """Replay under a healthy binding and close its episode only on complete recovery."""
+    """Replay under a healthy binding and close its episode only on complete recovery.
+
+    ``guard`` binds the ledger-guard refusal actor (OMN-21959): a refusal whose cause is gone is settled in
+    code instead of reported, and the open cases of that class whose cause has gone since are resolved.
+    """
     if bound.decision.binding is not EnumBusBinding.DURABLE or bound.decision.degraded:
         raise LabRunBusError("outbox replay requires a healthy durable binding")
     result = await outbox.drain(state_dir, send, limit=limit)
     # OMN-20275: a refusal is reported to its writer by the replay that found it, whether or not an
     # outage episode is open; record_replay below only closes the episode.
-    recovery.report_refused_to_writers(state_dir, bound.decision.observed_at)
+    recovery.report_refused_to_writers(
+        state_dir, bound.decision.observed_at, guard=guard
+    )
     recovery.record_replay(state_dir, bound.decision, result)
     return result
 
@@ -228,6 +242,8 @@ async def open_bound_bus(
     missing_topics: TopicProbe | None = None,
     announce: Callable[[str], None] | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    alarm: Alarm | None = None,
+    settle: Settle | None = None,
 ) -> AsyncIterator[BoundBus]:
     """Open the lane's bus under its declared fallback order.
 
@@ -238,6 +254,9 @@ async def open_bound_bus(
     ``missing_topics`` is given the opened durable bus and returns the required topics the broker does not
     know. A durable bus that passes its health read is still reported degraded, naming those topics, while
     appends wait in the outbox (OMN-21959): the replay could not be answered.
+
+    ``alarm`` and ``settle`` are the exception steps node_bus_binding_reducer/contract.yaml declares under
+    ``exception_settlement`` (OMN-21959); left unbound they are the episode alarm and the exception actor.
     """
     say = announce or _announce_stderr
     opener = open_bus if open_bus is not None else positional_opener(open_lab_run_bus)
@@ -270,6 +289,13 @@ async def open_bound_bus(
             return
 
         directory = state_dir if state_dir is not None else default_state_dir()
+        policy = recovery.settlement_policy()
+        alarm_step: Alarm = alarm or (
+            recovery.alarm_once_per_episode
+            if policy.alarm_scope == "episode"
+            else raise_alarm
+        )
+        settle_step: Settle = settle or exception_actor.settle_open_cases
         prior = read_state(directory, lane)
         async with AsyncExitStack() as stack:
             durable, reason = await _health_read(
@@ -311,14 +337,15 @@ async def open_bound_bus(
                     )
                 yield BoundBus(durable, decision)
                 recovery.resolve_if_recovered(directory, decision)
+                settle_step(directory, decision)
                 return
             if EnumBusBinding.INMEMORY not in order.fallback:
                 raise LabRunBusError(
                     f"durable bus unavailable and no fallback: {reason}"
                 )
-            alarm = raise_alarm(directory, decision)
+            raised = alarm_step(directory, decision)
             if prior is not EnumBusBindingState.DEGRADED:
-                say(f"bus-binding lane={lane} ALARM {alarm}")
+                say(f"bus-binding lane={lane} ALARM {raised}")
             if escalation := recovery.escalate_if_overdue(directory, decision):
                 say(f"bus-binding lane={lane} ESCALATION {escalation}")
             memory = await stack.enter_async_context(

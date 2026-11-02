@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+default: inmemory
+profiles:
+  inmemory:
+    event_bus: inmemory
+  redpanda:
+    event_bus: kafka
+    broker_source: declared_test_bus_lane

@@ -30,16 +30,16 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-    HandlerDelegationWorkflow,
-)
-from omnimarket.routing.backend_placement import (
+from omnimarket.handlers.routing.backend_placement import (
     load_bound_bifrost_placements,
     placement_digest,
 )
-from omnimarket.routing.routing_tiers_path import (
+from omnimarket.handlers.routing.routing_tiers_path import (
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     resolve_routing_tiers_path,
+)
+from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+    HandlerDelegationWorkflow,
 )
 
 pytestmark = pytest.mark.unit
@@ -120,7 +120,7 @@ class TestRoutingTiersHashResolvesRealBytes:
         Provenance recording must not abort a result that has already been
         produced, so — unlike the config loader's rule-8 refusal — this surface
         falls back. The fallback target is the shared
-        ``omnimarket.routing.routing_tiers_path.ROUTING_TIERS_PACKAGED_DEFAULT_PATH``
+        ``omnimarket.handlers.routing.routing_tiers_path.ROUTING_TIERS_PACKAGED_DEFAULT_PATH``
         constant — the same one the routing authority reads — which is what makes
         the ``.parent``-arithmetic drift this ticket fixed impossible to
         reintroduce.

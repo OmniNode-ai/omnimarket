@@ -17,6 +17,7 @@ _REMOTE_LANE_NODES = (
     "node_remote_lane_handoff_compute",
     "node_remote_lane_compute",
     "node_remote_lane_effect",
+    "node_remote_lane_stop_effect",
 )
 
 
