@@ -1,0 +1,102 @@
+schema_version: 1.0.0
+ticket_id: OMN-21883
+title: Host bring-up graph and the pure plan node, refusing cycles, orphans and unknown needs
+summary: node_host_bringup_plan_compute plans a host bring-up over declared target rows, each with a read-only check, a falsifier and an enum action; it refuses a cycle in needs, a need naming no target and a target no top target reaches, never reads an unknown check result as ok, and gives byte-equal output for the same inputs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21883-graph-refusals
+    statement: A cycle in needs is refused naming the cycle, a needs naming no target is refused naming it, and a target no top target reaches is refused.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a cycle in needs is refused naming the cycle, a needs naming no target is refused naming it, and a target no top target reaches is refused -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k graph_refusals -q'
+  - id: req-omn21883-unknown-and-determinism
+    statement: Unknown never yields ok for any check kind and the same inputs give byte-equal output on two runs.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: unknown never yields ok for any check kind and the same inputs give byte-equal output on two runs -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k unknown_and_determinism -q'
+  - id: req-omn21883-row-completeness
+    statement: Every row has a check, a falsifier and an enum action, and a row missing one fails contract load.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: every row has a check, a falsifier and an enum action, and a row missing one fails contract load -- falsifier: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k row_completeness -q'
+evidence_requirements:
+  - kind: tests
+    description: The plan node suites and the 57 target rows suite run at the pushed head.
+    command: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py tests/test_golden_chain_host_bringup_plan_compute.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21883-ac1
+    description: AC1 runs the plan handler on the fixture graph with a cycle, an unknown need and an unreached target.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k graph_refusals -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21883-ac2
+    description: AC2 runs every check kind with an unknown result and compares two runs byte for byte and against the snapshot.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k unknown_and_determinism -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21883-ac3
+    description: AC3 loads the fixture rows and removes or corrupts each required field.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -k row_completeness -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21883-ac3-rows
+    description: AC3 on the generated orchestrator contract loads all 57 rows, counts 4, 7, 15, 8, 7, 9 and 7 per stage, and refuses a planted row without a falsifier.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21883-deploy-hosted-target-rows
+    description: Deploy probe. A hosted import of the shipped orchestrator contract at the checked-out commit loads all 57 target rows through the plan node's own loader and counts 4, 7, 15, 8, 7, 9 and 7 per stage. It fails at the merge base, where the orchestrator contract does not exist. No lab service is required.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
+        cwd: .
+      - check_type: command
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import collections, pathlib, yaml
+          import omnimarket.nodes.node_host_bringup_orchestrator as pkg
+          doc = yaml.safe_load((pathlib.Path(pkg.__file__).parent / "contract.yaml").read_text())
+          rows = doc["targets"]
+          stages = collections.Counter(r["stage"] for r in rows)
+          assert len(rows) == 57, len(rows)
+          assert [stages[s] for s in "ABCDEFG"] == [4, 7, 15, 8, 7, 9, 7], stages
+          '
+        cwd: .
+  - id: dod-omn21883-deploy-gh-api-target-rows
+    description: "Deploy probe. Reads the shipped orchestrator contract at the checked-out commit (git rev-parse HEAD) through the GitHub contents API and requires the stage G target rows in it. It fails at the merge base, where the orchestrator contract does not exist (404). The hosted runner needs only its own GitHub token."
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/test_node_host_bringup_orchestrator_rows.py -q --no-cov --tb=line
+        cwd: .
+      - check_type: command
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_bringup_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q 'stage: G'
+        cwd: .

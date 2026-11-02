@@ -820,6 +820,9 @@ node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
 node_operator_capture_compute = "omnimarket.nodes.node_operator_capture_compute"
 node_ask_state_compute = "omnimarket.nodes.node_ask_state_compute"
 node_ask_state_effect = "omnimarket.nodes.node_ask_state_effect"
+# OMN-21883: pure host bring-up plan over the declared target graph.
+node_host_bringup_plan_compute = "omnimarket.nodes.node_host_bringup_plan_compute"
+node_host_bringup_orchestrator = "omnimarket.nodes.node_host_bringup_orchestrator"
 node_dev_runtime_mutation_guard_effect = "omnimarket.nodes.node_dev_runtime_mutation_guard_effect"
 node_operator_capture_effect = "omnimarket.nodes.node_operator_capture_effect"
 # Lab job supervisor (OMN-20604): the reducer is called in process by the job orchestrator

@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Bring-up Plan Compute (OMN-21883)
+#
+# One pure fold: the declared bring-up target rows (each with a read-only
+# already-satisfied check, a falsifier and an enum action) plus the result of each
+# target's check, into an ordered plan. The plan is refused, naming the offender,
+# for a cycle in needs, a need naming no target, a target no top target reaches,
+# a duplicate target, no top target, or an observation naming no target. An
+# unknown or missing check result never reads as ok: that target acts.
+#
+# No clock, no file, no network, no shell. Rows name things symbolically: a check
+# subject is a lowercase identifier, so a row carries no host, path or version.
+name: "node_host_bringup_plan_compute"
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+lifecycle: experimental
+description: "The ordered host bring-up plan over the declared target graph, or a refusal naming the bad need, cycle or target."
+input_model:
+  name: "ModelHostBringupPlanRequest"
+  module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
+  description: "The declared target rows and each target's observed check result."
+output_model:
+  name: "ModelHostBringupPlan"
+  module: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan"
+  description: "Planned steps in need order with skip or act per target, or the refusals."
+handler:
+  module: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan"
+  class: "HandlerHostBringupPlan"
+  input_model: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan.ModelHostBringupPlanRequest"
+  output_model: "omnimarket.nodes.node_host_bringup_plan_compute.models.model_host_bringup_plan.ModelHostBringupPlan"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan:HandlerHostBringupPlan"
+  handlers:
+    - operation: "plan_host_bringup"
+      handler:
+        name: "HandlerHostBringupPlan"
+        module: "omnimarket.nodes.node_host_bringup_plan_compute.handlers.handler_host_bringup_plan"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.host-bringup-plan-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.host-bringup-plan-completed.v1"
+    failure: "onex.evt.omnimarket.host-bringup-plan-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+dod_evidence:
+  PYTEST:
+    description: "graph refusals, unknown never ok, byte-equal output, row completeness on a fixture graph and snapshot"
+    command: "uv run pytest tests/unit/nodes/test_node_host_bringup_plan_compute.py -q"
+    pass_criteria: "every test passes"
