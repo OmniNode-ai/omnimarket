@@ -4,11 +4,11 @@
 
 from __future__ import annotations
 
+from omnimarket.models.model_ruling_mechanism_owed_request import (
+    ModelRulingMechanismOwedRequest,
+)
 from omnimarket.nodes.node_ruling_mechanism_owed_compute.handlers import (
     HandlerRulingMechanismOwed,
-)
-from omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed import (
-    ModelRulingMechanismOwedRequest,
 )
 
 from .ruling_live_checks import Finding

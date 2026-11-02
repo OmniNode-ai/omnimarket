@@ -54,7 +54,7 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_mechanism_owed_wired.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21893-deploy-source-readback
-    description: Hosted-runner source-artifact readback requires the published handler and contract at the evaluated commit to match this checkout. The node is pure compute with no runtime wiring in this change, so there is no running service to probe; this checks the source artifact, and the focused tests exercise the behaviour.
+    description: Hosted-runner source-artifact readback requires the published handler and contract at the evaluated commit to match this checkout. The owed compute is pure and the tick calls it in process; this checks the source artifact, and the focused tests exercise the behaviour.
     source: manual
     binds_ac:
       - AC1
@@ -66,8 +66,11 @@ dod_evidence:
           readback_dir="$(mktemp -d)"
           trap 'rm -rf "$readback_dir"' EXIT
           revision="$(git rev-parse HEAD)"
-          for module in handlers/handler_ruling_mechanism_owed.py contract.yaml; do
-            path="src/omnimarket/nodes/node_ruling_mechanism_owed_compute/$module"
+          for path in \
+            src/omnimarket/nodes/node_ruling_mechanism_owed_compute/handlers/handler_ruling_mechanism_owed.py \
+            src/omnimarket/nodes/node_ruling_mechanism_owed_compute/contract.yaml \
+            src/omnimarket/models/model_ruling_mechanism_owed_request.py \
+            src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_owed.py; do
             curl --fail --silent --show-error --location --max-time 10 \
               "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
               --output "$readback_dir/source.out"
@@ -77,4 +80,14 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ruling_mechanism_owed_compute/test_ruling_mechanism_owed.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21893-shared-request
+    description: The tick and owed compute share a request model without importing a sibling node's private models; the registered contract and tick replay still report unfinished terminals and omit handed-off terminals.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_no_cross_node_reach_in.py tests/nodes/node_idle_slot_fill_effect/test_mechanism_owed_wired.py tests/nodes/node_ruling_mechanism_owed_compute/test_golden_chain_ruling_mechanism_owed.py -q --no-cov --tb=line
         cwd: .
