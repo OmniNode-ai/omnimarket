@@ -24,7 +24,7 @@ real_options:
   - source: "RULING 2026-11-02T13:11:14Z question="
     text: >-
       Dharma connector: wait for the adapter to merge before placing the Dharma token
-      on the .201 dev lane (option C), or place it now (option A) and get the
+      on the dev lane host (option C), or place it now (option A) and get the
       integration working?
 no_choice:
   - source: "RULING 2026-11-02T12:33:07Z question="

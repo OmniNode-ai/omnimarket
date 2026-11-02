@@ -88,7 +88,7 @@ def test_a_recorded_question_with_no_choice_matches_no_refusal(
 
 # Refusal classes, through the contract's rule data. The strings below are rule
 # mechanics only; the recorded-text falsifiers for AC1 and AC2 are owed.
-RESTORE_ASK = "The .201 dev lane is down. Should I restore the dev lane now?"
+RESTORE_ASK = "The dev lane is down. Should I restore the dev lane now?"
 REBUILD_ASK = "Want me to rebuild the dev runtime on the merged head?"
 SUBAGENT_ASK = "May I send the remaining five files to subagents on this Mac?"
 
@@ -193,3 +193,32 @@ def test_an_invalid_rule_pattern_refuses_at_load() -> None:
             reason="x",
             match_all=("(",),
         )
+
+
+def test_golden_chain_node_question_guard_compute_refuses_a_restore_question() -> None:
+    """Golden chain: the node entry point refuses a restore question by ruling."""
+    request = ModelQuestionGuardRequest(
+        reply_text=RESTORE_ASK,
+        ruling_rows=(
+            f"{RESTORE} | RULING | lane=orchestrator | ticket=OMN-17427 | text=scrubbed",
+        ),
+    )
+    result = NodeQuestionGuardCompute().handle(request)
+    assert result.verdict is EnumQuestionGuardVerdict.REFUSE
+    assert result.ruling_id == RESTORE
+    assert result.rule_id == "dev-lane-restore"
+    assert result.questions
+
+
+def test_golden_chain_node_question_guard_compute_admits_a_statement() -> None:
+    """Golden chain: the node entry point admits a statement with no ruling."""
+    request = ModelQuestionGuardRequest(
+        reply_text="I restored the dev lane at 14:02Z; it is healthy.",
+        ruling_rows=(
+            f"{RESTORE} | RULING | lane=orchestrator | ticket=OMN-17427 | text=scrubbed",
+        ),
+    )
+    result = NodeQuestionGuardCompute().handle(request)
+    assert result.verdict is EnumQuestionGuardVerdict.ADMIT
+    assert result.ruling_id == ""
+    assert result.questions == ()
