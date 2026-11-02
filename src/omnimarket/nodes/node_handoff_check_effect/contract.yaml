@@ -34,6 +34,8 @@ descriptor:
   purity: effectful  # reads the ledger, its archive rolls, the PR watcher state and committed handoffs; probes services; writes only under out_dir
   idempotent: true
   timeout_ms: 120000
+  runtime_profiles:
+    - effects
 
 inputs:
   command:
