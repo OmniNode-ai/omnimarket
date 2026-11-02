@@ -48,3 +48,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_terminal_budget_source_omn21344.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn21344-integration-proof-budget-source"
+    description: "Run the overlay and terminal budget-source checks on a lab host at the PR head. They exercise HandlerDelegateSkill with the real overlay resolver and wire models, including a 600 s overlay accepting a 300 s requested budget, the contract default, and a pre-dispatch refusal. The provider port is a stub; no model inference is claimed. Hosted CI cannot reach the lab, so this unbound check runs only at the local Done gate."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane \"${ONEX_LAB_BUS_LANE:?set the lab bus lane}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21344 --kind test -- uv run --frozen python -B -c 'import os, pytest; os.environ.update(PYTHONDONTWRITEBYTECODE=\"1\", COMPOSE_PROJECT_NAME=\"landing-l23185-lab\"); raise SystemExit(pytest.main([\"tests/unit/delegation/test_terminal_budget_source_omn21344.py\", \"tests/unit/delegation/test_execution_budget_overlay_omn21344.py\", \"-q\", \"--no-cov\"]))'"
+        cwd: "."
