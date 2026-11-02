@@ -73,3 +73,23 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line
     cwd: .
+- id: dod-omn22133-integration-proof
+  description: The pushed head ran the floor node suites on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floor-stations-1102 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_compute/tests src/omnimarket/nodes/node_factory_floor_effect/tests tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov
+    cwd: .
+- id: dod-omn22133-deploy-station-per-task
+  description: Hosted-runner deploy check runs the station-per-task tests at the evaluated commit and requires the contract's station grouping to be task and the heading patterns to be declared in the effect contract. It fails if the packaged contracts drop either.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      export PYTHONDONTWRITEBYTECODE=1
+      grep -Eq 'station_grouping: *task' src/omnimarket/nodes/node_factory_floor_compute/contract.yaml
+      grep -q 'heading_task_patterns:' src/omnimarket/nodes/node_factory_floor_effect/contract.yaml
+      uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -q --no-cov --tb=line
+    cwd: .
