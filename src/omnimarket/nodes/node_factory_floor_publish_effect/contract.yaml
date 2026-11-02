@@ -138,7 +138,7 @@ runtime:
     process_health: process-health.json
     delegation: delegation.json
     status: publish-status.json
-    theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]
+    theme_css: [onex.theme.light.css, onex.theme.dark.css, onex.theme.warm.css]  # vendored OmniUI theme files, not topics
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
