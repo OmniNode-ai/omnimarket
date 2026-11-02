@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_remote_lane_effect.run_retention import retain_run
+from omnimarket.nodes.node_remote_lane_effect.run_retention import _FINAL, retain_run
 
 
 @pytest.fixture
@@ -297,3 +297,232 @@ def test_dispatch_cli_rejects_invalid_request_before_emitting_payload(
     assert not done.stdout
     assert tree.exists()
     assert ctx.exists()
+
+
+@pytest.fixture
+def symlinked(tmp_path: Path):
+    """The recorded host layout: $HOME/lab-run is a symlink to /data/lab-run.
+
+    One ended lane (final receipt, CLAIM closed by a TERMINAL) and one live lane
+    (CLAIM only) share the real root. The launcher addresses both through the link.
+    """
+    real = tmp_path / "data/lab-run"
+    link = tmp_path / "home/lab-run"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(real)
+    trees: dict[str, tuple[Path, Path]] = {}
+    for run in ("rlane-ended-aaa111", "rlane-live-bbb222"):
+        tree, ctx = real / "runs" / run, real / "runs" / (run + ".ctx")
+        tree.mkdir(parents=True)
+        ctx.mkdir()
+        (tree / "work.txt").write_text("scratch")
+        (ctx / "result.txt").write_text("done")
+        trees[run] = (tree, ctx)
+    receipt = {
+        "run_id": "rlane-ended-aaa111",
+        "lane": "ended",
+        "final": True,
+        "status": "done",
+        "ended_at": "2026-11-02T01:00:00Z",
+        "report": str(link / "runs/rlane-ended-aaa111.ctx/result.txt"),
+        "result": "LANE_RESULT outcome=done",
+    }
+    ledger = (
+        "2026-11-02T00:00:00Z | CLAIM | lane=ended | run=rlane-ended-aaa111\n"
+        "2026-11-02T00:30:00Z | CLAIM | lane=live | run=rlane-live-bbb222\n"
+        "2026-11-02T01:00:00Z | TERMINAL | lane=ended | closes-CLAIM=2026-11-02T00:00:00Z\n"
+    )
+    return real, link, trees, receipt, ledger
+
+
+def test_symlinked_lab_root_removes_ended_lane_and_keeps_live_lane(symlinked):
+    real, link, trees, receipt, ledger = symlinked
+    result = retain_run(link, receipt, ledger, delete=True)
+    ended_tree, ended_ctx = trees["rlane-ended-aaa111"]
+    live_tree, live_ctx = trees["rlane-live-bbb222"]
+    assert result["removed"] == ["rlane-ended-aaa111", "rlane-ended-aaa111.ctx"]
+    assert not ended_tree.exists()
+    assert not ended_ctx.exists()
+    assert (live_tree / "work.txt").read_text() == "scratch"
+    assert (live_ctx / "result.txt").read_text() == "done"
+    archive = real / "reports/ended/rlane-ended-aaa111"
+    assert result["archive"] == str(archive)
+    assert (
+        archive / "files/runs/rlane-ended-aaa111.ctx/result.txt"
+    ).read_text() == "done"
+
+
+def test_symlinked_lab_root_still_refuses_a_live_lane(symlinked):
+    _real, link, trees, receipt, ledger = symlinked
+    live = {**receipt, "run_id": "rlane-live-bbb222", "lane": "live"}
+    live.pop("report")
+    with pytest.raises(ValueError, match="ownership"):
+        retain_run(link, live, ledger, delete=True)
+    for tree, ctx in trees.values():
+        assert tree.exists()
+        assert ctx.exists()
+
+
+def test_symlinked_lab_root_standalone_payload(symlinked):
+    import subprocess
+
+    from omnimarket.nodes.node_remote_lane_effect.run_retention import retention_script
+
+    _real, link, trees, receipt, ledger = symlinked
+    done = subprocess.run(
+        ["/bin/sh", "-c", retention_script(str(link), receipt, ledger, delete=True)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.stdout.startswith("LANE-RETENTION ")
+    assert not trees["rlane-ended-aaa111"][0].exists()
+    assert trees["rlane-live-bbb222"][0].exists()
+
+
+def test_symlink_inside_the_tree_is_still_refused_through_a_symlinked_root(
+    symlinked, tmp_path
+):
+    _real, link, trees, receipt, ledger = symlinked
+    outside = tmp_path / "outside"
+    outside.write_text("private")
+    ctx = trees["rlane-ended-aaa111"][1]
+    (ctx / "result.txt").unlink()
+    (ctx / "result.txt").symlink_to(outside)
+    with pytest.raises(ValueError, match="symlink"):
+        retain_run(link, receipt, ledger, delete=True)
+    assert outside.read_text() == "private"
+    assert trees["rlane-ended-aaa111"][0].exists()
+
+
+def test_symlinked_run_directory_inside_the_root_is_still_refused(symlinked, tmp_path):
+    _real, link, trees, receipt, ledger = symlinked
+    tree, ctx = trees["rlane-ended-aaa111"]
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "keep").write_text("keep")
+    ctx.rename(elsewhere / "ctx")
+    ctx.symlink_to(elsewhere / "ctx")
+    with pytest.raises(ValueError, match="symlink"):
+        retain_run(link, receipt, ledger, delete=True)
+    assert (elsewhere / "ctx/result.txt").exists()
+    assert tree.exists()
+
+
+@pytest.mark.parametrize("target", ["data/other", "data/missing"])
+def test_symlink_to_a_directory_not_named_lab_run_is_refused(
+    symlinked, tmp_path, target
+):
+    _real, link, trees, receipt, ledger = symlinked
+    link.unlink()
+    destination = tmp_path / target
+    if target.endswith("other"):
+        (destination / "runs").mkdir(parents=True)
+    link.symlink_to(destination)
+    with pytest.raises(ValueError, match="lab-run"):
+        retain_run(link, receipt, ledger, delete=True)
+    assert all(t.exists() and c.exists() for t, c in trees.values())
+
+
+def test_symlinked_parent_of_the_lab_root_resolves(symlinked, tmp_path):
+    real, _link, trees, receipt, ledger = symlinked
+    parent_link = tmp_path / "mnt"
+    parent_link.symlink_to(real.parent)
+    receipt = {
+        **receipt,
+        "report": str(parent_link / "lab-run/runs/rlane-ended-aaa111.ctx/result.txt"),
+    }
+    result = retain_run(parent_link / "lab-run", receipt, ledger, delete=True)
+    assert result["removed"] == ["rlane-ended-aaa111", "rlane-ended-aaa111.ctx"]
+    assert trees["rlane-live-bbb222"][0].exists()
+
+
+# Every receipt status onex_remote_lane.py can write for a lane that was placed.
+# True: reaches retention (the engine ran or was set up, the run is over, its trees
+# are the lane's own). False: kept, with the reason the closeout cannot or must not
+# retain it. A status the launcher writes before the engine starts never reaches
+# retain_remote at all (it returns when engine_started is false), so these are kept
+# for that reason and not judged by _FINAL.
+_STATUS_TABLE: dict[str, tuple[bool, str]] = {
+    "done": (True, "the engine ended with a result"),
+    "failed": (True, "the engine ended with an unstarted-lane failure"),
+    "lane-error": (True, "the engine ended with an error result"),
+    "no-result": (True, "the engine ended with no result event"),
+    "lane-timeout": (True, "the deadline ended the engine"),
+    "crashed": (True, "the launcher caught an exit; the engine is not running"),
+    "remote-failed": (True, "the remote step failed; no engine is running"),
+    "interrupted": (True, "the launcher was interrupted; the guard ends the engine"),
+    "timeout": (True, "the run timed out"),
+    "host-limited": (True, "the host refused the lane for its limit"),
+    "rejected-no-delegation": (
+        True,
+        "closed by the launcher without a delegation line",
+    ),
+    "guard-runtime-max": (True, "the lane guard ended the engine at its runtime limit"),
+    "guard-memory-max": (True, "the lane guard ended the engine at its memory limit"),
+    "glm-usage-limit": (True, "the engine stopped on the GLM usage limit"),
+    "codex-usage-limit": (True, "the engine stopped on the Codex usage limit"),
+    "host-auth-expired": (True, "the engine stopped on an expired host login"),
+    "landing-failed": (True, "the engine ended; its landing artifact was lost"),
+    "glm-key-missing": (True, "the engine never started; the tree holds no work"),
+    "codex-missing": (True, "the engine never started; the tree holds no work"),
+    "codex-not-logged-in": (True, "the engine never started; the tree holds no work"),
+    "codex-sandbox-unavailable": (
+        True,
+        "the engine never started; the tree holds no work",
+    ),
+    "kb-absent": (True, "the engine never started; the tree holds no work"),
+    "capability-unavailable": (
+        True,
+        "the engine never started; the tree holds no work",
+    ),
+    "running": (False, "the receipt is still open"),
+    "code-edit-rejected": (False, "code-edit lanes keep their draft tree"),
+    "code-edit-failed": (False, "code-edit lanes keep their draft tree"),
+    "cloud-no-pr": (False, "cloud lane: no host run tree to retain"),
+    "pr-opened": (False, "cloud lane: no host run tree to retain"),
+    "no-host": (False, "never placed: no host run tree"),
+    "usage": (False, "refused before placement: no host run tree"),
+    "setup-failed": (False, "engine never started: retain_remote returns first"),
+    "hook-parse-refused": (False, "engine never started: retain_remote returns first"),
+    "claim-refused": (False, "engine never started: retain_remote returns first"),
+    "claim-mirror-failed": (False, "engine never started: retain_remote returns first"),
+    "ledger-refused": (False, "engine never started: retain_remote returns first"),
+    "ledger-snapshot-failed": (
+        False,
+        "engine never started: retain_remote returns first",
+    ),
+    "pr-head-fetch-failed": (
+        False,
+        "engine never started: retain_remote returns first",
+    ),
+    "pr-head-stage-failed": (
+        False,
+        "engine never started: retain_remote returns first",
+    ),
+    "plugins-unresolved": (False, "engine never started: retain_remote returns first"),
+    "brief-changed": (False, "refused before placement: no host run tree"),
+    "ticket-text-refused": (False, "refused before placement: no host run tree"),
+    "timeout-refused": (False, "refused before placement: no host run tree"),
+    "prerequisite-unavailable": (False, "refused before placement: no host run tree"),
+}
+
+
+@pytest.mark.parametrize("status", sorted(_STATUS_TABLE))
+def test_every_launcher_status_reaches_retention_or_is_kept_with_a_reason(
+    symlinked, status
+):
+    _real, link, trees, receipt, ledger = symlinked
+    reaches, reason = _STATUS_TABLE[status]
+    assert reason
+    assert (status in _FINAL) is reaches
+    receipt = {**receipt, "status": status}
+    if reaches:
+        result = retain_run(link, receipt, ledger, delete=True)
+        assert result["removed"] == ["rlane-ended-aaa111", "rlane-ended-aaa111.ctx"]
+    else:
+        with pytest.raises(ValueError, match="not final"):
+            retain_run(link, receipt, ledger, delete=True)
+        assert trees["rlane-ended-aaa111"][0].exists()
+    assert trees["rlane-live-bbb222"][0].exists()
