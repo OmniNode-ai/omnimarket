@@ -18,6 +18,9 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OPEN_ROLE_KEY = "open"
+# The scope kinds a dispatcher asks about; a stop's own kind is the registry's ``scope_key_kind``.
+ENGINE_SCOPE_KIND = "engine"
+REPOSITORY_SCOPE_KIND = "repository"
 CLASS_ID_PATTERN = r"[a-z0-9][a-z0-9-]{1,59}"
 
 
@@ -59,6 +62,15 @@ class EnumStopGateReason(StrEnum):
     OBSERVED = "observed"
     SWARM_LANE = "swarm_lane"
     MODE_MISSING = "mode_missing"
+    EXEMPT = "exempt"
+
+
+class EnumStopExemptionKind(StrEnum):
+    """Work a stop never refuses (it refuses new dispatch only): fixing or landing an open PR, a read-only lane, an armed merge."""
+
+    PR_FIX = "pr_fix"
+    READ_ONLY = "read_only"
+    ARMED_MERGE = "armed_merge"
 
 
 class EnumReadingVerdict(StrEnum):
@@ -213,6 +225,25 @@ class ModelStopPolicy(_Frozen):
     enforce_citations: dict[str, str] = Field(default_factory=dict)
 
 
+class ModelStopExemptionClaim(_Frozen):
+    """What a dispatch says it is: ``ref`` is the PR it fixes or lands, or the lane id of a read-only lane.
+
+    A claim alone admits nothing; ``stop_gate`` honours it only against a ``ModelStopBinding`` the
+    dispatcher or the PR watcher wrote.
+    """
+
+    kind: EnumStopExemptionKind
+    ref: str = Field(min_length=1)
+
+
+class ModelStopBinding(_Frozen):
+    """One exemption the dispatcher bound: an open or armed PR read from the PR watcher state, or a read-only lane it started."""
+
+    kind: EnumStopExemptionKind
+    ref: str = Field(min_length=1)
+    expires_at: datetime | None = None
+
+
 class ModelStopGateRequest(_Frozen):
     """Facts for ``stop_gate``: the dispatch's scope, the open stops, the overlay policy and now."""
 
@@ -221,6 +252,21 @@ class ModelStopGateRequest(_Frozen):
     policy: ModelStopPolicy
     now: datetime
     lane_id: str = ""
+    exemption: ModelStopExemptionClaim | None = None
+    bindings: tuple[ModelStopBinding, ...] = ()
+
+
+class ModelStopGateFacts(_Frozen):
+    """What a dispatching node is handed to ask ``stop_gate``: the open stops (read by the caller from the
+    exception queue), the ``andon_stop`` overlay policy (loaded by the caller), now, and the dispatch's lane and
+    exemption. A node given none of this gates nothing, as before the gate was installed."""
+
+    stops: tuple[ModelStopRecord, ...] = ()
+    policy: ModelStopPolicy
+    now: datetime
+    lane_id: str = ""
+    exemption: ModelStopExemptionClaim | None = None
+    bindings: tuple[ModelStopBinding, ...] = ()
 
 
 class ModelStopGateResult(_Frozen):
@@ -230,4 +276,5 @@ class ModelStopGateResult(_Frozen):
     swarm_lane: str | None = None
     stop_class: str | None = None
     mode: EnumStopMode | None = None
+    exemption: EnumStopExemptionKind | None = None
     line: str
