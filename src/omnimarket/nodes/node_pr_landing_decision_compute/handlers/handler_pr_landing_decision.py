@@ -1015,7 +1015,8 @@ def _read_cause_result(
     if outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED:
         update.update(fix_ref=result.fix_ref, fix_head=result.fix_head, rerun_at=None)
     elif outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
-        # back to the per-PR path at rung 0; the key stays blocked for this set
+        # back to the per-PR path at rung 0; the key stays blocked on this base
+        update["not_shared_base_head"] = _base_head(t, rec.repo)
         current = tuple(
             ModelLandingMemberRef(pr=m.pr, head_sha=t.prs[m.pr].head_sha)
             for m in rec.members
@@ -1062,9 +1063,16 @@ def _holds_members(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
 
 
 def _blocks(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
-    """cause_not_shared blocks its key until a member's head moves or it leaves."""
+    """cause_not_shared blocks its key while the base head it was given on stands.
+
+    A verdict given with no base head read, or read again with none, holds only
+    while every member is open at the head it was given on.
+    """
     if rec.outcome is not EnumLandingOutcome.CAUSE_NOT_SHARED:
         return False
+    now = _base_head(t, rec.repo)
+    if rec.not_shared_base_head is not None and now is not None:
+        return now == rec.not_shared_base_head
     for m in rec.members:
         p = t.prs.get(m.pr)
         if p is None or p.state is not EnumLandingPrState.OPEN:
@@ -1137,6 +1145,7 @@ def _advance_causes(t: _Tick) -> None:
     fresh: dict[str, object] = {
         "parked_until": None,
         "parked_base_head": None,
+        "not_shared_base_head": None,
         "attempts": 0,
         "spawn_failures": 0,
         "outcome": None,
@@ -1365,8 +1374,8 @@ def _upsert_cause(t: _Tick, cause: _Cause) -> None:
     rec = t.causes.get(cause.key)
     if rec is not None and rec.outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
         if _blocks(t, rec):
-            return  # not shared for this member set: no cause, members stay per-PR
-        rec = None  # a member moved: a fresh cause
+            return  # not shared on this base: no cause, members stay per-PR
+        rec = None  # the base moved (or a member, with no base read): a fresh cause
     if rec is None:
         rec = ModelLandingCauseRecord(
             key=cause.key, repo=cause.repo, pairs=tuple(cause.pairs), members=members
