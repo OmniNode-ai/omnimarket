@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 
 from omnimarket.models.claude_code_binding import (
     ModelClientBinding,
+    ModelCompactionClientBinding,
 )
 
 
@@ -16,5 +17,5 @@ class ModelHookAdapterRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    binding: ModelClientBinding
+    binding: ModelCompactionClientBinding | ModelClientBinding
     hook_input: dict[str, JsonValue]
