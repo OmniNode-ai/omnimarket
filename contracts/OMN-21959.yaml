@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-21959
+title: The bus binding reports degraded, naming the missing topic, when appends are queued and a required topic is unknown; a clash on a request id names both digests; the three bus-binding exception classes resolve in code
+summary: The binding reducer counts a durable bus with a queued outbox and an unknown required topic as failed instead of healthy, and open_bound_bus takes a topic probe that feeds it. The ledger append handler names the request id and both digests when a request id already belongs to different rows, and a replay of the same rows stays a duplicate. A detector recognises bus-binding-degraded, bus-binding-outage and bus-binding-outbox-refused from their evidence blocks, and an actor resolves each in code or emits the one case it cannot. The default topic probe against a broker is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21959-bus-binding-exceptions
+    statement: The recorded bus-binding rows become fixtures, and each acceptance criterion has a test that fails without the change.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a regression test built from the recorded 2026-11-02T02:29:40Z STATUS row and the three exception-queue evidence blocks (fixture path under the node tests) fails on the current reducer when pending_outbox is above zero and a topic is unknown, and passes once the binding reports a degraded state naming the missing topic instead of healthy -- falsifier: uv run pytest tests -q -k bus_binding_outbox_degraded'
+      - id: AC2
+        statement: 'AC2: a test asserts a queued append whose request id is already on the ledger is settled as a duplicate, never moved to refused as a loss, and a differing payload under the same id is refused with the id and both digests named -- falsifier: uv run pytest tests -q -k outbox_request_id_clash'
+      - id: AC3
+        statement: 'AC3: a detector test recognises the classes bus-binding-degraded, bus-binding-outage and bus-binding-outbox-refused from their recorded evidence blocks and the actor resolves each in code, emitting to the exception queue only a case it cannot resolve -- falsifier: uv run pytest tests -q -k bus_binding_exception_actor'
+evidence_requirements:
+  - kind: tests
+    description: The bus-binding suites run at the pushed head on a lab host.
+    command: uv run pytest tests/nodes/node_bus_binding_reducer tests/unit/bus_binding tests/handlers/bus_binding -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21959-ac1
+    description: AC1 feeds the recorded STATUS row to the tick reader and the reducer and asserts a degraded state on the in-memory binding naming the missing topic, with each of the two facts alone leaving the health read as it was.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests -q -k bus_binding_outbox_degraded --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21959-ac2
+    description: AC2 replays a landed request through the outbox drain and expects a duplicate with nothing in refused, then queues a different payload under the same id and expects a refusal naming the id and both digests.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests -q -k outbox_request_id_clash --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21959-ac3
+    description: AC3 replays the recorded evidence blocks through the detector and the actor against a temporary exception queue and expects resolved cases to emit nothing and unresolved ones to emit once.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests -q -k bus_binding_exception_actor --no-cov --tb=line
+        cwd: .
