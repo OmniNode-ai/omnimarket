@@ -761,6 +761,12 @@ jobs:
       # SYNC with pre-commit hook 'landing-stall-model'.
       - name: Landing stall model and verdict (OMN-21880)
         run: uv run pytest tests/formal/test_landing_stall_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-21949: the ledger reducer judge model passes both adopted configs, each
+      # control is rejected on its named invariant, and the results match the committed
+      # model, configs and outputs. The reviewer verdict is the review lane's.
+      # SYNC with pre-commit hook 'ledger-reducer-judge-model'.
+      - name: Ledger reducer judge model (OMN-21949)
+        run: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-20601: routing decisions come from overlays, never from omnimarket code
       # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
       # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
