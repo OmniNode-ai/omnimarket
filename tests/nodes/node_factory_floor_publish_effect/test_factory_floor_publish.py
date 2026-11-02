@@ -1449,3 +1449,101 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
         "<b>Stopped:</b> plan file not found: no plan path contains alpha-plan" in lines
     )
     assert "No plan read for this line" not in lines
+
+
+def _cloud_account(name: str, **cells: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "name": name,
+        "ready": True,
+        "login": "ok",
+        "cap": 17,
+        "open_sessions": 0,
+        "record_note": "",
+        "credit_remaining": 244.0,
+        "credit_read_at": "2098-12-30T00:00:00Z",
+        "rate_status": "",
+        "rate_resets_at": "",
+    }
+    return {**base, **cells}
+
+
+def _cloud_card(accounts: list[dict[str, object]], **cloud_cells: object) -> str:
+    record = {
+        **BAYS_RECORD,
+        "floor": {
+            **BAYS_RECORD["floor"],
+            "cloud": {
+                "state": "read",
+                "note": "",
+                "accounts": accounts,
+                "sessions": [],
+                "lamps": [],
+                **cloud_cells,
+            },
+        },
+    }
+    grid = _run_floor({"factory-floor.json": record})["bayGrid"]
+    start = grid.index('id="bay-cloud"')
+    end = grid.find("<article", start)
+    return grid[start : end if end != -1 else len(grid)]
+
+
+def test_page_draws_the_open_figure_the_record_gives_and_the_stale_note_beside_it() -> (
+    None
+):
+    card = _cloud_card(
+        [
+            _cloud_account(
+                "acct-a",
+                open_sessions=3,
+                record_note="the accounts file holds 7 active entries; 3 sessions are open",
+            )
+        ]
+    )
+    assert "3 open of 17" in card
+    assert "the accounts file holds 7 active entries; 3 sessions are open" in card
+
+
+def test_page_draws_both_ready_accounts_and_an_unread_cap_or_credit_as_unread() -> None:
+    card = _cloud_card(
+        [
+            _cloud_account("acct-a", open_sessions=3),
+            _cloud_account(
+                "acct-b",
+                open_sessions=0,
+                cap=None,
+                credit_remaining=None,
+                credit_read_at="",
+            ),
+        ]
+    )
+    assert "acct-a" in card
+    assert "acct-b" in card
+    assert "3 open of 17" in card
+    assert "0 open · cap unread" in card
+    assert "credit unread" in card
+    assert "of 0" not in card
+
+
+def test_page_draws_an_open_count_the_record_could_not_read_as_unread_never_zero() -> (
+    None
+):
+    card = _cloud_card([_cloud_account("acct-a", open_sessions=None)])
+    assert "open unread" in card
+    assert "0 open" not in card
+
+
+def test_page_headline_open_count_is_the_sum_of_the_drawn_accounts() -> None:
+    card = _cloud_card(
+        [
+            _cloud_account("acct-a", open_sessions=3),
+            _cloud_account("acct-b", open_sessions=2, cap=None),
+        ]
+    )
+    per_account = [int(n) for n in re.findall(r'class="mono">(\d+) open', card)]
+    assert per_account == [3, 2]
+    headline = re.search(
+        r'id="cloud-open">(\d+) open sessions across (\d+) accounts', card
+    )
+    assert headline is not None
+    assert (int(headline.group(1)), int(headline.group(2))) == (sum(per_account), 2)

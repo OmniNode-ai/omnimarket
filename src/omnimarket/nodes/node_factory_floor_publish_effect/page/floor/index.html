@@ -712,14 +712,24 @@ function machineHTML(m, byId){
 function cloudHTML(cloud, lanes){
   if (!cloud) return `<article class="mbay unread"><div class="mbay-top"><b>Cloud</b><span class="pill">unread</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
   const live = lanes.filter(l => l.placement === "cloud");
-  const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span>
-      <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}</small></li>`).join("");
+  const openText = a => a.open_sessions == null ? "open unread" : `${num(a.open_sessions)} open`;
+  const capText = a => a.cap != null ? " of " + num(a.cap) : " · cap unread";
+  const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${openText(a)}${capText(a)}</span>
+      <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}${a.record_note ? ` · ${esc(a.record_note)}` : ""}</small></li>`).join("");
+  const drawn = cloud.accounts || [];
+  const openTotal = drawn.reduce((n, a) => n + (a.open_sessions == null ? 0 : a.open_sessions), 0);
+  const openUnread = drawn.filter(a => a.open_sessions == null).length;
+  const acctCount = `${num(drawn.length)} account${drawn.length === 1 ? "" : "s"}`;
+  const headline = !drawn.length ? "" : openUnread === drawn.length
+    ? `<p class="capline" id="cloud-open">open sessions unread across ${acctCount}</p>`
+    : `<p class="capline" id="cloud-open">${num(openTotal)} open sessions across ${acctCount}${openUnread ? ` (${num(openUnread)} unread)` : ""}</p>`;
   const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(s.open ? liveMs(s.run_minutes) : num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
   const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${whenSpan(x.since)}</small></div>`).join("");
   return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
     <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
     <button type="button" class="drill" data-drill="bay-cloud">Show the cloud detail</button>
     ${lamps}
+    ${cloud.state === "read" ? headline : ""}
     ${cloud.state === "read" ? (accts ? `<ul class="sessions">${accts}</ul>` : `<p class="empty">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
     ${cloud.note && cloud.state === "read" ? `<p class="capline">${esc(cloud.note)}</p>` : ""}
     ${live.length ? `<div class="lanes">${live.map(laneHTML).join("")}</div>` : ""}
