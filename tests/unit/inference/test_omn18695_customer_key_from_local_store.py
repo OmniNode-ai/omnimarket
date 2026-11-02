@@ -28,13 +28,15 @@ import pytest
 from omnimarket.inference.local_byok_credential_adapter import (
     LOCAL_CREDENTIAL_TABLE,
     LocalByokCredentialStore,
-    is_local_store_only_ref,
 )
 from omnimarket.inference.secret_store_resolver import (
     LocalSecretNotRegisteredError,
     SecretResolutionError,
     resolve_api_key,
     resolve_api_key_async,
+)
+from omnimarket.nodes.node_secret_store_effect.handlers.delegation_key_store import (
+    is_node_resolved_ref,
 )
 
 pytestmark = pytest.mark.unit
@@ -157,11 +159,11 @@ class TestRefClassification:
         ],
     )
     def test_provider_and_tenant_refs_are_store_only(self, ref: str) -> None:
-        assert is_local_store_only_ref(ref) is True
+        assert is_node_resolved_ref(ref) is True
 
     @pytest.mark.parametrize("ref", ["GITHUB_TOKEN", "SOME_LITERAL", "", None])
     def test_other_refs_are_not_claimed(self, ref: str | None) -> None:
-        assert is_local_store_only_ref(ref) is False
+        assert is_node_resolved_ref(ref) is False
 
     async def test_non_provider_ref_still_resolves_from_env(
         self, monkeypatch: pytest.MonkeyPatch
