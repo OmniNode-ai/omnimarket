@@ -18,22 +18,22 @@ requirements:
     statement: "A database fault answers status=error and never an empty page."
     acceptance:
       - id: "AC2"
-        statement: "AC2: a database fault answers status=error and never an empty page -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect -k \"point_query or fault\" -q"
+        statement: "AC2: a database fault answers status=error and never an empty page -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"point_query or fault\" -q"
   - id: "req-omn21948-ac3-page-watermark"
     statement: "Every point-query answer carries a page size and a watermark."
     acceptance:
       - id: "AC3"
-        statement: "AC3: every point-query answer carries a page size and a watermark -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect -k \"page or watermark\" -q"
+        statement: "AC3: every point-query answer carries a page size and a watermark -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"page or watermark\" -q"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: a timed loop of 100 calls each of holds, inbox and open-claims against a loaded work_ledger_state in a disposable PostgreSQL schema."
     command: "uv run pytest tests/test_work_ledger_point_query_postgres.py -k timed_loop -q --no-cov"
   - kind: "tests"
     description: "AC2: a database fault answers status=error and never an empty page."
-    command: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect -k \"point_query or fault\" -q --no-cov"
+    command: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"point_query or fault\" -q --no-cov"
   - kind: "tests"
     description: "AC3: every point-query answer carries a page size and a watermark."
-    command: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect -k \"page or watermark\" -q --no-cov"
+    command: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"page or watermark\" -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -52,7 +52,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect -k \"point_query or fault\" -q --no-cov --tb=line"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"point_query or fault\" -q --no-cov --tb=line"
         cwd: "."
     binds_ac: ["AC2"]
   - id: "dod-omn21948-ac3-page-watermark"
@@ -60,6 +60,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect -k \"page or watermark\" -q --no-cov --tb=line"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"page or watermark\" -q --no-cov --tb=line"
         cwd: "."
     binds_ac: ["AC3"]
