@@ -1,0 +1,1157 @@
+{
+ "recorded_from": "omnimarket.projection.api_server at 982499aa9 (before the query logic moved into node_projection_query_api_effect)",
+ "responses": {
+  "evidence_correlation_traces": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "IDLE",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": 3,
+    "query_scope": "evidence_pipeline",
+    "row_count": 3,
+    "rows": [
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "pr_number": 103,
+      "repo": "omnimarket",
+      "seq": 3,
+      "ticket_id": "OMN-3"
+     },
+     {
+      "correlation_id": "corr-2",
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "pr_number": 102,
+      "repo": "omnimarket",
+      "seq": 2,
+      "ticket_id": "OMN-2"
+     },
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "pr_number": 101,
+      "repo": "omnimarket",
+      "seq": 1,
+      "ticket_id": "OMN-1"
+     }
+    ],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.correlations.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "evidence_correlations_alias": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "IDLE",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": 1,
+    "query_scope": "evidence_pipeline",
+    "row_count": 1,
+    "rows": [
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "pr_number": 101,
+      "repo": "omnimarket",
+      "seq": 1,
+      "ticket_id": "OMN-1"
+     }
+    ],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.correlations.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "evidence_dashboard": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "IDLE",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": 3,
+    "query_scope": "evidence_pipeline",
+    "row_count": 3,
+    "rows": [
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "pr_number": 103,
+      "repo": "omnimarket",
+      "seq": 3,
+      "ticket_id": "OMN-3"
+     },
+     {
+      "correlation_id": "corr-2",
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "pr_number": 102,
+      "repo": "omnimarket",
+      "seq": 2,
+      "ticket_id": "OMN-2"
+     },
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "pr_number": 101,
+      "repo": "omnimarket",
+      "seq": 1,
+      "ticket_id": "OMN-1"
+     }
+    ],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.stages.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "evidence_events_no_cursor_column": {
+   "body": {
+    "error": "cursor_column_missing",
+    "status": "degraded",
+    "topic": "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+   },
+   "status": 503
+  },
+  "evidence_events_stream": {
+   "body": "event: advisory\ndata: {\"authority\":\"projection_state_required\"}\n\n",
+   "status": 200
+  },
+  "evidence_readiness_degraded": {
+   "body": {
+    "reason": "fixture-degraded",
+    "status": "degraded"
+   },
+   "status": 503
+  },
+  "evidence_stages_alias": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "IDLE",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": 3,
+    "query_scope": "evidence_pipeline",
+    "row_count": 3,
+    "rows": [
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "pr_number": 103,
+      "repo": "omnimarket",
+      "seq": 3,
+      "ticket_id": "OMN-3"
+     },
+     {
+      "correlation_id": "corr-2",
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "pr_number": 102,
+      "repo": "omnimarket",
+      "seq": 2,
+      "ticket_id": "OMN-2"
+     },
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "pr_number": 101,
+      "repo": "omnimarket",
+      "seq": 1,
+      "ticket_id": "OMN-1"
+     }
+    ],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.stages.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "evidence_stages_cursor": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "IDLE",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": 3,
+    "query_scope": "evidence_pipeline",
+    "row_count": 1,
+    "rows": [
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "pr_number": 103,
+      "repo": "omnimarket",
+      "seq": 3,
+      "ticket_id": "OMN-3"
+     }
+    ],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.stages.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "evidence_stages_filter_no_match": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "EMPTY",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": null,
+    "query_scope": "evidence_pipeline",
+    "row_count": 0,
+    "rows": [],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.stages.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "evidence_stages_limit_over_max": {
+   "body": {
+    "detail": [
+     {
+      "ctx": {
+       "le": 500
+      },
+      "input": "501",
+      "loc": [
+       "query",
+       "limit"
+      ],
+      "msg": "Input should be less than or equal to 500",
+      "type": "less_than_equal"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "evidence_stages_pr_number_bad": {
+   "body": {
+    "detail": [
+     {
+      "input": "abc",
+      "loc": [
+       "query",
+       "pr_number"
+      ],
+      "msg": "Input should be a valid integer, unable to parse string as an integer",
+      "type": "int_parsing"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "evidence_stages_ticket_filter": {
+   "body": {
+    "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",
+    "backing": "bus",
+    "degraded_reason": null,
+    "freshness_state": "IDLE",
+    "generated_at": "<now>",
+    "last_event_id": null,
+    "last_ingest_sequence": null,
+    "next_cursor": null,
+    "observed_at": "2026-11-02T00:00:03+00:00",
+    "projection_cursor": 1,
+    "query_scope": "evidence_pipeline",
+    "row_count": 1,
+    "rows": [
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "pr_number": 101,
+      "repo": "omnimarket",
+      "seq": 1,
+      "ticket_id": "OMN-1"
+     }
+    ],
+    "sse_authority": "advisory_only",
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "topic": "onex.snapshot.projection.evidence_pipeline.stages.v1",
+    "version": "1.0.0"
+   },
+   "status": 200
+  },
+  "generate_broker_down": {
+   "body": {
+    "detail": "broker unreachable (fixture)"
+   },
+   "status": 503
+  },
+  "generate_invalid_body": {
+   "body": {
+    "detail": [
+     {
+      "input": {},
+      "loc": [
+       "body",
+       "task_description"
+      ],
+      "msg": "Field required",
+      "type": "missing"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "generate_ok": {
+   "body": {
+    "correlation_id": "fixed-correlation",
+    "topic": "fixed-topic"
+   },
+   "status": 200
+  },
+  "generate_wrong_method": {
+   "body": {
+    "detail": "Method Not Allowed"
+   },
+   "status": 405
+  },
+  "health": {
+   "body": {
+    "backing": "bus",
+    "served_topics": [
+     "onex.snapshot.projection.evidence_pipeline.correlations.v1",
+     "onex.snapshot.projection.evidence_pipeline.live_events.v1",
+     "onex.snapshot.projection.evidence_pipeline.readiness.v1",
+     "onex.snapshot.projection.evidence_pipeline.stages.v1",
+     "onex.snapshot.projection.live-events.v1",
+     "onex.snapshot.projection.summary.v1",
+     "onex.snapshot.projection.tenant-rows.v1"
+    ],
+    "status": "ok"
+   },
+   "status": 200
+  },
+  "morning_alias": {
+   "body": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"refresh\" content=\"30\"><title>ONEX Status \u2014 projection-api (OTEL_SERVICE_NAME unset)</title><style>\n:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;\n--stalled:#f85149;--starved:#d29922;--flowing:#3fb950;--idle:#6e7681;--unknown:#a371f7}\n*{box-sizing:border-box}\nbody{margin:0;background:var(--bg);color:var(--fg);\nfont:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}\nheader{padding:18px 22px;border-bottom:1px solid var(--line);\ndisplay:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}\nh1{font-size:15px;margin:0;letter-spacing:.06em;text-transform:uppercase}\nheader .meta{color:var(--dim);font-size:11px}\nheader .lane{color:var(--fg);font-size:12px;letter-spacing:.04em}\nheader .asof{color:var(--fg);font-size:12px;border:1px solid var(--line);\nborder-radius:4px;padding:2px 9px;background:var(--panel);margin-left:auto}\nmain{padding:18px 22px;display:flex;flex-direction:column;gap:18px}\nsection{border:1px solid var(--line);border-radius:6px;background:var(--panel)}\nsection>h2{margin:0;padding:10px 14px;border-bottom:1px solid var(--line);\nfont-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);\ndisplay:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}\n.body{padding:12px 14px}\n.tiles{display:flex;flex-wrap:wrap;gap:10px}\n.tile{border:1px solid var(--line);border-radius:5px;padding:9px 13px;min-width:118px;\nbackground:#0d1117}\n.tile .k{color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase}\n.tile .v{font-size:20px;margin-top:3px}\n.tile.stalled .v{color:var(--stalled)}.tile.starved .v{color:var(--starved)}\n.tile.flowing .v{color:var(--flowing)}.tile.idle .v{color:var(--idle)}\n.tile.unknown .v{color:var(--unknown)}\n.scroll{overflow-x:auto}\ntable{border-collapse:collapse;width:100%;font-size:12px}\nth{text-align:left;color:var(--dim);font-weight:400;font-size:10px;\nletter-spacing:.08em;text-transform:uppercase;padding:5px 9px;\nborder-bottom:1px solid var(--line);white-space:nowrap}\ntd{padding:5px 9px;border-bottom:1px solid #21262d;white-space:nowrap}\ntbody tr:last-child td{border-bottom:none}\n.num{text-align:right;font-variant-numeric:tabular-nums}\n.state{font-weight:700;letter-spacing:.05em}\n.s-STALLED{color:var(--stalled)}.s-STARVED{color:var(--starved)}\n.s-FLOWING{color:var(--flowing)}.s-IDLE{color:var(--idle)}\n.s-UNKNOWN{color:var(--unknown)}\n.refusal{border-left:3px solid var(--starved);padding:9px 13px;background:#1c1a12}\n.refusal .code{color:var(--starved);font-weight:700}\n.refusal p{margin:5px 0 0;color:var(--dim);max-width:76ch}\n.empty{border-left:3px solid var(--idle);padding:9px 13px;background:#14181d}\n.empty .code{color:var(--idle);font-weight:700}\n.empty p{margin:5px 0 0;color:var(--dim);max-width:76ch}\n.src{color:var(--dim);font-size:10px}\nfooter{padding:14px 22px;border-top:1px solid var(--line);color:var(--dim);\nfont-size:11px;max-width:96ch}\n</style></head><body><header><h1>ONEX Status</h1><span class=\"lane\">projection-api (OTEL_SERVICE_NAME unset)</span><span class=\"asof\">as of <ts></span><span class=\"meta\">auto-refresh 30s</span><span class=\"meta\">7/8 exposures bus-backed</span></header><main><section><h2><span>event flow &mdash; consumer seams</span><span class=\"src\">onex.snapshot.projection.consumer-flow.v1 &middot; latest window n/a</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.consumer-flow.v1</p></div></div></section><section><h2><span>delegation savings &mdash; local vs cloud</span><span class=\"src\">local-vs-cloud cost from the delegation projections</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">NO DELEGATION SAVINGS DATA</span><p>Every delegation-savings exposure below refused or is empty. This panel is wired to those exposures and renders nothing rather than a zero: a rendered zero-dollar total here would be indistinguishable from a measured result. Root cause is tracked by <code>OMN-17298</code> (delegation_events has never held a row; the inference-response projection is RLS-rejected) behind <code>OMN-15800</code> (these exposures have not converted to the bus-fed serving path).</p></div></div><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.delegation.savings.v1</p></div><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.cost.savings-overview.v1</p></div><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.delegation.summary.v1</p></div></div></section><section id=\"topic-activity\"><h2><span>topic activity</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;topic_activity&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>node registry \u2014 runtime services</span><span class=\"src\">onex.snapshot.projection.registration.v1</span></h2><div class=\"body\"><p class=\"src\">which nodes registered and what health they last reported</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.registration.v1</p></div></div></section><section><h2><span>live events</span><span class=\"src\">onex.snapshot.projection.live-events.v1</span></h2><div class=\"body\"><p class=\"src\">the most recent platform events on the live-events exposure &middot; 3 of 3 cached row(s) &middot; latest <ts></p><div class=\"scroll\"><table><thead><tr><th>event_id</th><th>correlation_id</th><th>summary</th><th>created_at</th></tr></thead><tbody><tr><td>e3</td><td>corr-3</td><td>event 3</td><td><ts></td></tr><tr><td>e2</td><td>corr-2</td><td>event 2</td><td><ts></td></tr><tr><td>e1</td><td>corr-1</td><td>event 1</td><td><ts></td></tr></tbody></table></div></div></section><section><h2><span>work events</span><span class=\"src\">onex.snapshot.projection.work.events.v1</span></h2><div class=\"body\"><p class=\"src\">what actors actually did \u2014 the L1 work-ledger rung of OMN-16176, one content-addressed row per session event</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.work.events.v1</p></div></div></section><section><h2><span>sessions</span><span class=\"src\">onex.snapshot.projection.session.replay.v1</span></h2><div class=\"body\"><p class=\"src\">session replay snapshots</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.session.replay.v1</p></div></div></section><section><h2><span>tool / skill executions</span><span class=\"src\">onex.snapshot.projection.skill-executions.v1</span></h2><div class=\"body\"><p class=\"src\">skill and tool execution snapshots</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.skill-executions.v1</p></div></div></section><section><h2><span>runtime promotion gate</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">every prod-promotion-gate evaluation, allowed and refused alike, with the typed refusal code, the authorization grant, the requested digest and the evaluation time</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;promotion_gate&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation liveness</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">one row per declared automation process and host, with its liveness verdict and the reason for it</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation runs</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">the run history each automation process reported, with outcome and the work it did</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness_runs&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation liveness alarms</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">every liveness alarm episode with its delivery and ledger recording receipts</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness_alarms&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>projection exposure census</span><span class=\"src\">7 of 8 bus-backed</span></h2><div class=\"body\"><p class=\"src\">Every exposure this process discovered from contracts. A <code>not_yet_bus_backed</code> exposure answers 503 on the API and renders a refusal here &mdash; it is not an empty dataset.</p><div class=\"scroll\"><table><thead><tr><th>backing</th><th>exposure</th><th>source contract</th><th class=\"num\">cached rows</th><th>latest event</th><th>tenant-scoped</th></tr></thead><tbody><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.correlations.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.live_events.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.readiness.v1</td><td>node_fixture</td><td class=\"num\">0</td><td>\u2014</td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.stages.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.live-events.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.summary.v1</td><td>node_fixture</td><td class=\"num\">1</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.tenant-rows.v1</td><td>node_fixture</td><td class=\"num\">2</td><td><ts></td><td>yes</td></tr><tr><td>not_yet_bus_backed</td><td>onex.snapshot.projection.pending.v1</td><td>node_fixture</td><td class=\"num\">&mdash;</td><td>\u2014</td><td></td></tr></tbody></table></div></div></section></main><footer>Server-rendered from the materialized projection tables the projection writers persist. No client-side fetch, no client-side derivation: every verdict on this page was written by the reducer that owns it. A panel that could not be served says so and names its ticket &mdash; it never renders a zero it did not measure. <code>OMN-17197</code> <code>OMN-17346</code></footer></body></html>",
+   "status": 200
+  },
+  "morning_refresh_too_high": {
+   "body": {
+    "detail": [
+     {
+      "ctx": {
+       "le": 3600
+      },
+      "input": "99999",
+      "loc": [
+       "query",
+       "refresh"
+      ],
+      "msg": "Input should be less than or equal to 3600",
+      "type": "less_than_equal"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "projection_correlation_filter": {
+   "body": {
+    "backing": "bus",
+    "data_freshness": "idle",
+    "generated_at": "<now>",
+    "latest_event_at": "2026-11-02T00:00:03+00:00",
+    "latest_projection_updated_at": "2026-11-02T00:00:03+00:00",
+    "next_cursor": null,
+    "ordering": "created_at DESC",
+    "page_selection": "cursor",
+    "projection_version": "1.0.0",
+    "row_count": 1,
+    "row_limit": 100,
+    "rows": [
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "event_id": "e1",
+      "summary": "event 1"
+     }
+    ],
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "tenant": null,
+    "topic": "onex.snapshot.projection.live-events.v1",
+    "truncated": false
+   },
+   "status": 200
+  },
+  "projection_correlation_filter_unsupported": {
+   "body": {
+    "detail": "Topic 'onex.snapshot.projection.summary.v1' does not expose a 'correlation_id' column and cannot be filtered by it.",
+    "error": "unsupported_filter",
+    "filter": "correlation_id",
+    "topic": "onex.snapshot.projection.summary.v1"
+   },
+   "status": 422
+  },
+  "projection_limit": {
+   "body": {
+    "backing": "bus",
+    "data_freshness": "idle",
+    "generated_at": "<now>",
+    "latest_event_at": "2026-11-02T00:00:03+00:00",
+    "latest_projection_updated_at": "2026-11-02T00:00:03+00:00",
+    "next_cursor": null,
+    "ordering": "created_at DESC",
+    "page_selection": "cursor",
+    "projection_version": "1.0.0",
+    "row_count": 2,
+    "row_limit": 2,
+    "rows": [
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "event_id": "e3",
+      "summary": "event 3"
+     },
+     {
+      "correlation_id": "corr-2",
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "event_id": "e2",
+      "summary": "event 2"
+     }
+    ],
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "tenant": null,
+    "topic": "onex.snapshot.projection.live-events.v1",
+    "truncated": true
+   },
+   "status": 200
+  },
+  "projection_limit_zero": {
+   "body": {
+    "detail": [
+     {
+      "ctx": {
+       "ge": 1
+      },
+      "input": "0",
+      "loc": [
+       "query",
+       "limit"
+      ],
+      "msg": "Input should be greater than or equal to 1",
+      "type": "greater_than_equal"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "projection_not_bus_backed": {
+   "body": {
+    "error": "not_yet_bus_backed",
+    "migration_ticket": "OMN-15800",
+    "status": "degraded",
+    "topic": "onex.snapshot.projection.pending.v1"
+   },
+   "status": 503
+  },
+  "projection_ok": {
+   "body": {
+    "backing": "bus",
+    "data_freshness": "idle",
+    "generated_at": "<now>",
+    "latest_event_at": "2026-11-02T00:00:03+00:00",
+    "latest_projection_updated_at": "2026-11-02T00:00:03+00:00",
+    "next_cursor": null,
+    "ordering": "created_at DESC",
+    "page_selection": "cursor",
+    "projection_version": "1.0.0",
+    "row_count": 3,
+    "row_limit": 100,
+    "rows": [
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "event_id": "e3",
+      "summary": "event 3"
+     },
+     {
+      "correlation_id": "corr-2",
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "event_id": "e2",
+      "summary": "event 2"
+     },
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "event_id": "e1",
+      "summary": "event 1"
+     }
+    ],
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "tenant": null,
+    "topic": "onex.snapshot.projection.live-events.v1",
+    "truncated": false
+   },
+   "status": 200
+  },
+  "projection_order_asc": {
+   "body": {
+    "backing": "bus",
+    "data_freshness": "idle",
+    "generated_at": "<now>",
+    "latest_event_at": "2026-11-02T00:00:03+00:00",
+    "latest_projection_updated_at": "2026-11-02T00:00:03+00:00",
+    "next_cursor": null,
+    "ordering": "created_at ASC",
+    "page_selection": "cursor",
+    "projection_version": "1.0.0",
+    "row_count": 3,
+    "row_limit": 100,
+    "rows": [
+     {
+      "correlation_id": "corr-1",
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "event_id": "e1",
+      "summary": "event 1"
+     },
+     {
+      "correlation_id": "corr-2",
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "event_id": "e2",
+      "summary": "event 2"
+     },
+     {
+      "correlation_id": "corr-3",
+      "created_at": "2026-11-02T00:00:03+00:00",
+      "event_id": "e3",
+      "summary": "event 3"
+     }
+    ],
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:03+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "tenant": null,
+    "topic": "onex.snapshot.projection.live-events.v1",
+    "truncated": false
+   },
+   "status": 200
+  },
+  "projection_order_bad": {
+   "body": {
+    "detail": [
+     {
+      "ctx": {
+       "pattern": "^(?i:asc|desc)$"
+      },
+      "input": "sideways",
+      "loc": [
+       "query",
+       "order"
+      ],
+      "msg": "String should match pattern '^(?i:asc|desc)$'",
+      "type": "string_pattern_mismatch"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "projection_scoped_slug_unresolved": {
+   "body": {
+    "degraded_reason": "this exposure is tenant-scoped and the tenant named for the request does not resolve to a registered tenant on this surface; supply a registered tenant",
+    "error": "tenant_context_unresolved",
+    "migration_ticket": "OMN-15797",
+    "status": "degraded",
+    "tenant_column": "tenant_id",
+    "topic": "onex.snapshot.projection.tenant-rows.v1"
+   },
+   "status": 422
+  },
+  "projection_scoped_tenant_a": {
+   "body": {
+    "backing": "bus",
+    "data_freshness": "idle",
+    "generated_at": "<now>",
+    "latest_event_at": "2026-11-02T00:00:02+00:00",
+    "latest_projection_updated_at": "2026-11-02T00:00:02+00:00",
+    "next_cursor": null,
+    "ordering": "created_at DESC",
+    "page_selection": "cursor",
+    "projection_version": "1.0.0",
+    "row_count": 1,
+    "row_limit": 100,
+    "rows": [
+     {
+      "created_at": "2026-11-02T00:00:01+00:00",
+      "row_id": "a1",
+      "tenant_id": "00000000-0000-4000-8000-00000000000a"
+     }
+    ],
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:02+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "tenant": "00000000-0000-4000-8000-00000000000a",
+    "topic": "onex.snapshot.projection.tenant-rows.v1",
+    "truncated": false
+   },
+   "status": 200
+  },
+  "projection_scoped_tenant_b": {
+   "body": {
+    "backing": "bus",
+    "data_freshness": "idle",
+    "generated_at": "<now>",
+    "latest_event_at": "2026-11-02T00:00:02+00:00",
+    "latest_projection_updated_at": "2026-11-02T00:00:02+00:00",
+    "next_cursor": null,
+    "ordering": "created_at DESC",
+    "page_selection": "cursor",
+    "projection_version": "1.0.0",
+    "row_count": 1,
+    "row_limit": 100,
+    "rows": [
+     {
+      "created_at": "2026-11-02T00:00:02+00:00",
+      "row_id": "b1",
+      "tenant_id": "00000000-0000-4000-8000-00000000000b"
+     }
+    ],
+    "staleness": {
+     "applied_offset": 0,
+     "dropped_since_apply": 0,
+     "dropped_total": 0,
+     "end_offset": 0,
+     "lag_records": 0,
+     "last_applied_event_at": "2026-11-02T00:00:02+00:00",
+     "last_dropped_event_at": null,
+     "partitions_measured": 1,
+     "stale": false
+    },
+    "tenant": "00000000-0000-4000-8000-00000000000b",
+    "topic": "onex.snapshot.projection.tenant-rows.v1",
+    "truncated": false
+   },
+   "status": 200
+  },
+  "projection_scoped_unresolved": {
+   "body": {
+    "degraded_reason": "this exposure is tenant-scoped and no tenant context was resolved for the request; supply ?tenant=<id>",
+    "error": "tenant_context_unresolved",
+    "migration_ticket": "OMN-15797",
+    "status": "degraded",
+    "tenant_column": "tenant_id",
+    "topic": "onex.snapshot.projection.tenant-rows.v1"
+   },
+   "status": 422
+  },
+  "projection_tenant_on_unscoped": {
+   "body": {
+    "detail": "Topic 'onex.snapshot.projection.live-events.v1' declares no 'tenant_column' and cannot be scoped by tenant; its rows are not tenant-partitioned.",
+    "error": "unsupported_filter",
+    "filter": "tenant",
+    "topic": "onex.snapshot.projection.live-events.v1"
+   },
+   "status": 422
+  },
+  "projection_unknown_topic": {
+   "body": {
+    "available_topics": [
+     "onex.snapshot.projection.live-events.v1",
+     "onex.snapshot.projection.summary.v1",
+     "onex.snapshot.projection.pending.v1",
+     "onex.snapshot.projection.tenant-rows.v1",
+     "onex.snapshot.projection.evidence_pipeline.stages.v1",
+     "onex.snapshot.projection.evidence_pipeline.correlations.v1",
+     "onex.snapshot.projection.evidence_pipeline.readiness.v1",
+     "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+    ],
+    "error": "unknown_topic"
+   },
+   "status": 404
+  },
+  "projections": {
+   "body": {
+    "topics": [
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "event_id",
+       "correlation_id",
+       "summary",
+       "created_at"
+      ],
+      "cursor_column": null,
+      "degraded_reason": null,
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "event_id"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "ok",
+      "table": "live_events",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.live-events.v1"
+     },
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "aggregation_key",
+       "total",
+       "created_at"
+      ],
+      "cursor_column": null,
+      "degraded_reason": null,
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "aggregation_key"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "ok",
+      "table": "summary",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.summary.v1"
+     },
+     {
+      "backing": "not_yet_bus_backed",
+      "bus_backed": false,
+      "columns": [
+       "row_id",
+       "created_at"
+      ],
+      "cursor_column": null,
+      "degraded_reason": "not_yet_bus_backed",
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": null,
+      "source_contract": "node_fixture",
+      "status": "degraded",
+      "table": "pending",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.pending.v1"
+     },
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "row_id",
+       "tenant_id",
+       "created_at"
+      ],
+      "cursor_column": null,
+      "degraded_reason": null,
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "row_id"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "ok",
+      "table": "tenant_rows",
+      "tenant_column": "tenant_id",
+      "tenant_scoped": true,
+      "topic": "onex.snapshot.projection.tenant-rows.v1"
+     },
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "seq",
+       "ticket_id",
+       "repo",
+       "pr_number",
+       "correlation_id",
+       "created_at"
+      ],
+      "cursor_column": "seq",
+      "degraded_reason": null,
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "seq"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "ok",
+      "table": "stages",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.evidence_pipeline.stages.v1"
+     },
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "seq",
+       "ticket_id",
+       "repo",
+       "pr_number",
+       "correlation_id",
+       "created_at"
+      ],
+      "cursor_column": "seq",
+      "degraded_reason": null,
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "seq"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "ok",
+      "table": "correlations",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.evidence_pipeline.correlations.v1"
+     },
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "seq",
+       "ticket_id",
+       "repo",
+       "pr_number",
+       "correlation_id",
+       "created_at"
+      ],
+      "cursor_column": "seq",
+      "degraded_reason": "fixture-degraded",
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "seq"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "degraded",
+      "table": "readiness",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.evidence_pipeline.readiness.v1"
+     },
+     {
+      "backing": "bus",
+      "bus_backed": true,
+      "columns": [
+       "seq",
+       "ticket_id",
+       "repo",
+       "pr_number",
+       "correlation_id",
+       "created_at"
+      ],
+      "cursor_column": null,
+      "degraded_reason": null,
+      "degraded_reason_column": null,
+      "freshness_column": "created_at",
+      "freshness_state_column": null,
+      "json_columns": [],
+      "key_columns": [
+       "seq"
+      ],
+      "last_event_id_column": null,
+      "last_ingest_sequence_column": null,
+      "limit": 100,
+      "observed_at_column": null,
+      "order_by": "created_at DESC",
+      "relation": null,
+      "schema": "public",
+      "served_from": "table",
+      "source_contract": "node_fixture",
+      "status": "ok",
+      "table": "live_events",
+      "tenant_column": null,
+      "tenant_scoped": false,
+      "topic": "onex.snapshot.projection.evidence_pipeline.live_events.v1"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "ready": {
+   "body": {
+    "backing": "bus",
+    "failures": {},
+    "served_topics": {
+     "onex.snapshot.projection.evidence_pipeline.correlations.v1": true,
+     "onex.snapshot.projection.evidence_pipeline.live_events.v1": true,
+     "onex.snapshot.projection.evidence_pipeline.readiness.v1": true,
+     "onex.snapshot.projection.evidence_pipeline.stages.v1": true,
+     "onex.snapshot.projection.live-events.v1": true,
+     "onex.snapshot.projection.summary.v1": true,
+     "onex.snapshot.projection.tenant-rows.v1": true
+    },
+    "status": "ready"
+   },
+   "status": 200
+  },
+  "status_page_refresh": {
+   "body": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"refresh\" content=\"60\"><title>ONEX Status \u2014 projection-api (OTEL_SERVICE_NAME unset)</title><style>\n:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;\n--stalled:#f85149;--starved:#d29922;--flowing:#3fb950;--idle:#6e7681;--unknown:#a371f7}\n*{box-sizing:border-box}\nbody{margin:0;background:var(--bg);color:var(--fg);\nfont:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}\nheader{padding:18px 22px;border-bottom:1px solid var(--line);\ndisplay:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}\nh1{font-size:15px;margin:0;letter-spacing:.06em;text-transform:uppercase}\nheader .meta{color:var(--dim);font-size:11px}\nheader .lane{color:var(--fg);font-size:12px;letter-spacing:.04em}\nheader .asof{color:var(--fg);font-size:12px;border:1px solid var(--line);\nborder-radius:4px;padding:2px 9px;background:var(--panel);margin-left:auto}\nmain{padding:18px 22px;display:flex;flex-direction:column;gap:18px}\nsection{border:1px solid var(--line);border-radius:6px;background:var(--panel)}\nsection>h2{margin:0;padding:10px 14px;border-bottom:1px solid var(--line);\nfont-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);\ndisplay:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}\n.body{padding:12px 14px}\n.tiles{display:flex;flex-wrap:wrap;gap:10px}\n.tile{border:1px solid var(--line);border-radius:5px;padding:9px 13px;min-width:118px;\nbackground:#0d1117}\n.tile .k{color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase}\n.tile .v{font-size:20px;margin-top:3px}\n.tile.stalled .v{color:var(--stalled)}.tile.starved .v{color:var(--starved)}\n.tile.flowing .v{color:var(--flowing)}.tile.idle .v{color:var(--idle)}\n.tile.unknown .v{color:var(--unknown)}\n.scroll{overflow-x:auto}\ntable{border-collapse:collapse;width:100%;font-size:12px}\nth{text-align:left;color:var(--dim);font-weight:400;font-size:10px;\nletter-spacing:.08em;text-transform:uppercase;padding:5px 9px;\nborder-bottom:1px solid var(--line);white-space:nowrap}\ntd{padding:5px 9px;border-bottom:1px solid #21262d;white-space:nowrap}\ntbody tr:last-child td{border-bottom:none}\n.num{text-align:right;font-variant-numeric:tabular-nums}\n.state{font-weight:700;letter-spacing:.05em}\n.s-STALLED{color:var(--stalled)}.s-STARVED{color:var(--starved)}\n.s-FLOWING{color:var(--flowing)}.s-IDLE{color:var(--idle)}\n.s-UNKNOWN{color:var(--unknown)}\n.refusal{border-left:3px solid var(--starved);padding:9px 13px;background:#1c1a12}\n.refusal .code{color:var(--starved);font-weight:700}\n.refusal p{margin:5px 0 0;color:var(--dim);max-width:76ch}\n.empty{border-left:3px solid var(--idle);padding:9px 13px;background:#14181d}\n.empty .code{color:var(--idle);font-weight:700}\n.empty p{margin:5px 0 0;color:var(--dim);max-width:76ch}\n.src{color:var(--dim);font-size:10px}\nfooter{padding:14px 22px;border-top:1px solid var(--line);color:var(--dim);\nfont-size:11px;max-width:96ch}\n</style></head><body><header><h1>ONEX Status</h1><span class=\"lane\">projection-api (OTEL_SERVICE_NAME unset)</span><span class=\"asof\">as of <ts></span><span class=\"meta\">auto-refresh 60s</span><span class=\"meta\">7/8 exposures bus-backed</span></header><main><section><h2><span>event flow &mdash; consumer seams</span><span class=\"src\">onex.snapshot.projection.consumer-flow.v1 &middot; latest window n/a</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.consumer-flow.v1</p></div></div></section><section><h2><span>delegation savings &mdash; local vs cloud</span><span class=\"src\">local-vs-cloud cost from the delegation projections</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">NO DELEGATION SAVINGS DATA</span><p>Every delegation-savings exposure below refused or is empty. This panel is wired to those exposures and renders nothing rather than a zero: a rendered zero-dollar total here would be indistinguishable from a measured result. Root cause is tracked by <code>OMN-17298</code> (delegation_events has never held a row; the inference-response projection is RLS-rejected) behind <code>OMN-15800</code> (these exposures have not converted to the bus-fed serving path).</p></div></div><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.delegation.savings.v1</p></div><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.cost.savings-overview.v1</p></div><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.delegation.summary.v1</p></div></div></section><section id=\"topic-activity\"><h2><span>topic activity</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;topic_activity&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>node registry \u2014 runtime services</span><span class=\"src\">onex.snapshot.projection.registration.v1</span></h2><div class=\"body\"><p class=\"src\">which nodes registered and what health they last reported</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.registration.v1</p></div></div></section><section><h2><span>live events</span><span class=\"src\">onex.snapshot.projection.live-events.v1</span></h2><div class=\"body\"><p class=\"src\">the most recent platform events on the live-events exposure &middot; 3 of 3 cached row(s) &middot; latest <ts></p><div class=\"scroll\"><table><thead><tr><th>event_id</th><th>correlation_id</th><th>summary</th><th>created_at</th></tr></thead><tbody><tr><td>e3</td><td>corr-3</td><td>event 3</td><td><ts></td></tr><tr><td>e2</td><td>corr-2</td><td>event 2</td><td><ts></td></tr><tr><td>e1</td><td>corr-1</td><td>event 1</td><td><ts></td></tr></tbody></table></div></div></section><section><h2><span>work events</span><span class=\"src\">onex.snapshot.projection.work.events.v1</span></h2><div class=\"body\"><p class=\"src\">what actors actually did \u2014 the L1 work-ledger rung of OMN-16176, one content-addressed row per session event</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.work.events.v1</p></div></div></section><section><h2><span>sessions</span><span class=\"src\">onex.snapshot.projection.session.replay.v1</span></h2><div class=\"body\"><p class=\"src\">session replay snapshots</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.session.replay.v1</p></div></div></section><section><h2><span>tool / skill executions</span><span class=\"src\">onex.snapshot.projection.skill-executions.v1</span></h2><div class=\"body\"><p class=\"src\">skill and tool execution snapshots</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.skill-executions.v1</p></div></div></section><section><h2><span>runtime promotion gate</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">every prod-promotion-gate evaluation, allowed and refused alike, with the typed refusal code, the authorization grant, the requested digest and the evaluation time</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;promotion_gate&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation liveness</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">one row per declared automation process and host, with its liveness verdict and the reason for it</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation runs</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">the run history each automation process reported, with outcome and the work it did</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness_runs&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation liveness alarms</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">every liveness alarm episode with its delivery and ledger recording receipts</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness_alarms&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>projection exposure census</span><span class=\"src\">7 of 8 bus-backed</span></h2><div class=\"body\"><p class=\"src\">Every exposure this process discovered from contracts. A <code>not_yet_bus_backed</code> exposure answers 503 on the API and renders a refusal here &mdash; it is not an empty dataset.</p><div class=\"scroll\"><table><thead><tr><th>backing</th><th>exposure</th><th>source contract</th><th class=\"num\">cached rows</th><th>latest event</th><th>tenant-scoped</th></tr></thead><tbody><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.correlations.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.live_events.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.readiness.v1</td><td>node_fixture</td><td class=\"num\">0</td><td>\u2014</td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.stages.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.live-events.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.summary.v1</td><td>node_fixture</td><td class=\"num\">1</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.tenant-rows.v1</td><td>node_fixture</td><td class=\"num\">2</td><td><ts></td><td>yes</td></tr><tr><td>not_yet_bus_backed</td><td>onex.snapshot.projection.pending.v1</td><td>node_fixture</td><td class=\"num\">&mdash;</td><td>\u2014</td><td></td></tr></tbody></table></div></div></section></main><footer>Server-rendered from the materialized projection tables the projection writers persist. No client-side fetch, no client-side derivation: every verdict on this page was written by the reducer that owns it. A panel that could not be served says so and names its ticket &mdash; it never renders a zero it did not measure. <code>OMN-17197</code> <code>OMN-17346</code></footer></body></html>",
+   "status": 200
+  },
+  "status_page_refresh_not_int": {
+   "body": {
+    "detail": [
+     {
+      "input": "soon",
+      "loc": [
+       "query",
+       "refresh"
+      ],
+      "msg": "Input should be a valid integer, unable to parse string as an integer",
+      "type": "int_parsing"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "status_page_refresh_too_low": {
+   "body": {
+    "detail": [
+     {
+      "ctx": {
+       "ge": 5
+      },
+      "input": "1",
+      "loc": [
+       "query",
+       "refresh"
+      ],
+      "msg": "Input should be greater than or equal to 5",
+      "type": "greater_than_equal"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "status_page_root": {
+   "body": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"refresh\" content=\"30\"><title>ONEX Status \u2014 projection-api (OTEL_SERVICE_NAME unset)</title><style>\n:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;\n--stalled:#f85149;--starved:#d29922;--flowing:#3fb950;--idle:#6e7681;--unknown:#a371f7}\n*{box-sizing:border-box}\nbody{margin:0;background:var(--bg);color:var(--fg);\nfont:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}\nheader{padding:18px 22px;border-bottom:1px solid var(--line);\ndisplay:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}\nh1{font-size:15px;margin:0;letter-spacing:.06em;text-transform:uppercase}\nheader .meta{color:var(--dim);font-size:11px}\nheader .lane{color:var(--fg);font-size:12px;letter-spacing:.04em}\nheader .asof{color:var(--fg);font-size:12px;border:1px solid var(--line);\nborder-radius:4px;padding:2px 9px;background:var(--panel);margin-left:auto}\nmain{padding:18px 22px;display:flex;flex-direction:column;gap:18px}\nsection{border:1px solid var(--line);border-radius:6px;background:var(--panel)}\nsection>h2{margin:0;padding:10px 14px;border-bottom:1px solid var(--line);\nfont-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);\ndisplay:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}\n.body{padding:12px 14px}\n.tiles{display:flex;flex-wrap:wrap;gap:10px}\n.tile{border:1px solid var(--line);border-radius:5px;padding:9px 13px;min-width:118px;\nbackground:#0d1117}\n.tile .k{color:var(--dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase}\n.tile .v{font-size:20px;margin-top:3px}\n.tile.stalled .v{color:var(--stalled)}.tile.starved .v{color:var(--starved)}\n.tile.flowing .v{color:var(--flowing)}.tile.idle .v{color:var(--idle)}\n.tile.unknown .v{color:var(--unknown)}\n.scroll{overflow-x:auto}\ntable{border-collapse:collapse;width:100%;font-size:12px}\nth{text-align:left;color:var(--dim);font-weight:400;font-size:10px;\nletter-spacing:.08em;text-transform:uppercase;padding:5px 9px;\nborder-bottom:1px solid var(--line);white-space:nowrap}\ntd{padding:5px 9px;border-bottom:1px solid #21262d;white-space:nowrap}\ntbody tr:last-child td{border-bottom:none}\n.num{text-align:right;font-variant-numeric:tabular-nums}\n.state{font-weight:700;letter-spacing:.05em}\n.s-STALLED{color:var(--stalled)}.s-STARVED{color:var(--starved)}\n.s-FLOWING{color:var(--flowing)}.s-IDLE{color:var(--idle)}\n.s-UNKNOWN{color:var(--unknown)}\n.refusal{border-left:3px solid var(--starved);padding:9px 13px;background:#1c1a12}\n.refusal .code{color:var(--starved);font-weight:700}\n.refusal p{margin:5px 0 0;color:var(--dim);max-width:76ch}\n.empty{border-left:3px solid var(--idle);padding:9px 13px;background:#14181d}\n.empty .code{color:var(--idle);font-weight:700}\n.empty p{margin:5px 0 0;color:var(--dim);max-width:76ch}\n.src{color:var(--dim);font-size:10px}\nfooter{padding:14px 22px;border-top:1px solid var(--line);color:var(--dim);\nfont-size:11px;max-width:96ch}\n</style></head><body><header><h1>ONEX Status</h1><span class=\"lane\">projection-api (OTEL_SERVICE_NAME unset)</span><span class=\"asof\">as of <ts></span><span class=\"meta\">auto-refresh 30s</span><span class=\"meta\">7/8 exposures bus-backed</span></header><main><section><h2><span>event flow &mdash; consumer seams</span><span class=\"src\">onex.snapshot.projection.consumer-flow.v1 &middot; latest window n/a</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.consumer-flow.v1</p></div></div></section><section><h2><span>delegation savings &mdash; local vs cloud</span><span class=\"src\">local-vs-cloud cost from the delegation projections</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">NO DELEGATION SAVINGS DATA</span><p>Every delegation-savings exposure below refused or is empty. This panel is wired to those exposures and renders nothing rather than a zero: a rendered zero-dollar total here would be indistinguishable from a measured result. Root cause is tracked by <code>OMN-17298</code> (delegation_events has never held a row; the inference-response projection is RLS-rejected) behind <code>OMN-15800</code> (these exposures have not converted to the bus-fed serving path).</p></div></div><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.delegation.savings.v1</p></div><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.cost.savings-overview.v1</p></div><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.delegation.summary.v1</p></div></div></section><section id=\"topic-activity\"><h2><span>topic activity</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;topic_activity&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>node registry \u2014 runtime services</span><span class=\"src\">onex.snapshot.projection.registration.v1</span></h2><div class=\"body\"><p class=\"src\">which nodes registered and what health they last reported</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.registration.v1</p></div></div></section><section><h2><span>live events</span><span class=\"src\">onex.snapshot.projection.live-events.v1</span></h2><div class=\"body\"><p class=\"src\">the most recent platform events on the live-events exposure &middot; 3 of 3 cached row(s) &middot; latest <ts></p><div class=\"scroll\"><table><thead><tr><th>event_id</th><th>correlation_id</th><th>summary</th><th>created_at</th></tr></thead><tbody><tr><td>e3</td><td>corr-3</td><td>event 3</td><td><ts></td></tr><tr><td>e2</td><td>corr-2</td><td>event 2</td><td><ts></td></tr><tr><td>e1</td><td>corr-1</td><td>event 1</td><td><ts></td></tr></tbody></table></div></div></section><section><h2><span>work events</span><span class=\"src\">onex.snapshot.projection.work.events.v1</span></h2><div class=\"body\"><p class=\"src\">what actors actually did \u2014 the L1 work-ledger rung of OMN-16176, one content-addressed row per session event</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.work.events.v1</p></div></div></section><section><h2><span>sessions</span><span class=\"src\">onex.snapshot.projection.session.replay.v1</span></h2><div class=\"body\"><p class=\"src\">session replay snapshots</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.session.replay.v1</p></div></div></section><section><h2><span>tool / skill executions</span><span class=\"src\">onex.snapshot.projection.skill-executions.v1</span></h2><div class=\"body\"><p class=\"src\">skill and tool execution snapshots</p><div class=\"refusal\"><span class=\"code\">REFUSED: unknown_topic</span><p>no contract in this process&#x27;s discovered topic map declares this exposure</p><p class=\"src\">exposure: onex.snapshot.projection.skill-executions.v1</p></div></div></section><section><h2><span>runtime promotion gate</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">every prod-promotion-gate evaluation, allowed and refused alike, with the typed refusal code, the authorization grant, the requested digest and the evaluation time</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;promotion_gate&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation liveness</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">one row per declared automation process and host, with its liveness verdict and the reason for it</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation runs</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">the run history each automation process reported, with outcome and the work it did</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness_runs&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>automation liveness alarms</span><span class=\"src\">backend_reader:onex_status_page</span></h2><div class=\"body\"><p class=\"src\">every liveness alarm episode with its delivery and ledger recording receipts</p><div class=\"refusal\"><span class=\"code\">REFUSED: backend_reader_missing</span><p>status-page slot &#x27;automation_liveness_alarms&#x27; at route &#x27;/&#x27; has 0 matching contract declarations</p><p class=\"src\">exposure: backend_reader:onex_status_page</p></div></div></section><section><h2><span>projection exposure census</span><span class=\"src\">7 of 8 bus-backed</span></h2><div class=\"body\"><p class=\"src\">Every exposure this process discovered from contracts. A <code>not_yet_bus_backed</code> exposure answers 503 on the API and renders a refusal here &mdash; it is not an empty dataset.</p><div class=\"scroll\"><table><thead><tr><th>backing</th><th>exposure</th><th>source contract</th><th class=\"num\">cached rows</th><th>latest event</th><th>tenant-scoped</th></tr></thead><tbody><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.correlations.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.live_events.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.readiness.v1</td><td>node_fixture</td><td class=\"num\">0</td><td>\u2014</td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.evidence_pipeline.stages.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.live-events.v1</td><td>node_fixture</td><td class=\"num\">3</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.summary.v1</td><td>node_fixture</td><td class=\"num\">1</td><td><ts></td><td></td></tr><tr><td>bus</td><td>onex.snapshot.projection.tenant-rows.v1</td><td>node_fixture</td><td class=\"num\">2</td><td><ts></td><td>yes</td></tr><tr><td>not_yet_bus_backed</td><td>onex.snapshot.projection.pending.v1</td><td>node_fixture</td><td class=\"num\">&mdash;</td><td>\u2014</td><td></td></tr></tbody></table></div></div></section></main><footer>Server-rendered from the materialized projection tables the projection writers persist. No client-side fetch, no client-side derivation: every verdict on this page was written by the reducer that owns it. A panel that could not be served says so and names its ticket &mdash; it never renders a zero it did not measure. <code>OMN-17197</code> <code>OMN-17346</code></footer></body></html>",
+   "status": 200
+  },
+  "unknown_path": {
+   "body": {
+    "detail": "Not Found"
+   },
+   "status": 404
+  }
+ }
+}
