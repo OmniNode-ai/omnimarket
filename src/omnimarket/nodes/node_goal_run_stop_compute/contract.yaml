@@ -3,7 +3,6 @@
 name: node_goal_run_stop_compute
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [main]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
@@ -38,6 +37,12 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 500
+  runtime_profiles: []
+runtime_dispatch:
+  external_trigger: "The goal-run controller and the node runner invoke the local node with the caps file text, the counters and the signals it observed; no bus command reaches it."
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
 inputs:
   correlation_id: {type: str, required: true, description: Correlation identifier for this decision.}
   item_id: {type: str, required: true, description: The item the run works on; part of the run key.}
@@ -60,7 +65,7 @@ outputs:
   counters_at_stop: {type: object}
   analysis: {type: object, description: "The role of the stop, the censoring flag, the success flag, the exclusion reason."}
 metadata:
-  transport_type: inmemory
+  transport_type: local
   description: Goal-driven run stop decision compute
   author: OmniNode Team
   created: "2026-11-02"
