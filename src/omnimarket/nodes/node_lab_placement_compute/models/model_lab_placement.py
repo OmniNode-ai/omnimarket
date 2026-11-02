@@ -15,7 +15,7 @@ from omnimarket.models.overlay_keys import ModelLabHostRow, ModelUnitNeedsRule
 
 #: The boolean host-table columns a unit's ``needs`` may name. Each is a field of
 #: ``ModelLabHostRow``; a rule naming anything else is refused when the rules load.
-CAPABILITY_COLUMNS: frozenset[str] = frozenset({"avx2"})
+CAPABILITY_COLUMNS: frozenset[str] = frozenset({"avx2", "docker"})
 
 
 class ModelHostDefaults(BaseModel):
@@ -24,6 +24,7 @@ class ModelHostDefaults(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     avx2: bool
+    docker: bool
     max_weight: str
     speed: float = Field(..., gt=0)
 
@@ -111,6 +112,8 @@ class ModelLabPlacementRequest(BaseModel):
     table: tuple[ModelLabHostRow, ...]
     #: What units of named repositories need of a host, from the table document; added to the contract's.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+    #: The tools the caller asked for. One that names a capability column is judged as a need.
+    need_tools: tuple[str, ...] = ()
 
 
 class ModelLabPlacementResult(BaseModel):

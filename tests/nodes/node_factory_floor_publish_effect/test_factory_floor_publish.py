@@ -35,6 +35,14 @@ from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_pu
 
 pytestmark = pytest.mark.unit
 
+# The only links the page may carry: the empty icon and the vendored theme files published beside it.
+_ICON_AND_THEME_LINKS = [
+    '<link rel="icon" href="data:,">',
+    '<link rel="stylesheet" href="onex.theme.light.css">',
+    '<link rel="stylesheet" href="onex.theme.dark.css">',
+    '<link rel="stylesheet" href="onex.theme.warm.css">',
+]
+
 RECORD = {
     "schema_id": "factory-floor/1",
     "generated_at": "2026-10-31T12:00:00+00:00",
@@ -173,6 +181,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "factory-floor.json",
         "floor",
         "index.html",
+        "onex.theme.dark.css",
+        "onex.theme.light.css",
+        "onex.theme.warm.css",
         "publish-status.json",
     ]
     assert [p.name for p in (site / "floor").iterdir()] == ["index.html"]
@@ -187,6 +198,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         NODE_DIR / "page/floor/index.html"
     ).read_bytes()
     assert result.published == (
+        "onex.theme.light.css",
+        "onex.theme.dark.css",
+        "onex.theme.warm.css",
         "floor/index.html",
         "index.html",
         "publish-status.json",
@@ -194,6 +208,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     )
     # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
     assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -401,6 +418,9 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
     result = HandlerFactoryFloorPublish(runner).handle(request, environ={})
     assert result.process_health_published is True
     assert result.published == (
+        "onex.theme.light.css",
+        "onex.theme.dark.css",
+        "onex.theme.warm.css",
         "floor/index.html",
         "index.html",
         "publish-status.json",
@@ -1207,7 +1227,7 @@ def test_page_tabs_shell_carries_no_secret_no_host_and_no_external_url() -> None
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", SHELL, re.IGNORECASE
     )
-    assert SHELL.count("<link") == 1
+    assert re.findall(r"<link[^>]*>", SHELL) == _ICON_AND_THEME_LINKS
     assert "src=" not in SHELL
     assert SHELL.count("${esc(") > 20
     for raw in ("${L.name}", "${m.label}", "${l.title}", "${p.title}"):
