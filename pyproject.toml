@@ -485,6 +485,7 @@ node_review_defect_catalog_compute = "omnimarket.nodes.node_review_defect_catalo
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_wip_gate_reducer = "omnimarket.nodes.node_wip_gate_reducer"
 node_andon_stop_reducer = "omnimarket.nodes.node_andon_stop_reducer"
+node_third_lease_stop_compute = "omnimarket.nodes.node_third_lease_stop_compute"
 node_wip_admission_compute = "omnimarket.nodes.node_wip_admission_compute"
 node_binding_parity_orchestrator = "omnimarket.nodes.node_binding_parity_orchestrator"
 node_bus_binding_reducer = "omnimarket.nodes.node_bus_binding_reducer"
