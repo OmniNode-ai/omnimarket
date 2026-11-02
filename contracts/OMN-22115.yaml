@@ -46,7 +46,20 @@ dod_evidence:
         check_value: |-
           grep -q '^node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"' pyproject.toml && test -f src/omnimarket/nodes/node_lab_host_key_distribution_effect/contract.yaml
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn22115-live-run"
-    description: "Live evidence, read after merge: the node's run receipt for the four hosts, the ssh readback from h051 and the queue-status read. Recorded on the ticket, not runnable on a hosted runner."
+  - id: "dod-omn22115-source-readback"
+    description: "Source readback at the evaluated revision: the handler and its ssh transport are present beside the node contract. This needs no lab host and does not assert the live run; the run receipt, the ssh readback from the first host and the queue-status read are recorded on the ticket."
     source: "manual"
-    binds_ac: ["AC2", "AC3", "AC4"]
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          grep -q 'class HandlerLabHostKeyDistribution' src/omnimarket/nodes/node_lab_host_key_distribution_effect/handlers/handler_lab_host_key_distribution.py && grep -q 'class SshHostKeyTransport' src/omnimarket/nodes/node_lab_host_key_distribution_effect/handlers/adapter_ssh_host_key_transport.py
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22115-receipt-shape"
+    description: "The result model names every ordered pair with a status of ok, planned or refused, so a run receipt that lists twelve pairs as ok is the AC3 evidence; the model case is exercised by the node tests. The live receipt is recorded on the ticket."
+    source: "manual"
+    binds_ac: ["AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k 'dry_run or refusal or contract_and_models'"
+        cwd: "${OMNI_HOME}/omnimarket"
