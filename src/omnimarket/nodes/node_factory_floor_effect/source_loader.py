@@ -303,11 +303,7 @@ def load_watcher(path: Path, now: datetime, max_age_min: int) -> ModelFloorWatch
                     ci_note=_ci_note(ci),
                     title=facts.get("title", ""),
                     head_ref=facts.get("head_ref", ""),
-                    tickets=_tickets(
-                        facts.get("title", ""),
-                        facts.get("head_ref", ""),
-                        facts.get("body", ""),
-                    ),
+                    tickets=_tickets(facts.get("title", ""), facts.get("head_ref", "")),
                 )
             )
         merges = tuple(
