@@ -4446,5 +4446,12 @@ dod_evidence:
     binds_ac: ["AC1742730"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_core_pin_pair_5bb91ae7e720_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_core_pin_pair_2080333acfaf_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-core-2080333acfaf-infra-pair"
+    description: "omnimarket moves to omnibase_core 2080333acfaf and the omnibase_infra commit c352b5618a45 that pins it, in one change: the lock names both tags, the pair is the newest recorded row, and the previous infra beside the new core is still refused. Fails at the merge base, which pins infra 3f93a2cc6f6c and core 5bb91ae7e720."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_core_pin_pair_2080333acfaf_omn17427.py tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
