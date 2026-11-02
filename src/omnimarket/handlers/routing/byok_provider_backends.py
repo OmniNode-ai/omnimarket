@@ -66,8 +66,8 @@ Detection-only plans (OMN-20157)
 --------------------------------
 z.ai's subscription terms (section 4) bar Coding Plan quota from "directly
 invoking model APIs from your own applications, bots, websites, SaaS products or
-other systems" and from being used by "customers or any organization" (quoted in
-knowledge-base-internal ``reference/zai-glm-coding-plan-terms.md``). A customer's
+other systems" and from being used by "customers or any organization" (quoted from
+z.ai's published Coding Plan terms). A customer's
 Coding Plan key sent to our route is that, and the exposure (rate limiting, a
 freeze, a ban after three violations) lands on the customer's account. So the
 customer default for ``glm`` is ``general_api``, and the ``coding_plan`` row is

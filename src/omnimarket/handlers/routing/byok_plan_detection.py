@@ -14,7 +14,7 @@ A provider's plans are split by the catalogue into the ones a customer may be
 routed to (``customer_routable``) and the ones declared detection-only. z.ai's
 subscription terms bar GLM Coding Plan quota from third-party systems, so the
 Coding Plan is detection-only: it is tried only to RECOGNISE a key, never to
-route one (knowledge-base-internal ``reference/zai-glm-coding-plan-terms.md``).
+route one (z.ai's published Coding Plan terms).
 
 Each routable plan is tried first, the default plan first, by POSTing a
 one-token completion to that plan's declared endpoint with the customer's key
