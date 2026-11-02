@@ -146,6 +146,7 @@ header{display:grid;gap:14px}
 .cap i.codex{background:var(--safety);border-color:var(--belt)}
 .cap i.none{background:var(--idle);border-color:var(--steel)}
 .cap i.stall{background:repeating-linear-gradient(45deg,var(--stop) 0 3px,var(--panel) 3px 6px);border-color:var(--stop)}
+.cap .refused{align-self:center;font-size:.8rem;font-weight:600;color:var(--stop)}
 .cap i.over{outline:2px solid var(--stop);outline-offset:1px}
 .cap.unread{height:16px;width:100%;border-radius:3px;border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);display:block}
 .capline{font-size:.875rem;color:var(--muted)}
@@ -316,6 +317,8 @@ html.embed .wrap{padding-block:14px 48px}
       <span><i class="claude"></i>Claude worker</span><span><i class="codex"></i>Codex worker</span><span><i class="stall"></i>stalled worker</span><span><i class="free"></i>free slot</span></div>
     <div class="mgrid" id="bayGrid"></div>
   </section>
+
+  <section class="card" aria-labelledby="mrH" id="mergedRunning" hidden></section>
 
   <section class="two">
     <div class="card" aria-labelledby="dockH" id="dock">
@@ -659,6 +662,10 @@ function slotCount(running, stalled, free){
   return `${running} running, ${stalled} stalled, ${free} free`;
 }
 
+function isRefused(m){
+  return !!(m.admission && m.admission.state === "refused");
+}
+
 function machineHTML(m, byId){
   const lanes = (m.lanes || []).map(id => byId[id]).filter(Boolean);
   const stateWord = m.state === "read" ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread";
@@ -668,10 +675,16 @@ function machineHTML(m, byId){
   if (m.state === "read" && cap != null){
     const used = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}" title="${esc(l.lane + (l.title ? ": " + l.title : ""))}"></i>`);
     const over = Math.max(0, lanes.length - cap);
-    const free = Math.max(0, cap - lanes.length);
+    // The free figure is the record's own: the tick's reading (its lane slots, else cap less placed units), and none at all
+    // where the tick's admission refuses the machine, which is drawn as refused with the reading's reason.
+    const refused = isRefused(m);
+    const free = refused || m.free_slots == null ? 0 : Math.max(0, num(m.free_slots));
     const stalledN = lanes.filter(l => l.stalled).length;
-    slots = `<div class="cap" role="img" aria-label="${slotCount(lanes.length - stalledN, stalledN, free)}">${used.join("")}${"<i></i>".repeat(free)}</div>
-      <div class="capline"><b>${slotCount(lanes.length - stalledN, stalledN, free)}</b> · <span class="mono">${lanes.length}</span> of <span class="mono">${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over the limit</b>` : ""}${m.refusal ? ` · not taking new work: ${esc(m.refusal)}` : ""}</div>`;
+    const running = lanes.length - stalledN;
+    const refusedText = `refused: ${(m.admission && m.admission.reason) || m.refusal || "no reason recorded"}`;
+    const counts = refused ? `${running} running, ${stalledN} stalled, refused` : m.free_slots == null ? `${running} running, ${stalledN} stalled, free slots unread` : slotCount(running, stalledN, free);
+    slots = `<div class="cap" role="img" aria-label="${esc(refused ? counts + ": " + refusedText : counts)}">${used.join("")}${refused ? `<span class="refused">${esc(refusedText)}</span>` : "<i></i>".repeat(free)}</div>
+      <div class="capline"><b>${counts}</b> · <span class="mono">${lanes.length}</span> of <span class="mono">${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over the limit</b>` : ""}</div>`;
   } else if (m.state === "read"){
     slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><b>${lanes.length} running</b> · slot limit ${unreadSpan("no limit in the host table or the pool read")}</div>`;
   } else {
@@ -726,6 +739,35 @@ function cloudHTML(cloud, lanes){
   </article>`;
 }
 
+function renderMergedRunning(floor){
+  const card = el("mergedRunning");
+  const mr = floor.merged_running;
+  if (!mr || !mr.days || !mr.days.length){ card.hidden = true; card.innerHTML = ""; return; }
+  const day = mr.days[0];
+  const stat = (n, label) => `<div><span class="big mono">${esc(n)}</span><div class="muted">${esc(label)}</div></div>`;
+  const why = {};
+  (day.merges || []).filter(m => !m.running).forEach(m => { const r = (m.reason || "no reason recorded").replace(/_/g, " "); why[r] = (why[r] || 0) + 1; });
+  const whyText = Object.keys(why).map(r => `${why[r]} ${r}`).join(", ");
+  const hosts = (mr.idle_hosts || []).map(h => {
+    let text;
+    if (h.state === "unread") text = `unread${h.cause ? " (" + h.cause + ")" : ""}`;
+    else if (h.state === "out") text = "out of service";
+    else {
+      const basis = h.slots_source === "table_cap" ? ` of ${h.slots}, from the host table cap${h.cause ? " (" + h.cause + ")" : ""}` : ` of ${h.slots}, from the machine's own count`;
+      text = `${h.idle} idle${basis}`;
+    }
+    return `<li><b>${esc(h.host)}</b> ${esc(text)}</li>`;
+  }).join("");
+  const unread = (mr.evidence_unread || []).map(u => `<p class="muted">Evidence not read: ${esc(u)}. Merges that needed it read as not running.</p>`).join("");
+  card.hidden = false;
+  card.innerHTML = `<div><div class="eyebrow">Merged and running · ${esc(day.local_date)} (Eastern)</div><h2 id="mrH">Merged work that runs</h2>
+    <p class="sub">Changes merged on this day, how many show evidence of running on dev, and the open worker slots on each machine. A hand-off, or a change armed or queued to merge, is not a merge and is not counted.</p></div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:end">${stat(day.merged, "Merged")}${stat(day.running, "Running")}${stat(day.not_running, "Not running")}${stat(mr.idle_total, "Idle slots" + (mr.idle_unread ? `, ${mr.idle_unread} machine${mr.idle_unread === 1 ? "" : "s"} unread` : ""))}</div>
+    ${whyText ? `<p class="muted">Not running: ${esc(whyText)}.</p>` : ""}
+    ${unread}
+    ${hosts ? `<ul style="margin:0;padding-left:1.2em;display:grid;gap:4px">${hosts}</ul>` : ""}`;
+}
+
 function renderMachines(floor){
   const ms = floor.machines || [];
   const lanes = floor.lanes || [];
@@ -754,9 +796,10 @@ function renderMachines(floor){
 function machineFacts(floor){
   const ms = floor.machines || [], lanes = floor.lanes || [];
   const read = ms.filter(m => m.state === "read");
+  const open = read.filter(m => !isRefused(m));
   return {declared: ms.length, read: read.length, repair: ms.filter(m => m.state === "repair" || m.state === "out").length,
     unread: ms.filter(m => m.state === "unread").length, placed: ms.reduce((a, m) => a + num(m.lanes_placed), 0),
-    cap: read.reduce((a, m) => a + num(m.cap), 0), lanes: lanes.length, stalled: lanes.filter(l => l.stalled).length,
+    cap: open.reduce((a, m) => a + num(m.cap), 0), free: open.reduce((a, m) => a + num(m.free_slots), 0), refused: read.length - open.length, lanes: lanes.length, stalled: lanes.filter(l => l.stalled).length,
     cloud: floor.cloud || null};
 }
 
@@ -912,6 +955,7 @@ function render(parts){
   renderVerdict(built.slots, floor, bayState, parts.health);
   renderLines(built.slots, built.declared, built.reason);
   renderMachines(floor);
+  renderMergedRunning(floor);
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);
