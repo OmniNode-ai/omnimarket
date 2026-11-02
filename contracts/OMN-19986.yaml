@@ -1,0 +1,40 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-19986"
+title: "The local identity fold, its SQLite table and its cursor sequence's ownership"
+summary: "First omnimarket step of the API Keys local identity. This change adds the local-identity-minted event payload, the store-neutral fold that keeps one row per tenant id with the earliest minted_at (applied to the local SQLite store as a one-time store step), and the ownership declaration of the cursor sequence the writer grant will name, ahead of omnibase_infra vendoring the migrations. The Postgres migrations, the projection node's contract, its writer, the local-identity.v1 exposure and the producer in onex local init follow once omnibase_infra carries the migrations. What this step proves is AC1 on the fold."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19986-one-identity-row-per-tenant"
+    statement: |-
+      Each local-identity-minted event is folded into one row per tenant id holding the earliest minted_at announced for it; a replayed event changes no row. The criterion below is transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: Replaying the same mint event twice leaves one identity row -- falsifier: the fold test run with uv run pytest finds two
+evidence_requirements:
+  - kind: "tests"
+    description: "The fold through the real SQLite adapter leaves one unchanged identity row when the same mint event is applied twice; the fold module does not exist at the merge base, so the file cannot be collected there."
+    command: "uv run pytest tests/test_omn19986_local_identity.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19986-ac1-replay-leaves-one-identity-row"
+    description: "AC1 on the fold. The same local-identity-minted event applied twice through the store-neutral fold on a real local SQLite store leaves exactly one row, byte for byte unchanged by the replay, with the event's tenant id, minted_at and event id; a later announcement keeps the first minted_at, an earlier one moves it back and re-stamps the cursor, two tenants keep two rows. It does not prove the page read, which waits on the node, its exposure and the producer."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19986_local_identity.py -q"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn19986-deploy-local-store-readback"
+    description: "Hosted-runner deploy smoke opens a real local SQLite store, folds and replays a mint event, reads back one unchanged identity row and its cursor, and opens the initialized store read-only. It requires no external service."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn19986_local_identity.py -q --no-cov -k 'ac1_replaying or table_is_a_store_step'"
+        cwd: "."
