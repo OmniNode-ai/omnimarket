@@ -233,6 +233,7 @@ class _Tick:
     close_requested: set[str]
     causes: dict[str, ModelLandingCauseRecord] = field(default_factory=dict)
     hold: set[str] = field(default_factory=set)
+    hold_released: set[str] = field(default_factory=set)
     formed: set[str] = field(default_factory=set)
     suppressed: set[str] = field(default_factory=set)
     elig_reruns: list[ModelLandingEligibilityRerun] = field(default_factory=list)
@@ -272,8 +273,13 @@ class _Tick:
         facts = self.prs.get(pr)
         return blocker_fingerprint(facts.blocker_refs) if facts is not None else ""
 
-    def held(self, repo: str) -> bool:
-        """Under a fixer HOLD: no dispatch, and every live lease is revoked."""
+    def held(self, repo: str, pr: str | None = None) -> bool:
+        """Under a fixer HOLD: no dispatch, and every live lease is revoked.
+
+        A scoped RELEASE lifts the PR it names (``pr`` as ``repo#n``) and nothing else.
+        """
+        if pr is not None and pr in self.hold_released:
+            return False
         return FIXER_HOLD_ALL in self.hold or repo in self.hold
 
 
@@ -489,7 +495,7 @@ def _observe_lease(t: _Tick, lease: ModelLandingLease) -> None:
                 _escalate(t, pr)
         return
     if (
-        (repo_of(pr) in t.draining or t.held(repo_of(pr)))
+        (repo_of(pr) in t.draining or t.held(repo_of(pr), pr))
         and lease.result_recorded_at is None
         and not lease.revoked
     ):
@@ -662,7 +668,7 @@ def _try_dispatch(
     """Dispatch one worker, when the pool, the load and the engines allow (D5, P7)."""
     policy = t.facts.policy
     repo = repo_of(subject)
-    if repo in t.draining or t.held(repo) or subject in t.leases:
+    if repo in t.draining or t.held(repo, subject) or subject in t.leases:
         return False
     if t.facts.load1 > policy.load_pause_threshold:
         return False
@@ -1015,7 +1021,8 @@ def _read_cause_result(
     if outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED:
         update.update(fix_ref=result.fix_ref, fix_head=result.fix_head, rerun_at=None)
     elif outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
-        # back to the per-PR path at rung 0; the key stays blocked for this set
+        # back to the per-PR path at rung 0; the key stays blocked on this base
+        update["not_shared_base_head"] = _base_head(t, rec.repo)
         current = tuple(
             ModelLandingMemberRef(pr=m.pr, head_sha=t.prs[m.pr].head_sha)
             for m in rec.members
@@ -1062,9 +1069,16 @@ def _holds_members(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
 
 
 def _blocks(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
-    """cause_not_shared blocks its key until a member's head moves or it leaves."""
+    """cause_not_shared blocks its key while the base head it was given on stands.
+
+    A verdict given with no base head read, or read again with none, holds only
+    while every member is open at the head it was given on.
+    """
     if rec.outcome is not EnumLandingOutcome.CAUSE_NOT_SHARED:
         return False
+    now = _base_head(t, rec.repo)
+    if rec.not_shared_base_head is not None and now is not None:
+        return now == rec.not_shared_base_head
     for m in rec.members:
         p = t.prs.get(m.pr)
         if p is None or p.state is not EnumLandingPrState.OPEN:
@@ -1137,6 +1151,7 @@ def _advance_causes(t: _Tick) -> None:
     fresh: dict[str, object] = {
         "parked_until": None,
         "parked_base_head": None,
+        "not_shared_base_head": None,
         "attempts": 0,
         "spawn_failures": 0,
         "outcome": None,
@@ -1365,8 +1380,8 @@ def _upsert_cause(t: _Tick, cause: _Cause) -> None:
     rec = t.causes.get(cause.key)
     if rec is not None and rec.outcome is EnumLandingOutcome.CAUSE_NOT_SHARED:
         if _blocks(t, rec):
-            return  # not shared for this member set: no cause, members stay per-PR
-        rec = None  # a member moved: a fresh cause
+            return  # not shared on this base: no cause, members stay per-PR
+        rec = None  # the base moved (or a member, with no base read): a fresh cause
     if rec is None:
         rec = ModelLandingCauseRecord(
             key=cause.key, repo=cause.repo, pairs=tuple(cause.pairs), members=members
@@ -2023,6 +2038,7 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         close_requested=set(state.close_requested),
         causes={c.key: c for c in state.causes},
         hold=set(facts.fixer_hold),
+        hold_released=set(facts.fixer_hold_released_prs),
     )
     _effective_suspensions(t)
     holder = t.prs.get(t.token) if t.token is not None else None

@@ -141,6 +141,8 @@ MachineState = Literal["read", "unread", "repair", "out"]
 SourceState = Literal["read", "unread"]
 LaneTitleSource = Literal["linear", "claim", "unread"]
 LanePlacement = Literal["machine", "cloud", "unplaced"]
+# Why a lane the floor cannot place is unplaced: no row names a host, or the host named is not a drawn machine.
+PlacementCause = Literal["", "no-host-cell", "host-not-drawn"]
 
 
 class ModelFloorRunnersOut(BaseModel):
@@ -207,6 +209,9 @@ class ModelFloorLane(BaseModel):
     engine: str
     placement: LanePlacement
     host: str
+    # Set only on an unplaced lane: the reason it names no drawn machine, and the host as written when it named one.
+    placement_cause: PlacementCause = ""
+    named_host: str = ""
     cloud_account: str
     started_at: str
     run_minutes: int
@@ -238,7 +243,7 @@ class ModelFloorLamp(BaseModel):
 
 
 class ModelFloorCloudAccountOut(BaseModel):
-    """One cloud account: whether it is signed in, its session cap and how many sessions are open."""
+    """One cloud account: whether it is signed in, its session cap and how many of its listed sessions are open (None when the receipts could not be read)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -246,7 +251,8 @@ class ModelFloorCloudAccountOut(BaseModel):
     ready: bool
     login: str
     cap: int | None
-    open_sessions: int
+    open_sessions: int | None
+    record_note: str
     credit_remaining: float | None
     credit_read_at: str
     rate_status: str
