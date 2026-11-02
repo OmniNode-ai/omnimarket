@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-22173
+title: 'Host drift fold: resolved events close open items; a failed read is not served as current'
+summary: 'node_host_drift_fleet fold closes an open item on its resolution and keeps the last good view when the bus read fails'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "Regression tests for the fold and the failed-read path"
+    command: "uv run pytest tests/nodes/node_host_drift_fleet/test_stale_state.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "A resolved event closes its open item and a failed read keeps the previous view (regression test fails before the fix, passes after)"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_host_drift_fleet/test_stale_state.py -q"
