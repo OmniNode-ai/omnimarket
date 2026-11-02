@@ -9,7 +9,7 @@ scheduled runs because the nemotron-ultra free slug answered HTTP 200 carrying
 
 from __future__ import annotations
 
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     resolve_byok_provider_backend,
     select_byok_model,

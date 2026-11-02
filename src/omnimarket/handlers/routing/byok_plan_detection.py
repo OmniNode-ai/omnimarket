@@ -14,7 +14,7 @@ A provider's plans are split by the catalogue into the ones a customer may be
 routed to (``customer_routable``) and the ones declared detection-only. z.ai's
 subscription terms bar GLM Coding Plan quota from third-party systems, so the
 Coding Plan is detection-only: it is tried only to RECOGNISE a key, never to
-route one (knowledge-base-internal ``reference/zai-glm-coding-plan-terms.md``).
+route one (z.ai's published Coding Plan terms).
 
 Each routable plan is tried first, the default plan first, by POSTing a
 one-token completion to that plan's declared endpoint with the customer's key
@@ -74,19 +74,19 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
-    ModelTransportResponse,
-    post_chat_completion,
-)
-from omnimarket.routing.byok_model_discovery import (
+from omnimarket.handlers.routing.byok_model_discovery import (
     GetJson,
     discover_byok_model_sync,
 )
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_automatic_plans,
     resolve_byok_declared_plan,
     resolve_byok_provider_backend,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    ModelTransportResponse,
+    post_chat_completion,
 )
 
 logger = logging.getLogger(__name__)

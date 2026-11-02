@@ -779,6 +779,12 @@ class TestRealPostgresRoutingOverlayWritePath:
         """
         import contextlib as _contextlib
 
+        from omnimarket.handlers.routing.customer_key_terminus import (
+            CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+            CustomerKeyRefusedError,
+            EnumCustomerKeyRefusalReason,
+            EnumDelegationSurface,
+        )
         from omnimarket.nodes.node_delegation_orchestrator.models import (
             ModelDelegationRequest,
         )
@@ -788,13 +794,9 @@ class TestRealPostgresRoutingOverlayWritePath:
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
         )
-        from omnimarket.routing.customer_key_terminus import (
-            CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-            CustomerKeyRefusedError,
-            EnumCustomerKeyRefusalReason,
-            EnumDelegationSurface,
+        from omnimarket.routing.tenant_overlay_resolver import (
+            resolve_tenant_overlay,
         )
-        from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
 
         async with _provisioned_runner() as (runner, _admin_conn, schema):
             ref = f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex[:12]}"
@@ -916,7 +918,9 @@ class TestRealPostgresRoutingOverlayWritePath:
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
         )
-        from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
+        from omnimarket.routing.tenant_overlay_resolver import (
+            resolve_tenant_overlay,
+        )
 
         async with _provisioned_runner() as (runner, _admin_conn, schema):
             ref = f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex[:12]}"
@@ -1128,7 +1132,9 @@ class TestRealPostgresKeyPoolSelection:
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
         )
-        from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
+        from omnimarket.routing.tenant_overlay_resolver import (
+            resolve_tenant_overlay,
+        )
 
         async with _provisioned_runner() as (runner, _admin_conn, schema):
             live = [f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex}" for _ in range(3)]
