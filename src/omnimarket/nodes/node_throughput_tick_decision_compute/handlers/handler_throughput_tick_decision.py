@@ -1155,7 +1155,7 @@ def _receipt_reason(receipt: ModelLabReceipt) -> str:
 def check_dispatches(
     rep: Report, facts: ModelLabHeadroomFacts, now: datetime, window_hours: float
 ) -> None:
-    """A dispatched lane whose receipt ended without running, until its brief runs (OMN-20840: six lanes
+    """A dispatched lane whose receipt ended without running, until its lineage runs (OMN-20840: six lanes
     ended no-host within a minute and were reported as running for hours)."""
     rep.checked.append("dispatches")
     if facts.module_unavailable or facts.placement_error is not None:
@@ -1186,7 +1186,13 @@ def check_dispatches(
             and other.status in RAN
             and (
                 (receipt.brief and other.brief == receipt.brief)
-                or (receipt.lane and other.lane == receipt.lane)
+                or (receipt.ticket and other.ticket == receipt.ticket)
+                or (
+                    receipt.lane
+                    and other.lane
+                    and re.sub(r"-r[0-9]*$", "", receipt.lane)
+                    == re.sub(r"-r[0-9]*$", "", other.lane)
+                )
             )
             for later, other in dated
         )
@@ -1195,7 +1201,7 @@ def check_dispatches(
         rep.miss(
             f"dispatch:{lane}",
             f"dispatched {receipt.started_at}, ended {receipt.status} ({_receipt_reason(receipt)}); "
-            f"receipt {receipt.path or receipt.run_id or '?'}; no later receipt of its brief is running or done",
+            f"receipt {receipt.path or receipt.run_id or '?'}; no later receipt of its brief, ticket or lane lineage is running or done",
             DISPATCH_FIX.format(
                 status=receipt.status, brief=receipt.brief or "unrecorded"
             ),

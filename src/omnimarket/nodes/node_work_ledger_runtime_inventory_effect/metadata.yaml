@@ -1,0 +1,23 @@
+name: node_work_ledger_runtime_inventory_effect
+version: "1.0.0"
+description: "Checks a runtime inventory overlay (rows, exclusions, tenant slugs) against its recorded host snapshot; ships the schema only, the data is the deployment's overlay"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_runtime_inventory_effect: "omnimarket.nodes.node_work_ledger_runtime_inventory_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["ledger", "inventory", "overlay", "effect"]
+pack: "ledger"
+display_name: "Work Ledger Runtime Inventory Check"
+node_role: "effect"

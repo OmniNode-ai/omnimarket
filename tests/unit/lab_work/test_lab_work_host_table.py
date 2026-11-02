@@ -821,3 +821,35 @@ def test_run_command_describes_an_unreadable_table_and_exits_69(
     assert "placement: refused (could_not_check)" in result.output
     assert "could not be read" in result.output
     assert "no pool host can take this unit" in result.output
+
+
+@pytest.mark.unit
+def test_host_cap_zero_is_a_valid_row_and_negative_is_not() -> None:
+    """OMN-22015: a lane cap of 0 (no lane placed on the host) must not make the whole table
+    unreadable, which refused every lab-run with exit 69; a negative cap is still refused."""
+    from pydantic import ValidationError
+
+    ok = ModelLabHostsTable.model_validate(
+        {"hosts": [{"name": "h200", "target": "h200", "cap": 0}]}
+    )
+    assert ok.hosts[0].cap == 0
+    with pytest.raises(ValidationError):
+        ModelLabHostsTable.model_validate(
+            {"hosts": [{"name": "h200", "target": "h200", "cap": -1}]}
+        )
+
+
+@pytest.mark.unit
+def test_host_unit_slots_is_a_bounded_column() -> None:
+    """OMN-22015: ``unit_slots`` names how many lab-work units a host runs at once."""
+    from pydantic import ValidationError
+
+    ok = ModelLabHostsTable.model_validate(
+        {"hosts": [{"name": "h051", "target": "h051", "unit_slots": 8}]}
+    )
+    assert ok.hosts[0].unit_slots == 8
+    for bad in (0, 65):
+        with pytest.raises(ValidationError):
+            ModelLabHostsTable.model_validate(
+                {"hosts": [{"name": "h051", "target": "h051", "unit_slots": bad}]}
+            )

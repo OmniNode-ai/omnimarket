@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_gap_unit_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Four idempotent installer units (clones, prepush rows and workroot, liveness rows, per-clone
+  venvs) that take a host profile as their input and plan only unless asked to apply.
+input_model:
+  name: ModelHostGapUnitRequest
+  module: omnimarket.models.model_host_profile
+output_model:
+  name: ModelHostGapUnitResult
+  module: omnimarket.models.model_host_profile
+handler:
+  module: omnimarket.nodes.node_host_gap_unit_effect.handlers.handler_host_gap_unit
+  class: HandlerHostGapUnit
+  input_model: omnimarket.models.model_host_profile.ModelHostGapUnitRequest
+  output_model: omnimarket.models.model_host_profile.ModelHostGapUnitResult
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-gap-unit-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-gap-unit-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-gap-unit-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: kafka
+  description: Four idempotent installer units (clones, prepush rows and workroot, liveness rows, per-clone
+    venvs) that take a host profile as their input and plan only unless asked to apply.
+  created: '2026-11-01'
+  tags:
+  - host-declaration
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostGapUnit
+      module: omnimarket.nodes.node_host_gap_unit_effect.handlers.handler_host_gap_unit
+    event_model:
+      name: ModelHostGapUnitRequest
+      module: omnimarket.models.model_host_profile
+terminal_event: onex.evt.omnimarket.host-gap-unit-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-gap-unit-completed.v1
+  event_type: ModelHostGapUnitResult
+externally_consumed_topics:
+- onex.evt.omnimarket.host-gap-unit-completed.v1
