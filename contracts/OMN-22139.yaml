@@ -1,0 +1,127 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22139
+title: Resolve machine scm-writer grants from the developer principal overlay
+summary: >-
+  The machine grant role compute node joins deployment-owned machine role bindings
+  to contract-owned broker grants. The scm-writer grant set follows the GitHub repo
+  write node's command and terminal topics. The node resolves grants and does not
+  apply broker ACLs. Hosted checks use fictional principals and an in-memory runtime;
+  deployment overlay changes and broker ACL application remain outside this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-machine-grant-roles
+    statement: Resolve only declared machine grant roles through the packaged node.
+    acceptance:
+      - id: AC1
+        statement: The scm-writer grants cover exactly the write node's command and terminal topics, without embedded machine principals.
+      - id: AC2
+        statement: Only machines bound by the overlay receive grants; role and principal selectors narrow the bindings.
+      - id: AC3
+        statement: Missing or invalid overlays and undeclared grant roles return typed refusals and no bindings.
+      - id: AC4
+        statement: The overlay can be injected or loaded from explicit roots or ONEX_SKILL_OVERLAY_ROOTS.
+      - id: AC5
+        statement: The installed node wires its command topic to the public resolved terminal; an unrelated topic produces no terminal.
+evidence_requirements:
+  - kind: tests
+    description: Focused grant resolution and installed runtime wiring tests.
+    command: uv run --locked pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py tests/nodes/node_machine_grant_role_compute/test_golden_chain_machine_grant_role.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22139-ac1-contract-owned-grants
+    description: Pin the grant set to the write node's dispatch topics and reject embedded machine principal values.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q --no-cov -k 'scm_writer_grants or node_code_names'
+        cwd: .
+  - id: dod-omn22139-ac2-overlay-bindings
+    description: Check selected machine bindings, unbound rows, and principal and role filtering.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q --no-cov -k 'machines_bound or no_binding or principal_and_role'
+        cwd: .
+  - id: dod-omn22139-ac3-refusals
+    description: Refuse undeclared roles, developer role bindings and missing overlays.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q --no-cov -k 'undeclared_role or developer_row or no_overlay'
+        cwd: .
+  - id: dod-omn22139-ac4-overlay-loading
+    description: Resolve the injected document and the same bindings read from explicit roots and the environment.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q --no-cov -k 'machines_bound or overlay_is_read'
+        cwd: .
+  - id: dod-omn22139-ac5-runtime-wiring
+    description: Discover and wire the installed node, pin the public terminal topic, and check resolved, refused and unrelated-topic requests.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/nodes/node_machine_grant_role_compute/test_golden_chain_machine_grant_role.py -q --no-cov
+        cwd: .
+  - id: dod-omn22139-deploy-node-dispatch
+    description: >-
+      Hosted-compatible packaged node dispatch on the in-memory runtime. A fictional
+      machine receives exactly the write node's declared topic grants; an unbound
+      machine receives none. This probes the installed node, not deployed broker ACLs.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')"
+          uv run --locked python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          for case, roles in (("bound", ["scm-writer"]), ("unbound", [])):
+              row = dict(principal="grant-probe-machine", login="grant-probe-svc", device="grant-probe-device", role="machine", grant_roles=roles)
+              overlay = dict(schema_version="developer_principal.v1", grants_source="deployment-profile", principals=[row])
+              (root / f"{case}.json").write_text(json.dumps(dict(overlay=overlay, role="scm-writer")))
+          PY
+          for case in bound unbound; do
+            env ONEX_LANE=omn22139-deploy-probe "$runtime_bin/onex" node node_machine_grant_role_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case-receipt.json"
+          done
+          uv run --locked python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import yaml
+          import omnimarket.nodes.node_github_repo_write_effect as write_node
+          root = Path(sys.argv[1])
+          receipts = [json.loads((root / f"{case}-receipt.json").read_text()) for case in ("bound", "unbound")]
+          for receipt in receipts:
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              assert receipt["result"]["status"] == "resolved", receipt
+          binding, = receipts[0]["result"]["bindings"]
+          assert binding["principal"] == "grant-probe-machine" and binding["acl_principal"] == "User:grant-probe-machine", binding
+          assert binding["role"] == "scm-writer", binding
+          dispatch = yaml.safe_load((Path(write_node.__file__).parent / "contract.yaml").read_text())["runtime_dispatch"]
+          expected = {("write", dispatch["command_topic"])}
+          expected.update((op, topic) for topic in dispatch["terminal_events"].values() for op in ("read", "describe"))
+          grants = binding["grants"]
+          assert {(g["operation"], g["resource_name"]) for g in grants} == expected, grants
+          assert len(grants) == len(expected), grants
+          assert all(g["resource_type"] == "topic" and g["pattern_type"] == "literal" for g in grants), grants
+          assert receipts[1]["result"]["bindings"] == [], receipts[1]
+          print(json.dumps({"run_ids": [r["run_id"] for r in receipts], "grant_count": len(grants), "unbound_count": 0}))
+          PY
+        cwd: .

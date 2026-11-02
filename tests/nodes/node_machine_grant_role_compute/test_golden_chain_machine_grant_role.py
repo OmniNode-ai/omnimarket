@@ -105,6 +105,7 @@ async def wired() -> AsyncIterator[WiredBus]:
 
 @pytest.mark.asyncio
 async def test_a_resolve_command_reaches_the_overlay_bindings(wired: WiredBus) -> None:
+    assert RESOLVED_TOPIC == "onex.evt.omnimarket.machine-grant-role-resolved.v1"
     correlation_id = await wired.command({"overlay": TWO_WRITERS, "role": "scm-writer"})
     result = (await wired.resolved_for(correlation_id))["payload"]
     assert result["status"] == "resolved"
