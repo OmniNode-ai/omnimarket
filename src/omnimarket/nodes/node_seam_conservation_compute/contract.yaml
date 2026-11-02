@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Seam Conservation Compute
+#
+# Pure compute. reconcile_seam takes one seam's declaration (an entry of the view_seam_read graph in
+# node_seam_read_orchestrator's contract) and both sides' counts and window closes for a finalized
+# window and returns a ModelSeamReading through ModelSeamReading.from_crossings, one crossing per
+# tick, published on the declared terminal topic. feed_throughput_tick_seam_readings is the VS-17
+# caller: it turns the recorded readings of a window into the typed field
+# node_throughput_tick_decision_compute consumes, and emits VS-17's own count and window-close events
+# (both sides, so VS-17 is marked one emitter, the weaker reading).
+name: node_seam_conservation_compute
+contract_name: node_seam_conservation_compute
+node_name: node_seam_conservation_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Reconcile the two sides of one seam for one finalized window. A seam reads unreadable when the
+  sender's close is absent or the sender handed over crossings and no receiver close covers the
+  window; it reads matched when both residuals (transit, disposition) are empty, every cause is one
+  the seam permits, no forbidden cause appears, the identity artifacts agree and the latency is
+  within the overlay's budget; an idle window (an empty sender close, no receiver close) reads
+  matched. Also feeds a finalized window's readings to the throughput tick (VS-17).
+
+handler:
+  module: omnimarket.nodes.node_seam_conservation_compute.handlers.handler_seam_conservation
+  class: HandlerSeamConservation
+  input_model: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_conservation_request.ModelSeamConservationRequest
+
+input_model:
+  name: ModelSeamConservationRequest
+  module: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_conservation_request
+  description: One seam's declaration, a finalized window, both sides' counts and closes, the overlay's budget.
+output_model:
+  name: ModelSeamConservationResult
+  module: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_conservation_result
+  description: The reading and the residuals and derived counts behind it.
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_seam_conservation_compute.handlers.handler_seam_conservation:HandlerSeamConservation
+  handlers:
+    - operation: reconcile_seam
+      topic: onex.cmd.omnimarket.view-seam-reconcile-requested.v1
+      handler:
+        name: HandlerSeamConservation
+        module: omnimarket.nodes.node_seam_conservation_compute.handlers.handler_seam_conservation
+      input_model: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_conservation_request.ModelSeamConservationRequest
+      output_model: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_conservation_result.ModelSeamConservationResult
+    - operation: feed_throughput_tick_seam_readings
+      topic: onex.cmd.omnimarket.view-seam-readings-feed-requested.v1
+      handler:
+        name: HandlerSeamReadingsFeed
+        module: omnimarket.nodes.node_seam_conservation_compute.handlers.handler_seam_readings_feed
+      input_model: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_readings_feed.ModelSeamReadingsFeedRequest
+      output_model: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_readings_feed.ModelSeamReadingsFeedResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.view-seam-reconcile-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.view-seam-reading-recorded.v1
+
+terminal_event: onex.evt.omnimarket.view-seam-reading-recorded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.view-seam-reconcile-requested.v1
+    - onex.cmd.omnimarket.view-seam-readings-feed-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.view-seam-reading-recorded.v1
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The VS-17 feed returns the seam's own count and window closes; the runtime publishes them.
+published_events:
+  - topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "VS-17 count and window close, returned by the feed operation."
+  - topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "VS-17 count and window close, returned by the feed operation."
+
+# Commands the window finalizer sends (one reconcile request per seam and window, one feed request per
+# throughput tick); that caller is not a node contract yet, so it is named here.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.view-seam-reconcile-requested.v1
+    producer: "the seam window finalizer, a scheduled caller that is not a node contract in this repository yet"
+  - topic: onex.cmd.omnimarket.view-seam-readings-feed-requested.v1
+    producer: "the throughput tick's runner, which sends one feed request per tick before it decides"
+
+metadata:
+  ticket: OMN-22020
+  transport_type: inmemory

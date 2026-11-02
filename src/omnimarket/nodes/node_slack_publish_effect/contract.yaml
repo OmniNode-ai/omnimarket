@@ -87,6 +87,13 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.slack-publish.v1
 
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The Slack publish effect emits the VS-15 receiver side once the Slack step builds it.
+published_events:
+  - topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 terminal_event: onex.evt.omnimarket.slack-published.v1
 
 dod_evidence:

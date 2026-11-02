@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_seam_conservation_compute
+version: 1.0.0
+description: Reconcile the two sides of one seam for one finalized window into a seam reading; feed a window's readings to the throughput tick.
+pack: operator_tooling
+node_role: compute
+display_name: Seam Conservation Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_seam_conservation_compute: omnimarket.nodes.node_seam_conservation_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- seam-read
+- view-seams

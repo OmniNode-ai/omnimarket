@@ -1,0 +1,58 @@
+schema_version: 1.0.0
+ticket_id: OMN-22020
+title: The view_seam_read graph declares all seventeen seams, the conservation node reconciles a seam's two sides, and the throughput tick consumes the seam readings
+summary: First half of the seam step. The whole graph view_seam_read (VS-01 to VS-17) is declared in node_seam_read_orchestrator's contract beside factory_line_seam_read; the shared seam_reading models gain ModelSeamCount, ModelSeamMeasure, ModelSeamWindowClose, ModelSeamDeclaration and their enums; node_seam_conservation_compute reconciles a seam's two sides for a finalized window and feeds the VS-17 readings; node_view_seam_reading_reducer folds the seam events into the view_seam_readings exposure; six INSUFFICIENT scaffolds stand in for the emitters not yet built; node_throughput_tick_decision_compute gains a typed seam_readings field. The floor effect view document, the compose node, the VS-01/02/04 measurement on the document and the served document are a second lane and are not part of this contract.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - events
+  - topics
+requirements:
+  - id: req-omn22020-seam-graph
+    statement: The seventeen seams are declared as one graph with their models and nodes, the graph passes the three-part proof with each planted fault refused and restored, and the throughput tick raises a finding for a mismatched or absent seam reading of a finalized window.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the whole seam graph view_seam_read (VS-01 to VS-17) is declared in node_seam_read_orchestrator''s contract, with ModelSeamCount, ModelSeamMeasure, ModelSeamWindowClose, EnumSeamSide, EnumSeamUnit and EnumSeamCause, node_seam_conservation_compute, node_view_seam_reading_reducer, and an INSUFFICIENT scaffold for every emitter not yet built -- falsifier: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_graph_declared -q'
+      - id: AC2
+        statement: 'AC2: the three-part proof of section 10.4 holds and each planted fault is refused and then restored: core''s ValidatorEventChainWalker shows zero unconsumed and zero unproduced topics, the graph check refuses a graph with one emitter removed, and the runtime check reads a missing sender close unreadable, a missing receiver close unreadable when the sender''s close lists crossings, and an empty sender close with no receiver close matched -- falsifier: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k three_part_proof -q'
+      - id: AC6
+        statement: 'AC6: VS-17 is measured and a caller feeds the seam readings to node_throughput_tick_decision_compute through a new typed field, so a finalized window whose publish steps are all ok and whose VS-02 reading is mismatched raises MISSING seam:VS-02 and an absent reading raises UNKNOWN -- falsifier: uv run pytest src/omnimarket/nodes/node_throughput_tick_decision_compute/tests -k seam_readings -q'
+evidence_requirements:
+  - kind: tests
+    description: The seam conservation, view seam reading reducer and throughput tick seam readings tests run at the pushed head.
+    command: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests src/omnimarket/nodes/node_view_seam_reading_reducer/tests src/omnimarket/nodes/node_throughput_tick_decision_compute/tests -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22020-ac1
+    description: The graph view_seam_read holds seventeen seams in order VS-01 to VS-17, each with two stations, measures and units, identity, permitted and forbidden causes, emitters per side and overlay keys; it parses with core's workflow model and leaves factory_line_seam_read untouched; the models are frozen with extra forbid; every scaffold emitter returns a typed INSUFFICIENT result.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_graph_declared -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22020-ac2
+    description: Core's ValidatorEventChainWalker over the seam nodes' contracts shows no unconsumed or unproduced topic of the seam family, the graph check names a missing emitter and an emitter whose contract lacks the count topic, and the runtime check reads each missing-close case as specified; each planted fault is refused and then restored and read clean.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k three_part_proof -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22020-ac6
+    description: A finalized window whose VS-02 reading is mismatched raises MISSING seam:VS-02 with the publish steps ok, an absent or unreadable reading raises UNKNOWN, the declared seams are named by one NOTE, and the caller builds the typed field and the VS-17 counts from the recorded readings.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest src/omnimarket/nodes/node_throughput_tick_decision_compute/tests -k seam_readings -q --no-cov --tb=line
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_readings_feed.py -q --no-cov --tb=line
+        cwd: .
