@@ -15,7 +15,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountRequest,
     ModelMergedRunningCountResult,
     ModelMrcConfig,
@@ -71,8 +71,10 @@ class HandlerMergedRunningCount:
             days=days,
             idle_hosts=idle_hosts,
             idle_total=sum(h.idle or 0 for h in idle_hosts),
+            idle_unread=sum(1 for h in idle_hosts if h.state == "unread"),
             lanes_on_unlisted_hosts=unlisted,
             ignored_evidence=len(request.evidence) - len(usable),
+            evidence_unread=request.evidence_unread,
         )
 
     @staticmethod
@@ -177,6 +179,8 @@ class HandlerMergedRunningCount:
                         slots=host.slots,
                         live_slots=held,
                         idle=0,
+                        slots_source=host.slots_source,
+                        cause=host.cause,
                     )
                 )
             elif host.slots is None:
@@ -187,6 +191,8 @@ class HandlerMergedRunningCount:
                         slots=None,
                         live_slots=held,
                         idle=None,
+                        slots_source=host.slots_source,
+                        cause=host.cause,
                     )
                 )
             else:
@@ -197,6 +203,8 @@ class HandlerMergedRunningCount:
                         slots=host.slots,
                         live_slots=held,
                         idle=max(0, host.slots - held),
+                        slots_source=host.slots_source,
+                        cause=host.cause,
                     )
                 )
         return tuple(rows), unlisted

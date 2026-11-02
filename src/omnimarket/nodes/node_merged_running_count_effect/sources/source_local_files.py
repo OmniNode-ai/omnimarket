@@ -13,11 +13,15 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMrcEvidence,
+    ModelMrcEvidenceRead,
     ModelMrcHost,
     ModelMrcLiveLane,
     ModelMrcPr,
+)
+from omnimarket.nodes.node_merged_running_count_effect.sources.source_lab_pass_receipts import (
+    SourceLabPassReceipts,
 )
 
 _ADOPTED = re.compile(
@@ -67,6 +71,8 @@ class SourceLocalFiles:
         hosts_table: Path,
         placement_read: Path,
         now: datetime,
+        lab_pass: SourceLabPassReceipts | None = None,
+        lab_pass_cause: str = "no lab-pass receipt source is configured",
     ) -> None:
         self._watcher_state = watcher_state
         self._ledger = ledger
@@ -74,6 +80,8 @@ class SourceLocalFiles:
         self._hosts_table = hosts_table
         self._placement_read = placement_read
         self._now = now
+        self._lab_pass = lab_pass
+        self._lab_pass_cause = lab_pass_cause
 
     def read_prs(self) -> tuple[ModelMrcPr, ...]:
         state: dict[str, Any] = json.loads(
@@ -131,20 +139,60 @@ class SourceLocalFiles:
             )
         return tuple(found)
 
+    def read_deployed_evidence(self) -> ModelMrcEvidenceRead:
+        if self._lab_pass is None:
+            return ModelMrcEvidenceRead(unread_cause=self._lab_pass_cause)
+        return self._lab_pass.read()
+
     def read_hosts(self) -> tuple[ModelMrcHost, ...]:
+        """Slots from the host's placement advertisement; the table cap only as a named fallback; neither: unread."""
         table = yaml.safe_load(self._hosts_table.read_text(encoding="utf-8"))["hosts"]
-        advertised: dict[str, int] = {}
+        advertised: dict[str, int] | None = None
         if self._placement_read.exists():
-            for ad in json.loads(self._placement_read.read_text(encoding="utf-8")):
-                advertised[str(ad["host_name"])] = int(ad["max_units"])
-        return tuple(
-            ModelMrcHost(
-                host=str(row["name"]),
-                slots=advertised.get(str(row["name"]), row.get("cap")),
-                available=row.get("available") is not False,
+            advertised = {
+                str(ad["host_name"]): int(ad["max_units"])
+                for ad in json.loads(self._placement_read.read_text(encoding="utf-8"))
+            }
+        hosts: list[ModelMrcHost] = []
+        for row in table:
+            name = str(row["name"])
+            available = row.get("available") is not False
+            cap = row.get("cap")
+            if advertised is not None and name in advertised:
+                hosts.append(
+                    ModelMrcHost(
+                        host=name,
+                        slots=advertised[name],
+                        slots_source="placement",
+                        available=available,
+                    )
+                )
+                continue
+            cause = (
+                "no placement advertisement read"
+                if advertised is None
+                else "no placement advertisement for the host"
             )
-            for row in table
-        )
+            if cap is None:
+                hosts.append(
+                    ModelMrcHost(
+                        host=name,
+                        slots=None,
+                        available=available,
+                        cause=f"{cause} and no cap in the host table",
+                    )
+                )
+            else:
+                hosts.append(
+                    ModelMrcHost(
+                        host=name,
+                        slots=cap,
+                        slots_source="table_cap",
+                        available=available,
+                        cause=cause,
+                    )
+                )
+        return tuple(hosts)
 
     def read_live_lanes(self) -> tuple[ModelMrcLiveLane, ...]:
         """Lanes with a CLAIM naming a host, no later TERMINAL, claimed inside the live window."""

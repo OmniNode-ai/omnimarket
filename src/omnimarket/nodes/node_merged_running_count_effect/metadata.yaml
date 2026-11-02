@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_merged_running_count_effect
 version: "1.0.0"
-description: Reads the merges, adoption rows, host table and placement read, and calls the merged-and-running count compute node
+description: Reads the merges, adoption rows, the dev lane's lab-pass receipt, host table and placement read, and calls the merged-and-running count compute node
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
@@ -10,7 +10,7 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   side_effect_class: read

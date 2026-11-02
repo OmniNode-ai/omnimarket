@@ -9,7 +9,9 @@ node_version: "1.0.0"
 description: >-
   Reads the merged-and-running count's sources through ProtocolMergedRunningSources, resolved from the
   container: merges and the other pull request states from the PR watcher state, ADOPTED status rows from
-  the work ledger, the declared host table (its cap is the slot count when no placement read advertises one) and the lanes
+  the work ledger, the dev lane's lab-pass receipt from the lane-health projection (evidence kind deployed), the declared host
+  table (the placement advertisement is the slot count; its cap is the slot count only as a named fallback, and a host with
+  neither reads unread) and the lanes
   the ledger holds a CLAIM for with a host and no TERMINAL. It calls
   node_merged_running_count_compute with them and returns its record. It writes nothing.
 input_model:
@@ -54,6 +56,17 @@ runtime:
   watcher_relpath: .claude_scratch/pr-watcher/state.json
   hosts_table_env: ONEX_LAB_RUN_HOSTS
   placement_read_relpath: .claude_scratch/lab-run/hosts.json
+  # The lane-health projection the lab-pass receipt of the dev lane is read from (evidence kind deployed). The address
+  # and the lane id are the environment's, never committed; either unset reads as unread, never as no evidence.
+  lab_pass:
+    url_env: ONEX_LAB_PASS_RECEIPTS_URL
+    lane_env: ONEX_LAB_PASS_LANE
+    labels:
+      repos: [omnibase_infra, omnimarket]
+      kind: deployed
+      source_template: "{lane} lab-pass receipt"
+      pass_result: PASS
+      timeout_seconds: 10
   labels:
     adopt_lane: adopt-merged
     adopted_kind: adopted

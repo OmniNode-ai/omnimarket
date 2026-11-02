@@ -9,10 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count import (
-    HandlerMergedRunningCount,
-)
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountRequest,
     ModelMergedRunningCountResult,
     ModelMrcConfig,
@@ -21,6 +18,9 @@ from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_runn
     ModelMrcHost,
     ModelMrcLiveLane,
     ModelMrcPr,
+)
+from omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count import (
+    HandlerMergedRunningCount,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_contract_config import (
     load_contract_config,
@@ -281,3 +281,43 @@ def test_models_refuse_extra_fields_and_naive_times() -> None:
         )
     with pytest.raises(ValidationError):
         _config(operator_timezone="Mars/Olympus")
+
+
+def test_idle_slots_carry_the_source_and_cause_the_reader_named() -> None:
+    hosts = (
+        ModelMrcHost(host="h1", slots=8, slots_source="placement"),
+        ModelMrcHost(
+            host="h2",
+            slots=6,
+            slots_source="table_cap",
+            cause="no placement advertisement read",
+        ),
+        ModelMrcHost(host="h3", slots=None, cause="no cap in the host table"),
+    )
+    idle = {h.host: h for h in _run(hosts=hosts, live_lanes=()).idle_hosts}
+    assert (idle["h1"].slots_source, idle["h1"].cause, idle["h1"].idle) == (
+        "placement",
+        "",
+        8,
+    )
+    assert (idle["h2"].slots_source, idle["h2"].cause, idle["h2"].idle) == (
+        "table_cap",
+        "no placement advertisement read",
+        6,
+    )
+
+
+def test_idle_unread_host_reads_unread_not_zero_and_adds_nothing_to_the_total() -> None:
+    hosts = (
+        ModelMrcHost(host="h1", slots=8, slots_source="placement"),
+        ModelMrcHost(host="h3", slots=None, cause="no cap in the host table"),
+    )
+    result = _run(hosts=hosts, live_lanes=())
+    unread = next(h for h in result.idle_hosts if h.host == "h3")
+    assert (unread.state, unread.idle, unread.cause) == (
+        "unread",
+        None,
+        "no cap in the host table",
+    )
+    assert result.idle_total == 8
+    assert result.idle_unread == 1

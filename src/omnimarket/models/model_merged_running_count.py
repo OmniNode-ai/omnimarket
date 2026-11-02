@@ -105,6 +105,15 @@ class ModelMrcEvidence(BaseModel):
         return self
 
 
+class ModelMrcEvidenceRead(BaseModel):
+    """What one evidence reader returned: the evidence it read, or the cause it could not read (never both silently empty)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence: tuple[ModelMrcEvidence, ...] = ()
+    unread_cause: str = ""
+
+
 class ModelMrcHost(BaseModel):
     """One host of the declared host table with the slots the placement read gave it (None: not read)."""
 
@@ -113,6 +122,10 @@ class ModelMrcHost(BaseModel):
     host: str = Field(min_length=1)
     slots: int | None = Field(default=None, ge=0)
     available: bool = True
+    # Where the slot figure came from ("placement": the host's advertisement; "table_cap": the declared table's cap)
+    # and, for a fallback or an unread host, why. Empty when there is nothing to say.
+    slots_source: str = ""
+    cause: str = ""
 
 
 class ModelMrcLiveLane(BaseModel):
@@ -134,6 +147,9 @@ class ModelMergedRunningCountRequest(BaseModel):
     config: ModelMrcConfig
     prs: tuple[ModelMrcPr, ...]
     evidence: tuple[ModelMrcEvidence, ...] = ()
+    # One entry per evidence kind a reader could not read, naming the kind and the cause: an unread kind is
+    # not the same fact as a kind with no evidence.
+    evidence_unread: tuple[str, ...] = ()
     hosts: tuple[ModelMrcHost, ...]
     live_lanes: tuple[ModelMrcLiveLane, ...] = ()
 
@@ -193,6 +209,8 @@ class ModelMrcHostIdle(BaseModel):
     slots: int | None
     live_slots: int
     idle: int | None
+    slots_source: str = ""
+    cause: str = ""
 
 
 class ModelMergedRunningCountResult(BaseModel):
@@ -207,5 +225,7 @@ class ModelMergedRunningCountResult(BaseModel):
     days: tuple[ModelMrcDay, ...]
     idle_hosts: tuple[ModelMrcHostIdle, ...]
     idle_total: int
+    idle_unread: int = 0
     lanes_on_unlisted_hosts: tuple[str, ...]
     ignored_evidence: int
+    evidence_unread: tuple[str, ...] = ()

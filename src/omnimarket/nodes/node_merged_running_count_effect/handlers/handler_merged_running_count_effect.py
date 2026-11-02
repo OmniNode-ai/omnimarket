@@ -7,11 +7,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountRequest,
+)
 from omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count import (
     HandlerMergedRunningCount,
-)
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
-    ModelMergedRunningCountRequest,
 )
 from omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run import (
     ModelMergedRunningCountRunRequest,
@@ -44,13 +44,19 @@ class HandlerMergedRunningCountEffect:
     ) -> ModelMergedRunningCountRunResult:
         sources = self._sources()
         prs = sources.read_prs()
-        evidence = sources.read_evidence()
+        adopted = sources.read_evidence()
+        deployed = sources.read_deployed_evidence()
+        evidence = (*adopted, *deployed.evidence)
+        unread = (
+            (f"deployed: {deployed.unread_cause}",) if deployed.unread_cause else ()
+        )
         count = HandlerMergedRunningCount().handle(
             ModelMergedRunningCountRequest(
                 now=request.now or datetime.now(UTC),
                 config=request.config or load_contract_config(),
                 prs=prs,
                 evidence=evidence,
+                evidence_unread=unread,
                 hosts=sources.read_hosts(),
                 live_lanes=sources.read_live_lanes(),
             )

@@ -17,7 +17,8 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
     ModelMrcConfig,
 )
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
@@ -25,6 +26,9 @@ from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_r
 )
 from omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run import (
     ModelMergedRunningCountRunRequest,
+)
+from omnimarket.nodes.node_merged_running_count_effect.sources.source_lab_pass_receipts import (
+    build_lab_pass_source,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_local_files import (
     ModelSourceLabels,
@@ -59,7 +63,10 @@ def _required_env(name: str) -> str:
 def build_sources(now: datetime) -> SourceLocalFiles:
     rt = yaml.safe_load(OWN_CONTRACT.read_text(encoding="utf-8"))["runtime"]
     home = Path(_required_env(rt["home_env"]))
+    lab_pass, lab_pass_cause = build_lab_pass_source(rt["lab_pass"], os.environ)
     return SourceLocalFiles(
+        lab_pass=lab_pass,
+        lab_pass_cause=lab_pass_cause,
         watcher_state=Path(
             os.environ.get(rt["watcher_state_env"]) or home / rt["watcher_relpath"]
         ),
@@ -69,6 +76,21 @@ def build_sources(now: datetime) -> SourceLocalFiles:
         placement_read=home / rt["placement_read_relpath"],
         now=now,
     )
+
+
+class MergedRunningCountReader:
+    """The count as the floor reads it (``ProtocolMergedRunningCountReader``): the local-file sources, the handler, the count."""
+
+    def read(self, now: datetime) -> ModelMergedRunningCountResult:
+        try:
+            sources = build_sources(now)
+        except SystemExit as exc:
+            raise RuntimeError(str(exc)) from exc
+        container: Any = _LocalContainer(sources)
+        run = HandlerMergedRunningCountEffect(container).handle(
+            ModelMergedRunningCountRunRequest(now=now)
+        )
+        return run.count
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count import (
+from omnimarket.models.model_merged_running_count import (
     ModelMrcEvidence,
+    ModelMrcEvidenceRead,
     ModelMrcHost,
     ModelMrcLiveLane,
     ModelMrcPr,
@@ -16,11 +17,13 @@ from omnimarket.nodes.node_merged_running_count_compute.models.model_merged_runn
 
 @runtime_checkable
 class ProtocolMergedRunningSources(Protocol):
-    """Merges and other pull request states, adoption evidence, the declared host table with its placement read, live lanes."""
+    """Merges and other pull request states, adoption evidence, deployed evidence (the dev lane's lab-pass receipt), the declared host table with its placement read, live lanes."""
 
     def read_prs(self) -> tuple[ModelMrcPr, ...]: ...
 
     def read_evidence(self) -> tuple[ModelMrcEvidence, ...]: ...
+
+    def read_deployed_evidence(self) -> ModelMrcEvidenceRead: ...
 
     def read_hosts(self) -> tuple[ModelMrcHost, ...]: ...
 
