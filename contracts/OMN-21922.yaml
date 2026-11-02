@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-21922
+title: lab_fill_priority and lab_fill_rank overlay seeds packaged in omnimarket with the mode unset
+summary: 'Moves the two lab fill ranker overlay seeds (lab_fill_priority with placeholder weights, an empty boost list and an empty exclude list; lab_fill_rank with caps and maps and no mode key) next to the loader that reads them, under src/omnimarket/handlers/lab_fill_overlays/<id>/overlay.yaml, byte for byte as first committed. The loaders read that packaged root only when ONEX_SKILL_OVERLAY_ROOTS is unset or blank; a root the environment names stays the only source. The rank configuration still refuses naming mode while mode is absent, so the ranker stays off the tick dispatch.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21922-packaged-seed
+  statement: The loaders for lab_fill_priority and lab_fill_rank load the seeds omnimarket packages in a fresh environment, and the rank configuration refuses naming mode while mode is absent.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the committed `lab_fill_priority` and `lab_fill_rank` overlay files load through the T2 loader of omnimarket#4787 with placeholder weights, an empty boost list, an empty exclude list and no `mode` key, and the loaded configuration reports the mode as unset -- falsifier: `uv run pytest tests -q -k lab_fill_priority_overlay` in omnimarket against the committed files fails, or the loader yields a mode of off, shadow or on'
+evidence_requirements:
+- kind: tests
+  description: The packaged-seed tests (fresh environment loads, mode refusal, seed bytes pinned by sha256, a named root replaces the packaged root) and the existing overlay loader tests.
+  command: uv run pytest tests -q -k lab_fill_priority_overlay --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21922-ac1-packaged-seed
+  description: In a fresh environment the packaged priority seed loads with the placeholder weights, an empty boost list and an empty exclude list; the packaged rank seed has no mode key and the rank configuration refuses naming mode; both seed files equal the first committed bytes by sha256; a root the environment names replaces the packaged root.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay_packaged_seed.py tests/unit/handlers/test_lab_fill_priority_overlay.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21922-integration-proof
+  description: The pushed head ran the loader tests on a lab host in a fresh environment with ONEX_SKILL_OVERLAY_ROOTS removed, so the packaged seeds are the only overlays on the path, and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-1102 -- env -u ONEX_SKILL_OVERLAY_ROOTS uv run --frozen pytest tests -q -k lab_fill_priority_overlay --no-cov
+    cwd: .

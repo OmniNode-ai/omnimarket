@@ -10,10 +10,13 @@ fallback to default weights and no packaged default for the mode.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from datetime import date
+from pathlib import Path
 
 from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
     NodeOverlayError,
     load_structured_overlay,
 )
@@ -25,12 +28,31 @@ from omnimarket.models.lab_fill.model_lab_fill_priority import (
 PRIORITY_OVERLAY_ID = "lab_fill_priority"
 RANK_OVERLAY_ID = "lab_fill_rank"
 
+# The seeds this package carries, laid out as an overlay root: ``<root>/<id>/overlay.yaml``.
+# The rank seed has no ``mode`` (the operator sets it), so it refuses until one is supplied.
+PACKAGED_OVERLAY_ROOT = Path(__file__).parent / "lab_fill_overlays"
+
+
+def _with_packaged_root(environ: Mapping[str, str] | None) -> Mapping[str, str]:
+    """The environment to read the overlays with.
+
+    A root the environment names is the only source (``ONEX_SKILL_OVERLAY_ROOTS`` wins, with no
+    packaged copy behind it). With no root named, the packaged root is the one root, so a fresh
+    environment reads the seeds this package ships.
+    """
+    env = os.environ if environ is None else environ
+    if env.get(OVERLAY_ROOTS_ENV, "").strip():
+        return env
+    return {**env, OVERLAY_ROOTS_ENV: str(PACKAGED_OVERLAY_ROOT)}
+
 
 def load_rank_config(
     environ: Mapping[str, str] | None = None,
 ) -> ModelLabFillRankConfig:
     """The engineering-owned rank configuration; refuses naming the missing key."""
-    return load_structured_overlay(RANK_OVERLAY_ID, ModelLabFillRankConfig, environ)
+    return load_structured_overlay(
+        RANK_OVERLAY_ID, ModelLabFillRankConfig, _with_packaged_root(environ)
+    )
 
 
 def load_priority_declaration(
@@ -46,7 +68,9 @@ def load_priority_declaration(
     """
     rank = config if config is not None else load_rank_config(environ)
     declaration = load_structured_overlay(
-        PRIORITY_OVERLAY_ID, ModelLabFillPriorityDeclaration, environ
+        PRIORITY_OVERLAY_ID,
+        ModelLabFillPriorityDeclaration,
+        _with_packaged_root(environ),
     )
     problems = declaration.field_problems(rank, today)
     if problems:
