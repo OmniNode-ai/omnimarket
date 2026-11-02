@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22109"
+title: "A head the landing controller reads merged or closed is not listed green-unlanded"
+summary: "The green controller read treats state merged or closed in last-facts.json as not unlanded, so the throughput tick no longer calls a PR the watcher left OPEN after it merged a CONTROLLER_DEFECT."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22109-merged-not-unlanded"
+    statement: |-
+      A PR whose merge the PR watcher never recorded is not a stuck green PR once the controller's own live read has it merged or closed.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the recorded omnibase_infra#5555 case (state merged, ci green, head d8823dd2c059) reads not green-unlanded, and the same entry read open stays green -- falsifier: uv run pytest tests/nodes/node_green_controller_read_compute/test_green_controller_read_node.py -q --no-cov"
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused node tests pass."
+    command: "uv run pytest tests/nodes/node_green_controller_read_compute/test_green_controller_read_node.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22109-merged-not-unlanded"
+    description: "The focused test for AC1 passes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_green_controller_read_compute/test_green_controller_read_node.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22109-deploy-probe-merged-state"
+    description: "Deploy probe: the handler GitHub serves at the checked-out commit declares the merged and closed states; it is absent at the merge base, so the content read answers false there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_green_controller_read_compute/handler.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"LEFT_OPEN_STATES\")' | grep -qx true"
+        cwd: "."
