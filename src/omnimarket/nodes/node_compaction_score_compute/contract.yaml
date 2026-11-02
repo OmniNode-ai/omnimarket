@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Recall, contradiction, mention and precision of a compacted context (OMN-21991).
+# Scores S1 (decisions dropped: RECALLED, ABSENT, CONTRADICTED, UNAVAILABLE, the last two apart),
+# the mention reading of S2 and the deterministic families of S4 (false and stale memories) from
+# recorded answers and the pinned ledger prefix. The fold never reads the arm label. The node
+# performs no I/O and declares no topic.
+name: node_compaction_score_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Score recall, contradiction, mention and precision of a compacted context from recorded answers.
+input_model:
+  name: ModelScoreRequest
+  module: omnimarket.nodes.node_compaction_score_compute.models.model_score
+output_model:
+  name: ModelScoreResult
+  module: omnimarket.nodes.node_compaction_score_compute.models.model_score
+handler:
+  module: omnimarket.nodes.node_compaction_score_compute.handlers.handler_score
+  class: HandlerCompactionScore
+  input_model: omnimarket.nodes.node_compaction_score_compute.models.model_score.ModelScoreRequest
+  output_model: omnimarket.nodes.node_compaction_score_compute.models.model_score.ModelScoreResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCompactionScore
+        module: omnimarket.nodes.node_compaction_score_compute.handlers.handler_score
+      event_model:
+        name: ModelScoreRequest
+        module: omnimarket.nodes.node_compaction_score_compute.models.model_score
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with the ground-truth items, recorded answers, the compacted context and the ledger prefix.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
