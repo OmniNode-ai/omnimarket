@@ -1,0 +1,71 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22149"
+title: "Clone maintenance refreshes the knowledge-base repository clone of every lab host named in the host table, so h101 stops exiting 0 with nothing moved and h053 stops sitting behind"
+summary: "node_canonical_clone_refresh_effect gains a declared-clone handler: each lab host row's clones column (host table through the lab_hosts overlay, repository directory name through the repos.knowledge_base overlay key) names the clone to refresh, and a missing, non-clone, unreachable or not-fast-forwarded clone is a typed refusal naming host and path."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22149-declared-clone-coverage"
+    statement: |-
+      A lab host's clone of the knowledge base repository is refreshed because the host table declares it, not because a directory scan lists it.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a clone-maintenance node reads each lab host's knowledge-base repository clone path from the host table (contract field plus overlay value, injected through DI) and refreshes it, with no host name or path hard-coded -- falsifier: uv run pytest tests -q -k kbi_clone_coverage in omnimarket"
+      - id: "AC2"
+        statement: "AC2: a host whose declared clone path does not exist, is not a clone, or is not fast-forwarded after the run makes the node return a typed refusal naming the host and path and never a clean exit -- falsifier: uv run pytest tests -q -k kbi_clone_coverage_refuses in omnimarket"
+      - id: "AC3"
+        statement: "AC3: a regression test built from the recorded h101 layout (clone at the home Code directory, outside the registry-root scan; fixture path in the PR) fails on the scan-based unit and passes on the node, and the same test passes under the in-memory profile and the Redpanda overlay profile -- falsifier: uv run pytest tests -q -k kbi_clone_coverage_profiles in omnimarket"
+      - id: "AC4"
+        statement: "AC4: the node is merged, installed through the host installer on dev, and a run shows the knowledge-base repository clone of h051, h053 and h101 at the same origin/main sha as the canonical clone -- falsifier: the node's run receipt lists each host with its before and after sha and state UP_TO_DATE or REFRESHED"
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused kbi_clone_coverage tests pass."
+    command: "uv run pytest tests/unit/kbi_clone_coverage -q --no-cov -k kbi_clone_coverage"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22149-declared-coverage"
+    description: "The declared-clone refresh tests pass: a clone at the home Code directory outside the registry-root scan is refreshed from the host table."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/kbi_clone_coverage -q --no-cov -k kbi_clone_coverage"
+        cwd: "."
+  - id: "dod-omn22149-refusals"
+    description: "The refusal tests pass: missing path, not a clone, not fast-forwarded, unreachable and undeclared hosts each return a typed refusal naming host and path."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/kbi_clone_coverage -q --no-cov -k kbi_clone_coverage_refuses"
+        cwd: "."
+  - id: "dod-omn22149-profiles-inmemory"
+    description: "The h101 layout test passes under the in-memory profile; the Redpanda overlay profile runs the same body on the declared test lane (local Done gate below)."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/kbi_clone_coverage -q --no-cov -k kbi_clone_coverage_profiles"
+        cwd: "."
+  - id: "dod-omn22149-integration-proof-redpanda"
+    description: "The same h101 layout body passed on the Redpanda test lane at the pushed head. Hosted CI has no broker, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22149 -- uv run --frozen pytest tests/integration/kbi_clone_coverage -q --no-cov -k kbi_clone_coverage_profiles"
+        cwd: "."
+  - id: "dod-omn22149-deploy-probe-handler"
+    description: "Deploy probe: the handler GitHub serves at the checked-out commit declares the refusal reason NOT_FAST_FORWARDED; it is absent at the merge base, so the content read answers false there."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_canonical_clone_refresh_effect/handlers/handler_declared_clone_refresh.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"NOT_FAST_FORWARDED\")' | grep -qx true"
+        cwd: "."

@@ -37,6 +37,20 @@ handler:
   module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect"
   class: "HandlerCanonicalCloneRefreshEffect"
   input_model: "omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh.ModelCanonicalCloneRefreshRequest"
+# Both handlers are bound here so the canonical-file-shape ratchet reads them as this node's. The
+# contract still declares no event_bus block, so runtime auto-wiring attaches neither (see the header).
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect:HandlerCanonicalCloneRefreshEffect"
+  handlers:
+    - operation: "refresh_repo_clones"
+      handler:
+        name: "HandlerCanonicalCloneRefreshEffect"
+        module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect"
+    - operation: "refresh_declared_clones"
+      handler:
+        name: "HandlerDeclaredCloneRefresh"
+        module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh"
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -46,7 +60,11 @@ runtime_dispatch:
   subscribe_topic: "onex.evt.omnimarket.repo-merged.v1"
   terminal_events:
     success: "onex.evt.omnimarket.canonical-clone-refreshed.v1"
+    declared_refreshed: "onex.evt.omnimarket.declared-clone-refreshed.v1"
 consumed_events:
+  - event_type: ModelDeclaredCloneRefreshRequest
+    topic: onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+    description: "Refresh the declared clone of the named hosts, or of every host that declares one (OMN-22149)."
   - event_type: ModelRepoMerged
     topic: onex.evt.omnimarket.repo-merged.v1
     description: "A pull request merged; published by the landing controller and the PR watcher."
@@ -56,17 +74,39 @@ consumed_events:
 externally_produced_topics:
   - topic: onex.evt.omnimarket.repo-merged.v1
     producer: "clone-refresh publish, run by the landing controller and the PR watcher on a merge, not a node contract"
+  - topic: onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+    producer: "clone-refresh declared, run by the host timer or an operator, not a node contract"
 published_events:
   - event_type: ModelCanonicalCloneRefreshReceipt
     topic: onex.evt.omnimarket.canonical-clone-refreshed.v1
     description: "What one sync run did on one host."
+  - event_type: ModelDeclaredCloneRefreshReceipt
+    topic: onex.evt.omnimarket.declared-clone-refreshed.v1
+    description: "What one declared-clone run did on each host the request named (OMN-22149)."
 metadata:
   transport_type: kafka
   description: "Hosted by one serve process per host, never a shared runtime"
   author: "OmniNode Team"
   created: "2026-10-04"
-  tags: ["effect", "canonical-clone", "OMN-20496"]
-  related_tickets: ["OMN-20496"]
+  tags: ["effect", "canonical-clone", "OMN-20496", "OMN-22149"]
+  related_tickets: ["OMN-20496", "OMN-22149"]
+
+# DECLARED CLONES (OMN-22149). Coverage of a repository's clone on a lab host comes from the host
+# table, never from a registry-root scan: each host row's `clones` column (read through the
+# `lab_hosts.hosts` overlay key) names the clone and the path it sits at, and `repo_role` names the
+# repository role whose clone this handler refreshes. The role resolves to a directory name through
+# the `repos.<role>` overlay key. A declared clone that is missing, is not a clone, cannot be reached
+# or is not fast-forwarded after the run is a typed refusal naming host and path.
+declared_clone_refresh:
+  repo_role: knowledge_base
+  repo_dir_overlay_key: repos.knowledge_base
+  hosts_overlay_key: lab_hosts.hosts
+  request_topic: onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+  receipt_topic: onex.evt.omnimarket.declared-clone-refreshed.v1
+  handler: omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh.HandlerDeclaredCloneRefresh
+  input_model: omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh.ModelDeclaredCloneRefreshRequest
+  output_model: omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh.ModelDeclaredCloneRefreshReceipt
 
 timeouts:
   sync_timeout_seconds: 300  # Bounds the canonical clone sync subprocess.
+  declared_clone_timeout_seconds: 120  # Bounds one host's declared-clone command.
