@@ -11,10 +11,18 @@ requirements:
     acceptance:
       - id: AC1
         statement: 'AC1: the deploy-gate run step, executed with a recording gh and python, hands the validator a --pr-body whose first line is the title and whose tail is the body, and the validator checkout is pinned at omniclaude 61761f04a8c8edfb810bd261bb82ed60b8bcad2d -- falsifier: uv run pytest tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly fails at the merge base'
+  - id: req-cause-verdict-base-head
+    statement: A cause_not_shared verdict holds for its cause key while the repo's base head equals the one the verdict was given on, whatever the member set or the member heads do; the key is leased again when the base head moves.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a cause is attempted at most its budget, then parked with one operator MSG per park episode, and a fixer HOLD row stops every dispatch and revokes the live leases in its scope -- falsifier: TLC on tla/landing_controller with P11, P12, P14 and their mutant configs, and uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -k "budget or fixer_hold"'
 evidence_requirements:
   - kind: tests
     description: The deploy-gate run step hands the validator the title and the body, and the validator stays at its pin and mode.
     command: uv run pytest tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly
+  - kind: tests
+    description: A cause_not_shared verdict holds across a member set change on the same base head, the key is leased again when the base head moves, and the budget and fixer HOLD tests stay green.
+    command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -28,3 +36,19 @@ dod_evidence:
         check_value: uv run pytest tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py -q -p no:randomly
     binds_ac:
       - AC1
+  - id: dod-omn20413-ac3-verdict-base-head
+    description: The landing decision node holds a cause_not_shared verdict on the base head it was given on and leases the cause again once the base head moves; the node's whole test directory, including the budget and fixer_hold tests, passes.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly
+    binds_ac:
+      - AC3
+  - id: dod-omn20413-integration-proof
+    description: The pushed head ran the landing decision node's whole test directory on a lab host through the lab work runner and exited 0. The live controller runs a pinned commit, so the deployed proof follows the pin bump; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20413 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly
+        cwd: .
