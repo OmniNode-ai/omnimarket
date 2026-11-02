@@ -1,0 +1,88 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21966"
+title: "Compaction cost accounting with measured and estimated provenance (plan task CM.6)"
+summary: >-
+  node_compaction_cost_compute is a pure compute node. From a stock arm's boundary, summary and usage records, a mod arm's pack-build and routed-call usage records, and the tool calls of the N turns after each boundary, it yields compaction tokens, the context size after, recovery tokens and net saved context, each marked measured, estimated or unavailable, and the cost(mod) / cost(stock) ratio, flagged ESTIMATED with the 50 percent perturbation bound when a line is estimated. It writes nothing. The adapter that reads usage records through the omniclaude transcript usage read node fills its typed input and is a separate change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21966-cost-accounting"
+    statement: "node_compaction_cost_compute accounts a compaction's cost per arm with provenance on every line and compares the arms."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: every cost line carries its provenance, and the summarizer output tokens are estimated -- falsifier: uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'provenance or summarizer'"
+      - id: "AC2"
+        statement: "AC2: the recovery list is data and a call outside it is not counted -- falsifier: uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'recovery or pattern or window'"
+      - id: "AC3"
+        statement: "AC3: no value is written to the savings table -- falsifier: uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k savings_table"
+      - id: "AC4"
+        statement: "AC4: the accounting equations of S5 are the node's only formulas, a ratio with an estimated line is flagged ESTIMATED and carries the 50 percent perturbation bound, and preTokens is never labelled measured as summarizer usage -- falsifier: uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'ratio or pretokens or safeguard or perturbed'"
+      - id: "AC5"
+        statement: "AC5: the source of the mod's pack-build and routed-call token usage is named in the PR with a readback from a real build, and a missing usage record yields UNAVAILABLE, never zero -- falsifier: uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'unavailable or missing or without_a_count'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Compaction cost compute tests for OMN-21966."
+    command: "uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21966-ac1-provenance"
+    description: "Every line carries provenance; the summarizer output and the preTokens proxy are estimated, and a summarizer usage record makes them measured."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'provenance or summarizer'"
+        cwd: "."
+  - id: "dod-omn21966-ac2-recovery-list"
+    description: "The recovery list is a data file or a request field; a read outside it, and a turn after the window, are not counted."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'recovery or pattern or window'"
+        cwd: "."
+  - id: "dod-omn21966-ac3-no-savings-write"
+    description: "A scan of the node and its tests finds no write to the savings table and no database import in the handler."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k savings_table"
+        cwd: "."
+  - id: "dod-omn21966-ac4-ratio"
+    description: "A ratio with an estimated line is ESTIMATED with the 50 percent perturbed bound and a safeguard verdict; an all-measured ratio is MEASURED."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'ratio or pretokens or safeguard or perturbed'"
+        cwd: "."
+  - id: "dod-omn21966-ac5-unavailable"
+    description: "A missing pack-build record, a record without counts and a recovery call without a count are unavailable, never zero. The usage sources and the pack build readback are in the PR body."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_cost_compute -q --no-cov -k 'unavailable or missing or without_a_count'"
+        cwd: "."
+  - id: "dod-omn21966-deploy-local-run"
+    description: "Hosted-runner deploy probe: the node runs through the ONEX local runtime with an in-memory backend on a stock request and returns the cost lines with provenance, the summarizer output estimated and the recovery read of the ledger counted. No broker, Docker daemon or production rollout is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH" onex node node_compaction_cost_compute --input tests/nodes/node_compaction_cost_compute/fixtures/deploy_probe_request.json --state-root "${TMPDIR:-/tmp}/omn21966-probe-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" 2>/dev/null | tail -n 1 | python3 -c "import json,sys; r=json.loads(sys.stdin.read()); assert r['status']=='success' and r['exit_code']==0, r; s=r['result']['stock']; assert s['compaction_output']['provenance']=='estimated', s; assert s['compaction_input']['provenance']=='estimated', s; assert s['recovery']['value']==50 and s['recovery']['provenance']=='measured', s; assert s['net']['value']==900, s"
+        cwd: "."
+  - id: "dod-omn21966-integration-proof"
+    description: "The pushed head ran the node suite on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane comp-cm6-r2-1102 -- uv run --frozen pytest tests/nodes/node_compaction_cost_compute -q --no-cov'
+        cwd: "."

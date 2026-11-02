@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Tests-only thresholds. These are NOT the pre-registered production numbers;
+# those are fixed by a separate data change before the first confirmatory run.
+alpha: 0.10
+minimum_power: 0.5
+minimum_sessions: 30
+equivalence_band: 0.10
+fallback_limit: 0.10
+cost_ratio_limit: 1.5
+bootstrap_resamples: 400
+power_simulations: 30
+power_resamples: 150
+power_session_sd: 0.05
+primaries:
+  - {name: H1, metric: ledger_recall, power_assumed_gain: 0.25}
+  - {name: H2, metric: acted_share, power_assumed_gain: 0.25}
+safeguards:
+  - {name: contradiction, metric: contradiction, harm_direction: higher, margin: 0.15}
+  - {name: planted_recall, metric: planted_recall, harm_direction: lower, margin: 0.15}
