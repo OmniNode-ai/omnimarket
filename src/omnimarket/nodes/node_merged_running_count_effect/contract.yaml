@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_running_count_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Reads the merged-and-running count's sources through ProtocolMergedRunningSources, resolved from the
+  container: merges and the other pull request states from the PR watcher state, ADOPTED status rows from
+  the work ledger, the declared host table (its cap is the slot count when no placement read advertises one) and the lanes
+  the ledger holds a CLAIM for with a host and no TERMINAL. It calls
+  node_merged_running_count_compute with them and returns its record. It writes nothing.
+input_model:
+  name: ModelMergedRunningCountRunRequest
+  module: omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run
+  description: An optional clock override and an optional overlay config.
+output_model:
+  name: ModelMergedRunningCountRunResult
+  module: omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run
+  description: The count and how many records were read.
+handler:
+  module: omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect
+  class: HandlerMergedRunningCountEffect
+  input_model: omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run.ModelMergedRunningCountRunRequest
+  output_model: omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run.ModelMergedRunningCountRunResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect:HandlerMergedRunningCountEffect
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerMergedRunningCountEffect
+        module: omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  addressable: false
+  invocation_mode: library
+  external_trigger: python -m omnimarket.nodes.node_merged_running_count_effect, from a schedule, by hand, or from the factory floor effect.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+# Where each source is, relative to the registry home (home_env); the ledger path is the one ledger_env names.
+# labels are the words the files use and the states the count takes from them.
+runtime:
+  home_env: OMNI_HOME
+  ledger_env: ONEX_LEDGER_PATH
+  watcher_state_env: ONEX_PR_WATCHER_STATE
+  watcher_relpath: .claude_scratch/pr-watcher/state.json
+  hosts_table_env: ONEX_LAB_RUN_HOSTS
+  placement_read_relpath: .claude_scratch/lab-run/hosts.json
+  labels:
+    adopt_lane: adopt-merged
+    adopted_kind: adopted
+    merged_state: merged
+    handed_off_state: handed_off
+    armed_state: armed
+    queued_state: queued
+    open_state: open
+    claim_row: CLAIM
+    terminal_row: TERMINAL
+    lane_live_window_hours: 24
+metadata:
+  transport_type: local
+  description: Read the merged-and-running count's sources and call the compute node.
+  author: OmniNode Team
+  created: '2026-11-01'

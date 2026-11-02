@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_running_count_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Counts merged work per operator-timezone calendar day, the part of it with evidence that it runs on
+  dev (the evidence kind named per merge), the part without (with the reason), and the idle slots per lab
+  host (slots minus live lane slots, for every host of the declared host table). A hand-off, an armed pull
+  request and a queued pull request are states the config does not count: the count is of merges and
+  never of hand-offs. Reads no files, runs no process, has no clock (the caller supplies now), mutates
+  nothing. The merges, the adoption rows and the placement read arrive as typed models from a reader.
+input_model:
+  name: ModelMergedRunningCountRequest
+  module: omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count
+output_model:
+  name: ModelMergedRunningCountResult
+  module: omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count
+handler:
+  module: omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count
+  class: HandlerMergedRunningCount
+  input_model: omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count.ModelMergedRunningCountRequest
+  output_model: omnimarket.nodes.node_merged_running_count_compute.models.model_merged_running_count.ModelMergedRunningCountResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count:HandlerMergedRunningCount
+  handlers:
+    - operation: count_merged_running
+      handler:
+        name: HandlerMergedRunningCount
+        module: omnimarket.nodes.node_merged_running_count_compute.handlers.handler_merged_running_count
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 1000
+# The declared config (ModelMrcConfig). An overlay supplies another object of the same type; the repositories
+# and labels of the live deployment belong in that overlay. A repository named in no evidence source reads
+# no_evidence_source_reason: its merges are merged-not-running, never running.
+merged_running_count:
+  schema_id: omnimarket.merged_running_count.v1
+  operator_timezone: America/New_York
+  window_days: 7
+  landing_branches: [dev, main]
+  counted_pr_states: [merged]
+  sha_match_chars: 12
+  no_evidence_source_reason: no_evidence_source
+  evidence_sources:
+    - kind: adopted
+      repos: []
+      missing_reason: not_yet_adopted
+    - kind: deployed
+      repos: []
+      missing_reason: not_yet_deployed
