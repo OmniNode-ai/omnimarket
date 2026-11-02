@@ -313,6 +313,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
 node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
