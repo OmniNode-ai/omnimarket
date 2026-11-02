@@ -179,7 +179,8 @@ def host_literals(source: str) -> list[str]:
 def test_host_literal_scan_catches_a_planted_pin() -> None:
     """Positive control: the scan flags a pinned host name and address and passes a docstring and a table read."""
     assert host_literals('PIN = "h' + '201"') == ["h" + "201"]
-    assert host_literals('TARGET = "192.168.' + '86.201"') == ["192.168." + "86.201"]
+    probe_ip = ".".join(["192", "168", "86", "201"])
+    assert host_literals(f'TARGET = "{probe_ip}"') == [probe_ip]
     assert host_literals('"""h' + '201 in prose."""\nrow = table["name"]') == []
 
 
