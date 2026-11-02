@@ -57,13 +57,16 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k symlinked_lab_root_removes_ended_lane_and_keeps_live_lane -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21954-ac5
-    description: Ruff lint and format, the pre-commit hooks that judge the changed Python files, pass at the pushed head. The full pre-commit environment install exceeds the hosted per-check budget of 300 seconds, so the hosted check runs the ruff hooks directly and the commit hooks run the rest.
+    description: Ruff lint and format, the pre-commit hooks that judge the changed Python files, pass at the pushed head, and the linked-root regression tests prove the behavior those files implement. Both checks must pass. Lint alone also passes at the merge base; the regression check fails there. The full pre-commit environment install exceeds the hosted per-check budget of 300 seconds, so the hosted check runs the ruff hooks directly and the commit hooks run the rest.
     source: manual
     binds_ac:
       - AC5
     checks:
       - check_type: command
         check_value: uv run ruff check src/omnimarket/nodes/node_remote_lane_effect/run_retention.py tests/nodes/node_remote_lane_effect/test_run_retention.py && uv run ruff format --check src/omnimarket/nodes/node_remote_lane_effect/run_retention.py tests/nodes/node_remote_lane_effect/test_run_retention.py
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k symlinked_lab_root -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21954-integration-proof
     description: Run the retention suite on a lab host at the evaluated commit, including the packaged handler and the standalone shell payload against real temporary filesystem trees. The linked-root cases assert archive contents, removal of the ended lane's trees and preservation of the live lane's trees. Hosted CI cannot reach the lab, so this unbound check runs only at the local Done gate.
