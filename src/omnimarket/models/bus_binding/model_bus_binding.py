@@ -61,3 +61,26 @@ class ModelBusBindingDecision(BaseModel):
     def status_cell(self) -> str:
         """The cell a STATUS row carries so the fallback is visible on the ledger."""
         return f"bus_binding={self.binding.value} bus_state={self.state.value}"
+
+
+class ModelBusBindingTickEvidence(BaseModel):
+    """What a recorded tick line and its broker error say about one binding (the evidence side of the decision)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    binding: EnumBusBinding
+    state: EnumBusBindingState
+    pending_outbox: int = Field(ge=0)
+    missing_topics: tuple[str, ...] = ()
+
+
+class ModelBusBindingResolution(BaseModel):
+    """What the exception actor did with one case: resolved in code, or emitted to the exception queue."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cls: str
+    resolved: bool
+    how: str
+    emitted: str

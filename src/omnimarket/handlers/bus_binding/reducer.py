@@ -28,11 +28,27 @@ TRANSITIONS: dict[tuple[EnumBusBindingState, str], EnumBusBindingState] = {
 }
 
 
+def topic_degraded_reason(missing_topics: tuple[str, ...]) -> str:
+    """The reason a binding reports when a required topic is unknown, naming each missing topic."""
+    return f"required topic missing: {', '.join(missing_topics)}"
+
+
 def reduce_binding_state(
-    prior: EnumBusBindingState, *, durable_healthy: bool
+    prior: EnumBusBindingState,
+    *,
+    durable_healthy: bool,
+    pending_outbox: int = 0,
+    missing_topics: tuple[str, ...] = (),
 ) -> tuple[EnumBusBindingState, EnumBusBinding]:
-    """The next state and the binding that state serves on."""
-    trigger = TRIGGER_DURABLE_OK if durable_healthy else TRIGGER_DURABLE_FAILED
+    """The next state and the binding that state serves on.
+
+    A durable bus that answers its health read is still not healthy while appends wait in the outbox and a
+    required topic is unknown: the replay could not be answered, so the read counts as failed (OMN-21959).
+    """
+    stuck = pending_outbox > 0 and bool(missing_topics)
+    trigger = (
+        TRIGGER_DURABLE_OK if durable_healthy and not stuck else TRIGGER_DURABLE_FAILED
+    )
     state = TRANSITIONS[(prior, trigger)]
     binding = (
         EnumBusBinding.INMEMORY
