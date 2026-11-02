@@ -324,6 +324,7 @@ node_lane_github_budget_effect = "omnimarket.nodes.node_lane_github_budget_effec
 node_lane_pin_fallback_compute = "omnimarket.nodes.node_lane_pin_fallback_compute"
 node_lane_queue_argv_compute = "omnimarket.nodes.node_lane_queue_argv_compute"
 node_lane_report_relay_effect = "omnimarket.nodes.node_lane_report_relay_effect"
+node_launch_validity_compute = "omnimarket.nodes.node_launch_validity_compute"
 node_pr_head_stage_compute = "omnimarket.nodes.node_pr_head_stage_compute"
 node_ticket_text_effect = "omnimarket.nodes.node_ticket_text_effect"
 node_runtime_coverage_compute = "omnimarket.nodes.node_runtime_coverage_compute"
