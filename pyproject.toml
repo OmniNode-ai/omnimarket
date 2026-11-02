@@ -314,6 +314,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_host_state_effect = "omnimarket.nodes.node_host_state_effect"
+node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
 node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
@@ -358,6 +359,7 @@ node_remote_lane_handoff_compute = "omnimarket.nodes.node_remote_lane_handoff_co
 node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
 node_remote_lane_effect = "omnimarket.nodes.node_remote_lane_effect"
 node_remote_lane_stop_effect = "omnimarket.nodes.node_remote_lane_stop_effect"
+node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_service_redeploy_effect"
 node_dev_cause_lane_receiver_effect = "omnimarket.nodes.node_dev_cause_lane_receiver_effect"
 node_merge_sweep_plan_compute = "omnimarket.nodes.node_merge_sweep_plan_compute"
 node_merge_sweep_request_compute = "omnimarket.nodes.node_merge_sweep_request_compute"
@@ -1103,6 +1105,7 @@ node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gat
 node_process_health_compute = "omnimarket.nodes.node_process_health_compute"
 node_process_health_effect = "omnimarket.nodes.node_process_health_effect"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
+node_lane_reader_provision_effect = "omnimarket.nodes.node_lane_reader_provision_effect"
 node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
 node_host_drift_check_effect = "omnimarket.nodes.node_host_drift_check_effect"
 node_host_gap_unit_effect = "omnimarket.nodes.node_host_gap_unit_effect"

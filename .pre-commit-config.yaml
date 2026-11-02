@@ -1944,6 +1944,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: pr-handoff-dod-receipt-regression
+        name: PR handoff requires a passing DoD receipt at the head (OMN-21285)
+        language: system
+        entry: uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" --no-cov -p no:randomly -n 0
+        files: ^(src/omnimarket/nodes/node_pr_handoff_dod_receipt_effect/.*|tests/test_golden_chain_pr_handoff_dod_receipt_effect\.py|tests/fixtures/pr_handoff_dod_receipt/.*|contracts/OMN-21285\.yaml|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
         language: system
