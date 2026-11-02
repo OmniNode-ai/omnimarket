@@ -1,0 +1,43 @@
+schema_version: 1.0.0
+ticket_id: OMN-21898
+title: The prompt-intent handler calls the omniintelligence classifier API the runtime image exports
+summary: The prompt-intent classify handler imported a module-level classify_intent that the installed omniintelligence does not define, so every content-captured dispatch raised ImportError and its terminalized failure envelope reached the intent-classification projection and its DLQ. The handler now calls HandlerIntentClassifier and HandlerTypedClassification, with the node's output model and published event unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21898-classifier-import
+    statement: The handler binds to the exports of the installed omniintelligence classifier module, and a prompt classifies instead of raising ImportError.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: The handler binds to the exports of the installed omniintelligence classifier module, and a prompt classifies instead of raising ImportError. -- falsifier: uv run pytest tests/nodes/node_prompt_intent_classify_compute -q'
+evidence_requirements:
+  - kind: tests
+    description: The node suites run on a lab host at the pushed head, once with the recorded surface and once with omniintelligence on PYTHONPATH.
+    command: uv run pytest tests/nodes/node_prompt_intent_classify_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21898-ac1
+    description: AC1 runs the handler's import and classify path against the recorded export surface of the dev runtime image, which carries no classify_intent; RED on the previous handler with the production ImportError.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_intent_classify_compute/test_handler_prompt_intent_classify.py tests/nodes/node_prompt_intent_classify_compute/test_omn21898_omniintelligence_surface.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21898-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published prompt-intent handler at the evaluated commit to match this checkout, then runs the node suite against the recorded export surface of the runtime image. This checks the source artifact and the import path, not the runtime rollout; the DLQ high watermark and the dev runtime health readback follow the deploy.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: curl --fail --silent --show-error --location --max-time 10 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_prompt_intent_classify_compute/handlers/handler_prompt_intent_classify.py" | cmp - src/omnimarket/nodes/node_prompt_intent_classify_compute/handlers/handler_prompt_intent_classify.py
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_prompt_intent_classify_compute/test_omn21898_omniintelligence_surface.py -q --no-cov --tb=line
+        cwd: .
