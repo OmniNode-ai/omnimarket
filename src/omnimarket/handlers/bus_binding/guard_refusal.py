@@ -7,7 +7,8 @@ Seven recorded cases of class ``bus-binding-outbox-refused`` were refused not fo
 ledger guard on the TERMINAL they carried: the friction guard (OMN-18274, a cited friction with no FRICTION row)
 and the worktree cell guard (OMN-20148). Whether the row can be appended again is a fact about the ledger now:
 
-* the lane's CLAIM is already closed by a TERMINAL: the lost row is superseded, nothing is appended;
+* every row the refusal lost is already in the ledger (replayed by hand with its own stamp), or the lane's CLAIM
+  is already closed by a TERMINAL: the lost row is superseded, nothing is appended;
 * the cause has since been made good (the lane has a FRICTION row, the removed tree is gone, the cell names the
   CLAIM's worktree): the refused rows are appended again, unchanged, as a new request;
 * anything else needs a fact only the lane has (a cost, which of two worktrees was used): the case stays open
@@ -25,7 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from omnimarket.handlers.bus_binding.recovery import REFUSED_CLASS, SOURCE
+from omnimarket.handlers.bus_binding import recovery
 from omnimarket.models.bus_binding.model_guard_refusal import (
     EnumGuardRefusal,
     ModelGuardRefusal,
@@ -48,6 +49,9 @@ _WORKTREE_MARK = "OMN-20148 worktree cell rejected append"
 _LANE_IN_EVIDENCE = re.compile(r"no FRICTION row for lane '(?P<lane>[^']+)'")
 _LANE_IN_KEY = re.compile(r"(?:^|\s)lane=(?P<lane>\S+)")
 _LOST_STAMP = re.compile(r"rows lost: [A-Z,]+ stamped (?P<stamp>[0-9TZ:\-]+)")
+_LOST_ROWS = re.compile(
+    r"rows lost: (?P<kinds>[A-Z,]+) stamped (?P<stamps>[0-9TZ:,\-]+)"
+)
 _REMOVED_EXISTS = re.compile(
     r"worktree=removed:(?P<path>\S+) but that path still exists"
 )
@@ -101,6 +105,9 @@ def read_guard_refusal(row: Mapping[str, object]) -> ModelGuardRefusal | None:
     if lane_match is None:
         return None
     stamp = _LOST_STAMP.search(evidence)
+    lost = _LOST_ROWS.search(evidence)
+    kinds = lost["kinds"].split(",") if lost else []
+    stamps = lost["stamps"].split(",") if lost else []
     path = _REFUSED_PATH.search(str(row.get("tried", "")))
     return ModelGuardRefusal(
         guard=guard,
@@ -108,6 +115,9 @@ def read_guard_refusal(row: Mapping[str, object]) -> ModelGuardRefusal | None:
         lost_stamp=stamp["stamp"] if stamp else "",
         refused_path=path["path"] if path else "",
         cell=cell,
+        lost_rows=tuple(f"{k}@{s}" for k, s in zip(kinds, stamps, strict=True))
+        if len(kinds) == len(stamps)
+        else (),
     )
 
 
@@ -140,6 +150,12 @@ def _close(refusal: ModelGuardRefusal, ports: GuardPorts) -> tuple[bool, str]:
     """(resolved, how or what is still missing) for one guard refusal."""
     lane = refusal.lane
     rows = ports.lane_rows(lane)
+    landed = {f"{_kind(r)}@{_stamp_of(r)}" for r in rows}
+    if refusal.lost_rows and all(row in landed for row in refusal.lost_rows):
+        return True, (
+            f"the ledger already holds every row the refusal lost for lane {lane} "
+            f"({', '.join(refusal.lost_rows)}); nothing is appended again"
+        )
     claim = _claim_stamp(rows, refusal.lost_stamp)
     if not claim:
         return False, (
@@ -201,8 +217,13 @@ def settle_guard_case(
     ports: GuardPorts,
     *,
     now: datetime,
+    emit_open: bool = True,
 ) -> ModelGuardResolution | None:
-    """Resolve one guard-refusal case in code, or leave it open; None when it is not a guard refusal."""
+    """Resolve one guard-refusal case in code, or leave it open; None when it is not a guard refusal.
+
+    ``emit_open=False`` leaves an unsettled case as it is instead of emitting it again: the replay path settles
+    on every pass and must not add an occurrence for a case it already reported.
+    """
     refusal = read_guard_refusal(row)
     if refusal is None:
         return None
@@ -222,19 +243,23 @@ def settle_guard_case(
         if case_id:
             create_handler_exception_resolve().handle(
                 ModelExceptionResolveRequest(
-                    queue_dir, case_id, SOURCE, how, _stamp(now)
+                    queue_dir, case_id, recovery.SOURCE, how, _stamp(now)
                 )
             )
         return ModelGuardResolution(
             lane=refusal.lane, key=key, resolved=True, how=how, emitted=""
         )
+    if not emit_open:
+        return ModelGuardResolution(
+            lane=refusal.lane, key=key, resolved=False, how=how, emitted=""
+        )
     emitted = create_handler_exception_emit().handle(
         ModelExceptionEmitRequest(
             state_dir=queue_dir,
             row=ModelExceptionRow(
-                cls=REFUSED_CLASS,
+                cls=recovery.REFUSED_CLASS,
                 key=key,
-                source=SOURCE,
+                source=recovery.SOURCE,
                 evidence=str(row.get("evidence", "")),
                 tried=how,
                 proposed_fix=str(row.get("proposed_fix", ""))
@@ -254,7 +279,7 @@ def settle_guard_case(
 
 
 def settle_guard_refusals(
-    state_dir: Path, ports: GuardPorts, *, now: datetime
+    state_dir: Path, ports: GuardPorts, *, now: datetime, emit_open: bool = True
 ) -> list[ModelGuardResolution]:
     """Settle every open guard-refusal case of the queue under ``state_dir``; other open cases are not touched."""
     queue = create_handler_exception_queue().handle(
@@ -262,9 +287,9 @@ def settle_guard_refusals(
     )
     results: list[ModelGuardResolution] = []
     for row in queue.rows:
-        if row.get("cls") != REFUSED_CLASS:
+        if row.get("cls") != recovery.REFUSED_CLASS:
             continue
-        settled = settle_guard_case(state_dir, row, ports, now=now)
+        settled = settle_guard_case(state_dir, row, ports, now=now, emit_open=emit_open)
         if settled is not None:
             results.append(settled)
     return results
