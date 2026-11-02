@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_reader_provision_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+node_version: 1.0.0
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Provision, on one lab lane host, the inputs of the two lane readers `onex-capability-catalog find` and the
+  work-ledger parity check. It produces catalog.json where the committed lane reader table declares it, links the
+  catalog CLI into the lane PATH directory, and sets ONEX_CAPABILITY_CATALOG_JSON and WL_ENV_FILE in the lab-work serve
+  unit's environment file (rewriting only those two lines), and names, without a value, the key only the host owner
+  supplies. Hosts, paths and commands come from the node overlay and the committed table, never from this package.
+input_model:
+  name: ModelLaneReaderProvisionRequest
+  module: omnimarket.nodes.node_lane_reader_provision_effect.models.model_lane_reader_provision
+output_model:
+  name: ModelLaneReaderProvisionResult
+  module: omnimarket.nodes.node_lane_reader_provision_effect.models.model_lane_reader_provision
+handler:
+  module: omnimarket.nodes.node_lane_reader_provision_effect.handlers.handler_lane_reader_provision
+  class: HandlerLaneReaderProvision
+  input_model: omnimarket.nodes.node_lane_reader_provision_effect.models.model_lane_reader_provision.ModelLaneReaderProvisionRequest
+  output_model: omnimarket.nodes.node_lane_reader_provision_effect.models.model_lane_reader_provision.ModelLaneReaderProvisionResult
+# The overlay is <root>/node_lane_reader_provision_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS (hosts: name, home,
+# serve_env_file, lane_bin_dir, catalog_cli_target, catalog_producer_argv, registry_root, restart_argv). The table is
+# node_host_capability_compute/lane_reader_inputs.yaml. The host boundary (ProtocolLaneReaderHost) is injected.
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_reader_provision_effect.handlers.handler_lane_reader_provision:HandlerLaneReaderProvision
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLaneReaderProvision
+      module: omnimarket.nodes.node_lane_reader_provision_effect.handlers.handler_lane_reader_provision
+    topic: onex.cmd.omnimarket.lane-reader-provision-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.lane-reader-provision-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.lane-reader-provision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-reader-provision-requested.v1
+terminal_event: onex.evt.omnimarket.lane-reader-provision-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.lane-reader-provision-completed.v1
+runtime_profiles:
+- effects
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 700000
+  runtime_profiles:
+  - effects
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: kafka
+  execution_locus: host-local
+  description: Provision the catalog find and ledger parity reader inputs on one lane host.
+  author: OmniNode Team
+  created: '2026-11-02'
+  tags:
+  - effect
+  - lane-reader-provision
+  - OMN-22100
+  related_tickets:
+  - OMN-22100
