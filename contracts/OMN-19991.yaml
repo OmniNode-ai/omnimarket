@@ -27,6 +27,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Ownership half of the projection step only: the local_alerts cursor sequence is declared once in the application relation ownership manifest, in the tenant domain, owned by the projection migration runner, ahead of omnibase_infra vendoring node_projection_local_alerts' migrations. The declaration and the test are absent at the merge base, so the test fails there."
     command: "uv run pytest tests/test_omn19991_local_alerts_cursor_ownership_declared.py -q"
+  - kind: "tests"
+    description: "Migrations half of the projection step only: node_projection_local_alerts' Postgres migrations 0000 to 0002 key public.local_alerts on (tenant_id, code, subject), carry every column the fold plan writes, enable row-level security with the tenant policy in 0000 and force it in 0002, and grant the tenant projection writer SELECT, INSERT and UPDATE but not DELETE, plus USAGE on the cursor. The migrations are absent at the merge base, so the test fails there."
+    command: "uv run pytest tests/test_omn19991_local_alerts_migrations.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -55,4 +58,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19991_local_alerts_cursor_ownership_declared.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19991-ac1-local-alerts-migrations"
+    description: "Migrations half of the projection step only. public.local_alerts is keyed on (tenant_id, code, subject), so a repeated condition and a replay land on one row; it holds every column the fold plan writes; RLS is enabled with the tenant policy and forced in a separate step; the writer cannot delete. It does not prove the writer or the publication. Absent at the merge base."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19991_local_alerts_migrations.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
