@@ -55,6 +55,36 @@ async def test_compaction_pack_build_bus_one_command_then_built(compaction_bus):
 
 
 @pytest.mark.asyncio
+async def test_compaction_pack_build_bus_nothing_open_still_builds(compaction_bus):
+    """A session whose lane has no open message is built, not sent to native."""
+    bus = compaction_bus(
+        _pack_orchestrator(_sources(open_work=EnumContextSourceStatus.UNRESOLVED))
+    )
+    output = await bus.handler().handle_async(_request())
+    reply = output.events[-1]
+    assert reply.status == "built"
+    assert reply.package_id == output.events[0].candidate_id
+    assert [topic for topic, _ in bus.records] == [
+        bus.topics.request_topic,
+        bus.topics.completed_topic,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("factor", ["orchestration_state", "operator_rulings"], ids=str)
+async def test_compaction_pack_build_bus_other_unresolved_tier_is_native(
+    compaction_bus, factor
+):
+    """Only open work may be empty: an unresolved state or rulings tier is native."""
+    bus = compaction_bus(
+        _pack_orchestrator(_sources(**{factor: EnumContextSourceStatus.UNRESOLVED}))
+    )
+    output = await bus.handler().handle_async(_request())
+    assert output.events[-1].status == "native"
+    assert output.events[0].failure_class.value == "pack_build_failed"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "raises", [False, True], ids=["failed-result", "raised-handler"]
 )
