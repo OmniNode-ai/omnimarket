@@ -1,0 +1,84 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22035
+title: Compaction case manifests from transcript files
+summary: >-
+  Extend the transcript_jsonl manifest source with verified eligibility decisions,
+  reproducible frozen bundle bytes and a seeded session draw. A canonical filesystem
+  effect node supplies the operator-host entry; the existing compute node stays pure.
+  The live 30-transcript manifest is owed and is checked only by the local Done gate.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-case-manifests
+    statement: Account for each compaction boundary with a reproducible case or a typed exclusion.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the manifest lists, for the 30 transcripts that hold a boundary on the operator host, every boundary with its decision (case or typed exclusion) -- falsifier: a boundary absent from both lists, counted by `grep -c compact_boundary` per transcript'
+      - id: AC2
+        statement: 'AC2: re-running on the same bytes gives identical case keys -- falsifier: a differing key'
+      - id: AC3
+        statement: 'AC3: an unset required variable fails with a typed error naming it -- falsifier: `uv run pytest -k unset_replay_root`'
+evidence_requirements:
+  - kind: tests
+    description: Synthetic boundary corpus, deterministic case keys and typed root refusals.
+    command: uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-ac1-fixture-boundary-accounting
+    description: Fixture proof covers every eligibility exclusion, NOT_DRAWN and selected cases; live proof remains owed.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_cm1_case_manifest.py -q --no-cov -k ac1_fixture
+        cwd: .
+  - id: dod-ac1-live-operator-manifest
+    description: >-
+      Owed: run on the operator host holding the frozen 30-transcript inventory.
+      The node refuses incomplete inventories and accounts for each parsed boundary.
+      This check keeps the ticket's live criterion outstanding after fixture CI passes.
+    source: manual
+    binds_ac: [AC1]
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          onex node node_transcript_manifest_effect --backend event_bus=inmemory
+          --state-root "${ONEX_CONTEXT_REPLAY_ROOT:?}/runtime" --timeout 120 --output receipt
+          | python3 -c 'import json,os,sys; from pathlib import Path; import yaml; r=json.load(sys.stdin); assert r["status"]=="success" and r["exit_code"]==0,r; d=yaml.safe_load((Path(os.environ["ONEX_CONTEXT_REPLAY_ROOT"])/r["result"]["manifest_path"]).read_text()); ts=d["transcripts"]; assert sum(t["boundary_records"]>0 for t in ts)==30; assert all(t["cases"]+t["exclusions"]==t["boundary_records"]==sum(b"compact_boundary" in line for line in (Path(os.environ["ONEX_TRANSCRIPT_ROOT"])/t["relative_path"]).read_bytes().splitlines()) for t in ts)'
+        cwd: .
+  - id: dod-ac2-identical-case-keys
+    description: Re-running identical synthetic bytes gives the same case keys, manifest and bundle bytes.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov -k 'same_bytes or reproducible'
+        cwd: .
+  - id: dod-ac3-required-roots
+    description: Both required roots fail with MissingRequiredVariableError naming the unset or blank variable, before file I/O.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov -k unset_replay_root
+        cwd: .
+  - id: dod-deploy-local-node-dispatch
+    description: Hosted-runner probe uses the declared effect contract and the in-memory event bus on synthetic frozen files.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_golden_chain_transcript_manifest_source.py -q --no-cov -k operator_node_dispatches
+        cwd: .
+  - id: dod-integration-proof
+    description: The launching host runs the pushed head through bus lab placement; this remote engine cannot push.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane comp-cm1-1102 -- uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov'
+        cwd: .

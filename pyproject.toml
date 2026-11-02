@@ -402,6 +402,7 @@ node_exemplar_admission_compute = "omnimarket.nodes.node_exemplar_admission_comp
 node_exemplar_registry_reconcile_compute = "omnimarket.nodes.node_exemplar_registry_reconcile_compute"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
+node_transcript_manifest_effect = "omnimarket.nodes.node_transcript_manifest_effect"
 node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
 node_compaction_verdict_compute = "omnimarket.nodes.node_compaction_verdict_compute"
 node_compaction_probe_compute = "omnimarket.nodes.node_compaction_probe_compute"

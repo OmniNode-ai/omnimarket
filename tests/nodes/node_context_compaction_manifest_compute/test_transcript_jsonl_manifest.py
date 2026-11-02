@@ -171,6 +171,10 @@ def request(
         "transcripts": transcripts,
         "ledger_files": [{"name": "ROLLING_WORK_LEDGER.md", "content": LEDGER}],
         "summary_pins": pins(),
+        "obligation_counts": tuple(
+            ModelObligationCount(boundary_uuid=f"b{i}", must_survive_items=5)
+            for i in range(1, 10)
+        ),
         "seed": "seed-1",
     }
     values.update(overrides)
@@ -240,11 +244,15 @@ def test_missing_summary_record_yields_summary_unverified() -> None:
     assert result.cases == ()
 
 
-def test_unpinned_summary_is_a_case_marked_unpinned() -> None:
+def test_unpinned_summary_is_excluded_as_unverified() -> None:
     result = HandlerTranscriptManifest().handle(
         request((transcript(three_boundary_transcript()),), summary_pins=())
     )
-    assert {case.summary_check for case in result.cases} == {"UNPINNED"}
+    assert result.cases == ()
+    assert dict(result.exclusion_counts) == {
+        "SUMMARY_UNVERIFIED": 2,
+        "RECOMPACTION": 1,
+    }
     pinned = HandlerTranscriptManifest().handle(
         request((transcript(three_boundary_transcript()),))
     )
@@ -417,12 +425,12 @@ def test_draw_does_not_depend_on_transcript_order() -> None:
 
 
 def test_unparseable_lines_are_counted_not_fatal() -> None:
-    body = three_boundary_transcript() + b"{not json compact_boundary\n"
+    body = three_boundary_transcript() + b"{not json\n"
     result = HandlerTranscriptManifest().handle(request((transcript(body),)))
     [counts] = result.transcripts
     assert counts.unparseable_lines == 1
     assert counts.boundary_records == 3
-    assert counts.lines_mentioning_boundary == 4
+    assert counts.lines_mentioning_boundary == 3
 
 
 def test_unset_transcript_root_names_the_variable() -> None:
@@ -475,7 +483,14 @@ def test_env_driven_run_reads_transcripts_and_writes_the_manifest(
     }
     ledger = (ModelLedgerFile(name="ROLLING_WORK_LEDGER.md", content=LEDGER),)
     result = bundle_io.build_transcript_manifest_from_env(
-        env, ledger_files=ledger, seed="seed-1", summary_pins=pins()
+        env,
+        ledger_files=ledger,
+        seed="seed-1",
+        summary_pins=pins(),
+        obligation_counts=tuple(
+            ModelObligationCount(boundary_uuid=f"b{i}", must_survive_items=5)
+            for i in range(1, 4)
+        ),
     )
     assert [case.boundary_uuid for case in result.cases] == ["b1", "b2"]
     written = replay / "transcript_manifest.yaml"
