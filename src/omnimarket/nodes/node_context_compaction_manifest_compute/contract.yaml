@@ -9,6 +9,11 @@
 # Session-content rows: content_kind in (prompt, operator_prompt, assistant_reply, compact).
 # Complete compact capture chunks resolve native summaries by session, length and sha256.
 # Resolved native text is pinned separately at native/<sha256>.txt, never in the input chain.
+# Transcript source (transcript_jsonl, plan task CM.1): the caller reads transcript files and
+# ledger files as bytes; the handler pins each boundary record, summary record and prefix by hash
+# and returns every boundary as a case or a typed exclusion. The required variables
+# ONEX_TRANSCRIPT_ROOT and ONEX_CONTEXT_REPLAY_ROOT are read by the bundle helpers, which fail
+# with a typed error naming the unset one.
 # Hash rules and the exclusions (ORCHESTRATION_STATE, REPO_STATE) are in the handler docstring and
 # written into the manifest itself.
 name: context_compaction_manifest_compute
@@ -55,6 +60,12 @@ handler_routing:
         module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest
       input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelVerifyBundleRequest
       output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_compaction_manifest.ModelVerifyBundleResult
+    - operation: build_transcript_manifest
+      handler:
+        name: HandlerTranscriptManifest
+        module: omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_transcript_manifest
+      input_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_transcript_manifest.ModelTranscriptManifestRequest
+      output_model: omnimarket.nodes.node_context_compaction_manifest_compute.models.model_transcript_manifest.ModelTranscriptManifestResult
 descriptor:
   node_archetype: compute
   purity: pure
