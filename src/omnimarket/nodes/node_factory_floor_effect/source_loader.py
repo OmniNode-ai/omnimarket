@@ -26,6 +26,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
     ModelFloorManifest,
+    ModelFloorManifestTask,
     ModelFloorMerge,
     ModelFloorPlacedHost,
     ModelFloorPlanInput,
@@ -41,8 +42,20 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_lane_container_budget import (
+    ModelLaneContainerBudgetDeclaration,
+    ModelLaneContainerBudgetRequest,
+    ModelLaneContainerBudgetVerdict,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
+    ModelFactoryFloorContainerHost,
+    ModelFactoryFloorContainerSource,
     ModelFactoryFloorEffectContract,
+    ModelFactoryFloorPlanRef,
+    ModelFactoryFloorTaskLinks,
+)
+from omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget import (
+    HandlerLaneContainerBudget,
 )
 
 ROW_RE = re.compile(r"^(?:(\S+?):)?L(\d+) (.*)$")
@@ -155,8 +168,9 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
                 fields.setdefault(key, tokens[0] if tokens else "")
                 if len(tokens) > 1:
                     remainders.append(" ".join(tokens[1:]))
-            elif sep and key == "reason":
-                fields.setdefault(key, value.strip()[:300])
+            elif sep and key in {"reason", "blocker"}:
+                # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
+                fields.setdefault("reason", value.strip()[:300])
         free_text = (
             cells[-1]
             if not re.match(r"^[A-Za-z_-]+=", cells[-1])
@@ -209,6 +223,7 @@ def read_ledger_rows(
     *,
     window_days: int,
     cut_chars: int,
+    timeout_seconds: int,
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
@@ -229,12 +244,12 @@ def read_ledger_rows(
                 [sys.executable, str(reader), *query],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=timeout_seconds,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise SourceRefusedError(
-                f"ledger reader {reader} timed out: repair the reader or supply ledger_rows_file"
+                f"ledger reader {reader} did not finish within {timeout_seconds} s: repair the reader or supply ledger_rows_file"
             ) from exc
         if result.returncode:
             raise SourceRefusedError(
@@ -430,9 +445,150 @@ def header_text(text: str, keys: tuple[str, ...]) -> str:
         if line.startswith("## "):
             break
         key, sep, _ = line.partition(":")
-        if sep and key.strip(" *_").casefold() in wanted:
+        if sep and key.strip().lstrip("-").strip(" *_").casefold() in wanted:
             lines.append(line)
     return "\n".join(lines)
+
+
+HEADING_TASK_RE = re.compile(
+    r"^(?:\d+\.\s+|[-*]\s+)?\*\*([A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?(?:\s+(.+?))?\*\*(.*)$",
+    re.MULTILINE,
+)
+
+
+def parse_heading_tasks(
+    text: str, links: dict[str, tuple[str, ...]], epic: str = ""
+) -> tuple[ModelFloorManifestTask, ...]:
+    """A plan's tasks from its bold-led task paragraphs (``**T1. Title.** ...``, ``1. **S1, now:** ...``), for a plan with no manifest and no table.
+
+    The tickets and pull requests a task's lead names belong to the task (the plan's own ``epic`` ticket belongs to no
+    one task), and ``links`` adds the tickets that carry a
+    task whose paragraph names none. Only ids that start with the most common letter count, so a plan's decisions
+    (``**D3.**``) are not drawn as tasks, and a repeated id keeps its first paragraph. The tasks are ``scoped``: a bare
+    ``T1`` names a different task in every plan.
+    """
+    found = list(HEADING_TASK_RE.finditer(text))
+    if not found:
+        return ()
+    letters = [match.group(1)[0] for match in found]
+    wanted = max(set(letters), key=lambda letter: (letters.count(letter), letter))
+    tasks: dict[str, ModelFloorManifestTask] = {}
+    for match in found:
+        task_id = match.group(1)
+        if task_id[0] != wanted or task_id in tasks:
+            continue
+        title = (match.group(2) or match.group(3)).strip(" .:")
+        # A task's own lead names its tickets and pull requests; a list item's whole line is its lead, a paragraph's prose is not.
+        named = (match.group(2) or "") + (
+            "" if match.group(0).startswith("**") else f" {match.group(3)}"
+        )
+        tasks[task_id] = ModelFloorManifestTask(
+            id=task_id,
+            title=f"{task_id} {title}"[:200],
+            tickets=tuple(
+                dict.fromkeys(
+                    (
+                        *(
+                            t
+                            for t in sorted(set(TICKET_RE.findall(named)))
+                            if t != epic
+                        ),
+                        *links.get(task_id, ()),
+                    )
+                )
+            ),
+            prs=tuple(sorted(set(PR_RE.findall(named)))),
+            scoped=True,
+        )
+    return tuple(tasks.values())
+
+
+def _git_show(kb: Path, ref: str, relative: str) -> str | None:
+    """A file as ``ref`` holds it, or None when the ref or the file is absent."""
+    result = subprocess.run(
+        ["git", "-C", str(kb), "show", f"{ref}:{relative}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def is_section_heading(label: str, text: str) -> bool:
+    """True when the plan has a markdown heading that opens with the label (``### A.1 The pattern``)."""
+    return (
+        re.search(rf"^#{{1,6}}\s+{re.escape(label)}(?![\w.])", text, re.MULTILINE)
+        is not None
+    )
+
+
+def _with_table_evidence(
+    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
+) -> ModelFloorManifestTask:
+    """A written task with the tickets and pull requests the plans-today row of the same label found for it."""
+    if row is None:
+        return task
+    return task.model_copy(
+        update={
+            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
+            "prs": tuple(sorted({*task.prs, *row.prs})),
+        }
+    )
+
+
+def _plan_input(
+    *,
+    relative: str,
+    text: str,
+    manifest: ModelFloorManifest | None,
+    entry: dict[str, Any] | None,
+    header_keys: tuple[str, ...],
+    links: dict[str, tuple[str, ...]],
+) -> ModelFloorPlanInput:
+    header = header_text(text, header_keys)
+    title = re.search(r"^# (.*)", text, re.MULTILINE)
+    table = (
+        tuple(ModelFloorTableTask.model_validate(task) for task in entry["tasks"])
+        if entry is not None
+        else ()
+    )
+    tickets = (
+        tuple(entry.get("tickets", ()))
+        if entry is not None
+        else tuple(sorted(set(TICKET_RE.findall(header))))
+    )
+    # A section heading is not a part: the plans-today table lists a plan's ``### A.1`` headings beside its tasks.
+    sections = {row.label for row in table if is_section_heading(row.label, text)}
+    parts = tuple(row for row in table if row.label not in sections)
+    if (manifest is None or not manifest.tasks) and (not table or sections):
+        # Neither a manifest nor a table of parts: the plan's own task paragraphs are the line's tasks.
+        header_tickets = TICKET_RE.findall(header)
+        written = parse_heading_tasks(
+            text, links, epic=header_tickets[0] if header_tickets else ""
+        )
+        if written:
+            by_label = {row.label: row for row in table}
+            manifest = ModelFloorManifest(
+                tasks=tuple(
+                    _with_table_evidence(task, by_label.get(task.id))
+                    for task in written
+                )
+            )
+            tickets = tuple(sorted({*tickets, *header_tickets}))
+            table = ()
+        elif parts:
+            table = parts
+    return ModelFloorPlanInput(
+        plan_path=relative,
+        title=title.group(1).strip() if title else "",
+        manifest=manifest,
+        tickets=tickets,
+        prs=tuple(entry.get("prs", ()))
+        if entry is not None
+        else tuple(sorted(set(PR_RE.findall(header)))),
+        table_tasks=table,
+    )
 
 
 def load_plans(
@@ -443,6 +599,8 @@ def load_plans(
     header_keys: tuple[str, ...],
     contains: tuple[str, ...],
     plans_today: dict[str, Any] | None,
+    plan_refs: tuple[ModelFactoryFloorPlanRef, ...] = (),
+    task_links: tuple[ModelFactoryFloorTaskLinks, ...] = (),
 ) -> tuple[ModelFloorPlanInput, ...]:
     directory = kb / plans_relpath
     with _source(directory):
@@ -452,12 +610,22 @@ def load_plans(
             )
         paths = sorted(directory.rglob("*.md"))
     entries = {entry["path"]: entry for entry in (plans_today or {}).get("plans", [])}
+
+    def links_of(relative: str) -> dict[str, tuple[str, ...]]:
+        return {
+            task: tickets
+            for link in task_links
+            if link.plan_path_contains in relative
+            for task, tickets in link.tasks.items()
+        }
+
+    def wanted(relative: str) -> bool:
+        return not contains or any(value in relative for value in contains)
+
     plans: list[ModelFloorPlanInput] = []
     for path in paths:
         relative = path.relative_to(kb).as_posix()
-        if path.name.endswith(".readable.md") or (
-            contains and not any(value in relative for value in contains)
-        ):
+        if path.name.endswith(".readable.md") or not wanted(relative):
             continue
         with _source(path):
             text = path.read_text(encoding="utf-8")
@@ -468,26 +636,39 @@ def load_plans(
                     manifest = ModelFloorManifest.model_validate(
                         yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                     )
-            entry = entries.get(relative)
-            header = header_text(text, header_keys)
-            title = re.search(r"^# (.*)", text, re.MULTILINE)
             plans.append(
-                ModelFloorPlanInput(
-                    plan_path=relative,
-                    title=title.group(1).strip() if title else "",
+                _plan_input(
+                    relative=relative,
+                    text=text,
                     manifest=manifest,
-                    tickets=tuple(entry.get("tickets", ()))
-                    if entry is not None
-                    else tuple(sorted(set(TICKET_RE.findall(header)))),
-                    prs=tuple(entry.get("prs", ()))
-                    if entry is not None
-                    else tuple(sorted(set(PR_RE.findall(header)))),
-                    table_tasks=tuple(
-                        ModelFloorTableTask.model_validate(task)
-                        for task in entry.get("tasks", ())
+                    entry=entries.get(relative),
+                    header_keys=header_keys,
+                    links=links_of(relative),
+                )
+            )
+    drawn = {plan.plan_path for plan in plans}
+    for plan_ref in plan_refs:
+        # A plan on the default branch wins; the ref is read only until the plan merges.
+        if plan_ref.path in drawn or not wanted(plan_ref.path):
+            continue
+        manifest_ref = plan_ref.path.removesuffix(".md") + manifest_suffix
+        with _source(f"{plan_ref.ref}:{manifest_ref}"):
+            ref_text = _git_show(kb, plan_ref.ref, plan_ref.path)
+            if ref_text is None:
+                continue
+            manifest_text = _git_show(kb, plan_ref.ref, manifest_ref)
+            plans.append(
+                _plan_input(
+                    relative=plan_ref.path,
+                    text=ref_text,
+                    manifest=ModelFloorManifest.model_validate(
+                        yaml.safe_load(manifest_text)
                     )
-                    if entry is not None
-                    else (),
+                    if manifest_text is not None
+                    else None,
+                    entry=entries.get(plan_ref.path),
+                    header_keys=header_keys,
+                    links=links_of(plan_ref.path),
                 )
             )
     return tuple(plans)
@@ -766,14 +947,111 @@ def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None
 def load_runner_fleet(path: Path) -> ModelFloorRunnerFleet | None:
     """The fleet observation event (``scripts/runner_fleet_event.py``) reduced to each runner's host label and status."""
 
-    def read() -> ModelFloorRunnerFleet:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return ModelFloorRunnerFleet(
-            observed_at=_utc(data["observed_at"]),
-            runners=tuple(
-                ModelFloorRunner(host_label=str(row["host"]), status=row["status"])
-                for row in data["runners"]
-            ),
-        )
+    return _optional(lambda: load_runner_fleet_strict(path))
 
-    return _optional(read)
+
+def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return ModelFloorRunnerFleet(
+        observed_at=_utc(data["observed_at"]),
+        runners=tuple(
+            ModelFloorRunner(host_label=str(row["host"]), status=row["status"])
+            for row in data["runners"]
+        ),
+    )
+
+
+def runner_fleet_cause(path: Path) -> str:
+    """Why the runner fleet observation at ``path`` is unread, naming the file; empty when it reads."""
+    if not path.exists():
+        return (
+            f"the runner fleet file {path.name} does not exist: node_projection_runner_fleet saves the runner monitor's "
+            "observation there, and none has been saved on this host"
+        )
+    try:
+        load_runner_fleet_strict(path)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        return f"the runner fleet file {path.name} cannot be read: {type(exc).__name__}: {str(exc)[:120]}"
+    return ""
+
+
+# --- Lane containers (application container budget) ---------------------------------------------------------------------
+
+
+def read_container_listing(
+    source: ModelFactoryFloorContainerSource, host: ModelFactoryFloorContainerHost
+) -> tuple[str, str]:
+    """The host's container listing and, when it could not be read, why: ``(listing, error)``."""
+    argv = ["ssh", *source.ssh_options, host.ssh_target, source.listing_command]
+    try:
+        done = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=source.timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            "",
+            f"the listing on {host.host} timed out after {source.timeout_seconds}s",
+        )
+    except OSError as exc:
+        return "", f"the listing on {host.host} could not start: {exc}"
+    if done.returncode:
+        tail = " ".join(done.stderr.split())[-160:]
+        return "", f"the listing on {host.host} exited {done.returncode}: {tail}"
+    return _without_nameless_dead(done.stdout), ""
+
+
+def _without_nameless_dead(listing: str) -> str:
+    """Drop the rows docker lists for a removal that did not finish: state dead, no name.
+
+    The budget node refuses a whole listing that holds a row with no name, so one such ghost row turned
+    every lane of the host into UNKNOWN. A nameless row in any other state is kept and still refuses.
+    """
+    kept: list[str] = []
+    for line in listing.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            kept.append(line)
+            continue
+        if (
+            isinstance(row, dict)
+            and not str(row.get("Names") or "").strip()
+            and row.get("State") == "dead"
+        ):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def load_lane_containers(
+    *,
+    source: ModelFactoryFloorContainerSource,
+    hosts: tuple[ModelFactoryFloorContainerHost, ...],
+    declarations: tuple[ModelLaneContainerBudgetDeclaration, ...],
+    read: Callable[
+        [ModelFactoryFloorContainerSource, ModelFactoryFloorContainerHost],
+        tuple[str, str],
+    ] = read_container_listing,
+) -> tuple[ModelLaneContainerBudgetVerdict, ...] | None:
+    """One budget verdict per declared host; None when the overlay declares no host (the containers are not read at all)."""
+    if not hosts:
+        return None
+    judge = HandlerLaneContainerBudget()
+    verdicts: list[ModelLaneContainerBudgetVerdict] = []
+    for host in hosts:
+        listing, error = read(source, host)
+        verdicts.append(
+            judge.handle(
+                ModelLaneContainerBudgetRequest(
+                    host=host.host,
+                    docker_ps=listing,
+                    read_error=error,
+                    declarations=declarations,
+                )
+            )
+        )
+    return tuple(verdicts)
