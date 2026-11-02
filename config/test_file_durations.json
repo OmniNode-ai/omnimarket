@@ -2858,6 +2858,7 @@
   "tests/unit/models/delegation/wire/test_model_delegation_request.py": 0.04,
   "tests/unit/models/delegation/wire/test_public_exports.py": 0.16,
   "tests/unit/models/delegation/wire/test_resolve_terminal_failure_cause.py": 0.14,
+  "tests/unit/models/delegation/wire/test_routing_decision_consumer_first_omn21217.py": 0.3,
   "tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py": 0.53,
   "tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py": 0.01,
   "tests/unit/models/evidence_pipeline/wire/test_topics.py": 0.01,

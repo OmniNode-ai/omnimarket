@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,6 +15,13 @@ from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
+
+# The selected tenant key's ordered models (OMN-21217). This model is
+# extra="forbid" and omniclaude decodes it with the omnimarket its pin names, so
+# the consumer accepts and drops the key before any producer stamps it. The
+# declared field and its producer land in the change after omniclaude's pin
+# carries this consumer.
+_FORTHCOMING_DECISION_KEYS: frozenset[str] = frozenset({"model_candidates"})
 
 
 class ModelRoutingDecision(BaseModel):
@@ -135,6 +143,18 @@ class ModelRoutingDecision(BaseModel):
             "declares no thresholds for the class."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a decision from a producer one change ahead (OMN-21217)."""
+        if not isinstance(data, dict) or _FORTHCOMING_DECISION_KEYS.isdisjoint(data):
+            return data
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in _FORTHCOMING_DECISION_KEYS
+        }
 
     @model_validator(mode="after")
     def _validate_provenance_pair(self) -> ModelRoutingDecision:
