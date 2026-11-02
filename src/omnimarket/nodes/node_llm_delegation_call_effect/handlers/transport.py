@@ -33,10 +33,15 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    installed_overlay_document,
+    packaged_contract_value,
+)
+
 logger = logging.getLogger(__name__)
 
 _LAN_CURL_RUNTIME_PROFILE = "local_macos_claude_hooks"
-_RUNTIME_PROFILE_ENV = "RUNTIME_PROFILE"
+_TRANSPORT_DOCUMENT = "transport"
 
 
 class ModelTransportResponse:
@@ -60,11 +65,20 @@ class ModelTransportResponse:
 def resolve_runtime_profile() -> str:
     """Return the active runtime profile name (lower-cased).
 
-    Reads the canonical ``RUNTIME_PROFILE`` env var the runtime/CLI sets. Defaults
-    to ``main`` to match the runtime auto-wiring default; an unset profile is the
-    bus/effects runtime, never the local macOS LAN case.
+    The lane overlay's ``transport`` document sets ``runtime_profile``; without one
+    the contract's ``transport.runtime_profile`` applies (``main``, the bus/effects
+    runtime, never the local macOS LAN case).
     """
-    return os.environ.get(_RUNTIME_PROFILE_ENV, "main").strip().lower()
+    document = installed_overlay_document(_TRANSPORT_DOCUMENT) or {}
+    profile = document.get(
+        "runtime_profile",
+        packaged_contract_value(
+            "omnimarket.nodes.node_llm_delegation_call_effect",
+            "transport",
+            "runtime_profile",
+        ),
+    )
+    return str(profile).strip().lower()
 
 
 def uses_lan_curl_transport(runtime_profile: str | None = None) -> bool:

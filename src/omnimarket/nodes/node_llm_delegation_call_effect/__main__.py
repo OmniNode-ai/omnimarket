@@ -2,12 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Host dispatcher CLI. Prompt on stdin, one typed receipt on stdout."""
 
-from __future__ import annotations
-
 import argparse
 import sys
 
-import yaml
+from omnimarket.handlers.container import container_overlay_dependencies as container
 
 from .handlers.handler_codex_harness_attempt import HandlerCodexHarnessAttempt
 from .models.model_codex_harness_attempt import ModelCodexHarnessRequest
@@ -18,6 +16,7 @@ def main() -> int:
     parser.add_argument("operation", choices=["codex-harness"])
     parser.add_argument("--model", required=True)
     parser.add_argument("--timeout", type=float, required=True)
+    parser.add_argument("--overlay", type=container.bind_overlay_file, required=True)
     args = parser.parse_args()
     try:
         request = ModelCodexHarnessRequest(
@@ -26,7 +25,7 @@ def main() -> int:
             timeout_seconds=args.timeout,
         )
         receipt = HandlerCodexHarnessAttempt().handle(request)
-    except (ValueError, OSError, yaml.YAMLError):
+    except (ValueError, OSError):
         # Validation and host-path errors must not echo the caller's prompt.
         sys.stderr.write("codex harness request or host policy invalid\n")
         return 2

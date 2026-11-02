@@ -493,6 +493,9 @@ async def test_session_adapter_checks_out_exact_commit_and_retains_receipt(
         scrub_git_location_env,
     )
 
+    from omnimarket.handlers.container.container_overlay_dependencies import (
+        host_process_environment,
+    )
     from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_delegation_target import (
         _agent_environment,
     )
@@ -500,7 +503,7 @@ async def test_session_adapter_checks_out_exact_commit_and_retains_receipt(
     repos = tmp_path / "repos"
     clone = repos / "omnimarket"
     clone.mkdir(parents=True)
-    env = _agent_environment()
+    env = _agent_environment(host_process_environment({}))
 
     def git(*args: str) -> str:
         return subprocess.run(

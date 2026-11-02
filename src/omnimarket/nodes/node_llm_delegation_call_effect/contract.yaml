@@ -162,13 +162,23 @@ service_configuration:
   is_persistent_service: false
   requires_external_dependencies: true
 
+# Handlers receive these through the container, built from the lane overlay's
+# binding of each protocol and from nothing else (OMN-21595). The overlay's
+# ProtocolOverlayDocument binding carries two named documents: "codex_harness"
+# (host policy overlay for the direct Codex harness operation) and
+# "delegation_adapters" (deployment overlay: repository/work roots, call-site
+# routing and generation parameters, honored provider capabilities, secret
+# references), plus an optional "transport" document that sets runtime_profile.
+# No document holds credential values.
+handler_dependencies:
+  - omnimarket.protocols.protocol_process_environment.ProtocolProcessEnvironment
+  - omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+
+# Transport default; a "transport" overlay document overrides runtime_profile.
+transport:
+  runtime_profile: main
+
 config_dependencies:
-  - key: "CODEX_HARNESS_OVERLAY_PATH"
-    required: false
-    description: "Host policy overlay for the direct Codex harness operation; no credential values."
-  - key: "DELEGATION_ADAPTER_CONFIG_PATH"
-    required: false
-    description: "Deployment contract overlay: repository/work roots, call-site routing and generation parameters, honored provider capabilities, secret references. No credential values."
   - key: "INFERENCE_PROTOCOL_CONFIG_PATH"
     required: false
     description: "Optional override for typed provider request-shaping profiles (defaults to configs/inference_protocols.v1.yaml)."

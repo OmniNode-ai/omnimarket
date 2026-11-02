@@ -1,0 +1,99 @@
+schema_version: 1.0.0
+ticket_id: OMN-21595
+title: 'Contract hot loading A7: Handler dependencies are declared in contracts and bound by overlay through dependency injection (omnimarket half)'
+summary: node_llm_delegation_call_effect declares its handler dependencies in its contract, the lane overlay binds them, its handlers receive them through the container, and neither node reads os.environ.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21595-ac1
+  statement: 'an AST check over `src/omnimarket/nodes/node_llm_delegation_call_effect` and `src/omnimarket/nodes/node_delegation_orchestrator` finds no executable `os.environ`, `os.getenv` or `os.environ.get` access (a docstring or comment mention does not count, so the ratchet is a test over the syntax tree and not a text search) -- falsifier: an access found.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an AST check over `src/omnimarket/nodes/node_llm_delegation_call_effect` and `src/omnimarket/nodes/node_delegation_orchestrator` finds no executable `os.environ`, `os.getenv` or `os.environ.get` access (a docstring or comment mention does not count, so the ratchet is a test over the syntax tree and not a text search) -- falsifier: an access found.'
+- id: req-omn21595-ac2
+  statement: 'The same handler tests pass with an overlay binding in-memory dependencies and with one binding the durable ones, with no source difference -- falsifier: a test that branches on the binding.'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: The same handler tests pass with an overlay binding in-memory dependencies and with one binding the durable ones, with no source difference -- falsifier: a test that branches on the binding.'
+- id: req-omn21595-ac3
+  statement: 'A contract with a dependency the overlay does not bind is refused `DEPENDENCY_UNBOUND` before any subscription -- falsifier: a subscription exists.'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: A contract with a dependency the overlay does not bind is refused `DEPENDENCY_UNBOUND` before any subscription -- falsifier: a subscription exists.'
+- id: req-omn21595-ac4
+  statement: 'The announcer''s bus, the catalog''s store, the lazy-start budget and the reaper''s interval are each read from the overlay and from nowhere else -- falsifier: a constant in code that a test changes by overlay and the behaviour does not follow. Covered here: the four settings as the overlay file carries them; the announcer, catalog and reaper consumers wait on their own changes.'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: The announcer''s bus, the catalog''s store, the lazy-start budget and the reaper''s interval are each read from the overlay and from nowhere else -- falsifier: a constant in code that a test changes by overlay and the behaviour does not follow. Covered here: the four settings as the overlay file carries them; the announcer, catalog and reaper consumers wait on their own changes.'
+- id: req-omn21595-ac5
+  statement: 'The existing tests of both nodes pass unchanged apart from the dependency-injection move -- falsifier: uv run pytest on those directories exits non-zero.'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: The existing tests of both nodes pass unchanged apart from the dependency-injection move -- falsifier: uv run pytest on those directories exits non-zero.'
+evidence_requirements:
+- kind: tests
+  description: The new overlay-bound dependency tests and both nodes' existing tests run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect tests/nodes/node_llm_delegation_call_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21595-ac1
+  description: AC1 is proven by the focused tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_overlay_bound_dependencies.py -k 'checker_finds or no_executable_environment' -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21595-ac2
+  description: AC2 is proven by the focused tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_overlay_bound_dependencies.py -k 'in_memory or durable or do_not_branch' -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21595-ac3
+  description: AC3 is proven by the focused tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_overlay_bound_dependencies.py -k 'unbound or declares_both or no_overlay_installed' -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21595-ac4
+  description: AC4 is proven by the focused tests.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_overlay_bound_dependencies.py -k 'four_settings or lane_overlay_file' -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21595-ac5
+  description: AC5 is proven by the focused tests.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect tests/unit/nodes/node_llm_delegation_call_effect -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21595-deploy-probe-container
+  description: 'Deploy probe: the container module GitHub serves at the checked-out commit defines require_dependencies; the module is absent at the merge base, so the content read fails there.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/container/container_overlay_dependencies.py?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | contains("def require_dependencies")' | grep -qx true
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_overlay_bound_dependencies.py -q --no-cov --tb=line
+    cwd: .

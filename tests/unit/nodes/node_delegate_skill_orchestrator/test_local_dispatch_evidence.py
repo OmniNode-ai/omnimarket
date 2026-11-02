@@ -29,6 +29,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
 )
 
+from omnimarket.handlers.container.container_overlay_dependencies import bind_overlay
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
@@ -47,6 +48,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     transport,
 )
 from omnimarket.routing import delegation_backend_resolution
+from tests.overlay_bound_support import in_memory_overlay
 
 
 def _passing_named_test_runner(
@@ -368,6 +370,7 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
 
 
 def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
+    request: pytest.FixtureRequest,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fake_backends: list[dict[str, object]],
@@ -381,7 +384,12 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     import subprocess
 
     db_path = tmp_path / "delegation.sqlite"
-    monkeypatch.setenv("RUNTIME_PROFILE", "local_macos_claude_hooks")
+    bind_overlay(
+        in_memory_overlay(
+            documents={"transport": "runtime_profile: local_macos_claude_hooks\n"}
+        )
+    )
+    request.addfinalizer(lambda: bind_overlay(None))
     _patch_routing(monkeypatch, fake_backends)
 
     captured: dict[str, Any] = {}
