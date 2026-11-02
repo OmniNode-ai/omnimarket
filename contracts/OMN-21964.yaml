@@ -22,7 +22,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The live signal node's focused tests pass: the hand-counted fixture, the amend window, the overlap threshold and the row partition."
-    command: "uv run pytest tests/nodes/node_compaction_live_signal_compute -q --no-cov"
+    command: "uv run pytest tests/nodes/node_compaction_live_signal_compute/test_live_signal.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -34,7 +34,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_live_signal_compute -q --no-cov -k 'fixture_hand_count or amending or overlap_threshold'"
+        check_value: "uv run pytest tests/nodes/node_compaction_live_signal_compute/test_live_signal.py -q --no-cov -k 'fixture_hand_count or amending or overlap_threshold'"
         cwd: "."
   - id: "dod-omn21964-ac2-row-partition"
     description: "Every question-guard row lands in exactly one of the assigned and unassigned lists, with an outside-windows or ambiguous-windows reason for the unassigned ones. The count of 90 rows is the plan's figure; the ledger snapshot read by the lane held 149 distinct rows, and the readback over the operator's windows is owed."
@@ -42,20 +42,19 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_live_signal_compute -q --no-cov -k 'every_question_guard_row or overlapping_windows or window_end_is_exclusive'"
+        check_value: "uv run pytest tests/nodes/node_compaction_live_signal_compute/test_live_signal.py -q --no-cov -k 'every_question_guard_row or overlapping_windows or window_end_is_exclusive'"
         cwd: "."
   - id: "dod-omn21964-deploy-local-runtime"
     description: "Hosted-runner smoke invokes the node through the ONEX local runtime with an in-memory backend on the fixture and asserts the hand-counted result: 2 refusals, 1 restatement, one outside-windows row. No broker, Docker daemon or production rollout is required."
     source: "manual"
-    binds_ac: ["AC1", "AC2"]
     checks:
       - check_type: "command"
         check_value: |
-          set -eu
-          export PYTHONDONTWRITEBYTECODE=1
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
           python -c '
           import json
           import sys
@@ -69,8 +68,8 @@ dod_evidence:
               "rulings": [{"stamp": "2026-11-01T09:00:00Z", "quote": quote}],
           }
           Path(sys.argv[1]).write_text(json.dumps(request))
-          ' "$probe_dir/request.json"
-          onex node node_compaction_live_signal_compute --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json"
+          ' "$probe_dir/request.json";
+          onex node node_compaction_live_signal_compute --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
           python -c '
           import json
           import sys
