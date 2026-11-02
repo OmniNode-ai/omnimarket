@@ -35,8 +35,11 @@ timeout, an unavailable model or any other failure that is not about the key
 answers 503 at once, with no retry across keys, so the voter's overflow list
 moves the review to the next host and then to a local model. A key the
 provider refuses or bills out (auth, billing, missing credential, or the
-credit-balance message) is set aside for the life of the process and the next
-key on the host serves the same request.
+credit-balance message) is set aside with its refusal class and timestamp for
+the interval supplied by the deployment overlay. The next review after expiry
+claims one retry; a repeated refusal starts a new interval. Each set-aside and
+retry publishes a reference-only event on the contract's bus topics, and the
+next key on the host serves the same request.
 
 **Native Messages protocol and prompt caching (OMN-20910).** The voters keep
 this OpenAI-compatible surface; behind it each review is one native Messages
@@ -73,17 +76,23 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections import deque
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from omnibase_core.models.errors.model_onex_error import ModelOnexError
 
 from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_review_call_attempt_kind import EnumReviewCallAttemptKind
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
@@ -95,11 +104,16 @@ from omnimarket.models.delegation.prompt_text_block import (
 from omnimarket.models.review_cost import ModelReviewCallProvenance
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
+    ModelReviewGatewayEventTopics,
     ModelReviewGatewayKey,
+    ModelReviewGatewayKeyEvent,
+    ModelReviewGatewayOverlay,
     ModelReviewGatewayPlan,
+    ModelReviewGatewaySetAside,
 )
 
 logger = logging.getLogger(__name__)
+_NODE_NAME = "node_claude_review_gateway_effect"
 
 #: The catalog table node_projection_tenant_credentials projects (OMN-16316).
 TENANT_CREDENTIALS_TABLE = "tenant_inference_credentials"
@@ -187,6 +201,12 @@ class ProtocolReviewCall(Protocol):
     def __call__(
         self, request: ModelLlmDelegationCallRequest
     ) -> ProtocolCallOutcome: ...
+
+
+class ProtocolGatewayEventBus(Protocol):
+    """The raw publish surface shared by the in-memory and Kafka bus profiles."""
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> object: ...
 
 
 def normalize_repository(name: str) -> str:
@@ -597,6 +617,16 @@ def _is_key_failure(outcome: ProtocolCallOutcome) -> bool:
     return any(marker in message for marker in _CREDIT_EXHAUSTED_MARKERS)
 
 
+def _key_failure_cause(outcome: ProtocolCallOutcome) -> EnumDelegationFailureClass:
+    """Normalize a credit refusal without retaining any provider message."""
+    if any(
+        marker in (outcome.error_message or "").lower()
+        for marker in _CREDIT_EXHAUSTED_MARKERS
+    ):
+        return EnumDelegationFailureClass.PROVIDER_BILLING
+    return outcome.failure_class or EnumDelegationFailureClass.UNKNOWN
+
+
 class ClaudeReviewGateway:
     """Chooses this host's key and runs one review through the call effect, or 503."""
 
@@ -608,21 +638,99 @@ class ClaudeReviewGateway:
         key_values: ProtocolKeyValues,
         call: ProtocolReviewCall,
         endpoint_url: str,
+        overlay: ModelReviewGatewayOverlay,
+        event_bus: ProtocolGatewayEventBus | None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._request = request
         self._catalog = catalog
         self._key_values = key_values
         self._call = call
         self._endpoint_url = endpoint_url
-        self._set_aside: set[str] = set()
+        self._overlay = overlay
+        self._event_bus = event_bus
+        self._clock = clock if clock is not None else lambda: datetime.now(UTC)
+        self._set_aside: dict[str, ModelReviewGatewaySetAside] = {}
+        self._retrying: set[str] = set()
+        self._retry_announced: dict[str, datetime] = {}
+        self._pending_events: deque[ModelReviewGatewayKeyEvent] = deque()
+        self._publish_lock = asyncio.Lock()
+        self._topics = ModelReviewGatewayEventTopics.model_validate(
+            load_packaged_contract_section(_NODE_NAME, "event_bus")
+        ).publish_topics
         self._cloud_refused_repositories = frozenset(
             normalize_repository(name) for name in request.cloud_refused_repositories
         )
 
     @property
     def set_aside(self) -> frozenset[str]:
-        """References refused or out of credit since this process started."""
+        """References currently awaiting an expiry retry."""
         return frozenset(self._set_aside)
+
+    @property
+    def set_aside_records(self) -> tuple[ModelReviewGatewaySetAside, ...]:
+        """Immutable snapshots containing identity, cause and refusal time only."""
+        return tuple(self._set_aside.values())
+
+    @property
+    def event_topics(self) -> tuple[str, str]:
+        return self._topics
+
+    def _expired(self, record: ModelReviewGatewaySetAside, now: datetime) -> bool:
+        return (now - record.set_aside_at).total_seconds() >= (
+            self._overlay.key_set_aside_ttl_seconds
+        )
+
+    async def _emit_key_event(
+        self,
+        transition: Literal["set_aside", "retry"],
+        record: ModelReviewGatewaySetAside,
+    ) -> None:
+        if self._event_bus is None:
+            raise RuntimeError("review gateway: key-state event bus is required")
+        if (
+            transition == "retry"
+            and self._retry_announced.get(record.key_ref) == record.set_aside_at
+        ):
+            await self._flush_key_events()
+            return
+        event = ModelReviewGatewayKeyEvent(
+            **record.model_dump(),
+            transition=transition,
+            host=self._request.host,
+            tenant_id=self._request.tenant_id,
+            occurred_at=self._clock(),
+            retry_after_seconds=self._overlay.key_set_aside_ttl_seconds,
+        )
+        self._pending_events.append(event)
+        if transition == "retry":
+            self._retry_announced[record.key_ref] = record.set_aside_at
+        await self._flush_key_events()
+
+    async def _flush_key_events(self) -> None:
+        """Retain failed publications with stable event ids; block calls until flushed."""
+        if self._event_bus is None:
+            raise RuntimeError("review gateway: key-state event bus is required")
+        async with self._publish_lock:
+            while self._pending_events:
+                event = self._pending_events[0]
+                await self._event_bus.publish(
+                    topic=self._topics[0 if event.transition == "set_aside" else 1],
+                    key=event.key_ref.encode(),
+                    value=event.model_dump_json().encode(),
+                )
+                self._pending_events.popleft()
+
+    async def _refuse_key(
+        self, key_ref: str, cause: EnumDelegationFailureClass
+    ) -> None:
+        record = ModelReviewGatewaySetAside(
+            key_ref=key_ref, cause=cause, set_aside_at=self._clock()
+        )
+        self._set_aside[key_ref] = record
+        self._retry_announced.pop(key_ref, None)
+        await self._emit_key_event("set_aside", record)
+        logger.warning("review gateway: key %s set aside (%s)", key_ref, cause.value)
 
     def candidate_keys(
         self, now: datetime | None = None
@@ -643,9 +751,18 @@ class ClaudeReviewGateway:
             tenant_id=self._request.tenant_id,
             tenant_forms=forms,
             host=self._request.host,
-            now=now if now is not None else datetime.now(UTC),
+            now=now if now is not None else self._clock(),
         )
-        return [key for key in keys if key.api_key_ref not in self._set_aside]
+        current_time = now if now is not None else self._clock()
+        return [
+            key
+            for key in keys
+            if key.api_key_ref not in self._retrying
+            and (
+                (record := self._set_aside.get(key.api_key_ref)) is None
+                or self._expired(record, current_time)
+            )
+        ]
 
     def _translate(
         self, payload: Mapping[str, Any], key: ModelReviewGatewayKey
@@ -738,11 +855,28 @@ class ClaudeReviewGateway:
 
     async def complete(self, payload: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
         """Serve one chat completion on this host's first key that can, else 503."""
+        try:
+            return await self._complete(payload)
+        except (ModelOnexError, OSError):
+            # Dependency exception text may include a provider message or secret.
+            logger.warning("review gateway: required dependency unavailable; overflow")
+            return _error(
+                503,
+                "gateway_dependency_unavailable",
+                "a required dependency is unavailable",
+            )
+
+    async def _complete(self, payload: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
         refusal = self._repository_refusal(payload)
         if refusal is not None:
             return _error(503, *refusal)
         if not has_user_text(payload):
             return _error(400, "invalid_request", "the review has no user message")
+        if self._event_bus is None:
+            return _error(
+                503, "gateway_not_configured", "key-state event bus is required"
+            )
+        await self._flush_key_events()
         keys = self.candidate_keys()
         if not keys:
             return _error(
@@ -751,25 +885,57 @@ class ClaudeReviewGateway:
                 f"no live {GATEWAY_PROVIDER} key is bound to host {self._request.host}",
             )
         for key in keys:
-            if not await self._key_values.get_secret(key.api_key_ref):
-                logger.warning(
-                    "review gateway: key %s does not resolve; set aside", key.name
-                )
-                self._set_aside.add(key.api_key_ref)
+            # Recheck after each await: another request may have refused this key
+            # since the candidate snapshot. Reserve an expired key before any await.
+            record = self._set_aside.get(key.api_key_ref)
+            if key.api_key_ref in self._retrying or (
+                record is not None and not self._expired(record, self._clock())
+            ):
                 continue
-            outcome = await asyncio.to_thread(self._call, self._translate(payload, key))
-            if outcome.success:
-                return 200, _completion(self._request.model, outcome)
-            if _is_key_failure(outcome):
-                logger.warning(
-                    "review gateway: key %s refused or out of credit (%s); "
-                    "set aside, trying the next key on host %s",
-                    key.name,
-                    outcome.failure_class.value if outcome.failure_class else "unknown",
-                    self._request.host,
+            if record is not None:
+                self._retrying.add(key.api_key_ref)
+            attempted = False
+            returned = False
+            try:
+                if record is not None:
+                    await self._emit_key_event("retry", record)
+                if not await self._key_values.get_secret(key.api_key_ref):
+                    await self._refuse_key(
+                        key.api_key_ref,
+                        EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING,
+                    )
+                    continue
+                attempted = True
+                outcome = await asyncio.to_thread(
+                    self._call, self._translate(payload, key)
                 )
-                self._set_aside.add(key.api_key_ref)
-                continue
+                returned = True
+                if (
+                    (outcome.success or not _is_key_failure(outcome))
+                    and record is not None
+                    and self._set_aside.get(key.api_key_ref) is record
+                ):
+                    del self._set_aside[key.api_key_ref]
+                    self._retry_announced.pop(key.api_key_ref, None)
+                if outcome.success:
+                    return 200, _completion(self._request.model, outcome)
+                if _is_key_failure(outcome):
+                    await self._refuse_key(key.api_key_ref, _key_failure_cause(outcome))
+                    continue
+            finally:
+                if record is not None:
+                    try:
+                        if (
+                            attempted
+                            and not returned
+                            and self._set_aside.get(key.api_key_ref) is record
+                        ):
+                            # A cancelled or raising call consumed this retry too.
+                            await self._refuse_key(
+                                key.api_key_ref, EnumDelegationFailureClass.UNKNOWN
+                            )
+                    finally:
+                        self._retrying.discard(key.api_key_ref)
             failure = (
                 outcome.failure_class.value if outcome.failure_class else "unknown"
             )
@@ -846,19 +1012,39 @@ class HandlerClaudeReviewGateway:
         key_values: ProtocolKeyValues,
         call: ProtocolReviewCall,
         endpoint_url: str,
+        overlay: ModelReviewGatewayOverlay | None = None,
+        event_bus: ProtocolGatewayEventBus | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._catalog = catalog
         self._key_values = key_values
         self._call = call
         self._endpoint_url = endpoint_url
+        self._overlay = overlay
+        self._event_bus = event_bus
+        self._clock = clock
 
-    def gateway(self, request: ModelClaudeReviewGatewayRequest) -> ClaudeReviewGateway:
+    def gateway(
+        self,
+        request: ModelClaudeReviewGatewayRequest,
+        *,
+        event_bus: ProtocolGatewayEventBus | None = None,
+    ) -> ClaudeReviewGateway:
+        overlay = load_structured_overlay(
+            "claude_review_gateway",
+            ModelReviewGatewayOverlay,
+            explicit=self._overlay,
+            file_env="ONEX_REVIEW_GATEWAY_OVERLAY",
+        )
         return ClaudeReviewGateway(
             request,
             catalog=self._catalog,
             key_values=self._key_values,
             call=self._call,
             endpoint_url=self._endpoint_url,
+            overlay=overlay,
+            event_bus=event_bus if event_bus is not None else self._event_bus,
+            clock=self._clock,
         )
 
     async def handle(
@@ -867,9 +1053,30 @@ class HandlerClaudeReviewGateway:
         *,
         sample_payload: Mapping[str, Any] | None = None,
     ) -> ModelReviewGatewayPlan | None:
-        gateway = self.gateway(request)
         if request.dry_run:
-            return await gateway.plan(sample_payload or {})
+            return await self.gateway(request).plan(sample_payload or {})
+        if self._event_bus is not None:
+            await self._serve(request, self.gateway(request))
+            return None
+        # This node is launched by the CLI rather than the runtime container.
+        # Own the live publisher lifecycle here so existing CLI wiring emits events.
+        # Refuse an absent broker rather than using Kafka's localhost default.
+        if not os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "").strip():
+            raise ValueError("review gateway requires KAFKA_BOOTSTRAP_SERVERS")
+        from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+
+        bus = EventBusKafka.default()
+        gateway = self.gateway(request, event_bus=bus)
+        await bus.start()
+        try:
+            await self._serve(request, gateway)
+        finally:
+            await bus.close()
+        return None
+
+    async def _serve(
+        self, request: ModelClaudeReviewGatewayRequest, gateway: ClaudeReviewGateway
+    ) -> None:
         import uvicorn
 
         config = uvicorn.Config(
@@ -879,7 +1086,6 @@ class HandlerClaudeReviewGateway:
             log_level="info",
         )
         await uvicorn.Server(config).serve()
-        return None
 
 
 def run_dry(

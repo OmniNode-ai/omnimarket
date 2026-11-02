@@ -1,0 +1,158 @@
+schema_version: 1.0.0
+ticket_id: OMN-22157
+title: The Claude review gateway records why and when it sets a key aside, expires the set-aside after a contract-declared
+  interval, retries the key once, and emits a bus event for each
+summary: Timestamped refusal records, overlay-supplied expiry retries and contract-declared key-state bus events
+  in the existing gateway node.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- topics
+requirements:
+- id: req-omn22157-key-set-aside
+  statement: Refused review keys carry a cause and time, expire under deployment policy and publish state transitions
+    without key material.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a set-aside key carries its cause (the refusal class) and the time it was set aside, and no
+      key material appears in it -- falsifier: pytest test in omnimarket that drives a credit-balance refusal and
+      fails if the record lacks cause or time or contains the key string'
+  - id: AC2
+    statement: 'AC2: the set-aside expires after an interval declared in the node contract with an overlay value
+      and no hard-coded number, after which the key is retried once -- falsifier: pytest test with a fake clock
+      that fails if the key is retried before expiry, not retried after expiry, or retried more than once per expiry'
+  - id: AC3
+    statement: 'AC3: each set-aside and each retry emits an event on the bus carrying key identity (never key material),
+      cause and time, in the in-memory profile and the Redpanda profile -- falsifier: pytest tests for both profiles
+      that fail if no event is emitted or if the event or any log line contains key material'
+  - id: AC4
+    statement: 'AC4: the gateway is merged and redeployed on the lab hosts through the installer -- falsifier: gh
+      api repos/OmniNode-ai/omnimarket/commits/main --jq .sha && uv run pytest tests -q -k review_gateway'
+  - id: AC5
+    statement: 'AC5: one observed live set-aside expiring and retrying is recorded from the bus events on a lab
+      host -- falsifier: onex bus read of the set-aside and retry events for the same key on a lab host showing
+      the retry after the declared interval'
+evidence_requirements:
+- kind: tests
+  description: Focused gateway fixture and profile coverage.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q --no-cov
+    -n 0 -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22157-ac1-record
+  description: 'AC1: a set-aside key carries its cause (the refusal class) and the time it was set aside, and no
+    key material appears in it -- falsifier: pytest test in omnimarket that drives a credit-balance refusal and
+    fails if the record lacks cause or time or contains the key string'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -k key_set_aside_ttl_and_events_inmemory
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn22157-ac2-expiry
+  description: 'AC2: the set-aside expires after an interval declared in the node contract with an overlay value
+    and no hard-coded number, after which the key is retried once -- falsifier: pytest test with a fake clock that
+    fails if the key is retried before expiry, not retried after expiry, or retried more than once per expiry'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -k "key_set_aside_ttl_and_events_inmemory or concurrent_request or missing_key_value or positive_finite_overlay"
+    cwd: .
+  binds_ac:
+  - AC2
+- id: dod-omn22157-ac3-inmemory
+  description: In-memory event, refusal-class, timestamp and no-key-material fixture.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -k key_set_aside_ttl_and_events_inmemory
+    cwd: .
+  binds_ac:
+  - AC3
+- id: dod-omn22157-ac3-redpanda
+  description: Redpanda event readback for the signed gateway path; requires the declared test lane and its SASL
+    credentials, and refuses missing credentials.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -m kafka --refuse-skips
+    cwd: .
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+- id: dod-omn22157-ac4-installed
+  description: 'AC4: the gateway is merged and redeployed on the lab hosts through the installer -- falsifier: gh
+    api repos/OmniNode-ai/omnimarket/commits/main --jq .sha && uv run pytest tests -q -k review_gateway'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      set -eu
+      python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr "${ONEX_REVIEW_GATEWAY_PR:?}" --json | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["facts"]["state"] == "MERGED", "gateway PR is not merged"'
+      onex-host-install "${ONEX_REVIEW_GATEWAY_INSTALL_UNIT:?}" --status --repo-root "${OMNIBASE_INTERNAL_HOME:?}"
+      git -C "${ONEX_REVIEW_GATEWAY_INSTALLED_REPO:?}" merge-base --is-ancestor "${ONEX_REVIEW_GATEWAY_MERGED_REVISION:?}" HEAD
+    cwd: .
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+- id: dod-omn22157-ac5-live-events
+  description: Verify the live bus export for the selected lab host after the supplied deployment time. The live
+    capture is required; the fake-clock fixture is not a substitute.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      set -eu
+      uv run python - <<'LIVE'
+      import os
+      from datetime import datetime
+      from pathlib import Path
+      from omnimarket.nodes.node_claude_review_gateway_effect.models import ModelReviewGatewayKeyEvent
+      path = Path(os.environ["ONEX_REVIEW_GATEWAY_LIVE_EVENTS"])
+      since = datetime.fromisoformat(os.environ["ONEX_REVIEW_GATEWAY_LIVE_SINCE"])
+      host = os.environ["ONEX_REVIEW_GATEWAY_LIVE_HOST"]
+      events = [ModelReviewGatewayKeyEvent.model_validate_json(line) for line in path.read_text().splitlines() if line.strip()]
+      asides = [e for e in events if e.transition == "set_aside" and e.host == host and e.occurred_at >= since]
+      assert any(
+          retry.transition == "retry" and retry.host == aside.host
+          and retry.tenant_id == aside.tenant_id and retry.key_ref == aside.key_ref
+          and retry.cause == aside.cause and retry.set_aside_at == aside.set_aside_at
+          and retry.retry_after_seconds == aside.retry_after_seconds
+          and (retry.occurred_at - aside.set_aside_at).total_seconds() >= aside.retry_after_seconds
+          for aside in asides for retry in events
+      ), "no live set-aside/expiry-retry pair in the bus capture"
+      print("live set-aside and expiry retry pair read back")
+      LIVE
+    cwd: .
+  binds_ac:
+  - AC5
+  execution_scope: local_done_gate
+- id: dod-omn22157-integration-proof
+  description: Run the signed gateway expiry fixture on the declared Redpanda test lane through lab-work; installation
+    and the observed live refusal pair are separate required items.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane gateway-ttl-22157
+      -- uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -m kafka --refuse-skips
+    cwd: .
+  execution_scope: local_done_gate
+- id: dod-omn22157-deploy-probe
+  description: 'Hosted smoke: the live handler starts its publisher before serving the signed route, emits a refusal
+    event and closes the publisher.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -k live_handler_owns_the_bus_lifecycle_and_signed_route
+    cwd: .

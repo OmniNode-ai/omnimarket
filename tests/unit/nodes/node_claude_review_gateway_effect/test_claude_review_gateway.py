@@ -12,11 +12,14 @@ import hashlib
 import hmac
 import json
 import logging
+import os
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_asyncio
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -41,6 +44,7 @@ from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_
 )
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
+    ModelReviewGatewayOverlay,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     anthropic_messages,
@@ -143,6 +147,14 @@ class FakeCall:
         return self.outcomes.pop(0)
 
 
+class FakeEventBus:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, bytes | None, bytes]] = []
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+        self.events.append((topic, key, value))
+
+
 def _gateway(
     rows: list[dict[str, object]],
     outcomes: list[FakeOutcome] | None = None,
@@ -167,6 +179,8 @@ def _gateway(
         key_values=values,
         call=call,
         endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+        event_bus=FakeEventBus(),
     )
     return gateway, values, call
 
@@ -843,6 +857,9 @@ def test_dry_run_command_reads_this_machines_catalog_and_store(
         "hosts:\n  - name: h201\n    target: lab-host-201\n", encoding="utf-8"
     )
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
+    policy = tmp_path / "gateway-policy.yaml"
+    policy.write_text("key_set_aside_ttl_seconds: 17\n", encoding="utf-8")
+    monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(policy))
     monkeypatch.setattr(cli_secret, "_tenant_key_store", lambda: store)
 
     def _no_upstream(*_args: object, **_kwargs: object) -> None:
@@ -953,6 +970,8 @@ def test_adaptive_gateway_plan_and_call_use_the_declared_mode() -> None:
         key_values=values,
         call=call,
         endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+        event_bus=FakeEventBus(),
     ).gateway(
         ModelClaudeReviewGatewayRequest(
             host=_HOST,
@@ -1001,3 +1020,563 @@ def test_gateway_target_changes_only_with_its_declared_model() -> None:
         }
         for request in requests
     )
+
+
+async def test_key_set_aside_ttl_and_events_inmemory(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+        ModelReviewGatewayOverlay,
+    )
+
+    bus = EventBusInmemory()
+    await bus.start()
+    clock = [_NOW]
+    values = FakeValues([str(_row("key-a")["api_key_ref"])])
+    secret = next(iter(values.values.values()))
+    call = FakeCall(
+        [
+            _fail(
+                EnumDelegationFailureClass.UNKNOWN,
+                f"credit balance is too low {secret}",
+            ),
+            _fail(EnumDelegationFailureClass.PROVIDER_AUTH_FAILED, secret),
+            _ok(),
+        ]
+    )
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        ),
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=values,
+        call=call,
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+        event_bus=bus,
+        clock=lambda: clock[0],
+    )
+    events: list[dict[str, Any]] = []
+    emitted_topics: list[str] = []
+
+    async def observe(message: Any) -> None:
+        events.append(json.loads(message.value))
+        emitted_topics.append(message.topic)
+
+    for topic in gateway.event_topics:
+        await bus.subscribe(topic, on_message=observe, group_id="gateway-ttl-fixture")
+    try:
+        with caplog.at_level(logging.DEBUG):
+            assert (await gateway.complete(_PAYLOAD))[0] == 503
+            (record,) = gateway.set_aside_records
+            assert record.cause == EnumDelegationFailureClass.PROVIDER_BILLING
+            assert record.set_aside_at == _NOW
+            assert secret not in record.model_dump_json()
+            clock[0] += timedelta(seconds=16)
+            assert (await gateway.complete(_PAYLOAD))[0] == 503
+            assert len(call.calls) == 1
+            assert len(events) == 1
+            clock[0] += timedelta(seconds=1)
+            assert (await gateway.complete(_PAYLOAD))[0] == 503
+            assert len(call.calls) == 2
+            assert [event["transition"] for event in events] == [
+                "set_aside",
+                "retry",
+                "set_aside",
+            ]
+            assert events[1]["set_aside_at"] == events[0]["set_aside_at"]
+            assert events[1]["cause"] == events[0]["cause"]
+            assert (await gateway.complete(_PAYLOAD))[0] == 503
+            assert len(call.calls) == 2
+            clock[0] += timedelta(seconds=17)
+            assert (await gateway.complete(_PAYLOAD))[0] == 200
+            assert gateway.set_aside_records == ()
+            assert [event["transition"] for event in events] == [
+                "set_aside",
+                "retry",
+                "set_aside",
+                "retry",
+            ]
+            assert emitted_topics == [
+                "onex.evt.omnimarket.review-gateway-key-set-aside.v1",
+                "onex.evt.omnimarket.review-gateway-key-retry.v1",
+                "onex.evt.omnimarket.review-gateway-key-set-aside.v1",
+                "onex.evt.omnimarket.review-gateway-key-retry.v1",
+            ]
+            assert {event["key_ref"] for event in events} == {call.calls[0].secret_ref}
+            assert all(event["host"] == _HOST for event in events)
+            assert secret not in json.dumps(events)
+            assert secret not in caplog.text
+    finally:
+        await bus.close()
+
+
+async def test_only_one_concurrent_request_claims_an_expired_key() -> None:
+    entered_retry = asyncio.Event()
+    release_retry = asyncio.Event()
+
+    class SlowRetryBus(FakeEventBus):
+        async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+            if json.loads(value)["transition"] == "retry":
+                entered_retry.set()
+                await release_retry.wait()
+            await super().publish(topic, key, value)
+
+    clock = [_NOW]
+    bus = SlowRetryBus()
+    values = FakeValues([str(_row("key-a")["api_key_ref"])])
+    call = FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING)] * 2)
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        ),
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=values,
+        call=call,
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+        event_bus=bus,
+        clock=lambda: clock[0],
+    )
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    clock[0] += timedelta(seconds=17)
+    first = asyncio.create_task(gateway.complete(_PAYLOAD))
+    second: asyncio.Task[tuple[int, dict[str, Any]]] | None = None
+    try:
+        await asyncio.wait_for(entered_retry.wait(), timeout=5)
+        second = asyncio.create_task(gateway.complete(_PAYLOAD))
+        await asyncio.sleep(0)
+        assert not second.done()
+        assert len(call.calls) == 1
+    finally:
+        release_retry.set()
+        await first
+        if second is not None:
+            assert (await second)[0] == 503
+    assert len(call.calls) == 2
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    assert len(call.calls) == 2
+    assert [json.loads(value)["transition"] for _, _, value in bus.events] == [
+        "set_aside",
+        "retry",
+        "set_aside",
+    ]
+
+
+@pytest.mark.parametrize("failed_transition", ["set_aside", "retry"])
+async def test_failed_bus_publication_is_replayed_before_more_key_calls(
+    failed_transition: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class FlakyBus(FakeEventBus):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed = False
+            self.attempts: list[dict[str, Any]] = []
+
+        async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+            event = json.loads(value)
+            self.attempts.append(event)
+            if event["transition"] == failed_transition and not self.failed:
+                self.failed = True
+                raise OSError(
+                    "fixture bus unavailable "
+                    + _value(str(_row("key-a")["api_key_ref"]))
+                )
+            await super().publish(topic, key, value)
+
+    clock = [_NOW]
+    bus = FlakyBus()
+    call = FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok()])
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        ),
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=FakeValues([str(_row("key-a")["api_key_ref"])]),
+        call=call,
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+        event_bus=bus,
+        clock=lambda: clock[0],
+    )
+    if failed_transition == "retry":
+        assert (await gateway.complete(_PAYLOAD))[0] == 503
+        clock[0] += timedelta(seconds=17)
+    status, reply = await gateway.complete(_PAYLOAD)
+    assert status == 503
+    assert reply["error"]["type"] == "gateway_dependency_unavailable"
+    secret = _value(str(_row("key-a")["api_key_ref"]))
+    assert secret not in json.dumps(reply)
+    assert secret not in caplog.text
+    assert len(call.calls) == 1
+    if failed_transition == "set_aside":
+        assert (await gateway.complete(_PAYLOAD))[0] == 503
+        assert len(call.calls) == 1
+        clock[0] += timedelta(seconds=17)
+    assert (await gateway.complete(_PAYLOAD))[0] == 200
+    assert len(call.calls) == 2
+    events = [json.loads(value) for _, _, value in bus.events]
+    assert [event["transition"] for event in events] == ["set_aside", "retry"]
+    replayed = [e for e in bus.attempts if e["transition"] == failed_transition]
+    assert len(replayed) == 2
+    assert replayed[0]["event_id"] == replayed[1]["event_id"]
+
+
+async def test_a_raising_retry_starts_a_new_interval(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class RaisingCall(FakeCall):
+        def __call__(self, request: ModelLlmDelegationCallRequest) -> FakeOutcome:
+            if len(self.calls) == 1:
+                self.calls.append(request)
+                raise OSError(
+                    "fixture call interrupted "
+                    + _value(str(_row("key-a")["api_key_ref"]))
+                )
+            return super().__call__(request)
+
+    clock = [_NOW]
+    bus = FakeEventBus()
+    call = RaisingCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok()])
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        ),
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=FakeValues([str(_row("key-a")["api_key_ref"])]),
+        call=call,
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+        event_bus=bus,
+        clock=lambda: clock[0],
+    )
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    clock[0] += timedelta(seconds=17)
+    status, reply = await gateway.complete(_PAYLOAD)
+    assert status == 503
+    assert reply["error"]["type"] == "gateway_dependency_unavailable"
+    secret = _value(str(_row("key-a")["api_key_ref"]))
+    assert secret not in json.dumps(reply)
+    assert secret not in caplog.text
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    assert len(call.calls) == 2
+    assert gateway.set_aside_records[0].cause == EnumDelegationFailureClass.UNKNOWN
+    clock[0] += timedelta(seconds=17)
+    assert (await gateway.complete(_PAYLOAD))[0] == 200
+    assert len(call.calls) == 3
+
+
+async def test_missing_key_value_has_a_timed_refusal_and_can_recover() -> None:
+    clock = [_NOW]
+    bus = FakeEventBus()
+    values = FakeValues([])
+    call = FakeCall([_ok()])
+    key_ref = str(_row("key-a")["api_key_ref"])
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        ),
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=values,
+        call=call,
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=23),
+        event_bus=bus,
+        clock=lambda: clock[0],
+    )
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    assert gateway.set_aside_records[0].cause == (
+        EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING
+    )
+    values.values[key_ref] = _value(key_ref)
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    assert call.calls == []
+    clock[0] += timedelta(seconds=23)
+    assert (await gateway.complete(_PAYLOAD))[0] == 200
+    assert len(call.calls) == 1
+    assert [json.loads(value)["transition"] for _, _, value in bus.events] == [
+        "set_aside",
+        "retry",
+    ]
+
+
+@pytest.mark.parametrize("ttl", [0, -1, float("inf"), float("nan"), True, "17"])
+def test_set_aside_interval_must_be_a_positive_finite_overlay_number(ttl: Any) -> None:
+    with pytest.raises(ValidationError):
+        ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=ttl)
+
+
+def test_handler_loads_required_ttl_from_overlay_without_a_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+    )
+
+    monkeypatch.delenv("ONEX_REVIEW_GATEWAY_OVERLAY", raising=False)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    handler = HandlerClaudeReviewGateway(
+        catalog=FakeCatalog([]),
+        key_values=FakeValues([]),
+        call=FakeCall([]),
+        endpoint_url=_URL,
+        event_bus=FakeEventBus(),
+    )
+    request = ModelClaudeReviewGatewayRequest(
+        host=_HOST,
+        tenant_id=_TENANT,
+        model=_MODEL,
+        cloud_refused_repositories=_REFUSED,
+    )
+    with pytest.raises(NodeOverlayError, match="key_set_aside_ttl_seconds"):
+        handler.gateway(request)
+    overlay = tmp_path / "policy.yaml"
+    overlay.write_text("key_set_aside_ttl_seconds: 23\n", encoding="utf-8")
+    monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(overlay))
+    assert handler.gateway(request).set_aside_records == ()
+
+
+async def test_live_handler_owns_the_bus_lifecycle_and_signed_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import uvicorn
+    from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers import (
+        handler_claude_review_gateway as handler_module,
+    )
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+    )
+
+    lifecycle: list[str] = []
+
+    class LifecycleBus(FakeEventBus):
+        async def start(self) -> None:
+            lifecycle.append("start")
+
+        async def close(self) -> None:
+            lifecycle.append("close")
+
+    bus = LifecycleBus()
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker.example.invalid:9092")
+    monkeypatch.setenv(SHARED_SECRET_ENV, _SECRET)
+    monkeypatch.setattr(EventBusKafka, "default", lambda: bus)
+
+    served_gateways: list[ClaudeReviewGateway] = []
+    real_build_app = handler_module.build_app
+
+    def capturing_build_app(gateway: ClaudeReviewGateway, *, model: str) -> Any:
+        served_gateways.append(gateway)
+        return real_build_app(gateway, model=model)
+
+    monkeypatch.setattr(handler_module, "build_app", capturing_build_app)
+
+    class Server:
+        def __init__(self, config: Any) -> None:
+            self.config = config
+
+        async def serve(self) -> None:
+            assert lifecycle == ["start"]
+            status, _reply = await serve_chat_call(
+                served_gateways[0],
+                body=_wire(_PAYLOAD),
+                signature=_signed(_PAYLOAD)[SIGNATURE_HEADER],
+                secret=_SECRET,
+            )
+            assert status == 503
+            lifecycle.append("served")
+
+    monkeypatch.setattr(uvicorn, "Server", Server)
+    handler = HandlerClaudeReviewGateway(
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=FakeValues([str(_row("key-a")["api_key_ref"])]),
+        call=FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING)]),
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=23),
+    )
+    await handler.handle(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        )
+    )
+    assert lifecycle == ["start", "served", "close"]
+    assert len(bus.events) == 1
+    assert json.loads(bus.events[0][2])["cause"] == "provider_billing"
+
+
+@pytest_asyncio.fixture
+async def review_gateway_redpanda_bus() -> AsyncIterator[Any]:
+    """Use the declared test lane's transport, including its SASL policy."""
+    from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+    from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
+
+    from tests.bus_lane_guard import (
+        LANE_OVERLAY_PATH,
+        assert_broker_in_declared_lane,
+        declared_test_lane,
+        load_lane_overlay,
+        resolve_test_bus_broker,
+    )
+
+    bootstrap = assert_broker_in_declared_lane(resolve_test_bus_broker())
+    declaration = load_lane_overlay(LANE_OVERLAY_PATH)["lanes"][declared_test_lane()]
+    protocol = declaration["security_protocol"]
+    mechanism = declaration.get("sasl_mechanism")
+    if protocol.startswith("SASL"):
+        assert os.environ.get("KAFKA_SASL_USERNAME"), (
+            "test lane needs KAFKA_SASL_USERNAME"
+        )
+        assert os.environ.get("KAFKA_SASL_PASSWORD"), (
+            "test lane needs KAFKA_SASL_PASSWORD"
+        )
+    bus = EventBusKafka(
+        config=ModelKafkaEventBusConfig(
+            bootstrap_servers=bootstrap,
+            environment="integration-test",
+            security_protocol=protocol,
+            sasl_mechanism=mechanism,
+            sasl_plain_username=os.environ.get("KAFKA_SASL_USERNAME"),
+            sasl_plain_password=os.environ.get("KAFKA_SASL_PASSWORD"),
+            timeout_seconds=10,
+            max_retry_attempts=1,
+            auto_offset_reset="earliest",
+            enable_idempotence=False,
+        )
+    )
+    await bus.start()
+    try:
+        yield bus
+    finally:
+        await bus.close()
+
+
+@pytest.mark.kafka
+@pytest.mark.integration
+async def test_key_set_aside_ttl_and_events_redpanda(
+    review_gateway_redpanda_bus: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Same signed gateway path and fake-clock expiry, with broker readback."""
+    from uuid import uuid4
+
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers import (
+        handler_claude_review_gateway as module,
+    )
+
+    contract_bus = module.load_packaged_contract_section(module._NODE_NAME, "event_bus")
+    assert isinstance(contract_bus, dict)
+    topics = [f"{topic}.it-{uuid4().hex}" for topic in contract_bus["publish_topics"]]
+    # An isolated contract topic binding keeps fixture events off the live state topics.
+    monkeypatch.setattr(
+        module,
+        "load_packaged_contract_section",
+        lambda *_: {
+            "publish_topics": topics,
+            "subscribe_topics": [],
+        },
+    )
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def observe(message: Any) -> None:
+        await queue.put(json.loads(message.value))
+
+    unsubscribers = [
+        await review_gateway_redpanda_bus.subscribe(
+            topic,
+            on_message=observe,
+            group_id=f"gateway-ttl-{uuid4().hex}",
+        )
+        for topic in topics
+    ]
+    clock = [_NOW]
+    values = FakeValues([str(_row("key-a")["api_key_ref"])])
+    secret = next(iter(values.values.values()))
+    call = FakeCall(
+        [
+            _fail(
+                EnumDelegationFailureClass.UNKNOWN,
+                f"credit balance is too low {secret}",
+            ),
+            _ok(),
+        ]
+    )
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+        ),
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=values,
+        call=call,
+        endpoint_url=_URL,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=23),
+        event_bus=review_gateway_redpanda_bus,
+        clock=lambda: clock[0],
+    )
+
+    async def serve() -> int:
+        return (
+            await serve_chat_call(
+                gateway,
+                body=_wire(_PAYLOAD),
+                signature=_signed(_PAYLOAD)[SIGNATURE_HEADER],
+                secret=_SECRET,
+            )
+        )[0]
+
+    try:
+        with caplog.at_level(logging.INFO):
+            assert await serve() == 503
+            aside = await asyncio.wait_for(queue.get(), timeout=30)
+            assert aside["transition"] == "set_aside"
+            assert aside["cause"] == "provider_billing"
+            assert aside["set_aside_at"] == _NOW.isoformat().replace("+00:00", "Z")
+            clock[0] += timedelta(seconds=22)
+            assert await serve() == 503
+            assert len(call.calls) == 1
+            assert queue.empty()
+            clock[0] += timedelta(seconds=1)
+            assert await serve() == 200
+            retry = await asyncio.wait_for(queue.get(), timeout=30)
+            assert retry["transition"] == "retry"
+            assert retry["key_ref"] == aside["key_ref"]
+            assert retry["cause"] == aside["cause"]
+            assert retry["set_aside_at"] == aside["set_aside_at"]
+            assert (
+                datetime.fromisoformat(retry["occurred_at"])
+                - datetime.fromisoformat(aside["set_aside_at"])
+            ).total_seconds() == 23
+            assert len(call.calls) == 2
+            assert gateway.set_aside_records == ()
+            assert secret not in json.dumps([aside, retry])
+            assert secret not in caplog.text
+    finally:
+        for unsubscribe in unsubscribers:
+            await unsubscribe()

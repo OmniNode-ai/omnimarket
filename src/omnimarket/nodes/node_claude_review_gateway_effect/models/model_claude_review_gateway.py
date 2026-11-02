@@ -12,15 +12,66 @@ host (operator ruling 2026-10-11T17:58:45Z). Nothing here holds a key value.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.handlers.network_bindings import network_host
 from omnimarket.handlers.routing.byok_provider_backends import (
     ANTHROPIC_WORKSPACE_ID_PATTERN,
 )
 from omnimarket.projection.credential_publisher import LAB_HOST_NAME_PATTERN
+
+
+class ModelReviewGatewayOverlay(BaseModel):
+    """Required deployment policy; no process-lifetime or numeric fallback."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key_set_aside_ttl_seconds: Annotated[
+        float, Field(gt=0, allow_inf_nan=False, strict=True)
+    ]
+
+
+class ModelReviewGatewaySetAside(BaseModel):
+    """A refusal identity and timestamp, never a credential or provider message."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key_ref: str = Field(min_length=1)
+    cause: EnumDelegationFailureClass
+    set_aside_at: AwareDatetime
+
+
+class ModelReviewGatewayKeyEvent(ModelReviewGatewaySetAside):
+    """One set-aside or one claimed retry, readable from the event bus."""
+
+    event_id: UUID = Field(default_factory=uuid4)
+    transition: Literal["set_aside", "retry"]
+    host: str
+    tenant_id: str
+    occurred_at: AwareDatetime
+    retry_after_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
+class ModelReviewGatewayEventTopics(BaseModel):
+    """Ordered set-aside and retry topics, supplied only by the node contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    publish_topics: tuple[str, str]
+    subscribe_topics: tuple[str, ...] = ()
+
+    @field_validator("publish_topics")
+    @classmethod
+    def distinct_topics(cls, value: tuple[str, str]) -> tuple[str, str]:
+        if not all(topic.strip() for topic in value) or value[0] == value[1]:
+            raise ValueError(
+                "set-aside and retry topics must be non-empty and distinct"
+            )
+        return value
 
 
 class ModelReviewGatewayKey(BaseModel):
@@ -98,6 +149,10 @@ class ModelReviewGatewayPlan(BaseModel):
 
 __all__ = [
     "ModelClaudeReviewGatewayRequest",
+    "ModelReviewGatewayEventTopics",
     "ModelReviewGatewayKey",
+    "ModelReviewGatewayKeyEvent",
+    "ModelReviewGatewayOverlay",
     "ModelReviewGatewayPlan",
+    "ModelReviewGatewaySetAside",
 ]

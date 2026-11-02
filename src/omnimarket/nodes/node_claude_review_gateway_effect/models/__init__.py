@@ -4,12 +4,20 @@
 
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
+    ModelReviewGatewayEventTopics,
     ModelReviewGatewayKey,
+    ModelReviewGatewayKeyEvent,
+    ModelReviewGatewayOverlay,
     ModelReviewGatewayPlan,
+    ModelReviewGatewaySetAside,
 )
 
 __all__ = [
     "ModelClaudeReviewGatewayRequest",
+    "ModelReviewGatewayEventTopics",
     "ModelReviewGatewayKey",
+    "ModelReviewGatewayKeyEvent",
+    "ModelReviewGatewayOverlay",
     "ModelReviewGatewayPlan",
+    "ModelReviewGatewaySetAside",
 ]

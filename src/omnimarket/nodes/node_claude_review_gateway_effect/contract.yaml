@@ -3,13 +3,12 @@
 ---
 
 name: "node_claude_review_gateway_effect"
-# Started by `onex models review-gateway`, not by a bus command, so it declares
-# no subscribe or publish topics (node liveness gate).
+# Started by `onex models review-gateway`; key-state transitions publish on the bus.
 lifecycle: experimental
 contract_name: node_claude_review_gateway_effect
 node_name: node_claude_review_gateway_effect
-contract_version: {major: 0, minor: 1, patch: 0}
-node_version: {major: 0, minor: 1, patch: 0}
+contract_version: {major: 0, minor: 2, patch: 0}
+node_version: {major: 0, minor: 2, patch: 0}
 description: >
   EFFECT node behind `onex models review-gateway` (OMN-21014). An
   OpenAI-compatible Hostile Review voter endpoint on one lab host. Each call is
@@ -19,7 +18,9 @@ description: >
   resolved through the secret store, fill-first by key name. No key it can
   spend, an upstream rate limit, overload, server error or timeout answer 503
   so the voter's overflow list moves the review on. A refused or credit-
-  exhausted key is set aside and the next key on the host serves. A dry run
+  exhausted key is set aside until the overlay-declared interval expires, then
+  retried once. Each refusal records its class and time, and each set-aside and
+  retry publishes a key-reference-only bus event. The next key on the host serves. A dry run
   plans one review without an upstream call. No key value is logged or returned.
   The host declares thinking_mode as disabled (default) or adaptive. A reasoning-off
   review uses disabled thinking only when the model supports it; an adaptive gateway
@@ -52,6 +53,14 @@ outputs:
 
 # The CLI builds the handler with these; no runtime profile hosts it.
 dependencies:
+  - name: event_bus
+    dependency_type: protocol
+    description: Publisher for key-state events; the live CLI handler starts the configured Kafka bus.
+    required: true
+  - name: overlay
+    dependency_type: service
+    description: ModelReviewGatewayOverlay supplied by deployment; no TTL default.
+    required: true
   - name: catalog
     dependency_type: protocol
     description: ProtocolKeyCatalog, this machine's tenant_inference_credentials catalog.
@@ -68,6 +77,27 @@ dependencies:
     dependency_type: service
     description: The BYOK catalogue's anthropic api_native endpoint (the native Messages API, OMN-20910).
     required: true
+
+configuration:
+  overlay_id: claude_review_gateway
+  overlay_file_env: ONEX_REVIEW_GATEWAY_OVERLAY
+  key_set_aside_ttl_seconds:
+    type: number
+    required: true
+    exclusive_minimum: 0
+    source: overlay
+    description: Seconds from refusal until the next review may claim one retry; a repeated refusal starts a new interval.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.review-gateway-key-set-aside.v1
+    - onex.evt.omnimarket.review-gateway-key-retry.v1
+
+# State readers outside the node graph consume these telemetry events.
+externally_consumed_topics:
+  - onex.evt.omnimarket.review-gateway-key-set-aside.v1
+  - onex.evt.omnimarket.review-gateway-key-retry.v1
 
 handler:
   name: HandlerClaudeReviewGateway
