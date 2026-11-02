@@ -51,18 +51,23 @@ def _hook_repos() -> dict[str, list[str]]:
     return found
 
 
-# A verbatim, pinned census of check_values read from other repositories at fixed
-# SHAs ("GENERATED DATA, DO NOT HAND-EDIT"): two of its strings name the
-# omnibase_infra copy of one script by URL. They are the artifact under test of
-# that census, not a call of this repository's script, and cannot be rewritten.
+# Two files hold text this repository must not rewrite, and both name the
+# omnibase_infra copy of one script:
+# * a verbatim, pinned census of check_values read from other repositories at fixed
+#   SHAs ("GENERATED DATA, DO NOT HAND-EDIT"), where two strings name it by URL;
+# * scripts/hooks/prepush_dispatch.sh, a vendored byte copy of the omnibase_infra
+#   file, whose sha256 is pinned in scripts/hooks/prepush_vendored.tsv (one comment).
+# Neither calls this repository's script. The vendored comment goes when the
+# omnibase_infra copy is edited and the vendored pin is refreshed.
 VERBATIM_CAPTURES = (
-    ":(exclude)tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py"
+    ":(exclude)tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py",
+    ":(exclude)scripts/hooks/prepush_dispatch.sh",
 )
 
 
 def _git_grep(pattern: str) -> list[str]:
     result = subprocess.run(
-        ["git", "grep", "-n", "-F", "-e", pattern, "--", ".", VERBATIM_CAPTURES],
+        ["git", "grep", "-n", "-F", "-e", pattern, "--", ".", *VERBATIM_CAPTURES],
         cwd=REPO_ROOT,
         env=scrub_git_location_env(os.environ),
         capture_output=True,

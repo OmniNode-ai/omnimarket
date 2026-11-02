@@ -37,12 +37,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_core_validator_hooks_omn21940.py -q --no-cov"
         cwd: "."
   - id: "dod-omn21940-no-script-name-left"
-    description: "git grep for the five script names finds nothing outside the pinned census of other repositories' check_values (tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py, verbatim data that names the omnibase_infra copy of one script by URL and is marked do-not-hand-edit). The patterns spell one underscore as a bracket class so that this file is not a hit for its own grep."
+    description: "git grep for the five script names finds nothing outside two files this repository must not rewrite, both naming the omnibase_infra copy of one script: the pinned census of other repositories' check_values (tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py, verbatim data marked do-not-hand-edit) and the vendored byte copy scripts/hooks/prepush_dispatch.sh (sha256-pinned in prepush_vendored.tsv). The patterns spell one underscore as a bracket class so that this file is not a hit for its own grep."
     source: "manual"
-    binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "bash -c '! git grep -n -E \"check_exposed[_]identifiers|check_release[_]identity|skip_count_ratchet[.]py|check_integration[_]skips|validate_precommit[_]interpreter\" -- . \":(exclude)tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py\"'"
+        check_value: "bash -c '! git grep -n -E \"check_exposed[_]identifiers|check_release[_]identity|skip_count_ratchet[.]py|check_integration[_]skips|validate_precommit[_]interpreter\" -- . \":(exclude)tests/unit/nodes/node_dod_verify/omn_15597_occ_census_pinned.py\" \":(exclude)scripts/hooks/prepush_dispatch.sh\"'"
         cwd: "."
   - id: "dod-omn21940-affected-tests"
     description: "The test modules that referenced the five scripts pass: the skip-count ratchet suite and the nightly chain guard suite now drive the core runtimes, the post-release bump proof runs the core release-identity runtime, and the leak-gate wrapper suite no longer copies the exposed-identifier script."

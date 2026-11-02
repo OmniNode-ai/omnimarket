@@ -73,19 +73,16 @@ jobs:
         run: |
           bash scripts/validation/check_leaked_literals.sh blocking all
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
-        with:
-          version: "latest"
-
       # OMN-21940: the exposed-identifier class, full tree. The scanner is
       # omnibase_core's, at the same dev-merge tag as the pre-commit hook
       # 'exposed-identifier-gate' (SYNC with that rev); this repo supplies only the
-      # denylist.
+      # denylist. A throwaway venv keeps the job on the stdlib and the runner's
+      # python, with no extra action to pin.
       - name: Exposed identifier gate (OMN-17320, omnibase_core runtime)
         run: |
-          uv run --no-project \
-            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
-            python -m omnibase_core.nodes.node_exposed_identifiers_check_compute.runtime_exposed_identifiers_check \
+          python3 -m venv "${RUNNER_TEMP}/core-venv"
+          "${RUNNER_TEMP}/core-venv/bin/python" -m pip install --quiet \
+            'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0'
+          "${RUNNER_TEMP}/core-venv/bin/python" -m omnibase_core.nodes.node_exposed_identifiers_check_compute.runtime_exposed_identifiers_check \
             --mode blocking --scope all \
             --denylist scripts/validation/exposed_identifiers_denylist.json
