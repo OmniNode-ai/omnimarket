@@ -23,10 +23,10 @@ import httpx
 import pytest
 from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
+from omnimarket.handlers.routing import byok_model_discovery as discovery
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_inference_intent as bus_effect,
 )
-from omnimarket.routing import byok_model_discovery as discovery
 from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     KEY,
     REF,

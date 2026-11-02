@@ -29,6 +29,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
 )
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
@@ -46,7 +47,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 
 def _passing_named_test_runner(

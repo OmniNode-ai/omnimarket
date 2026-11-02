@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -42,7 +43,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     transport,
 )
 from omnimarket.pricing import estimate_baseline_cost_usd
-from omnimarket.routing import delegation_backend_resolution
 
 _TOKENS_IN = 213
 _TOKENS_OUT = 6

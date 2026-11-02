@@ -49,6 +49,10 @@ from uuid import UUID, uuid4
 import pytest
 import yaml
 
+from omnimarket.handlers.routing.customer_key_terminus import EnumDelegationSurface
+from omnimarket.handlers.routing.routing_tiers_path import (
+    ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.inference.task_class_authority import (
     EnumGatewayExposure,
     load_task_class_authority,
@@ -85,8 +89,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     _provenance_stamp_fields,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.customer_key_terminus import EnumDelegationSurface
-from omnimarket.routing.routing_tiers_path import ROUTING_TIERS_PACKAGED_DEFAULT_PATH
 from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
 pytestmark = pytest.mark.unit

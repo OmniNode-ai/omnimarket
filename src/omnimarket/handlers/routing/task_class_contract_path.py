@@ -10,7 +10,7 @@ orchestrator (``node_delegation_orchestrator``, which records the file's sha256
 as the v2 terminal's ``escalation_config_hash``) import from here, so neither
 node depends on the other's handler package.
 
-This mirrors :mod:`omnimarket.routing.routing_tiers_path` deliberately. That
+This mirrors :mod:`omnimarket.handlers.routing.routing_tiers_path` deliberately. That
 module exists because the orchestrator once re-derived the tiers path with its
 own ``Path(__file__).parent`` walk, got the depth wrong, and silently nulled a
 provenance hash on every terminal. Adding a second private walk for a second
@@ -25,11 +25,11 @@ from pathlib import Path
 #: Env key a contract overlay / deployment binds to pin the task-class contract.
 TASK_CLASS_CONTRACT_PATH_ENV_KEY = "TASK_CLASS_CONTRACT_PATH"
 
-# ``.parent`` x2 from ``src/omnimarket/routing/task_class_contract_path.py``
+# ``parents[2]`` from ``src/omnimarket/handlers/routing/task_class_contract_path.py``
 # lands on ``src/omnimarket`` -> ``src/omnimarket/configs/``, the single
 # committed copy of this file in the repo.
 TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH = (
-    Path(__file__).parent.parent / "configs" / "task_class_contracts.v1.yaml"
+    Path(__file__).parents[2] / "configs" / "task_class_contracts.v1.yaml"
 )
 
 __all__ = [

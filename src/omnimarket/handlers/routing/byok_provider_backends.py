@@ -108,7 +108,7 @@ logger = logging.getLogger(__name__)
 BYOK_CATALOG_SCHEMA_VERSION = "byok_provider_backends.v1"
 
 CATALOG_PATH: Path = (
-    Path(__file__).parent.parent / "configs" / "byok_provider_backends.v1.yaml"
+    Path(__file__).parents[2] / "configs" / "byok_provider_backends.v1.yaml"
 )
 
 #: The shape of a HOUSE credential reference on a platform rung. The middle

@@ -57,6 +57,10 @@ from omnibase_core.models.delegation.wire import (
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing.byok_provider_backends import (
+    byok_backend_max_retries,
+    load_byok_provider_catalog,
+)
 from omnimarket.inference.provider_response_error import (
     ModelProviderResponseError,
     provider_error_from_body,
@@ -100,10 +104,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
-)
-from omnimarket.routing.byok_provider_backends import (
-    byok_backend_max_retries,
-    load_byok_provider_catalog,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]

@@ -14,6 +14,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    resolve_delegation_backend,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -41,7 +44,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing.delegation_backend_resolution import resolve_delegation_backend
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 

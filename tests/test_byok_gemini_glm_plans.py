@@ -26,8 +26,8 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.routing import byok_provider_backends as mod
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing import byok_provider_backends as mod
+from omnimarket.handlers.routing.byok_provider_backends import (
     CATALOG_PATH,
     ByokCatalogError,
     ModelByokLimitModel,
