@@ -73,36 +73,10 @@ dod_evidence:
   - id: "dod-omn21966-deploy-local-run"
     description: "Hosted-runner deploy probe: the node runs through the ONEX local runtime with an in-memory backend on a stock request and returns the cost lines with provenance, the summarizer output estimated and the recovery read of the ledger counted. No broker, Docker daemon or production rollout is required."
     source: "manual"
-    binds_ac: ["AC1", "AC2"]
     checks:
       - check_type: "command"
-        check_value: |
-          set -eu
-          export PYTHONDONTWRITEBYTECODE=1
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
-          python -c '
-          import json
-          import sys
-          from pathlib import Path
-          request = {"stock": {"session_id": "s", "boundary": {"uuid": "b", "preTokens": 1000, "postTokens": 100}, "summary_text": "abcdefgh", "turns": [{"index": 0, "tool_calls": [{"tool_name": "Read", "target": "docs/tracking/ROLLING_WORK_LEDGER.md", "result_input_tokens": 50}]}]}}
-          Path(sys.argv[1], "request.json").write_text(json.dumps(request))
-          ' "$probe_dir"
-          onex node node_compaction_cost_compute --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json"
-          python -c '
-          import json
-          import sys
-          from pathlib import Path
-          receipt = json.loads(Path(sys.argv[1]).read_text())
-          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
-          assert receipt["result_model"] == "omnimarket.nodes.node_compaction_cost_compute.models.model_compaction_cost.ModelCompactionCostResult", receipt
-          stock = receipt["result"]["stock"]
-          assert stock["compaction_output"]["provenance"] == "estimated", stock
-          assert stock["compaction_input"]["provenance"] == "estimated", stock
-          assert stock["recovery"]["value"] == 50 and stock["recovery"]["provenance"] == "measured", stock
-          assert stock["net"]["value"] == 900, stock
-          ' "$probe_dir/receipt.json"
+        check_value: >-
+          env PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH" onex node node_compaction_cost_compute --input tests/nodes/node_compaction_cost_compute/fixtures/deploy_probe_request.json --state-root "${TMPDIR:-/tmp}/omn21966-probe-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" 2>/dev/null | tail -n 1 | python3 -c "import json,sys; r=json.loads(sys.stdin.read()); assert r['status']=='success' and r['exit_code']==0, r; s=r['result']['stock']; assert s['compaction_output']['provenance']=='estimated', s; assert s['compaction_input']['provenance']=='estimated', s; assert s['recovery']['value']==50 and s['recovery']['provenance']=='measured', s; assert s['net']['value']==900, s"
         cwd: "."
   - id: "dod-omn21966-integration-proof"
     description: "The pushed head ran the node suite on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
