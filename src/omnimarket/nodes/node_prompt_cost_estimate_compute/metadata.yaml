@@ -1,5 +1,5 @@
 name: node_prompt_cost_estimate_compute
-version: "1.0.0"
+version: "1.1.0"
 description: "An uploaded usage export priced prompt by prompt, as it ran and as the delegate would route it — a modelled estimate from the pricing manifest"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
@@ -22,4 +22,4 @@ tags: ["compute", "savings", "estimate", "deterministic", "in_process"]
 pack: "core"
 display_name: "Prompt Cost Estimate"
 node_role: "compute"
-tickets: ["OMN-20388"]
+tickets: ["OMN-20388", "OMN-22126"]

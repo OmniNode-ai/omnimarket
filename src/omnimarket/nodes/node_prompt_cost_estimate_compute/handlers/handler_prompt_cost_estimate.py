@@ -11,6 +11,13 @@ When delegating would not have been cheaper, the prompt is recommended to stay
 where it ran, with a saving of zero. A prompt whose model the manifest does not
 carry, or that names no model, is counted as unpriced and given no row; it is
 never priced at another model's rate.
+
+The CSV import schema and the saving range spreads come from the contract
+through an injected provider (``contract_config.load_config`` by default). The
+saving is a range: each manifest entry's ``confidence`` and each row's token
+method select a spread from ``config.saving_range``, and ``pricing_basis``
+names every manifest entry that priced a row, with its source and whether its
+evidence is checked against invoices.
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ from decimal import Decimal
 from functools import cache
 
 import yaml
+from omnibase_infra.models.pricing.model_pricing_entry import ModelPricingEntry
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
@@ -41,6 +49,10 @@ from omnimarket.nodes.node_metering_summary_compute import (
 from omnimarket.nodes.node_projection_metering_summary.baseline import (
     resolve_baseline,
 )
+from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.contract_config import (
+    ConfigProvider,
+    load_config,
+)
 from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.export_parsers import (
     ParsedPrompt,
     parse_export,
@@ -48,9 +60,12 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.export_parsers 
 from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
     EnumModelSource,
     EnumUnpricedReason,
+    ModelPricingBasis,
     ModelPromptCostEstimateRequest,
     ModelPromptCostEstimateResult,
     ModelPromptCostRow,
+    EnumTokenMethod,
+    ModelSavingRangeSpread,
     ModelTaskTypeSavings,
     ModelUnpricedModel,
 )
@@ -66,6 +81,12 @@ _UNCLASSIFIED = "unclassified"
 _ZERO = Decimal("0")
 
 BaselineResolver = Callable[[str], ModelCounterfactualBaseline | None]
+PricingEntryResolver = Callable[[str], ModelPricingEntry | None]
+
+
+def manifest_entry(model_id: str) -> ModelPricingEntry | None:
+    """The canonical pricing manifest's entry for ``model_id``, or ``None``."""
+    return ModelPricingTable.from_yaml().get_entry(model_id)
 
 
 @cache
@@ -143,16 +164,37 @@ def delegate_candidates(task_type: str) -> tuple[tuple[str, str], ...]:
 class HandlerPromptCostEstimate:
     """Estimate one uploaded export, prompt by prompt."""
 
-    def __init__(self, baseline_resolver: BaselineResolver | None = None) -> None:
+    def __init__(
+        self,
+        baseline_resolver: BaselineResolver | None = None,
+        config_provider: ConfigProvider | None = None,
+        entry_resolver: PricingEntryResolver | None = None,
+    ) -> None:
         self._resolve = (
             resolve_baseline if baseline_resolver is None else baseline_resolver
         )
+        self._config = load_config if config_provider is None else config_provider
+        self._entry = manifest_entry if entry_resolver is None else entry_resolver
 
     def handle(
         self, request: ModelPromptCostEstimateRequest
     ) -> ModelPromptCostEstimateResult:
-        prompts = parse_export(request.export_format, request.content)
+        config = self._config()
+        prompts = parse_export(
+            request.export_format, request.content, config.csv_import_schema
+        )
         baselines: dict[str, ModelCounterfactualBaseline | None] = {}
+        entries: dict[str, ModelPricingEntry] = {}
+
+        def entry(model: str) -> ModelPricingEntry:
+            if model not in entries:
+                found = self._entry(model)
+                if found is None:
+                    raise ValueError(
+                        f"{model} has a price but no pricing manifest entry"
+                    )
+                entries[model] = found
+            return entries[model]
 
         def price(model: str) -> ModelCounterfactualBaseline | None:
             if model not in baselines:
@@ -160,6 +202,7 @@ class HandlerPromptCostEstimate:
             return baselines[model]
 
         rows: list[ModelPromptCostRow] = []
+        priced: list[ParsedPrompt] = []
         unpriced: Counter[tuple[str, EnumUnpricedReason]] = Counter()
         versions: set[str] = set()
         for index, prompt in enumerate(prompts):
@@ -172,8 +215,22 @@ class HandlerPromptCostEstimate:
                 unpriced[(model, EnumUnpricedReason.MODEL_NOT_IN_MANIFEST)] += 1
                 continue
             versions.add(baseline.pricing_manifest_version)
-            rows.append(self._row(index, prompt, model, source, baseline, price))
+            priced.append(prompt)
+            rows.append(
+                self._row(
+                    index,
+                    prompt,
+                    model,
+                    source,
+                    baseline,
+                    price,
+                    entry,
+                    config.saving_range,
+                )
+            )
 
+        tokens_total = sum(prompt.tokens_in + prompt.tokens_out for prompt in priced)
+        from_text = sum(prompt.tokens_from_text_length for prompt in priced)
         return ModelPromptCostEstimateResult(
             pricing_manifest_version=self._manifest_version(versions),
             export_format=request.export_format,
@@ -187,9 +244,17 @@ class HandlerPromptCostEstimate:
             prompts_priced=len(rows),
             prompts_unpriced=sum(unpriced.values()),
             prompts_tokens_estimated=sum(1 for row in rows if row.tokens_estimated),
+            tokens_total=tokens_total,
+            tokens_from_text_length=from_text,
+            tokens_estimated_share=(
+                Decimal(from_text) / Decimal(tokens_total) if tokens_total else _ZERO
+            ),
             actual_cost_usd=sum((row.actual_cost_usd for row in rows), _ZERO),
             delegated_cost_usd=sum((row.delegated_cost_usd for row in rows), _ZERO),
             saving_usd=sum((row.saving_usd for row in rows), _ZERO),
+            saving_usd_low=sum((row.saving_usd_low for row in rows), _ZERO),
+            saving_usd_high=sum((row.saving_usd_high for row in rows), _ZERO),
+            pricing_basis=_pricing_basis(rows, entry, config.saving_range),
         )
 
     @staticmethod
@@ -208,6 +273,8 @@ class HandlerPromptCostEstimate:
         source: EnumModelSource,
         baseline: ModelCounterfactualBaseline,
         price: BaselineResolver,
+        entry: Callable[[str], ModelPricingEntry],
+        spread: ModelSavingRangeSpread,
     ) -> ModelPromptCostRow:
         task_type, routable = classify(prompt.prompt_text)
         actual = counterfactual_cost_usd(
@@ -227,6 +294,14 @@ class HandlerPromptCostEstimate:
                 if cost < actual:
                     recommended, tier, delegated = candidate, candidate_tier, cost
                 break
+        low, high = _saving_range(
+            actual=actual,
+            delegated=delegated,
+            delegated_away=tier != NOT_DELEGATED,
+            source_spread=spread.confidence[entry(model).confidence],
+            delegate_spread=spread.confidence[entry(recommended).confidence],
+            token_spread=spread.token_method[prompt.token_method],
+        )
         return ModelPromptCostRow(
             prompt_index=index,
             conversation_id=prompt.conversation_id,
@@ -237,12 +312,15 @@ class HandlerPromptCostEstimate:
             model_source=source,
             tokens_in=prompt.tokens_in,
             tokens_out=prompt.tokens_out,
-            tokens_estimated=prompt.tokens_estimated,
+            tokens_estimated=prompt.token_method is not EnumTokenMethod.REPORTED,
+            token_method=prompt.token_method,
             actual_cost_usd=actual,
             recommended_model=recommended,
             recommended_tier=tier,
             delegated_cost_usd=delegated,
             saving_usd=actual - delegated,
+            saving_usd_low=low,
+            saving_usd_high=high,
         )
 
     @staticmethod
@@ -265,6 +343,65 @@ def _by_task_type(rows: list[ModelPromptCostRow]) -> tuple[ModelTaskTypeSavings,
             actual_cost_usd=sum((row.actual_cost_usd for row in group), _ZERO),
             delegated_cost_usd=sum((row.delegated_cost_usd for row in group), _ZERO),
             saving_usd=sum((row.saving_usd for row in group), _ZERO),
+            saving_usd_low=sum((row.saving_usd_low for row in group), _ZERO),
+            saving_usd_high=sum((row.saving_usd_high for row in group), _ZERO),
         )
         for task_type, group in sorted(groups.items())
     )
+
+
+def _saving_range(
+    *,
+    actual: Decimal,
+    delegated: Decimal,
+    delegated_away: bool,
+    source_spread: Decimal,
+    delegate_spread: Decimal,
+    token_spread: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """The saving's low and high ends.
+
+    Each model's price moves by its confidence spread, against the saving at the
+    low end and for it at the high end; the token method's spread then scales
+    the saving, since both costs share the row's tokens. A prompt that stays
+    where it ran saves nothing whatever the prices are.
+    """
+    if not delegated_away:
+        return _ZERO, _ZERO
+    low = (actual * (1 - source_spread) - delegated * (1 + delegate_spread)) * (
+        1 - token_spread
+    )
+    high = (actual * (1 + source_spread) - delegated * (1 - delegate_spread)) * (
+        1 + token_spread
+    )
+    return max(low, _ZERO), high
+
+
+def _pricing_basis(
+    rows: list[ModelPromptCostRow],
+    entry: Callable[[str], ModelPricingEntry],
+    spread: ModelSavingRangeSpread,
+) -> tuple[ModelPricingBasis, ...]:
+    """Every manifest entry that priced a row: the answering model and any delegate."""
+    used: Counter[str] = Counter()
+    for row in rows:
+        used[row.source_model] += 1
+        if row.recommended_tier != NOT_DELEGATED:
+            used[row.recommended_model] += 1
+    basis: list[ModelPricingBasis] = []
+    for model, count in sorted(used.items()):
+        found = entry(model)
+        authoritative = found.evidence.get("authoritative") is True
+        basis.append(
+            ModelPricingBasis(
+                model=model,
+                confidence=found.confidence,
+                source=found.source,
+                evidence_authoritative=authoritative,
+                sample_count=found.sample_count,
+                checked_against_invoices=authoritative and found.sample_count > 0,
+                spread=spread.confidence[found.confidence],
+                rows_priced=count,
+            )
+        )
+    return tuple(basis)

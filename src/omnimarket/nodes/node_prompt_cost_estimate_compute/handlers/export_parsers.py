@@ -3,22 +3,19 @@
 """Read a visitor's usage export into one record per user prompt.
 
 Four shapes are read: the ChatGPT ``conversations.json``, the Claude data
-export's ``conversations.json``, Claude Code session JSONL, and a CSV with a
-``prompt`` column. Claude Code usage is folded by the history reader the
+export's ``conversations.json``, Claude Code session JSONL, and a CSV whose
+columns the contract's ``config.csv_import_schema`` declares (read by
+``csv_export_parser``). Claude Code usage is folded by the history reader the
 savings estimate already uses, so a transcript is counted the same way here as
 there. Where the export carries no token counts they are estimated from text
-length and the record says so; where it names no model the record's model is
-empty and the caller decides what that means.
+length and the record's token method says which side; where it names no model
+the record's model is empty and the caller decides what that means.
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import json
-import math
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
@@ -27,34 +24,22 @@ from omnimarket.nodes.node_claude_code_history_read_effect import (
     HandlerClaudeCodeHistoryRead,
     ModelClaudeCodeHistoryReadRequest,
 )
-from omnimarket.nodes.node_prompt_cost_estimate_compute.models import EnumExportFormat
+from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.csv_export_parser import (
+    parse_csv,
+)
+from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.export_records import (
+    ExportParseError,
+    ParsedPrompt,
+    estimate_tokens,
+    parse_iso,
+)
+from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
+    EnumExportFormat,
+    EnumTokenMethod,
+    ModelCsvImportSchema,
+)
 
-# A token count read from text length, not from the provider: about four
-# characters per token for English prose and code. Used only where the export
-# carries no counts, and every record it touches is marked estimated.
-_CHARS_PER_TOKEN = 4
-
-
-class ExportParseError(ValueError):
-    """The upload is not the export shape it was declared as."""
-
-
-@dataclass(frozen=True)
-class ParsedPrompt:
-    """One user prompt and the usage the export records for its answer."""
-
-    conversation_id: str
-    occurred_at: datetime | None
-    prompt_text: str
-    model: str
-    tokens_in: int
-    tokens_out: int
-    tokens_estimated: bool
-
-
-def estimate_tokens(text: str) -> int:
-    """Tokens for ``text`` by length; zero only for empty text."""
-    return math.ceil(len(text) / _CHARS_PER_TOKEN) if text else 0
+__all__ = ["ExportParseError", "ParsedPrompt", "estimate_tokens", "parse_export"]
 
 
 def _string(value: object) -> str:
@@ -68,16 +53,6 @@ def _epoch(value: object) -> datetime | None:
         return datetime.fromtimestamp(float(value), tz=UTC)
     except (OverflowError, OSError, ValueError):
         return None
-
-
-def _iso(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 def _json(content: str) -> object:
@@ -166,7 +141,7 @@ def _text_prompt(
         model=model,
         tokens_in=estimate_tokens(text),
         tokens_out=estimate_tokens("\n".join(reply)),
-        tokens_estimated=True,
+        token_method=EnumTokenMethod.TEXT_LENGTH_BOTH,
     )
 
 
@@ -201,7 +176,7 @@ def _parse_claude(content: str) -> list[ParsedPrompt]:
             if sender == "human" and text:
                 if pending is not None:
                     prompts.append(_text_prompt(conversation_id, pending, "", reply))
-                pending = (_iso(message.get("created_at")), text)
+                pending = (parse_iso(message.get("created_at")), text)
                 reply = []
             elif sender == "assistant" and pending is not None and text:
                 reply.append(text)
@@ -259,66 +234,15 @@ def _parse_claude_code(content: str) -> list[ParsedPrompt]:
             model=record.model,
             tokens_in=record.tokens_in,
             tokens_out=record.tokens_out,
-            tokens_estimated=False,
+            token_method=EnumTokenMethod.REPORTED,
         )
         for record in result.records
     ]
 
 
-_CSV_TOKENS_IN = ("tokens_in", "input_tokens", "prompt_tokens")
-_CSV_TOKENS_OUT = ("tokens_out", "output_tokens", "completion_tokens")
-
-
-def _csv_int(row: dict[str, str], names: tuple[str, ...]) -> int | None:
-    for name in names:
-        value = (row.get(name) or "").strip()
-        if value:
-            try:
-                count = int(value)
-            except ValueError as exc:
-                raise ExportParseError(
-                    f"column {name} holds {value!r}, not a whole number"
-                ) from exc
-            if count < 0:
-                raise ExportParseError(f"column {name} holds a negative count")
-            return count
-    return None
-
-
-def _parse_csv(content: str) -> list[ParsedPrompt]:
-    reader = csv.DictReader(io.StringIO(content))
-    fields = {name.strip().lower() for name in reader.fieldnames or ()}
-    if "prompt" not in fields:
-        raise ExportParseError("the CSV has no prompt column")
-    prompts: list[ParsedPrompt] = []
-    for raw in reader:
-        row = {(key or "").strip().lower(): (value or "") for key, value in raw.items()}
-        text = row.get("prompt", "").strip()
-        if not text:
-            continue
-        tokens_in = _csv_int(row, _CSV_TOKENS_IN)
-        tokens_out = _csv_int(row, _CSV_TOKENS_OUT)
-        prompts.append(
-            ParsedPrompt(
-                conversation_id=row.get("conversation_id", "").strip(),
-                occurred_at=_iso(row.get("timestamp")),
-                prompt_text=text,
-                model=row.get("model", "").strip(),
-                tokens_in=(
-                    tokens_in if tokens_in is not None else estimate_tokens(text)
-                ),
-                tokens_out=(
-                    tokens_out
-                    if tokens_out is not None
-                    else estimate_tokens(row.get("response", "").strip())
-                ),
-                tokens_estimated=tokens_in is None or tokens_out is None,
-            )
-        )
-    return prompts
-
-
-def parse_export(export_format: EnumExportFormat, content: str) -> list[ParsedPrompt]:
+def parse_export(
+    export_format: EnumExportFormat, content: str, csv_schema: ModelCsvImportSchema
+) -> list[ParsedPrompt]:
     """Read ``content`` as ``export_format``; refuse a shape that does not match."""
     if export_format is EnumExportFormat.CHATGPT_CONVERSATIONS:
         return _parse_chatgpt(content)
@@ -326,4 +250,4 @@ def parse_export(export_format: EnumExportFormat, content: str) -> list[ParsedPr
         return _parse_claude(content)
     if export_format is EnumExportFormat.CLAUDE_CODE_JSONL:
         return _parse_claude_code(content)
-    return _parse_csv(content)
+    return parse_csv(content, csv_schema)
