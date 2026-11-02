@@ -11,6 +11,8 @@ import shutil
 import stat
 import subprocess
 import textwrap
+import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
@@ -28,6 +30,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
+    ModelPublishStep,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
@@ -325,13 +328,15 @@ def _program_calls(runner: LocalSsh) -> list[str]:
     ]
 
 
-def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
+def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floor_effect_last(
     tmp_path: Path,
 ) -> None:
     runner = Scripted({"--json": (0, b"[]", b"")})
     request = _refresh_request(tmp_path)
     HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
-    assert _program_calls(runner) == ["hosts", "pool", HEALTH_MODULE, FACTORY]
+    calls = _program_calls(runner)
+    assert sorted(calls[:-1]) == sorted(["hosts", "pool", HEALTH_MODULE])
+    assert calls[-1] == FACTORY
     pool = next(c[0] for c in runner.calls if any("onex_lab_run.py" in w for w in c[0]))
     assert pool == [
         "python3",
@@ -348,6 +353,71 @@ def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
     ).read_text() == "[]"
     factory = next(c[0] for c in runner.calls if FACTORY in c[0])
     assert factory[-2:] == ["--home", request.home]
+
+
+def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_not() -> (
+    None
+):
+    steps = {s.name: s for s in load_runtime().steps}
+    assert [n for n, s in steps.items() if s.concurrent] == [
+        "hosts",
+        "pool",
+        "friction",
+        "process_health",
+    ]
+    assert steps["factory_floor"].concurrent is False
+
+
+def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
+    tmp_path: Path,
+) -> None:
+    barrier = threading.Barrier(
+        3, timeout=10
+    )  # hosts, pool and process_health in flight at once
+
+    class Overlapping(Scripted):
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] != "ssh" and FACTORY not in argv:
+                barrier.wait()
+            return super().__call__(argv, stdin, timeout)
+
+    request = _refresh_request(tmp_path)
+    result = HandlerFactoryFloorPublish(
+        Overlapping({"--json": (0, b"[]", b"")})
+    ).handle(request, environ=PLUGIN)
+    assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
+    assert all(s.status == "ok" for s in result.steps)
+
+
+def test_refresh_a_step_with_a_fresh_output_is_skipped_and_a_stale_one_runs(
+    tmp_path: Path,
+) -> None:
+    request = _refresh_request(tmp_path)
+    health = Path(request.home or "") / load_runtime().process_health_relpath
+    health.parent.mkdir(parents=True)
+    health.write_text(json.dumps(HEALTH), encoding="utf-8")
+    fresh = Scripted({"--json": (0, b"[]", b"")})
+    HandlerFactoryFloorPublish(fresh).handle(request, environ=PLUGIN)
+    assert HEALTH_MODULE not in _program_calls(fresh)
+    old = time.time() - 3600
+    os.utime(health, (old, old))
+    stale = Scripted({"--json": (0, b"[]", b"")})
+    HandlerFactoryFloorPublish(stale).handle(request, environ=PLUGIN)
+    assert HEALTH_MODULE in _program_calls(stale)
+
+
+def test_refresh_a_freshness_gate_names_its_file_and_its_age_together() -> None:
+    with pytest.raises(ValueError, match="together or neither"):
+        ModelPublishStep(
+            name="x",
+            kind="command",
+            required=False,
+            timeout_seconds=1,
+            argv=("a",),
+            fresh_relpath="f.json",
+        )
 
 
 def test_refresh_a_required_step_failing_publishes_nothing(tmp_path: Path) -> None:
