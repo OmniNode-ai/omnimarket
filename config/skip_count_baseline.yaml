@@ -9,8 +9,8 @@
 # baseline with no recorded measurement is a claim, not a measurement.
 #
 # Lowering a number here is the ONLY way to lower the bar. There is no flag and
-# no environment variable on scripts/ci/skip_count_ratchet.py that does it, and
-# tests/ci/test_skip_count_ratchet_omn18790.py reads the parser's own option
+# no environment variable on omnibase_core's skip-count-ratchet runtime that does it,
+# and tests/ci/test_skip_count_ratchet_omn18790.py reads the parser's own option
 # strings to keep it that way.
 #
 # mode: count    — the collected set is identical every run; compare the number.
@@ -27,12 +27,12 @@ suites:
     repo: omnimarket
     job: Tests (Split n/m)
     mode: nodeids
-    max_skips: 276
+    max_skips: 275
     baseline_collected: 22836
     provenance:
       measured_at: '2026-09-18'
       measured_by: OMN-18790
-      measurement_command: gh run download 35395544621 --repo OmniNode-ai/omnimarket --pattern 'test-results-*' --dir <dir> && uv run python scripts/ci/skip_count_ratchet.py --print-observed --suite omnimarket/test --junit <dir>/*/junit-*.xml
+      measurement_command: gh run download 35395544621 --repo OmniNode-ai/omnimarket --pattern 'test-results-*' --dir <dir> && uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' python -m omnibase_core.nodes.node_skip_count_ratchet_check_compute.runtime_skip_count_ratchet_check --print-observed --suite omnimarket/test --junit <dir>/*/junit-*.xml
       source_runs:
         - '35395544621'
       corroborating_runs:
@@ -307,7 +307,6 @@ suites:
       - tests.unit.scripts.test_occ_receipt_runner_yamlfmt_omn_17794.TestSurvivesRealYamlfmt::test_yamlfmt_makes_no_change_at_all[trailing_blank_lines]
       - tests.unit.scripts.test_occ_receipt_runner_yamlfmt_omn_17794.TestSurvivesRealYamlfmt::test_yamlfmt_makes_no_change_at_all[trailing_spaces_on_a_line]
       - tests.unit.scripts.test_occ_receipt_runner_yamlfmt_omn_17794.TestSurvivesRealYamlfmt::test_yamlfmt_makes_no_change_at_all[unicode]
-      - tests.validation.test_exposed_identifier_gate::test_incident_replay_omn17288
       - tests.validation.test_topic_naming_lint_producer_allowlist::test_lint_accepts_omnimarket_producer_in_fixture_contract
       - tests.validation.test_topic_naming_lint_producer_allowlist::test_lint_rejects_unknown_producer_in_fixture_contract
       - tests.validation.test_topic_naming_lint_producer_allowlist::test_node_overnight_contracts_pass_topic_naming_lint
