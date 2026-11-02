@@ -79,7 +79,6 @@ dod_evidence:
   - id: "dod-omn21961-deploy-local-placement"
     description: "Hosted-runner smoke runs the placement handler in process and in a disposable container with the source mounted read-only and its Pydantic and PyYAML versions from uv.lock. A missing reading is refused as capability_missing, an unknown reading beside an ok peer is refused as unknown_while_peer_reads_ok, and the ok peer is admitted. No broker or lab route is needed."
     source: "manual"
-    binds_ac: ["AC2", "AC3"]
     checks:
       - check_type: "command"
         check_value: |
