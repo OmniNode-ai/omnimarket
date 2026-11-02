@@ -9,7 +9,7 @@ ModelPrPhase2Record: per-PR Phase 2 failure history (consecutive_failures, categ
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,7 +31,7 @@ class ModelPrOutcomeRecord(BaseModel):
         bool  # True if MERGED/FAILED/STUCK; False if ARMED/REBASED/CI_RERUN_TRIGGERED
     )
     is_noop: bool = False  # True if idempotent no-op success
-    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    first_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     classified_event_id: UUID = Field(default_factory=uuid4)
 
 
@@ -85,7 +85,7 @@ class ModelMergeSweepState(BaseModel):
     # Terminal emission guard — set to True the instant the reducer emits the
     # terminal event. Prevents double-emission under event-replay or rerun.
     terminal_emitted: bool = False
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
     # Phase 2 [OMN-8997]: per-PR failure history. Key: f"{repo}#{pr_number}".
     # Updated (copy-on-write) on every Phase 2 event — NOT first-writer-wins.

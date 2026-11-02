@@ -17,7 +17,7 @@ procedure. Do not implement the node logic yourself.
 
 ## Procedure
 
-### Step 1 - Build JSON payload
+### Build the JSON payload
 
 Map user-provided arguments into a JSON object that matches the backing node's
 input model. Omit fields the user did not specify so the node can apply its
@@ -32,7 +32,7 @@ Use this dispatch shape:
 {{PAYLOAD_TEMPLATE}}
 ```
 
-### Step 2 - Dispatch through the Codex runtime request adapter
+### Dispatch through the Codex runtime request adapter
 
 Run from the `omnimarket` repo or an `omnimarket` worktree:
 
@@ -45,7 +45,7 @@ env -u PYTHONPATH uv run python scripts/run_codex_runtime_request.py \
 
 The command prints a JSON response object to stdout.
 
-### Step 3 - Interpret the response
+### Interpret the response
 
 If `ok` is `true` and `output_payloads` is present, treat `output_payloads[0]`
 as the primary node result and render that clearly for the user.
@@ -64,7 +64,7 @@ pass logical routing needs only when those fields are declared in the node
 contract; runtime model resolution belongs to `node_model_router` and
 contract/overlay policy.
 
-### Step 4 - Format output
+### Format the output
 
 On success: prefer `output_payloads[0]`; if it is absent, render the runtime
 `dispatch_result`.

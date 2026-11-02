@@ -51,6 +51,25 @@ repos:
       - id: commit-hygiene-message
         stages: [commit-msg]
         require_serial: true
+  # OMN-21500: omnibase_core's generic validators, consumed by hook id at one
+  # dev-merge tag; the rules and patterns live in core. This tag is the one home:
+  # the ci.yml job core-validators runs these hook ids through this file and holds
+  # no tag of its own. Each hook with findings in the tree carries one generated
+  # per-file baseline, shrink-only, target zero, kept in the file named by its
+  # --baseline argument (config/hardcoded_model_config_baseline.yaml is the
+  # model-config hook's own default). A baseline names no file that a measured
+  # finding of the audit names.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261101023710-a66b5ff79cc0
+    hooks:
+      - id: check-no-utcnow
+      - id: check-ai-slop
+      - id: check-hardcoded-model-config-compute
+      - id: handler-di-gate
+        args: [--baseline, .onex_ratchets/handler_di_baseline.txt]
+        files: ^(src/.*(handlers|nodes)/.*\.py|.*_cli\.py|\.onex_ratchets/handler_di_baseline\.txt)$
+      - id: check-protocol-binding
+        args: [--baseline, .onex_ratchets/protocol_binding_baseline.txt]
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
@@ -167,7 +186,7 @@ repos:
   # The canonical-file-shape hook runs the node_canonical_file_shape_check_compute entry
   # (hook id unchanged), pinned to an omnibase_core dev-merge tag. Its own block below.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261029151319-6e0a5eee541a
+    rev: dev-20261101023710-a66b5ff79cc0
     hooks:
       - id: canonical-file-shape
         args: [--rules, file-shape]
