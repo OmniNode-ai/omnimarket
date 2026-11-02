@@ -12,15 +12,25 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.test_repo_evidence_caller_workflow import (
+    _is_repo_test_target,
+    _pytest_targets,
+)
+
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _pytest_selector(command: str) -> str:
-    tokens = shlex.split(command)
-    selector = next((token for token in tokens[3:] if not token.startswith("-")), "")
-    return selector.split("::", 1)[0]
+    """The first path target of a pytest command, without its `::node` part.
+
+    Built on the caller workflow's own argv reader so an option value is never
+    read as the target: `uv run pytest <dir> -k expr` selects `<dir>`, not
+    `expr`.
+    """
+    targets = _pytest_targets(shlex.split(command))
+    return targets[0].split("::", 1)[0] if targets else ""
 
 
 def test_every_bound_pytest_check_names_a_repo_test_file_or_tests_directory() -> None:
@@ -43,16 +53,15 @@ def test_every_bound_pytest_check_names_a_repo_test_file_or_tests_directory() ->
                     bool(selector)
                     and not Path(selector).is_absolute()
                     and target.resolve().is_relative_to(REPO_ROOT)
-                    and (
-                        (selector.endswith(".py") and target.is_file())
-                        or (selector.endswith("/tests") and target.is_dir())
-                    )
+                    and _is_repo_test_target(selector)
+                    and (target.is_file() or target.is_dir())
                 )
                 if not valid:
                     offenders.append(
                         f"{path.name}:{item['id']}: {selector}: "
-                        "expected an existing repo .py file or /tests directory; "
-                        "a bare directory selector is refused by the repo evidence gate"
+                        "expected an existing repo .py file or test directory; "
+                        "a path that is not in the tree is refused by the repo "
+                        "evidence gate"
                     )
     assert not offenders, "\n".join(offenders)
 
