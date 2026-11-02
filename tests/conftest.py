@@ -1121,6 +1121,13 @@ def _isolate_local_secret_store(
         "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
         lambda: _local_secret_store_root / f"{digest}.sqlite",
     )
+    # OMN-21921: a delegation key is read through the secret store node, whose
+    # overlay is read from the ONEX home. Point it at an empty one so a developer's
+    # own config.yaml never decides which store a unit test reads.
+    monkeypatch.setattr(
+        "omnibase_infra.doctor.delegation_doctor_support.default_onex_home",
+        lambda: _local_secret_store_root / "onex-home",
+    )
 
 
 @pytest.fixture

@@ -23,7 +23,9 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 
 from omnimarket.config.service_endpoints import GITHUB_REST_URL
-from omnimarket.inference.local_byok_credential_adapter import is_local_store_only_ref
+from omnimarket.nodes.node_secret_store_effect.handlers.delegation_key_store import (
+    is_node_resolved_ref,
+)
 from omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision import (
     HandlerTypedDecision,
 )
@@ -152,7 +154,7 @@ def test_the_backend_is_declared_by_reference_and_resolves_local_store_only() ->
     assert _BACKEND["provider"] == "typesafe"
     assert _BACKEND["tier"] == "typed_decision"
     assert "api_key_env" not in _BACKEND
-    assert is_local_store_only_ref(_BACKEND["secret_ref"])
+    assert is_node_resolved_ref(_BACKEND["secret_ref"])
 
 
 @pytest.mark.unit

@@ -1,0 +1,96 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21921"
+title: "Delegation key resolution goes through node_secret_store_effect so the overlay picks the store on lab hosts and the local store on a customer laptop"
+summary: "A contract-declared provider reference (`llm.<provider>.<name>`) and a minted tenant credential were answered by this machine's own database alone, so a lab host with no local entry refused delegation with credential_absent. The resolver now reads them through node_secret_store_effect, whose handler takes the backend from the machine's overlay: the store a lab host names, the local database on a customer machine (also the reading of a machine with no overlay block). Nothing else changes for a lane-configured or injected store."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21921-overlay-picks-the-backend"
+    statement: |-
+      A declared provider reference resolves through the secret store node with the backend the machine's overlay names: from a store when the local entry is absent, from the local database when the overlay names it, and refused typed and fail-closed when neither holds a value.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: tests show a contract-declared llm.* reference resolves through node_secret_store_effect with the backend chosen by the overlay, resolving from a fake store when the local entry is absent and from the local store on a machine whose overlay names it, and refusing fail-closed typed when neither holds a value."
+  - id: "req-omn21921-no-value-leaks"
+    statement: |-
+      No secret value reaches an environment variable, a bus event, a log record or a serialized result, and no store product name or store path is written in the resolution path.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: tests show no secret value appears in an environment variable, a bus event, a log record or a serialized result, and no product name or path is hard-coded in the resolution path."
+  - id: "req-omn21921-both-bus-overlays"
+    statement: |-
+      The same resolution case passes on the in-memory bus overlay and on the Redpanda bus overlay.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the same resolution case passes under the in-memory overlay and the Redpanda overlay."
+  - id: "req-omn21921-real-delegation"
+    statement: |-
+      A real delegation from the branch with the local store entry absent resolves its key through the node and completes, where the same delegation on dev refuses credential_absent.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: a real delegation on a lab host from the branch, with the local store entry absent, resolves the key through the node and completes, and the same delegation on dev without the change refuses credential_absent."
+evidence_requirements:
+  - kind: "tests"
+    description: "The resolver and node unit tests pass, and the in-memory leg of the overlay case."
+    command: "uv run pytest tests/unit/inference tests/unit/nodes/node_secret_store_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21921-overlay-picks-the-backend"
+    description: "A declared reference resolves from the overlay's store, from the local database when the overlay names it, and refuses typed when neither holds a value."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference -q --no-cov -k secret_store"
+        cwd: "."
+  - id: "dod-omn21921-no-value-leaks"
+    description: "No value in the environment, a log record, a serialized result or an event, and no product name or store path in the resolution path."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/inference tests/unit/nodes/node_secret_store_effect -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21921-bus-overlays"
+    description: "The in-memory overlay leg runs on the hosted runner; the Redpanda overlay leg is marked kafka and runs on the lab test lane."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration -q --no-cov -k secret_store_overlay -m 'not kafka'"
+        cwd: "."
+  - id: "dod-omn21921-deploy-local-resolve"
+    description: "Hosted-runner deploy smoke invokes the secret store node through the ONEX local runtime with an in-memory backend, on a machine whose overlay names the local database and holds no entry. The declared reference is mapped through the contract's provider namespace and answered not_found, fail-closed, with no value in the receipt. No broker, store or production rollout is required. The real delegation on a lab host is the Lab: line of the pull request."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC4"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          overlay_dir="$probe_dir/home/.onex"
+          mkdir -p "$overlay_dir"
+          printf 'secret_store:\n  provider: local\n' > "$overlay_dir/config.yaml"
+          printf '{"operation": "resolve", "reference": "secret://onex/provider/llm.openrouter.api_key"}' > "$probe_dir/request.json"
+          HOME="$probe_dir/home" onex node node_secret_store_effect --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json"
+          python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["outcome"] == "not_found", result
+          assert result["folder"] == "/provider-credentials" and result["key"] == "llm.openrouter.api_key", result
+          assert "value" not in result, result
+          print(json.dumps({"probe": "provider-ref-local-overlay", "run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": result}, sort_keys=True))
+          ' "$probe_dir/receipt.json"
+        cwd: "."
