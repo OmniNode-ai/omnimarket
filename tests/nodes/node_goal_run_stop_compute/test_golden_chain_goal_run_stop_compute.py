@@ -63,7 +63,8 @@ def test_the_contract_is_pure_and_declares_no_topic_and_no_subscription() -> Non
     assert contract["descriptor"]["purity"] == "pure"
     assert not contract.get("event_bus", {}).get("subscribe_topics")
     assert not contract.get("event_bus", {}).get("publish_topics")
-    assert "runtime_dispatch" not in contract
+    assert contract["metadata"]["transport_type"] == "local"
+    assert contract["descriptor"]["runtime_profiles"] == []
 
 
 def test_entry_point_is_registered() -> None:
