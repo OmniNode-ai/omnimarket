@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import importlib
 import inspect
 import json
@@ -176,8 +178,16 @@ async def drive_contract_chain(
     tail_topic: str,
     correlation_id: str,
     group_prefix: str,
+    tail_timeout_seconds: float = 0.0,
 ) -> ModelDrivenContractChain:
+    """Subscribe every node to its contract topics, publish the head and read the tail.
+
+    A bus that delivers in the publishing call (the in-memory overlay) needs no wait. A bus
+    that delivers later (a broker) sets ``tail_timeout_seconds``: the drive then waits that
+    long for the tail event before it unsubscribes.
+    """
     events: list[str] = []
+    tail_seen = asyncio.Event()
     states: list[str] = []
     tail_payload: dict[str, JsonValue] | None = None
     handled: set[tuple[str, str]] = set()
@@ -228,6 +238,7 @@ async def drive_contract_chain(
             nonlocal tail_payload
             tail_payload = cast(dict[str, JsonValue], json.loads(message.value))
             events.append(tail_topic)
+            tail_seen.set()
 
         unsub_tail = await bus.subscribe(
             tail_topic, on_message=_tail_cb, group_id=f"{group_prefix}.tail"
@@ -237,6 +248,9 @@ async def drive_contract_chain(
         await bus.publish(
             head_topic, None, json.dumps({"correlation_id": correlation_id}).encode()
         )
+        if tail_timeout_seconds > 0:
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(tail_seen.wait(), tail_timeout_seconds)
     finally:
         for unsub in subscriptions:
             await unsub()
