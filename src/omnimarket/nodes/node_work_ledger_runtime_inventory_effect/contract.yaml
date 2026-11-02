@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Read-only effect: reader of a runtime inventory overlay for the work-ledger bus path. The node ships the schema only:
+# the overlay file (rows, exclusions, reserved slugs) and its recorded host snapshot are supplied by
+# the deployment through the request, ONEX_WORK_LEDGER_RUNTIME_INVENTORY_FILE or ONEX_SKILL_OVERLAY_ROOTS.
+name: node_work_ledger_runtime_inventory_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Loads a runtime inventory overlay and its recorded host snapshot from the declared location and
+  checks the row shape, distinct non-blank DNS-style tenant slugs that reuse no reserved slug, a
+  reason on every exclusion, the required exclusion classes, and the reconciliation of every
+  observed token against the rows and exclusions. Returns PASS or FAIL with the row and exclusion
+  counts and one finding per refusal. No default location is named; with none declared it fails.
+
+handler:
+  module: omnimarket.nodes.node_work_ledger_runtime_inventory_effect.handlers.handler_runtime_inventory
+  class: HandlerRuntimeInventory
+  input_model: omnimarket.nodes.node_work_ledger_runtime_inventory_effect.models.model_runtime_inventory.ModelRuntimeInventoryRequest
+  output_model: omnimarket.nodes.node_work_ledger_runtime_inventory_effect.models.model_runtime_inventory.ModelRuntimeInventoryResult
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_work_ledger_runtime_inventory_effect.handlers.handler_runtime_inventory:HandlerRuntimeInventory
+
+descriptor:
+  node_archetype: effect
+  purity: impure  # reads the declared overlay files; writes nothing
+  idempotent: true
+  runtime_profiles: []
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_work_ledger_runtime_inventory_effect.runtime_inventory_check with --inventory, --overlay-root or the environment naming the overlay."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+  description: "Effect node: schema and reconciliation check of a runtime inventory overlay"
+  author: "OmniNode Platform Team"

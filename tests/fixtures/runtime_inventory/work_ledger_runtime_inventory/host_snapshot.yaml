@@ -1,0 +1,20 @@
+schema_version: work_ledger_runtime_snapshot.v1
+taken_at: "2026-01-01T00:00:00Z"
+hosts:
+  host-1: {read: ok}
+  host-2: {read: unreadable, reason: synthetic}
+  host-3: {read: unreadable, reason: synthetic}
+writer_rows:
+  host-2: 10
+  host-3: 5
+  none: 2
+observed:
+  - compose_project:project-a@host-1
+  - compose_project:project-b@host-1
+  - compose_project:cache@host-1
+  - manifest_lane:lane-a
+  - writer_host:host-2
+  - writer_host:host-3
+  - writer_host:none
+  - unreadable_host:host-2
+  - unreadable_host:host-3
