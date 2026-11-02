@@ -108,10 +108,20 @@ jobs:
                 backoff=$(( backoff * 2 < 60 ? backoff * 2 : 60 ))
                 continue
               fi
+              # A transient API failure (truncated body, 5xx, reset) is retried a bounded
+              # number of times; only a persistent failure refuses the PR.
+              transient_fails=$(( ${transient_fails:-0} + 1 ))
+              if [ "$transient_fails" -lt 6 ]; then
+                echo "::warning::gh api call failed (transient $transient_fails/5): ${response}"
+                sleep 10
+                elapsed=$((elapsed + 10))
+                continue
+              fi
               echo "::error::gh api call failed (non-rate-limit): ${response}"
               exit 1
             fi
             backoff=5
+            transient_fails=0
 
             read -r run_id conclusion <<< "$response" || true
             if [ -n "$run_id" ] && [ "$run_id" != "$seen_run" ]; then
