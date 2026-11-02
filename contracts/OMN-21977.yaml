@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-21977
+title: The repo-evidence caller passes a per-check budget, so dod-verify stops failing omnimarket PRs at the 30 s default
+summary: The caller workflow passed evidence-source, verifier-tag and compare-with-occ and never check-timeout-seconds, so the pinned receipt-gate reusable left every dod_verify check on the verifier's own 30 s default and five dev PRs were refused with check_budget_exceeded. The caller now passes 300, inside the reusable's declared 1 to 900 range. Two repin characterization tests asserted the with block held exactly two keys after popping verifier-tag and now account for the new input, so one red does not become two. No contract, verifier pin or reusable pin moves.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21977-caller-check-budget
+    statement: The caller declares a per-check budget the reusable accepts, and the characterization tests that read the caller's inputs fail without the change.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the caller workflow''s repo-evidence job passes check-timeout-seconds as a whole number of seconds from 1 to 900, and tests/ci/test_repo_evidence_caller_workflow.py asserts it -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q fails on the head before the workflow line is added and passes after'
+      - id: AC2
+        statement: 'AC2: both repin characterization tests account for the new input rather than asserting a two-key with block, so no second red is introduced -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q'
+evidence_requirements:
+  - kind: tests
+    description: The three test files that read the caller workflow's inputs run at the pushed head.
+    command: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21977-ac1
+    description: AC1 parses the caller workflow and asserts the repo-evidence job's check-timeout-seconds is a quoted whole number within the reusable's 1 to 900 range. Without the workflow line the assertion raises KeyError on the with block, so the test is red at the merge base.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_caller_workflow_shape -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21977-ac2
+    description: AC2 runs the two repin characterization tests, each of which pops the new input before comparing the remaining with block, so a caller that passes the budget keeps both repin assertions true.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py -q --no-cov --tb=line
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21977-integration-proof
+    description: Run the caller and both repin characterization checks on a lab host at the pushed head. The caller check fails when the budget input is absent. This is a workflow configuration proof; it does not assert a container rollout. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21977 --kind test -- env PYTHONDONTWRITEBYTECODE=1 COMPOSE_PROJECT_NAME=landing-l22950-lab uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py::test_caller_workflow_shape tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py tests/ci/test_repo_evidence_caller_merged_fix_repin_omn21146.py -q --no-cov
+        cwd: .
+  - id: dod-omn21977-deploy-probe-caller-budget
+    description: Hosted smoke reads the caller workflow at the checked-out head and asserts the reusable receives a quoted whole-number budget within its supported range. Removing check-timeout-seconds makes this probe fail. It needs no lab network or running container.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_caller_workflow_shape -q --no-cov --tb=line
+        cwd: .
