@@ -19,6 +19,7 @@ from omnimarket.models.bus_binding import (
     EnumBusBinding,
     EnumBusBindingState,
     ModelBusBindingDecision,
+    ModelBusBindingSettlementPolicy,
 )
 from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
     create_handler_exception_emit,
@@ -132,12 +133,46 @@ def raise_alarm(
     return f"{result.status}:{result.id}"
 
 
-def escalation_bound_seconds() -> float:
-    contract = yaml.safe_load(
+def _contract() -> dict[str, Any]:
+    contract: dict[str, Any] = yaml.safe_load(
         resources.files("omnimarket.nodes.node_bus_binding_reducer")
         .joinpath("contract.yaml")
         .read_text(encoding="utf-8")
     )
+    return contract
+
+
+def settlement_policy() -> ModelBusBindingSettlementPolicy:
+    """The contract's exception settlement step; a contract that declares none keeps the per-command alarm."""
+    raw = _contract().get("exception_settlement") or {"alarm_scope": "command"}
+    return ModelBusBindingSettlementPolicy.model_validate(
+        {
+            **raw,
+            "settle_on_healthy_read": tuple(raw.get("settle_on_healthy_read") or ()),
+        }
+    )
+
+
+def alarm_once_per_episode(state_dir: Path, decision: ModelBusBindingDecision) -> str:
+    """Emit the episode's alarm once; while the episode stays open, name that row and emit nothing.
+
+    A row closed while its episode is still open (the orchestrator drained it) is not reopened by the next
+    degraded command, so one outage counts once in the class's occurrences (OMN-21959).
+    """
+    record = read_record(state_dir, decision.lane)
+    episode = record.get("outage_started_at")
+    if episode and record.get("alarm_episode") == episode and record.get("alarm_id"):
+        return f"held:{record['alarm_id']}"
+    alarm = raise_alarm(state_dir, decision)
+    status, _, row_id = alarm.partition(":")
+    if episode and row_id and status in ("appended", "repeat"):
+        record.update(alarm_id=row_id, alarm_episode=episode)
+        _write_record(state_dir, decision.lane, record)
+    return alarm
+
+
+def escalation_bound_seconds() -> float:
+    contract = _contract()
     bound = float(contract["recovery_policy"]["escalate_after_seconds"])
     if not 0 < bound < float("inf"):
         raise ValueError("bus binding escalation bound must be finite and positive")
@@ -304,6 +339,12 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
                 )
             )
     record.update(
-        outage_started_at=None, replayed=0, duplicates=0, refused=0, replay_stopped=None
+        outage_started_at=None,
+        replayed=0,
+        duplicates=0,
+        refused=0,
+        replay_stopped=None,
+        alarm_id=None,
+        alarm_episode=None,
     )
     _write_record(state_dir, decision.lane, record)
