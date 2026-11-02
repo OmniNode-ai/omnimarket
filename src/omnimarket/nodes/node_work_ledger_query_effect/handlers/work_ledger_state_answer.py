@@ -107,10 +107,11 @@ def _hold_lines(
     now: datetime,
 ) -> dict[str, object]:
     rows = _parsed(entities)
-    holds, _ = replay.holds_in_force(rows, now=now)
-    if len(holds) != len(entities):
+    holds, _, stale = replay.holds_in_force(rows, now=now)
+    if len(holds) + len(stale) != len(entities):
         raise WorkLedgerReadError(
-            f"state page holds {len(entities)} open holds but {len(holds)} read as in force"
+            f"state page holds {len(entities)} open holds but {len(holds)} read as in force "
+            f"and {len(stale)} as stale"
         )
     counts = ModelWorkLedgerHoldCounts(
         checked=page.total, released=page.released, expired=page.expired
@@ -136,6 +137,7 @@ def _hold_lines(
     return {
         "matched": len(holds),
         "holds": tuple(holds),
+        "stale_holds": tuple(stale),
         "hold_counts": counts,
         "lines": tuple(lines),
     }
