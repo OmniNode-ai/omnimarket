@@ -25,11 +25,11 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn22182-fixture
-    description: The recorded traceback fixture names TypeError at write_credential_row in stores.py line 260, and records that the crash reproduced on the aligned set.
+    description: The recorded traceback fixture names the aligned-version NULL crash, and the legacy-store register cases exercise that failure through write_credential_row; this combined check fails on the broken handler even when the fixture is unchanged.
     source: manual
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_projection_tenant_credentials -q --no-cov -k walk_2026_11_02_traceback
+        check_value: uv run pytest tests/nodes/node_projection_tenant_credentials/test_walk_2026_11_02_credential_version.py -q --no-cov -k 'traceback or legacy_store_register'
         cwd: .
     binds_ac: [AC1]
   - id: dod-omn22182-legacy-store
