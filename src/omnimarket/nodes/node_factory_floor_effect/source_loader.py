@@ -965,7 +965,30 @@ def read_container_listing(
     if done.returncode:
         tail = " ".join(done.stderr.split())[-160:]
         return "", f"the listing on {host.host} exited {done.returncode}: {tail}"
-    return done.stdout, ""
+    return _without_nameless_dead(done.stdout), ""
+
+
+def _without_nameless_dead(listing: str) -> str:
+    """Drop the rows docker lists for a removal that did not finish: state dead, no name.
+
+    The budget node refuses a whole listing that holds a row with no name, so one such ghost row turned
+    every lane of the host into UNKNOWN. A nameless row in any other state is kept and still refuses.
+    """
+    kept: list[str] = []
+    for line in listing.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            kept.append(line)
+            continue
+        if (
+            isinstance(row, dict)
+            and not str(row.get("Names") or "").strip()
+            and row.get("State") == "dead"
+        ):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def load_lane_containers(

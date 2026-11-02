@@ -95,13 +95,16 @@ requirements:
       - id: "AC24"
         statement: "AC24: a plan that is only on an unmerged ref is read from the ref the overlay names until a plan of the same path is on the clone's branch -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k unmerged_ref"
       - id: "AC25"
-        statement: "AC25: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command'"
+        statement: "AC25: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
       - id: "AC26"
         statement: "AC26: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
     command: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov"
+  - kind: "tests"
+    description: "The four suites that hold the floor's tests. They live under tests/nodes; the node directories under src hold none, so a pytest over them collects nothing and exits 5."
+    command: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect tests/nodes/node_factory_floor_publish_effect tests/nodes/node_lane_container_budget_compute -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -353,7 +356,7 @@ dod_evidence:
     binds_ac: ["AC25"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k 'declared_host or cannot_be_read or listing_command'"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac26"
     description: "AC26 an unread runner fleet names its cause."
@@ -362,4 +365,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k runner_fleet"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-floor-suites"
+    description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."
+    source: "manual"
+    binds_ac: ["AC23", "AC24", "AC25", "AC26"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect tests/nodes/node_factory_floor_publish_effect tests/nodes/node_lane_container_budget_compute -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"

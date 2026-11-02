@@ -34,6 +34,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_lane_containers,
     load_plans,
     parse_heading_tasks,
+    read_container_listing,
     runner_fleet_cause,
 )
 
@@ -221,6 +222,90 @@ def test_each_declared_host_is_read_and_judged_against_its_budget() -> None:
     (lane,) = verdicts[0].lanes
     assert (lane.status, lane.observed, lane.budget) == ("FAIL", 2, 1)
     assert lane.containers == ("proj-extra-1", "proj-runtime-1")
+
+
+GHOST = json.dumps({"Names": "", "State": "dead", "Labels": ""})
+
+
+def _read_with_stdout(monkeypatch: pytest.MonkeyPatch, stdout: str) -> tuple[str, str]:
+    def fake_run(
+        argv: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return read_container_listing(
+        _container_source(),
+        ModelFactoryFloorContainerHost(host="host-a", ssh_target="user@host-a"),
+    )
+
+
+def test_a_dead_row_with_no_name_is_dropped_so_it_cannot_refuse_the_listing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = LISTING.splitlines()
+    listing, error = _read_with_stdout(
+        monkeypatch, "\n".join([rows[0], GHOST, rows[1], GHOST, rows[2]])
+    )
+    assert error == ""
+    assert GHOST not in listing.splitlines()
+    assert len(listing.splitlines()) == 3
+    verdicts = load_lane_containers(
+        source=_container_source(),
+        hosts=(
+            ModelFactoryFloorContainerHost(host="host-a", ssh_target="user@host-a"),
+        ),
+        declarations=_declarations(),
+        read=lambda _source, _host: (listing, error),
+    )
+    assert verdicts is not None
+    (lane,) = verdicts[0].lanes
+    assert (lane.status, lane.observed, lane.budget) == ("FAIL", 2, 1)
+
+    # Without the drop the budget node refuses the whole listing and the lane reads UNKNOWN.
+    refused = load_lane_containers(
+        source=_container_source(),
+        hosts=(
+            ModelFactoryFloorContainerHost(host="host-a", ssh_target="user@host-a"),
+        ),
+        declarations=_declarations(),
+        read=lambda _source, _host: ("\n".join([rows[0], GHOST]), ""),
+    )
+    assert refused is not None
+    assert refused[0].lanes[0].status == "UNKNOWN"
+    assert "names no container" in refused[0].lanes[0].detail
+
+
+def test_a_nameless_row_in_any_other_state_still_refuses_the_listing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nameless_running = json.dumps({"Names": "", "State": "running", "Labels": ""})
+    listing, _ = _read_with_stdout(
+        monkeypatch, "\n".join([LISTING.splitlines()[0], nameless_running])
+    )
+    assert nameless_running in listing.splitlines()
+    verdicts = load_lane_containers(
+        source=_container_source(),
+        hosts=(
+            ModelFactoryFloorContainerHost(host="host-a", ssh_target="user@host-a"),
+        ),
+        declarations=_declarations(),
+        read=lambda _source, _host: (listing, ""),
+    )
+    assert verdicts is not None
+    assert verdicts[0].lanes[0].status == "UNKNOWN"
+
+
+def test_a_dead_row_that_has_a_name_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    named_dead = json.dumps(
+        {
+            "Names": "proj-old-1",
+            "State": "dead",
+            "Labels": "com.docker.compose.project=proj",
+        }
+    )
+    listing, _ = _read_with_stdout(monkeypatch, named_dead)
+    assert named_dead in listing.splitlines()
 
 
 def test_a_host_that_cannot_be_read_is_unknown_with_its_cause_not_zero() -> None:
