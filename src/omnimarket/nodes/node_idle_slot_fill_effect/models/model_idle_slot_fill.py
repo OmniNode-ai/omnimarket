@@ -25,6 +25,7 @@ from omnimarket.models.model_backlog_item import (
 from omnimarket.models.model_backlog_item import (
     backlog_item_refusal as backlog_item_refusal,
 )
+from omnimarket.models.stop_gate import ModelStopGateFacts
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,11 @@ class ModelIdleSlotFillRequest:
     # Work-in-progress admission: a candidate's reason to wait, or None to go on (the
     # wip_admission node; none judges nothing).
     wip_refusal: Callable[[Mapping[str, Any]], str | None] | None = None
+    # The open andon stops (read by the caller from the exception queue), the ``andon_stop`` overlay's
+    # policy, now and the dispatch bindings (OMN-21958). With a stop open in an enforce class the fill
+    # selects no lane for that engine or repository and the skip names the stop and its swarm lane; a class
+    # in ``observe`` refuses nothing. None: no gate is installed.
+    stop_gate: ModelStopGateFacts | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,8 @@ class ModelIdleSlotFillResult:
     # Items that failed ModelBacklogItem (a prose engine, a missing repository): each is also in
     # ``skipped`` with its reason, and none is dispatched (OMN-21475).
     backlog_mismatched: int = 0
+    # ``stop_gate``'s line for each lane sent into a scope an observed stop names (it refuses nothing).
+    stop_observed: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

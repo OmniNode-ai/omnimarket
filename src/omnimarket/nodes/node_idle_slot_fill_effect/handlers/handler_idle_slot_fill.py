@@ -90,6 +90,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
+    ModelFSMSubcontract,
+)
+
+from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.handlers.handler_lab_fill_live_tickets import (
     LabFillLiveReadError,
     Post,
@@ -98,6 +103,11 @@ from omnimarket.handlers.handler_lab_fill_live_tickets import (
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
+from omnimarket.handlers.rules_stop_gate import (
+    engine_stop_scopes,
+    gate_dispatch,
+    load_andon_stop_contract,
+)
 from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
@@ -113,6 +123,14 @@ from omnimarket.models.lane_brief.enum_lane_engine import EnumLaneEngine
 from omnimarket.models.model_backlog_item import (
     REPO_KINDS_CONTEXT_KEY,
     backlog_item_refusal,
+)
+from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.models.stop_gate import (
+    REPOSITORY_SCOPE_KIND,
+    EnumStopExemptionKind,
+    EnumStopGateOutcome,
+    ModelStopExemptionClaim,
+    ModelStopScope,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
@@ -688,6 +706,48 @@ def admitted_slots(host: Mapping[str, Any], engine: str, now: str) -> int:
 
 
 class HandlerIdleSlotFill:
+    def __init__(
+        self,
+        *,
+        engines: ModelEngineLadder | None = None,
+        stop_fsm: ModelFSMSubcontract | None = None,
+    ) -> None:
+        self._engines = engines
+        self._stop_fsm = stop_fsm
+
+    def _stop_gate_line(
+        self, request: ModelIdleSlotFillRequest, item: Mapping[str, Any], model: str
+    ) -> tuple[bool, str | None]:
+        """(whether a stop in an enforce class keeps this candidate off, the stop line to report).
+
+        The candidate falls under the engine scopes of the model chosen for it and, when it names one, its
+        repository. A process-fix lane is a lane that fixes an open PR: it claims that exemption on the PR its
+        key names, and the gate honours it only against the facts' watcher-bound bindings.
+        """
+        facts = request.stop_gate
+        if facts is None:
+            return False, None
+        if self._engines is None:
+            self._engines = load_engine_ladder()
+        if self._stop_fsm is None:
+            self._stop_fsm = load_andon_stop_contract()[0]
+        scopes = engine_stop_scopes(model, self._engines)
+        if item["repo"]:
+            scopes += (
+                ModelStopScope(kind=REPOSITORY_SCOPE_KIND, key=str(item["repo"])),
+            )
+        claim = (
+            ModelStopExemptionClaim(
+                kind=EnumStopExemptionKind.PR_FIX, ref=str(item["key"])
+            )
+            if item["kind"] == "process-fix"
+            else None
+        )
+        gate = gate_dispatch(facts, scopes, self._stop_fsm, exemption=claim)
+        if gate.outcome is EnumStopGateOutcome.REFUSE:
+            return True, gate.line
+        return False, gate.line if gate.stop_id is not None else None
+
     def handle(self, request: ModelIdleSlotFillRequest) -> ModelIdleSlotFillResult:
         free_hosts = {
             m["host"] for line in request.lines if (m := _HEADROOM.match(line))
@@ -754,6 +814,7 @@ class HandlerIdleSlotFill:
         skipped: list[dict[str, str]] = []
         dropped: list[dict[str, str]] = []
         backlog_mismatched = 0
+        stop_observed: list[dict[str, str]] = []
         item_context = {REPO_KINDS_CONTEXT_KEY: tuple(request.repo_required_kinds)}
         for item in candidates(
             request.lines,
@@ -994,6 +1055,12 @@ class HandlerIdleSlotFill:
             ):
                 skipped.append({"key": item["key"], "why": refusal})
                 continue
+            stopped, stop_line = self._stop_gate_line(request, item, model)
+            if stopped:
+                skipped.append({"key": item["key"], "why": f"stop-gate: {stop_line}"})
+                continue
+            if stop_line is not None:
+                stop_observed.append({"key": item["key"], "line": stop_line})
             if decision.engine == "claude":
                 claude_left -= 1
                 if pin:
@@ -1031,6 +1098,7 @@ class HandlerIdleSlotFill:
             glm_only,
             dropped,
             backlog_mismatched,
+            stop_observed,
         )
 
 
