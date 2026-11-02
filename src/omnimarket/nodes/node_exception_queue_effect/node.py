@@ -13,6 +13,10 @@ from .models import (
     ModelExceptionQueueResult,
     ModelExceptionResolveRequest,
     ModelExceptionResolveResult,
+    ModelOpenStopsRequest,
+    ModelOpenStopsResult,
+    ModelStopEventRequest,
+    ModelStopEventResult,
 )
 
 CONTRACT = Path(__file__).with_name("contract.yaml")
@@ -26,18 +30,24 @@ class NodeExceptionQueueEffect:
         request: ModelExceptionEmitRequest
         | ModelExceptionQueueRequest
         | ModelExceptionResolveRequest
-        | ModelExceptionQueueReadRequest,
+        | ModelExceptionQueueReadRequest
+        | ModelStopEventRequest
+        | ModelOpenStopsRequest,
     ) -> (
         ModelExceptionEmitResult
         | ModelExceptionQueueResult
         | ModelExceptionResolveResult
         | ModelExceptionQueueRead
+        | ModelStopEventResult
+        | ModelOpenStopsResult
     ):
         from .container.container_exception_queue_effect import (
             create_handler_exception_emit,
             create_handler_exception_queue,
             create_handler_exception_queue_read,
             create_handler_exception_resolve,
+            create_handler_open_stops,
+            create_handler_stop_event,
         )
 
         if isinstance(request, ModelExceptionEmitRequest):
@@ -48,6 +58,10 @@ class NodeExceptionQueueEffect:
             return create_handler_exception_queue_read().handle(request)
         if isinstance(request, ModelExceptionResolveRequest):
             return create_handler_exception_resolve().handle(request)
+        if isinstance(request, ModelStopEventRequest):
+            return create_handler_stop_event().handle(request)
+        if isinstance(request, ModelOpenStopsRequest):
+            return create_handler_open_stops().handle(request)
         raise TypeError(
             f"Unsupported exception queue request: {type(request).__name__}"
         )

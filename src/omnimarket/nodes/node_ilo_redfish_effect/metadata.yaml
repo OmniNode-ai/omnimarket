@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ilo_redfish_effect
+version: "0.1.0"
+description: "Manages HPE Gen8 and Gen9 servers through the iLO 4 Redfish API: read verbs, and approval-gated power, virtual-media and boot-once verbs, with pinned TLS, redacted output and a retry journal"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ilo_redfish_effect: "omnimarket.nodes.node_ilo_redfish_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["ilo", "redfish", "hpe", "lab", "effect"]
+pack: "lab"
+display_name: "iLO 4 Redfish Effect"
+node_role: "effect"

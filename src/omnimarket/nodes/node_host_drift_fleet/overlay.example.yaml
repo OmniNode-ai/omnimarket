@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/host_drift_fleet/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS
+# to that root. All values here are synthetic; supply your deployment's facts.
+hosts: [host-a, host-b]
+# Read-only contributors may report but are never required to report.
+read_only_hosts: [host-b]
+heartbeat_stale_seconds: 900
+# Exactly one group per reader host: {consumer_group_prefix}.{host}.
+consumer_group_prefix: example.host_drift_fleet
+read_window_seconds: 30
+# The caller uses this lane when constructing the injected bus.
+bus_lane: example
