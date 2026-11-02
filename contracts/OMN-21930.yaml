@@ -10,21 +10,21 @@ requirements:
   statement: 'Four lines of the live factory floor read wrong: containers per lane were never drawn, orchestration alignment read 12 percent for 6 of 68 parts, a lane that ended blocked 9918 minutes ago stopped the context line, and the page said 9 live lanes name no machine without saying which or why.'
   acceptance:
   - id: AC1
-    statement: 'AC1: the page draws application_containers per lane (running of declared, per lane class), and a record with no containers draws no row for that line -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k containers -q'
+    statement: 'AC1: the page draws application_containers per lane (running of declared, per lane class), and a record with no containers draws no row for that line -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -k containers -q'
   - id: AC2
-    statement: 'AC2: orchestration alignment percent_built equals merged parts over total parts from the plan''s own part list (6 of 68 reads 8 percent), with a fixture of the recorded live inputs that fails on the current code -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k percent_built -q'
+    statement: 'AC2: orchestration alignment percent_built equals merged parts over total parts from the plan''s own part list (6 of 68 reads 8 percent), with a fixture of the recorded live inputs that fails on the current code -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k percent_built -q'
   - id: AC3
-    statement: 'AC3: a lane whose last row is a TERMINAL older than the stall window does not stop its line, and the line shows the state that is true -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k dead_lane -q'
+    statement: 'AC3: a lane whose last row is a TERMINAL older than the stall window does not stop its line, and the line shows the state that is true -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k dead_lane -q'
   - id: AC4
-    statement: 'AC4: every live lane either names a machine the floor draws or is listed under the cause that it names none, and the count line states the lanes it counts -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k lane_machine -q'
+    statement: 'AC4: every live lane either names a machine the floor draws or is listed under the cause that it names none, and the count line states the lanes it counts -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k lane_machine -q'
   - id: AC5
     statement: 'AC5: from a real publish of the branch, the preview address on h051 shows the containers row, 8 percent on the alignment line, a context line not stopped by plan-r8-0605 and no unnamed-machine count that the lanes contradict -- falsifier: curl of the preview factory-floor.json and page on h051 compared with the lab-run receipt in the PR body'
   - id: AC6
-    statement: 'AC6: the suites pass on a lab host through lab-run -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q'
+    statement: 'AC6: the suites pass on a lab host through lab-run -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q'
 evidence_requirements:
 - kind: tests
   description: The three floor node suites, which now hold their tests beside the node.
-  command: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov --tb=line
+  command: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -37,7 +37,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k containers -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -k containers -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac2
   description: AC2 percent_built is parts done over every part of the plan's list; the fixture of the live inputs reads 12 on the previous code and 8 now.
@@ -46,7 +46,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k percent_built -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k percent_built -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac3
   description: AC3 a blocked TERMINAL that is a lane's last row and is older than the stall window stops no line.
@@ -55,7 +55,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k dead_lane -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k dead_lane -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac4
   description: AC4 an unplaced lane carries its cause and the page counts the lanes by cause with their names.
@@ -64,7 +64,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k lane_machine -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k lane_machine -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac5
   description: AC5 the page and compute behaviours the preview readback shows; the readback itself is quoted in the PR body from the h051 preview.
@@ -73,7 +73,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests src/omnimarket/nodes/node_factory_floor_compute/tests -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac6
   description: AC6 the three floor node suites pass; the lab-run receipt is quoted in the PR body.
@@ -82,7 +82,7 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-integration-proof
   description: The pushed head ran the three floor node suites, with the new tests, on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
@@ -90,5 +90,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floor-page-lines-2-1102 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_compute/tests src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floor-page-lines-2-1102 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov
     cwd: .
