@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-21971
+title: 'Action and hold classification of a continuation after compaction'
+summary: node_compaction_action_score_compute is a pure compute node that grades each open-loop item (OPEN_CLAIM, OPEN_ASK, PROMISE_SENT, DRAFT_UNSENT, UNACKED_MSG) of a recorded continuation as ACTED, CHECKED, PROMPTED, IDLE or NOT_DUE within N assistant turns, from the ordered stream of tool calls, ledger rows and operator prompts and a caller-supplied call-class policy, with N reported at 10, 25 and 50 and 25 the headline, and lists calls that act on held scope. It declares no topic and performs no I/O. AC2 is graded here on the fixture version of the container-fold case; the recorded transcript is not located, so the recorded-case grading is owed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21971-outcomes
+    statement: The four outcomes and NOT_DUE are produced by the fixtures, including the negative fixtures.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the four outcomes (`ACTED`, `CHECKED`, `PROMPTED`, `IDLE`) and `NOT_DUE` are produced by the fixtures above, including the negative fixtures (status read, mention, malformed refused call) -- falsifier: a fixture graded differently, or a status read graded `ACTED`'
+  - id: req-omn21971-ordering
+    statement: The container-fold case is graded by the audited ordering of progress calls and the operator prompt.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: the [OMN-21288](https://linear.app/omninode/issue/OMN-21288) container-fold case, once its transcript is located, is graded by the audited ordering of progress calls and the operator prompt: `ACTED` only if a progress-class call precedes the prompt that names it, `CHECKED` if only a read-only call does, `PROMPTED` if progress follows the prompt -- falsifier: the case graded `ACTED` when only a status read precedes the prompt, or a grade that departs from the audited ordering'
+  - id: req-omn21971-sensitivity
+    statement: Changing N moves only the cutoff.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: changing N does not change which turn an item was acted on, only the cutoff -- falsifier: a sensitivity run where the turn of first action moves'
+evidence_requirements:
+  - kind: tests
+    description: The focused node suite grades the fixture continuations.
+    command: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21971-ac1
+    description: AC1 grades the relaunch before a prompt ACTED, the same relaunch after a naming prompt PROMPTED, a status read or ledger query CHECKED, a bare mention, a malformed refused call and an empty continuation IDLE, a future until, a hold and an operator wait NOT_DUE, and refuses a policy that puts a read-only class on a progress list.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov --tb=line -k "acted or prompted or checked or idle or malformed or not_due or nothing or read_only or refused_by_design or another"
+        cwd: .
+  - id: dod-omn21971-ac2
+    description: AC2 grades the fixture version of the container-fold case by event order. A status read before the operator prompt and the relaunch after it is PROMPTED, never ACTED. A read alone with no progress is CHECKED. A relaunch before the prompt is ACTED. The recorded transcript is not located, so grading the recorded case is owed.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov --tb=line -k "container_fold or prompt_naming_another"
+        cwd: .
+  - id: dod-omn21971-ac3
+    description: AC3 runs the same continuation at N of 10, 25, 50 and all three together and checks the turn of first progress is 30 in every run while the outcome moves from CHECKED to ACTED only at the cutoff.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov --tb=line -k "changing_n or beyond_n or default_horizons"
+        cwd: .
