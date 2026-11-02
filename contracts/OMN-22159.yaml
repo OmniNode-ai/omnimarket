@@ -69,6 +69,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: env ONEX_WEBHOOK_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
         cwd: .
+  - id: webhook-http-integration-proof
+    description: >
+      The pushed head ran both profile legs of the runtime HTTP mount test on a
+      lab host through lab-work: the in-memory profile and the isolated
+      auth-required Redpanda profile. Hosted CI cannot reach the lab, so only
+      the local Done gate runs this check. It covers the one ported route, not
+      the replay or the cutover.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22159 -- env ONEX_WEBHOOK_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
   - id: public-cutover-pending
     description: >
       AC3 is OPEN. No running API container was stopped and no deploy-agent slot
