@@ -40,6 +40,7 @@ const PLAN = {
   true: ran => ({ ran, lines: [], answer: OUTPUT[Math.min(ran.stdout.length, 1)] }),
   false: ran => ({ ran, lines: [FAILED + 'exit ' + ran.exitCode], answer: FALLBACK.other }),
 }
+const ARM_compaction = "on"
 const ARGV_compaction = ['onex-claude-code-hook', '--binding', 'compaction']
 const PATTERN_compaction = new RegExp("ENOENT|not found|cannot start|spawn")
 const DEADLINE_compaction = 30000

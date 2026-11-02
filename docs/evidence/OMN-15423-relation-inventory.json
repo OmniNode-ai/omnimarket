@@ -5754,6 +5754,7 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [
+        "node_compaction_arm_assignment_compute",
         "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
         "node_lab_job_check_effect",
