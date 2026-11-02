@@ -24,25 +24,39 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn22100-ac1
-  description: AC1 the catalog find reader exits 0 on the proof host with no hand-set variable. Open until the host installer exports ONEX_CAPABILITY_CATALOG_JSON and provisions catalog.json on the host; the lab-run receipt of the measurement is in the PR.
+- id: dod-omn22100-ac1-lab
+  description: AC1 lab run, unbound because hosted CI cannot reach the lab. The catalog find reader exits 0 on the proof host with no hand-set variable. Open until the host installer exports ONEX_CAPABILITY_CATALOG_JSON and provisions catalog.json on the host; the lab-run receipt of the measurement is in the PR.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane g0-fix-h051-readers-1102 -- onex-capability-catalog find lane
     cwd: .
-- id: dod-omn22100-ac2
-  description: AC2 the ledger parity check exits 0 or 1 on the proof host with no hand-set variable. Open until the host owner supplies POSTGRES_PASSWORD in the lab env file and the installer names it for lanes.
+- id: dod-omn22100-ac2-lab
+  description: AC2 lab run, unbound because hosted CI cannot reach the lab. The ledger parity check exits 0 or 1 on the proof host with no hand-set variable. Open until the host owner supplies POSTGRES_PASSWORD in the lab env file and the installer names it for lanes.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane g0-fix-h051-readers-1102 -- uv run --frozen python -m omnimarket.nodes.node_projection_work_ledger.parity --ledger "$ONEX_LEDGER_PATH" --archive-dir "$(dirname "$ONEX_LEDGER_PATH")/archive" --since 2026-11-02T00:00:00Z --dsn-env WL_DSN
+    cwd: .
+- id: dod-omn22100-ac1
+  description: AC1 hosted part. A declared lane host with no catalog.json path fails for the catalog find reader by the ONEX_CAPABILITY_CATALOG_JSON item, and a measured host whose catalog.json is absent fails by its path. The lab run on the proof host is the unbound dod-omn22100-ac1-lab item.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line -k "catalog_json or missing_both_inputs"
+    cwd: .
+- id: dod-omn22100-ac2
+  description: AC2 hosted part. A declared lane host with no lab env file fails for the ledger parity reader by the WL_ENV_FILE item, and the measured h051 key names without the database password key fail by that key name. The lab run on the proof host is the unbound dod-omn22100-ac2-lab item.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line -k "wl_env_file or missing_password_key"
     cwd: .
 - id: dod-omn22100-ac3
   description: AC3 a declared lane host without the catalog path or the lab env file fails, a measured env file without the password key fails by name, and the committed host table passes.
@@ -60,4 +74,11 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane g0-fix-h051-readers-1102 -- uv run --frozen pytest tests/nodes/test_host_installer_lane_readers.py tests/nodes/node_host_capability_compute -q --no-cov
+    cwd: .
+- id: dod-omn22100-deploy-probe
+  description: 'Deploy probe: the lane reader inputs handler GitHub serves at the checked-out commit defines HandlerLaneReaderInputs, which the merge base does not carry.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_capability_compute/handlers/handler_lane_reader_inputs.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLaneReaderInputs" > /dev/null'
     cwd: .
