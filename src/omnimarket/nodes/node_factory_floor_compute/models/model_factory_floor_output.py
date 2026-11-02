@@ -161,6 +161,18 @@ class ModelFloorRunnersOut(BaseModel):
     note: str
 
 
+AdmissionState = Literal["open", "refused", "unread"]
+
+
+class ModelFloorAdmission(BaseModel):
+    """Whether the tick's admission takes new work on a machine, and the reading's own words when it does not."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: AdmissionState
+    reason: str
+
+
 class ModelFloorMachine(BaseModel):
     """One machine bay: what the pool read saw, the lanes placed on it against its cap, its units and CI runners."""
 
@@ -182,6 +194,8 @@ class ModelFloorMachine(BaseModel):
     swap_used_pct: float | None
     cap: int | None
     refusal: str
+    free_slots: int
+    admission: ModelFloorAdmission
     lanes_placed: int
     lanes: tuple[str, ...]
     units_placed: int | None

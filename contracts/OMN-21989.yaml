@@ -68,6 +68,9 @@ dod_evidence:
   - AC1
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k readonly_allow -q --no-cov --tb=line
+    cwd: .
   - check_type: command
     check_value: |
       set -eu
