@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_lane_census_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. All values here are synthetic; supply your deployment's facts. Each host carries a Docker
+# Engine of its own; a host whose Docker is a Desktop VM does not belong here.
+hosts:
+  - name: host-a
+    scheduler: systemd-user
+    docker: engine
