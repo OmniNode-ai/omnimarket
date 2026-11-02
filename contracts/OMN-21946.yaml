@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21946"
+title: "The lane census runs on a lab host that has Docker, not on the operator Mac"
+summary: "The lane census job on the operator Mac aborted with docker inventory could not be observed (collector exit 4) because Docker Desktop was not running there. The census becomes a host-timer node, node_lane_census_effect, declared for a Docker Engine host only: a systemd user timer is its only scheduler, a host row that is not a Docker Engine does not validate, the lab host table can refuse a declared host whose row says docker: false, and a run counts as having observed the inventory only when it left a snapshot of its own."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21946-census-on-docker-host"
+    statement: |-
+      The census run is declared as an omnimarket node whose only scheduler is a systemd user timer on a host that carries a Docker Engine, and no declaration of it is a launchd job or a host the lab host table says takes no Docker work.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the census run is declared as an omnimarket node or installer unit that targets a lab host with a running Docker, and no declaration places it on the operator Mac"
+  - id: "req-omn21946-census-run-observed"
+    statement: |-
+      A census run is judged from what it left behind: the collector verdict and a snapshot written by that run. Exit 4 and a stale snapshot are not an observed inventory.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: on the chosen host the census runs once and writes a fresh census-snapshot.json with docker inventory observed"
+evidence_requirements:
+  - kind: "tests"
+    description: "The lane census node tests pass."
+    command: "uv run pytest tests/test_lane_census_effect_omn21946.py -q --no-cov -k lane_census"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21946-declaration"
+    description: "The contract declares a systemd user timer as its only scheduler and no launchd or plist; a host row that is not a Docker Engine on a systemd timer does not validate; the lab host table refuses a docker: false host by name."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lane_census_effect_omn21946.py -q --no-cov -k lane_census"
+        cwd: "."
+  - id: "dod-omn21946-run-observed"
+    description: "A run counts as having observed the inventory only with a collector verdict and a snapshot this run wrote; exit 4 and an exit 0 with a stale snapshot do not."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lane_census_effect_omn21946.py -q --no-cov -k 'unobservable or stale_snapshot or fresh_snapshot or refuses_a_zero'"
+        cwd: "."
+  - id: "dod-omn21946-deploy-probe"
+    description: "Deploy probe. The node's entry point runs a stand-in collector end to end on the hosted runner: exit 4 with no snapshot stays exit 4, and a collector that writes its snapshot and exits 0 is exit 0. It fails at the merge base, which has no such node, and needs only Python on the hosted runner."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          mkdir -p "$probe_dir/omnibase_infra/scripts"
+          printf 'exit 4\n' > "$probe_dir/omnibase_infra/scripts/lane-census-check.sh"
+          status=0
+          uv run --frozen python -m omnimarket.nodes.node_lane_census_effect --omni-home "$probe_dir" --snapshot "$probe_dir/snap.json" > /dev/null || status=$?
+          test "$status" -eq 4
+          printf 'printf "{}" > "$2"\nexit 0\n' > "$probe_dir/omnibase_infra/scripts/lane-census-check.sh"
+          uv run --frozen python -m omnimarket.nodes.node_lane_census_effect --omni-home "$probe_dir" --snapshot "$probe_dir/snap.json" > /dev/null
+          test -s "$probe_dir/snap.json"
+          echo "lane census deploy probe: PASS"
