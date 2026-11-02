@@ -1,0 +1,27 @@
+name: node_retrospective_calculate_compute
+version: 1.0.0
+description: Calculate the cohort metrics from the evidence snapshot. (scaffold, no logic)
+omnibase_core_compat: '>=0.40.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_retrospective_calculate_compute: omnimarket.nodes.node_retrospective_calculate_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- omnibase_core>=0.40.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- retrospective
+- compute
+- scaffold
+pack: retrospective
+display_name: Retrospective Calculate Compute
+node_role: compute
