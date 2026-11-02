@@ -3,7 +3,8 @@
 name: node_merged_running_count_effect
 lifecycle: experimental
 node_type: EFFECT_GENERIC
-runtime_profiles: []
+runtime_profiles:
+  - effects
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
@@ -43,7 +44,8 @@ runtime_dispatch:
 descriptor:
   node_archetype: effect
   purity: effectful
-  runtime_profiles: []
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 30000
 # Where each source is, relative to the registry home (home_env); the ledger path is the one ledger_env names.
