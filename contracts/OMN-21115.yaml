@@ -73,6 +73,33 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py::test_replay_runs_only_the_fold_with_no_process_network_or_transcript_read -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn21115-deploy-trigger-contract
+    description: The hosted runner loads the packaged trigger contract from disk, asserts its subscribe and publish topics, imports the handler the contract names and asserts a zero-row applied event returns not_applied without reading the session. It needs no broker, Docker daemon or session reader. The live compaction leg stays owed.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          uv run --frozen python -c '
+          import importlib
+          from pathlib import Path
+          import yaml
+          from omnimarket.models.context_install_confirm_trigger import EnumInstallConfirmTriggerOutcome, ModelSessionContentAppliedEvent
+          root = Path("src/omnimarket/nodes/node_context_install_confirm_trigger_effect")
+          contract = yaml.safe_load((root / "contract.yaml").read_text())
+          bus = contract["event_bus"]
+          assert len(bus["subscribe_topics"]) == 1 and len(bus["publish_topics"]) == 1 and bus["subscribe_topics"] != bus["publish_topics"], bus
+          spec = contract["handler"]
+          handler = getattr(importlib.import_module(spec["module"]), spec["class"])()
+          class NeverRead:
+              def read(self, event_id):
+                  raise AssertionError("a zero-row applied event must not read the session")
+          result = handler.handle(ModelSessionContentAppliedEvent(event_id="deploy-probe", rows_upserted=0), NeverRead())
+          assert result.outcome == EnumInstallConfirmTriggerOutcome.NOT_APPLIED and result.confirmation is None, result
+          print("deploy probe ok", result.outcome)
+          '
+        cwd: .
   - id: dod-omn21115-integration-proof
     description: The pushed head ran the trigger, install-confirm, receipts fold and writer suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live compaction leg stays owed, because this lane has no dev-bus login with the hook-emit grants.
     source: manual
