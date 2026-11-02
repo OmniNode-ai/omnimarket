@@ -32,11 +32,14 @@ dod_evidence:
         check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line -k "selector or option_value"
         cwd: .
   - id: dod-omn21980-ac2
-    description: AC2 runs the repo-wide check over every contracts/OMN-*.yaml in the tree. It fails on a clean origin/dev with three violations across contracts/OMN-20413.yaml and contracts/OMN-21930.yaml, and passes on this head with no contract file edited.
+    description: AC2 runs both repo-wide checks over every contracts/OMN-*.yaml in the tree. The binding check fails on a clean origin/dev with three violations across contracts/OMN-20413.yaml and contracts/OMN-21930.yaml. The selector check is the second guard reading the same contracts through the same extractor, and it failed at head 18863afec for the same cause, so one bad extractor reddened two guards; both pass on this head with no contract file edited.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q --no-cov --tb=line
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py::test_every_bound_pytest_check_names_a_repo_test_file_or_tests_directory -q --no-cov --tb=line
         cwd: .
