@@ -353,7 +353,11 @@ class TestGateWiring:
             if hook["id"] == "deployment-fact-gate"
         ]
         module = "omnimarket.nodes.node_deployment_fact_gate_effect"
-        assert [hook["entry"] for hook in hooks] == [f"uv run python -m {module}"]
+        # The hook parses only the files that differ from HEAD; CI runs the node itself.
+        assert [hook["entry"] for hook in hooks] == [
+            "uv run python -m omnimarket.handlers.staged_hook_scans "
+            "deployment-fact-gate"
+        ]
 
         workflow = yaml.safe_load(
             (_REPO_ROOT / ".github/workflows/deployment-fact-gate.yml").read_text(

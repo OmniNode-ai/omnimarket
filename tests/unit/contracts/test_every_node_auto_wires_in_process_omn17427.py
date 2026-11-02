@@ -35,6 +35,7 @@ test until it is removed from the list in the same change.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +68,28 @@ from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.topology import load_topology_profile
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _parse_yaml_with_libyaml() -> Iterator[None]:
+    """Read every contract with libyaml's parser instead of PyYAML's pure-Python one.
+
+    Wiring every contract parses the same contract files thousands of times (each
+    handler that builds a topic manager re-extracts every contract's topics), and the
+    pure-Python parser spent about four fifths of this test's 145 s there. The two
+    parsers produce equal documents for every file; nothing about what is judged
+    changes. A PyYAML built without libyaml keeps its own parser.
+    """
+    loader = getattr(yaml, "CSafeLoader", None)
+    if loader is None:
+        yield
+        return
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            yaml, "safe_load", lambda stream: yaml.load(stream, Loader=loader)
+        )
+        yield
+
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _NODES = _REPO_ROOT / "src" / "omnimarket" / "nodes"
@@ -279,3 +302,28 @@ async def test_every_node_auto_wires_in_process(
         "contracts that fail infra auto-wiring in-process (a crash loop under "
         "ONEX_WIRING_STRICT_MODE=1, the dev lane's setting)",
     )
+
+
+def test_libyaml_reads_every_contract_to_the_document_pyyaml_reads() -> None:
+    loader = getattr(yaml, "CSafeLoader", None)
+    if loader is None:
+        # Without libyaml the fixture above keeps PyYAML's parser: nothing to compare.
+        assert not yaml.__with_libyaml__
+        return
+    contracts = sorted(_NODES.glob("*/contract.yaml"))
+    assert len(contracts) > 100
+    different = [
+        str(path.relative_to(_REPO_ROOT))
+        for path in contracts
+        if yaml.load(path.read_text(), Loader=yaml.SafeLoader)
+        != yaml.load(path.read_text(), Loader=loader)
+    ]
+    assert different == []
+
+
+def test_a_contract_that_fails_to_wire_is_still_refused() -> None:
+    # The parser swap leaves the verdict alone: a failure not on the list is a new defect.
+    with pytest.raises(AssertionError, match="node_new_defect: cannot wire"):
+        _shrink_only({"node_new_defect": "cannot wire"}, {}, "contracts that fail")
+    with pytest.raises(AssertionError, match="now pass"):
+        _shrink_only({}, {"node_listed": "was failing"}, "contracts that fail")

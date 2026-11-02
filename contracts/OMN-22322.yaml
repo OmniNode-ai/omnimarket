@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22322"
+title: "omnimarket git commit runs 573 s on h053 and 1104 s on h051 for a 5-file change because eight whole-repository scans and a whole-suite test run on every commit"
+summary: "The commit hooks keep running in the commit stage and keep refusing what they refuse. Four scans (retired-model-references, harness-invocation-check, rls-read-tenant-seam, deployment-fact-gate) judge the files a commit changes, because each finding is a function of one file; the whole-tree mode is unchanged for CI and for a call with no file argument. handler-dispatch-entrypoint stays a whole-tree scan and reads YAML with libyaml. The whole-suite wiring test reads every contract with libyaml, which removes about four fifths of its 145 s."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22322-commit-hook-cost"
+    statement: |-
+      A commit's hooks cost what the commit changes, with every hook still running and still refusing what it refuses.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: git commit of the same 5-file omnimarket change finishes in under 240 s on h053, measured with lab-run --via bus before and after on h053 and h051 and recorded as a table in the PR body -- falsifier: the before and after rows in the PR body, produced by the same lab-run command on the same change"
+      - id: "AC2"
+        statement: "AC2: every one of the 67 hooks still runs in the commit stage and none is skipped, removed, moved or given a wider allowlist -- falsifier: uv run pytest of a test over .pre-commit-config.yaml that compares hook ids, stages and allowlists with origin/main"
+      - id: "AC3"
+        statement: "AC3: each scan that is made incremental on the staged diff has a falsifier test in which a violation planted in a changed file is still refused and the violation is reported with the same message -- falsifier: uv run pytest of the per-hook falsifier tests"
+      - id: "AC4"
+        statement: "AC4: a violation in a file the staged diff does not touch is still caught by the hook where the check's rule is not provably local to changed files -- falsifier: uv run pytest of a test that plants a violation in an unchanged file and runs the hook"
+evidence_requirements:
+  - kind: "tests"
+    description: "The config comparison, the per-hook falsifier tests and the wiring test pass."
+    command: "uv run pytest tests/ci/test_precommit_hook_cost_omn22322.py tests/unit/handlers/test_staged_hook_scans_omn22322.py tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22322-ac1-wiring-test-time"
+    description: "The whole-suite wiring test, the largest single hook cost, finishes inside 120 s here. The h053 and h051 before and after git commit table is in the pull request body."
+    source: "manual"
+    binds_ac: ["AC1"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "timeout 120 uv run --frozen pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly --no-cov"
+        cwd: "."
+  - id: "dod-omn22322-ac2-config"
+    description: "Every hook of origin/dev is still present in the commit stage with its exclude pattern; a removed, delayed or loosened hook is refused by the comparison."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_precommit_hook_cost_omn22322.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22322-ac3-changed-file"
+    description: "A violation planted in a changed file is refused by each staged scan with the exit code and the message of the whole-tree scan."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_staged_hook_scans_omn22322.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22322-ac4-unchanged-file"
+    description: "A violation in a file the staged diff does not touch is caught by the whole-tree mode of each scan, and the hooks whose rule is not local to one file (handler-dispatch-entrypoint, dep-health-gate, normalization-symmetry) are left whole-tree."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_staged_hook_scans_omn22322.py -q --no-cov -k 'unchanged or dispatch_entrypoint'"
+        cwd: "."

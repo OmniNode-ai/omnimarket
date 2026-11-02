@@ -9,6 +9,10 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMAND = "uv run python -m omnimarket.nodes.node_harness_invocation_check_effect"
+# The hook judges the staged files; CI keeps the whole-tree command above.
+STAGED_COMMAND = (
+    "uv run python -m omnimarket.handlers.staged_hook_scans harness-invocation-check"
+)
 
 
 @pytest.mark.unit
@@ -38,6 +42,6 @@ def test_harness_invocation_check_runs_in_precommit() -> None:
         if hook["id"] == "harness-invocation-check"
     ]
     assert len(hooks) == 1
-    assert hooks[0]["entry"] == COMMAND
+    assert hooks[0]["entry"] == STAGED_COMMAND
     assert hooks[0]["language"] == "system"
-    assert hooks[0]["pass_filenames"] is False
+    assert hooks[0]["pass_filenames"] is True

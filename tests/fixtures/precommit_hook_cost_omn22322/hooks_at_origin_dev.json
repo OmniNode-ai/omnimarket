@@ -1,0 +1,1548 @@
+{
+ "base": "origin/dev 7b42a4c63edce1211577a366672c1b73050328a5",
+ "default_stages": [
+  "pre-commit"
+ ],
+ "hooks": {
+  "agent-call-adapter-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "aiokafka-construction-auth": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "andon-stop-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "anthropic-key-prefix-workflows": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "anti-growth-baseline": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   },
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   },
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "arch-node-metadata-dependency-scope": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "arch-unimported-handler-check": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "backend-secret-discipline-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "byok-catalogue-no-house-entry": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "byok-customer-chooses-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "call-repo-evidence-gate-verifier-floor": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "canonical-file-shape": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-action-pins": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-added-large-files": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-branch-identity-tests": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-branch-rename-prohibited": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-canonical-inference": [
+   {
+    "exclude": "130bfcb00110",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-dep-provenance": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-direct-model-call": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-push"
+    ]
+   }
+  ],
+  "check-duplicate-registry-ids": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-fsm-handler-drift": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-generated-event-chains": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-hook-writes": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-merge-conflict": [
+   {
+    "exclude": "a795501ba5f1",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-no-faked-boundary": [
+   {
+    "exclude": "5dfddb4d40a7",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-projection-exposure-drift": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-public-runner-placement": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-receipt-honesty": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-register-classes": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-release-identity": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-shape-gate-independence": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-stub-implementations": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-url-authority": [
+   {
+    "exclude": "130bfcb00110",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "check-yaml": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ci-red-triage-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ci-red-watcher-facts-only": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ci-summary-event-scope": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "class3-installed-copy-drift": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "commit-hygiene": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "commit-hygiene-message": [
+   {
+    "exclude": null,
+    "stages": [
+     "commit-msg"
+    ]
+   }
+  ],
+  "compaction-arm-assignment": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "compaction-lifecycle-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "contract-overlay-boundary": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "contract-prerequisite-verifier-host-tools": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "contract-publish-parity-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "contract-sweep-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "contract-topic-graph": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "corpus-criteria-vocabulary": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "coverage-ignore-parity": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "delegation-answer-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "delegation-env-read-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "delegation-model-registry-drift": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "delegation-target-seams": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "delegation-wire-public-models": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "dep-health-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "deployment-config": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "deployment-fact-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "dev-cause-lane-receiver": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "dod-verify-every-criterion-bound": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "dod-verify-independent-acceptance": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "dod-verify-local-reads-guard": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "dod-verify-self-accepted-bindings": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "durable-evidence-gate-regression": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "entry-point-format": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "event-registry-drift": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "exposed-identifier-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "gemini-registry-version-hygiene": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "generated-node-golden-chain-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "gh-shim-coverage-table": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "git-env-scrub": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "github-token-env-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "golden-chain-coverage-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "handler-dispatch-entrypoint": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "handler-event-type-source": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "handwritten-event-payload": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "harness-invocation-check": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "history-archive-safety": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "hook-projection-freshness": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "host-declaration-regressions": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "house-inference-credential-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "house-routing-overlay-publisher": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "imperative-contract-guard-caller": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "integration-skip-guard": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "internal-relation-tenant-posture": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "internal-release-path-guard": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "kb-doc-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "key-grain-declared": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "lab-first-routing": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "lab-work-receipt-gates": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "lab-work-receipt-mapping": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "lab-work-receipt-redelivery": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "landing-decision-park-ladder": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "landing-decision-scenarios": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "landing-stall-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "lane-job-placement": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "leaked-literals-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ledger-reducer-judge-model": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "local-ingress-alias-collision": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "main-target-guard": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-push"
+    ]
+   }
+  ],
+  "merge-reason-code-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "merge-sweep-scheduled-bus-cycle": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "migration-base-before-view": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "mixed-category-routing": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "morning-phase-tools-guard": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "mypy-type-check": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-push"
+    ]
+   }
+  ],
+  "nightly-corpus-budget": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-baseline-refreeze": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-coding-plan-endpoint": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-git-precommit-additional-dependencies": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-hardcoded-topics": [
+   {
+    "exclude": "7782a602b809",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-literal-event-type-in-tests": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-noncanonical-lifecycle-classes": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-plugin-daemon-classes": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "no-untracked-todos": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "node-auto-wiring-in-process": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "node-orphan-graph": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "node-purity": [
+   {
+    "exclude": "735b2607321b",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "non-dev-base-guard-regression": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "normalization-symmetry": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "occ-red-derivable-static": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "omni-home-no-silent-default": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "omniclaude-pin-drift": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "omniclaude-release-notice": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "onex-validate-runtime-profiles": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "operation-match-requires-operation": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "operator-capture-nodes": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "output-only-release-acceptance": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "patch-apply-dispatch": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "pr-handoff-dod-receipt-regression": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "precommit-fail-loud-meta-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "precommit-interpreter-resolution": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "precommit-pin-parity": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "projection-contract-access": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "projection-cursor-declared": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "projection-dlq-path": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "projection-write-path-db-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "projection-writer-contract": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "public-repo-hygiene": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "queue-run-once-policy": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "red-ci-event-chain": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "registered-byok-escalation": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "registry-projection-reconcile": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "reject-deploy-gate-skip-token": [
+   {
+    "exclude": "160fb6303e58",
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "reject-deploy-gate-skip-token-commit-msg": [
+   {
+    "exclude": null,
+    "stages": [
+     "commit-msg"
+    ]
+   }
+  ],
+  "reject-required-check-skip-vector": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "repo-evidence-retirement": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "report-contract-walk": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "retired-model-references": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "review-budget-admission": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "review-gateway-privacy": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "review-voter-model-from-overlay": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "reviewer-eval": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "rls-read-tenant-seam": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "routing-authority-demo-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "routing-completeness-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "routing-input-model-fit": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "routing-sources-omn20601": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "routing-tier-backend-bindability": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ruff": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ruff-format": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "same-model-sibling-quality-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "schema-invalid-terminal-never-passes": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "scm-nodes-no-gh-cli": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "scm-operation-table": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "shell-hygiene": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "single-arm-path-policy-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "skill-mapping-input-coverage-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "skip-count-ratchet": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "state-coverage-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "subscriber-dispatcher-resolution": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "test-deletion-parity-receipt-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "test-shard-plan": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ticket-contract-prerequisite": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-push"
+    ]
+   }
+  ],
+  "ticket-contract-prerequisite-regression": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "ticket-contract-schema": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "tool-result-reduction-safety": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "topic-naming-lint": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-push"
+    ]
+   }
+  ],
+  "transport-mock-lint": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "typed-decision-repository-scope": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "typed-decision-shadow-calibration": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "validate-gitignore-baseline": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "validate-no-env-fallbacks": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "validate-no-transport-imports": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "validate-validator-requirements": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "walkable-state-machines": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "watchdog-topic-authority-gate": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "work-ledger-parity-database": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "work-ledger-principal-auth": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "work-ledger-principal-cli": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "workflow-module-refs": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ],
+  "xfail-ratchet": [
+   {
+    "exclude": null,
+    "stages": [
+     "pre-commit"
+    ]
+   }
+  ]
+ }
+}

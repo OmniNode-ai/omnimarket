@@ -59,9 +59,10 @@ def test_check_runs_in_hook_and_required_ci_lint():
         if hook["id"] == "retired-model-references"
     )
     command = "python -m omnimarket.nodes.node_retired_model_reference_check_effect"
-    assert command in hook["entry"]
+    staged = "python -m omnimarket.handlers.staged_hook_scans"
+    assert hook["entry"].endswith(f"{staged} retired-model-references")
     assert hook["always_run"] is True
-    assert hook["pass_filenames"] is False
+    assert hook["pass_filenames"] is True
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     assert any(command in step.get("run", "") for step in ci["jobs"]["lint"]["steps"])
 

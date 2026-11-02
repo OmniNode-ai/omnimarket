@@ -25,10 +25,10 @@ repos:
         stages: [pre-commit]
       - id: retired-model-references
         name: Retired model references (including dated history)
-        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.handlers.staged_hook_scans retired-model-references
         language: system
         always_run: true
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
       - id: history-archive-safety
         name: History removal requires verified archives
@@ -1009,7 +1009,7 @@ repos:
       - id: deployment-fact-gate
         name: No new deployment fact in packaged routing configs
         language: system
-        entry: uv run python -m omnimarket.nodes.node_deployment_fact_gate_effect
+        entry: uv run python -m omnimarket.handlers.staged_hook_scans deployment-fact-gate
         pass_filenames: false
         files: ^(src/omnimarket/configs/(bifrost_delegation|routing_tiers|task_class_contracts\.v1)\.yaml|src/omnimarket/models/delegation/(model_deployment_fact_marker|model_packaged_routing_tiers|wire/model_bifrost_delegation_config)\.py|src/omnimarket/inference/task_class_authority\.py|src/omnimarket/.*\.py)$
         stages: [pre-commit]
@@ -1057,7 +1057,7 @@ repos:
       - id: handler-dispatch-entrypoint
         name: Every contract-declared handler has a dispatch entrypoint (OMN-14617)
         language: system
-        entry: env PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
+        entry: env PYTHONPATH=src uv run python -m omnimarket.handlers.staged_hook_scans handler-dispatch-entrypoint src/omnimarket
         pass_filenames: false
         files: ^(src/omnimarket/.*\.(py|yaml)|validation/handler_dispatch_entrypoint_baseline\.yaml)$
         stages: [pre-commit]
@@ -1127,9 +1127,9 @@ repos:
       - id: harness-invocation-check
         name: no harness invoked outside the delegation effect node (OMN-21289)
         language: system
-        entry: uv run python -m omnimarket.nodes.node_harness_invocation_check_effect
+        entry: uv run python -m omnimarket.handlers.staged_hook_scans harness-invocation-check
         files: \.(py|sh)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-18774: a relation whose owning contract declares it
@@ -1536,9 +1536,9 @@ repos:
       - id: rls-read-tenant-seam
         name: RLS tenant-seam gate
         language: system
-        entry: uv run python scripts/ci/check_rls_read_tenant_seam.py
+        entry: uv run python -m omnimarket.handlers.staged_hook_scans rls-read-tenant-seam
         files: ^src/omnimarket/.*\.(py|sql)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
