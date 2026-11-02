@@ -32,8 +32,6 @@ dod_evidence:
 - id: dod-omn21922-deploy-packaged-wheel
   description: A disposable Python 3.13 container reads the built wheel with the locked dependencies and no network or source checkout. It checks both seed hashes, loads the priority declaration with its placeholder weights and empty lists, refuses the absent mode, and refuses an explicit empty overlay root. Hosted runners can run this package smoke without a lab route or production credentials.
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |
