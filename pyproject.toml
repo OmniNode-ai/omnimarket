@@ -378,6 +378,7 @@ node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owe
 node_skill_exec_decision_compute = "omnimarket.nodes.node_skill_exec_decision_compute"
 node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admission_compute"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
+node_delegation_health_compute = "omnimarket.nodes.node_delegation_health_compute"
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_context_pack_budget_compute = "omnimarket.nodes.node_delegation_context_pack_budget_compute"
 node_ci_state_verdict_compute = "omnimarket.nodes.node_ci_state_verdict_compute"
