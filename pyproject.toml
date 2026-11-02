@@ -1310,7 +1310,7 @@ omnimarket = "omnimarket.nodes"
 # OMN-17427: infra#5536 pins omnibase-core at the core tag below.
 # OMN-21826: this infra tag pins the core tag below, which carries the
 # lab_receipt validator; the two tags move together.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261102125940-858c2c689461" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261102150217-d1e5b1a4bf71" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
