@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+ticket_id: OMN-21958
+title: The lab fill, the remote-lane placement decision and the worker-engine choice refuse a dispatch into a stopped class through stop_gate
+summary: The fill, the placement decision and the worker-engine choice take the open stops, the andon_stop overlay policy and now as supplied facts and ask stop_gate in process; every class stays in observe, so installing the gate refuses nothing until a class is moved to enforce.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21958
+  statement: A dispatch into a stopped class is refused by the three dispatching nodes through the one stop_gate rule, with the class mode from the andon_stop overlay and the exemptions bound by the dispatcher.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the fill, the placement decision and the worker-engine choice each call stop_gate in process; with a stop open in an enforce class the fill selects no lane for the engine, the placement decision refuses and names the stop and its swarm lane, and the worker-engine choice never returns a stopped engine -- falsifier: uv run pytest -k stop_gate -q in omnimarket over the three nodes'
+  - id: AC2
+    statement: 'AC2: the swarm lane, a lane that fixes an open PR named from the watcher state, a read-only lane and an armed merge are admitted, and a forged, unrelated or expired exemption is refused -- falsifier: uv run pytest -k stop_gate_exemption -q'
+  - id: AC3
+    statement: 'AC3: the class mode comes from the andon_stop overlay and the stopped engines from the supplied facts, with no literal in any handler, and an absent overlay key refuses naming the key; the same stop refuses under enforce and admits under observe -- falsifier: uv run pytest -k stop_gate_config -q at both modes'
+  - id: AC4
+    statement: 'AC4: the three nodes give identical decisions on the in-memory overlay and on the Redpanda overlay -- falsifier: uv run pytest -k stop_gate_parity -q with the bus overlay selected'
+  - id: AC5
+    statement: 'AC5: a stopped key refuses a real onex_remote_lane.py run dry-run with the stop named and places nothing, and the same run with no stop places -- falsifier: the printed refusal line and exit code of the dry-run with a fixture stop, and the passing run without it'
+  - id: AC6
+    statement: 'AC6: the lane reports whether the ANDON HOLD rows of 2026-11-02T02:31:20Z and 02:31:37Z open a stop in the reducer or nothing reads them -- falsifier: the lane''s TERMINAL names the code path read and the exception queue open_stops output'
+evidence_requirements:
+- kind: tests
+  description: The cited tests pass at the PR head.
+  command: uv run pytest -k stop_gate -q tests/nodes
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21958-ac1
+  description: 'AC1 tests pass at the PR head: the stop_gate tests of the fill, the placement decision and the worker-engine choice.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -k stop_gate -q tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_placement.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn21958-ac2
+  description: AC2 tests pass at the PR head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -k stop_gate_exemption -q tests/nodes
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn21958-ac3
+  description: AC3 tests pass at the PR head, under enforce and under observe.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -k stop_gate_config -q tests/nodes
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn21958-ac4
+  description: AC4 in-memory leg passes at the PR head; the Redpanda leg runs on a lab broker named in STOP_GATE_PARITY_BOOTSTRAP (marker kafka, deselected on hosted runners).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -k stop_gate_parity -q tests/nodes/node_andon_stop_reducer
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn21958-ac5
+  description: 'AC5, node side: the placement node asked the way the runner asks it (onex node with --input and --output receipt) refuses a fixture stop, names it and places nothing, and places with no stop. The runner''s own dry-run print is the plugin''s side, in the plugin repository, outside this change.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -k stop_gate_runner_path -q tests/nodes/node_remote_lane_compute
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
+- id: dod-omn21958-ac6
+  description: 'AC6 tests pass at the PR head: a stop opens only from an emit of a registered class by the authorised role; a ledger HOLD row opens none and process health counts it as a metric only.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/nodes/node_exception_queue_effect/test_stop_opens_only_from_an_emit.py
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC6
