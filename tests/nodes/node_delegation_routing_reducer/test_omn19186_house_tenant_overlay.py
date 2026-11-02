@@ -351,7 +351,7 @@ def test_a_keyless_house_row_is_a_route_but_a_keyless_customer_row_is_not() -> N
     the same fact it was -- no active credential for the routed provider -- and
     is still refused on the cloud surface.
     """
-    from omnimarket.routing.customer_key_terminus import (
+    from omnimarket.handlers.routing.customer_key_terminus import (
         CustomerKeyRefusedError,
         EnumDelegationSurface,
     )

@@ -69,6 +69,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
 from omnimarket.models.delegation.wire.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.models.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -96,9 +99,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 from tests.chains.local.harness import LocalProviderStub
 

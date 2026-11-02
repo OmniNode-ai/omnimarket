@@ -69,6 +69,9 @@ from omnibase_core.models.delegation.wire import (
     ModelRoutingIntent,
 )
 
+from omnimarket.models.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
 )
@@ -78,9 +81,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.routing.model_escalation_decision_request import (
-    ModelEscalationDecisionRequest,
 )
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
@@ -183,7 +183,7 @@ class TestTierConfigFromContractOverlay:
     """
 
     def test_routing_tiers_yaml_is_the_tier_config_authority(self) -> None:
-        from omnimarket.routing import routing_tiers_path
+        from omnimarket.handlers.routing import routing_tiers_path
 
         config_path = routing_tiers_path.ROUTING_TIERS_PACKAGED_DEFAULT_PATH
         assert config_path.name == "routing_tiers.yaml"

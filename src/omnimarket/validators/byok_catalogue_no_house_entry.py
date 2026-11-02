@@ -32,8 +32,8 @@ identical to a bring-your-own-key row on the catalogue and bills to us.
 The predicate, as three conjuncts over the shipped state
 -------------------------------------------------------
 For every row ``R`` in ``configs/byok_provider_backends.v1.yaml`` ``providers:``
-— the rows :func:`~omnimarket.routing.byok_provider_backends.customer_provider_catalogue`
-enumerates and :func:`~omnimarket.routing.byok_provider_backends.resolve_byok_provider_backend`
+— the rows :func:`~omnimarket.handlers.routing.byok_provider_backends.customer_provider_catalogue`
+enumerates and :func:`~omnimarket.handlers.routing.byok_provider_backends.resolve_byok_provider_backend`
 returns — against the platform rungs in ``configs/bifrost_delegation.yaml``:
 
 1. **No house credential reference on the row.** No field VALUE on ``R``

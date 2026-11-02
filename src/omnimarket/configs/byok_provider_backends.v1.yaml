@@ -59,7 +59,7 @@
 #   PROVIDER_MODEL_NOT_FOUND. A credential with no stored model (the provider
 #   could not be reached at registration, or an event from before this change)
 #   carries the marker `byok-model-unresolved`, which the effect resolves before
-#   the call. Code: routing/byok_model_discovery.py.
+#   the call. Code: handlers/routing/byok_model_discovery.py.
 #
 #   Each row's first preference is still the cheapest family that answers, which
 #   is a default and not a constraint. A per-tenant model override belongs in
@@ -164,7 +164,7 @@
 #
 #   So `glm` defaults to `general_api` (https://api.z.ai/api/paas/v4), and the
 #   `coding_plan` row is `customer_routable: false`: it stays here so onboarding
-#   detection (routing/byok_plan_detection.py) can recognise a Coding Plan key and
+#   detection (handlers/routing/byok_plan_detection.py) can recognise a Coding Plan key and
 #   refuse it with its typed `refusal_code`, and so the quota model can describe
 #   it, but resolve_byok_provider_backend never returns it and no route, overlay
 #   row or registration may address it. A routable plan may not declare a refusal;
@@ -375,7 +375,7 @@ providers:
   # OMN-20157: the SECOND z.ai product, the general pay-as-you-go API, and the
   # one a customer's key is routed to. Same OpenAI-style request, same handler, a
   # different endpoint and a different metering. A customer holding a general-API
-  # key is served here; detection at onboarding (routing/byok_plan_detection.py)
+  # key is served here; detection at onboarding (handlers/routing/byok_plan_detection.py)
   # tries the key on this surface first, and a key it answers on is a general key
   # whatever else it can do. A key that answers only on the Coding Plan is
   # refused (see the coding_plan row).

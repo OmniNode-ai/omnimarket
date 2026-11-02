@@ -14,7 +14,7 @@ Related:
     - OMN-16903 / OMN-17099: an overlay entry naming a backend_id the
       committed contract does not declare ADDS a backend, and is accepted only
       when it validates as a complete declaration; a partial one is refused
-      attributably. The sibling ``routing/delegation_backend_resolution.py``
+      attributably. The sibling ``handlers/routing/delegation_backend_resolution.py``
       merge path shares that rule via ``validate_overlay_added_backends``
     - OMN-18670: an overlay write over a field the committed contract already
       declares is recorded and logged with its path, through

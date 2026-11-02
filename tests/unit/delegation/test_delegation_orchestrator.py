@@ -33,6 +33,9 @@ from omnimarket.config.settings import Settings
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
+from omnimarket.models.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -72,9 +75,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")

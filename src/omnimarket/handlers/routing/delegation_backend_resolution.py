@@ -50,6 +50,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     validate_overlay_added_backends,
     warn_overlay_shadowed_authoritative_fields,
 )
+from omnimarket.handlers.routing.customer_key_terminus import is_customer_attributed
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
@@ -61,11 +62,10 @@ from omnimarket.inference.task_class_authority import withheld_delegation_refusa
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
 )
-from omnimarket.routing.customer_key_terminus import is_customer_attributed
 
 logger = logging.getLogger(__name__)
 
-_CONFIGS_DIR = Path(__file__).resolve().parent.parent / "configs"
+_CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 _BIFROST_CONFIG_PATH = _CONFIGS_DIR / "bifrost_delegation.yaml"
 
 # DEV-ONLY fallback: the local file overlay path.  New deployments must use the
