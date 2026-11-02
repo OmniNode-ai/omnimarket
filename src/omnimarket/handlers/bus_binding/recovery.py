@@ -4,13 +4,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import tempfile
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -32,6 +33,9 @@ from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionResolveRequest,
     ModelExceptionRow,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 
 ALARM_CLASS = "bus-binding-degraded"
 OUTAGE_CLASS = "bus-binding-outage"
@@ -226,18 +230,29 @@ def _refusal_evidence(body: dict[str, Any]) -> str:
 
 
 def report_refused_to_writers(
-    state_dir: Path, observed_at: datetime, *, since_ns: int = 0
+    state_dir: Path,
+    observed_at: datetime,
+    *,
+    since_ns: int = 0,
+    guard: GuardPorts | None = None,
 ) -> int:
     """Emit one non-decision case per refused request nobody has been told about yet; return how many.
 
     The case is keyed to the writer's lane, the one told "queued", not to the bus lane. It does not wait
     for an outage episode to close: a refusal is reported by the replay that found it. A report is marked
     on the refused file, so a later replay or episode does not report it twice.
+
+    With ``guard`` bound (OMN-21959), a ledger guard's refusal whose cause is already gone is settled in code
+    first and not emitted at all; only a case the guard actor cannot settle is emitted. Each pass then settles
+    the open guard-refusal cases of the queue whose cause has gone since, without emitting any of them again.
     """
     directory = outbox.outbox_dir(state_dir) / outbox.REFUSED_DIRNAME
-    if not directory.is_dir():
-        return 0
     count = 0
+    if not directory.is_dir():
+        _settle_open_guard_cases(state_dir, observed_at, guard)
+        return count
+    from omnimarket.handlers.bus_binding.guard_refusal import settle_guard_case
+
     for path in sorted(directory.glob("*.json")):
         try:
             queued_ns = int(path.stem.split("_", 1)[0])
@@ -252,25 +267,53 @@ def report_refused_to_writers(
         ):
             continue
         lane = str(body.get("requested_by_lane") or "unknown")
+        row = ModelExceptionRow(
+            cls=REFUSED_CLASS,
+            key=f"lane={lane} request={request_id}",
+            source=SOURCE,
+            evidence=_refusal_evidence(body),
+            tried=f"replayed the outbox; kept the refused request at {path}",
+            proposed_fix="correct the row and append it again; the refused request is final",
+            decision=False,
+        )
+        body["reported_at"] = observed_at.isoformat()
+        settled = (
+            settle_guard_case(
+                state_dir,
+                dataclasses.asdict(row),
+                guard,
+                now=observed_at,
+                emit_open=False,
+            )
+            if guard is not None
+            else None
+        )
+        if settled is not None and settled.resolved:
+            body["settled"] = settled.how
+            _write_text_atomically(path, json.dumps(body, sort_keys=True))
+            continue
         create_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=state_dir / "exception-queue",
-                row=ModelExceptionRow(
-                    cls=REFUSED_CLASS,
-                    key=f"lane={lane} request={request_id}",
-                    source=SOURCE,
-                    evidence=_refusal_evidence(body),
-                    tried=f"replayed the outbox; kept the refused request at {path}",
-                    proposed_fix="correct the row and append it again; the refused request is final",
-                    decision=False,
-                ),
+                row=row,
                 now=observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             )
         )
-        body["reported_at"] = observed_at.isoformat()
         _write_text_atomically(path, json.dumps(body, sort_keys=True))
         count += 1
+    _settle_open_guard_cases(state_dir, observed_at, guard)
     return count
+
+
+def _settle_open_guard_cases(
+    state_dir: Path, observed_at: datetime, guard: GuardPorts | None
+) -> None:
+    """Settle the open guard-refusal cases whose cause is gone; an unsettled one is left as it is."""
+    if guard is None:
+        return
+    from omnimarket.handlers.bus_binding.guard_refusal import settle_guard_refusals
+
+    settle_guard_refusals(state_dir, guard, now=observed_at, emit_open=False)
 
 
 def _write_text_atomically(path: Path, text: str) -> None:

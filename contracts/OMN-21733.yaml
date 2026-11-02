@@ -126,6 +126,14 @@ requirements:
         statement: "AC43: a signed-in account the overlay does not declare is not drawn as a card but is counted in the cloud note with the cause, not dropped silently -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k 'overlay_does_not_declare'"
       - id: "AC44"
         statement: "AC44: the cloud card's headline count of open sessions equals the sum of the open counts of the accounts drawn beneath it -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k headline_open_count"
+  - id: "req-omn21733-publish-cadence"
+    statement: |-
+      The floor publisher finishes inside its tick and survives one lost ssh connection: independent input steps run together, a step with a fresh output is skipped, and a transfer whose connection did not open is retried before the run is refused.
+    acceptance:
+      - id: "AC45"
+        statement: "AC45: consecutive steps the contract marks concurrent run in threads and report in contract order, hosts, pool, friction and process_health are marked and factory_floor is not, and a step naming fresh_relpath and fresh_seconds is skipped while its output is younger and runs when it is older -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
+      - id: "AC46"
+        statement: "AC46: a transfer whose ssh connection did not open (exit 255) is retried twice before the publish is refused, and a command that ran is never retried -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k transfer_retries"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -463,6 +471,22 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k headline_open_count"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac45"
+    description: "AC45 concurrent input steps overlap and report in contract order, and a fresh output is skipped."
+    source: "manual"
+    binds_ac: ["AC45"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac46"
+    description: "AC46 an ssh connection that did not open is retried and then refused."
+    source: "manual"
+    binds_ac: ["AC46"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k transfer_retries"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-floor-suites"
     description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."

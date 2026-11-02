@@ -31,13 +31,9 @@ from omnimarket.delegated_test_loop.lane_bus import (
     bound_lane_principal,
     open_lab_run_bus,
 )
-from omnimarket.events.topics import (
-    PR_HANDOFF_ACCEPTED_TOPIC_V1,
-    PR_HANDOFF_FAILED_TOPIC_V1,
-    PR_HANDOFF_HANDED_OFF_TOPIC_V1,
-    PR_HANDOFF_REQUESTED_TOPIC_V1,
-)
+from omnimarket.events import topics
 from omnimarket.handlers.bus_binding import outbox
+from omnimarket.handlers.bus_binding.guard_ports import local_guard_ports
 from omnimarket.handlers.bus_binding.select import (
     default_state_dir,
     open_bound_bus,
@@ -339,6 +335,7 @@ def append_command(
                         bound,
                         state_dir,
                         lambda queued: caller.append(queued, timeout_s=timeout_s),
+                        guard=local_guard_ports(state_dir),
                     )
                     if replay.replayed or replay.duplicates or replay.refused:
                         click.echo(
@@ -375,9 +372,9 @@ def append_command(
 
 # OMN-20636: the answers a handoff request waits for, by the event's class name.
 _HANDOFF_ANSWERS: dict[str, type[BaseModel]] = {
-    PR_HANDOFF_ACCEPTED_TOPIC_V1: ModelPrHandoffAccepted,
-    PR_HANDOFF_HANDED_OFF_TOPIC_V1: ModelPrHandoffHandedOff,
-    PR_HANDOFF_FAILED_TOPIC_V1: ModelPrHandoffFailed,
+    topics.PR_HANDOFF_ACCEPTED_TOPIC_V1: ModelPrHandoffAccepted,
+    topics.PR_HANDOFF_HANDED_OFF_TOPIC_V1: ModelPrHandoffHandedOff,
+    topics.PR_HANDOFF_FAILED_TOPIC_V1: ModelPrHandoffFailed,
 }
 
 
@@ -468,12 +465,12 @@ def handoff_command(
             envelope = ModelEventEnvelope[dict[str, object]](
                 payload=request.model_dump(mode="json"),
                 correlation_id=request.correlation_id,
-                event_type=event_type_for(PR_HANDOFF_REQUESTED_TOPIC_V1),
+                event_type=event_type_for(topics.PR_HANDOFF_REQUESTED_TOPIC_V1),
                 payload_type=ModelPrHandoffRequested.__name__,
             )
             try:
                 await opened.publish(
-                    PR_HANDOFF_REQUESTED_TOPIC_V1,
+                    topics.PR_HANDOFF_REQUESTED_TOPIC_V1,
                     request.handoff_key.encode("utf-8"),
                     _bytes(envelope),
                 )
