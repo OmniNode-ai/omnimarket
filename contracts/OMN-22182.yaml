@@ -1,0 +1,58 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22182
+title: Credential row write assigns a version on a store that predates the version column
+summary: A SQLite store whose credential table gained its version column with no default stored NULL for a new key, so onex models add crashed with TypeError; the register and revoke statements now supply version 1 and raise it with COALESCE.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-credential-version
+    statement: A credential register or revoke on a store whose version column was added without a default stores a version and returns it, instead of NULL.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the add is run on aligned versions (omnimarket dev with the omnibase-core, omnibase-spi and omnibase-infra versions it pins, installed from the branch and not from PyPI) against a stub that requires a bearer key, and the exit code and any traceback are recorded in a comment on this ticket -- falsifier: the comment is missing the installed versions or the exit code'
+      - id: AC2
+        statement: 'AC2: if AC1 reproduces the crash, `onex models add openai_compatible` registers the endpoint, `onex models list` shows it as set up, and `onex models test openai_compatible` passes, with no traceback -- falsifier: `uv run pytest tests/nodes/node_projection_tenant_credentials -q` with a SQLite store whose write returns a row holding no id fails today with TypeError and passes on the fix'
+      - id: AC4
+        statement: 'AC4: a regression test built from the incident''s recorded data (the traceback above, saved as a fixture under `tests/fixtures/onboarding_walk_2026_11_02/`) fails on the broken code and passes on the fix -- falsifier: `uv run pytest tests/nodes/node_projection_tenant_credentials -q -k walk_2026_11_02`'
+evidence_requirements:
+  - kind: tests
+    description: Focused legacy-store register and revoke cases, the fixture check and the fresh-store control.
+    command: uv run pytest tests/nodes/node_projection_tenant_credentials -q --no-cov -k walk_2026_11_02
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22182-fixture
+    description: The recorded traceback fixture names TypeError at write_credential_row in stores.py line 260, and records that the crash reproduced on the aligned set.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_tenant_credentials -q --no-cov -k walk_2026_11_02_traceback
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn22182-legacy-store
+    description: A SQLite store whose credential table predates the version column registers and revokes a key with versions 1 then 2 and never raises TypeError; the same cases failed with the TypeError on the merge base.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_tenant_credentials -q --no-cov -k walk_2026_11_02
+        cwd: .
+    binds_ac: [AC2, AC4]
+  - id: dod-omn22182-deploy-probe
+    description: 'Deploy probe: the credential row write handler GitHub serves at the checked-out commit raises the version with COALESCE, which the merge base does not.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/handlers/handler_credential_route_write.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "COALESCE({_CREDENTIALS}.version, 0) + 1" > /dev/null'
+        cwd: .
+  - id: dod-omn22182-integration-proof
+    description: The pushed head ran the legacy-store credential cases on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ob-addcrash-22182-31d9 -- uv run --frozen pytest tests/nodes/node_projection_tenant_credentials -q --no-cov -k walk_2026_11_02
+        cwd: .
