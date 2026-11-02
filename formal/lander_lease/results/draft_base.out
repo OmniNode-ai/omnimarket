@@ -1,0 +1,145 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 41 and seed -3908528595385005869 with 2 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file draft/LanderLease.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LanderLease
+Starting... (2026-11-02 22:29:11)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 22:29:11.
+Error: Invariant AtMostOneAuthorizedPublisher is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "none"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 2: <GrantLease line 140, col 5 to line 145, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 3: <IssuePermit line 149, col 5 to line 155, col 54 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 4: <ColdDispatch line 230, col 5 to line 236, col 54 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "dispatched"
+/\ decision = "cold"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = TRUE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+65 states generated, 41 distinct states found, 24 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 2 (minimum is 1, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-11-02 22:29:11)
+exit=12
