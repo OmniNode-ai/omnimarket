@@ -381,6 +381,7 @@ node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admissio
 node_ledger_row_grammar_compute = "omnimarket.nodes.node_ledger_row_grammar_compute"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
 node_delegation_health_compute = "omnimarket.nodes.node_delegation_health_compute"
+node_goal_run_stop_compute = "omnimarket.nodes.node_goal_run_stop_compute"
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_context_pack_budget_compute = "omnimarket.nodes.node_delegation_context_pack_budget_compute"
 node_ci_state_verdict_compute = "omnimarket.nodes.node_ci_state_verdict_compute"

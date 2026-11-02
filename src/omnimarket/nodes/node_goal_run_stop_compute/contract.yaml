@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_goal_run_stop_compute
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The stop decision of a goal-driven run, as a pure compute. Takes the experiment's caps file
+  text, the goal's hash, the run's counters and the signals a caller observed, and returns
+  CONTINUE, RETRY (an infra fault with retries left, under the same run key) or STOP with one of
+  ten typed reasons and the analysis role of that reason. The first stop reached wins and keeps
+  the counters at that instant. The caps are read from the data file whose sha256 is part of the
+  run key. Declares no topic and no subscription; it is reached through the node runner and its
+  tests only.
+input_model:
+  name: ModelGoalRunStopRequest
+  module: omnimarket.nodes.node_goal_run_stop_compute.models.model_goal_run_stop
+output_model:
+  name: ModelGoalRunStopDecision
+  module: omnimarket.nodes.node_goal_run_stop_compute.models.model_goal_run_stop
+handler:
+  module: omnimarket.nodes.node_goal_run_stop_compute.handlers.handler_goal_run_stop
+  class: HandlerGoalRunStop
+  input_model: omnimarket.nodes.node_goal_run_stop_compute.models.model_goal_run_stop.ModelGoalRunStopRequest
+  output_model: omnimarket.nodes.node_goal_run_stop_compute.models.model_goal_run_stop.ModelGoalRunStopDecision
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_goal_run_stop_compute.handlers.handler_goal_run_stop:HandlerGoalRunStop
+  handlers:
+    - operation: compute_goal_run_stop
+      handler:
+        name: HandlerGoalRunStop
+        module: omnimarket.nodes.node_goal_run_stop_compute.handlers.handler_goal_run_stop
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier for this decision.}
+  item_id: {type: str, required: true, description: The item the run works on; part of the run key.}
+  goal: {type: object, required: true, description: "The predicate kind, its reference and its sha256; the hash is part of the run key."}
+  caps_file_text: {type: str, required: true, description: "The experiment's caps data file, read by the caller; its sha256 is part of the run key."}
+  counters: {type: object, required: true, description: "Tokens, wall clock seconds, turns, compactions and turns without a change in the predicate's sub-checks, at this instant."}
+  signals: {type: object, required: false, description: "goal_met, agent_blocked, operator_stop, refused_premise, infra_fault and the detail text."}
+  loop_status: {type: object, required: false, description: "A loop's stop state (loop name and status), mapped by loop_status_map below."}
+  infra_fault_retries_used: {type: int, required: false, description: Retries already spent on infra faults under this run key.}
+  prior_stop: {type: object, required: false, description: "The first stop already recorded for this run; it wins over any later reason."}
+outputs:
+  correlation_id: {type: str}
+  run_key: {type: str}
+  caps_file_sha256: {type: str}
+  caps: {type: object}
+  action: {type: str, enum: [continue, retry, stop]}
+  stop_reason: {type: str, description: One of the ten reasons when the action is stop.}
+  retry_reason: {type: str}
+  reached_reasons: {type: list}
+  counters_at_stop: {type: object}
+  analysis: {type: object, description: "The role of the stop, the censoring flag, the success flag, the exclusion reason."}
+metadata:
+  transport_type: inmemory
+  description: Goal-driven run stop decision compute
+  author: OmniNode Team
+  created: "2026-11-02"
+  related_tickets: [OMN-21974]
+# The rules the handler reads. Change a value here and the decision changes with no code change.
+stop_rules:
+  # An infra fault is retried under the same run key this many times, then excluded with its reason.
+  infra_fault_retry_limit: 2
+  # Reasons reached at one instant resolve in this order, first listed wins. A stop already
+  # recorded for the run always wins over a later one (prior_stop). The operator's stop and a
+  # refused premise come first; a fault is retried before anything is scored; a goal met on the
+  # last turn is met, not capped.
+  precedence:
+    - operator_stop
+    - refused_premise
+    - infra_fault
+    - goal_met
+    - agent_blocked
+    - token_cap
+    - wall_clock_cap
+    - turn_cap
+    - compaction_cap
+    - no_progress
+  # The fixed analysis role of each reason (plan section 3.9). The four caps are right-censored at
+  # the cap. no_progress and agent_blocked are failures at the instant they fire, scored with the
+  # capped penalty, and also reported read as censored. operator_stop, refused_premise and
+  # infra_fault are excluded with their reason and counted; an infra fault is never giving up.
+  stop_roles:
+    goal_met: {role: observed, counts_as_success: true}
+    token_cap: {role: right_censored}
+    wall_clock_cap: {role: right_censored}
+    turn_cap: {role: right_censored}
+    compaction_cap: {role: right_censored}
+    no_progress: {role: failure, alternate_role: right_censored}
+    agent_blocked: {role: failure, alternate_role: right_censored}
+    operator_stop: {role: excluded, exclusion_reason: the operator stopped the run}
+    infra_fault: {role: excluded, exclusion_reason: infra fault outlasted its retries}
+    refused_premise: {role: excluded, exclusion_reason: the agent refused a premise of the item}
+  # A loop's own stop states mapped to the ten reasons, as data. null is a state that is not a stop.
+  # The code-edit loop's budget is its turn budget (max_turns), so budget_exhausted is the turn cap.
+  # The loop is not edited; it keeps returning its own enum.
+  loop_status_map:
+    code_edit:
+      accepted: goal_met
+      checks_failed: null
+      no_progress: no_progress
+      budget_exhausted: turn_cap
+      delegate_failed: infra_fault
+      infra_error: infra_fault
