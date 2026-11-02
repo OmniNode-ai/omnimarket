@@ -13,6 +13,7 @@ import click
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError, bound_lane_principal
 from omnimarket.handlers.bus_binding import outbox
+from omnimarket.handlers.bus_binding.guard_ports import local_guard_ports
 from omnimarket.handlers.bus_binding.select import (
     default_state_dir,
     open_bound_bus,
@@ -89,6 +90,7 @@ def replay_command(
                     bound,
                     state_dir,
                     lambda queued: caller.append(queued, timeout_s=60.0),
+                    guard=local_guard_ports(state_dir),
                 )
             finally:
                 await caller.stop()
