@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeBusBindingSettleEffect (OMN-21959)
+#
+# Operator process ruling 2026-10-18: a second occurrence of an exception class becomes code. The bus binding
+# runs this step after a healthy durable read: every open row of a settled class for the bound lane goes through
+# the bus-binding exception actor, which resolves the row when its cause is gone and leaves one open row when not.
+name: "node_bus_binding_settle_effect"
+contract_name: "node_bus_binding_settle_effect"
+node_name: "node_bus_binding_settle_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Settle the open bus-binding exception rows of one lane after a healthy durable read: each row of a class
+  named in settle_policy.classes, keyed to the lane and written by the bus binding, goes through the
+  bus-binding exception actor with the ports the caller binds (the durable health read and the local outbox).
+  A row whose cause is gone is resolved in code; a row the actor cannot settle stays one open row. A decision
+  row is never touched.
+input_model:
+  name: "ModelBusBindingSettleRequest"
+  module: "omnimarket.nodes.node_bus_binding_settle_effect.models.model_bus_binding_settle"
+  description: "The state directory holding the exception queue, the bound lane and when the healthy read was taken."
+output_model:
+  name: "ModelBusBindingSettleResult"
+  module: "omnimarket.nodes.node_bus_binding_settle_effect.models.model_bus_binding_settle"
+  description: "What the actor did with each open row it was given."
+handler:
+  module: "omnimarket.nodes.node_bus_binding_settle_effect.handlers.handler_bus_binding_settle"
+  class: "HandlerBusBindingSettle"
+  input_model: "omnimarket.nodes.node_bus_binding_settle_effect.models.model_bus_binding_settle.ModelBusBindingSettleRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_bus_binding_settle_effect.handlers.handler_bus_binding_settle:HandlerBusBindingSettle"
+  handlers:
+    - operation: "bus_binding_settle"
+      handler:
+        name: "HandlerBusBindingSettle"
+        module: "omnimarket.nodes.node_bus_binding_settle_effect.handlers.handler_bus_binding_settle"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.bus-binding-settle-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.bus-binding-settled.v1"
+    failure: "onex.evt.omnimarket.bus-binding-settle-failed.v1"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 10000
+replay:
+  deterministic: true
+
+# The classes this step settles. Only rows of these classes, keyed lane=<bound lane> and written by the bus
+# binding, are given to the actor.
+settle_policy:
+  source: "omnimarket.handlers.bus_binding"
+  classes:
+    - "bus-binding-outage"
+
+metadata:
+  description: "Settle open bus-binding exception rows in code after a healthy durable read."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-02"
+  tags:
+    - effect
+    - bus
+    - exception-queue

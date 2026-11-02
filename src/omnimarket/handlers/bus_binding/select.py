@@ -44,6 +44,7 @@ from omnimarket.delegated_test_loop.lane_bus import (
     open_lab_run_bus,
 )
 from omnimarket.handlers.bus_binding import outbox, recovery
+from omnimarket.handlers.bus_binding.exception_actor import ActorPorts
 from omnimarket.handlers.bus_binding.recovery import ALARM_CLASS, raise_alarm
 from omnimarket.handlers.bus_binding.reducer import (
     reduce_binding_state,
@@ -59,11 +60,21 @@ from omnimarket.models.bus_binding import (
     ModelBusBindingDecision,
     ModelBusBindingOrder,
 )
+from omnimarket.nodes.node_bus_binding_settle_effect.handlers.handler_bus_binding_settle import (
+    HandlerBusBindingSettle,
+)
+from omnimarket.nodes.node_bus_binding_settle_effect.models.model_bus_binding_settle import (
+    ModelBusBindingSettleRequest,
+    ModelBusBindingSettleResult,
+)
 
 HEALTH_READ_TIMEOUT_S: Final[float] = 8.0
 _FAILURES: Final = (LabRunBusError, InfraConnectionError, TimeoutError, OSError)
 
 TopicProbe = Callable[[ProtocolLabRunBus], Awaitable[tuple[str, ...]]]
+
+# Settles the open exception rows of the decision's lane after a healthy durable read (OMN-21959).
+Settle = Callable[[Path, ModelBusBindingDecision], ModelBusBindingSettleResult]
 
 OpenBus = Callable[
     [str, str | None, str | None, Path | None],
@@ -92,6 +103,27 @@ def positional_opener(
         return opener(**dict(zip(names, (bus, lane, bootstrap, root), strict=True)))
 
     return call
+
+
+def settle_open_rows(
+    state_dir: Path, decision: ModelBusBindingDecision
+) -> ModelBusBindingSettleResult:
+    """Give the lane's open bus-binding rows to the exception actor (node_bus_binding_settle_effect).
+
+    Called only after this bind's durable health read passed, so the health port reports that read. The binding
+    holds no ledger sender; the outbox port reports what is still queued after the caller's own replay.
+    """
+    ports = ActorPorts(
+        durable_healthy=lambda: (
+            not decision.degraded and decision.binding is EnumBusBinding.DURABLE
+        ),
+        replay_outbox=lambda: outbox.pending_count(state_dir),
+    )
+    return HandlerBusBindingSettle(ports).handle(
+        ModelBusBindingSettleRequest(
+            state_dir=state_dir, lane=decision.lane, observed_at=decision.observed_at
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -228,6 +260,7 @@ async def open_bound_bus(
     missing_topics: TopicProbe | None = None,
     announce: Callable[[str], None] | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    settle: Settle = settle_open_rows,
 ) -> AsyncIterator[BoundBus]:
     """Open the lane's bus under its declared fallback order.
 
@@ -238,6 +271,10 @@ async def open_bound_bus(
     ``missing_topics`` is given the opened durable bus and returns the required topics the broker does not
     know. A durable bus that passes its health read is still reported degraded, naming those topics, while
     appends wait in the outbox (OMN-21959): the replay could not be answered.
+
+    ``settle`` runs after a healthy durable bind (OMN-21959): the open rows of the lane's settled classes go
+    through the exception actor, which resolves a row whose cause is gone, so a row left open by an episode
+    the recovery record no longer holds is still closed in code.
     """
     say = announce or _announce_stderr
     opener = open_bus if open_bus is not None else positional_opener(open_lab_run_bus)
@@ -311,6 +348,9 @@ async def open_bound_bus(
                     )
                 yield BoundBus(durable, decision)
                 recovery.resolve_if_recovered(directory, decision)
+                settled = settle(directory, decision)
+                if settled.resolved:
+                    say(f"bus-binding lane={lane} SETTLED resolved={settled.resolved}")
                 return
             if EnumBusBinding.INMEMORY not in order.fallback:
                 raise LabRunBusError(
@@ -350,4 +390,5 @@ __all__ = [
     "raise_alarm",
     "read_state",
     "replay_outbox",
+    "settle_open_rows",
 ]
