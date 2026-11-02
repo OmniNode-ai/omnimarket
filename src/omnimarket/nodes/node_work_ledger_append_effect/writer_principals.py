@@ -22,6 +22,10 @@ class WriterPrincipals:
         self._operator_principal = operator_principal
         self._writers = self._with_operator(writers)
 
+    @property
+    def operator_principal(self) -> str | None:
+        return self._operator_principal
+
     def _with_operator(self, writers: Iterable[str]) -> frozenset[str]:
         return frozenset(writers) | (
             {self._operator_principal} if self._operator_principal else set()

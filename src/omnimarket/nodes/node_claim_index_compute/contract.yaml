@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claim_index_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The claim index over the rolling work ledger as a node. Replays CLAIM, RELEASE, TERMINAL, HANDOVER,
+  RENEW and RECLAIM rows, from the live ledger and the rolled archives inside the staleness window,
+  into a ticket-to-holder map, and answers who holds a ticket, which tickets have a live holder, why a
+  lane may not claim a ticket and why it may not push to a ticket's branch. Behaviour-preserving port
+  of the index the ledger append and push gates consult. A different capability from claim_resolver,
+  which verifies the side-effect claims an agent turn makes against GitHub and Git; this one resolves
+  ownership of a ticket from ledger rows. The ledger location comes from the claim_index overlay and
+  the node refuses naming the key when it is absent. Reads the ledger and its archives; writes only the
+  derived cache file the overlay names, and never appends to the ledger. Publishes the library only; no
+  caller is switched to it by this node.
+input_model:
+  name: ModelClaimIndexRequest
+  module: omnimarket.nodes.node_claim_index_compute.models.model_claim_index
+output_model:
+  name: ModelClaimIndexResult
+  module: omnimarket.nodes.node_claim_index_compute.models.model_claim_index
+handler:
+  module: omnimarket.nodes.node_claim_index_compute.handlers.handler_claim_index
+  class: HandlerClaimIndex
+  input_model: omnimarket.nodes.node_claim_index_compute.models.model_claim_index.ModelClaimIndexRequest
+  output_model: omnimarket.nodes.node_claim_index_compute.models.model_claim_index.ModelClaimIndexResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_claim_index_compute.handlers.handler_claim_index:HandlerClaimIndex
+  handlers:
+    - operation: resolve_claim_index
+      handler:
+        name: HandlerClaimIndex
+        module: omnimarket.nodes.node_claim_index_compute.handlers.handler_claim_index
+descriptor:
+  node_archetype: compute
+  purity: effectful  # reads the ledger and its archives; writes only the overlay-named cache file
+  idempotent: true
+  timeout_ms: 30000
+inputs:
+  operation: {type: str, required: true, enum: [holder, live_holders, refusal_for_claim, refusal_for_push], description: Which question is asked.}
+  ticket: {type: str, required: false, description: The ticket asked about; required except for live_holders.}
+  lane: {type: str, required: false, description: The lane that would claim or push; required for the two refusal operations.}
+  fence: {type: int, required: false, description: The fence the commits carry, for refusal_for_push.}
+  now: {type: str, required: false, description: The clock as a UTC second-precision stamp; absent means the present.}
+outputs:
+  operation: {type: str}
+  holder: {type: object}
+  holders: {type: list}
+  stale_count: {type: int}
+  refusal: {type: str}
+  admitted: {type: bool}
+  sources: {type: list}
+terminal_event: onex.evt.omnimarket.claim-index-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.claim-index-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.claim-index-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.claim-index-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.claim-index-completed.v1
+metadata:
+  transport_type: inmemory
+  description: claim index questions over the rolling work ledger
+  author: OmniNode Team
+  created: "2026-11-02"
+  related_tickets: [OMN-21373]
