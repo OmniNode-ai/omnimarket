@@ -108,6 +108,24 @@ requirements:
         statement: "AC29: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
       - id: "AC30"
         statement: "AC30: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
+  - id: "req-omn21733-slot-truth"
+    statement: |-
+      The floor draws each machine's free slots as the figure the tick's admission reads, and a machine the admission refuses is drawn as refused with the reading's reason, never as free.
+    acceptance:
+      - id: "AC31"
+        statement: "AC31: each machine in the record carries free_slots, which is the pool reading's lane_slots cell when its line has one, else the cap less the placed units, never negative and zero when the reading carries an admission or lane refusal, and an admission object (open, refused or unread, with the reading's reason); the page draws refused with the reason in place of free squares and sums only open machines -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_slot_truth.py tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py -q"
+  - id: "req-omn21733-cloud-card"
+    statement: |-
+      The cloud card lists every cloud account that can start a session, draws each account's open sessions as the number open in the session list built from the same receipts, and draws a cap, a credit or an open count that was not read as unread, never as zero.
+    acceptance:
+      - id: "AC41"
+        statement: "AC41: an account draws the number of its sessions that are open in the cloud session list, counted from the same receipts that build the list and never from the entries of the accounts file, an open session the capped list would cut is still listed and counted, and a disagreeing accounts file is said in a stale-entry note beside the account -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'open_sessions_of_its_own_list or no_stale_note or capped_list_would_cut or the_open_figure'"
+      - id: "AC42"
+        statement: "AC42: every ready account of the accounts file is drawn, an account with no cap draws its open count with cap unread, an account with no credit draws credit unread, and an open count that could not be read draws open unread and never zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'every_ready_account or both_ready_accounts or never_zero'"
+      - id: "AC43"
+        statement: "AC43: a signed-in account the overlay does not declare is not drawn as a card but is counted in the cloud note with the cause, not dropped silently -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k 'overlay_does_not_declare'"
+      - id: "AC44"
+        statement: "AC44: the cloud card's headline count of open sessions equals the sum of the open counts of the accounts drawn beneath it -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k headline_open_count"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -405,6 +423,46 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k runner_fleet"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac31"
+    description: "AC31 a machine's free slots are the tick's own figure and a refused machine is drawn as refused."
+    source: "manual"
+    binds_ac: ["AC31"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_slot_truth.py tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py -q --no-cov --tb=line"
+
+  - id: "dod-omn21733-ac41"
+    description: "AC41 an account's open figure is the count of open sessions in its own list, with a stale-entry note when the accounts file disagrees."
+    source: "manual"
+    binds_ac: ["AC41"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'open_sessions_of_its_own_list or no_stale_note or capped_list_would_cut or the_open_figure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac42"
+    description: "AC42 every ready account is drawn and an unread cap, credit or open count is drawn unread, never zero."
+    source: "manual"
+    binds_ac: ["AC42"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'every_ready_account or both_ready_accounts or never_zero'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac43"
+    description: "AC43 a signed-in account the overlay does not declare is counted in the cloud note with its cause."
+    source: "manual"
+    binds_ac: ["AC43"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov --tb=line -k overlay_does_not_declare"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac44"
+    description: "AC44 the cloud card's headline open count is the sum of its drawn accounts' open counts."
+    source: "manual"
+    binds_ac: ["AC44"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k headline_open_count"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-floor-suites"
     description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."

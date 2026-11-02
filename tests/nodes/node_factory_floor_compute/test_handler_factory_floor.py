@@ -109,7 +109,9 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert line.plan_path == PLAN_PATH
     assert line.source == "manifest"
     assert line.status_pill == "building"
-    assert line.percent_built == 33  # W0.1 done of W0.1, W0.2, P1 (gates are not parts)
+    assert (
+        line.percent_built == 20
+    )  # W0.1 done of the plan's five parts, its two gates included
     assert _states(line) == {
         "W0.1": "done",
         "W0.2": "active",
@@ -152,7 +154,7 @@ def test_manifest_gate_pass_opens_next_station_to_prep() -> None:
     }
     assert _station_states(line) == {"0": "done", "1a": "prep"}
     assert line.status_pill == "building"
-    assert line.percent_built == 66
+    assert line.percent_built == 60
 
 
 def test_manifest_all_done_is_a_finished_line() -> None:
@@ -332,7 +334,12 @@ def test_andon_or_fallback_config_not_handler_defines_the_andon_word() -> None:
 def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table() -> (
     None
 ):
-    result = compute_factory_floor(request(plans=(table_plan(),)))
+    result = compute_factory_floor(
+        request(
+            plans=(table_plan(),),
+            prs=(pr("repo#1", "MERGED", title="feat(OMN-7): the first task"),),
+        )
+    )
     line = _line(result)
     assert line.source == "plan-task-table"
     assert line.line_id == "2026-10-01-old-plan"

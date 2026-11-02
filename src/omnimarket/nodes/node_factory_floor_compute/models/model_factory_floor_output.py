@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -141,6 +144,8 @@ MachineState = Literal["read", "unread", "repair", "out"]
 SourceState = Literal["read", "unread"]
 LaneTitleSource = Literal["linear", "claim", "unread"]
 LanePlacement = Literal["machine", "cloud", "unplaced"]
+# Why a lane the floor cannot place is unplaced: no row names a host, or the host named is not a drawn machine.
+PlacementCause = Literal["", "no-host-cell", "host-not-drawn"]
 
 
 class ModelFloorRunnersOut(BaseModel):
@@ -154,6 +159,18 @@ class ModelFloorRunnersOut(BaseModel):
     busy: int | None
     observed_at: str
     note: str
+
+
+AdmissionState = Literal["open", "refused", "unread"]
+
+
+class ModelFloorAdmission(BaseModel):
+    """Whether the tick's admission takes new work on a machine, and the reading's own words when it does not."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: AdmissionState
+    reason: str
 
 
 class ModelFloorMachine(BaseModel):
@@ -177,6 +194,8 @@ class ModelFloorMachine(BaseModel):
     swap_used_pct: float | None
     cap: int | None
     refusal: str
+    free_slots: int
+    admission: ModelFloorAdmission
     lanes_placed: int
     lanes: tuple[str, ...]
     units_placed: int | None
@@ -207,6 +226,9 @@ class ModelFloorLane(BaseModel):
     engine: str
     placement: LanePlacement
     host: str
+    # Set only on an unplaced lane: the reason it names no drawn machine, and the host as written when it named one.
+    placement_cause: PlacementCause = ""
+    named_host: str = ""
     cloud_account: str
     started_at: str
     run_minutes: int
@@ -238,7 +260,7 @@ class ModelFloorLamp(BaseModel):
 
 
 class ModelFloorCloudAccountOut(BaseModel):
-    """One cloud account: whether it is signed in, its session cap and how many sessions are open."""
+    """One cloud account: whether it is signed in, its session cap and how many of its listed sessions are open (None when the receipts could not be read)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -246,7 +268,8 @@ class ModelFloorCloudAccountOut(BaseModel):
     ready: bool
     login: str
     cap: int | None
-    open_sessions: int
+    open_sessions: int | None
+    record_note: str
     credit_remaining: float | None
     credit_read_at: str
     rate_status: str
@@ -294,6 +317,8 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
+    merged_running: ModelMergedRunningCountResult | None = None
 
 
 class ModelFloorSources(BaseModel):
@@ -315,6 +340,8 @@ class ModelFloorSources(BaseModel):
     runner_fleet_read: bool
     # Why the runner fleet is unread, in the reader's words; empty when it was read.
     runner_fleet_cause: str = ""
+    # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
+    merged_running_cause: str = ""
 
 
 class ModelFactoryFloorResult(BaseModel):

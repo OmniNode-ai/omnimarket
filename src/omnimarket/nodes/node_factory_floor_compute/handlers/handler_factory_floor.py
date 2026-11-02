@@ -29,6 +29,12 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
     names_task,
     pr_key,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping import (
+    PrRecord,
+    is_built,
+    pr_records,
+    task_prs,
+)
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFactoryFloorResult,
     ModelFloorAndon,
@@ -59,6 +65,8 @@ class _Index:
     # Ledger positions by lane, and each lane's name as words: a lane named for a task (``one-rt-t10-...``) builds it.
     by_lane: dict[str, tuple[int, ...]]
     lane_words: dict[str, tuple[str, ...]]
+    # Every open or merged pull request, the merge list included, by key: a task row is built from these (OMN-21930).
+    records: dict[str, PrRecord]
 
 
 def _tip(
@@ -122,6 +130,7 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
         claim_tips=tips,
         by_lane={key: tuple(value) for key, value in by_lane.items()},
         lane_words={lane: name_tokens(lane) for lane in by_lane},
+        records=pr_records(request),
     )
 
 
@@ -188,21 +197,6 @@ def _hold_matches(
         or _intersects(hold.tickets, task.tickets)
         or any(pr in hold.prs and pr not in released_prs for pr in prs)
     )
-
-
-def _task_prs(
-    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest
-) -> tuple[str, ...]:
-    inferred = tuple(
-        pr.key
-        for pr in request.watcher.prs
-        if (
-            not task.scoped
-            and (_token(task.id, pr.title) or _token(task.id, pr.head_ref))
-        )
-        or _intersects(task.tickets, pr.tickets)
-    )
-    return tuple(sorted(set(task.prs + inferred)))
 
 
 def _task_rows(
@@ -275,10 +269,11 @@ def _evidence(
     unclaimed = terminal is not None and not any(
         row.kind == "CLAIM" and row.ts > terminal.ts for row in rows
     )
-    merged = {pr.key for pr in request.watcher.prs if pr.state == "MERGED"}
-    merged.update(merge.key for merge in request.watcher.merges)
+    merged = {
+        record.key for record in index.records.values() if record.state == "MERGED"
+    }
     linear = {issue.id: issue.status_type for issue in request.linear}
-    if prs and all(pr in merged for pr in prs):
+    if is_built(task, prs, index.records):
         return "done", "PRs merged"
     if terminal and unclaimed and terminal.outcome in request.config.done_outcomes:
         return "done", f"terminal {terminal.outcome}"
@@ -341,7 +336,7 @@ def _manifest_items(
     index: _Index,
 ) -> tuple[ModelFloorItem, ...]:
     by_id = {task.id: task for task in tasks}
-    prs = {task.id: _task_prs(task, request) for task in tasks}
+    prs = {task.id: task_prs(task, _scope(plan), index.records) for task in tasks}
     memo: dict[str, ModelFloorItem] = {}
 
     def resolve(task_id: str, visiting: frozenset[str]) -> ModelFloorItem | None:
@@ -387,14 +382,32 @@ def _manifest_items(
     )
 
 
+def _table_built(
+    row: ModelFloorTableTask, request: ModelFactoryFloorRequest, index: _Index
+) -> bool:
+    """A table row is built from merged pull requests (or its tickets done in Linear), never from its recorded state."""
+    task = ModelFloorManifestTask(
+        id=row.label, tickets=row.tickets, prs=row.prs, scoped=True
+    )
+    if is_built(task, task_prs(task, row.tickets, index.records), index.records):
+        return True
+    linear = {issue.id: issue.status_type for issue in request.linear}
+    return bool(row.tickets) and all(linear.get(t) == "completed" for t in row.tickets)
+
+
 def _table_item(
     row: ModelFloorTableTask,
     holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> ModelFloorItem:
     state: ItemState
     if row.state == "merged":
-        state, note = "done", "PRs merged"
+        state, note = (
+            ("done", "PRs merged")
+            if _table_built(row, request, index)
+            else ("wait", "recorded merged, no merged pull request read")
+        )
     elif row.state in {"open-green", "open-red"}:
         state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
     elif row.state == "not-started":
@@ -524,6 +537,25 @@ def _resumed(row: ModelFloorLedgerRow, index: _Index) -> bool:
     return False
 
 
+def _ended_long_ago(
+    row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest, index: _Index
+) -> bool:
+    """True when the row is a TERMINAL its lane never reopened and the lane has written nothing for the stall window.
+
+    The runner that closes a remote lane writes a STATUS row after the lane's own TERMINAL, so the lane's newest row of
+    any kind, not the TERMINAL itself, is what has to be older than the window.
+    """
+    if row.kind != "TERMINAL":
+        return False
+    lane_rows = (
+        request.ledger[position] for position in index.by_lane.get(row.lane, ())
+    )
+    if any(other.kind == "CLAIM" and other.ts > row.ts for other in lane_rows):
+        return False
+    newest = index.lane_newest.get(row.lane, row.ts)
+    return _minutes(request, newest) >= request.config.stall_minutes
+
+
 def _asks_orchestrator(
     row: ModelFloorLedgerRow, config: ModelFactoryFloorConfig
 ) -> bool:
@@ -564,6 +596,8 @@ def _ledger_stops(
         if row.prs and all(pr_key(pr) in merged for pr in row.prs):
             continue
         if row.tickets and set(row.tickets) <= done_tickets:
+            continue
+        if _ended_long_ago(row, request, index):
             continue
         said = (row.reason or row.text)[: config.note_chars]
         age = _minutes(request, row.ts)
@@ -625,7 +659,7 @@ def _line(
     items = (
         _manifest_items(tasks, plan, holds, request, index)
         if has_manifest
-        else tuple(_table_item(row, holds, request) for row in plan.table_tasks)
+        else tuple(_table_item(row, holds, request, index) for row in plan.table_tasks)
     )
     hard = (
         (
@@ -663,15 +697,9 @@ def _line(
         if causes
         else ""
     )
-    non_gates = tuple(
-        item
-        for item in items
-        if not has_manifest or item.kind != request.config.gate_kind
-    )
+    # Every part of the plan's own list counts, gates included: built percent is the parts done over all of them.
     percent = (
-        100 * sum(item.state == "done" for item in non_gates) // len(non_gates)
-        if non_gates
-        else 0
+        100 * sum(item.state == "done" for item in items) // len(items) if items else 0
     )
     line_id = _line_id(plan)
     return ModelFloorLine(

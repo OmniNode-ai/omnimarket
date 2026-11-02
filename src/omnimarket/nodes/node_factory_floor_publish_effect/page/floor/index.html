@@ -146,6 +146,7 @@ header{display:grid;gap:14px}
 .cap i.codex{background:var(--safety);border-color:var(--belt)}
 .cap i.none{background:var(--idle);border-color:var(--steel)}
 .cap i.stall{background:repeating-linear-gradient(45deg,var(--stop) 0 3px,var(--panel) 3px 6px);border-color:var(--stop)}
+.cap .refused{align-self:center;font-size:.8rem;font-weight:600;color:var(--stop)}
 .cap i.over{outline:2px solid var(--stop);outline-offset:1px}
 .cap.unread{height:16px;width:100%;border-radius:3px;border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);display:block}
 .capline{font-size:.875rem;color:var(--muted)}
@@ -317,6 +318,8 @@ html.embed .wrap{padding-block:14px 48px}
     <div class="mgrid" id="bayGrid"></div>
   </section>
 
+  <section class="card" aria-labelledby="mrH" id="mergedRunning" hidden></section>
+
   <section class="two">
     <div class="card" aria-labelledby="dockH" id="dock">
       <div><div class="eyebrow">Out the door</div><h2 id="dockH">Shipping dock</h2><p class="sub">Changes that went out, and changes still waiting to go.</p></div>
@@ -479,6 +482,18 @@ function stationName(stations, id){
   return hit ? hit.name : id;
 }
 
+// Application containers per lane class, running of declared, from the line's own record; no record, no row.
+function containersRow(L){
+  const c = L.application_containers;
+  if (!c || typeof c !== "object") return "";
+  const rows = Array.isArray(c.lanes) ? c.lanes : [];
+  const cells = rows.map(r => {
+    const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
+    return `<span class="mono" title="${esc([r.host, r.detail].filter(Boolean).join(" · "))}">${esc(r.lane)} ${known ? `${num(r.observed)} of ${num(r.budget)}` : "unread"}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+  });
+  return `<span class="eyebrow containers">Application containers running of declared: ${cells.length ? cells.join(" · ") : "unread, no host could be read"}</span>`;
+}
+
 function renderLine(slot, i){
   const letter = "Line " + (LETTERS[i] || i + 1);
   const L = slot.line;
@@ -503,6 +518,7 @@ function renderLine(slot, i){
           ${L.andon && L.andon.flag ? `<p class="cause"><b>Stopped:</b> ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
           <div class="meter" role="img" aria-label="About ${pct} percent built"><b style="--w:${pct}%"></b></div>
           <span class="eyebrow">About <span class="mono">${pct}%</span> of the car built · station <span class="mono">${Math.min(f.cur + 1, Math.max(f.n, 1))}</span> of <span class="mono">${f.n}</span> · <span class="mono">${f.done}</span> of <span class="mono">${f.items.length}</span> parts done</span>
+          ${containersRow(L)}
         </div>
       </div>
       ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways along the belt</div>` : ""}
@@ -646,6 +662,10 @@ function slotCount(running, stalled, free){
   return `${running} running, ${stalled} stalled, ${free} free`;
 }
 
+function isRefused(m){
+  return !!(m.admission && m.admission.state === "refused");
+}
+
 function machineHTML(m, byId){
   const lanes = (m.lanes || []).map(id => byId[id]).filter(Boolean);
   const stateWord = m.state === "read" ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread";
@@ -655,10 +675,16 @@ function machineHTML(m, byId){
   if (m.state === "read" && cap != null){
     const used = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}" title="${esc(l.lane + (l.title ? ": " + l.title : ""))}"></i>`);
     const over = Math.max(0, lanes.length - cap);
-    const free = Math.max(0, cap - lanes.length);
+    // The free figure is the record's own: the tick's reading (its lane slots, else cap less placed units), and none at all
+    // where the tick's admission refuses the machine, which is drawn as refused with the reading's reason.
+    const refused = isRefused(m);
+    const free = refused || m.free_slots == null ? 0 : Math.max(0, num(m.free_slots));
     const stalledN = lanes.filter(l => l.stalled).length;
-    slots = `<div class="cap" role="img" aria-label="${slotCount(lanes.length - stalledN, stalledN, free)}">${used.join("")}${"<i></i>".repeat(free)}</div>
-      <div class="capline"><b>${slotCount(lanes.length - stalledN, stalledN, free)}</b> · <span class="mono">${lanes.length}</span> of <span class="mono">${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over the limit</b>` : ""}${m.refusal ? ` · not taking new work: ${esc(m.refusal)}` : ""}</div>`;
+    const running = lanes.length - stalledN;
+    const refusedText = `refused: ${(m.admission && m.admission.reason) || m.refusal || "no reason recorded"}`;
+    const counts = refused ? `${running} running, ${stalledN} stalled, refused` : m.free_slots == null ? `${running} running, ${stalledN} stalled, free slots unread` : slotCount(running, stalledN, free);
+    slots = `<div class="cap" role="img" aria-label="${esc(refused ? counts + ": " + refusedText : counts)}">${used.join("")}${refused ? `<span class="refused">${esc(refusedText)}</span>` : "<i></i>".repeat(free)}</div>
+      <div class="capline"><b>${counts}</b> · <span class="mono">${lanes.length}</span> of <span class="mono">${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over the limit</b>` : ""}</div>`;
   } else if (m.state === "read"){
     slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><b>${lanes.length} running</b> · slot limit ${unreadSpan("no limit in the host table or the pool read")}</div>`;
   } else {
@@ -688,19 +714,58 @@ function machineHTML(m, byId){
 function cloudHTML(cloud, lanes){
   if (!cloud) return `<article class="mbay unread"><div class="mbay-top"><b>Cloud</b><span class="pill">unread</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
   const live = lanes.filter(l => l.placement === "cloud");
-  const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span>
-      <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}</small></li>`).join("");
+  const openText = a => a.open_sessions == null ? "open unread" : `${num(a.open_sessions)} open`;
+  const capText = a => a.cap != null ? " of " + num(a.cap) : " · cap unread";
+  const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${openText(a)}${capText(a)}</span>
+      <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}${a.record_note ? ` · ${esc(a.record_note)}` : ""}</small></li>`).join("");
+  const drawn = cloud.accounts || [];
+  const openTotal = drawn.reduce((n, a) => n + (a.open_sessions == null ? 0 : a.open_sessions), 0);
+  const openUnread = drawn.filter(a => a.open_sessions == null).length;
+  const acctCount = `${num(drawn.length)} account${drawn.length === 1 ? "" : "s"}`;
+  const headline = !drawn.length ? "" : openUnread === drawn.length
+    ? `<p class="capline" id="cloud-open">open sessions unread across ${acctCount}</p>`
+    : `<p class="capline" id="cloud-open">${num(openTotal)} open sessions across ${acctCount}${openUnread ? ` (${num(openUnread)} unread)` : ""}</p>`;
   const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(s.open ? liveMs(s.run_minutes) : num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
   const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${whenSpan(x.since)}</small></div>`).join("");
   return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
     <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
     <button type="button" class="drill" data-drill="bay-cloud">Show the cloud detail</button>
     ${lamps}
+    ${cloud.state === "read" ? headline : ""}
     ${cloud.state === "read" ? (accts ? `<ul class="sessions">${accts}</ul>` : `<p class="empty">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
     ${cloud.note && cloud.state === "read" ? `<p class="capline">${esc(cloud.note)}</p>` : ""}
     ${live.length ? `<div class="lanes">${live.map(laneHTML).join("")}</div>` : ""}
     ${sessions ? `<h3>Cloud sessions</h3><ul class="sessions">${sessions}</ul>` : ""}
   </article>`;
+}
+
+function renderMergedRunning(floor){
+  const card = el("mergedRunning");
+  const mr = floor.merged_running;
+  if (!mr || !mr.days || !mr.days.length){ card.hidden = true; card.innerHTML = ""; return; }
+  const day = mr.days[0];
+  const stat = (n, label) => `<div><span class="big mono">${esc(n)}</span><div class="muted">${esc(label)}</div></div>`;
+  const why = {};
+  (day.merges || []).filter(m => !m.running).forEach(m => { const r = (m.reason || "no reason recorded").replace(/_/g, " "); why[r] = (why[r] || 0) + 1; });
+  const whyText = Object.keys(why).map(r => `${why[r]} ${r}`).join(", ");
+  const hosts = (mr.idle_hosts || []).map(h => {
+    let text;
+    if (h.state === "unread") text = `unread${h.cause ? " (" + h.cause + ")" : ""}`;
+    else if (h.state === "out") text = "out of service";
+    else {
+      const basis = h.slots_source === "table_cap" ? ` of ${h.slots}, from the host table cap${h.cause ? " (" + h.cause + ")" : ""}` : ` of ${h.slots}, from the machine's own count`;
+      text = `${h.idle} idle${basis}`;
+    }
+    return `<li><b>${esc(h.host)}</b> ${esc(text)}</li>`;
+  }).join("");
+  const unread = (mr.evidence_unread || []).map(u => `<p class="muted">Evidence not read: ${esc(u)}. Merges that needed it read as not running.</p>`).join("");
+  card.hidden = false;
+  card.innerHTML = `<div><div class="eyebrow">Merged and running · ${esc(day.local_date)} (Eastern)</div><h2 id="mrH">Merged work that runs</h2>
+    <p class="sub">Changes merged on this day, how many show evidence of running on dev, and the open worker slots on each machine. A hand-off, or a change armed or queued to merge, is not a merge and is not counted.</p></div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:end">${stat(day.merged, "Merged")}${stat(day.running, "Running")}${stat(day.not_running, "Not running")}${stat(mr.idle_total, "Idle slots" + (mr.idle_unread ? `, ${mr.idle_unread} machine${mr.idle_unread === 1 ? "" : "s"} unread` : ""))}</div>
+    ${whyText ? `<p class="muted">Not running: ${esc(whyText)}.</p>` : ""}
+    ${unread}
+    ${hosts ? `<ul style="margin:0;padding-left:1.2em;display:grid;gap:4px">${hosts}</ul>` : ""}`;
 }
 
 function renderMachines(floor){
@@ -714,18 +779,27 @@ function renderMachines(floor){
     : "The record lists no machines: the deployment lists none, or the record was written before machines were recorded.";
   const cards = ms.map(m => machineHTML(m, byId));
   cards.push(cloudHTML(floor.cloud, lanes));
-  if (unplaced.length) cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} worker${unplaced.length === 1 ? "" : "s"}</span></div>
-    <p class="capline">These workers are live in the log, but neither their claim nor a remote receipt names a machine the floor draws.</p>
-    <div class="lanes">${unplaced.map(laneHTML).join("")}</div></article>`);
+  if (unplaced.length){
+    const groups = {};
+    unplaced.forEach(l => { const k = l.placement_cause || "unread"; (groups[k] = groups[k] || []).push(l); });
+    const cause = (k, ls) => {
+      const named = k === "host-not-drawn" ? ls.map(l => l.named_host).filter((h, i, a) => h && a.indexOf(h) === i) : [];
+      return ({"no-host-cell": "carry no host cell: no row since their claim names a host and no receipt does", "host-not-drawn": "name a host the floor does not draw"}[k] || "have no cause in the record (written before causes were recorded)") + (named.length ? ` (${named.join(", ")})` : "");
+    };
+    cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} worker${unplaced.length === 1 ? "" : "s"}</span></div>
+    <p class="capline">These workers are live in the log, but none names a machine the floor draws.</p>
+    ${Object.keys(groups).map(k => `<p class="capline"><b>${groups[k].length} ${esc(cause(k, groups[k]))}</b>: ${groups[k].map(l => esc(l.lane)).join(", ")}</p><div class="lanes">${groups[k].map(laneHTML).join("")}</div>`).join("")}</article>`);
+  }
   el("bayGrid").innerHTML = cards.join("");
 }
 
 function machineFacts(floor){
   const ms = floor.machines || [], lanes = floor.lanes || [];
   const read = ms.filter(m => m.state === "read");
+  const open = read.filter(m => !isRefused(m));
   return {declared: ms.length, read: read.length, repair: ms.filter(m => m.state === "repair" || m.state === "out").length,
     unread: ms.filter(m => m.state === "unread").length, placed: ms.reduce((a, m) => a + num(m.lanes_placed), 0),
-    cap: read.reduce((a, m) => a + num(m.cap), 0), lanes: lanes.length, stalled: lanes.filter(l => l.stalled).length,
+    cap: open.reduce((a, m) => a + num(m.cap), 0), free: open.reduce((a, m) => a + num(m.free_slots), 0), refused: read.length - open.length, lanes: lanes.length, stalled: lanes.filter(l => l.stalled).length,
     cloud: floor.cloud || null};
 }
 
@@ -881,6 +955,7 @@ function render(parts){
   renderVerdict(built.slots, floor, bayState, parts.health);
   renderLines(built.slots, built.declared, built.reason);
   renderMachines(floor);
+  renderMergedRunning(floor);
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);

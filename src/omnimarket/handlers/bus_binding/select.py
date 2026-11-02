@@ -23,7 +23,7 @@ import asyncio
 import inspect
 import json
 import sys
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -43,9 +43,12 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
-from omnimarket.handlers.bus_binding import outbox, recovery
+from omnimarket.handlers.bus_binding import exception_actor, outbox, recovery
 from omnimarket.handlers.bus_binding.recovery import ALARM_CLASS, raise_alarm
-from omnimarket.handlers.bus_binding.reducer import reduce_binding_state
+from omnimarket.handlers.bus_binding.reducer import (
+    reduce_binding_state,
+    topic_degraded_reason,
+)
 from omnimarket.inference.secret_store_resolver import (
     injected_secret_store,
     secret_store_from_resolver_config,
@@ -59,6 +62,10 @@ from omnimarket.models.bus_binding import (
 
 HEALTH_READ_TIMEOUT_S: Final[float] = 8.0
 _FAILURES: Final = (LabRunBusError, InfraConnectionError, TimeoutError, OSError)
+
+TopicProbe = Callable[[ProtocolLabRunBus], Awaitable[tuple[str, ...]]]
+Alarm = Callable[[Path, ModelBusBindingDecision], str]
+Settle = Callable[[Path, ModelBusBindingDecision], object]
 
 OpenBus = Callable[
     [str, str | None, str | None, Path | None],
@@ -198,6 +205,17 @@ async def _health_read(
     return bus, ""
 
 
+async def _topic_probe(
+    durable: ProtocolLabRunBus, probe: TopicProbe, timeout_s: float
+) -> tuple[tuple[str, ...], str]:
+    """The required topics the broker does not know, or the reason the probe itself failed."""
+    try:
+        return tuple(await asyncio.wait_for(probe(durable), timeout_s)), ""
+    except _FAILURES as exc:
+        detail = str(exc).replace("\n", " ")[:160]
+        return (), f"{type(exc).__name__}: {detail}"
+
+
 @asynccontextmanager
 async def open_bound_bus(
     *,
@@ -209,14 +227,24 @@ async def open_bound_bus(
     timeout_s: float = HEALTH_READ_TIMEOUT_S,
     open_bus: OpenBus | None = None,
     pending_outbox: Callable[[], int] = lambda: 0,
+    missing_topics: TopicProbe | None = None,
     announce: Callable[[str], None] | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    alarm: Alarm | None = None,
+    settle: Settle | None = None,
 ) -> AsyncIterator[BoundBus]:
     """Open the lane's bus under its declared fallback order.
 
     A kafka selection on a lane that declares ``binding_fallback`` is health-read; every other
     selection opens exactly as ``open_lab_run_bus`` does. The lane's declared secret resolver is
     injected for the whole context on whichever binding is chosen.
+
+    ``missing_topics`` is given the opened durable bus and returns the required topics the broker does not
+    know. A durable bus that passes its health read is still reported degraded, naming those topics, while
+    appends wait in the outbox (OMN-21959): the replay could not be answered.
+
+    ``alarm`` and ``settle`` are the exception steps node_bus_binding_reducer/contract.yaml declares under
+    ``exception_settlement`` (OMN-21959); left unbound they are the episode alarm and the exception actor.
     """
     say = announce or _announce_stderr
     opener = open_bus if open_bus is not None else positional_opener(open_lab_run_bus)
@@ -249,6 +277,13 @@ async def open_bound_bus(
             return
 
         directory = state_dir if state_dir is not None else default_state_dir()
+        policy = recovery.settlement_policy()
+        alarm_step: Alarm = alarm or (
+            recovery.alarm_once_per_episode
+            if policy.alarm_scope == "episode"
+            else raise_alarm
+        )
+        settle_step: Settle = settle or exception_actor.settle_open_cases
         prior = read_state(directory, lane)
         async with AsyncExitStack() as stack:
             durable, reason = await _health_read(
@@ -256,9 +291,22 @@ async def open_bound_bus(
                 opener("kafka", lane, kafka_bootstrap, workspace_root),
                 timeout_s,
             )
+            pending = pending_outbox()
+            absent: tuple[str, ...] = ()
+            if durable is not None and missing_topics is not None:
+                absent, probe_failure = await _topic_probe(
+                    durable, missing_topics, timeout_s
+                )
+                if probe_failure:
+                    durable, reason = None, probe_failure
             state, binding = reduce_binding_state(
-                prior, durable_healthy=durable is not None
+                prior,
+                durable_healthy=durable is not None,
+                pending_outbox=pending,
+                missing_topics=absent,
             )
+            if durable is not None and state is EnumBusBindingState.DEGRADED:
+                reason = topic_degraded_reason(absent)
             decision = ModelBusBindingDecision(
                 lane=lane,
                 binding=binding,
@@ -266,25 +314,26 @@ async def open_bound_bus(
                 prior_state=prior,
                 reason=reason,
                 observed_at=stamp,
-                pending_outbox=pending_outbox(),
+                pending_outbox=pending,
             )
             recovery.observe(directory, decision)
             say(decision.tick_line())
-            if durable is not None:
+            if durable is not None and not decision.degraded:
                 if prior is not EnumBusBindingState.HEALTHY:
                     say(
                         f"bus-binding lane={lane} RECOVERY {prior.value}->{state.value}"
                     )
                 yield BoundBus(durable, decision)
                 recovery.resolve_if_recovered(directory, decision)
+                settle_step(directory, decision)
                 return
             if EnumBusBinding.INMEMORY not in order.fallback:
                 raise LabRunBusError(
                     f"durable bus unavailable and no fallback: {reason}"
                 )
-            alarm = raise_alarm(directory, decision)
+            raised = alarm_step(directory, decision)
             if prior is not EnumBusBindingState.DEGRADED:
-                say(f"bus-binding lane={lane} ALARM {alarm}")
+                say(f"bus-binding lane={lane} ALARM {raised}")
             if escalation := recovery.escalate_if_overdue(directory, decision):
                 say(f"bus-binding lane={lane} ESCALATION {escalation}")
             memory = await stack.enter_async_context(
@@ -308,6 +357,7 @@ __all__ = [
     "ALARM_CLASS",
     "HEALTH_READ_TIMEOUT_S",
     "BoundBus",
+    "TopicProbe",
     "decision_json",
     "default_state_dir",
     "load_binding_order",

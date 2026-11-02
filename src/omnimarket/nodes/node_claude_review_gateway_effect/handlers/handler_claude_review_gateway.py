@@ -87,6 +87,7 @@ from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptMessage,
     ModelPromptTextBlock,
@@ -302,6 +303,7 @@ def select_host_keys(
     tenant_id: str,
     host: str,
     now: datetime,
+    tenant_forms: Sequence[str] | None = None,
 ) -> list[ModelReviewGatewayKey]:
     """The keys this host may spend, in the order they are tried.
 
@@ -310,7 +312,12 @@ def select_host_keys(
     gateway spends an account's credits only on the machine the account lives
     on. Ordered by name, then reference, so the first key is the one drained
     first, whatever order the catalog returns.
+
+    ``tenant_forms`` (OMN-21819) are the stored forms of this one tenant, its
+    name and registry UUID; a row in either is the tenant's own. Without them
+    only ``tenant_id`` itself matches, as before.
     """
+    forms = tuple(tenant_forms) if tenant_forms else (tenant_id,)
     keys = [
         ModelReviewGatewayKey(
             api_key_ref=str(row["api_key_ref"]),
@@ -320,13 +327,14 @@ def select_host_keys(
         )
         for row in rows
         if row.get("api_key_ref")
-        and row.get("tenant_id") == tenant_id
+        and row.get("tenant_id") in forms
         and row.get("provider") == GATEWAY_PROVIDER
         and row.get("bound_host") == host
         and row.get("revoked_at") is None
         and _not_expired(row.get("expires_at"), now)
     ]
-    return sorted(keys, key=lambda key: (key.name, key.api_key_ref))
+    unique = {key.api_key_ref: key for key in keys}
+    return sorted(unique.values(), key=lambda key: (key.name, key.api_key_ref))
 
 
 def _text(content: object) -> str:
@@ -619,13 +627,21 @@ class ClaudeReviewGateway:
     def candidate_keys(
         self, now: datetime | None = None
     ) -> list[ModelReviewGatewayKey]:
-        rows = self._catalog.query(
-            TENANT_CREDENTIALS_TABLE,
-            {"tenant_id": self._request.tenant_id, "provider": GATEWAY_PROVIDER},
-        )
+        # OMN-21819: the tenant's keys may be stamped with its name or its
+        # registry UUID; read both forms and let the filter accept both.
+        forms = sync_tenant_identity_forms(self._catalog, self._request.tenant_id)
+        rows = [
+            row
+            for tenant_form in forms
+            for row in self._catalog.query(
+                TENANT_CREDENTIALS_TABLE,
+                {"tenant_id": tenant_form, "provider": GATEWAY_PROVIDER},
+            )
+        ]
         keys = select_host_keys(
             rows,
             tenant_id=self._request.tenant_id,
+            tenant_forms=forms,
             host=self._request.host,
             now=now if now is not None else datetime.now(UTC),
         )

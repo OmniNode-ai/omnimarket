@@ -70,3 +70,10 @@ jobs:
       evidence-source: caller
       verifier-tag: dev-20261101000200-949993edf3b7
       compare-with-occ: "false"
+      # OMN-21977: the verifier per-check default is 30 s, which five dev
+      # PRs exceeded on whole-tree pytest collection and on a network
+      # readback, each reported check_budget_exceeded. The reusable declares
+      # 1 to 900 (OMN-21166) and a timed-out check is EVIDENCE_UNVERIFIABLE,
+      # never passed, so a larger budget admits no evidence that the 30 s
+      # budget would have refused.
+      check-timeout-seconds: "300"
