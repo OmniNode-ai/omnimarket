@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_arm_assignment_compute
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: '1.0.0'
+description: >-
+  Pure seeded block assignment for orchestrator sessions, installed-hash-bound
+  package manifest evidence and the two-distinct-incident experiment kill switch.
+input_model:
+  name: ModelArmAssignmentRequest
+  module: omnimarket.nodes.node_compaction_arm_assignment_compute.models.model_arm_assignment
+output_model:
+  name: ModelArmAssignmentResult
+  module: omnimarket.nodes.node_compaction_arm_assignment_compute.models.model_arm_assignment
+handler:
+  module: omnimarket.nodes.node_compaction_arm_assignment_compute.handlers.handler_arm_assignment
+  class: HandlerCompactionArmAssignment
+  input_model: omnimarket.nodes.node_compaction_arm_assignment_compute.models.model_arm_assignment.ModelArmAssignmentRequest
+  output_model: omnimarket.nodes.node_compaction_arm_assignment_compute.models.model_arm_assignment.ModelArmAssignmentResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_compaction_arm_assignment_compute.handlers.handler_arm_assignment:HandlerCompactionArmAssignment
+  handlers:
+    - operation: assign_compaction_arms
+      handler:
+        name: HandlerCompactionArmAssignment
+        module: omnimarket.nodes.node_compaction_arm_assignment_compute.handlers.handler_arm_assignment
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+terminal_event: onex.evt.omnimarket.compaction-arms-assigned.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.compaction-arms-assign.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.compaction-arms-assign.v1]
+  publish_topics: [onex.evt.omnimarket.compaction-arms-assigned.v1]
+externally_consumed_topics: [onex.evt.omnimarket.compaction-arms-assigned.v1]
+experiment_policy:
+  eligible_role: orchestrator
+  projection_order: [event_time, event_id]
+  block_size: 2
+  block_hash: sha256_compact_json_seed_experiment_block_first_byte_low_bit
+  incident_threshold: 2
+  incident_dedup_key: [experiment_id, session_id, boundary_uuid, item_key]
+  unreadable_on_boundary_hold_fraction: '0.10'
+  missing_package_evidence: UNAVAILABLE
+  missing_package_hold_reason: NO_PACKAGE_EVIDENCE
+evidence_sources:
+  sessions: hook_event_projection
+  installed_package: compaction_receipts_projection
+  rendered_stamps: pack_build_manifest
+  package_join: [package_id, installed_messages_hash]
+effect_intents:
+  markers: upsert_first_hook_event_by_event_id
+  ledger_rows: append_once_by_experiment_id
+  binding_arm: assignments.arm
+metadata:
+  transport_type: event_bus
