@@ -97,3 +97,22 @@ dod_evidence:
       - check_type: command
         check_value: grep -F 'def settle_guard_refusals' src/omnimarket/handlers/bus_binding/guard_refusal.py
         cwd: .
+  - id: dod-omn21959-ac3-settle-wired-outage-replay
+    description: AC3 replays the three recorded outage rows through open_bound_bus and reads the exception queue history. A healthy durable bind with an empty outbox resolves each row exactly once even without an open recovery episode; an unavailable bus or queued append leaves the outage open, and other lanes and classes remain open. The merge base has no settle node or wired replay test.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_settle_effect/test_bus_binding_settle_wired_replay.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21959-deploy-probe-settle-wiring
+    description: 'Deploy probe: read the bus selector and settle handler served at the checked-out commit and require the healthy-bind settlement call and the actor invocation. Hosted runners can read these public sources without lab access. The merge base lacks both the settlement call and the handler. The bound replay check above exercises the behavior; this probe reads published source, not a running deployment.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'curl --fail --silent --show-error --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/bus_binding/select.py" | grep -F "settled = settle(directory, decision)"'
+        cwd: .
+      - check_type: command
+        check_value: bash -o pipefail -c 'curl --fail --silent --show-error --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_bus_binding_settle_effect/handlers/handler_bus_binding_settle.py" | grep -F "settle_case(request.state_dir, row, self._ports, now=request.observed_at)"'
+        cwd: .
