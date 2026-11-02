@@ -29,6 +29,80 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay_packaged_seed.py tests/unit/handlers/test_lab_fill_priority_overlay.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21922-deploy-packaged-wheel
+  description: A disposable Python 3.13 container reads the built wheel with the locked dependencies and no network or source checkout. It checks both seed hashes, loads the priority declaration with its placeholder weights and empty lists, refuses the absent mode, and refuses an explicit empty overlay root. Hosted runners can run this package smoke without a lab route or production credentials.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      export PYTHONDONTWRITEBYTECODE=1
+      dependencies="$(uv run --frozen --python 3.13 python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+      wheel_dir="$(mktemp -d)"
+      trap 'rm -rf "$wheel_dir"' EXIT
+      uv build --wheel --out-dir "$wheel_dir";
+      docker run --rm -i --network none --user "$(id -u):$(id -g)" \
+        --tmpfs /tmp/overlay-runtime:rw,mode=1777 \
+        --mount "type=bind,source=$dependencies,target=/tmp/overlay-runtime/lib/python3.13/site-packages,readonly" \
+        --mount "type=bind,source=$wheel_dir,target=/wheels,readonly" \
+        --workdir /tmp --env PYTHONDONTWRITEBYTECODE=1 \
+        python:3.13-slim@sha256:2d44738ebf4ce5f63b9d9ea871e9c7cfdc0426f7b0c97cac915fd88ded1d86bb \
+        sh -ec 'python -m venv --without-pip /tmp/overlay-runtime
+          python -c "from pathlib import Path; import zipfile; wheels = list(Path(\"/wheels\").glob(\"*.whl\")); assert len(wheels) == 1; zipfile.ZipFile(wheels[0]).extractall(\"/tmp/overlay-runtime/package\")"
+          export PYTHONPATH=/tmp/overlay-runtime/package
+          exec /tmp/overlay-runtime/bin/python -' <<'PY'
+      import hashlib
+      import json
+      import tempfile
+      from datetime import date
+      from fractions import Fraction
+      from pathlib import Path
+      import yaml
+      from omnimarket.handlers.lab_fill_priority_overlay import (
+          PACKAGED_OVERLAY_ROOT, load_priority_declaration, load_rank_config,
+      )
+      from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV, NodeOverlayError
+      from omnimarket.models.lab_fill.model_lab_fill_priority import ModelLabFillRankConfig
+
+      assert PACKAGED_OVERLAY_ROOT.is_relative_to(Path('/tmp/overlay-runtime/package'))
+      expected = {
+          'lab_fill_priority': 'b8dcc93cb0891f6558a58f2b62ff53d81a5ded3640c7133bb967c1c698b7ec28',
+          'lab_fill_rank': '0690791dcee7c5de4a1055e228c4b253e6b29b993199337b772b713de20625bd',
+      }
+      readback = {}
+      for name, digest in expected.items():
+          path = PACKAGED_OVERLAY_ROOT / name / 'overlay.yaml'
+          actual = hashlib.sha256(path.read_bytes()).hexdigest()
+          assert actual == digest, (name, actual)
+          readback[name] = {'path': str(path), 'sha256': actual}
+      rank_seed = yaml.safe_load((PACKAGED_OVERLAY_ROOT / 'lab_fill_rank/overlay.yaml').read_text())
+      assert 'mode' not in rank_seed
+      for env in ({}, {OVERLAY_ROOTS_ENV: '  '}):
+          try:
+              load_rank_config(env)
+          except NodeOverlayError as exc:
+              assert "fields ['mode']" in str(exc), str(exc)
+          else:
+              raise AssertionError('packaged rank seed supplied a default mode')
+      rank = ModelLabFillRankConfig.model_validate({**rank_seed, 'mode': 'shadow'})
+      declaration = load_priority_declaration(date(2026, 11, 2), {}, rank)
+      weights = declaration.weights
+      assert (weights.unblock, weights.beta_gate, weights.throughput, weights.priority_age, weights.rework) == (
+          Fraction(3, 10), Fraction(1, 4), Fraction(1, 5), Fraction(3, 20), Fraction(1, 5),
+      )
+      assert declaration.boost == () and declaration.exclude == ()
+      with tempfile.TemporaryDirectory() as empty:
+          try:
+              load_priority_declaration(date(2026, 11, 2), {OVERLAY_ROOTS_ENV: empty}, rank)
+          except NodeOverlayError as exc:
+              assert 'lab_fill_priority.weights' in str(exc), str(exc)
+          else:
+              raise AssertionError('explicit empty root fell back to the packaged seed')
+      print(json.dumps({'seeds': readback, 'mode': 'unset/refused', 'priority': 'loaded', 'explicit_empty_root': 'refused'}, sort_keys=True))
+      PY
+    cwd: .
 - id: dod-omn21922-integration-proof
   description: The pushed head ran the loader tests on a lab host in a fresh environment with ONEX_SKILL_OVERLAY_ROOTS removed, so the packaged seeds are the only overlays on the path, and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
