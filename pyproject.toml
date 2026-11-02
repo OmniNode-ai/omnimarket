@@ -412,6 +412,7 @@ node_compaction_probe_run_effect = "omnimarket.nodes.node_compaction_probe_run_e
 node_session_compaction_measurement_compute = "omnimarket.nodes.node_session_compaction_measurement_compute"
 node_compaction_live_signal_compute = "omnimarket.nodes.node_compaction_live_signal_compute"
 node_compaction_action_score_compute = "omnimarket.nodes.node_compaction_action_score_compute"
+node_session_defect_count_compute = "omnimarket.nodes.node_session_defect_count_compute"
 node_compaction_score_compute = "omnimarket.nodes.node_compaction_score_compute"
 node_compaction_ground_truth_compute = "omnimarket.nodes.node_compaction_ground_truth_compute"
 node_compaction_cost_compute = "omnimarket.nodes.node_compaction_cost_compute"
