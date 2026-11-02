@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Standalone Service Redeploy Effect
+#
+# Redeploys ONE service of ONE standalone compose file through the deploy agent, by bus command,
+# without recreating anything else on the host. The compose files and services this route may
+# touch are declared below under standalone_targets, and the lanes it serves under allowed_lanes;
+# a request outside either is refused before anything is published. Every prod lane is refused
+# because prod is not in allowed_lanes.
+name: "node_standalone_service_redeploy_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Publishes the signed deploy-agent command that recreates one declared service of one declared
+  standalone compose file. Refuses a lane outside allowed_lanes, a compose file outside
+  standalone_targets and a service not declared for that compose file. Publishes and returns;
+  the deploy agent runs the recreate and answers on its own topic.
+input_model:
+  name: "ModelStandaloneServiceRedeployRequest"
+  module: "omnimarket.nodes.node_standalone_service_redeploy_effect.models.model_standalone_service_redeploy"
+  description: "Correlation id, requester, lane, compose file, service and git ref."
+output_model:
+  name: "ModelStandaloneServiceRedeployResult"
+  module: "omnimarket.nodes.node_standalone_service_redeploy_effect.models.model_standalone_service_redeploy"
+  description: "Published to the deploy agent, or refused with a typed reason."
+handler:
+  module: "omnimarket.nodes.node_standalone_service_redeploy_effect.handlers.handler_standalone_service_redeploy"
+  class: "HandlerStandaloneServiceRedeploy"
+  input_model: "omnimarket.nodes.node_standalone_service_redeploy_effect.models.model_standalone_service_redeploy.ModelStandaloneServiceRedeployRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_standalone_service_redeploy_effect.handlers.handler_standalone_service_redeploy:HandlerStandaloneServiceRedeploy"
+  handlers:
+    - operation: "redeploy_standalone_service"
+      handler:
+        name: "HandlerStandaloneServiceRedeploy"
+        module: "omnimarket.nodes.node_standalone_service_redeploy_effect.handlers.handler_standalone_service_redeploy"
+      input_model: "omnimarket.nodes.node_standalone_service_redeploy_effect.models.model_standalone_service_redeploy.ModelStandaloneServiceRedeployRequest"
+      output_model: "omnimarket.nodes.node_standalone_service_redeploy_effect.models.model_standalone_service_redeploy.ModelStandaloneServiceRedeployResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+allowed_lanes:
+  - dev
+standalone_targets:
+  - compose_file: docker/docker-compose.factory-floor-web.yml
+    service: factory-floor-web
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.standalone-service-redeploy-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.standalone-service-redeploy-published.v1"
+    failure: "onex.evt.omnimarket.standalone-service-redeploy-refused.v1"
+event_bus:
+  publish_topics:
+    - onex.cmd.deploy.standalone-service-recreate-requested.v1
+published_events:
+  - event_type: ModelStandaloneServiceRedeployResult
+    topic: onex.evt.omnimarket.standalone-service-redeploy-published.v1
+    description: "Published to the deploy agent."
+externally_consumed_topics:
+  - onex.cmd.deploy.standalone-service-recreate-requested.v1
+  - onex.evt.omnimarket.standalone-service-redeploy-published.v1
+  - onex.evt.omnimarket.standalone-service-redeploy-refused.v1
+metadata:
+  transport_type: kafka
+  description: "Deploy-agent command: recreate one declared standalone compose service"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "deploy"
