@@ -87,7 +87,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     lane_ready: bool = False
     lane_not_ready_reason: str | None = None
     push: bool = True
-    cap: int | None = Field(default=None, ge=1)
+    # 0 places no lane or landing worker on the host (OMN-22015); a lab-run unit is judged by slots, not this cap.
+    cap: int | None = Field(default=None, ge=0)
+    # The units the host's lab-work serve process runs at once (``serve --max-units``); omitted: the serve default.
+    unit_slots: int | None = Field(default=None, ge=1, le=64)
     reserve: int | None = Field(default=None, ge=0)
     unit_cores: float | None = Field(default=None, gt=0)
     penalty: float = Field(default=0.0, ge=0)

@@ -49,6 +49,7 @@ descriptor:
   side_effects:
   - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
   - reads the rolling ledger through the plugin's reader
+  - reads the trace count and newest span time from the Phoenix GraphQL API at the URL the phoenix_url_env variable names (a read that fails is recorded as unread)
   - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
   - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
   - writes the factory floor JSON to runtime.output.relpath under the registry home
@@ -62,6 +63,8 @@ runtime:
   plans_kb_env: ONEX_PLANS_KB_PATH
   overlay_file_env: ONEX_FACTORY_FLOOR_OVERLAY
   plugin_root_env: CLAUDE_PLUGIN_ROOT
+  # The Phoenix base URL the floor reads its trace count and newest span age from; unset draws the reading unread.
+  phoenix_url_env: ONEX_FACTORY_FLOOR_PHOENIX_URL
   ledger_window_days: 14
   # The reader cuts each row's text at this many characters (its own default drops the sentence a CLAIM carries).
   ledger_cut_chars: 1200
@@ -73,6 +76,14 @@ runtime:
   # one of these keys (text before the first section heading), never from every mention in its prose.
   plan_header_keys: [ticket, tickets, epic]
   plans_relpath: beta/plans
+  # A plan with no manifest and no plans-today table of parts draws its tasks from its own text. Each pattern reads one
+  # task: its named group "id" is the task id, "title" its title, "rest" the rest of its lead line. The first pattern
+  # that finds a task in the plan is the plan's form; the others are not read. Bold-led task paragraphs
+  # (``**T1. Title.** ...``, ``1. **S1, now:** ...``) come first; markdown task headings of level 2 to 4
+  # (``### T1. Title``, ``## Task W2.3: Title``) are read for a plan that has none.
+  heading_task_patterns:
+    - '^(?:\d+\.\s+|[-*]\s+)?\*\*(?P<id>[A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?(?:\s+(?P<title>.+?))?\*\*(?P<rest>.*)$'
+    - '^#{2,4}\s+(?:Task\s+)?(?P<id>[A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?\s+(?P<title>.+?)\s*$'
   sources:
     watcher_relpath: .claude_scratch/pr-watcher/state.json
     plans_today_dir: .claude_scratch/plans-today

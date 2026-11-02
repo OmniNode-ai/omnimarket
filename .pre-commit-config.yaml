@@ -1951,6 +1951,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: pr-handoff-dod-receipt-regression
+        name: PR handoff requires a passing DoD receipt at the head (OMN-21285)
+        language: system
+        entry: uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" --no-cov -p no:randomly -n 0
+        files: ^(src/omnimarket/nodes/node_pr_handoff_dod_receipt_effect/.*|tests/test_golden_chain_pr_handoff_dod_receipt_effect\.py|tests/fixtures/pr_handoff_dod_receipt/.*|contracts/OMN-21285\.yaml|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+
       - id: ticket-contract-prerequisite
         name: Ticket contract at pushed head (OMN-20864)
         language: system
@@ -2650,6 +2659,16 @@ repos:
         always_run: true
         verbose: true
         stages: [pre-push]
+
+  - repo: local
+    hooks:
+      - id: compaction-arm-assignment
+        name: Compaction arm assignment and native-binding controls
+        entry: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_compaction_arm_assignment_compute/|src/omnimarket/models/claude_code_binding/|src/omnimarket/nodes/node_claude_code_binding_render_compute/|src/omnimarket/nodes/node_claude_code_binding_install_effect/|src/omnimarket/nodes/node_claude_code_hook_adapter_effect/|tests/nodes/node_compaction_arm_assignment_compute/|contracts/OMN-22043\.yaml)
+        stages: [pre-commit]
 
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
