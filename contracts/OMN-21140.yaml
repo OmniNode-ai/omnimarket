@@ -64,12 +64,12 @@ dod_evidence:
         check_value: "bash -o pipefail -c '! git diff origin/dev --name-only | grep -q omnibase_infra'"
     binds_ac: ["AC5"]
   - id: "dod-omn21140-deploy-container-verify"
-    description: "Hosted probe: uv run --frozen --no-dev replays a recorded call whose answer sits behind a think block and a fence, and reports a hit with no parse failure."
+    description: "Hosted deployment smoke: install the frozen package as a wheel in a disposable Python container, replay an answer behind a think block and a fence, and require a hit with no parse failure. The checkout is mounted read-only; the container needs no lab endpoint."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |-
-          uv run --frozen --no-dev python -c '
+          docker run --rm --mount "type=bind,src=$(pwd),dst=/workspace,readonly" --workdir /workspace --env PYTHONDONTWRITEBYTECODE=1 --env UV_PROJECT_ENVIRONMENT=/tmp/rung-venv --env UV_CACHE_DIR=/tmp/rung-cache ghcr.io/astral-sh/uv:python3.12-bookworm uv run --frozen --no-dev --no-editable python -c '
           import json
           from omnimarket.models.extraction_rung import ModelChunkDerivationParams as D, ModelRungHarnessRequest as Q
           from omnimarket.nodes.node_extraction_rung_harness_compute.handlers.handler_extraction_rung_harness import HandlerExtractionRungHarness as H, record_call
