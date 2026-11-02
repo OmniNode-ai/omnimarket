@@ -217,3 +217,48 @@ def test_a_stop_on_a_ticket_whose_parts_are_all_done_is_over() -> None:
     line = result.lines[0]
     assert line.andon.causes == ()
     assert line.status_pill == "done"
+
+
+def handed_off(*prs: str) -> Any:
+    return row(
+        "TERMINAL",
+        60,
+        "one-rt-t10-delegation-1101",
+        outcome="handed-off",
+        tickets=(EPIC,),
+        prs=prs,
+    )
+
+
+def test_a_hand_off_is_active_until_its_pull_request_merges_never_done() -> None:
+    def state(**kwargs: Any) -> tuple[str, str]:
+        result = compute_factory_floor(
+            request(
+                plans=(plan_of(scoped("T10"), scoped("T1")),),
+                ledger=(handed_off("omnimarket#4799"),),
+                **kwargs,
+            )
+        )
+        item = result.lines[0].stations[0].items[0]
+        return item.state, item.note
+
+    waiting = (
+        "active",
+        "handed to landing by one-rt-t10-delegation-1101: omnimarket#4799",
+    )
+    assert state(prs=(pr("omnimarket#4799", "OPEN"),)) == waiting
+    assert state() == waiting
+    merged = state(
+        prs=(pr("omnimarket#4799", "MERGED"),), merges=(merge("omnimarket#4799", 5),)
+    )
+    assert merged == ("done", "PRs merged")
+
+
+def test_a_hand_off_adds_nothing_to_the_percent_built() -> None:
+    result = compute_factory_floor(
+        request(
+            plans=(plan_of(scoped("T10"), scoped("T15")),),
+            ledger=(handed_off("omnimarket#4799"),),
+        )
+    )
+    assert result.lines[0].percent_built == 0
