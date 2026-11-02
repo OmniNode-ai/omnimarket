@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic example of a host profiles file (model: omnimarket.models.model_host_profile). All values are
+# made up; the deployment supplies its own file with its hosts and passes it with --profiles. A host is
+# declared once: its clones, per-clone venvs, prepush rows, prepush workroot, liveness rows and systemd
+# units derive from its entry, and the host drift check compares the host to it.
+#
+# A clone with `lab_run_row: false` is not in the pool host table's clones column and names its reader.
+# host-b has no `prepush` block: its core count was not measured yet, so no prepush row derives for it.
+hosts:
+  host-a:
+    registry_root: /srv/registry
+    python: '3.12'
+    git_remote_template: https://example.invalid/{repo}.git
+    ssh_target: host-a
+    clones:
+    - repo: Example-Org/core
+      ref: main
+      path: $OMNI_HOME/core
+      venv: true
+      lab_run_row: false
+      reader: the prepush table row for core runs its heavy leg from a core clone and venv
+    - repo: Example-Org/market
+      ref: dev
+      path: $OMNI_HOME/market
+      venv: true
+    - repo: Example-Org/infra
+      ref: dev
+      path: $OMNI_HOME/infra
+    - repo: Example-Org/graph
+      ref: dev
+      path: $OMNI_HOME/graph
+      lab_run_row: false
+      reader: the contract graph pre-commit hook reads it through its checkout root
+    - repo: Example-Org/shared_docs
+      ref: main
+      path: /srv/shared/docs
+    systemd_units:
+    - onex-serve.service
+    - onex-reconcile.service
+    prepush:
+      role: capacity
+      hostname: host-a-name
+      ssh_target: host-a
+      cores: 16
+      uv_abs_path: /usr/local/bin/uv
+      uv_min_version: 0.11.0
+      workroot: /srv/prepush
+      slot_mode: lockdir
+      mode: authorizing
+      rows_target: $OMNI_HOME/.state/prepush_hosts
+      tables:
+      - file: prepush_hosts.core.tsv
+        slots: 4
+      - file: prepush_hosts.infra.tsv
+        slots: 2
+        extra_columns: [allowed, default]
+      - file: prepush_hosts.market.tsv
+        slots: 2
+        extra_columns: [allowed, default]
+    liveness:
+      rows_target: $OMNI_HOME/.state/liveness_rows.yaml
+      units:
+      - name: reconcile
+        owner_repo: market
+        trigger_kind: systemd-timer
+        native_id: onex-reconcile.timer
+        expected_interval_seconds: 3600
+        max_runtime_seconds: 4200
+        alarm_deadline_seconds: 7620
+        evidence:
+          source: log_line
+          locator: $OMNI_HOME/.state/reconcile.out.log
+          completion_record: 'one JSON line with exit_code'
+        real_work: surfaces reconciled
+        state: active
+  host-b:
+    registry_root: /srv/registry
+    python: '3.12'
+    git_remote_template: https://example.invalid/{repo}.git
+    ssh_target: host-b
+    clones:
+    - repo: Example-Org/core
+      ref: main
+      path: $OMNI_HOME/core
+      venv: true
+      lab_run_row: false
+      reader: the prepush table row for core runs its heavy leg from a core clone and venv
+    - repo: Example-Org/market
+      ref: dev
+      path: $OMNI_HOME/market
+      venv: true
+    systemd_units:
+    - onex-reconcile.service
+    liveness:
+      rows_target: $OMNI_HOME/.state/liveness_rows.yaml
+      units:
+      - name: reconcile
+        owner_repo: market
+        trigger_kind: systemd-timer
+        native_id: onex-reconcile.timer
+        expected_interval_seconds: 3600
+        max_runtime_seconds: 4200
+        alarm_deadline_seconds: 7620
+        evidence:
+          source: log_line
+          locator: $OMNI_HOME/.state/reconcile.out.log
+          completion_record: 'one JSON line with exit_code'
+        real_work: surfaces reconciled
+        state: active
