@@ -233,6 +233,7 @@ class _Tick:
     close_requested: set[str]
     causes: dict[str, ModelLandingCauseRecord] = field(default_factory=dict)
     hold: set[str] = field(default_factory=set)
+    hold_released: set[str] = field(default_factory=set)
     formed: set[str] = field(default_factory=set)
     suppressed: set[str] = field(default_factory=set)
     elig_reruns: list[ModelLandingEligibilityRerun] = field(default_factory=list)
@@ -272,8 +273,13 @@ class _Tick:
         facts = self.prs.get(pr)
         return blocker_fingerprint(facts.blocker_refs) if facts is not None else ""
 
-    def held(self, repo: str) -> bool:
-        """Under a fixer HOLD: no dispatch, and every live lease is revoked."""
+    def held(self, repo: str, pr: str | None = None) -> bool:
+        """Under a fixer HOLD: no dispatch, and every live lease is revoked.
+
+        A scoped RELEASE lifts the PR it names (``pr`` as ``repo#n``) and nothing else.
+        """
+        if pr is not None and pr in self.hold_released:
+            return False
         return FIXER_HOLD_ALL in self.hold or repo in self.hold
 
 
@@ -489,7 +495,7 @@ def _observe_lease(t: _Tick, lease: ModelLandingLease) -> None:
                 _escalate(t, pr)
         return
     if (
-        (repo_of(pr) in t.draining or t.held(repo_of(pr)))
+        (repo_of(pr) in t.draining or t.held(repo_of(pr), pr))
         and lease.result_recorded_at is None
         and not lease.revoked
     ):
@@ -662,7 +668,7 @@ def _try_dispatch(
     """Dispatch one worker, when the pool, the load and the engines allow (D5, P7)."""
     policy = t.facts.policy
     repo = repo_of(subject)
-    if repo in t.draining or t.held(repo) or subject in t.leases:
+    if repo in t.draining or t.held(repo, subject) or subject in t.leases:
         return False
     if t.facts.load1 > policy.load_pause_threshold:
         return False
@@ -2032,6 +2038,7 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
         close_requested=set(state.close_requested),
         causes={c.key: c for c in state.causes},
         hold=set(facts.fixer_hold),
+        hold_released=set(facts.fixer_hold_released_prs),
     )
     _effective_suspensions(t)
     holder = t.prs.get(t.token) if t.token is not None else None
