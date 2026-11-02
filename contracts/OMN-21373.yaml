@@ -367,3 +367,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/ledger_row_grammar/test_ledger_claim_contract_omn20029.py tests/handlers/ledger_row_grammar/test_ledger_grammar_prompt_link_omn18531.py tests/handlers/ledger_row_grammar/test_ledger_hold_grammar.py tests/handlers/ledger_row_grammar/test_ledger_lab_agent_declared_cell_omn20257.py tests/handlers/ledger_row_grammar/test_ledger_ruling_link_omn17427.py tests/handlers/ledger_row_grammar/test_ledger_scoped_release.py tests/handlers/ledger_row_grammar/test_ledger_terminal_delegation_cell_omn17427.py tests/handlers/ledger_row_grammar/test_ledger_terminal_undisposed_receipt_omn20015.py tests/handlers/ledger_row_grammar/test_ledger_worktree_cell.py tests/nodes/node_ledger_row_grammar_compute/test_golden_chain_ledger_row_grammar_compute.py -q -n 0 --no-cov -p no:randomly"
     binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac1-claim-index-node"
+    description: "AC1 contribution only: the claim index over the rolling work ledger has a public home in omnimarket as the shared handler claim_index and node_claim_index_compute, so its copy can leave the private data repository. The ported tests run on synthetic ledgers and the node refuses with claim_index.ledger_path named when no overlay supplies the ledger. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/claim_index/test_claim_index.py tests/nodes/node_claim_index_compute/test_golden_chain_claim_index_compute.py -q --no-cov -n 0"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-claim-index-entry-point"
+    description: "AC2 contribution only: node_claim_index_compute is a registered onex.nodes entry point, which the callers that units run can be repointed to in a later slice. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claim_index_compute/test_golden_chain_claim_index_compute.py -q --no-cov -n 0 -k 'contract_declares or golden_chain_over_the_bus'"
+    binds_ac: ["AC2"]

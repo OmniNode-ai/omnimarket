@@ -1269,6 +1269,27 @@ database_objects:
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19991: cursor for the local_alerts rows, one per (tenant, code,
+  # subject). Declared ahead of the node's migrations for the same reason as
+  # local_environment's: omnibase_infra vendors them first, and its SQL gate
+  # needs every sequence a vendored GRANT names to have one owner here.
+  - name: local_alerts_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19986: cursor for the local identity rows. Declared ahead of the
+  # node's migrations: omnibase_infra vendors them first, and its SQL gate
+  # needs every sequence a vendored GRANT names to have one owner here.
+  - name: local_identity_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-18903: the sequence behind ci_attempt_outcome.projection_cursor.
   # Declared for the same reason as the one above -- the SQL gate treats a
   # sequence named by a GRANT as an application target in its own right and
