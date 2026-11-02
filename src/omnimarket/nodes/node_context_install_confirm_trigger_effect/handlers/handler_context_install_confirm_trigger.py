@@ -29,6 +29,7 @@ class HandlerContextInstallConfirmTrigger:
     def handle(
         self,
         applied_event: ModelSessionContentAppliedEvent,
+        *,
         reader: ProtocolSessionCompactSource,
     ) -> ModelInstallConfirmTriggerResult:
         if applied_event.rows_upserted < 1:
