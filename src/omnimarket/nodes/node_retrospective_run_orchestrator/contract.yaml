@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - node_retrospective_run_orchestrator
+#
+# Scaffolded from the weekly_retrospective design by node_contract_seams_orchestrator and
+# finished into the canonical node shape. The handler is a typed pass-through: it holds no
+# domain logic until its wave fills it.
+name: node_retrospective_run_orchestrator
+contract_name: node_retrospective_run_orchestrator
+node_name: node_retrospective_run_orchestrator
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: orchestrator
+lifecycle: experimental
+description: 'Open one retrospective run for a review week and ask for its evidence. Scaffold from the
+  weekly_retrospective design: a typed pass-through, no logic.'
+handler:
+  module: omnimarket.nodes.node_retrospective_run_orchestrator.handlers.handler_retrospective_run_orchestrator
+  class: HandlerRetrospectiveRunOrchestrator
+  input_model: omnimarket.nodes.node_retrospective_run_orchestrator.models.model_retrospective_run_orchestrator_request.ModelRetrospectiveRunOrchestratorRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: retrospective_run
+    topic: onex.cmd.omnimarket.retrospective-run-requested.v1
+    handler:
+      name: HandlerRetrospectiveRunOrchestrator
+      module: omnimarket.nodes.node_retrospective_run_orchestrator.handlers.handler_retrospective_run_orchestrator
+    input_model: omnimarket.nodes.node_retrospective_run_orchestrator.models.model_retrospective_run_orchestrator_request.ModelRetrospectiveRunOrchestratorRequest
+    output_model: omnimarket.nodes.node_retrospective_run_orchestrator.models.model_retrospective_run_orchestrator_result.ModelRetrospectiveRunOrchestratorResult
+input_model:
+  name: ModelRetrospectiveRunOrchestratorRequest
+  module: omnimarket.nodes.node_retrospective_run_orchestrator.models.model_retrospective_run_orchestrator_request
+  description: The key fields of the crossing this node consumes.
+output_model:
+  name: ModelRetrospectiveRunOrchestratorResult
+  module: omnimarket.nodes.node_retrospective_run_orchestrator.models.model_retrospective_run_orchestrator_result
+  description: The key fields of the crossing this node publishes; a field this node does not hold yet
+    is unset.
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+  - effects
+terminal_event: onex.cmd.omnimarket.retrospective-collect-requested.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.retrospective-run-requested.v1
+  terminal_events:
+    success: onex.cmd.omnimarket.retrospective-collect-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.retrospective-run-requested.v1
+  publish_topics:
+  - onex.cmd.omnimarket.retrospective-collect-requested.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.retrospective-run-requested.v1
+  producer: the caller that opens a weekly retrospective run
+seams:
+- id: retrospective.collect_requested
+  seam: retrospective.collect_requested
+  role: producer
+  topic: onex.cmd.omnimarket.retrospective-collect-requested.v1
+  envelope_model: ModelRetrospectiveCollectRequest
+  envelope_version: v1
+  key_fields:
+  - name: run_id
+    field_type: str
+  - name: correlation_id
+    field_type: str
+  delivery_semantics: at_least_once
+metadata:
+  design_id: weekly_retrospective
+  generated_by: node_contract_seams_orchestrator
+  transport_type: kafka

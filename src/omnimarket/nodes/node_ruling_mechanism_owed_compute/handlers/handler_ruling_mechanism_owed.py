@@ -20,9 +20,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from omnimarket.models.model_ruling_mechanism_owed_request import (
+    ModelRulingMechanismOwedRequest,
+)
 from omnimarket.nodes.node_ruling_mechanism_owed_compute.models.model_ruling_mechanism_owed import (
     ModelOwedRow,
-    ModelRulingMechanismOwedRequest,
     ModelRulingMechanismOwedResult,
 )
 
