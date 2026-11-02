@@ -117,6 +117,7 @@ client_bindings:
     # the render refuses any session.compact row whose trigger is not "manual".
     bindings:
       - name: compaction
+        arm: 'on'
         kind: replacing
         hook_event: session.compact
         matcher_tool: manual
