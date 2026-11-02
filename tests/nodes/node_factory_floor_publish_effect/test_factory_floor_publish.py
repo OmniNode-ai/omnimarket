@@ -88,6 +88,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         serve_url="http://example.invalid:8088/",
         bus_lane="lane-x",
         history_root=str(tmp_path / "kept"),
+        owner_login="owner@example.invalid",
     )
 
 
@@ -146,6 +147,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
             remote_dir="/srv/site",
             serve_url="u",
             history_root="/srv/site",
+            owner_login="owner@example.invalid",
         )
 
 
@@ -157,6 +159,7 @@ def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
             remote_dir=path,
             serve_url="u",
             history_root="/srv/site",
+            owner_login="owner@example.invalid",
         )
 
 
@@ -1071,7 +1074,7 @@ def _shell_out(result: dict[str, object]) -> dict[str, str]:
     return cast("dict[str, str]", result["out"])
 
 
-def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first() -> (
+def test_page_tabs_the_site_is_one_page_with_four_tabs_and_the_dashboard_first() -> (
     None
 ):
     labels = re.findall(r'\{id: "(\w+)", label: "([^"]+)"', SHELL)
@@ -1080,18 +1083,20 @@ def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first()
         ("floor", "Factory floor"),
         ("process", "Process before and after"),
         ("map", "Decision map"),
-        ("quality", "Decision quality"),
     ]
-    for pane in ("dashboard", "floor", "process", "map", "quality"):
+    for pane in ("dashboard", "floor", "process", "map"):
         assert f'id="pane-{pane}"' in SHELL
+    assert "pane-quality" not in SHELL
     assert 'role="tablist"' in SHELL
     for page in (
         'page: "floor/?embed=1"',
         'page: "reports/process-health/?embed=1"',
         'page: "reports/decision-map/?embed=1"',
-        'page: "reports/decision-quality/?embed=1"',
     ):
         assert page in SHELL
+    assert "decision-quality" not in SHELL
+    assert "decision_quality" not in SHELL
+    assert "Decision quality" not in SHELL
 
 
 def test_page_tabs_open_the_dashboard_with_no_hash_and_no_remembered_tab() -> None:
