@@ -1,0 +1,1 @@
+{"stock": {"session_id": "s", "boundary": {"uuid": "b", "preTokens": 1000, "postTokens": 100}, "summary_text": "abcdefgh", "turns": [{"index": 0, "tool_calls": [{"tool_name": "Read", "target": "docs/tracking/ROLLING_WORK_LEDGER.md", "result_input_tokens": 50}]}]}}
