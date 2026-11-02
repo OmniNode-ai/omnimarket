@@ -62,6 +62,18 @@ def test_caller_workflow_shape() -> None:
     assert "verifier-version" not in job["with"], (
         "verifier-version is a warned fallback; the caller passes verifier-tag only"
     )
+    budget = job["with"]["check-timeout-seconds"]
+    assert isinstance(budget, str), (
+        "caller must quote check-timeout-seconds, which the reusable types as a string"
+    )
+    assert re.fullmatch(r"[1-9][0-9]{0,2}", budget), (
+        "caller must pass check-timeout-seconds as a whole number of seconds"
+    )
+    assert 1 <= int(budget) <= 900, (
+        "check-timeout-seconds must be within the reusable 1 to 900 range "
+        "(OMN-21166); empty or absent leaves each check on the 30 s default that "
+        "failed five dev PRs with check_budget_exceeded (OMN-21977)"
+    )
     for key in ("steps", "secrets", "if", "name", "permissions"):
         assert key not in job, f"caller job must not declare {key}"
     assert "secrets: inherit" not in text, "caller must not inherit secrets"
