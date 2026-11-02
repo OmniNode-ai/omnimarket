@@ -102,6 +102,16 @@ requirements:
         statement: "AC35: read through the container from files shaped like the lab's, the recorded day counts match the hand count -- falsifier: uv run pytest tests/nodes/node_merged_running_count_effect -q"
       - id: "AC36"
         statement: "AC36: the focused suites pass and mypy --strict is clean on both nodes -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q && uv run mypy src/omnimarket/nodes/node_merged_running_count_compute src/omnimarket/nodes/node_merged_running_count_effect --strict"
+  - id: "req-omn21733-view-tokens-s1"
+    statement: |-
+      The board's state colours come from the vendored OmniUI theme sets: the page's floor, panel, ink, muted, rule, ok, warn and stop variables alias OmniUI variables, data-theme selects the set through data-onex-theme, and the vendored theme CSS is pinned by sha256.
+    acceptance:
+      - id: "AC23"
+        statement: "AC23: --floor, --panel, --ink, --muted, --rule, --ok, --warn and --stop resolve from the vendored OmniUI theme in both themes; changing one status token in a copy of the CSS changes the stop colour, and removing the alias makes the assertion fail -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'resolve or changing or removing or every_theme'"
+      - id: "AC24"
+        statement: "AC24: the vendored OmniUI theme CSS is pinned and a pin test fails when a vendored file's sha256 differs from the pin -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k pin"
+      - id: "AC25"
+        statement: "AC25: the publish copies the vendored theme files beside the page, ahead of it, under the names the contract declares -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'declared_theme or links_exactly'"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -389,3 +399,33 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merged_running_count_compute/handlers/handler_merged_running_count.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerMergedRunningCount:'"
+  - id: "dod-omn21733-ac23"
+    description: "AC23 the state colours resolve from the vendored OmniUI theme in both themes."
+    source: "manual"
+    binds_ac: ["AC23"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'resolve or changing or removing or every_theme'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac24"
+    description: "AC24 the vendored theme CSS matches its sha256 pin."
+    source: "manual"
+    binds_ac: ["AC24"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k pin"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac25"
+    description: "AC25 the publish copies the theme files beside the page under the declared names."
+    source: "manual"
+    binds_ac: ["AC25"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'declared_theme or links_exactly'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-view-tokens-s1-deploy"
+    description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires the theme bridge script, which is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^<script id=\"theme-bridge\">'"
