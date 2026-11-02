@@ -57,4 +57,4 @@ descriptor:
   timeout_ms: 600000
   runtime_profiles: [effects]
 metadata:
-  transport_type: local
+  transport_type: kafka
