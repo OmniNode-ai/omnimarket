@@ -66,6 +66,15 @@ dod_evidence:
           uv run --frozen python -m omnimarket.nodes.node_lane_census_effect --omni-home "$probe_dir" --snapshot "$probe_dir/snap.json" > /dev/null
           test -s "$probe_dir/snap.json"
           echo "lane census deploy probe: PASS"
+  - id: "dod-omn21946-deploy-probe-contract"
+    description: "Deploy probe. GitHub serves the node contract at the checked-out HEAD with the Docker Engine requirement and the systemd unit name declared; it fails at the merge base, which has no such node."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_census_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("requires_docker_engine: true", "unit_name: onex-lane-census")); print("lane census deploy probe: PASS")'
+        cwd: "."
   - id: "dod-omn21946-integration-proof"
     description: "The pushed head ran the census node's entry point on a lab host against a stand-in collector that writes its own snapshot and exits 0, and it exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
