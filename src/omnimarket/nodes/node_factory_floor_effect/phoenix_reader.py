@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+
+from omnibase_infra.errors import InfraUnavailableError
+from omnibase_infra.gateway.client.gateway_transport_httpx import GatewayTransportHttpx
 
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 
@@ -23,16 +25,17 @@ def _unread(now: datetime, detail: str) -> ModelFloorPhoenixTraces:
     return ModelFloorPhoenixTraces(state="unread", read_at=_stamp(now), detail=detail)
 
 
-def _post(url: str) -> bytes:
-    request = Request(
+async def _post(url: str) -> str:
+    """Read through the infrastructure transport, which owns the HTTP client lifecycle."""
+    transport = GatewayTransportHttpx(timeout_seconds=_TIMEOUT_SECONDS)
+    response = await transport.post_json(
         f"{url.rstrip('/')}/graphql",
-        data=json.dumps({"query": _QUERY}).encode("utf-8"),
+        body=json.dumps({"query": _QUERY}),
         headers={"Content-Type": "application/json"},
-        method="POST",
     )
-    with urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
-        body: bytes = response.read()
-    return body
+    if not 200 <= response.status < 300:
+        raise ValueError("the Phoenix HTTP response was not successful")
+    return await response.text()
 
 
 def load_phoenix_traces(url: str, now: datetime) -> ModelFloorPhoenixTraces | None:
@@ -46,14 +49,14 @@ def load_phoenix_traces(url: str, now: datetime) -> ModelFloorPhoenixTraces | No
     if not url.startswith(("http://", "https://")):
         return _unread(now, "the Phoenix URL is not http or https")
     try:
-        document = json.loads(_post(url))
+        document = json.loads(asyncio.run(_post(url)))
         edges = document["data"]["projects"]["edges"]
         nodes = [edge["node"] for edge in edges]
         count = sum(int(node["traceCount"]) for node in nodes)
         ends = [
             datetime.fromisoformat(node["endTime"]) for node in nodes if node["endTime"]
         ]
-    except (OSError, URLError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, InfraUnavailableError, ValueError, KeyError, TypeError) as exc:
         return _unread(now, f"the Phoenix read failed: {type(exc).__name__}")
     if not ends:
         return ModelFloorPhoenixTraces(

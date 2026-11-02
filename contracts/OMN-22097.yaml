@@ -36,6 +36,70 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_phoenix_reader.py -q -p no:randomly --no-cov"
         cwd: "."
     binds_ac: ["AC5"]
+  - id: "dod-omn22097-deploy-runtime"
+    description: "Hosted-runner runtime probe: read a synthetic Phoenix HTTP endpoint through the infrastructure transport, then dispatch the reading through node_factory_floor_compute on the in-memory runtime and assert the returned count and newest span age. The merge base lacks the reader and floor field."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          export PATH="$(uv run python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          probe_dir=$(mktemp -d)
+          trap 'rm -rf "$probe_dir"' EXIT
+          uv run python - "$probe_dir/request.json" <<'PY'
+          import json
+          import sys
+          import threading
+          from datetime import UTC, datetime
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from pathlib import Path
+          import yaml
+          from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import load_phoenix_traces
+
+          class Phoenix(BaseHTTPRequestHandler):
+              def do_POST(self):
+                  query = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                  assert self.path == '/graphql' and 'traceCount' in query['query']
+                  body = {'data': {'projects': {'edges': [{'node': {'name': 'probe', 'traceCount': 12, 'endTime': '2026-11-02T13:00:00Z'}}]}}}
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps(body).encode())
+
+              def log_message(self, *args):
+                  pass
+
+          server = HTTPServer(('127.0.0.1', 0), Phoenix)
+          thread = threading.Thread(target=server.serve_forever, daemon=True)
+          thread.start()
+          now = datetime(2026, 11, 2, 13, 1, 30, tzinfo=UTC)
+          try:
+              reading = load_phoenix_traces(f'http://127.0.0.1:{server.server_port}', now)
+              assert reading is not None and reading.state == 'read', reading
+              assert reading.trace_count == 12 and reading.newest_span_age_seconds == 90, reading
+          finally:
+              server.shutdown()
+              server.server_close()
+              thread.join()
+          contract = Path('src/omnimarket/nodes/node_factory_floor_compute/contract.yaml')
+          request = {'generated_at': now.isoformat(), 'config': yaml.safe_load(contract.read_text())['config'], 'plans': [], 'watcher': {'last_tick': now.isoformat()}, 'phoenix_traces': reading.model_dump()}
+          Path(sys.argv[1]).write_text(json.dumps(request))
+          PY
+          receipt=$(onex node node_factory_floor_compute --contract src/omnimarket/nodes/node_factory_floor_compute/contract.yaml --input "$probe_dir/request.json" --backend event_bus=inmemory --state-root "$probe_dir/runtime" --timeout 60 --output receipt)
+          printf '%s\n' "$receipt" > "$probe_dir/readback.json"
+          uv run python - "$probe_dir/readback.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt['status'] == 'success' and receipt['exit_code'] == 0, receipt
+          reading = receipt['result']['floor']['phoenix_traces']
+          assert reading['state'] == 'read' and reading['trace_count'] == 12, reading
+          assert reading['newest_span_at'] == '2026-11-02T13:00:00Z' and reading['newest_span_age_seconds'] == 90, reading
+          print(json.dumps({'status': receipt['status'], 'run_id': receipt['run_id'], 'phoenix_traces': reading}))
+          PY
+        cwd: "."
   - id: "dod-omn22097-integration-proof"
     description: "The pushed head ran the Phoenix reader, the floor compute and the floor effect suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
