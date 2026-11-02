@@ -1,0 +1,10 @@
+{
+  "call_id": "te3-local-rung-first-call",
+  "request_digest": "a8383a6405b12c3732f8d7778e8fe7e143d23a3a35173243f8de598a5653aa68",
+  "response_b64": "W3sia2luZCI6InJ1bGluZyIsInF1b3RlIjoiRG8gbm90IGRlcGxveS4iLCJldmVudF9pZCI6ImUxIiwicHJvbXB0X2lkIjoicDEiLCJjb3ZlcnNfc3RhcnQiOjAsImNvdmVyc19lbmQiOjE0fV0=",
+  "response_digest": "0399a079f9230ad26e9e5ed9a03b7883abc38f4d76056f02a9b229d42d04f9ff",
+  "served_model_id": "Qwen3.8-27B",
+  "expected_quotes": [
+    "Do not deploy."
+  ]
+}
