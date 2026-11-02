@@ -243,3 +243,39 @@ dod_evidence:
       - check_type: "command"
         check_value: |
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_consumer_group_guard_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "runtime_local_terminal_t[0-9]+_run_" > /dev/null'
+  - id: "dod-omn21288-reaper-integration-proof"
+    description: >-
+      Run the packaged guard on the lab runtime against the declared dev broker,
+      then classify a fresh authenticated group listing with the packaged reaper
+      rules. Require live Empty terminal and host-drift per-run families to be
+      reapable and persistent runtime instance groups to remain excluded. This
+      read-only proof fails with the old patterns and never invokes deletion.
+      Hosted runners cannot reach the broker; the local Done gate owns this check.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |
+          env PYTHONDONTWRITEBYTECODE=1 COMPOSE_PROJECT_NAME=landing-l22728-lab ONEX_LANE=omn21288-reaper-integration-proof uv run --frozen onex node node_consumer_group_guard_effect --input <(printf '%s' '{"bus_lane":"dev"}') --state-root "$(mktemp -d)" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" | uv run --frozen python -c '
+          import json
+          import re
+          import sys
+          from omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_group_reaper import contract_reap_rules, is_reapable, read_groups
+          from omnimarket.nodes.node_runtime_coverage_effect.handlers.handler_runtime_coverage import resolve_broker
+          receipt = json.load(sys.stdin)
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          census = receipt["result"]
+          assert census["status"] == "OK" and not census["error"], census
+          broker, _, config = resolve_broker("dev")
+          states = read_groups(config)
+          rules = contract_reap_rules()
+          empty = [name for name, state in states.items() if state == "EMPTY"]
+          terminal = [name for name in empty if ".runtime_local_terminal_t" in name]
+          drift = [name for name in empty if re.search(r"\.host_drift_fleet\.h[0-9]+\.[0-9a-f]{12}(?:\.|$)", name)]
+          persistent = [name for name in states if ".__i." in name]
+          assert terminal and drift and persistent, (len(terminal), len(drift), len(persistent))
+          assert all(is_reapable(name, rules) for name in terminal + drift), (terminal, drift)
+          assert all(not is_reapable(name, rules) for name in persistent), persistent
+          print(json.dumps({"run_id": receipt["run_id"], "broker": broker, "groups_total": len(states), "groups_empty": len(empty), "terminal_reapable": len(terminal), "drift_reapable": len(drift), "persistent_excluded": len(persistent), "groups_reaped": census["groups_reaped"]}))
+          '
+        cwd: "."
