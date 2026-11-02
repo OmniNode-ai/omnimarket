@@ -78,7 +78,7 @@ def _java() -> str:
     return found
 
 
-def _tlc(java: str, jar: Path, work: Path, name: str) -> None:
+def _tlc(java: str, jar: Path, work: Path, name: str) -> str:
     proc = subprocess.run(
         [
             java, "-XX:+UseParallelGC", f"-Xmx{os.environ.get('HEAP', '2g')}",
@@ -88,6 +88,7 @@ def _tlc(java: str, jar: Path, work: Path, name: str) -> None:
         ],
         cwd=MODEL_DIR, capture_output=True, text=True, check=False,
     )  # fmt: skip
+    banner = re.search(r"^TLC2 Version .*$", proc.stdout + proc.stderr, re.MULTILINE)
     kept = [
         STANDARD_MODULE.sub(r"\1.tla", line).replace(f"{MODEL_DIR}/", "")
         for line in (proc.stdout + proc.stderr).splitlines()
@@ -96,6 +97,7 @@ def _tlc(java: str, jar: Path, work: Path, name: str) -> None:
     (MODEL_DIR / "results" / f"{name}.out").write_text(
         "\n".join(kept) + f"\nexit={proc.returncode}\n", encoding="utf-8"
     )
+    return banner.group(0) if banner else "unknown"
 
 
 def _verdict(name: str) -> str:
@@ -118,19 +120,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         jar = _jar(work)
-        version = subprocess.run(
-            [java, "-cp", str(jar), "tlc2.TLC", "-h"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        tlc_version = re.search(r"Version [\d.]+", version.stdout + version.stderr)
-        lines = [
-            f"tlc: {tlc_version.group(0) if tlc_version else 'unknown'} jar_sha256={JAR_SHA}",
-            f"model: {MODEL} sha256={_sha(MODEL_DIR / MODEL)}",
-        ]
+        lines = ["tlc: pending", f"model: {MODEL} sha256={_sha(MODEL_DIR / MODEL)}"]
         for name in MATRIX:
-            _tlc(java, jar, work, name)
+            banner = _tlc(java, jar, work, name)
+            lines[0] = f"tlc: {banner} jar_sha256={JAR_SHA}"
             out = MODEL_DIR / "results" / f"{name}.out"
             lines.append(
                 f"{name} cfg_sha256={_sha(MODEL_DIR / f'{name}.cfg')} "
@@ -139,6 +132,16 @@ def main() -> int:
     summary = MODEL_DIR / "results" / "SUMMARY.txt"
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     sys.stdout.write(summary.read_text(encoding="utf-8"))
+    # A run on a host whose files the caller cannot read prints them, framed, so the log carries them.
+    for name in MATRIX:
+        out = MODEL_DIR / "results" / f"{name}.out"
+        sys.stdout.write(
+            f"RESULT-FILE {name}.out\n{out.read_text(encoding='utf-8')}END-RESULT-FILE\n"
+        )
+    errors = [name for name in MATRIX if _verdict(name) == "ERROR"]
+    if errors:
+        sys.stderr.write(f"TLC gave no verdict for: {' '.join(errors)}\n")
+        return 1
     return 0
 
 
