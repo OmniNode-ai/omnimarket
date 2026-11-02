@@ -129,6 +129,22 @@ from omnimarket.events.provider_quota import (
     EnumProviderQuotaSource,
     ModelProviderQuotaObserved,
 )
+from omnimarket.handlers.routing.backend_placement import (
+    load_bound_bifrost_placements,
+    placement_digest,
+)
+from omnimarket.handlers.routing.byok_provider_backends import (
+    byok_backend_max_retries,
+    resolve_byok_backend_by_id,
+)
+from omnimarket.handlers.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
+)
+from omnimarket.handlers.routing.routing_tiers_path import resolve_routing_tiers_path
+from omnimarket.handlers.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import (
@@ -158,6 +174,12 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_host
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
+)
+from omnimarket.models.delegation.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
+from omnimarket.models.delegation.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
 )
 from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
@@ -260,28 +282,6 @@ from omnimarket.pricing import (
     build_premium_counterfactual,
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
-)
-from omnimarket.routing.backend_placement import (
-    load_bound_bifrost_placements,
-    placement_digest,
-)
-from omnimarket.routing.byok_provider_backends import (
-    byok_backend_max_retries,
-    resolve_byok_backend_by_id,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
-)
-from omnimarket.routing.model_escalation_decision_request import (
-    ModelEscalationDecisionRequest,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
-)
-from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
-    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -5056,7 +5056,7 @@ class HandlerDelegationWorkflow:
         terminal ``ModelDelegationResult``.
 
         The path is now resolved through the shared, non-node
-        :mod:`omnimarket.routing.routing_tiers_path` —
+        :mod:`omnimarket.handlers.routing.routing_tiers_path` —
         :func:`resolve_routing_tiers_path` (env pin first, then the packaged
         file, OMN-16200). That module is the single derivation this surface and
         the routing authority both read, so no ``.parent`` arithmetic is

@@ -25,6 +25,9 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.models.delegation.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
 )
@@ -58,9 +61,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_co
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.model_escalation_decision_request import (
-    ModelEscalationDecisionRequest,
 )
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")

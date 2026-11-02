@@ -23,6 +23,9 @@ from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
 from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptMessage,
     ModelPromptTextBlock,
@@ -38,7 +41,6 @@ from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_compa
     parse_compact_strict,
 )
 from omnimarket.review.response_parser import EnumParseFailureKind
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
 pytestmark = pytest.mark.unit
 

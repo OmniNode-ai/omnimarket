@@ -60,6 +60,9 @@ from omnibase_infra.event_bus.models.model_event_message import ModelEventMessag
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -96,9 +99,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 from tests.chains.local.harness import LocalProviderStub
 

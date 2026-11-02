@@ -36,8 +36,17 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.handlers.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.task_class_authority import load_task_class_authority
+from omnimarket.models.delegation.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
+from omnimarket.models.delegation.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
+)
 from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
     EnumMoveKind,
@@ -77,15 +86,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     TaskClassTransitionsError,
     resolve_task_class_transitions,
-)
-from omnimarket.routing.model_escalation_decision_request import (
-    ModelEscalationDecisionRequest,
-)
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
 

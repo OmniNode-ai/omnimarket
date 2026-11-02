@@ -23,7 +23,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision
   class: HandlerEscalationDecision
-  input_model: omnimarket.routing.model_escalation_decision_request.ModelEscalationDecisionRequest
+  input_model: omnimarket.models.delegation.model_escalation_decision_request.ModelEscalationDecisionRequest
 
 descriptor:
   node_archetype: compute
