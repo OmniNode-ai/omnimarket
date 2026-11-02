@@ -3,8 +3,9 @@
 ---
 name: node_context_compaction_manifest_compute
 version: 1.0.0
-description: Pairs compaction boundaries, classifies prompt windows and repeats, and builds and
-  verifies replay manifests with transcript and ledger hash pins.
+description: Pairs compaction boundaries, classifies prompt windows and repeats, builds and
+  verifies replay manifests with transcript and ledger hash pins, and builds case manifests
+  from transcript files with typed exclusions.
 omnibase_core_compat: '>=0.39.0,<1.0.0'
 pack: core
 node_role: compute

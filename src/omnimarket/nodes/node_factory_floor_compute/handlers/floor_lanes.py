@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
@@ -186,6 +187,13 @@ def build_lanes(
         )
         cloud = host.startswith(config.cloud_host_prefix)
         placement = "cloud" if cloud else "machine" if host in declared else "unplaced"
+        cause = (
+            ""
+            if placement != "unplaced"
+            else "host-not-drawn"
+            if host
+            else "no-host-cell"
+        )
         started = (
             receipt.started_at
             if receipt is not None
@@ -225,6 +233,8 @@ def build_lanes(
                 ),
                 placement=placement,
                 host=host if placement == "machine" else "",
+                placement_cause=cause,
+                named_host=host if cause == "host-not-drawn" else "",
                 cloud_account=(receipt.account if receipt and cloud else ""),
                 started_at=_stamp(started),
                 run_minutes=_minutes(now, started),
@@ -391,6 +401,13 @@ def build_bays(machines: tuple[ModelFloorMachine, ...]) -> tuple[ModelFloorBay, 
     return tuple(bays)
 
 
+def _stale_entries_note(entries: int, open_now: int, receipts_read: bool) -> str:
+    """What the cloud accounts file holds when it disagrees with the open sessions of the receipts; empty when they agree."""
+    if not receipts_read or entries == open_now:
+        return ""
+    return f"the accounts file holds {entries} active entries; {open_now} sessions are open"
+
+
 def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     now, config = request.generated_at, request.config
     declared = {m.host for m in request.machines}
@@ -399,6 +416,17 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
             r
             for r in request.receipts or ()
             if r.host.startswith(config.cloud_host_prefix) and r.account in declared
+        ),
+        key=lambda r: r.started_at,
+        reverse=True,
+    )
+    open_receipts = [r for r in cloud_receipts if not r.final]
+    listed = sorted(
+        (
+            *open_receipts,
+            *[r for r in cloud_receipts if r.final][
+                : max(0, config.cloud_sessions_limit - len(open_receipts))
+            ],
         ),
         key=lambda r: r.started_at,
         reverse=True,
@@ -414,7 +442,7 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
             open=not r.final,
             result=_short(r.session_detail or r.result, config.status_chars),
         )
-        for r in cloud_receipts[: config.cloud_sessions_limit]
+        for r in listed
     )
     finished = [r for r in cloud_receipts if r.final]
     newest = max(finished, key=lambda r: r.ended_at or r.started_at, default=None)
@@ -442,29 +470,54 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
             sessions=sessions,
             lamps=lamps,
         )
+    open_by_account = Counter(r.account for r in open_receipts)
+    ready = [
+        a
+        for a in sorted(request.cloud_accounts, key=lambda a: a.name)
+        if a.name in declared and a.login in config.cloud_ready_logins
+    ]
     accounts = tuple(
         ModelFloorCloudAccountOut(
             name=a.name,
-            ready=a.login in config.cloud_ready_logins,
+            ready=True,
             login=a.login,
             cap=a.cap,
-            open_sessions=len(a.active),
+            open_sessions=open_by_account[a.name]
+            if request.receipts is not None
+            else None,
+            record_note=_stale_entries_note(
+                len(a.active), open_by_account[a.name], request.receipts is not None
+            ),
             credit_remaining=a.credit_remaining,
             credit_read_at=a.credit_read_at,
             rate_status=a.rate_status,
             rate_resets_at=a.rate_resets_at,
         )
-        for a in sorted(request.cloud_accounts, key=lambda a: a.name)
-        if a.name in declared and a.login in config.cloud_ready_logins
+        for a in ready
     )
     others = sum(
         1
         for a in request.cloud_accounts
         if a.name in declared and a.login not in config.cloud_ready_logins
     )
+    undeclared = sum(
+        1
+        for a in request.cloud_accounts
+        if a.name not in declared and a.login in config.cloud_ready_logins
+    )
+    notes = [
+        text
+        for text in (
+            f"{others} listed machines hold no cloud login" if others else "",
+            f"{undeclared} signed-in account{'s' if undeclared > 1 else ''} not on the declared machine list {'are' if undeclared > 1 else 'is'} not drawn"
+            if undeclared
+            else "",
+        )
+        if text
+    ]
     return ModelFloorCloud(
         state="read",
-        note=f"{others} listed machines hold no cloud login" if others else "",
+        note="; ".join(notes),
         accounts=accounts,
         sessions=sessions,
         lamps=lamps,
