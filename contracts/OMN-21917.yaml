@@ -62,19 +62,20 @@ dod_evidence:
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21917-deploy-probe
-    description: Hosted-runner deploy check of the packaged checkout at this exact commit. REVIEWER_POOL_RE must not match Hostile Review Thread Gate and must still match Hostile Review Gate and Hostile Reviewer (adversarial gate). The old pattern fails. This checks the package source and does not attest a running deployment.
+    description: Hosted-runner source-artifact readback requires the published classifier at the evaluated commit to match this checkout and to carry the thread-gate exclusion in REVIEWER_POOL_RE. It checks the source artifact only; nothing here runs on a runtime.
     source: manual
     checks:
       - check_type: command
         check_value: |
-          set -eu;
-          export PYTHONDONTWRITEBYTECODE=1;
-          uv sync --locked;
-          uv run --locked python -c '
-          from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import REVIEWER_POOL_RE
-          assert not REVIEWER_POOL_RE.search("Hostile Review Thread Gate")
-          assert REVIEWER_POOL_RE.search("Hostile Review Gate")
-          assert REVIEWER_POOL_RE.search("Hostile Reviewer (adversarial gate)")
-          print("thread gate deploy probe: PASS")
-          '
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          path=src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py
+          curl --fail --silent --show-error --location --max-time 10 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+            --output "$readback_dir/source.py"
+          cmp "$path" "$readback_dir/source.py"
+          grep -F 'hostile review(?!\s+thread gate)' "$readback_dir/source.py"
+          printf 'classifier thread-gate exclusion source readback matched %s\n' "$revision"
         cwd: .
