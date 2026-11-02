@@ -99,3 +99,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect -q --no-cov --tb=line
     cwd: .
+- id: dod-omn22176-integration-proof
+  description: The pushed head ran the gate-accept node suites in both profiles, the gateway suites and the workflow tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22176 -- uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect tests/unit/nodes/node_claude_review_gateway_effect tests/ci/test_hostile_review_agent_accept.py tests/ci/test_hostile_review_accept_step_shape.py -q -p no:randomly --no-cov
+    cwd: .
