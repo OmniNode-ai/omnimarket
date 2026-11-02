@@ -81,13 +81,13 @@ class HandlerFactoryFloorEffect:
         self._merged_running = merged_running
 
     def _read_merged_running(
-        self, now: datetime
+        self, now: datetime, hosts_table: Path | None
     ) -> tuple[ModelMergedRunningCountResult | None, str]:
         """The count and an empty cause, or None and why it was not read: a count that fails never stops the floor."""
         if self._merged_running is None:
             return None, "no merged-running count reader is bound"
         try:
-            return self._merged_running.read(now), ""
+            return self._merged_running.read(now, hosts_table=hosts_table), ""
         except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
             return None, f"{type(exc).__name__}: {exc}"
 
@@ -222,7 +222,9 @@ class HandlerFactoryFloorEffect:
             ),
         )
         result = HandlerFactoryFloor().handle(compute_request)
-        merged_running, merged_running_cause = self._read_merged_running(now)
+        merged_running, merged_running_cause = self._read_merged_running(
+            now, host_table_path
+        )
         result = result.model_copy(
             update={
                 "floor": result.floor.model_copy(
