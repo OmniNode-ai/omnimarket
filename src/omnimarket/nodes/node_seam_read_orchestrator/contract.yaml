@@ -29,6 +29,7 @@ runtime_profiles: [effects]
 description: >
   Read every seam of the factory line from backlog to running, in line order. The execution
   graph below is the registry of the line: 14 seam readings between 13 stations and the backlog.
+  The second graph, view_seam_read, declares the 17 seams of the view-centric interfaces.
 
 descriptor:
   node_archetype: orchestrator
@@ -184,6 +185,451 @@ workflow_coordination:
         description: SM-13 adoption to running
         depends_on: [st13_adoption_running]
         step_config: {operation: classify_sm_13, shape: decide_running_vs_merged, bound_minutes: 60}
+
+  # The second execution graph: the seventeen seams of the view-centric interfaces, declared whole
+  # before any is built. A seam entry names its two stations (the EFFECT_GENERIC nodes it sits between),
+  # its measures and units, its identity, the causes it permits under blocked and refused, the causes it
+  # forbids, the node that emits each side (each emitter's contract publishes the count and window-close
+  # topics), its overlay keys (budgets and deadlines are keys in the view_seams overlay, never literals)
+  # and its status: declared until the step that builds it lands, then measured.
+  additional_workflows:
+    view_seam_read:
+      workflow_metadata:
+        workflow_name: view_seam_read
+        workflow_version: {major: 1, minor: 0, patch: 0}
+        description: The seventeen seams of the view-centric interfaces, declared as one graph before any is built.
+      execution_graph:
+        nodes:
+        - {node_id: data_sources, node_type: EFFECT_GENERIC, description: data sources}
+        - node_id: floor_effect
+          node_type: EFFECT_GENERIC
+          description: floor effect
+          depends_on: [vs_01_data_sources_to_floor_effect]
+        - node_id: view_document
+          node_type: EFFECT_GENERIC
+          description: view document
+          depends_on: [vs_02_floor_effect_to_view_document]
+        - {node_id: view_manifest, node_type: EFFECT_GENERIC, description: view manifest}
+        - node_id: compose
+          node_type: EFFECT_GENERIC
+          description: compose
+          depends_on: [vs_03_view_manifest_to_compose]
+        - {node_id: threshold_policy, node_type: EFFECT_GENERIC, description: threshold policy}
+        - node_id: severity
+          node_type: EFFECT_GENERIC
+          description: severity
+          depends_on: [vs_04_threshold_policy_to_severity]
+        - node_id: web_renderer
+          node_type: EFFECT_GENERIC
+          description: web renderer
+          depends_on: [vs_05_compose_to_web_renderer, vs_09_token_artifact_to_web_renderer]
+        - node_id: text_renderer
+          node_type: EFFECT_GENERIC
+          description: text renderer
+          depends_on: [vs_06_compose_to_text_renderer, vs_10_token_artifact_to_text_renderer]
+        - node_id: slack_renderer
+          node_type: EFFECT_GENERIC
+          description: slack renderer
+          depends_on: [vs_07_compose_to_slack_renderer, vs_11_token_artifact_to_slack_renderer]
+        - node_id: swiftui_container
+          node_type: EFFECT_GENERIC
+          description: swiftui container
+          depends_on: [vs_08_compose_to_swiftui_container, vs_12_token_artifact_to_swiftui_container]
+        - {node_id: token_artifact, node_type: EFFECT_GENERIC, description: token artifact}
+        - node_id: published_web_surface
+          node_type: EFFECT_GENERIC
+          description: published web surface
+          depends_on: [vs_13_web_renderer_to_published_web_surface]
+        - node_id: status_line
+          node_type: EFFECT_GENERIC
+          description: status line
+          depends_on: [vs_14_text_renderer_to_status_line]
+        - node_id: slack_message
+          node_type: EFFECT_GENERIC
+          description: slack message
+          depends_on: [vs_15_slack_renderer_to_slack_message]
+        - {node_id: publish_effect, node_type: EFFECT_GENERIC, description: publish effect}
+        - node_id: iphone_app
+          node_type: EFFECT_GENERIC
+          description: iphone app
+          depends_on: [vs_16_publish_effect_to_iphone_app]
+        - {node_id: publish_status, node_type: EFFECT_GENERIC, description: publish status}
+        - node_id: throughput_tick
+          node_type: EFFECT_GENERIC
+          description: throughput tick
+          depends_on: [vs_17_publish_status_to_throughput_tick]
+        - node_id: vs_01_data_sources_to_floor_effect
+          node_type: COMPUTE_GENERIC
+          description: VS-01 data sources to the snapshot-taking effect
+          depends_on: [data_sources]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-01
+            sender_station: data_sources
+            receiver_station: floor_effect
+            measures:
+            - {measure_id: sources, unit: sources, kind: transit}
+            - {measure_id: rows, unit: rows, kind: transit}
+            identity: binding ids handed over equal binding ids reported; per readable source the row ids equal rows accepted plus refused; a source
+              not read is upstream-blocked and its rows measure is not taken
+            permits:
+              blocked: [upstream-blocked, compacted]
+              refused: [schema-invalid, duplicate-key]
+            forbids: []
+            emitters: {sender: node_factory_floor_effect, receiver: node_factory_floor_effect}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-01.latency_budget_seconds, settlement_deadline: view_seams.VS-01.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_02_floor_effect_to_view_document
+          node_type: COMPUTE_GENERIC
+          description: VS-02 floor effect to the typed view contract and the composed view document
+          depends_on: [floor_effect]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-02
+            sender_station: floor_effect
+            receiver_station: view_document
+            measures:
+            - {measure_id: lines, unit: lines, kind: transit}
+            - {measure_id: sections, unit: sections, kind: transit}
+            identity: declared line ids = drawn + drawn as stopped with a cause; declared section ids = with rows + typed empty state; refused is
+              forbidden for both
+            permits:
+              blocked: [no-matching-plan, upstream-blocked]
+              refused: []
+            forbids: []
+            emitters: {sender: node_factory_floor_effect, receiver: node_factory_floor_effect}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-02.latency_budget_seconds, settlement_deadline: view_seams.VS-02.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_03_view_manifest_to_compose
+          node_type: COMPUTE_GENERIC
+          description: VS-03 view manifest and overlay-declared views to the compose node
+          depends_on: [view_manifest]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-03
+            sender_station: view_manifest
+            receiver_station: compose
+            measures:
+            - {measure_id: declarations, unit: declarations, kind: transit}
+            - {measure_id: compose-inputs, unit: compose-inputs, kind: transit}
+            identity: listed view ids = accepted + refused per reason; accepted ids = ids compose received = manifest entries marked published; refused
+              ids = manifest entries marked refused
+            permits:
+              blocked: []
+              refused: [schema-invalid, duplicate-key]
+            forbids: []
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_factory_floor_publish_effect}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-03.latency_budget_seconds, settlement_deadline: view_seams.VS-03.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_04_threshold_policy_to_severity
+          node_type: COMPUTE_GENERIC
+          description: VS-04 threshold policy into severity
+          depends_on: [threshold_policy]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-04
+            sender_station: threshold_policy
+            receiver_station: severity
+            measures:
+            - {measure_id: verdict-rows, unit: verdict-rows, kind: transit}
+            identity: verdict row ids = evaluated + source + blocked; every evaluated verdict's policy digest = the digest the view contract pins; the loader refuses an instance whose computed digest differs from its pin, and a version is bound to one digest
+            permits:
+              blocked: [out-of-band, missing-verdict]
+              refused: []
+            forbids: []
+            identity_artifacts: [policy_digest]
+            emitters: {sender: node_factory_floor_effect, receiver: node_factory_floor_effect}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-04.latency_budget_seconds, settlement_deadline: view_seams.VS-04.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_05_compose_to_web_renderer
+          node_type: COMPUTE_GENERIC
+          description: VS-05 compose to the web renderer
+          depends_on: [compose]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-05
+            sender_station: compose
+            receiver_station: web_renderer
+            measures:
+            - {measure_id: sections, unit: sections, kind: transit}
+            - {measure_id: rows, unit: rows, kind: transit}
+            identity: section and row ids handed over = drawn + drawn with a cause + refused; the embedded source_document_digest = the served document's
+              digest
+            permits:
+              blocked: [upstream-blocked]
+              refused: [verify-widget-envelope-failed]
+            forbids: []
+            identity_artifacts: [source_document_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_render_web_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-05.latency_budget_seconds, settlement_deadline: view_seams.VS-05.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_06_compose_to_text_renderer
+          node_type: COMPUTE_GENERIC
+          description: VS-06 compose to the terminal renderer
+          depends_on: [compose]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-06
+            sender_station: compose
+            receiver_station: text_renderer
+            measures:
+            - {measure_id: sections, unit: sections, kind: transit}
+            - {measure_id: rows, unit: rows, kind: transit}
+            identity: as VS-05; summarised is permitted
+            permits:
+              blocked: [upstream-blocked, summarised]
+              refused: [verify-widget-envelope-failed]
+            forbids: []
+            identity_artifacts: [source_document_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_render_text_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-06.latency_budget_seconds, settlement_deadline: view_seams.VS-06.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_07_compose_to_slack_renderer
+          node_type: COMPUTE_GENERIC
+          description: VS-07 compose to the Slack renderer
+          depends_on: [compose]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-07
+            sender_station: compose
+            receiver_station: slack_renderer
+            measures:
+            - {measure_id: sections, unit: sections, kind: transit}
+            - {measure_id: rows, unit: rows, kind: transit}
+            - {measure_id: commands, unit: commands, kind: transit}
+            identity: as VS-05; document digests = commands emitted + suppressed; truncated is permitted, counted per row
+            permits:
+              blocked: [upstream-blocked, truncated]
+              refused: [verify-widget-envelope-failed]
+            forbids: []
+            identity_artifacts: [source_document_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_render_slack_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-07.latency_budget_seconds, settlement_deadline: view_seams.VS-07.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_08_compose_to_swiftui_container
+          node_type: COMPUTE_GENERIC
+          description: VS-08 compose to the SwiftUI container
+          depends_on: [compose]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-08
+            sender_station: compose
+            receiver_station: swiftui_container
+            measures:
+            - {measure_id: sections, unit: sections, kind: transit}
+            - {measure_id: rows, unit: rows, kind: transit}
+            identity: per render id, started section and row ids = completed drawn + drawn with a cause + refused; started ids = the served document's
+              ids for that digest
+            permits:
+              blocked: [upstream-blocked]
+              refused: [schema-invalid]
+            forbids: []
+            identity_artifacts: [source_document_digest]
+            emitters: {sender: node_view_receipt_endpoint_effect, receiver: node_view_receipt_endpoint_effect}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-08.latency_budget_seconds, settlement_deadline: view_seams.VS-08.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_09_token_artifact_to_web_renderer
+          node_type: COMPUTE_GENERIC
+          description: VS-09 OmniUI token artifact to the web renderer
+          depends_on: [token_artifact]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-09
+            sender_station: token_artifact
+            receiver_station: web_renderer
+            measures:
+            - {measure_id: tokens, unit: tokens, kind: coverage}
+            identity: every declared token reference resolves in the inventory; missing is forbidden; unused inventory is reported and not a fault;
+              the output's theme_digest = the instance digest
+            permits:
+              blocked: []
+              refused: []
+            forbids: [missing]
+            identity_artifacts: [theme_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_render_web_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-09.latency_budget_seconds, settlement_deadline: view_seams.VS-09.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_10_token_artifact_to_text_renderer
+          node_type: COMPUTE_GENERIC
+          description: VS-10 token artifact to the terminal renderer
+          depends_on: [token_artifact]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-10
+            sender_station: token_artifact
+            receiver_station: text_renderer
+            measures:
+            - {measure_id: roles, unit: roles, kind: coverage}
+            identity: every severity role the renderer's contract declares has a mapping and is in the instance's roles; unmapped is forbidden
+            permits:
+              blocked: []
+              refused: []
+            forbids: [unmapped]
+            identity_artifacts: [theme_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_render_text_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-10.latency_budget_seconds, settlement_deadline: view_seams.VS-10.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_11_token_artifact_to_slack_renderer
+          node_type: COMPUTE_GENERIC
+          description: VS-11 token artifact to the Slack renderer
+          depends_on: [token_artifact]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-11
+            sender_station: token_artifact
+            receiver_station: slack_renderer
+            measures:
+            - {measure_id: roles, unit: roles, kind: coverage}
+            identity: as VS-10
+            permits:
+              blocked: []
+              refused: []
+            forbids: [unmapped]
+            identity_artifacts: [theme_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_render_slack_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-11.latency_budget_seconds, settlement_deadline: view_seams.VS-11.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_12_token_artifact_to_swiftui_container
+          node_type: COMPUTE_GENERIC
+          description: VS-12 token artifact to the SwiftUI container
+          depends_on: [token_artifact]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-12
+            sender_station: token_artifact
+            receiver_station: swiftui_container
+            measures:
+            - {measure_id: theme, unit: theme, kind: transit}
+            identity: every receipt's theme digest = the instance digest of the app's build, and the instance digest current within the overlay's
+              app-release window
+            permits:
+              blocked: []
+              refused: []
+            forbids: []
+            identity_artifacts: [theme_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_view_receipt_endpoint_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-12.latency_budget_seconds, settlement_deadline: view_seams.VS-12.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_13_web_renderer_to_published_web_surface
+          node_type: COMPUTE_GENERIC
+          description: VS-13 renderers to the published web surface
+          depends_on: [web_renderer]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-13
+            sender_station: web_renderer
+            receiver_station: published_web_surface
+            measures:
+            - {measure_id: artifacts, unit: artifacts, kind: transit}
+            identity: expected artifacts = readback matching + transfer failures; digest-mismatch and orphaned are forbidden
+            permits:
+              blocked: []
+              refused: [transfer-failure]
+            forbids: [digest-mismatch, orphaned]
+            identity_artifacts: [output_content_digest]
+            emitters: {sender: node_factory_floor_publish_effect, receiver: node_factory_floor_publish_effect}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-13.latency_budget_seconds, settlement_deadline: view_seams.VS-13.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_14_text_renderer_to_status_line
+          node_type: COMPUTE_GENERIC
+          description: VS-14 terminal renderer to the status line
+          depends_on: [text_renderer]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-14
+            sender_station: text_renderer
+            receiver_station: status_line
+            measures:
+            - {measure_id: line, unit: line, kind: transit}
+            identity: the digest read is one written within the overlay's delivery window; an older digest is stale inside the window and forbidden
+              beyond it
+            permits:
+              blocked: []
+              refused: []
+            forbids: []
+            identity_artifacts: [output_content_digest]
+            emitters: {sender: node_view_render_text_effect, receiver: node_view_status_line_receipt_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-14.latency_budget_seconds, settlement_deadline: view_seams.VS-14.settlement_deadline_seconds,
+              delivery_window: view_seams.VS-14.delivery_window_seconds}
+            status: declared
+        - node_id: vs_15_slack_renderer_to_slack_message
+          node_type: COMPUTE_GENERIC
+          description: VS-15 Slack renderer to the posted message
+          depends_on: [slack_renderer]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-15
+            sender_station: slack_renderer
+            receiver_station: slack_message
+            measures:
+            - {measure_id: commands, unit: commands, kind: transit}
+            identity: command ids emitted = posted + refused per cause
+            permits:
+              blocked: []
+              refused: [channel-not-found, rate-limited, auth]
+            forbids: []
+            emitters: {sender: node_view_render_slack_effect, receiver: node_slack_publish_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-15.latency_budget_seconds, settlement_deadline: view_seams.VS-15.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_16_publish_effect_to_iphone_app
+          node_type: COMPUTE_GENERIC
+          description: VS-16 publish effect to the iPhone app
+          depends_on: [publish_effect]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-16
+            sender_station: publish_effect
+            receiver_station: iphone_app
+            measures:
+            - {measure_id: requests, unit: requests, kind: transit}
+            identity: request ids answered = request ids receipted (decoded or refused with a cause); every receipted digest is one served for that
+              request
+            permits:
+              blocked: []
+              refused: [schema-invalid]
+            forbids: []
+            identity_artifacts: [source_document_digest]
+            emitters: {sender: node_view_app_interface_effect, receiver: node_view_receipt_endpoint_effect}
+            one_emitter: false
+            overlay_keys: {latency_budget: view_seams.VS-16.latency_budget_seconds, settlement_deadline: view_seams.VS-16.settlement_deadline_seconds}
+            status: declared
+        - node_id: vs_17_publish_status_to_throughput_tick
+          node_type: COMPUTE_GENERIC
+          description: VS-17 publish status to the throughput tick
+          depends_on: [publish_status]
+          step_config:
+            operation: reconcile_seam
+            seam_id: VS-17
+            sender_station: publish_status
+            receiver_station: throughput_tick
+            measures:
+            - {measure_id: readings, unit: readings, kind: transit}
+            - {measure_id: findings, unit: findings, kind: transit}
+            identity: expected reading ids (VS-01 to VS-16, from the graph) = recorded = consumed, with an absent reading synthesised as unreadable;
+              readings not matched = MISSING + UNKNOWN findings raised; VS-17 for window T is consumed on the next tick, never by itself in T, and an absent previous VS-17 reading raises UNKNOWN
+            permits:
+              blocked: []
+              refused: []
+            forbids: []
+            emitters: {sender: node_seam_conservation_compute, receiver: node_seam_conservation_compute}
+            one_emitter: true
+            overlay_keys: {latency_budget: view_seams.VS-17.latency_budget_seconds, settlement_deadline: view_seams.VS-17.settlement_deadline_seconds}
+            status: declared
 
 config:
   seam_read:

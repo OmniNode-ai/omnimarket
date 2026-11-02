@@ -25,6 +25,7 @@ authors:
 - OmniNode Platform Team
 license: MIT
 tags:
+- declared-view-seam-emitter
 - effect
 - factory-floor-effect
 - OMN-21682

@@ -931,6 +931,23 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      # Same falsifiers as the required lint job in ci.yml.
+      - id: view-seam-graph-declared
+        name: All view seam sides have a declared emitter
+        language: system
+        entry: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_graph_declared.py -q --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/seam_reading/|nodes/node_(seam_|view_|factory_floor_|slack_publish_))|tests/nodes/node_view_seam_|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)
+        stages: [pre-commit]
+
+      - id: view-seam-three-part-proof
+        name: View seam graph and window fault controls
+        language: system
+        entry: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/(models/seam_reading/|nodes/node_(seam_|view_|factory_floor_|slack_publish_))|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)
+        stages: [pre-commit]
+
       - id: routing-tier-backend-bindability
         name: Routing tiers reference only backends a lane can bind
         language: system

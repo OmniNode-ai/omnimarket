@@ -69,6 +69,12 @@ from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
     SUCCESS_OUTCOME,
 )
+from omnimarket.models.seam_reading import (
+    EnumSeamCrossingState,
+    ModelSeamReading,
+    ModelSeamReadingsFacts,
+    ModelSeamReadingsVerdict,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -1599,6 +1605,84 @@ def check_repo_status(
     return verdicts
 
 
+# VS-17: judge the publish tick by the seam readings of its finalized window, not by its heartbeat.
+# A reading of another window is not this window's reading; a second reading of one seam takes the
+# later `read_at`.
+CHECKED = "seam-readings"
+
+
+def _stamp(value: object) -> str:
+    return str(value).replace("+00:00", "Z")
+
+
+def _window_readings(facts: ModelSeamReadingsFacts) -> dict[str, ModelSeamReading]:
+    latest: dict[str, ModelSeamReading] = {}
+    for reading in facts.readings:
+        if reading.window != facts.window:
+            continue
+        held = latest.get(reading.seam_id)
+        if held is None or reading.read_at >= held.read_at:
+            latest[reading.seam_id] = reading
+    return latest
+
+
+def check_seam_readings(
+    rep: Report, facts: ModelSeamReadingsFacts
+) -> ModelSeamReadingsVerdict:
+    window = f"{_stamp(facts.window.start)}..{_stamp(facts.window.end)}"
+    if not facts.finalized:
+        rep.note(f"seam:window | {window} is not finalized; no seam reading judged yet")
+        return ModelSeamReadingsVerdict(
+            window=facts.window, expected_ids=facts.expected_seam_ids, consumed_ids=()
+        )
+    rep.checked.append(CHECKED)
+    readings = _window_readings(facts)
+    steps = "publish steps ok" if facts.publish_steps_ok else "publish steps not all ok"
+    missing: list[str] = []
+    unknown: list[str] = []
+    consumed: list[str] = []
+    for seam_id in facts.expected_seam_ids:
+        reading = readings.get(seam_id)
+        if reading is None:
+            unknown.append(seam_id)
+            rep.unk(
+                f"seam:{seam_id}",
+                f"no {seam_id} reading recorded for window {window}",
+                "check that the seam's emitters sent their window closes and that node_view_seam_reading_reducer folded the reading",
+            )
+            continue
+        consumed.append(seam_id)
+        if reading.state is EnumSeamCrossingState.MISMATCHED:
+            missing.append(seam_id)
+            examples = (
+                f"; e.g. {', '.join(reading.examples)}" if reading.examples else ""
+            )
+            rep.miss(
+                f"seam:{seam_id}",
+                f"{seam_id} reading mismatched in window {window} ({reading.mismatched} of {reading.crossings + reading.unreadable} crossings{examples}); {steps}",
+                f"read the {seam_id} reading's residual and fix the side it names; the publish steps' ok is a process exit code, not a count",
+            )
+        elif reading.state is EnumSeamCrossingState.UNREADABLE:
+            unknown.append(seam_id)
+            rep.unk(
+                f"seam:{seam_id}",
+                f"{seam_id} reading unreadable in window {window}; {steps}",
+                "find the side whose window close is absent and restore its emitter",
+            )
+    if facts.declared_seam_ids:
+        rep.note(
+            f"seam:declared {', '.join(facts.declared_seam_ids)} | still declared, not yet measured"
+        )
+    return ModelSeamReadingsVerdict(
+        window=facts.window,
+        expected_ids=facts.expected_seam_ids,
+        consumed_ids=tuple(consumed),
+        missing_ids=tuple(missing),
+        unknown_ids=tuple(unknown),
+        declared_ids=facts.declared_seam_ids,
+    )
+
+
 class HandlerThroughputTickDecision:
     """Stateless compute: the tick's findings from the facts the caller read."""
 
@@ -1644,6 +1728,11 @@ class HandlerThroughputTickDecision:
             if request.repo_status is not None
             else []
         )
+        seam_readings = (
+            check_seam_readings(rep, request.seam_readings)
+            if request.seam_readings is not None
+            else None
+        )
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
@@ -1658,4 +1747,5 @@ class HandlerThroughputTickDecision:
             open_count=opened,
             pr_land=pr_land,
             repo_status=repo_status,
+            seam_readings=seam_readings,
         )

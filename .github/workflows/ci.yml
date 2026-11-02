@@ -372,6 +372,11 @@ jobs:
         run: uv sync --locked
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
+      # OMN-22020: keep both falsifiers aligned with their pre-commit hooks.
+      - name: Declared view seam graph
+        run: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_graph_declared.py -q --no-cov
+      - name: View seam three-part proof
+        run: uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests/test_three_part_proof.py -q --no-cov
       - name: Retired model references (including dated history)
         run: uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
       - name: Retired model and archive safety negative controls

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_throughput_tick_decision_compute
 version: "1.0.0"
-description: Deterministic decisions of the merge-throughput tick (controller, merges, floors, escalations)
+description: Deterministic decisions of the merge-throughput tick (controller, merges, floors, escalations, finalized seam readings)
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
@@ -19,7 +19,7 @@ dependencies:
   - omnibase_infra
 authors: [OmniNode Team]
 license: MIT
-tags: [compute, throughput, tick, landing]
+tags: [compute, throughput, tick, landing, view-seam-readings]
 node_role: compute
 pack: "routing"
 display_name: "Throughput Tick Decision Compute"

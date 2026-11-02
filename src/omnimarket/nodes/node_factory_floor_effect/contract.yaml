@@ -31,6 +31,12 @@ handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect:HandlerFactoryFloorEffect
   handlers:
+  - operation: emit_seam_count
+    handler:
+      name: HandlerSeamEmitter
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_seam_emitter
+    input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+    output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
   - operation: handle
     handler:
       name: HandlerFactoryFloorEffect
@@ -38,6 +44,15 @@ handler_routing:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The floor effect emits VS-01, VS-02 and VS-04 once the floor effect step builds them.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_factory_floor_effect (runtime_factory_floor.py), from a schedule or by hand.
 descriptor:

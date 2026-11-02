@@ -39,6 +39,12 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
+    - operation: emit_seam_count
+      handler:
+        name: HandlerSeamEmitter
+        module: omnimarket.nodes.node_slack_publish_effect.handlers.handler_seam_emitter
+      input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+      output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
     - operation: slack_publish
       handler:
         name: HandlerSlackPublishEffect
@@ -87,6 +93,15 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.slack-publish.v1
 
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The Slack publish effect emits the VS-15 receiver side once the Slack step builds it.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
 terminal_event: onex.evt.omnimarket.slack-published.v1
 
 dod_evidence:

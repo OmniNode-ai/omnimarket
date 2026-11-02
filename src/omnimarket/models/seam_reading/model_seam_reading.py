@@ -35,6 +35,15 @@ class ModelSeamReading(BaseModel):
     examples: tuple[str, ...] = Field(default=(), max_length=MAX_EXAMPLES)
     read_at: datetime
 
+    @property
+    def state(self) -> EnumSeamCrossingState:
+        """mismatched when any crossing mismatched; unreadable when nothing could be read."""
+        if self.mismatched:
+            return EnumSeamCrossingState.MISMATCHED
+        if self.unreadable:
+            return EnumSeamCrossingState.UNREADABLE
+        return EnumSeamCrossingState.MATCHED
+
     @classmethod
     def from_crossings(
         cls,

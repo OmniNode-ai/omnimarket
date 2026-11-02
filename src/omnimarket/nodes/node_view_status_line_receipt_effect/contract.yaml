@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - node_view_status_line_receipt_effect (INSUFFICIENT scaffold)
+#
+# Declared by the view_seam_read graph as the emitter of VS-14 receiver; it publishes the count and
+# window-close topics once its step builds it. Until then its handler returns INSUFFICIENT.
+name: node_view_status_line_receipt_effect
+contract_name: node_view_status_line_receipt_effect
+node_name: node_view_status_line_receipt_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Scaffold of the status line consumer's receipt. Returns a typed INSUFFICIENT result for any seam side it is asked to
+  count, so the seam it serves reads unreadable until the step that builds it lands.
+
+handler:
+  module: omnimarket.nodes.node_view_status_line_receipt_effect.handlers.handler_view_status_line_receipt_effect
+  class: HandlerViewStatusLineReceiptEffect
+  input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_view_status_line_receipt_effect.handlers.handler_view_status_line_receipt_effect:HandlerViewStatusLineReceiptEffect
+  handlers:
+    - operation: emit_seam_count
+      handler:
+        name: HandlerViewStatusLineReceiptEffect
+        module: omnimarket.nodes.node_view_status_line_receipt_effect.handlers.handler_view_status_line_receipt_effect
+
+descriptor:
+  node_archetype: effect
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+# Declared producer of the seam family's count and window-close events (view_seam_read graph). The parity gate keeps event_bus.publish_topics for topics the node's Python publishes; this scaffold publishes none yet.
+published_events:
+  - event_type: ModelSeamCount
+    topic: onex.evt.omnimarket.view-seam-counted.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+  - event_type: ModelSeamWindowClose
+    topic: onex.evt.omnimarket.view-seam-window-closed.v1
+    description: "Declared before the node emits it; the emission lands with the step that builds this emitter (status declared in the graph)."
+
+metadata:
+  ticket: OMN-22020
+  transport_type: inmemory

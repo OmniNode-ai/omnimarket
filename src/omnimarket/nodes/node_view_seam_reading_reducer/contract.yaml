@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - View Seam Reading Reducer
+#
+# A pure fold with one writer per record: it is the only writer of the view_seam_readings exposure,
+# holds no lease and emits no terminal event of its own (its output is the projection). A pure fold
+# with a single writer, no lease and no terminal needs no TLA+ model; if the design ever needs a
+# lease, a second writer or a terminal it must emit, a model under formal/ comes first.
+name: node_view_seam_reading_reducer
+contract_name: node_view_seam_reading_reducer
+node_name: node_view_seam_reading_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Fold the seam family's count, window-close and reading events into one record per (seam, side,
+  crossing), one close per (seam, side, window) and one reading per (seam, window), and project the
+  readings into the view_seam_readings exposure. A replay replaces its logical row and never adds to
+  it. The dashboard only reads the exposure.
+
+handler:
+  module: omnimarket.nodes.node_view_seam_reading_reducer.handlers.handler_view_seam_reading_reducer
+  class: HandlerViewSeamReadingReducer
+  input_model: omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state.ModelViewSeamFoldRequest
+
+input_model:
+  name: ModelViewSeamFoldRequest
+  module: omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state
+  description: The folded state and one event.
+output_model:
+  name: ModelViewSeamFoldResult
+  module: omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state
+  description: The next state and, for a reading event, the exposure row.
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_view_seam_reading_reducer.handlers.handler_view_seam_reading_reducer:HandlerViewSeamReadingReducer
+  handlers:
+    - operation: fold_seam_count
+      topic: onex.evt.omnimarket.view-seam-counted.v1
+      handler:
+        name: HandlerViewSeamReadingReducer
+        module: omnimarket.nodes.node_view_seam_reading_reducer.handlers.handler_view_seam_reading_reducer
+    - operation: fold_seam_window_close
+      topic: onex.evt.omnimarket.view-seam-window-closed.v1
+      handler:
+        name: HandlerViewSeamReadingReducer
+        module: omnimarket.nodes.node_view_seam_reading_reducer.handlers.handler_view_seam_reading_reducer
+    - operation: fold_seam_reading
+      topic: onex.evt.omnimarket.view-seam-reading-recorded.v1
+      handler:
+        name: HandlerViewSeamReadingReducer
+        module: omnimarket.nodes.node_view_seam_reading_reducer.handlers.handler_view_seam_reading_reducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.view-seam-counted.v1
+    - onex.evt.omnimarket.view-seam-window-closed.v1
+    - onex.evt.omnimarket.view-seam-reading-recorded.v1
+  publish_topics: []
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.view-seam-readings.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
+  key_grain: "mutable"
+  table: "view_seam_readings"
+  schema: "public"
+  columns:
+    - "seam_id"
+    - "window_start"
+    - "window_end"
+    - "state"
+    - "crossings"
+    - "mismatched"
+    - "unreadable"
+    - "examples"
+    - "read_at"
+  order_by: "seam_id ASC, window_start DESC"
+  freshness_column: "read_at"
+  cursor_column: "read_at"
+  limit: 500
+
+metadata:
+  ticket: OMN-22020
+  transport_type: inmemory

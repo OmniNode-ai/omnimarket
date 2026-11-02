@@ -1,0 +1,188 @@
+schema_version: 1.0.0
+ticket_id: OMN-22020
+title: Declare and prove the seventeen view seams
+summary: 'First graph/proof step: declare all seventeen view seams, typed count and close events, conservation and
+  reducer nodes, and INSUFFICIENT operations for unbuilt emitters. Typed throughput seam input and preparation helpers
+  are included. Floor view mapping and composition, live measurements, the runtime caller, Redpanda proof and served-document
+  readback remain pending; this contract does not mark the ticket done.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- topics
+requirements:
+- id: req-omn22020-view-seams
+  statement: Build the view seam graph and then the board view document, with typed seam measurements and live readback.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the whole seam graph view_seam_read (VS-01 to VS-17) is declared in node_seam_read_orchestrator''s
+      contract, with ModelSeamCount, ModelSeamMeasure, ModelSeamWindowClose, EnumSeamSide, EnumSeamUnit and EnumSeamCause,
+      node_seam_conservation_compute, node_view_seam_reading_reducer, and an INSUFFICIENT scaffold for every emitter
+      not yet built -- falsifier: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_graph_declared
+      -q'
+  - id: AC2
+    statement: 'AC2: the three-part proof of section 10.4 holds and each planted fault is refused and then restored:
+      core''s ValidatorEventChainWalker shows zero unconsumed and zero unproduced topics, the graph check refuses
+      a graph with one emitter removed, and the runtime check reads a missing sender close unreadable, a missing
+      receiver close unreadable when the sender''s close lists crossings, and an empty sender close with no receiver
+      close matched -- falsifier: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k three_part_proof
+      -q'
+  - id: AC3
+    statement: 'AC3: node_factory_floor_compute maps the ModelFloor record to view rows and node_factory_floor_effect
+      declares the board''s view contract and an exposure for the record and writes the view document, which validates
+      against core''s schema and holds exactly the values of a fixture record with known values -- falsifier: uv
+      run pytest src/omnimarket/nodes/node_factory_floor_effect/tests -k view_document -q'
+  - id: AC4
+    statement: 'AC4: node_view_compose_compute (new, generic, pure) gives the same digest twice for the same inputs
+      and reference time, and a broken record gives schema-invalid for its sections only -- falsifier: uv run pytest
+      src/omnimarket/nodes/node_view_compose_compute/tests -k determinism_or_schema_invalid -q'
+  - id: AC5
+    statement: 'AC5: VS-01, VS-02 and VS-04 are measured, each with its section 10.3 falsifier on the in-memory
+      overlay as a unit test and on the Redpanda overlay through the lab-run placement: VS-02''s fixture is three
+      declared lines with one matching plan, which reads matched with one drawn and two drawn as stopped with no-matching-plan,
+      and a compose that omits the unmatched lines reads mismatched with a disposition residual of two -- falsifier:
+      uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k "vs_01 or vs_02 or vs_04" -q, then
+      the same selection through /omni:lab-run on the Redpanda overlay'
+  - id: AC6
+    statement: 'AC6: VS-17 is measured and a caller feeds the seam readings to node_throughput_tick_decision_compute
+      through a new typed field, so a finalized window whose publish steps are all ok and whose VS-02 reading is
+      mismatched raises MISSING seam:VS-02 and an absent reading raises UNKNOWN -- falsifier: uv run pytest src/omnimarket/nodes/node_throughput_tick_decision_compute/tests
+      -k seam_readings -q'
+  - id: AC7
+    statement: 'AC7: after one publish tick on the lab the served board document and the view_seam_readings exposure
+      are readable and the VS-02 reading is present for the finalized window -- falsifier: curl of the served document
+      and a projection read of view_seam_readings from the Mac, receipt in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The first graph/proof step is exercised by the focused acceptance files.
+  command: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k "seam_graph_declared or three_part_proof"
+    -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22020-ac1
+  description: 'First graph/proof step: AC1: the whole seam graph view_seam_read (VS-01 to VS-17) is declared in
+    node_seam_read_orchestrator''s contract, with ModelSeamCount, ModelSeamMeasure, ModelSeamWindowClose, EnumSeamSide,
+    EnumSeamUnit and EnumSeamCause, node_seam_conservation_compute, node_view_seam_reading_reducer, and an INSUFFICIENT
+    scaffold for every emitter not yet built'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_graph_declared
+      -q --no-cov
+    cwd: .
+  status: pending
+- id: dod-omn22020-ac2
+  description: 'First graph/proof step: AC2: the three-part proof of section 10.4 holds and each planted fault is
+    refused and then restored: core''s ValidatorEventChainWalker shows zero unconsumed and zero unproduced topics,
+    the graph check refuses a graph with one emitter removed, and the runtime check reads a missing sender close
+    unreadable, a missing receiver close unreadable when the sender''s close lists crossings, and an empty sender
+    close with no receiver close matched'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k three_part_proof -q
+      --no-cov
+    cwd: .
+  status: pending
+- id: dod-omn22020-ac3
+  description: 'Pending remaining S3 work: AC3: node_factory_floor_compute maps the ModelFloor record to view rows
+    and node_factory_floor_effect declares the board''s view contract and an exposure for the record and writes
+    the view document, which validates against core''s schema and holds exactly the values of a fixture record with
+    known values'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_effect/tests -k view_document -q --no-cov
+    cwd: .
+  status: pending
+- id: dod-omn22020-ac4
+  description: 'Pending remaining S3 work: AC4: node_view_compose_compute (new, generic, pure) gives the same digest
+    twice for the same inputs and reference time, and a broken record gives schema-invalid for its sections only'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_view_compose_compute/tests -k determinism_or_schema_invalid
+      -q --no-cov
+    cwd: .
+  status: pending
+- id: dod-omn22020-ac5
+  description: 'Pending remaining S3 work: AC5: VS-01, VS-02 and VS-04 are measured, each with its section 10.3
+    falsifier on the in-memory overlay as a unit test and on the Redpanda overlay through the lab-run placement:
+    VS-02''s fixture is three declared lines with one matching plan, which reads matched with one drawn and two
+    drawn as stopped with no-matching-plan, and a compose that omits the unmatched lines reads mismatched with a
+    disposition residual of two'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k 'vs_01 or vs_02 or vs_04'
+      -q --no-cov
+    cwd: .
+  status: pending
+- id: dod-omn22020-ac6
+  description: 'Pending remaining S3 work: AC6: VS-17 is measured and a caller feeds the seam readings to node_throughput_tick_decision_compute
+    through a new typed field, so a finalized window whose publish steps are all ok and whose VS-02 reading is mismatched
+    raises MISSING seam:VS-02 and an absent reading raises UNKNOWN'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_throughput_tick_decision_compute/tests -k seam_readings
+      -q --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_readings_runtime_caller
+      -q --no-cov
+    cwd: .
+  status: pending
+- id: dod-omn22020-ac7
+  description: 'Pending remaining S3 work: AC7: after one publish tick on the lab the served board document and
+    the view_seam_readings exposure are readable and the VS-02 reading is present for the finalized window'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: command
+    check_value: curl --fail --silent --show-error "${ONEX_BOARD_VIEW_DOCUMENT_URL:?}" --output "${ONEX_BOARD_VIEW_DOCUMENT_READBACK:?}"
+    cwd: .
+  - check_type: command
+    check_value: curl --fail --silent --show-error "${ONEX_VIEW_SEAM_READINGS_URL:?}" --output "${ONEX_VIEW_SEAM_READINGS_READBACK:?}"
+    cwd: .
+  - check_type: command
+    check_value: 'uv run python -c ''import json, os; from pathlib import Path; from omnibase_core.models.dashboard.model_view_document
+      import ModelViewDocument; from omnibase_core.models.dashboard.model_view_document_digest import verify_view_document;
+      d=ModelViewDocument.model_validate_json(Path(os.environ["ONEX_BOARD_VIEW_DOCUMENT_READBACK"]).read_text());
+      verify_view_document(d); page=json.loads(Path(os.environ["ONEX_VIEW_SEAM_READINGS_READBACK"]).read_text());
+      rows=page["rows"]; assert any(r["seam_id"] == "VS-02" and r["window_start"] == os.environ["ONEX_VIEW_FINALIZED_WINDOW_START"]
+      and r["window_end"] == os.environ["ONEX_VIEW_FINALIZED_WINDOW_END"] for r in rows); print("served document
+      valid; VS-02 present for finalized window")'' '
+    cwd: .
+  execution_scope: local_done_gate
+  status: pending
+- id: dod-omn22020-redpanda
+  description: 'Pending Redpanda leg: use the same seam fixture over the explicitly supplied lab overlay after the
+    branch is pushed.'
+  source: manual
+  execution_scope: local_done_gate
+  status: pending
+  binds_ac:
+  - AC2
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env ONEX_VIEW_SEAM_PROFILE=redpanda uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests
+      -k "three_part_proof_node_roundtrip_profile or vs_01 or vs_02 or vs_04" -q --no-cov
+    cwd: .
