@@ -60,3 +60,57 @@ dod_evidence:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21989 -- uv run --frozen pytest tests/nodes/node_dev_runtime_mutation_guard_effect -q --no-cov
     cwd: .
+- id: dod-omn21989-deploy-local-runtime
+  description: Hosted-runner deploy smoke dispatches the packaged guard through the ONEX local runtime with an in-memory backend. A compose dry run and docker events must be allowed; a real up, a disabled dry-run flag and a flag in another command must be refused without a grant. The dry-run assertion fails on the pre-fix guard. Commands are input text only; no Docker command is executed and no production rollout is claimed.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      export PYTHONDONTWRITEBYTECODE=1
+      export ONEX_LEDGER_PATH=/dev/null
+      export ONEX_SKILL_OVERLAY_ROOTS=
+      probe_dir="$(mktemp -d)"
+      trap 'rm -rf "$probe_dir"' EXIT
+      export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+      python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      commands = {
+          "dry-run": "docker compose -p omnibase-infra up --dry-run",
+          "events": "docker events --filter event=stop",
+          "mutation": "docker compose -p omnibase-infra up -d",
+          "disabled": "docker compose -p omnibase-infra up --dry-run=false",
+          "smuggled": "docker compose -p omnibase-infra up -d && echo --dry-run",
+      }
+      for name, command in commands.items():
+          (root / (name + ".json")).write_text(json.dumps({"tool_name": "Bash", "command": command, "mode": "full"}))
+      ' "$probe_dir"
+      for probe in dry-run events mutation disabled smuggled; do
+        onex node node_dev_runtime_mutation_guard_effect --input "$probe_dir/$probe.json" --state-root "$probe_dir/$probe.state" --backend event_bus=inmemory --timeout 10 --output receipt --omnibase-path "$PWD" > "$probe_dir/$probe.receipt.json"
+        python -c '
+      import json
+      import sys
+      from pathlib import Path
+      name, path = sys.argv[1:]
+      receipt = json.loads(Path(path).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      assert receipt["node_name"] == "node_dev_runtime_mutation_guard_effect", receipt
+      assert receipt["result_model"] == "omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models.model_dev_runtime_mutation_decision.ModelDevRuntimeMutationDecision", receipt
+      result = receipt["result"]
+      expected = "ALLOW" if name in {"dry-run", "events"} else "REFUSE"
+      assert result["verdict"] == expected, (name, expected, result)
+      assert result["granted"] is False, result
+      if expected == "REFUSE":
+          assert result["project"] == "omnibase-infra", result
+          assert "BLOCKED (OMN-21795)" in result["reason"], result
+      print(json.dumps({"probe": name, "run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": result}, sort_keys=True))
+      ' "$probe" "$probe_dir/$probe.receipt.json"
+      done
+    cwd: .
