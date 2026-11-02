@@ -1,0 +1,108 @@
+Parsing file RemoteLaneStop.tla
+Parsing file Integers.tla
+Parsing file FiniteSets.tla
+Parsing file Naturals.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module RemoteLaneStop
+Implied-temporal checking--satisfiability problem has 2 branches.
+Computing initial states...
+Error: Invariant AtMostOneTerminal is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ runnerDone = FALSE
+/\ ignoresTerm = FALSE
+/\ sigs = {}
+/\ unkillable = FALSE
+/\ out = [s1 |-> "none", s2 |-> "none"]
+/\ engine = "exited"
+/\ clock = [s1 |-> 0, s2 |-> 0]
+/\ pc = [s1 |-> "idle", s2 |-> "idle"]
+/\ sent = [s1 |-> FALSE, s2 |-> FALSE]
+/\ runnerAlive = TRUE
+/\ via = [s1 |-> "none", s2 |-> "none"]
+/\ ledger = {}
+/\ forcedAt = [s1 |-> -1, s2 |-> -1]
+
+State 2: <Read line 114, col 3 to line 120, col 35 of module RemoteLaneStop>
+/\ runnerDone = FALSE
+/\ ignoresTerm = FALSE
+/\ sigs = {}
+/\ unkillable = FALSE
+/\ out = [s1 |-> "none", s2 |-> "none"]
+/\ engine = "exited"
+/\ clock = [s1 |-> 0, s2 |-> 0]
+/\ pc = [s1 |-> "polite", s2 |-> "idle"]
+/\ sent = [s1 |-> FALSE, s2 |-> FALSE]
+/\ runnerAlive = TRUE
+/\ via = [s1 |-> "none", s2 |-> "none"]
+/\ ledger = {}
+/\ forcedAt = [s1 |-> -1, s2 |-> -1]
+
+State 3: <RunnerCloseout line 101, col 3 to line 105, col 54 of module RemoteLaneStop>
+/\ runnerDone = TRUE
+/\ ignoresTerm = FALSE
+/\ sigs = {}
+/\ unkillable = FALSE
+/\ out = [s1 |-> "none", s2 |-> "none"]
+/\ engine = "exited"
+/\ clock = [s1 |-> 0, s2 |-> 0]
+/\ pc = [s1 |-> "polite", s2 |-> "idle"]
+/\ sent = [s1 |-> FALSE, s2 |-> FALSE]
+/\ runnerAlive = TRUE
+/\ via = [s1 |-> "none", s2 |-> "none"]
+/\ ledger = {<<"runner", "runner">>}
+/\ forcedAt = [s1 |-> -1, s2 |-> -1]
+
+State 4: <Polite line 123, col 3 to line 130, col 37 of module RemoteLaneStop>
+/\ runnerDone = TRUE
+/\ ignoresTerm = FALSE
+/\ sigs = {"TERM"}
+/\ unkillable = FALSE
+/\ out = [s1 |-> "none", s2 |-> "none"]
+/\ engine = "exited"
+/\ clock = [s1 |-> 0, s2 |-> 0]
+/\ pc = [s1 |-> "wait1", s2 |-> "idle"]
+/\ sent = [s1 |-> TRUE, s2 |-> FALSE]
+/\ runnerAlive = TRUE
+/\ via = [s1 |-> "none", s2 |-> "none"]
+/\ ledger = {<<"runner", "runner">>}
+/\ forcedAt = [s1 |-> -1, s2 |-> -1]
+
+State 5: <Wait1 line 147, col 3 to line 159, col 33 of module RemoteLaneStop>
+/\ runnerDone = TRUE
+/\ ignoresTerm = FALSE
+/\ sigs = {"TERM"}
+/\ unkillable = FALSE
+/\ out = [s1 |-> "none", s2 |-> "none"]
+/\ engine = "exited"
+/\ clock = [s1 |-> 0, s2 |-> 0]
+/\ pc = [s1 |-> "write", s2 |-> "idle"]
+/\ sent = [s1 |-> TRUE, s2 |-> FALSE]
+/\ runnerAlive = TRUE
+/\ via = [s1 |-> "none", s2 |-> "none"]
+/\ ledger = {<<"runner", "runner">>}
+/\ forcedAt = [s1 |-> -1, s2 |-> -1]
+
+State 6: <Write line 177, col 3 to line 187, col 40 of module RemoteLaneStop>
+/\ runnerDone = TRUE
+/\ ignoresTerm = FALSE
+/\ sigs = {"TERM"}
+/\ unkillable = FALSE
+/\ out = [s1 |-> "stopped", s2 |-> "none"]
+/\ engine = "exited"
+/\ clock = [s1 |-> 0, s2 |-> 0]
+/\ pc = [s1 |-> "done", s2 |-> "idle"]
+/\ sent = [s1 |-> TRUE, s2 |-> FALSE]
+/\ runnerAlive = TRUE
+/\ via = [s1 |-> "none", s2 |-> "none"]
+/\ ledger = {<<"s1", "stopped">>, <<"runner", "runner">>}
+/\ forcedAt = [s1 |-> -1, s2 |-> -1]
+
+682 states generated, 400 distinct states found, 133 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+exit=12

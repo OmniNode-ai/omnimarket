@@ -20,7 +20,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: external_write
-dependencies: []
+dependencies:
+- 'omnibase-infra>=0.38.75,<0.39.0'
 authors:
 - OmniNode Platform Team
 license: MIT

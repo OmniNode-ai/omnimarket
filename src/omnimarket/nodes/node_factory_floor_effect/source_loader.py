@@ -450,10 +450,15 @@ def header_text(text: str, keys: tuple[str, ...]) -> str:
     return "\n".join(lines)
 
 
-HEADING_TASK_RE = re.compile(
-    r"^(?:\d+\.\s+|[-*]\s+)?\*\*([A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?(?:\s+(.+?))?\*\*(.*)$",
-    re.MULTILINE,
-)
+def heading_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    """The contract's task heading patterns, compiled line by line; each must name the group ``id``."""
+    compiled = tuple(re.compile(pattern, re.MULTILINE) for pattern in patterns)
+    for pattern in compiled:
+        if "id" not in pattern.groupindex:
+            raise SourceRefusedError(
+                f"heading task pattern {pattern.pattern!r} names no 'id' group: correct heading_task_patterns"
+            )
+    return compiled
 
 
 SECTION_RE = re.compile(r"^## (.*)$", re.MULTILINE)
@@ -536,7 +541,11 @@ def _heading_tasks(
 
 
 def parse_heading_tasks(
-    text: str, links: dict[str, tuple[str, ...]], epic: str = ""
+    text: str,
+    links: dict[str, tuple[str, ...]],
+    epic: str = "",
+    *,
+    patterns: tuple[re.Pattern[str], ...],
 ) -> tuple[ModelFloorManifestTask, ...]:
     """A plan's tasks from its bold-led task paragraphs (``**T1. Title.** ...``, ``1. **S1, now:** ...``), for a plan with no manifest and no table.
 
@@ -549,25 +558,34 @@ def parse_heading_tasks(
     sectioned = _heading_tasks(text, links, epic)
     if sectioned:
         return sectioned
-    found = [
-        match
-        for match in HEADING_TASK_RE.finditer(text)
-        if not _in_review_section(text, match.start())
-    ]
+    found = next(
+        (
+            matches
+            for pattern in patterns
+            if (
+                matches := [
+                    match
+                    for match in pattern.finditer(text)
+                    if not _in_review_section(text, match.start())
+                ]
+            )
+        ),
+        [],
+    )
     if not found:
         return ()
-    letters = [match.group(1)[0] for match in found]
+    letters = [match.group("id")[0] for match in found]
     wanted = max(set(letters), key=lambda letter: (letters.count(letter), letter))
     tasks: dict[str, ModelFloorManifestTask] = {}
     for match in found:
-        task_id = match.group(1)
+        groups = match.groupdict()
+        task_id = match.group("id")
         if task_id[0] != wanted or task_id in tasks:
             continue
-        title = (match.group(2) or match.group(3)).strip(" .:")
+        lead, rest = groups.get("title") or "", groups.get("rest") or ""
+        title = (lead or rest).strip(" .:")
         # A task's own lead names its tickets and pull requests; a list item's whole line is its lead, a paragraph's prose is not.
-        named = (match.group(2) or "") + (
-            "" if match.group(0).startswith("**") else f" {match.group(3)}"
-        )
+        named = lead + ("" if match.group(0).startswith("**") else f" {rest}")
         tasks[task_id] = ModelFloorManifestTask(
             id=task_id,
             title=f"{task_id} {title}"[:200],
@@ -631,6 +649,7 @@ def _plan_input(
     entry: dict[str, Any] | None,
     header_keys: tuple[str, ...],
     links: dict[str, tuple[str, ...]],
+    patterns: tuple[re.Pattern[str], ...],
 ) -> ModelFloorPlanInput:
     header = header_text(text, header_keys)
     title = re.search(r"^# (.*)", text, re.MULTILINE)
@@ -655,7 +674,10 @@ def _plan_input(
         epic = header_tickets[0] if header_tickets else ""
         # The plan's own prose pairs a task id with its tickets (``T0.1 OMN-21494``); the overlay's links add to them.
         written = parse_heading_tasks(
-            text, merge_task_links(prose_task_tickets(text, epic), links), epic=epic
+            text,
+            merge_task_links(prose_task_tickets(text, epic), links),
+            epic=epic,
+            patterns=patterns,
         )
         if written:
             by_label = {row.label: row for row in table}
@@ -687,11 +709,13 @@ def load_plans(
     plans_relpath: str,
     manifest_suffix: str,
     header_keys: tuple[str, ...],
+    heading_task_patterns: tuple[str, ...],
     contains: tuple[str, ...],
     plans_today: dict[str, Any] | None,
     plan_refs: tuple[ModelFactoryFloorPlanRef, ...] = (),
     task_links: tuple[ModelFactoryFloorTaskLinks, ...] = (),
 ) -> tuple[ModelFloorPlanInput, ...]:
+    patterns = heading_patterns(heading_task_patterns)
     directory = kb / plans_relpath
     with _source(directory):
         if not directory.is_dir():
@@ -734,6 +758,7 @@ def load_plans(
                     entry=entries.get(relative),
                     header_keys=header_keys,
                     links=links_of(relative),
+                    patterns=patterns,
                 )
             )
     drawn = {plan.plan_path for plan in plans}
@@ -759,6 +784,7 @@ def load_plans(
                     entry=entries.get(plan_ref.path),
                     header_keys=header_keys,
                     links=links_of(plan_ref.path),
+                    patterns=patterns,
                 )
             )
             # The first readable ref of a plan draws it; a stale declared ref does not hide the pull request's head.
