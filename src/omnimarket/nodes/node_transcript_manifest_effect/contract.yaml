@@ -42,5 +42,3 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.transcript-manifest-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.transcript-manifest-completed.v1
-metadata:
-  transport_type: local
