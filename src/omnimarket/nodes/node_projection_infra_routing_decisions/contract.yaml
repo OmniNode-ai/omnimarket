@@ -1,0 +1,96 @@
+---
+name: projection_infra_routing_decisions
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_infra_routing_decisions.models.model_infra_routing_decision_request.ModelInfraRoutingDecisionProjectionRequest
+description: >
+  Projects the delegation routing reducer's routing-decision events into the
+  infra_routing_decisions table, one row per correlation_id (UPSERT). This node
+  replaces the standalone infra_routing_decisions consumer
+  (omnibase_infra.services.observability.infra_routing_decisions), which read
+  the same topic and wrote the same table and columns from its own container.
+
+  It is NOT node_projection_routing_decision: that node projects
+  onex.evt.omniclaude.routing-decision.v1 into agent_routing_decisions, a
+  different table fed by a different producer.
+
+  The table's DDL stays with omnibase_infra (migration 080), in the
+  omnibase_infra database. This node ships no migration.
+
+  runtime_lanes and runtime_profiles are not declared: the writer runs in the
+  one runtime, as the lab job projection does.
+
+handler:
+  module: omnimarket.nodes.node_projection_infra_routing_decisions.handlers.handler_projection_infra_routing_decisions
+  class: HandlerProjectionInfraRoutingDecisions
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed. A routed pure fold is handed the raw delivery
+    # beside the writer and its zero upserts count against the
+    # projection_apply_divergence health dimension. The writer calls the fold in
+    # process (rule 7a).
+    - operation: infra_routing_decisions_projection_writer
+      handler:
+        name: InfraRoutingDecisionsProjectionWriter
+        module: omnimarket.nodes.node_projection_infra_routing_decisions.handlers.handler_infra_routing_decisions_writer
+      handler_module: omnimarket.nodes.node_projection_infra_routing_decisions.handlers.handler_infra_routing_decisions_writer
+
+terminal_event: onex.evt.omnimarket.projection-infra-routing-decisions-applied.v1
+
+golden_path:
+  - "node_delegation_routing_reducer publishes a routing decision to onex.evt.omnibase-infra.routing-decision.v1"
+  - "The fold turns the delivery into the six columns a decision carries, refusing a malformed delivery as poison"
+  - "The writer upserts the row keyed on correlation_id; a delivery without one is inserted"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-infra-routing-decisions-applied.v1"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_infra_routing_decisions.py::test_the_fold_yields_the_row_the_old_module_yields
+    description: "the fold produces the row the replaced module's own parser produces, on replayed deliveries"
+  - test: tests/test_golden_chain_projection_infra_routing_decisions.py::test_the_existing_routing_decision_node_owns_a_different_table_and_topic
+    description: "node_projection_routing_decision owns agent_routing_decisions, not this table"
+  - test: tests/test_infra_routing_decisions_real_postgres.py::test_the_new_writer_leaves_the_rows_the_old_writer_leaves
+    description: "against real Postgres, the new writer and the replaced writer leave the same rows, one per key after a second replay"
+
+db_io:
+  db_tables:
+    # The old consumer dialled the omnibase_infra database, where migration 080
+    # created this table. The application projection database has no such table
+    # and its role has no grant on it.
+    - name: infra_routing_decisions
+      database_ref: omnibase_infra
+      schema: public
+      migration: "omnibase_infra/docker/migrations/forward/080_create_infra_routing_decisions.sql"
+      access: write
+      role: infra_routing_decisions
+  dedupe_key:
+    - correlation_id
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.routing-decision.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-infra-routing-decisions-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-infra-routing-decisions-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-infra-routing-decisions-applied.v1
+
+# The consumer group this node takes over from. The retired container committed
+# offsets for the topic under this bare group id (the consumer's config default,
+# no environment prefix), so the group cannot be spelled with the
+# consumer_group_handover shape (from_service/from_node/from_version), which
+# always derives {env}.{service}.{node}.consume.{version}. The runtime's subscribe
+# preflight does not read this key yet; until it does, the retired group's
+# commits are not copied and the runtime group starts at the bus default.
+retired_consumer_group:
+  group_id: infra-routing-decisions-postgres
+  topics:
+    - onex.evt.omnibase-infra.routing-decision.v1
+  from_auto_offset_reset: earliest
+
+metadata:
+  transport_type: kafka

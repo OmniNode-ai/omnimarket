@@ -1,0 +1,22 @@
+name: projection_infra_routing_decisions
+version: "1.0.0"
+description: >
+  Projects routing-decision events into infra_routing_decisions, one row per
+  correlation_id. Replaces the standalone infra_routing_decisions consumer.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - routing
+  - reducer
+pack: "data"
+display_name: "Projection: Infra Routing Decisions"
+node_role: "effect"

@@ -1,0 +1,75 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21935"
+title: "The infra_routing_decisions consumer runs as a projection node writing infra_routing_decisions on replayed events, committed with its commit hooks passing"
+summary: >
+  node_projection_infra_routing_decisions replaces the omnibase_infra
+  infra_routing_decisions consumer (table infra_routing_decisions, group
+  infra-routing-decisions-postgres). node_projection_routing_decision does not
+  own that table or topic: it projects the omniclaude routing topic into
+  agent_routing_decisions. The new node owns infra_routing_decisions from
+  onex.evt.omnibase-infra.routing-decision.v1 and upserts on correlation_id
+  through the partial unique index. Retiring the old container is a later
+  deploy step.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21935-node-committed"
+    statement: "The node is committed with the repository commit hooks passing and the branch is pushed."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_projection_infra_routing_decisions is committed with the repository commit hooks passing and pushed, with no hook bypassed -- falsifier: git log on the pushed branch plus pre-commit run --all-files exit 0 on the branch"
+  - id: "req-omn21935-same-rows"
+    statement: "The node writes the rows the replaced consumer wrote, on replayed events, one row per key."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the node writes the same infra_routing_decisions rows as the consumer module on replayed events with the partial-unique-index upsert, one row per key on a second replay -- falsifier: uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py tests/test_infra_routing_decisions_real_postgres.py -q through /omni:lab-run on a pre-PR slot, red when the key is mutated"
+  - id: "req-omn21935-handover"
+    statement: "The contract names the group the node takes over from."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the contract declares the handover from the old group through from_group_id once the omnibase_infra field exists -- falsifier: uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q -k handover"
+evidence_requirements:
+  - kind: "tests"
+    description: "The infra routing decisions node folds and writes the rows the replaced consumer wrote."
+    command: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21935-owns"
+    description: "node_projection_routing_decision owns agent_routing_decisions from the omniclaude topic; the new node owns infra_routing_decisions from the omnibase-infra topic. Fails at the merge base, which has no such node."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k owns"
+        cwd: "."
+  - id: "dod-omn21935-same-rows"
+    description: "The fold yields the row the replaced module's own parser yields on replayed deliveries, malformed deliveries the old module sent to the DLQ are poison, and the write is an UPSERT on correlation_id. Fails at the merge base, which has no such node."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21935-deploy-probe"
+    description: "Hosted structural smoke needing no lab route, broker or database: read the writer at the checked-out PR head and require its partial-index conflict target, then run the golden chain. Fails at the merge base, which has no such module. The real-Postgres proof against the old writer runs on the lane host and is in the PR body."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_infra_routing_decisions/handlers/handler_infra_routing_decisions_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ON CONFLICT (correlation_id) WHERE correlation_id IS NOT NULL" > /dev/null'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21935-handover"
+    description: "The contract names the group it takes over from. Until the from_group_id field is on omnibase_infra dev the contract carries the inert retired_consumer_group key and this check reads that key."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k handover"
+        cwd: "."
