@@ -79,3 +79,11 @@ dod_evidence:
           r = H().handle(Q(rung_id="r", contracted_model_id="m", calls=(c,), derivation=D(output_reserve_tokens=1, instruction_tokens=1, safety_factor=1, overlap_chars=0)))
           assert r.hits == 1 and r.parse_failures == 0 and r.misses == 0 and r.chunk.status == "unmeasured", r
           print(r.verdicts[0].replayed_digest)'
+  - id: "dod-omn21140-integration-proof"
+    description: "The local Done gate places the rung harness suite on a lab host at the pushed sha with the checkout dependencies."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21140 -- uv run --frozen pytest tests/nodes/node_extraction_rung_harness_compute -q --no-cov"
+        cwd: "."
