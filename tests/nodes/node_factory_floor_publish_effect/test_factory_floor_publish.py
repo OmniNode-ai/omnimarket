@@ -610,8 +610,8 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
     assert runtime.names.data == "factory-floor.json"
     assert runtime.names.page == "index.html"
     for field in (
-        "generated_at", "lines", "floor", "sources", "line_id", "status_pill", "percent_built", "stations",
-        "andon", "flag", "reason", "causes", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
+        "generated_at", "lines", "floor", "sources", "line_id", "condition", "blocker", "progress", "gates", "line_evidence", "evidence_kind", "stations",
+        "reason", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
         "stoppages", "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale",
         "state", "note", "label", "cap", "lanes_placed", "load_per_core", "mem_free_gb", "mem_total_gb",
         "swap_used_pct", "unit_work", "runners", "refusal", "read_age_min", "title", "title_source", "kind",
@@ -626,6 +626,9 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
         "delegation.json", "outcomes", "routes", "published_at",
     ):  # fmt: skip
         assert re.search(rf"\b{field}\b", PAGE), field
+    for retired in ("status_pill", "percent_built", "andon"):
+        assert retired not in PAGE, retired
+        assert retired not in SHELL, retired
 
 
 def test_page_carries_no_secret_no_absolute_path_no_hostname_and_no_external_url() -> (
@@ -703,9 +706,11 @@ FLOOR_RECORD = {
             "name": "Second plan",
             "plan_path": "beta/plans/two-plan.md",
             "source": "manifest",
-            "status_pill": "stopped",
-            "percent_built": 37,
-            "andon": {"flag": True, "reason": "gate failed", "causes": ["G9"]},
+            "condition": "stopped",
+            "blocker": {"reason": "gate failed", "evidence": ["G9"]},
+            "progress": {"state": "known", "completed": 1, "total": 2, "percent": 50.0, "note": ""},
+            "gates": {"passed": 0, "failed": 1, "waiting": 0, "items": [{"id": "G9", "state": "failed"}]},
+            "line_evidence": {"merged": 1, "running_on_dev": None, "verified": None, "of": 2},
             "stations": [
                 {"id": "0", "name": "Look first", "state": "done", "feeders": [],
                  "items": [{"id": "a", "title": "Part A", "kind": "lane", "state": "done", "note": "merged", "tickets": [], "prs": []}]},
@@ -767,9 +772,12 @@ def test_page_draws_the_declared_lines_in_order_with_an_unmatched_one_unread() -
     assert "no plan file matches" in lines
     assert "first-plan" in lines
     assert "third-plan" in lines
-    assert "Frame finished" in lines
-    assert "Stopped:</b> gate failed (G9)" in lines
-    assert "About 37 percent built" in lines
+    assert (
+        "Why it is stopped</b><span>gate failed</span><small>Evidence: G9</small>"
+        in lines
+    )
+    assert "1 / 2 work tasks, 50.0%" in lines
+    assert "1 gate: 0 passed, 1 failed, 0 waiting" in lines
 
 
 def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
@@ -883,13 +891,10 @@ def test_page_draws_a_bay_per_machine_with_its_lanes_against_the_cap() -> None:
     out = _run_floor({"factory-floor.json": BAYS_RECORD})
     grid = out["bayGrid"]
     assert "bay-x" in grid
-    assert (
-        '<span class="mono">2</span> of <span class="mono">4</span> worker slots in use'
-        in grid
-    )
+    assert '<span class="mono">2/4</span> worker slots in use' in grid
     assert grid.count('class="cap"') >= 1
-    assert "0.5" in grid
-    assert "12 GB of 32" in grid
+    assert "0.50 (1.0 = one runnable task per core)" in grid
+    assert "20 of 32 GB used" in grid
     assert "swap used" in grid
     assert "unit work" in grid
     assert "1 placed beside the workers" in grid
@@ -1054,9 +1059,11 @@ SHELL_RECORD = {
             "name": "Second plan",
             "plan_path": "beta/plans/two-plan.md",
             "source": "manifest",
-            "status_pill": "stopped",
-            "percent_built": 37,
-            "andon": {"flag": True, "reason": "PR repo#9 CI red (2 red of 10)", "causes": ["PR repo#9 CI red (2 red of 10)"]},
+            "condition": "stopped",
+            "blocker": {"reason": "PR repo#9 CI red (2 red of 10)", "evidence": ["repo#9"]},
+            "progress": {"state": "known", "completed": 1, "total": 2, "percent": 50.0, "note": ""},
+            "gates": {"passed": 0, "failed": 1, "waiting": 0, "items": [{"id": "G9", "state": "failed"}]},
+            "line_evidence": {"merged": 1, "running_on_dev": None, "verified": None, "of": 2},
             "stations": [
                 {"id": "0", "name": "Look first", "state": "done", "feeders": [],
                  "items": [{"id": "a", "title": "Part A", "kind": "lane", "state": "done", "note": "", "tickets": [], "prs": []},
@@ -1246,7 +1253,7 @@ def test_page_dashboard_draws_each_line_with_its_state_and_its_real_stop_reason(
     assert "Second plan" in dash
     assert "Stopped" in dash
     assert "PR repo#9 CI red (2 red of 10)" in dash
-    assert "37% built" in dash
+    assert "1 / 2 work tasks, 50.0%" in dash
     assert "never-matched-plan" in dash
     assert "not in the record" in dash
     assert dash.index("Line A") < dash.index("Line B")
@@ -1257,9 +1264,9 @@ def test_page_dashboard_draws_each_machine_with_its_lanes_load_and_memory() -> N
     dash = _shell_out(_run_shell(SHELL_FILES))["dash"]
     assert "Bay one" in dash
     assert "Rebuilding the widget" in dash
-    assert '1</span> lanes placed of <span class="mono">4' in dash
-    assert "load per core" in dash
-    assert "12.5 GB of 32" in dash
+    assert '<span class="mono">1/4</span> lanes placed' in dash
+    assert "Load per core" in dash
+    assert "19.5 of 32 GB used" in dash
     assert "repo#9 · CI red" in dash
     assert "Bay two" in dash
     assert "in repair" in dash
@@ -1525,14 +1532,26 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
                 "name": "alpha-plan",
                 "plan_path": "alpha-plan",
                 "source": "undrawn",
-                "status_pill": "stopped",
-                "percent_built": 0,
-                "stations": [],
-                "andon": {
-                    "flag": True,
+                "condition": "stopped",
+                "blocker": {
                     "reason": "plan file not found: no plan path contains alpha-plan",
-                    "causes": ["plan file not found: no plan path contains alpha-plan"],
+                    "evidence": [],
                 },
+                "progress": {
+                    "state": "unknown",
+                    "completed": None,
+                    "total": None,
+                    "percent": None,
+                    "note": "no plan file",
+                },
+                "gates": {"passed": 0, "failed": 0, "waiting": 0, "items": []},
+                "line_evidence": {
+                    "merged": 0,
+                    "running_on_dev": None,
+                    "verified": None,
+                    "of": 0,
+                },
+                "stations": [],
             },
         ],
     }
@@ -1550,9 +1569,7 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
         }
     )
     lines = out["lines"]
-    assert (
-        "<b>Stopped:</b> plan file not found: no plan path contains alpha-plan" in lines
-    )
+    assert "<span>plan file not found: no plan path contains alpha-plan</span>" in lines
     assert "No plan read for this line" not in lines
 
 

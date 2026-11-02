@@ -29,7 +29,8 @@ def test_floor_tab_uses_the_shared_glossary() -> None:
     visible = re.sub(r"<script>.*?</script>", "", BODY, flags=re.DOTALL | re.IGNORECASE)
     for old in ("andon cord", "Andon board", "Shift report", "ledger row"):
         assert old.lower() not in visible.lower(), old
-    assert 'stopped:"Stopped"' in SCRIPT
+    assert '"Stopped"' in SCRIPT
+    assert "needs_review" in SCRIPT
     assert "failing checks" in SCRIPT
     assert "CI red" not in SCRIPT
     assert "Worker " in SCRIPT

@@ -1,0 +1,831 @@
+{
+ "schema_id": "factory-floor/1",
+ "generated_at": "2099-01-01T00:00:00Z",
+ "lines": [
+  {
+   "line_id": "line-b",
+   "name": "Line B build",
+   "plan_path": "plans/line-b.md",
+   "source": "manifest",
+   "condition": "building",
+   "blocker": null,
+   "progress": {
+    "state": "known",
+    "completed": 6,
+    "total": 48,
+    "percent": 12.5,
+    "note": ""
+   },
+   "gates": {
+    "passed": 10,
+    "failed": 2,
+    "waiting": 8,
+    "items": [
+     {
+      "id": "G1",
+      "state": "failed"
+     },
+     {
+      "id": "G2",
+      "state": "waiting"
+     }
+    ]
+   },
+   "line_evidence": {
+    "merged": 6,
+    "running_on_dev": 4,
+    "verified": null,
+    "of": 48
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": [
+      {
+       "id": "t1",
+       "title": "Merged task",
+       "kind": "lane",
+       "state": "done",
+       "evidence_kind": "merged",
+       "note": "",
+       "tickets": [],
+       "prs": []
+      },
+      {
+       "id": "t2",
+       "title": "Closed ticket task",
+       "kind": "lane",
+       "state": "done",
+       "evidence_kind": "linear_done",
+       "note": "",
+       "tickets": [],
+       "prs": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "line_id": "line-c",
+   "name": "Line C stop with a live lane",
+   "plan_path": "plans/line-c.md",
+   "source": "manifest",
+   "condition": "building",
+   "blocker": {
+    "reason": "three red PRs",
+    "evidence": [
+     "repo#1",
+     "repo#2",
+     "repo#3"
+    ]
+   },
+   "progress": {
+    "state": "known",
+    "completed": 3,
+    "total": 10,
+    "percent": 30.0,
+    "note": ""
+   },
+   "gates": {
+    "passed": 1,
+    "failed": 0,
+    "waiting": 1,
+    "items": [
+     {
+      "id": "G7",
+      "state": "waiting"
+     }
+    ]
+   },
+   "line_evidence": {
+    "merged": 3,
+    "running_on_dev": null,
+    "verified": null,
+    "of": 10
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  },
+  {
+   "line_id": "line-d",
+   "name": "Line D stopped",
+   "plan_path": "plans/line-d.md",
+   "source": "manifest",
+   "condition": "stopped",
+   "blocker": {
+    "reason": "gate G4 failed",
+    "evidence": [
+     "G4"
+    ]
+   },
+   "progress": {
+    "state": "known",
+    "completed": 1,
+    "total": 4,
+    "percent": 25.0,
+    "note": ""
+   },
+   "gates": {
+    "passed": 0,
+    "failed": 1,
+    "waiting": 0,
+    "items": [
+     {
+      "id": "G4",
+      "state": "failed"
+     }
+    ]
+   },
+   "line_evidence": {
+    "merged": 1,
+    "running_on_dev": 0,
+    "verified": 0,
+    "of": 4
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  },
+  {
+   "line_id": "line-e",
+   "name": "Line E scope review",
+   "plan_path": "plans/line-e.md",
+   "source": "manifest",
+   "condition": "needs_review",
+   "blocker": {
+    "reason": "scope needs review",
+    "evidence": [
+     "R8"
+    ]
+   },
+   "progress": {
+    "state": "unknown",
+    "completed": null,
+    "total": null,
+    "percent": null,
+    "note": "catalogue under review"
+   },
+   "gates": {
+    "passed": 0,
+    "failed": 0,
+    "waiting": 0,
+    "items": []
+   },
+   "line_evidence": {
+    "merged": 0,
+    "running_on_dev": null,
+    "verified": null,
+    "of": 0
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  },
+  {
+   "line_id": "line-f",
+   "name": "Line F nothing declared",
+   "plan_path": "plans/line-f.md",
+   "source": "manifest",
+   "condition": "queued",
+   "blocker": null,
+   "progress": {
+    "state": "no_tasks",
+    "completed": null,
+    "total": null,
+    "percent": null,
+    "note": ""
+   },
+   "gates": {
+    "passed": 0,
+    "failed": 0,
+    "waiting": 0,
+    "items": []
+   },
+   "line_evidence": {
+    "merged": 0,
+    "running_on_dev": null,
+    "verified": null,
+    "of": 0
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  },
+  {
+   "line_id": "line-g",
+   "name": "Line G real zero",
+   "plan_path": "plans/line-g.md",
+   "source": "manifest",
+   "condition": "queued",
+   "blocker": null,
+   "progress": {
+    "state": "known",
+    "completed": 0,
+    "total": 5,
+    "percent": 0.0,
+    "note": ""
+   },
+   "gates": {
+    "passed": 0,
+    "failed": 0,
+    "waiting": 3,
+    "items": [
+     {
+      "id": "G9",
+      "state": "waiting"
+     }
+    ]
+   },
+   "line_evidence": {
+    "merged": 0,
+    "running_on_dev": null,
+    "verified": null,
+    "of": 5
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  },
+  {
+   "line_id": "line-h",
+   "name": "Line H tasks done gate pending",
+   "plan_path": "plans/line-h.md",
+   "source": "manifest",
+   "condition": "building",
+   "blocker": {
+    "reason": "gate G3 waiting",
+    "evidence": [
+     "G3"
+    ]
+   },
+   "progress": {
+    "state": "known",
+    "completed": 3,
+    "total": 3,
+    "percent": 100.0,
+    "note": ""
+   },
+   "gates": {
+    "passed": 0,
+    "failed": 0,
+    "waiting": 1,
+    "items": [
+     {
+      "id": "G3",
+      "state": "waiting"
+     }
+    ]
+   },
+   "line_evidence": {
+    "merged": 3,
+    "running_on_dev": 3,
+    "verified": 3,
+    "of": 3
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  },
+  {
+   "line_id": "line-i",
+   "name": "Line I complete",
+   "plan_path": "plans/line-i.md",
+   "source": "manifest",
+   "condition": "complete",
+   "blocker": null,
+   "progress": {
+    "state": "known",
+    "completed": 2,
+    "total": 2,
+    "percent": 100.0,
+    "note": ""
+   },
+   "gates": {
+    "passed": 1,
+    "failed": 0,
+    "waiting": 0,
+    "items": [
+     {
+      "id": "G5",
+      "state": "passed"
+     }
+    ]
+   },
+   "line_evidence": {
+    "merged": 2,
+    "running_on_dev": 2,
+    "verified": 2,
+    "of": 2
+   },
+   "stations": [
+    {
+     "id": "0",
+     "name": "Build",
+     "state": "active",
+     "feeders": [],
+     "items": []
+    }
+   ]
+  }
+ ],
+ "floor": {
+  "machines": [
+   {
+    "host": "m-open",
+    "label": "m-open",
+    "state": "read",
+    "note": "",
+    "read_at": "2099-01-01T00:00:00Z",
+    "read_age_min": 0,
+    "stale": false,
+    "cores": 8,
+    "load1": 4.0,
+    "load_per_core": 0.35,
+    "busy_cores": 3.0,
+    "mem_free_gb": 12.0,
+    "mem_total_gb": 48.0,
+    "swap_used_pct": null,
+    "cap": 6,
+    "refusal": "",
+    "free_slots": 4,
+    "admission": {
+     "state": "open",
+     "reason": ""
+    },
+    "lanes_placed": 2,
+    "lanes": [
+     "o1",
+     "o2"
+    ],
+    "units_placed": 0,
+    "unit_work": 0,
+    "runners": {
+     "state": "unread"
+    }
+   },
+   {
+    "host": "m-nototal",
+    "label": "m-nototal",
+    "state": "read",
+    "note": "",
+    "read_at": "2099-01-01T00:00:00Z",
+    "read_age_min": 0,
+    "stale": false,
+    "cores": 8,
+    "load1": 4.0,
+    "load_per_core": 0.35,
+    "busy_cores": 3.0,
+    "mem_free_gb": 9.5,
+    "mem_total_gb": null,
+    "swap_used_pct": null,
+    "cap": 6,
+    "refusal": "",
+    "free_slots": 2,
+    "admission": {
+     "state": "open",
+     "reason": ""
+    },
+    "lanes_placed": 0,
+    "lanes": [],
+    "units_placed": 0,
+    "unit_work": 0,
+    "runners": {
+     "state": "unread"
+    }
+   },
+   {
+    "host": "m-refuse",
+    "label": "m-refuse",
+    "state": "read",
+    "note": "",
+    "read_at": "2099-01-01T00:00:00Z",
+    "read_age_min": 0,
+    "stale": false,
+    "cores": 8,
+    "load1": 4.0,
+    "load_per_core": 0.35,
+    "busy_cores": 3.0,
+    "mem_free_gb": 12.0,
+    "mem_total_gb": 48.0,
+    "swap_used_pct": null,
+    "cap": 6,
+    "refusal": "CPU idle under the bar",
+    "free_slots": 0,
+    "admission": {
+     "state": "refused",
+     "reason": "CPU idle under the bar"
+    },
+    "lanes_placed": 1,
+    "lanes": [
+     "r1"
+    ],
+    "units_placed": 0,
+    "unit_work": 0,
+    "runners": {
+     "state": "unread"
+    }
+   },
+   {
+    "host": "m-over",
+    "label": "m-over",
+    "state": "read",
+    "note": "",
+    "read_at": "2099-01-01T00:00:00Z",
+    "read_age_min": 0,
+    "stale": false,
+    "cores": 8,
+    "load1": 4.0,
+    "load_per_core": 0.35,
+    "busy_cores": 3.0,
+    "mem_free_gb": 12.0,
+    "mem_total_gb": 48.0,
+    "swap_used_pct": null,
+    "cap": 6,
+    "refusal": "",
+    "free_slots": 0,
+    "admission": {
+     "state": "open",
+     "reason": ""
+    },
+    "lanes_placed": 7,
+    "lanes": [
+     "w0",
+     "w1",
+     "w2",
+     "w3",
+     "w4",
+     "w5",
+     "w6"
+    ],
+    "units_placed": 0,
+    "unit_work": 0,
+    "runners": {
+     "state": "unread"
+    }
+   },
+   {
+    "host": "m-unread",
+    "label": "m-unread",
+    "state": "unread",
+    "note": "timed out",
+    "read_at": "2099-01-01T00:00:00Z",
+    "read_age_min": 0,
+    "stale": false,
+    "cores": 8,
+    "load1": 4.0,
+    "load_per_core": null,
+    "busy_cores": 3.0,
+    "mem_free_gb": null,
+    "mem_total_gb": null,
+    "swap_used_pct": null,
+    "cap": null,
+    "refusal": "",
+    "free_slots": 2,
+    "admission": {
+     "state": "open",
+     "reason": ""
+    },
+    "lanes_placed": 0,
+    "lanes": [],
+    "units_placed": 0,
+    "unit_work": 0,
+    "runners": {
+     "state": "unread"
+    }
+   }
+  ],
+  "lanes": [
+   {
+    "lane": "o1",
+    "ticket": "",
+    "title": "Work o1",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-open",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "o2",
+    "ticket": "",
+    "title": "Work o2",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-open",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "r1",
+    "ticket": "",
+    "title": "Work r1",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-refuse",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w0",
+    "ticket": "",
+    "title": "Work w0",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w1",
+    "ticket": "",
+    "title": "Work w1",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w2",
+    "ticket": "",
+    "title": "Work w2",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w3",
+    "ticket": "",
+    "title": "Work w3",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w4",
+    "ticket": "",
+    "title": "Work w4",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w5",
+    "ticket": "",
+    "title": "Work w5",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   },
+   {
+    "lane": "w6",
+    "ticket": "",
+    "title": "Work w6",
+    "title_source": "claim",
+    "kind": "fix",
+    "engine": "claude",
+    "placement": "machine",
+    "host": "m-over",
+    "cloud_account": "",
+    "started_at": "2099-01-01T00:00:00Z",
+    "run_minutes": 5,
+    "status_text": "working",
+    "status_full": "working",
+    "status_at": "2099-01-01T00:00:00Z",
+    "status_age_min": 1,
+    "status_source": "status",
+    "silent_minutes": 0,
+    "stalled": false,
+    "pr": "",
+    "pr_title": "",
+    "pr_state": "",
+    "pr_ci": "",
+    "pr_ci_note": "",
+    "station": null,
+    "claim_full": ""
+   }
+  ],
+  "cloud": {
+   "state": "read",
+   "note": "",
+   "accounts": [],
+   "sessions": [],
+   "lamps": []
+  },
+  "stall_minutes": 45,
+  "lane_window_minutes": 180,
+  "bays": [],
+  "shipped": [],
+  "waiting": [],
+  "stoppages": []
+ },
+ "sources": {
+  "watcher_last_tick": "2099-01-01T00:00:00Z",
+  "ledger_rows": 1,
+  "ledger_newest_row": "",
+  "linear_issues": 0,
+  "placement_hosts": 5,
+  "stoppage_report": false
+ }
+}

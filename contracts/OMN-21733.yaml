@@ -134,6 +134,24 @@ requirements:
         statement: "AC45: consecutive steps the contract marks concurrent run in threads and report in contract order, hosts, pool, friction and process_health are marked and factory_floor is not, and a step naming fresh_relpath and fresh_seconds is skipped while its output is younger and runs when it is older -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
       - id: "AC46"
         statement: "AC46: a transfer whose ssh connection did not open (exit 255) is retried twice before the publish is refused, and a command that ran is never retried -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k transfer_retries"
+  - id: "req-omn21733-p0-page"
+    statement: |-
+      The Dashboard and the Floor draw one projected condition, blocker and progress for each line, a neutral progress bar of merged work tasks with gates counted apart, memory as used over total, load per core as a number against its reference, a machine that refuses work above its capacity, and a decorative car that encodes no data.
+    acceptance:
+      - id: "AC60"
+        statement: "AC60: both pages derive the pill, row and stoppage text from `L.condition` and `L.blocker` only; one fixture renders the same condition on the Dashboard and the Floor, and a stop with a live lane never shows Building beside Stopped -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k one_condition_both_pages"
+      - id: "AC61"
+        statement: "AC61: the progress bar is constant-colour for every condition, shows completed/total work tasks with gates counted apart, draws unknown without aria-valuenow, and never reads Complete with a gate pending -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k progress_bar_neutral_and_honest"
+      - id: "AC62"
+        statement: "AC62: the memory gauge label, fill and text encode used/total, and a missing total draws no bar -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k memory_gauge_matches_label"
+      - id: "AC63"
+        statement: "AC63: load per core renders as a number against a stated reference and not as a percent bar -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k load_per_core_is_a_number"
+      - id: "AC64"
+        statement: "AC64: a machine that refuses work says so above its capacity, and a 7/6 overflow stays visible as \"1 over capacity\" -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k refusing_machine_and_overflow"
+      - id: "AC65"
+        statement: "AC65: the car is a decorative icon with no data and is `aria-hidden` -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k car_is_decorative"
+      - id: "AC66"
+        statement: "AC66: the change is proven on the real site after a publish: the served page and factory-floor.json read from the tailnet site show the new bar text, the \"Memory used\" label and the refusing-machine line, recorded as installed=<host>:<revision> with observed=<what ran> -- falsifier: curl -s \"$FACTORY_FLOOR_URL\" | grep -c \"Memory used\" prints 1 or more after the publish, where the variable holds the served site address from the deployment overlay"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -503,4 +521,61 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane floor-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21733-ac60"
+    description: "AC60 both pages derive the pill, row and stoppage text from `L.condition` and `L.blocker` only; one fixture renders the same condition on the Dashboard and the Floor, and a stop with a live lane never shows Building beside Stopped."
+    source: "manual"
+    binds_ac: ["AC60"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k one_condition_both_pages"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac61"
+    description: "AC61 the progress bar is constant-colour for every condition, shows completed/total work tasks with gates counted apart, draws unknown without aria-valuenow, and never reads Complete with a gate pending."
+    source: "manual"
+    binds_ac: ["AC61"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k progress_bar_neutral_and_honest"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac62"
+    description: "AC62 the memory gauge label, fill and text encode used/total, and a missing total draws no bar."
+    source: "manual"
+    binds_ac: ["AC62"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k memory_gauge_matches_label"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac63"
+    description: "AC63 load per core renders as a number against a stated reference and not as a percent bar."
+    source: "manual"
+    binds_ac: ["AC63"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k load_per_core_is_a_number"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac64"
+    description: "AC64 a machine that refuses work says so above its capacity, and a 7/6 overflow stays visible as \"1 over capacity\"."
+    source: "manual"
+    binds_ac: ["AC64"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k refusing_machine_and_overflow"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac65"
+    description: "AC65 the car is a decorative icon with no data and is `aria-hidden`."
+    source: "manual"
+    binds_ac: ["AC65"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k car_is_decorative"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac66"
+    description: "AC66 the served page carries the Memory used label after a real publish. Hosted CI cannot reach the tailnet, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    binds_ac: ["AC66"]
+    checks:
+      - check_type: "command"
+        check_value: "test \"$(curl -s \"$FACTORY_FLOOR_URL\" | grep -c 'Memory used')\" -ge 1"
         cwd: "."
