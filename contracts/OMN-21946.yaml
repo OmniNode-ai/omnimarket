@@ -71,6 +71,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC1"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lane_census_effect_omn21946.py -q --no-cov -k lane_census"
+        cwd: "."
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_census_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("requires_docker_engine: true", "unit_name: onex-lane-census")); print("lane census deploy probe: PASS")'
