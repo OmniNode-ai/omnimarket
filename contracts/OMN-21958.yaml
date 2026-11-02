@@ -37,7 +37,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -k stop_gate -q tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_placement.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
   binds_ac:
   - AC1
 - id: dod-omn21958-ac2
@@ -46,7 +46,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -k stop_gate_exemption -q tests/nodes
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
   binds_ac:
   - AC2
 - id: dod-omn21958-ac3
@@ -55,7 +55,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -k stop_gate_config -q tests/nodes
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
   binds_ac:
   - AC3
 - id: dod-omn21958-ac4
@@ -64,7 +64,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -k stop_gate_parity -q tests/nodes/node_andon_stop_reducer
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
   binds_ac:
   - AC4
 - id: dod-omn21958-ac5
@@ -73,7 +73,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -k stop_gate_runner_path -q tests/nodes/node_remote_lane_compute
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
   binds_ac:
   - AC5
 - id: dod-omn21958-ac6
@@ -82,6 +82,27 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest -q tests/nodes/node_exception_queue_effect/test_stop_opens_only_from_an_emit.py
-    cwd: ${OMNI_HOME}/omnimarket
+    cwd: .
   binds_ac:
   - AC6
+- id: dod-omn21958-deploy-stop-gate
+  description: 'Hosted-runner deploy smoke: the placement node asked the way the runner asks it refuses a fixture stop and places nothing, and the fill and the worker-engine choice refuse a stopped class, all in process with no broker, no Docker daemon and no production rollout.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -k stop_gate -q --no-cov tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_runner_path.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
+    cwd: .
+  - check_type: command
+    check_value: grep -q "stop_gate" src/omnimarket/nodes/node_landing_worker_engine_compute/handlers/handler_landing_worker_engine.py
+    cwd: .
+  binds_ac:
+  - AC1
+  - AC5
+- id: dod-omn21958-integration-proof
+  description: The pushed head ran the stop_gate tests of the three dispatching nodes on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21958 -- uv run --frozen pytest -k stop_gate -q --no-cov tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_runner_path.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
+    cwd: .
