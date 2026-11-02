@@ -19,7 +19,7 @@ from omnimarket.nodes.node_compaction_verdict_compute.handlers.joint_power impor
     simulate_joint_power,
 )
 from omnimarket.nodes.node_compaction_verdict_compute.handlers.thresholds_loader import (
-    load_thresholds,
+    parse_thresholds,
 )
 from omnimarket.nodes.node_compaction_verdict_compute.models import (
     CompactionThresholdsError,
@@ -28,6 +28,7 @@ from omnimarket.nodes.node_compaction_verdict_compute.models import (
     EnumRunLabel,
     EnumSafeguardStatus,
     ModelArmCell,
+    ModelCompactionThresholds,
     ModelCompactionVerdictRequest,
     ModelLiveBlock,
     ModelLiveIntervalRequest,
@@ -37,6 +38,12 @@ from omnimarket.nodes.node_compaction_verdict_compute.models import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def load_thresholds(path: str) -> ModelCompactionThresholds:
+    """What the measurement runner does: read the data file, hand the node its text."""
+    return parse_thresholds(Path(path).read_text(encoding="utf-8"))
+
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "thresholds.yaml"
 _NODE_DIR = (
@@ -113,6 +120,7 @@ def _request(
     return ModelCompactionVerdictRequest(
         run_id="synthetic",
         thresholds_path=str(thresholds),
+        thresholds_text=thresholds.read_text(encoding="utf-8"),
         confirmatory=confirmatory,
         boundaries=tuple(boundaries),
     )

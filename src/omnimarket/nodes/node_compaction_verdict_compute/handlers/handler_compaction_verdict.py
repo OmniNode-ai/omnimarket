@@ -18,7 +18,8 @@ HandlerCompactionVerdict turns a corpus of boundaries, each scored under the
 5. the joint power simulation at this corpus shape, and the refusal of a
    confirmatory run below the minimum session count or the minimum power.
 
-Every number comes from the thresholds data file named in the request; the
+Every number comes from the thresholds data file whose text and path the
+request carries (the caller reads the file; the node performs no I/O); the
 handler packages none. HandlerLiveBlockInterval is the live stage's
 block-paired bootstrap: it resamples whole randomized blocks of one session
 per arm.
@@ -34,7 +35,7 @@ from omnimarket.nodes.node_compaction_verdict_compute.handlers.joint_power impor
     simulate_joint_power,
 )
 from omnimarket.nodes.node_compaction_verdict_compute.handlers.thresholds_loader import (
-    load_thresholds,
+    parse_thresholds,
 )
 from omnimarket.nodes.node_compaction_verdict_compute.handlers.verdict_stats import (
     evaluate,
@@ -88,7 +89,7 @@ class HandlerCompactionVerdict:
     def handle(
         self, request: ModelCompactionVerdictRequest
     ) -> ModelCompactionVerdictReport:
-        thresholds = load_thresholds(request.thresholds_path)
+        thresholds = parse_thresholds(request.thresholds_text)
         ordered = sorted(
             request.boundaries, key=lambda c: (c.session_id, c.boundary_id)
         )
@@ -163,6 +164,7 @@ class HandlerCompactionVerdict:
 
         return ModelCompactionVerdictReport(
             run_id=request.run_id,
+            thresholds_path=request.thresholds_path,
             verdict=verdict,
             run_label=label,
             hold_reason=_MOD_FALLBACK if hold else None,

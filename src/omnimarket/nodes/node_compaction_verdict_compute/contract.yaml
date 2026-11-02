@@ -49,7 +49,7 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct invocation by the compaction measurement runner with scored boundaries and the thresholds data file path.
+  external_trigger: Direct invocation by the compaction measurement runner with scored boundaries and the thresholds data file's path and text (the runner reads the file; the node performs no I/O).
 descriptor:
   node_archetype: compute
   purity: pure

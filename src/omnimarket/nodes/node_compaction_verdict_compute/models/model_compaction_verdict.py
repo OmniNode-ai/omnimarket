@@ -169,7 +169,10 @@ class ModelCompactionVerdictRequest(BaseModel):
     model_config = _FROZEN
 
     run_id: str = Field(min_length=1)
+    #: Where the pre-registered thresholds data file lives (recorded in the report).
     thresholds_path: str = Field(min_length=1)
+    #: That data file's text, read by the caller: the node performs no I/O.
+    thresholds_text: str = Field(min_length=1)
     confirmatory: bool
     boundaries: tuple[ModelPairedBoundary, ...] = Field(min_length=1)
 
@@ -248,6 +251,7 @@ class ModelCompactionVerdictReport(BaseModel):
     model_config = _FROZEN
 
     run_id: str
+    thresholds_path: str
     verdict: EnumCompactionVerdict
     run_label: EnumRunLabel
     hold_reason: str | None
