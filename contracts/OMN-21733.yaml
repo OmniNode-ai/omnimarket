@@ -86,6 +86,16 @@ requirements:
     acceptance:
       - id: "AC22"
         statement: "AC22: the Factory floor tab has one verdict line and no lamp grid, shift report or tally, uses the glossary's plain words, shows Eastern time with UTC only in a title, counts each machine's slots under one legend, collapses lines with no plan file, and carries no text below twelve pixels -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q"
+  - id: "req-omn21733-view-tokens-s1"
+    statement: |-
+      The board's state colours come from the vendored OmniUI theme sets: the page's floor, panel, ink, muted, rule, ok, warn and stop variables alias OmniUI variables, data-theme selects the set through data-onex-theme, and the vendored theme CSS is pinned by sha256.
+    acceptance:
+      - id: "AC23"
+        statement: "AC23: --floor, --panel, --ink, --muted, --rule, --ok, --warn and --stop resolve from the vendored OmniUI theme in both themes; changing one status token in a copy of the CSS changes the stop colour, and removing the alias makes the assertion fail -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'resolve or changing or removing or every_theme'"
+      - id: "AC24"
+        statement: "AC24: the vendored OmniUI theme CSS is pinned and a pin test fails when a vendored file's sha256 differs from the pin -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k pin"
+      - id: "AC25"
+        statement: "AC25: the publish copies the vendored theme files beside the page, ahead of it, under the names the contract declares -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'declared_theme or links_exactly'"
   - id: "req-omn21733-lines-match-reality"
     statement: |-
       The floor's lines match the work: a plan with no manifest and no table is drawn from its own task paragraphs and linked to merged work only through its tickets and pull requests, a plan on an unmerged branch is drawn from that branch until it merges, the one-runtime line reads each lane's application containers over ssh and draws a host it cannot read as UNKNOWN with the cause, and an unread runner fleet names why.
@@ -334,6 +344,36 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac23"
+    description: "AC23 the state colours resolve from the vendored OmniUI theme in both themes."
+    source: "manual"
+    binds_ac: ["AC23"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'resolve or changing or removing or every_theme'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac24"
+    description: "AC24 the vendored theme CSS matches its sha256 pin."
+    source: "manual"
+    binds_ac: ["AC24"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k pin"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac25"
+    description: "AC25 the publish copies the theme files beside the page under the declared names."
+    source: "manual"
+    binds_ac: ["AC25"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'declared_theme or links_exactly'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-view-tokens-s1-deploy"
+    description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires the theme bridge script, which is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^<script id=\"theme-bridge\">'"
   - id: "dod-omn21733-ac23"
     description: "AC23 task paragraphs, scoped links and the indexed ledger lookups agree with their definitions."
     source: "manual"

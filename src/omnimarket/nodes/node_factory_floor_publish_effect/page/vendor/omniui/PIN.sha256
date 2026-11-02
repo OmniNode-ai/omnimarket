@@ -1,0 +1,6 @@
+# The sha256 of each vendored OmniUI compiled theme CSS file, in sha256sum format.
+# Source: the OmniUI repository, src/generated/tokens/, commit 4b5c0dd (framework-free token artifact, OMN-21848).
+# Never edit a vendored file by hand: recapture from OmniUI, then update this pin in the same change.
+87890675ff6869be634d1984de0efa7661508573d32d676eecc0a38f60168221  onex.theme.dark.css
+4bd0b21df1f446e64e6c1d3012bc9f26bbbbe17518bb8614290e0ce8d13b5a49  onex.theme.light.css
+125c5218d0cb74c85e9a133361e8c6d5c833c8972b16d8c282fdae6029abbe56  onex.theme.warm.css

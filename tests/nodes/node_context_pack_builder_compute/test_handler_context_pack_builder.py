@@ -124,6 +124,43 @@ class TestHandlerContextPackBuilder:
         assert result.failure_class == EnumContextPackFailure.REQUIRED_FACTOR_MISSING
         assert result.context_pack is None
 
+    def test_empty_allowed_required_factor_may_have_no_artifact(self) -> None:
+        profile = _profile(
+            required_factors=(
+                EnumContextFactor.GOLDEN_CHAIN,
+                EnumContextFactor.EXEMPLAR,
+            ),
+            optional_factors=(EnumContextFactor.LOCAL_FAILURES,),
+            empty_allowed_factors=(EnumContextFactor.EXEMPLAR,),
+        )
+        result = HandlerContextPackBuilder().handle(
+            _request(
+                (_artifact(EnumContextFactor.GOLDEN_CHAIN, "chain"),), profile=profile
+            )
+        )
+
+        assert result.status == EnumContextPackBuilderStatus.OK, result.errors
+
+    def test_empty_allowed_does_not_excuse_another_missing_required_factor(
+        self,
+    ) -> None:
+        profile = _profile(
+            required_factors=(
+                EnumContextFactor.GOLDEN_CHAIN,
+                EnumContextFactor.EXEMPLAR,
+            ),
+            optional_factors=(EnumContextFactor.LOCAL_FAILURES,),
+            empty_allowed_factors=(EnumContextFactor.EXEMPLAR,),
+        )
+        result = HandlerContextPackBuilder().handle(
+            _request(
+                (_artifact(EnumContextFactor.EXEMPLAR, "exemplar"),), profile=profile
+            )
+        )
+
+        assert result.status == EnumContextPackBuilderStatus.FAILED
+        assert result.failure_class == EnumContextPackFailure.REQUIRED_FACTOR_MISSING
+
     def test_token_budget_exceeded_fails_typed(self) -> None:
         result = HandlerContextPackBuilder().handle(
             _request(

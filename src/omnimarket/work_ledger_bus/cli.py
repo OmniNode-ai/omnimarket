@@ -61,7 +61,7 @@ from omnimarket.models.pr_handoff import (
     ModelPrHandoffHandedOff,
     ModelPrHandoffRequested,
 )
-from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_serve import (
+from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ledger_host import (
     ledger_host_capture,
 )
 from omnimarket.nodes.node_work_ledger_append_effect import (
@@ -225,7 +225,7 @@ def serve_command(
                     opened,
                     ledger=ledger,
                     append_runner=append_runner,
-                    host_name=host_name,
+                    append_handler=handler,
                     bus_lane=bus_lane,
                 )
                 if operator_capture
