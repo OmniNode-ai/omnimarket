@@ -731,6 +731,8 @@ def machine_cells(**cells: object) -> dict[str, object]:
         "swap_used_pct": None,
         "cap": 4,
         "refusal": "",
+        "free_slots": 2,
+        "admission": {"state": "open", "reason": ""},
         "lanes_placed": 2,
         "lanes": ["lane-one", "lane-two"],
         "units_placed": 3,
