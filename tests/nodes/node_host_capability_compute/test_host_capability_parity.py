@@ -312,3 +312,90 @@ def test_the_capability_program_is_one_quoted_word_and_answers_one_verdict_line(
         assert done.returncode == 0, (args, done.stdout, done.stderr)
         assert len(lines) == 1, (args, done.stdout, done.stderr)
         assert lines[0].split()[0] in cap.VERDICTS, (args, done.stdout, done.stderr)
+
+
+# The recorded failure: ``ScmBusCaller`` joins no consumer group (it sets ``_bus`` only), yet a copy of this check read ``._group``, so every
+# lab host printed ``unknown bus-check-failed:AttributeError:'ScmBusCaller' object has no attribute '_group'``.
+RECORDED_GROUP_ERROR = "'ScmBusCaller' object has no attribute '_group'"
+STUB_SCM = {
+    "omnimarket/__init__.py": "",
+    "omnimarket/handlers/__init__.py": "",
+    "omnimarket/handlers/scm/__init__.py": "",
+    "omnimarket/handlers/scm/handler_scm_dispatch.py": (
+        "class Topics:\n    success = 'terminal.ok'\n    failure = 'terminal.failed'\n\n\n"
+        "def load_topics(node):\n    return Topics()\n\n\n"
+        "def verb(name):\n    return type('Verb', (), {'node': name})\n\n\n"
+        "class ScmBusCaller:\n    def __init__(self, bus):\n        if not hasattr(bus, 'subscribe_ungrouped'):\n"
+        "            raise TypeError('no subscribe_ungrouped')\n        self._bus = bus\n"
+    ),
+    "omnimarket/handlers/scm/scm_cli.py": (
+        "import contextlib\nimport os\n\n\nclass Bus:\n    def __init__(self, ungrouped, refuse):\n        self.refuse = refuse\n"
+        "        if ungrouped:\n            self.subscribe_ungrouped = self._ungrouped\n\n"
+        "    async def stop(self):\n        return None\n\n"
+        "    async def _ungrouped(self, topic, handler):\n        if self.refuse:\n"
+        "            raise type('LabRunBusError', (Exception,), {})('SASL authentication failed')\n        return self.stop\n\n\n"
+        "@contextlib.asynccontextmanager\nasync def _open_bus(opts):\n"
+        "    yield Bus(os.environ.get('STUB_UNGROUPED') == '1', os.environ.get('STUB_REFUSE') == '1')\n"
+    ),
+}
+
+
+def scm_check_against_stub_omnimarket(
+    tmp_path: Path, **stub_env: str
+) -> tuple[str, str]:
+    """The scm-pr-create check against an omnimarket whose ``ScmBusCaller`` sets ``_bus`` only."""
+    for name, text in STUB_SCM.items():
+        target = tmp_path / "stub" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            cap.CAPABILITY_PY,
+            "scm-pr-create",
+            cap.SCM_BUS_LANE,
+            "5",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": str(tmp_path / "stub"),
+            **stub_env,
+        },
+    )
+    verdict, _, detail = done.stdout.strip().partition(" ")
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    assert len(done.stdout.splitlines()) == 1, done.stdout
+    return verdict, detail
+
+
+def test_scm_bus_caller_without_a_group_attribute_reads_ok_not_the_recorded_attribute_error(
+    tmp_path: Path,
+) -> None:
+    verdict, detail = scm_check_against_stub_omnimarket(tmp_path, STUB_UNGROUPED="1")
+    assert (verdict, detail) == ("ok", "subscribed:terminal.ok")
+    assert RECORDED_GROUP_ERROR.replace(" ", "_") not in detail
+    assert "_group" not in detail
+
+
+def test_scm_bus_caller_reads_missing_when_the_broker_refuses_the_ungrouped_read(
+    tmp_path: Path,
+) -> None:
+    verdict, detail = scm_check_against_stub_omnimarket(
+        tmp_path, STUB_UNGROUPED="1", STUB_REFUSE="1"
+    )
+    assert verdict == "missing"
+    assert detail.startswith("bus:LabRunBusError:")
+
+
+def test_scm_bus_caller_over_a_bus_with_no_ungrouped_read_stays_unknown_never_ok(
+    tmp_path: Path,
+) -> None:
+    verdict, detail = scm_check_against_stub_omnimarket(tmp_path)
+    assert verdict == "unknown"
+    assert "no_subscribe_ungrouped" in detail

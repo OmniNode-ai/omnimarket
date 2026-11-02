@@ -1,0 +1,95 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21961"
+title: "A unit that opens a pull request is not placed on a host whose scm-pr-create probe reads missing, and an unread probe does not count as a pass beside a host that reads ok"
+summary: "The scm-pr-create host capability read unknown on every lab host because the probe that runs under the plugin still read a consumer group ScmBusCaller no longer has. This node gains a placement handler that refuses a PR-creating unit on a host reading missing with a typed reason and refuses an unread host while another candidate reads ok; no host name is spelled in the placement, lab-fill or tick nodes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21961-probe-reads-truthfully"
+    statement: |-
+      The scm-pr-create check reads ok, missing or unknown by what the bus said and never raises the ScmBusCaller attribute error.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the scm-pr-create check no longer raises the ScmBusCaller attribute error and reads ok, missing or unknown by what the bus said, shown by a test built from the recorded error text"
+  - id: "req-omn21961-placement"
+    statement: |-
+      Placement refuses a PR-creating unit on a host reading missing with a typed reason, and never counts an unread host as a pass while another candidate reads ok.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a test feeding a host's reading with no credential to placement shows a unit that needs PR creation is refused on that host with a typed reason"
+      - id: "AC3"
+        statement: "AC3: a probe that cannot read stays unknown and is never counted as a pass by placement for a PR-creating unit that has another host reading ok"
+  - id: "req-omn21961-pins"
+    statement: |-
+      No host name is spelled in the placement, lab-fill and tick nodes.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: no host name is hard-coded in the placement, lab-fill and tick node sources"
+evidence_requirements:
+  - kind: "tests"
+    description: "The host capability node tests pass, the scm bus caller, pr create refusal, unknown and pin ones among them."
+    command: "uv run pytest tests/nodes/node_host_capability_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21961-scm-bus-caller"
+    description: "The scm-pr-create check against an omnimarket whose ScmBusCaller sets only _bus reads ok, reads missing on a broker refusal and stays unknown on a bus with no ungrouped read, never the _group error."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q --no-cov -k scm_bus_caller"
+        cwd: "."
+  - id: "dod-omn21961-pr-create-refused"
+    description: "A reading with no credential refuses a PR-creating unit with the typed reason capability_missing."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_pr_create_placement.py -q --no-cov -k pr_create_refused_without_credential"
+        cwd: "."
+  - id: "dod-omn21961-unknown-never-passes"
+    description: "An unknown or unread host is refused while another candidate reads ok, and keeps its prior admission when none does."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_pr_create_placement.py -q --no-cov -k unknown_never_passes"
+        cwd: "."
+  - id: "dod-omn21961-pin-not-hardcoded"
+    description: "No placement, lab-fill or tick node source spells a lab host name or address, and the scan flags a planted one."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_pr_create_placement.py -q --no-cov -k pin_not_hardcoded"
+        cwd: "."
+  - id: "dod-omn21961-deploy-local-placement"
+    description: "Hosted-runner smoke runs the placement handler in process with no broker: a host reading missing is refused with the typed reason and a host reading ok is admitted."
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          uv run --frozen python -c '
+          from omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability import parse_capability_lines
+          from omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement import HandlerPrCreatePlacement
+          from omnimarket.nodes.node_host_capability_compute.models import ModelHostReading, ModelPrCreatePlacementRequest
+          def reading(host, text):
+              return ModelHostReading(host=host, capabilities=parse_capability_lines(text))
+          request = ModelPrCreatePlacementRequest(needs=frozenset({"scm-pr-create"}), hosts=(
+              reading("without-credential", "PARITY-CAP scm-pr-create missing lane-declaration-not-found:/x"),
+              reading("unread", "PARITY-CAP scm-pr-create unknown bus-check-failed:x"),
+              reading("with-credential", "PARITY-CAP scm-pr-create ok subscribed:t")))
+          rows = {v.host: v for v in HandlerPrCreatePlacement().handle(request).verdicts}
+          assert not rows["without-credential"].admitted and rows["without-credential"].refusal == "capability_missing", rows
+          assert not rows["unread"].admitted and rows["unread"].refusal == "unknown_while_peer_reads_ok", rows
+          assert rows["with-credential"].admitted, rows
+          print("pr-create placement ok")
+          '
+        cwd: "."
