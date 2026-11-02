@@ -30,7 +30,10 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
+from omnimarket.handlers.work_ledger_fixer_holds import (
+    fixer_hold_reasons,
+    fixer_hold_released_prs,
+)
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
@@ -363,6 +366,7 @@ def derive_ledger_facts(request: ModelLandingLedgerRows) -> ModelLandingLedgerFa
     return ModelLandingLedgerFacts(
         rows_read=len(rows),
         fixer_hold=tuple(fixer_holds(rows, now)),
+        fixer_hold_released_prs=tuple(fixer_hold_released_prs(rows, now, OWNER)),
         cause_owners=tuple(owners),
         cause_owners_skipped=tuple(owners_skipped),
         cause_releases=tuple(cause_releases(rows)),
