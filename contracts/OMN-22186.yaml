@@ -1,0 +1,88 @@
+schema_version: 1.0.0
+ticket_id: OMN-22186
+title: 'Lander L1: a TLA+ model of the permit, the fence and the kept tree has a TLC verdict with mutation matrix before any lander node is built'
+summary: formal/lander_lease is a TLA+ model of the lane lander (task L1, model before build for L2 to L4). The controller grants a lease, issues a permit stamped issued_at, reads status, cancels, ends the permit at cutoff_at, releases, falls back to a cold worker and merges; the host job runs offer, START, engine, push and done and may die between any two steps; the cold worker pushes on a lease; the network may lose, delay and reorder a message and the host may pause. The base config checks AtMostOneAuthorizedPublisher, NoLostUpdate, ExactlyOnceChild and SingleOwnerOfTree and the liveness NoStrand; five mutation configs (M1 to M5, with M4b) each end in a TLC violation that names the property. The TLC run was made on h201 and its outputs are checked in under formal/lander_lease/results. Only formal-model files are added; no node, script or test.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22186-base-passes
+    statement: TLC exits 0 on the base config with the four safety properties and NoStrand.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: TLC exits 0 on the base config with the four safety properties and NoStrand -- falsifier: the TLC run on h201 through the existing runner exits non-zero or its output lacks any of the five properties'
+  - id: req-omn22186-mutants-rejected
+    statement: Each property has a mutation config that ends in a TLC violation naming it.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: Each property has a mutation config ending in a TLC violation naming it, in a matrix in the README: drop the lease from the push (NoLostUpdate); issue a cold dispatch during a live permit (AtMostOneAuthorizedPublisher); respawn the engine on a repeated offer (ExactlyOnceChild); let a remover delete a tree that a record names, or keep the lock file inside the tree directory (SingleOwnerOfTree); suppress the cold fallback after cutoff_at (NoStrand) -- falsifier: a mutation config M1 to M5 that TLC accepts without a violation, or whose violation names another property'
+  - id: req-omn22186-verdict-recorded
+    statement: The README section Verdict and VERDICT.txt record the TLC receipt and the mutation results.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: The README section Verdict records the TLC receipt and the mutation results -- falsifier: VERDICT.txt or the README Verdict section missing the receipt path or any of the five mutation results'
+evidence_requirements:
+  - kind: manual
+    description: The checked-in TLC receipts name the base pass, the five violations and the receipt path.
+    command: grep -c 'result=' formal/lander_lease/results/SUMMARY.txt
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22186-ac1
+    description: AC1 reads the checked-in TLC output of the base config run on h201 (exit 0, no error found) and the config's own list of the four safety properties and NoStrand.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/lander_lease
+          grep -q '^exit=0$' results/base.out
+          grep -q 'Model checking completed. No error has been found.' results/base.out
+          for p in AtMostOneAuthorizedPublisher NoLostUpdate ExactlyOnceChild SingleOwnerOfTree; do grep -q "^INVARIANT $p\$" base.cfg; done
+          grep -q '^PROPERTY NoStrand$' base.cfg
+          grep -q '^base .*result=PASS' results/SUMMARY.txt
+        cwd: .
+  - id: dod-omn22186-ac2
+    description: AC2 reads the checked-in TLC output of each mutation config and requires its violation to name the one property its config checks.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/lander_lease
+          grep -q '^Error: Invariant NoLostUpdate is violated' results/M1.out
+          grep -q '^Error: Invariant AtMostOneAuthorizedPublisher is violated' results/M2.out
+          grep -q '^Error: Invariant ExactlyOnceChild is violated' results/M3.out
+          grep -q '^Error: Invariant SingleOwnerOfTree is violated' results/M4.out
+          grep -q '^Error: Invariant SingleOwnerOfTree is violated' results/M4b.out
+          grep -q '^Error: Temporal properties were violated' results/M5.out
+          grep -q '^PROPERTY NoStrand$' M5.cfg
+          for m in M1 M2 M3 M4 M4b M5; do grep -q "^$m .*result=VIOLATED" results/SUMMARY.txt; done
+          grep -q 'M5 .*result=VIOLATED NoStrand' results/SUMMARY.txt
+        cwd: .
+  - id: dod-omn22186-ac3
+    description: AC3 reads the README section Verdict and VERDICT.txt for the TLC receipt path and the five mutation results.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/lander_lease
+          grep -q '^Verdict' README.txt
+          for f in README.txt VERDICT.txt; do
+            grep -q 'formal/lander_lease/results/SUMMARY.txt' "$f"
+            grep -q 'M1.*NoLostUpdate' "$f"
+            grep -q 'M2.*AtMostOneAuthorizedPublisher' "$f"
+            grep -q 'M3.*ExactlyOnceChild' "$f"
+            grep -q 'M4.*SingleOwnerOfTree' "$f"
+            grep -q 'M5.*NoStrand' "$f"
+          done
+        cwd: .
