@@ -46,7 +46,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k percent_built -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k percent_built -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac3
   description: AC3 a blocked TERMINAL that is a lane's last row and is older than the stall window stops no line.
@@ -55,7 +55,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k dead_lane -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k dead_lane -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac4
   description: AC4 an unplaced lane carries its cause and the page counts the lanes by cause with their names.
@@ -64,7 +64,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k lane_machine -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k lane_machine -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac5
   description: AC5 the page and compute behaviours the preview readback shows; the readback itself is quoted in the PR body from the h051 preview.
@@ -82,7 +82,7 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-integration-proof
   description: The pushed head ran the three floor node suites, with the new tests, on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
