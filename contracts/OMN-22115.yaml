@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22115"
+title: "Lab hosts reach their peers over ssh: one omnimarket effect node distributes host keys and authorized keys from the lab host table and the lab-ssh parity item clears"
+summary: "node_lab_host_key_distribution_effect reads the lab host table, and for each ordered pair of the hosts named in its request appends the source host's public user key to the peer's authorized_keys and the peer's host key to the source's known_hosts, only when absent, so a second run changes nothing. Only public material is read or written. A host it cannot reach is reported as a refusal with the transport's text, and the run never falls back to a password. A dry-run mode prints the plan and writes nothing."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn22115-lab-host-key-distribution"
+    statement: |-
+      Every in-scope lab host reaches every other in-scope lab host over ssh without a prompt after one run of the node, a second run changes nothing, and the lab-ssh parity item clears.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a test shows the node writes authorized_keys and known_hosts entries for every peer pair in a fixture host table, and a second run changes nothing -- falsifier: uv run pytest -k lab_host_key_distribution_idempotent"
+      - id: "AC2"
+        statement: "AC2: the node pull request is merged on omnimarket main -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#<n> reports state MERGED"
+      - id: "AC3"
+        statement: "AC3: the node is deployed on dev and was run once for h051, h053, h101 and h201, shown by its receipt naming each host pair -- falsifier: the run receipt lists all twelve ordered pairs as ok"
+      - id: "AC4"
+        statement: "AC4: integration check: from h051, ssh to h053, h101 and h201 succeeds non-interactively, and queue-status no longer reports parity capability:lab-ssh -- falsifier: queue_status.py output has no capability:lab-ssh item"
+evidence_requirements:
+  - kind: "tests"
+    description: "The distribution, dry-run, refusal, scope, no-literal, argv and private-key cases of the node."
+    command: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22115-distribution-tests"
+    description: "The node writes both files for every ordered pair of a fixture host table through a fake transport, and a second run appends nothing."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k lab_host_key_distribution_idempotent"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22115-registration"
+    description: "The node is registered as a local-invocation node with its command line, and its contract file exists."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          grep -q '^node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"' pyproject.toml && test -f src/omnimarket/nodes/node_lab_host_key_distribution_effect/contract.yaml
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22115-live-run"
+    description: "Live evidence, read after merge: the node's run receipt for the four hosts, the ssh readback from h051 and the queue-status read. Recorded on the ticket, not runnable on a hosted runner."
+    source: "manual"
+    binds_ac: ["AC2", "AC3", "AC4"]
