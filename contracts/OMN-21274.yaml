@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21274"
+title: "Question guard as an omnimarket compute node"
+summary: >-
+  Adds node_question_guard_compute. A drafted reply to the operator and the ruling rows in force go in;
+  a typed verdict comes out: refuse with the matched ruling id and reason, or admit. The rule data (a
+  dev-lane restore or rebuild question is refused, a question whether work may go to subagents is
+  refused, a question with two or more real options is admitted) lives in the contract's
+  config.question_guard and is replaced by the question_guard overlay, never in Python literals. The
+  node answers the same on the in-memory binding and on the Redpanda overlay binding.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-question-guard-node"
+    statement: |-
+      A question a ruling in force already answers is refused with that ruling; a question with real options is admitted.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a question asking approval for a dev-lane restore or rebuild is refused citing RULING 2026-10-20T17:35:21Z -- falsifier: `uv run pytest tests/nodes/node_question_guard_compute/test_question_guard.py -k ac1 -q --no-cov` passes with the question admitted
+      - id: "AC2"
+        statement: |-
+          AC2: a question asking whether work may go to subagents is refused citing RULING 2026-10-15T11:37:28Z -- falsifier: `uv run pytest tests/nodes/node_question_guard_compute/test_question_guard.py -k ac2 -q --no-cov` passes with the question admitted
+      - id: "AC3"
+        statement: |-
+          AC3: a recorded question with two or more real options that no ruling settles is admitted citing RULING 2026-10-10T17:54:23Z -- falsifier: `uv run pytest tests/nodes/node_question_guard_compute/test_question_guard.py -k ac3 -q --no-cov` passes with a recorded question refused
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3 and the in-memory binding: the node suite."
+    command: "uv run pytest tests/nodes/node_question_guard_compute -q -p no:randomly --no-cov -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21274-ac1"
+    description: "AC1: a dev-lane restore or rebuild question is refused with the 2026-10-20T17:35:21Z ruling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_question_guard_compute/test_question_guard.py -k ac1 -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn21274-ac2"
+    description: "AC2: a subagent question is refused with the 2026-10-15T11:37:28Z ruling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_question_guard_compute/test_question_guard.py -k ac2 -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC2"]
+  - id: "dod-omn21274-ac3"
+    description: "AC3: recorded real-option questions are admitted with the 2026-10-10T17:54:23Z ruling."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_question_guard_compute/test_question_guard.py -k ac3 -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC3"]

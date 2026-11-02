@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Recorded questions put to the operator, copied verbatim from the question= cell of
+# RULING rows of the rolling work ledger. Every case names the stamp of the row it was
+# copied from. Nothing here is written for the test.
+#
+# A case's expected verdict is the guard's: admit for a question that leaves two or
+# more real options open (the real-options class), admit for a question that offers
+# no choice and matches no refusal class.
+real_options:
+  - source: "RULING 2026-11-02T13:07:52Z question="
+    text: >-
+      May the eight listed process rulings (the OCC retirement findings of 2026-10-08,
+      the 2026-10-09 fix plan approval, the GLM Coding Plan payment, the 22
+      path-filtered jobs fold, the one gate audit pass, the delegation pillar handoff,
+      the Friday retrospective timing) be marked one-time decisions? Options: yes all
+      eight; yes for some; no, all stay process rulings.
+  - source: "RULING 2026-11-02T13:06:25Z question="
+    text: >-
+      Orchestration alignment plan decision D1: confirm now, or adopt the plan default
+      (do not confirm yet; the capture measurement W0.3 runs first; workflow-level
+      results only until identities are validated)?
+  - source: "RULING 2026-11-02T13:11:14Z question="
+    text: >-
+      Dharma connector: wait for the adapter to merge before placing the Dharma token
+      on the .201 dev lane (option C), or place it now (option A) and get the
+      integration working?
+no_choice:
+  - source: "RULING 2026-11-02T12:33:07Z question="
+    text: "Do we also need a stop command?"
+  - source: "RULING 2026-11-02T14:06:18Z question="
+    text: >-
+      Is Anthropic API credit spent only on code reviews, with work overflow going to
+      cloud sessions?
