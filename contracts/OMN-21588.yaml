@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21588"
+title: "omnimarket CI Summary enforces the composed-runtime-boot check, and its gate file stays within its canonical-file-shape limit"
+summary: "CI Summary's layer-4 set asserts the composed-runtime-boot context with a producer row, and the sweep event set moves to a data file so the baselined gate file does not grow. AC2 (advisory-job gate) and AC3 (canonical file shape) are measured with their external tools and cited in the pull request."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-composed-boot-enforced"
+    statement: |-
+      Every omnimarket pull request's CI Summary waits for and enforces the composed runtime boot, and the gate file's code does not grow.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: omnimarket's CI Summary layer-4 set asserts the context "composed-runtime-boot (omnimarket on infra)" with a producer row for runtime-boot-composed.yml, so the context missing or in progress is PENDING, failed is FAILURE, and success passes -- falsifier: uv run pytest on a ci_summary_gate test that feeds evaluate_external that context missing, in_progress, failure and success, red at the merge base
+      - id: "AC4"
+        statement: |-
+          AC4: the external-context census and producer parity cover the new context (the pull-request tuple count goes from 59 to 60) -- falsifier: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: the composed-runtime-boot context is asserted with a runtime-boot-composed.yml producer row, missing and in_progress are PENDING, failure is FAILURE and success passes; the sweep event set is exactly the fifteen known non-PR events loaded from its own data file, and ci.yml restores that file from the head. All fail at the merge base."
+    command: 'uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:randomly -k "composed_runtime_boot_context_is_enforced or sweep_non_pr_events_are_exactly or restores_every_gate_data_file"'
+  - kind: "tests"
+    description: "AC4: the pull-request tuple resolves to 60 contexts and every producer row matches its workflow's triggers, including pull_request, merge_group and workflow_dispatch for runtime-boot-composed.yml. At the merge base the count is 59 and the test fails."
+    command: 'uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21588-ac1-composed-boot-asserted"
+    description: "AC1: the composed-runtime-boot context is asserted with a runtime-boot-composed.yml producer row, missing and in_progress are PENDING, failure is FAILURE and success passes; the sweep event set is exactly the fifteen known non-PR events loaded from its own data file, and ci.yml restores that file from the head. All fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:randomly -k "composed_runtime_boot_context_is_enforced or sweep_non_pr_events_are_exactly or restores_every_gate_data_file"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC1"
+  - id: "dod-omn21588-ac4-census-and-parity"
+    description: "AC4: the pull-request tuple resolves to 60 contexts and every producer row matches its workflow's triggers, including pull_request, merge_group and workflow_dispatch for runtime-boot-composed.yml. At the merge base the count is 59 and the test fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC4"

@@ -23,6 +23,7 @@ from ..models import (
     ModelRemoteLaneResult,
     ModelRemoteLaneResultRequest,
 )
+from .first_turn_context import first_turn_context
 from .receipt_usage import receipt_usage
 
 DELEGATION_LINE_RE = re.compile(r"^[^\S\r\n]*`?DELEGATION[^\S\r\n]+(.*)$", re.M)
@@ -162,6 +163,9 @@ class HandlerRemoteLaneResult:
             delegation=parse_delegation_line(message),
             waiting_on_background=waiting_on_background(message),
             usage=usage,
+            first_turn_context=first_turn_context(
+                request.engine_output, request.brief or None
+            ),
             ledger_cells={
                 key: value
                 for key in ("contract_id", "attempt_id")

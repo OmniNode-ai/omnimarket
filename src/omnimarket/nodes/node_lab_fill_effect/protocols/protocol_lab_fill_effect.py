@@ -53,6 +53,12 @@ class ProtocolLabFillLedgerReader(Protocol):
     def status_row_time(self, ledger_path: str, run_key: str) -> str | None: ...
 
 
+class ProtocolLabFillCloudFacts(Protocol):
+    """The ledger's newest host=cloud CLAIM (OMN-21881); LabFillPortError when the ledger is unread."""
+
+    def newest_cloud_claim(self, ledger_path: str) -> str | None: ...
+
+
 class ProtocolLabFillApprovedWork(Protocol):
     """The declared approved-work list: its depth, every row, and one row by id."""
 

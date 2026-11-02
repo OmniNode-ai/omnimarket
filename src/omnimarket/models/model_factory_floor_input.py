@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_lane_container_budget import (
+    ModelLaneContainerBudgetVerdict,
+)
 
 ItemState = Literal["done", "active", "prep", "wait", "stop"]
 TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unread"]
@@ -43,6 +46,9 @@ class ModelFloorManifestTask(BaseModel):
     depends_on: tuple[str, ...] = ()
     tickets: tuple[str, ...] = ()
     prs: tuple[str, ...] = ()
+    # True for a task read from a plan's own paragraphs: its id (T1, S3) is not unique across plans, so only its
+    # tickets and pull requests link it to the ledger and the watcher, never the bare id.
+    scoped: bool = False
 
 
 class ModelFloorManifest(BaseModel):
@@ -183,6 +189,8 @@ class ModelFloorSelection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = ()
+    # The declared line (a plan_path_contains text) that shows each lane's application containers; empty shows none.
+    container_read_line: str = ""
 
 
 class ModelFloorMachineDecl(BaseModel):
@@ -319,9 +327,11 @@ class ModelFactoryFloorConfig(BaseModel):
     gate_fail_verdicts: tuple[str, ...] = Field(min_length=1)
     gate_pass_verdicts: tuple[str, ...] = Field(min_length=1)
     done_outcomes: tuple[str, ...] = Field(min_length=1)
+    # A lane that ended by handing its pull request to landing has built nothing that runs until the request merges:
+    # the task is active while a pull request it named is unmerged, and done once all of them have merged.
+    handoff_outcomes: tuple[str, ...] = ()
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
-    advertisement_stale_factor: int = Field(gt=0)
     station_name_template: str = Field(min_length=1)
     fallback_station_id: str = Field(min_length=1)
     fallback_station_name: str = Field(min_length=1)
@@ -377,5 +387,9 @@ class ModelFactoryFloorRequest(BaseModel):
     receipts: tuple[ModelFloorReceipt, ...] | None = None
     cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
     runner_fleet: ModelFloorRunnerFleet | None = None
+    # Why runner_fleet is None, in the reader's own words; empty when it was read.
+    runner_fleet_cause: str = ""
+    # One verdict per host read by node_lane_container_budget_compute; None when no host was read.
+    lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
 
     _utc = field_validator("generated_at")(_aware)

@@ -707,6 +707,15 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # to 2026-09-25T18:00Z, exits 1 naming the >=0.47.23 floor against
     # omnibase-infra 0.38.57's ==0.47.22 pin; the parent commit exits 0.
     "pypi-pin-resolvability",
+    # OMN-21588 (runtime-boot-composed.yml): composed-runtime-boot boots the
+    # omnimarket runtime on pinned omnibase_infra and checks consumer liveness,
+    # service health with a stopped-service negative control, kernel /health and
+    # a crash-loop phase. It is verification and was unenforced. It triggers on
+    # pull_request, merge_group and workflow_dispatch with no paths, branches or
+    # job-level if, so it reports on every pull-request shape. Asserting it makes
+    # the roughly 31-minute composed boot part of every pull request's CI Summary
+    # (operator choice, 2026-10-30).
+    "composed-runtime-boot (omnimarket on infra)",
 )
 
 # Conclusions that count as "provably passed" for an L4 external context. A
@@ -814,24 +823,13 @@ GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success", "skipped"})
 # Layers 1-3 own this run's jobs; layer 4 only looks up registered contexts.
 # Every remaining name is judged here, including rows with unknown provenance.
 # The polarity matters: only a KNOWN non-PR event exempts a row.
+# The set is data in ci_summary_sweep_non_pr_events.json (OMN-21588: the
+# baselined gate file only shrinks); CI restores it with the gate file.
+SWEEP_NON_PR_EVENTS_FILE = Path(__file__).with_name(
+    "ci_summary_sweep_non_pr_events.json"
+)
 SWEEP_NON_PR_EVENTS: frozenset[str] = frozenset(
-    {
-        "push",
-        "merge_group",
-        "schedule",
-        "workflow_dispatch",
-        "release",
-        "deployment",
-        "deployment_status",
-        "repository_dispatch",
-        "create",
-        "delete",
-        "fork",
-        "page_build",
-        "public",
-        "registry_package",
-        "watch",
-    }
+    json.loads(SWEEP_NON_PR_EVENTS_FILE.read_text(encoding="utf-8"))
 )
 SWEEP_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
 

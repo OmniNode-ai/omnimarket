@@ -176,3 +176,31 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_lane.py tests/nodes/node_context_compaction_orchestrator/test_compaction_runtime_binding.py -q"
+  - id: "dod-omn21334-ac1-empty-open-work"
+    description: >-
+      AC1 implementation evidence, not the live proof: the compaction profile
+      declares open_work empty-allowed, so a session whose lane has no open message
+      addressed to itself no longer fails the pack build required_factor_missing and
+      falls back to native. Only an unresolved answer without an error code is
+      excused, and only for a factor the profile lists; unavailable, stale, denied,
+      ambiguous and errored answers, and an unresolved orchestration_state or
+      operator_rulings tier, still fail the build. Over the in-memory bus the
+      compaction request with an unresolved open_work source replies built with a
+      package id, and an unresolved orchestration_state replies native.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_bus.py tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py tests/nodes/node_context_pack_builder_compute/test_handler_context_pack_builder.py tests/pack/test_model_context_profile.py tests/pack/test_context_profiles_v5.py -q -n 0 --no-cov"
+  - id: "dod-omn21334-deploy-empty-open-work"
+    description: >-
+      Hosted-runner offline probe of the packaged compaction profile and the
+      pack orchestrator: the compaction_orchestrator profile loaded from the
+      package lists open_work as empty-allowed, and the in-memory bus request with
+      nothing open replies built. It needs no services or credentials and fails on a
+      merge base without the profile field or the orchestrator change. It is not
+      live dev-runtime proof.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_bus.py -q -n 0 --no-cov -k nothing_open_still_builds"

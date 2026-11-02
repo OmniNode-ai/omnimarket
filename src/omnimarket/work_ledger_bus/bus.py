@@ -33,7 +33,11 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.handlers.work_ledger_consume.writer_topics import take_writer_topics
+from omnimarket.handlers.work_ledger_consume.writer_topics import (
+    subscriber,
+    take_together,
+    take_writer_topics,
+)
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -269,53 +273,48 @@ class WorkLedgerAppendHost:
                 )
 
     async def _subscribe_all(self) -> None:
-        async def take(
-            topic: str,
-            callback: Callable[[ProtocolBusMessage], Awaitable[None]],
-            group: str,
-        ) -> None:
-            self._unsubscribes.append(
-                await _subscribe(self._bus, topic, callback, group, "earliest")
-            )
-
+        take = subscriber(self._bus, self._unsubscribes, _subscribe)
         append_group = derive_service_group_id(
             WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE
         )
-        await take(
-            self._topics.command,
-            partial(self._enqueue, writer_principal=None),
-            append_group,
-        )
-        # OMN-21288: a writer topic the broker cannot serve is logged and skipped, never fatal.
-        self.unserved_writer_topics = await take_writer_topics(
-            take, append_group, self._writer_principals, self._topics, self._enqueue
-        )
+
+        async def writers() -> None:
+            # OMN-21288: a writer topic the broker cannot serve is logged and skipped, never fatal.
+            self.unserved_writer_topics = await take_writer_topics(
+                take, append_group, self._writer_principals, self._topics, self._enqueue
+            )
+
+        # OMN-20275: every group joins at once; one after another the last writer waited on all of them.
+        enqueue = partial(self._enqueue, writer_principal=None)
+        jobs = [take(self._topics.command, enqueue, append_group), writers()]
         if self._operator_principal is None:
             logger.warning(
                 "work-ledger host: no operator principal, terminals not mirrored"
             )
-            return
-        group = derive_service_group_id(WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE)
-        for topic in load_work_ledger_mirror_topics():
-            await take(topic, self._enqueue_mirror, group)
-        delegation_group = derive_service_group_id(
-            WORK_LEDGER_DELEGATION_NODE, service=GROUP_SERVICE
-        )
-        for topic in self._delegation_topics:
-            await take(
-                topic,
-                partial(self._enqueue_delegation, delegation_topic=topic),
-                delegation_group,
+        else:
+            mirror, delegation, landing = (
+                derive_service_group_id(node, service=GROUP_SERVICE)
+                for node in (
+                    WORK_LEDGER_MIRROR_NODE,
+                    WORK_LEDGER_DELEGATION_NODE,
+                    WORK_LEDGER_LANDING_NODE,
+                )
             )
-        landing_group = derive_service_group_id(
-            WORK_LEDGER_LANDING_NODE, service=GROUP_SERVICE
-        )
-        for topic in self._landing_topics:
-            await take(
-                topic,
-                partial(self._enqueue_landing, landing_topic=topic),
-                landing_group,
-            )
+            for t in load_work_ledger_mirror_topics():
+                jobs.append(take(t, self._enqueue_mirror, mirror))
+            for t in self._delegation_topics:
+                jobs.append(
+                    take(
+                        t,
+                        partial(self._enqueue_delegation, delegation_topic=t),
+                        delegation,
+                    )
+                )
+            for t in self._landing_topics:
+                jobs.append(
+                    take(t, partial(self._enqueue_landing, landing_topic=t), landing)
+                )
+        await take_together(jobs, self._unsubscribe_all)
 
     async def stop(self) -> None:
         await self._unsubscribe_all()

@@ -534,5 +534,14 @@
       "merge_group"
     ],
     "push_branches": []
+  },
+  "composed-runtime-boot (omnimarket on infra)": {
+    "workflow": "runtime-boot-composed.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
   }
 }

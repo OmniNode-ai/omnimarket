@@ -12,6 +12,12 @@
 # place) so the caller can lock and test the consumer on it; the second call
 # names the test outcome and only passed accepts. Every other refusal carries no
 # candidate and leaves the file alone.
+# OMN-21895 extends the node with the nightly train's missing half: the pure
+# HandlerDevTagPinSet picks the tag set whose pins co-resolve (omnibase_infra
+# and the omnibase-core tag its commit names move together), and
+# HandlerDevTagPinTrain locks the candidate in a scratch copy of the consumer
+# before it hands anything to the publish port, so a bump that cannot resolve
+# opens no PR. The train CLI (`python -m ...runtime_dev_tag_pin_train`) wires the ports.
 # Directly invoked by the pin-move tick; it declares empty event_bus topics and
 # a typed local invocation.
 name: "node_dev_tag_pin_mover_compute"
@@ -52,6 +58,17 @@ handler_routing:
       handler:
         name: "HandlerDevTagPinMover"
         module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_mover"
+    # OMN-21895: the pure choice of the tag set whose pins co-resolve.
+    - operation: "select_dev_tag_pin_set"
+      handler:
+        name: "HandlerDevTagPinSet"
+        module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_set"
+    # OMN-21895: one night, selection then scratch resolve then publish; the
+    # effects are ports the train CLI passes in.
+    - operation: "run_dev_tag_pin_train"
+      handler:
+        name: "HandlerDevTagPinTrain"
+        module: "omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_pin_train"
 
 event_bus:
   subscribe_topics: []

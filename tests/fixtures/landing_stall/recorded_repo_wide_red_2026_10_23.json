@@ -1,0 +1,14 @@
+{
+  "snapshots": [
+    {
+      "observed_at": "2026-10-23T13:59:23Z",
+      "repo": "OmniNode-ai/omnibase_infra",
+      "open_prs": 19,
+      "red_by_context": {
+        "CI Summary": 19,
+        "runner-routing-audit / Runner Routing Audit": 17
+      },
+      "source": "STATUS repo-status-omnibase_infra 2026-10-23T14:00:10Z: runner-routing-audit failing on all except #5278 and #5295 (17/19)"
+    }
+  ]
+}

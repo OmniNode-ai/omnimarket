@@ -4,7 +4,7 @@
 # health checks and their stopped-service negative control, kernel /health,
 # and the dev-lane environment and crash-loop phase, plus always diagnostics.
 # Each moved step is at least as strict: the probe/health/crash budgets are
-# unchanged, all three market projections must render with health checks, and
+# unchanged, all four market projections must render with health checks, and
 # both kernels must print a market version equal to this PR head's pyproject.
 # Infra is checked out at the release or commit uv.lock pins (steps.pins).
 name: Composed Runtime Boot (OMN-21279)
@@ -141,6 +141,7 @@ jobs:
               "omnimarket-projection-delegation",
               "omnimarket-projection-tenant-credentials",
               "omnimarket-projection-llm-cost",
+              "omnimarket-projection-run-trace",
           }
           missing = required - services.keys()
           if missing:
@@ -270,7 +271,7 @@ jobs:
           sys.stdout.write(hits[0]["run"])
           PY
           [ -s "$step_file" ] || { echo "::error::could not read the health step text"; exit 1; }
-          for svc in projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost consumer-health-projection tenant-projection-writer; do
+          for svc in projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost omnimarket-projection-run-trace consumer-health-projection tenant-projection-writer; do
             container="${LOCAL_PROJECT}-${svc}"
             before="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
             if [ "$before" != "healthy" ]; then
@@ -534,7 +535,7 @@ jobs:
         if: always()
         run: |
           docker ps -a --filter "name=${LOCAL_PROJECT}" --format 'table {{.Names}}\t{{.Status}}' || true
-          for svc in omninode-runtime runtime-effects migration-gate forward-migration redpanda-partition-cap redpanda-local-sasl projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost consumer-health-projection; do
+          for svc in omninode-runtime runtime-effects migration-gate forward-migration redpanda-partition-cap redpanda-local-sasl projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost omnimarket-projection-run-trace consumer-health-projection; do
             echo "::group::${svc} logs (tail)"
             docker logs --tail 120 "${LOCAL_PROJECT}-${svc}" 2>&1 || true
             echo "::endgroup::"

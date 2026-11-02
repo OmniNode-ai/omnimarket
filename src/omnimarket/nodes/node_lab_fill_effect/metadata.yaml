@@ -20,6 +20,7 @@ capabilities:
   side_effect_class: write
 dependencies:
 - pydantic>=2.0
+- omnimarket.nodes.node_cloud_session_placement_effect
 license: "MIT"
 authors: ["OmniNode Team"]
 tags: ["effect", "lab", "lab-fill"]

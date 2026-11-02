@@ -5,6 +5,9 @@
 from omnimarket.nodes.node_landing_stall_expectation_compute.handlers.handler_landing_stall_expectation import (
     HandlerLandingStallExpectation,
 )
+from omnimarket.nodes.node_landing_stall_expectation_compute.handlers.handler_landing_stall_open import (
+    HandlerLandingStallOpen,
+)
 from omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold import (
     ModelLandingStallFoldRequest,
     ModelLandingStallFoldResult,
@@ -13,6 +16,7 @@ from omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landin
 
 __all__ = [
     "HandlerLandingStallExpectation",
+    "HandlerLandingStallOpen",
     "ModelLandingStallFoldRequest",
     "ModelLandingStallFoldResult",
     "ModelLandingStallRoute",

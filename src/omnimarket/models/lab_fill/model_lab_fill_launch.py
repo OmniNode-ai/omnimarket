@@ -43,3 +43,6 @@ class ModelLabFillLaunch(BaseModel):
     ref: str | None = None
     pr: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]+#[0-9]+$")
     approved_row: ModelLabFillApprovedRow | None = None
+    # OMN-21881: ``auto`` lets the runner place a repo-only lane on a lab host first and a
+    # cloud session as the overflow; None passes no --placement (the runner's own default).
+    placement: Literal["auto"] | None = None

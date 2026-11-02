@@ -556,3 +556,76 @@ def test_serve_resolves_writer_list_and_optional_operator(
     )
     assert result.exit_code == 69, result.output
     assert identities == [(expected, None)]
+
+
+def test_append_retry_of_a_pending_row_keeps_its_first_request_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-20275: exit 75 leaves the row unanswered; the retry mints a new id and stamp, the serve sees the first."""
+    sent: list[ModelWorkLedgerAppendRequest] = []
+    answers = iter(["pending", "accepted", "accepted"])
+
+    @contextlib.asynccontextmanager
+    async def open_bus(**_: object) -> AsyncIterator[ProtocolLabRunBus]:
+        yield EventBusInmemory(environment="local", group="cli-test")
+
+    class Caller:
+        def __init__(self, bus: ProtocolLabRunBus, *, principal: str) -> None:
+            pass
+
+        async def append(
+            self, request: ModelWorkLedgerAppendRequest, *, timeout_s: float
+        ) -> ModelWorkLedgerAppendReceipt:
+            sent.append(request)
+            status = next(answers)
+            if status == "pending":
+                raise TimeoutError
+            return ModelWorkLedgerAppendReceipt(
+                request_id=request.request_id,
+                status=EnumWorkLedgerAppendStatus(status),
+                exit_code=0,
+                message="",
+                ledger_lines=[12],
+                ledger_host="ledger",
+                duration_ms=10,
+            )
+
+        async def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "open_lab_run_bus", open_bus)
+    monkeypatch.setattr(cli, "bound_lane_principal", lambda: "lane-principal")
+    monkeypatch.setattr(cli, "WorkLedgerAppendCaller", Caller)
+
+    def invoke(stamp: str) -> tuple[int, dict[str, object]]:
+        request_id = uuid4()
+        result = CliRunner().invoke(
+            cli.work_ledger_group,
+            [
+                "append",
+                "--bus-lane",
+                "declared",
+                "--lane",
+                "writer",
+                "--host",
+                "lab-host",
+                "--request-id",
+                str(request_id),
+                "--omnibase-path",
+                str(tmp_path),
+                "--kafka-bootstrap",
+                "broker",
+            ],
+            input=f"{stamp} | STATUS | lane=writer | req={request_id} | same words\n",
+        )
+        return result.exit_code, json.loads(result.stdout)
+
+    first_code, first = invoke("2026-10-01T12:00:00Z")
+    retry_code, retry = invoke("2026-10-01T12:01:40Z")
+    assert (first_code, retry_code) == (75, 0)
+    assert retry["request_id"] == first["request_id"] == str(sent[0].request_id)
+    assert sent[1].request_id == sent[0].request_id
+    assert sent[1].rows == sent[0].rows
+    # Answered: the same words later are a new row under a new id.
+    _, later = invoke("2026-10-01T12:05:00Z")
+    assert later["request_id"] != first["request_id"]

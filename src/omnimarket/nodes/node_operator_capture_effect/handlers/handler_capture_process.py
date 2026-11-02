@@ -10,7 +10,7 @@ first, for each prompt in the inbox:
    shape the compute node refuses, the deterministic fallback classifies it instead, so the
    prompt is never lost to a model outage;
 3. every decision or preference is checked against the earlier rulings for drift;
-4. the rows are appended through the ledger's own append command, one by one;
+4. the rows are appended through the ledger's own append command, all of a prompt's rows in one call;
 5. with a promotion lane, the words also become one RULING, OPERATOR-CONSENT or orchestrator
    inbox MSG (node_operator_capture_compute's promote_operator_words, joined to the session's
    assistant reply before the prompt), planned and appended with the capture rows (OMN-19513);
@@ -142,16 +142,19 @@ class HandlerCaptureProcess:
                 record["rows_planned"] = remaining[:]
                 record.setdefault("classification", _summary(classification))
                 capture_store.rewrite_pending(path, record)
-            while remaining:
-                ok, detail = self._append(remaining[0])
+            if remaining:
+                # OMN-20275: all of a prompt's rows go as ONE append, so one request carries them to the
+                # ledger host and one receipt answers for them; sent one at a time a multi-row ruling
+                # overran the append budget and left some rows without their companions.
+                ok, detail = self._append("\n".join(remaining))
                 if not ok:
                     errors.append(f"{path.name}: {detail}")
                     failed = True
-                    break
-                remaining.pop(0)
-                rows_appended += 1
-                record["rows_planned"] = remaining[:]
-                capture_store.rewrite_pending(path, record)
+                else:
+                    rows_appended += len(remaining)
+                    remaining = []
+                    record["rows_planned"] = []
+                    capture_store.rewrite_pending(path, record)
             if failed:
                 record["rows_planned"] = remaining
                 record.setdefault("classification", _summary(classification))

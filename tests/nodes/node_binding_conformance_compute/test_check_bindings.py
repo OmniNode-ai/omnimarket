@@ -658,7 +658,7 @@ def test_every_listed_node_has_a_row_and_exists() -> None:
 
 def test_the_checked_set_catches_a_listed_node_that_declares_a_different_set() -> None:
     """A listed effect whose real contract declares no protocol fails, naming each missing one."""
-    node = "node_exception_queue_effect"
+    node = "node_lane_placement_recovery_effect"
     result = HandlerBindingConformance().handle(_real_request([node]))
     assert result.conforming is False
     missing = [

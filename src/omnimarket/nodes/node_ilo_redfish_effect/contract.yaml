@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - iLO 4 Redfish Effect (OMN-21835)
+#
+# Manages HPE Gen8 and Gen9 servers through the iLO 4 RESTful (Redfish) API. Read verbs change nothing.
+# Write verbs (power, virtual-media, boot-once) refuse without a cited operator approval, an identity
+# match, and a journal that shows no earlier attempt. Smart Array and RAID configuration are NOT
+# offered: Gen9 RAID changes use SSA or ssacli.
+#
+# WHO HOSTS THIS NODE. The caller's own process, in-process (the skill's CLI): the node reaches a
+# private lab network address from the overlay and reads credentials from the lab secret store at use.
+# It declares no event bus block, so runtime auto-wiring never attaches it to a shared runtime.
+name: node_ilo_redfish_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+
+description: >
+  iLO 4 Redfish EFFECT for the Gen8 and Gen9 lab servers. Verbs: discover, identity, inventory,
+  health, logs, power-status (read); power, virtual-media, boot-once (write, approval-gated). Hosts,
+  addresses, pinned certificates and credential key names come from a private overlay; credentials
+  come from the lab secret store at use; TLS verification is never disabled; every returned field is
+  redacted. Design: reference/ilo4-redfish-management-design.md in the shared knowledge base.
+
+input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
+output_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_result.ModelIloRedfishResult
+
+handler:
+  module: omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish
+  class: HandlerIloRedfish
+  input_model: omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_redfish_request.ModelIloRedfishRequest
+
+# No handler_routing and no event_bus block: the node is called in process by the
+# operator's lab tooling, not by a bus command, so runtime auto-wiring must not attach it.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  # A write is made idempotent by the action journal, not by the device: see the design note.
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+config:
+  # The secret-store key names for a host without explicit names in its overlay row.
+  # {HOST} is the upper-cased lab host name, {ROLE} READ or WRITE, {FIELD} USERNAME or PASSWORD.
+  credential_key_template:
+    type: str
+    default: "ILO_{HOST}_{ROLE}_{FIELD}"
+    description: "Template of the lab secret store keys that hold a host's iLO accounts. Names only; the values live in the store."
+
+metadata:
+  transport_type: in_process
+  ticket: OMN-21835

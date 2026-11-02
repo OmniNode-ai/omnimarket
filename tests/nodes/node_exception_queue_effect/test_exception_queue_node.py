@@ -215,6 +215,8 @@ def test_the_contract_names_the_handlers_and_their_topics():
         "list": "HandlerExceptionQueue",
         "resolve": "HandlerExceptionResolve",
         "read": "HandlerExceptionQueueRead",
+        "stop_event": "HandlerStopEvent",
+        "open_stops": "HandlerOpenStops",
     }
     assert contract["event_bus"]["subscribe_topics"] == [
         contract["runtime_dispatch"]["command_topic"]

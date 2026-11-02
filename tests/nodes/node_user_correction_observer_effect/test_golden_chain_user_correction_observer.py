@@ -3,10 +3,11 @@
 
 """Golden-chain test for node_user_correction_observer_effect (OMN-12846).
 
-Drives the observer handler end-to-end: a typed user-correction command envelope
-in -> a durable ModelUserCorrectionEvent fact out, published on the
-contract-declared topic. No bus/Kafka I/O: the handler returns the emitted event
-as an EFFECT output, exactly as the runtime routes it.
+Drives the observer handler end-to-end: the typed user-correction request the
+runtime adapter unwraps from the command event in -> a durable
+ModelUserCorrectionEvent fact out, which the runtime publishes on the one
+contract-declared publish topic. No bus/Kafka I/O: the handler returns the typed
+fact as an EFFECT output.
 """
 
 from __future__ import annotations
@@ -20,13 +21,11 @@ import yaml
 from omnibase_core.enums.enum_correction_failure_axis import EnumCorrectionFailureAxis
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.enums.enum_user_correction_category import EnumUserCorrectionCategory
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.intelligence.events import ModelUserCorrectionEvent
 from omnimarket.nodes.node_user_correction_observer_effect.handler_user_correction_observer import (
     HandlerUserCorrectionObserver,
 )
-from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 _VALID_HASH = "sha256:" + "c" * 64
 _VALID_FACTOR_HASH = "sha256:" + "d" * 64
@@ -62,28 +61,18 @@ def _make_correction(
 async def test_golden_chain_republishes_correction_on_contract_topic() -> None:
     """A correction command yields one EFFECT event on the contract publish topic."""
     correction = _make_correction()
-    correlation_id = uuid4()
-    inbound: ModelEventEnvelope[ModelUserCorrectionEvent] = ModelEventEnvelope(
-        payload=correction,
-        correlation_id=correlation_id,
-        event_type=publisher_event_type(
-            "onex.cmd.omnimarket.user-correction-observed.v1"
-        ),
-    )
 
     handler = HandlerUserCorrectionObserver()
-    output = await handler.handle(inbound)
+    output = await handler.handle(correction)
 
     assert output.node_kind is EnumNodeKind.EFFECT
     assert len(output.events) == 1
+    assert output.correlation_id == correction.correlation_id
 
-    emitted = output.events[0]
     contract = yaml.safe_load(_CONTRACT_PATH.read_text())
-    expected_topic = contract["event_bus"]["publish_topics"][0]
-    assert emitted.event_type == expected_topic
-    assert emitted.correlation_id == correlation_id
+    assert contract["event_bus"]["publish_topics"] == [handler.publish_topic]
 
-    fact = emitted.payload
+    fact = output.events[0]
     assert isinstance(fact, ModelUserCorrectionEvent)
     assert fact.category is EnumUserCorrectionCategory.CONSTRAINT_VIOLATION
     assert fact.failure_axis is EnumCorrectionFailureAxis.MISUNDERSTANDING
@@ -91,24 +80,19 @@ async def test_golden_chain_republishes_correction_on_contract_topic() -> None:
 
 
 @pytest.mark.unit
-async def test_golden_chain_accepts_dict_payload() -> None:
-    """A dict payload is validated into the typed correction event."""
+async def test_golden_chain_takes_the_request_validated_from_a_dict() -> None:
+    """A dict payload validates into the typed request the handler takes."""
     correction = _make_correction(
         failure_axis=EnumCorrectionFailureAxis.NEW_INFORMATION
     )
-    inbound: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
-        payload=correction.model_dump(mode="json"),
-        correlation_id=uuid4(),
-        event_type=publisher_event_type(
-            "onex.cmd.omnimarket.user-correction-observed.v1"
-        ),
+    request = ModelUserCorrectionEvent.model_validate(
+        correction.model_dump(mode="json")
     )
 
     handler = HandlerUserCorrectionObserver()
-    output = await handler.handle(inbound)
+    output = await handler.handle(request)
 
-    emitted = output.events[0]
-    fact = emitted.payload
+    fact = output.events[0]
     assert isinstance(fact, ModelUserCorrectionEvent)
     assert fact.failure_axis is EnumCorrectionFailureAxis.NEW_INFORMATION
     assert fact.counts_toward_context_failure is False

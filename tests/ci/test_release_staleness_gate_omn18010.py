@@ -308,6 +308,12 @@ def test_added_gates_do_not_displace_release_staleness_checks(
         ),
         encoding="utf-8",
     )
+    (tmp_path / "ci_summary_sweep_non_pr_events.json").write_text(
+        CI_SUMMARY_GATE.with_name("ci_summary_sweep_non_pr_events.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(sys.modules[__name__], "CI_SUMMARY_GATE", summary_path)
     test_release_staleness_is_advisory_under_ci_summary()
 

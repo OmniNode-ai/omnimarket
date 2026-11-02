@@ -1,0 +1,138 @@
+schema_version: 1.0.0
+ticket_id: OMN-21890
+title: A scheduled node prunes merged and closed remote branches from an overlay keep policy, recording tips before deletion
+summary: node_branch_prune_effect prunes remote branches whose tip equals a merged or closed pull request head, under an overlay keep policy, recording tips first; fakes only.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21890-ac1
+  statement: the node ships a contract.yaml, a node and a handler under src/omnimarket/nodes/, and the handler is bound from the contract
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node ships a contract.yaml, a node and a handler under src/omnimarket/nodes/, and the handler is bound from the contract -- falsifier: uv run pytest tests/test_branch_prune_effect.py
+      -k branch_prune_contract -q --no-cov --tb=line'
+- id: req-omn21890-ac2
+  statement: the keep policy is read from an overlay file and no repository name or person name appears in the node source
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the keep policy is read from an overlay file and no repository name or person name appears in the node source -- falsifier: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_overlay
+      -q --no-cov --tb=line'
+- id: req-omn21890-ac3
+  statement: a branch is deleted only when its tip equals the head sha of a merged or closed pull request
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a branch is deleted only when its tip equals the head sha of a merged or closed pull request -- falsifier: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_sha_precise
+      -q --no-cov --tb=line'
+- id: req-omn21890-ac4
+  statement: the tip sha of every deleted branch is recorded before its delete call and a failed record write prevents the delete
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the tip sha of every deleted branch is recorded before its delete call and a failed record write prevents the delete -- falsifier: uv run pytest tests/test_branch_prune_effect.py -k
+      branch_prune_tip_record -q --no-cov --tb=line'
+- id: req-omn21890-ac5
+  statement: dry-run is the default and issues zero delete calls while the report names each candidate
+  acceptance:
+  - id: AC5
+    statement: 'AC5: dry-run is the default and issues zero delete calls while the report names each candidate -- falsifier: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_dry_run -q --no-cov
+      --tb=line'
+- id: req-omn21890-ac6
+  statement: a protected branch, a default branch and a branch with an open pull request are never deleted
+  acceptance:
+  - id: AC6
+    statement: 'AC6: a protected branch, a default branch and a branch with an open pull request are never deleted -- falsifier: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_never_delete
+      -q --no-cov --tb=line'
+- id: req-omn21890-ac7
+  statement: the node runs end to end on a schedule trigger event against fakes and a one-command run path exits 0 with a report
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the node runs end to end on a schedule trigger event against fakes and a one-command run path exits 0 with a report -- falsifier: uv run pytest tests/test_branch_prune_effect.py -k
+      branch_prune_schedule_event -q --no-cov --tb=line'
+evidence_requirements:
+- kind: tests
+  description: The branch prune suite runs on a lab host at the pushed head.
+  command: uv run pytest tests/test_branch_prune_effect.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21890-ac1
+  description: AC1 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_contract -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-ac2
+  description: AC2 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_overlay -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-ac3
+  description: AC3 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_sha_precise -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-ac4
+  description: AC4 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_tip_record -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-ac5
+  description: AC5 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_dry_run -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-ac6
+  description: AC6 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_never_delete -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-ac7
+  description: AC7 runs against fakes only.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_schedule_event -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-deploy
+  description: The node is registered as an onex.nodes entry point and the onex-branch-prune console script resolves, so a deployed wheel carries the node.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_branch_prune_effect.py -k branch_prune_deploy -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21890-deploy-probe-contract
+  description: 'Deploy probe: the node contract GitHub serves at the checked-out commit binds HandlerBranchPrune; the file is absent at the merge base, so the content read fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_branch_prune_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | contains("HandlerBranchPrune")' | grep -qx true
+    cwd: .

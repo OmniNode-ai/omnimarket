@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-21881
+title: The lab fill passes --placement auto for repo-only lane kinds and the tick prints the age of the newest cloud lane and the credit left
+summary: The lab-fill tick (node_lab_fill_effect run_lab_fill_tick) passes --placement auto, with a Lane kind brief line and no --host, for a row whose lane_kind is one of the overlay's cloud.lane_kinds when the overlay flag cloud.enabled is on and node_cloud_session_placement_effect's route action does not refuse it. Every tick answers one cloud_line naming the placement verdict and why, the age of the newest host=cloud CLAIM in the ledger, and the credit left read through node_cloud_session_placement_effect, or unmeasured when it cannot be read.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21881-placement-auto
+    statement: With the overlay flag on and repo-only work eligible, the fill dispatches that lane kind with --placement auto.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: with the overlay flag on and repo-only work eligible, the fill dispatches that lane kind with --placement auto -- falsifier: uv run pytest tests/unit -k cloud_placement_auto -q'
+  - id: req-omn21881-placement-off
+    statement: With the flag off, or with nothing eligible, no cloud placement is passed and the tick line says why.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: with the flag off, or with nothing eligible, no cloud placement is passed and the tick line says why -- falsifier: uv run pytest tests/unit -k cloud_placement_auto_off -q'
+  - id: req-omn21881-cloud-line
+    statement: The tick prints one line with the age of the newest host=cloud CLAIM and the credit left, and prints unmeasured when the credit cannot be read.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the tick prints one line with the age of the newest host=cloud CLAIM and the credit left, and prints unmeasured when the credit cannot be read -- falsifier: uv run pytest tests/unit -k cloud_lane_age_line -q'
+evidence_requirements:
+  - kind: tests
+    description: The cloud placement tests and the lab-fill suites run at the pushed head.
+    command: uv run pytest tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py tests/nodes/node_lab_fill_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21881-ac1
+    description: AC1 runs the tick with the overlay flag on against a fake runner and reads the runner arguments.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py -k cloud_placement_auto -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21881-ac2
+    description: AC2 runs the tick with the flag off and with no eligible row and reads the runner arguments and the cloud line.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py -k cloud_placement_auto_off -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21881-ac3
+    description: AC3 runs the tick against a ledger file and a cloud account state directory and reads the cloud line.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py -k cloud_lane_age_line -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21881-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published tick and launch handlers at the evaluated commit to match this checkout, then runs the focused tests. This checks the source artifact and its behaviour under test, not a lab fill overlay rollout.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for module in handlers/handler_lab_fill_tick.py handlers/handler_lab_fill_launch.py; do
+            path="src/omnimarket/nodes/node_lab_fill_effect/$module"
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.py"
+            cmp "$path" "$readback_dir/source.py"
+          done
+          grep -c '^def cloud_eligibility(' src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py
+          printf 'lab-fill cloud placement source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py -q --no-cov --tb=line
+        cwd: .

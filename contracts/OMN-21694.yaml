@@ -66,6 +66,9 @@ dod_evidence:
           print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_path findings")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_literal_path_slice_omn21694.py -q --no-cov -k path_literal"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21694-deploy-published-overlay-readback"
     description: |-
       Hosted-runner source-artifact readback: fetch the overlay generator at the
