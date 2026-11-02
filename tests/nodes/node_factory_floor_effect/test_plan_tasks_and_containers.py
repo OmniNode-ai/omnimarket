@@ -374,3 +374,89 @@ def test_an_unread_runner_fleet_names_the_file_and_why(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert runner_fleet_cause(broken) == ""
+
+
+CHECKLIST_PLAN = """# A measurement plan
+
+state_as_of: 2026-10-27. Ticket OMN-300 (epic).
+
+## 6. Tasks
+
+### CM.0 Model the lifecycle
+- Repo: formal.
+
+### CM.1 Case manifests from transcripts
+- Repo: omnimarket.
+
+### CM.2 Ground truth from the ledger
+- Repo: omnimarket.
+
+## 8. Adversarial pass (R1 to R8), fixed inline
+
+- **R1 Count integrity.** Recounted from the lists.
+- **R2 Criteria.** Every criterion names a field.
+- **R3 Scope.** One task, one pull request.
+"""
+
+
+def _checklist_plans(tmp_path: Path, text: str, rows: list[str]) -> ModelFloorPlanInput:
+    kb = tmp_path / "kb"
+    (kb / "beta/plans").mkdir(parents=True)
+    (kb / "beta/plans/2026-10-27-checklist-plan.md").write_text(text, encoding="utf-8")
+    (plan,) = load_plans(
+        kb=kb,
+        plans_relpath="beta/plans",
+        manifest_suffix=".tasks.yaml",
+        header_keys=("ticket", "tickets", "epic"),
+        contains=("checklist-plan",),
+        plans_today={
+            "plans": [
+                {
+                    "path": "beta/plans/2026-10-27-checklist-plan.md",
+                    "tasks": [
+                        {"label": label, "state": "not-started"} for label in rows
+                    ],
+                }
+            ]
+        },
+        task_links=(
+            ModelFactoryFloorTaskLinks(
+                plan_path_contains="checklist-plan", tasks={"CM.1": ("OMN-301",)}
+            ),
+        ),
+    )
+    return plan
+
+
+def test_a_review_checklist_is_not_the_plans_tasks() -> None:
+    tasks = parse_heading_tasks(CHECKLIST_PLAN, {"CM.1": ("OMN-301",)}, epic="OMN-300")
+    # Falsifier: the old reader returned R1, R2, R3 here (the only bold-led ids) and no CM task.
+    assert [t.id for t in tasks] == ["CM.0", "CM.1", "CM.2"]
+    assert {t.id: t.tickets for t in tasks}["CM.1"] == ("OMN-301",)
+    assert all(t.scoped for t in tasks)
+
+
+def test_a_plans_today_table_of_the_checklist_does_not_become_the_stations(
+    tmp_path: Path,
+) -> None:
+    plan = _checklist_plans(tmp_path, CHECKLIST_PLAN, ["R1", "R2", "R3"])
+    assert plan.table_tasks == ()
+    assert [t.id for t in tasks_of(plan)] == ["CM.0", "CM.1", "CM.2"]
+
+
+def test_a_review_section_is_skipped_even_when_it_is_the_only_bold_list(
+    tmp_path: Path,
+) -> None:
+    text = "# P\n\n## 2. Adversarial pass\n\n- **R1 One.** x\n- **R2 Two.** y\n"
+    assert parse_heading_tasks(text, {}) == ()
+    plan = _checklist_plans(tmp_path, text, ["R1", "R2"])
+    assert plan.manifest is None
+    assert plan.table_tasks == ()
+
+
+def test_a_real_table_of_parts_still_wins_when_no_task_is_written(
+    tmp_path: Path,
+) -> None:
+    text = "# P\n\n## 2. Work\n\nprose only\n"
+    plan = _checklist_plans(tmp_path, text, ["A1", "A2"])
+    assert [row.label for row in plan.table_tasks] == ["A1", "A2"]
