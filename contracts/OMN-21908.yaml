@@ -13,29 +13,29 @@ requirements:
   statement: 'A caller''s need for a tool that names a host capability column is judged against the host
     table row, so a row declaring `docker: false` takes no Docker unit though it advertises the tool.'
   acceptance:
-  - id: AC4
+  - id: AC1
     statement: 'AC1: a unit needing docker is refused on a `docker: false` row with a reason naming the
       capability, and is placed on a row that takes Docker; alone with such a row it is refused as HOST_TABLE.'
 - id: req-omn21908-other-units-unchanged
   statement: 'A unit with no such need still runs on a `docker: false` row, and a tool that names no capability
     column stays a plain tool check.'
   acceptance:
-  - id: AC5
+  - id: AC2
     statement: 'AC2: a unit with no Docker need is placed on a `docker: false` row, and a need for `gh`
       is decided by the advertised tools alone.'
 - id: req-host-declaration
   statement: One host profile derives host declarations and drives drift measurement and dry-run installer
     units.
   acceptance:
-  - id: AC1
-    statement: 'AC1: a host profile derives a host''s clones, per-clone venvs, prepush rows, prepush workroot
+  - id: AC3
+    statement: 'AC3: a host profile derives a host''s clones, per-clone venvs, prepush rows, prepush workroot
       and liveness rows, and each derived row for h053 equals the existing declaration''s row -- falsifier:
       uv run pytest tests/unit/nodes -q -k host_profile_derive'
-  - id: AC2
-    statement: 'AC2: the drift check fails when a host has an undeclared clone or lacks a declared one,
+  - id: AC4
+    statement: 'AC4: the drift check fails when a host has an undeclared clone or lacks a declared one,
       and passes for a matching host -- falsifier: uv run pytest tests/unit/nodes -q -k host_drift_check'
-  - id: AC3
-    statement: 'AC3: each of the four gaps has an idempotent installer unit that takes the profile as
+  - id: AC5
+    statement: 'AC5: each of the four gaps has an idempotent installer unit that takes the profile as
       its only input and is dry-run by default -- falsifier: uv run pytest tests/unit/nodes -q -k host_gap_unit'
 evidence_requirements:
 - kind: tests
@@ -54,7 +54,7 @@ dod_evidence:
   description: A Docker unit is refused on a no-Docker row and placed on a row that takes Docker.
   source: manual
   binds_ac:
-  - AC4
+  - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k docker_unit
@@ -63,7 +63,7 @@ dod_evidence:
   description: Units without a Docker need are unchanged on that row.
   source: manual
   binds_ac:
-  - AC5
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k 'no_docker_still_runs
@@ -75,8 +75,8 @@ dod_evidence:
     row, while ordinary work is admitted on both. No broker, Docker daemon or production rollout is required.
   source: manual
   binds_ac:
-  - AC4
-  - AC5
+  - AC1
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov
@@ -111,7 +111,7 @@ dod_evidence:
     and liveness rows, and each derived row for h053 equals the existing declaration's row
   source: manual
   binds_ac:
-  - AC1
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_host_profile_compute -q --no-cov -m "not kafka"
@@ -120,7 +120,7 @@ dod_evidence:
     passes for a matching host
   source: manual
   binds_ac:
-  - AC2
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_host_drift_check_effect -q --no-cov -m "not kafka"
@@ -129,7 +129,7 @@ dod_evidence:
     input and is dry-run by default
   source: manual
   binds_ac:
-  - AC3
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_host_gap_unit_effect -q --no-cov -m "not kafka"
@@ -139,9 +139,9 @@ dod_evidence:
     a successor check.
   source: manual
   binds_ac:
-  - AC1
-  - AC2
   - AC3
+  - AC4
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_host_profile_compute/test_host_declaration_bus.py
