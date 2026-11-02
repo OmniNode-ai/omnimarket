@@ -36,7 +36,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_overlay_tree_install_effect -q --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn22171-registry-units"
     description: "The registry unit tests include the rendered unit naming the branch checkout and no argument naming the canonical clone, and the install record of the revision."
     source: "manual"
@@ -44,7 +44,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn22171-node-shape"
     description: "Each new node directory carries a contract.yaml, and the contract names a handler and entrypoint that import."
     source: "manual"
@@ -52,12 +52,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -q '^name: node_overlay_tree_install_effect' src/omnimarket/nodes/node_overlay_tree_install_effect/contract.yaml && grep -q '^name: node_host_installer_registry_units' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml"
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
+  - id: "dod-omn22171-install-route"
+    description: "The install route is exercised with the real handlers: a branch revision installs, verifies against its recorded commit, and the registry unit install records the revision it runs and that its project is not the canonical clone. The launchd host install and the two consecutive publishes cannot run on the hosted verifier; they are the local Done check below and a Lab comment on the pull request."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_overlay_tree_install_effect/test_golden_chain_overlay_tree_install.py::test_a_branch_revision_installs_then_verifies_against_its_recorded_commit tests/nodes/node_host_installer_registry_units/test_registry_units.py::test_install_writes_the_plist_loads_it_and_records_the_revision_it_runs -q --no-cov"
+        cwd: "."
   - id: "dod-omn22171-host-install-record"
     description: "On the host that runs the launchd job, the unit's install record names a revision and a project that is not the canonical clone. Read where the Done gate runs; it fails when the unit was never installed from a branch. The two consecutive publishes are recorded as a Lab comment on the pull request."
     source: "manual"
     execution_scope: "local_done_gate"
-    binds_ac: ["AC4"]
     checks:
       - check_type: "command"
         check_value: "python3 -c \"import json,os,sys; r=json.load(open(os.environ['OMNI_HOME']+'/.onex_state/factory-floor-publish/factory-floor-publish.installed.json')); sys.exit(0 if r['revision'] and not r['project_is_canonical'] else 1)\""
