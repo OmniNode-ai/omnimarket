@@ -21,6 +21,10 @@ requirements:
     statement: 'AC5: from a real publish of the branch, the preview address on h051 shows the containers row, 8 percent on the alignment line, a context line not stopped by plan-r8-0605 and no unnamed-machine count that the lanes contradict -- falsifier: curl of the preview factory-floor.json and page on h051 compared with the lab-run receipt in the PR body'
   - id: AC6
     statement: 'AC6: the suites pass on a lab host through lab-run -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q'
+  - id: AC8
+    statement: 'AC8: task headings under the plan task section supply the station items; review checklist entries are excluded from both heading and plans-today table inputs, while an ordinary parts table remains usable.'
+  - id: AC9
+    statement: 'AC9: a lane named comp-cm6-r2-1102 matches task CM.6; CM.1 does not match cm12 and CM.2 does not match cm6.'
 - id: req-omn21930-pr-attribution
   statement: A factory floor PR belongs to the tickets in its title and head branch; tickets mentioned only in its body do not attribute it to other tasks.
   acceptance:
@@ -127,8 +131,6 @@ dod_evidence:
 - id: dod-omn21930-deploy-packaged-pr-attribution
   description: Hosted-runner deploy smoke imports the built wheel in a disposable Python container with the locked dependencies, no network and no source checkout, and checks title and branch attribution against body-only references. It needs no broker, lab route or production credentials and fails if the wheel restores body attribution or drops a title or branch ticket.
   source: manual
-  binds_ac:
-  - AC7
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -k test_a_pr_attributes_only_to_the_ticket_of_its_title_and_branch_not_its_body -q --no-cov --tb=line
@@ -185,4 +187,46 @@ dod_evidence:
       assert actual == [('OMN-100', 'OMN-200')], actual
       print(json.dumps({'artifact': wheels[0].name, 'pr': 'omnimarket#4856', 'tickets': actual}))
       PY
+    cwd: .
+- id: dod-omn21930-compaction-task-inputs
+  description: AC8 exercises the plan task headings, rejects review-only heading and table entries, and preserves an ordinary parts table. The heading and review cases fail on this pull request's merge base.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -k 'review_checklist or table_of_the_checklist or review_section or real_table_of_parts' -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-compaction-lane-match
+  description: AC9 matches a dotted task id to the complete joined lane token and rejects neighbouring task numbers. This case fails on this pull request's merge base.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_compute/test_live_lines.py -k dotted_task_id -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-compaction-deploy-probe
+  description: Hosted-runner source artifact readback compares both published implementation files at the evaluated commit with this checkout and requires the task-section parser and joined dotted-token match. This checks published source, not a serving floor deployment.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      readback_dir="$(mktemp -d)"
+      trap 'rm -rf "$readback_dir"' EXIT
+      revision="$(git rev-parse HEAD)"
+      loader=src/omnimarket/nodes/node_factory_floor_effect/source_loader.py
+      lanes=src/omnimarket/nodes/node_factory_floor_compute/handlers/floor_lanes.py
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$loader" \
+        --output "$readback_dir/source_loader.py"
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$lanes" \
+        --output "$readback_dir/floor_lanes.py"
+      cmp "$loader" "$readback_dir/source_loader.py"
+      cmp "$lanes" "$readback_dir/floor_lanes.py"
+      grep -F 'sectioned = _heading_tasks(text, links, epic)' "$readback_dir/source_loader.py"
+      grep -F 'joined in lane_tokens' "$readback_dir/floor_lanes.py"
+      printf 'factory floor task source readback matched %s\n' "$revision"
     cwd: .
