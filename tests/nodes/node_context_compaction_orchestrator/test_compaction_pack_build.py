@@ -54,6 +54,8 @@ from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pa
     HandlerContextPackOrchestrator,
 )
 
+from .reply_topics import REPLY_TOPICS
+
 # The shipped compaction_orchestrator profile names extraction_proposer and
 # context_compaction; the fixture promotes both in a temporary routing contract.
 pytestmark = [
@@ -148,6 +150,7 @@ def _request(
         input_messages_hash=_sha("input"),
         newest_turn="turn-9",
         barrier_id=barrier_id,
+        **REPLY_TOPICS,
     )
 
 

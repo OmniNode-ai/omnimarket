@@ -29,12 +29,20 @@ NODE = "node_context_compaction_orchestrator"
 NODE_DIR = REPO / "src" / "omnimarket" / "nodes" / NODE
 COMMAND = "onex.cmd.omniintelligence.context-compaction-requested.v1"
 PACK_REQUEST = "onex.cmd.omniintelligence.context-pack-requested.v1"
-PACKAGE = "onex.cmd.omniintelligence.context-compaction-package.v1"
-RECEIPTS = [
-    "onex.evt.omnimarket.context-compaction-prepared.v1",
-    "onex.evt.omnimarket.context-compaction-activated.v1",
-    "onex.evt.omnimarket.context-compaction-fallback.v1",
-]
+# The package reply, prepared and fallback have no static topic: each is per principal
+# (OMN-22103) and declared in parts. Only activated is a static published topic.
+ACTIVATED = "onex.evt.omnimarket.context-compaction-activated.v1"
+PER_PRINCIPAL = {
+    "ContextCompactionPackageReply": (
+        "onex.cmd.omniintelligence.context-compaction-package-for-{principal}.v1"
+    ),
+    "ContextCompactionPrepared": (
+        "onex.evt.omnimarket.context-compaction-prepared-for-{principal}.v1"
+    ),
+    "ContextCompactionFallback": (
+        "onex.evt.omnimarket.context-compaction-fallback-for-{principal}.v1"
+    ),
+}
 
 
 def _contract() -> dict[str, Any]:
@@ -47,19 +55,23 @@ def _contract() -> dict[str, Any]:
 def test_the_contract_declares_its_command_reply_and_receipts() -> None:
     contract = _contract()
     assert contract["event_bus"]["subscribe_topics"] == [COMMAND]
-    assert contract["event_bus"]["publish_topics"] == [PACK_REQUEST, PACKAGE, *RECEIPTS]
+    assert contract["event_bus"]["publish_topics"] == [PACK_REQUEST, ACTIVATED]
     assert contract["runtime_dispatch"]["command_topic"] == COMMAND
-    assert contract["terminal_event"] == PACKAGE
-    assert contract["runtime_dispatch"]["terminal_events"]["success"] == PACKAGE
+    assert contract["terminal_event"] == ACTIVATED
+    assert contract["runtime_dispatch"]["terminal_events"]["success"] == ACTIVATED
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
-    assert contract["externally_consumed_topics"] == [PACKAGE, *RECEIPTS]
+    assert contract["externally_consumed_topics"] == [ACTIVATED]
 
 
 def test_published_events_route_every_emission_class_to_a_declared_topic() -> None:
     contract = _contract()
-    published = {e["event_type"]: e["topic"] for e in contract["published_events"]}
-    assert published == published_event_topics()
-    assert sorted([*published.values(), PACK_REQUEST]) == sorted(
+    published = published_event_topics()
+    assert published == {
+        "ContextCompactionActivated": ACTIVATED,
+        **PER_PRINCIPAL,
+    }
+    static = [t for t in published.values() if "{principal}" not in t]
+    assert sorted([*static, PACK_REQUEST]) == sorted(
         contract["event_bus"]["publish_topics"]
     )
     for model in (
@@ -73,13 +85,19 @@ def test_published_events_route_every_emission_class_to_a_declared_topic() -> No
 
 def test_content_travels_only_on_the_restricted_command_family() -> None:
     """The pack command and package reply use the restricted command family."""
-    publish = _contract()["event_bus"]["publish_topics"]
-    content_bearing = [t for t in publish if t.startswith("onex.cmd.omniintelligence.")]
-    assert content_bearing == [PACK_REQUEST, PACKAGE]
+    publish = [
+        *_contract()["event_bus"]["publish_topics"],
+        *published_event_topics().values(),
+    ]
+    content_bearing = {t for t in publish if t.startswith("onex.cmd.omniintelligence.")}
+    assert content_bearing == {
+        PACK_REQUEST,
+        PER_PRINCIPAL["ContextCompactionPackageReply"],
+    }
     assert all(
         t.startswith("onex.evt.omnimarket.")
         for t in publish
-        if t not in {PACKAGE, PACK_REQUEST}
+        if t not in content_bearing
     )
 
 

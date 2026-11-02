@@ -32,6 +32,7 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error 
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
     RESERVED_SOURCES,
+    is_awaited_event_source,
 )
 
 ADAPTER_COMMAND = "onex-claude-code-hook"
@@ -66,8 +67,10 @@ def validate_binding(binding: ModelClientBinding) -> None:
             f"binding name {binding.name!r} is not a lower-case identifier"
         )
     for argument in binding.arguments:
-        if argument.source not in RESERVED_SOURCES and not _HOOK_INPUT_PATH.match(
-            argument.source
+        if (
+            argument.source not in RESERVED_SOURCES
+            and not is_awaited_event_source(argument.source)
+            and not _HOOK_INPUT_PATH.match(argument.source)
         ):
             raise BindingRenderError(
                 f"binding {binding.name!r} argument {argument.name!r} source "

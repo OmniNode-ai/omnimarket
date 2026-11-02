@@ -28,6 +28,8 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_sess
     HandlerSessionBarrierWait,
 )
 
+from .reply_topics import REPLY_TOPICS
+
 pytestmark = pytest.mark.unit
 
 INVOCATION = UUID("11111111-1111-4111-8111-111111111111")
@@ -47,6 +49,7 @@ def _request(barrier_id: str | None = BARRIER) -> ModelContextCompactionRequeste
         input_messages_hash=_sha("input"),
         newest_turn="turn-9",
         barrier_id=barrier_id,
+        **REPLY_TOPICS,
     )
 
 

@@ -43,6 +43,7 @@ from omnimarket.nodes.node_context_compaction_orchestrator.event_topics import (
 )
 
 from .bus_fixture import CannedPack
+from .reply_topics import REPLY_TOPICS, emitted
 from .test_compaction_pack_build import _ok_built
 
 pytestmark = pytest.mark.unit
@@ -66,6 +67,7 @@ def _request(compact_model: str | None = None) -> ModelContextCompactionRequeste
         newest_turn="turn-9",
         compact_model=compact_model,
         barrier_id="barrier-1",
+        **REPLY_TOPICS,
     )
 
 
@@ -299,10 +301,10 @@ def test_the_runtime_output_publishes_fallback_then_the_native_reply() -> None:
     )
     assert output.correlation_id == INVOCATION
     assert [publish_topic_for(e) for e in output.events] == [
-        "onex.evt.omnimarket.context-compaction-fallback.v1",
-        "onex.cmd.omniintelligence.context-compaction-package.v1",
+        REPLY_TOPICS["reply_topic_fallback"],
+        REPLY_TOPICS["reply_topic_package"],
     ]
-    reply = output.events[-1]
+    reply = emitted(output.events[-1])
     assert isinstance(reply, ModelContextCompactionPackageReply)
     assert reply.action is EnumClientVerdictAction.NATIVE
 
@@ -316,7 +318,7 @@ def test_the_runtime_output_publishes_receipts_before_the_install_reply(
     )
     output = asyncio.run(handler.handle_async(_request()))
     assert [publish_topic_for(e) for e in output.events] == [
-        "onex.evt.omnimarket.context-compaction-prepared.v1",
+        REPLY_TOPICS["reply_topic_prepared"],
         "onex.evt.omnimarket.context-compaction-activated.v1",
-        "onex.cmd.omniintelligence.context-compaction-package.v1",
+        REPLY_TOPICS["reply_topic_package"],
     ]

@@ -31,6 +31,7 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_clau
     SESSION_BARRIER_SOURCE,
     HandlerClaudeCodeHookAdapter,
     build_command_payload,
+    resolve_awaited_events,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import (
     CONTRACT_PATH,
@@ -188,6 +189,7 @@ def test_adapter_journals_before_publishing_the_shared_barrier_id(
         barrier_journal=HandlerSessionBarrierJournal(
             environ={"ONEX_HOOK_EMIT_JOURNAL_DIR": str(journal_dir)}
         ),
+        principal_resolver=lambda: "dev-test-principal",
     ).handle(ModelHookAdapterRequest(binding=binding, hook_input=HOOK_INPUT))
     (command,) = client.payloads
     assert len(client.events_at_publish) == 2
@@ -268,6 +270,9 @@ def test_real_orchestrator_requires_the_produced_barrier(
             barrier_journal=HandlerSessionBarrierJournal(
                 environ={"ONEX_HOOK_EMIT_JOURNAL_DIR": str(journal_dir)}
             ),
+            awaited_events=resolve_awaited_events(
+                binding.awaited_events, "dev-test-principal"
+            ),
         )
     )
     source = _ProjectedJournal(journal_dir)
@@ -331,6 +336,7 @@ def test_journal_write_failure_prevents_publishing(tmp_path: Path) -> None:
         barrier_journal=HandlerSessionBarrierJournal(
             environ={"ONEX_HOOK_EMIT_JOURNAL_DIR": str(journal_dir)}
         ),
+        principal_resolver=lambda: "dev-test-principal",
     )
     with pytest.raises(FileExistsError):
         adapter.handle(

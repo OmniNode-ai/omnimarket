@@ -30,24 +30,22 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from omnimarket.events.topics import (
-    CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
-    CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
-    CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
-    CONTEXT_COMPACTION_REQUESTED_TOPIC_V1,
+from omnimarket.models.claude_code_binding import ModelClientBinding
+from omnimarket.models.context_compaction import (
+    ModelContextCompactionRequested,
+    load_reply_topic_templates,
 )
-from omnimarket.models.claude_code_binding import (
-    EnumBindingKind,
-    ModelClientArgument,
-    ModelClientBinding,
-)
-from omnimarket.models.context_compaction import ModelContextCompactionRequested
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
-    INVOCATION_ID_SOURCE,
+    INPUT_MESSAGES_HASH_SOURCE,
+    SESSION_BARRIER_SOURCE,
     HandlerClaudeCodeHookAdapter,
 )
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_verdict import (
-    COMPACTION_VERDICT_COMPUTE,
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import (
+    CONTRACT_PATH,
+    load_client_section,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.reply_principal import (
+    ReplyPrincipalResolver,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     EnumCompactionLatencyTemperature,
@@ -70,35 +68,34 @@ PREPARED_MODEL_SECTION_MS_KEY = "model_section_ms"
 _ADAPTER_ERRORS = (OSError, ValueError, KeyError, TypeError, RuntimeError)
 
 
+#: Replayed hook inputs carry the hash and barrier the installed hook derives.
+_REPLAYED_SOURCES = {
+    INPUT_MESSAGES_HASH_SOURCE: "$.input_messages_hash",
+    SESSION_BARRIER_SOURCE: "$.barrier_id",
+}
+
+
 def compaction_latency_binding(*, deadline_ms: int) -> ModelClientBinding:
-    """Supply the plan's PreCompact binding for this in-process run."""
-    return ModelClientBinding(
-        name="compaction",
-        kind=EnumBindingKind.REPLACING,
-        hook_event="PreCompact",
-        matcher_tool=None,
-        command_topic=CONTEXT_COMPACTION_REQUESTED_TOPIC_V1,
-        command_type="context_compaction_requested",
-        arguments=(
-            ModelClientArgument(name="invocation_id", source=INVOCATION_ID_SOURCE),
-            ModelClientArgument(name="session_id", source="$.session_id"),
-            ModelClientArgument(name="cwd", source="$.cwd"),
-            ModelClientArgument(name="trigger", source="$.trigger"),
-            ModelClientArgument(
-                name="input_messages_hash", source="$.input_messages_hash"
+    """The shipped compaction binding, replayed as the plan's PreCompact binding.
+
+    Its awaited per-principal reply topics and the arguments naming them are the
+    shipped ones, so the replay awaits what the installed hook does (OMN-22103).
+    """
+    shipped = next(
+        b for b in load_client_section(CONTRACT_PATH).bindings if b.name == "compaction"
+    )
+    return shipped.model_copy(
+        update={
+            "hook_event": "PreCompact",
+            "matcher_tool": None,
+            "deadline_ms": deadline_ms,
+            "arguments": tuple(
+                a.model_copy(
+                    update={"source": _REPLAYED_SOURCES.get(a.source, a.source)}
+                )
+                for a in shipped.arguments
             ),
-            ModelClientArgument(name="newest_turn", source="$.newest_turn"),
-            ModelClientArgument(name="barrier_id", source="$.barrier_id"),
-            ModelClientArgument(name="compact_model", source="$.compact_model"),
-        ),
-        awaited_events=(
-            CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
-            CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
-            CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
-        ),
-        verdict_compute=COMPACTION_VERDICT_COMPUTE,
-        deadline_ms=deadline_ms,
-        probe_rows=("P0", "P6", "P11a", "P13", "P14"),
+        }
     )
 
 
@@ -140,11 +137,12 @@ class ReceiptRecorder:
 
 def split_prepared(events: Sequence[ModelReceiptEvent]) -> tuple[float, float] | str:
     """Split the last prepared receipt's build total into its two phases."""
+    prepared_template = load_reply_topic_templates().prepared
     prepared = next(
         (
             event
             for event in reversed(events)
-            if event.topic == CONTEXT_COMPACTION_PREPARED_TOPIC_V1
+            if prepared_template.principal_of(event.topic) is not None
         ),
         None,
     )
@@ -207,7 +205,9 @@ class HandlerCompactionLatencyRun:
             if isinstance(client, str):
                 split = client
             else:
-                result = HandlerClaudeCodeHookAdapter(client).handle(adapter_request)
+                result = HandlerClaudeCodeHookAdapter(
+                    client, principal_resolver=ReplyPrincipalResolver().resolve
+                ).handle(adapter_request)
                 verdict_action = result.client_verdict.action.value
                 split = "no prepared receipt"
         except _ADAPTER_ERRORS as exc:

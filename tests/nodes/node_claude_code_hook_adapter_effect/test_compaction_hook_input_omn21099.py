@@ -26,6 +26,7 @@ from omnimarket.models.context_compaction import ModelContextCompactionRequested
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
     INPUT_MESSAGES_HASH_SOURCE,
     build_command_payload,
+    resolve_awaited_events,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import (
     CONTRACT_PATH,
@@ -42,6 +43,7 @@ pytestmark = pytest.mark.unit
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "claude_code_hook_input"
 INVOCATION = UUID("00000000-0000-4000-8000-000000000001")
+PRINCIPAL = "dev-test-principal"
 
 
 @pytest.fixture
@@ -59,6 +61,10 @@ def _by_hand(pairs: list[tuple[str, str]]) -> str:
         ensure_ascii=False,
     )
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _resolved_awaited_events() -> tuple[str, ...]:
+    return resolve_awaited_events(_compaction_binding().awaited_events, PRINCIPAL)
 
 
 def _compaction_binding() -> Any:
@@ -86,6 +92,7 @@ def test_recorded_precompact_payload_builds_a_valid_command(
         hook_input,
         invocation_id=INVOCATION,
         barrier_journal=barrier_journal,
+        awaited_events=_resolved_awaited_events(),
     )
     command = ModelContextCompactionRequested.model_validate(payload)
 
@@ -113,6 +120,7 @@ def test_recorded_mod_event_builds_a_valid_command(
         hook_input,
         invocation_id=INVOCATION,
         barrier_journal=barrier_journal,
+        awaited_events=_resolved_awaited_events(),
     )
     command = ModelContextCompactionRequested.model_validate(payload)
 
@@ -154,6 +162,7 @@ def test_nothing_derivable_is_none_and_the_command_refuses(
         {"session_id": "s", "cwd": "/w", "trigger": "manual", **hook_input},
         invocation_id=INVOCATION,
         barrier_journal=barrier_journal,
+        awaited_events=_resolved_awaited_events(),
     )
     with pytest.raises(ValueError, match="input_messages_hash"):
         ModelContextCompactionRequested.model_validate(payload)

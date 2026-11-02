@@ -131,10 +131,18 @@ client_bindings:
           - {name: newest_turn, source: "$.newest_turn"}
           - {name: barrier_id, source: "@session_barrier"}
           - {name: compact_model, source: "$.compact_model"}
+          # The reply topics are PER PRINCIPAL (OMN-22103): `{principal}` is replaced with the
+          # requester's principal at call time, and the command names the three resolved topics
+          # (`@awaited_event:<n>` is the n-th awaited event after that substitution) so the
+          # orchestrator replies to exactly the topics this binding awaits. The templates are
+          # declared in parts in node_context_compaction_orchestrator/contract.yaml.
+          - {name: reply_topic_package, source: "@awaited_event:0"}
+          - {name: reply_topic_prepared, source: "@awaited_event:1"}
+          - {name: reply_topic_fallback, source: "@awaited_event:2"}
         awaited_events:
-          - onex.cmd.omniintelligence.context-compaction-package.v1
-          - onex.evt.omnimarket.context-compaction-prepared.v1
-          - onex.evt.omnimarket.context-compaction-fallback.v1
+          - onex.cmd.omniintelligence.context-compaction-package-for-{principal}.v1
+          - onex.evt.omnimarket.context-compaction-prepared-for-{principal}.v1
+          - onex.evt.omnimarket.context-compaction-fallback-for-{principal}.v1
         verdict_compute: context_compaction_verdict
         deadline_ms: 30000
         probe_rows: [P0, P6, P11a, P13, P14]

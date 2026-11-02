@@ -46,6 +46,13 @@ from omnimarket.models.context_compaction.model_context_compaction_requested imp
 from omnimarket.models.context_compaction.model_context_compaction_result import (
     ModelContextCompactionResult,
 )
+from omnimarket.models.context_compaction.model_reply_topic_template import (
+    ModelReplyTopicTemplate,
+)
+from omnimarket.models.context_compaction.model_reply_topic_templates import (
+    ModelReplyTopicTemplates,
+    load_reply_topic_templates,
+)
 
 COMPACTION_RECEIPT_MODELS: tuple[type[BaseModel], ...] = (
     ModelContextCompactionPrepared,
@@ -72,6 +79,9 @@ __all__ = [
     "ModelContextCompactionPrepared",
     "ModelContextCompactionRequested",
     "ModelContextCompactionResult",
+    "ModelReplyTopicTemplate",
+    "ModelReplyTopicTemplates",
     "installed_messages_hash",
     "installed_messages_json",
+    "load_reply_topic_templates",
 ]
