@@ -163,14 +163,18 @@ def test_an_alias_added_to_a_contract_copy_is_read_with_no_code_change() -> None
     columns["optional_columns"]["tokens_in"].append("n_in")
     columns["optional_columns"]["tokens_out"].append("n_out")
     config = config_from_contract(contract, environ={})
-    result = estimate(content, handler=HandlerPromptCostEstimate(config_provider=lambda: config))
+    result = estimate(
+        content, handler=HandlerPromptCostEstimate(config_provider=lambda: config)
+    )
     (row,) = result.rows
     assert (row.source_model, row.tokens_in, row.tokens_out) == ("gpt-4o", 1000, 500)
     assert row.token_method is EnumTokenMethod.REPORTED
 
 
 def test_aliases_are_read_in_declared_precedence_order() -> None:
-    content = "prompt,model,prompt_tokens,tokens_in,tokens_out\nhello there,gpt-4o,7,3,2\n"
+    content = (
+        "prompt,model,prompt_tokens,tokens_in,tokens_out\nhello there,gpt-4o,7,3,2\n"
+    )
     (row,) = estimate(content).rows
     assert row.tokens_in == 3, "tokens_in is declared before prompt_tokens"
 
@@ -273,7 +277,7 @@ def test_the_spread_comes_from_the_overlay_when_one_is_installed(
 ) -> None:
     content = OWNER_CSV.read_text(encoding="utf-8")
     contract_result = estimate(content)
-    zero = {level: "0" for level in get_args(PricingConfidence)}
+    zero = dict.fromkeys(get_args(PricingConfidence), "0")
     install_node_overlay(
         monkeypatch,
         tmp_path,
@@ -330,10 +334,7 @@ def test_the_basis_names_every_manifest_entry_that_priced_a_row() -> None:
 
 def _shape(result: ModelPromptCostEstimateResult) -> object:
     return (
-        [
-            row.model_dump(exclude={"model_source"})
-            for row in result.rows
-        ],
+        [row.model_dump(exclude={"model_source"}) for row in result.rows],
         result.model_dump(exclude={"rows"}),
     )
 
