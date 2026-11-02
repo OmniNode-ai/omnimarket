@@ -50,13 +50,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line -k "catalog_json or missing_both_inputs"
     cwd: .
 - id: dod-omn22100-ac2
-  description: AC2 hosted part. A declared lane host with no lab env file fails for the ledger parity reader by the WL_ENV_FILE item, and measured host key names without the database password key fail by that key name. The lab run on the proof host is the unbound dod-omn22100-ac2-lab item.
+  description: AC2 hosted provisioning part. The new handler sets WL_ENV_FILE in the serve environment file, preserves unrelated lines, and reports an absent lab env file or database password key as a host-owner step without returning secret values. These tests fail at the merge base, which has no provisioning node. The live parity reader run remains the unbound dod-omn22100-ac2-lab item.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line -k "wl_env_file or missing_password_key"
+    check_value: uv run pytest tests/nodes/node_lane_reader_provision_effect/test_lane_reader_provision.py -q --no-cov --tb=line -k "provisions_the_catalog_the_link_and_the_two_variables or only_the_two_variable_lines or missing_password_key or absent_lab_env_file"
     cwd: .
 - id: dod-omn22100-ac3
   description: AC3 a declared lane host without the catalog path or the lab env file fails, a measured env file without the password key fails by name, and the committed host table passes.
