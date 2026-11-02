@@ -16,7 +16,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "A runtime push without an integration proof is refused through real git; one with it, and a docs-only push, pass."
-    command: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect -q --no-cov"
+    command: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_integration_proof_omn21887.py tests/nodes/node_ticket_contract_prerequisite_effect/test_golden_chain_ticket_contract_prerequisite.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -28,7 +28,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_ticket_contract_prerequisite_omn20864.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_integration_proof_omn21887.py tests/nodes/node_ticket_contract_prerequisite_effect/test_golden_chain_ticket_contract_prerequisite.py tests/ci/test_ticket_contract_prerequisite_omn20864.py -q --no-cov"
         cwd: "."
   - id: "dod-omn21887-integration-proof"
     description: "The pushed head ran the prerequisite node on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
