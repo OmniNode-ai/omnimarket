@@ -13,6 +13,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.handlers.tenant_model_candidates import selected_key_models
 
 # The resolver's logger name, so these warnings read exactly as before the move.
@@ -98,10 +99,16 @@ def _select_pool_secret_ref(
     if not provider:
         return overlay_secret_ref
     try:
-        catalogued = db.query(
-            TENANT_CREDENTIALS_TABLE,
-            filters={"tenant_id": tenant_id, "provider": provider},
-        )
+        # OMN-21819: the pool spans rows stamped with either of the tenant's
+        # forms (name or registry UUID); a failed read of either is a failed read.
+        catalogued = [
+            row
+            for tenant_form in sync_tenant_identity_forms(db, tenant_id)
+            for row in db.query(
+                TENANT_CREDENTIALS_TABLE,
+                filters={"tenant_id": tenant_form, "provider": provider},
+            )
+        ]
         # A missing or malformed primary key means the catalog could not be
         # read as credentials, not that every registered key has expired.
         # Keep this schema failure inside the existing read-error boundary.

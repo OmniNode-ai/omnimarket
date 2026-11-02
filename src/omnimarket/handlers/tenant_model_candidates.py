@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -33,14 +34,20 @@ def selected_key_models(
         BYOK_MODEL_UNRESOLVED if is_tenant_credential_ref(secret_ref) else overlay_model
     )
     try:
-        rows = db.query(
-            "tenant_inference_credentials",
-            filters={
-                "tenant_id": tenant_id,
-                "provider": provider,
-                "api_key_ref": secret_ref,
-            },
-        )
+        # OMN-21819: a row stamped with the tenant's other form (name or registry
+        # UUID) is the same tenant's key; the first form that holds it answers.
+        rows: list[dict[str, object]] = []
+        for tenant_form in sync_tenant_identity_forms(db, tenant_id):
+            rows = db.query(
+                "tenant_inference_credentials",
+                filters={
+                    "tenant_id": tenant_form,
+                    "provider": provider,
+                    "api_key_ref": secret_ref,
+                },
+            )
+            if rows:
+                break
     except Exception:
         _logger.warning(
             "selected credential choices unreadable for tenant_id=%s",
