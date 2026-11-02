@@ -1,0 +1,189 @@
+---
+name: projection_agent_actions
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+# The one runtime consumes this node's topics. The retired consumer runs on every
+# lane until the deploy step retires it; see consumer_group_handover below for what
+# must be true of the runtime before this contract is wired there.
+runtime_profiles:
+  - main
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_agent_actions.models.model_agent_actions_delivery.ModelAgentActionsDelivery
+description: >
+  Projects the agent observability events of six omniclaude topics into their
+  agent_* tables. It replaces the omnibase_infra agent-actions consumer module
+  and writes the rows that module wrote, with one change: the two events that
+  carry no id (agent actions, agent status) get an id derived from the topic and
+  the event's content, so a replay names the same row instead of adding a copy.
+  Four tables keep the first row written for a key (INSERT ... ON CONFLICT DO
+  NOTHING); agent_execution_logs follows an execution's lifecycle (ON CONFLICT
+  (execution_id) DO UPDATE). The routing-decision topic the retired consumer also
+  read is projected by node_projection_routing_decision and is not read here.
+
+handler:
+  module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_projection_agent_actions
+  class: HandlerProjectionAgentActions
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - topic: onex.evt.omniclaude.agent-actions.v1
+      message_category: event
+      operation: agent_actions_projection_writer
+      handler:
+        name: AgentActionsProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+      handler_module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+    - topic: onex.evt.omniclaude.agent-transformation.v1
+      message_category: event
+      operation: agent_actions_projection_writer
+      handler:
+        name: AgentActionsProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+      handler_module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+    - topic: onex.evt.omniclaude.performance-metrics.v1
+      message_category: event
+      operation: agent_actions_projection_writer
+      handler:
+        name: AgentActionsProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+      handler_module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+    - topic: onex.evt.omniclaude.detection-failure.v1
+      message_category: event
+      operation: agent_actions_projection_writer
+      handler:
+        name: AgentActionsProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+      handler_module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+    - topic: onex.evt.omniclaude.agent-execution-logs.v1
+      message_category: event
+      operation: agent_actions_projection_writer
+      handler:
+        name: AgentActionsProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+      handler_module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+    - topic: onex.evt.omniclaude.agent-status.v1
+      message_category: event
+      operation: agent_actions_projection_writer
+      handler:
+        name: AgentActionsProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+      handler_module: omnimarket.nodes.node_projection_agent_actions.handlers.handler_agent_actions_writer
+
+# Each subscribed topic and the table its events are written to. The handler reads
+# this declaration; no topic name is spelled in code.
+topic_tables:
+  onex.evt.omniclaude.agent-actions.v1: agent_actions
+  onex.evt.omniclaude.agent-transformation.v1: agent_transformation_events
+  onex.evt.omniclaude.performance-metrics.v1: router_performance_metrics
+  onex.evt.omniclaude.detection-failure.v1: agent_detection_failures
+  onex.evt.omniclaude.agent-execution-logs.v1: agent_execution_logs
+  onex.evt.omniclaude.agent-status.v1: agent_status_events
+
+golden_path:
+  - "Consume an agent observability event from one of the six declared topics"
+  - "Validate it against the topic's model; an invalid event goes to the dead-letter topic"
+  - "Derive the row key: the producer's id, or a hash of topic and content when it sends none"
+  - "INSERT the row; a replay conflicts on the key and changes nothing (agent_execution_logs updates in place)"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_agent_actions.py::test_replaying_the_stream_twice_leaves_one_row_per_key
+    description: "Two replays of the recorded stream leave one row per key in each of the six tables"
+  - test: tests/test_golden_chain_projection_agent_actions.py::test_an_event_without_an_id_names_the_same_row_on_every_replay
+    description: "Agent action and agent status events with no id derive the same id on every replay"
+  - test: tests/test_golden_chain_projection_agent_actions.py::test_an_execution_log_follows_its_lifecycle_in_one_row
+    description: "A started and a completed execution log share one row, completed last"
+  - test: tests/test_golden_chain_projection_agent_actions.py::test_the_contract_declares_the_handover_from_the_retired_group
+    description: "The contract names the retired consumer group and its offset reset"
+
+db_io:
+  db_tables:
+    - name: agent_actions
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_observability_tables.sql"
+      access: write
+      role: agent_actions
+    - name: agent_transformation_events
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_observability_tables.sql"
+      access: write
+      role: agent_transformation_events
+    - name: router_performance_metrics
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_observability_tables.sql"
+      access: write
+      role: router_performance_metrics
+    - name: agent_detection_failures
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_observability_tables.sql"
+      access: write
+      role: agent_detection_failures
+    - name: agent_execution_logs
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_observability_tables.sql"
+      access: write
+      role: agent_execution_logs
+    - name: agent_status_events
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_observability_tables.sql"
+      access: write
+      role: agent_status_events
+  dedupe_key: [id]
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.agent-actions.v1
+    - onex.evt.omniclaude.agent-transformation.v1
+    - onex.evt.omniclaude.performance-metrics.v1
+    - onex.evt.omniclaude.detection-failure.v1
+    - onex.evt.omniclaude.agent-execution-logs.v1
+    - onex.evt.omniclaude.agent-status.v1
+  # The writer publishes a malformed event to the dead-letter topic the retired
+  # consumer used, so the topic keeps its readers.
+  publish_topics:
+    - onex.evt.omniclaude.agent-observability-dlq.v1
+  dlq_topics:
+    - onex.evt.omniclaude.agent-observability-dlq.v1
+
+externally_consumed_topics:
+  - onex.evt.omniclaude.agent-observability-dlq.v1
+
+# Four of the six topics have no publishing node contract in this repository; the
+# omniclaude agent hooks and router publish them (the retired consumer's module
+# docstring names omniclaude as their producer).
+externally_produced_topics:
+  - topic: onex.evt.omniclaude.agent-transformation.v1
+    producer: "omniclaude's agent observability emitters, not a node contract in omnimarket"
+  - topic: onex.evt.omniclaude.performance-metrics.v1
+    producer: "omniclaude's agent observability emitters, not a node contract in omnimarket"
+  - topic: onex.evt.omniclaude.detection-failure.v1
+    producer: "omniclaude's agent observability emitters, not a node contract in omnimarket"
+  - topic: onex.evt.omniclaude.agent-execution-logs.v1
+    producer: "omniclaude's agent observability emitters, not a node contract in omnimarket"
+
+metadata:
+  transport_type: kafka
+
+# The retired consumer is omnibase_infra's AgentActionsConsumer, one consumer
+# group across its topics: its ConfigAgentActionsConsumer.kafka_group_id default,
+# `agent-observability-postgres`, set by no compose file and not prefixed with
+# an environment. The runtime's group for this node starts from that group's
+# committed offsets instead of the bus default (latest), so events published
+# while the consumer is stopped and the runtime has not yet joined are
+# projected. The retired consumer read a partition it never committed from the
+# earliest offset (auto_offset_reset earliest); the handover does the same.
+# `from_group_id` names the group as it is, because its name is not built from
+# service, node and version. omnibase_infra's HandlerContractSubscribePreflight
+# reads this key and its ModelConsumerGroupHandover accepts from_group_id (a
+# declaration carries it alone or the service, node and version segments, never
+# both). An omnibase_infra release that carries that field must be the pin before
+# the runtime wires this contract.
+consumer_group_handover:
+  from_group_id: agent-observability-postgres
+  from_auto_offset_reset: earliest

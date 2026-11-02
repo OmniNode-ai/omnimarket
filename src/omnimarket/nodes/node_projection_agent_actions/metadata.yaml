@@ -1,0 +1,23 @@
+name: projection_agent_actions
+version: "1.0.0"
+description: >
+  Projects six omniclaude agent observability topics into the agent_actions,
+  agent_transformation_events, router_performance_metrics,
+  agent_detection_failures, agent_execution_logs and agent_status_events tables.
+  Replaces omnibase_infra's agent-actions consumer module.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - agent-observability
+  - reducer
+pack: "data"
+display_name: "Projection: Agent Actions"
+node_role: "effect"
+dependencies:
+  - "aiokafka>=0.10.0"

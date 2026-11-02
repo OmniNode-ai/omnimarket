@@ -1,0 +1,98 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21920"
+title: "The agent_actions consumer runs as a projection node writing the same seven tables on replayed events, with its tenant_projection_writer grants and consumer group handover declared"
+summary: >
+  node_projection_agent_actions replaces omnibase_infra's agent-actions observability
+  consumer for six of its seven tables. It reads six omniclaude topics, writes
+  agent_actions, agent_transformation_events, router_performance_metrics,
+  agent_detection_failures, agent_execution_logs and agent_status_events with a
+  deterministic key and an upsert, and declares the handover from the retired consumer
+  group agent-observability-postgres. The seventh table, agent_routing_decisions, is
+  not written by this node. The node's tenant_projection_writer grants and the
+  from_group_id handover field are declared in the paired omnibase_infra change; the
+  node-auto-wiring-in-process hook passes only against an omnibase_infra that carries it.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21920-auto-wiring"
+    statement: "The node auto-wires in process: its tenant projection binding is granted write on every table it writes, and its handover names the old consumer group."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: omnibase_infra topology grants tenant_projection_writer write on all seven agent_actions tables in the local, dev and prod topology instances, and ModelConsumerGroupHandover accepts the old group name as from_group_id -- falsifier: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q in omnimarket against the omnibase_infra branch
+  - id: "req-omn21920-replay-once"
+    statement: "The node writes the rows the consumer wrote, keyed so that a replay writes none twice."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: node_projection_agent_actions writes the same rows as the consumer module on replayed events with a deterministic key and UPSERT, and two replays leave the row count unchanged -- falsifier: uv run pytest tests/test_golden_chain_projection_agent_actions.py -q, red when the id derivation is mutated back to a random uuid
+  - id: "req-omn21920-real-postgres"
+    statement: "The node writes its tables on a real Postgres."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: the node writes the seven tables on the real lab Postgres from a pre-PR slot on the branch -- falsifier: uv run pytest tests/test_omn21920_agent_actions_real_postgres.py -q, red with a random id
+evidence_requirements:
+  - kind: "tests"
+    description: "The auto-wiring gate passes with the node, against an omnibase_infra branch that declares its grants and handover."
+    command: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov"
+  - kind: "tests"
+    description: "The agent-actions node's golden chain passes."
+    command: "uv run pytest tests/test_golden_chain_projection_agent_actions.py -q --no-cov"
+  - kind: "tests"
+    description: "The node writes its tables on a real Postgres and two replays leave one row per key."
+    command: "uv run pytest tests/test_omn21920_agent_actions_real_postgres.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21920-ac1-auto-wiring"
+    description: "The auto-wiring gate passes with the node present. It reads the topology grants and the handover model from the installed omnibase_infra, so it passes in CI only once a published omnibase_infra carries the paired change."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21920-ac2-replay-once"
+    description: "The recorded stream replayed twice leaves one row per key in each table, and keyless agent action and status events derive the same id on every replay. The tests fail at the merge base, which has no node_projection_agent_actions, and fail with the id derivation mutated back to a random uuid."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_agent_actions.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21920-ac2-contract-handover"
+    description: "The contract names the topics, the table of each, and the handover from the retired group, and the packaged node is registered as an onex.nodes entry point."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_projection_agent_actions.py -q --no-cov -k contract"
+        cwd: "."
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; assert 'node_projection_agent_actions' in names\""
+        cwd: "."
+  - id: "dod-omn21920-ac3-real-postgres"
+    description: "The node writes the six tables on a real Postgres in a throwaway schema, and two replays leave one row per key; with the id derivation mutated back to a random uuid the run shows 5 rows where 3 are expected. The test skips where no Postgres is provided and is run on a lab slot at the pushed head."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21920_agent_actions_real_postgres.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21920-deploy-probe"
+    description: "Hosted source-artifact readback, needing no lab route, broker or database: the published contract at the evaluated commit matches this checkout, then the golden chain runs. It checks the source artifact, not the runtime rollout; the consumer-group handover and the row counts follow the fold."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "curl --fail --silent --show-error --location --max-time 10 \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_projection_agent_actions/contract.yaml\" | cmp - src/omnimarket/nodes/node_projection_agent_actions/contract.yaml"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_projection_agent_actions.py -q --no-cov --tb=line"
+        cwd: "."
