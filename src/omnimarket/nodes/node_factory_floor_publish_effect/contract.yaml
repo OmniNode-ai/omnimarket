@@ -104,11 +104,17 @@ runtime:
   # stopped, with the declared text as its plan_path), and its detail
   # names the missing lines, so a line the board cannot draw is never silent.
   record_step: factory_floor
+  # OMN-21733: the four input steps before the record are independent of each other, so they run together
+  # (`concurrent`), and the process-health series, which moves in days and cost 3 m 50 s of git log reads per run,
+  # is rebuilt only when its file is older than 900 s. Measured 2026-11-02 on the launching Mac under the Background
+  # clamp: one run took 10 m 0 s in sequence against a 300 s tick, so the heartbeat the throughput tick judges
+  # (older than twice the interval is MISSING) was stale for half of every cycle.
   steps:
   # The hosts step listens for a fixed window (two advertisement cadences plus two seconds, 22 s) after the command starts.
   # Measured 2026-11-01 on the launching Mac at load 56 on 24 cores: 27 s in the foreground, 103 s as the registry module tick
   # runs it (launchd ProcessType Background clamps CPU), so 120 s refused it on a load spike.
   - name: hosts
+    concurrent: true
     kind: capture
     required: false
     timeout_seconds: 300
@@ -121,11 +127,13 @@ runtime:
   # took 66 s in the foreground, and the Mac's own probe 20 s in the foreground against 139 s under the Background clamp, which
   # drew h200 unread.
   - name: pool
+    concurrent: true
     kind: command
     required: false
     timeout_seconds: 300
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
+    concurrent: true
     kind: copy
     required: false
     timeout_seconds: 30
@@ -133,10 +141,13 @@ runtime:
     select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
   - name: process_health
+    concurrent: true
     kind: module
     required: false
     timeout_seconds: 600
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
+    fresh_relpath: .onex_state/process-health/process-health.json
+    fresh_seconds: 900
   - name: factory_floor
     kind: module
     required: true
