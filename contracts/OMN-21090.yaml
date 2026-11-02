@@ -410,13 +410,12 @@ dod_evidence:
     binds_ac: ["AC8"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov -k unset_replay_root"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_transcript_jsonl_manifest.py -q --no-cov -k unset_replay_root"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21090-deploy-transcript-manifest"
     description: >-
       Hosted-runner offline probe of the packaged source: the env-driven helper reads a synthetic transcript tree under ONEX_TRANSCRIPT_ROOT, writes transcript_manifest.yaml under ONEX_CONTEXT_REPLAY_ROOT and lists the one boundary as a case. It needs no services or credentials and is not a readback of real transcripts.
     source: "manual"
-    binds_ac: ["AC6", "AC7", "AC8"]
     checks:
       - check_type: "command"
         check_value: |
