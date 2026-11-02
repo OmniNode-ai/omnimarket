@@ -1,0 +1,4 @@
+# The tolerance is a number in a data file, never in code. The measurement plan's CM.14 data
+# file is the long-lived owner of this value; this is the starting value until that file lands.
+jaccard_tolerance: 0.8
+min_repeats: 3

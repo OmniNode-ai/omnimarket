@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-21993
+title: Compaction sandboxed continuation replay with stubbed calls
+summary: New effect node node_compaction_continuation_replay_effect continues a compacted context for N turns from recorded turns with every tool stubbed (ledger writes to a scratch copy, gh, onex and network refused and logged, frozen reads pinned, everything else a typed refusal), records the proposed calls with call class and item key, audits isolation with an egress guard and protected-file digests, collects the diff by git diff HEAD, and grades the repeats of one context by pairwise Jaccard against a tolerance read from a data file with matched removal of UNSTABLE cells.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21993-sandboxed-continuation
+    statement: The continuation replay runs with isolated stubs, records and logs the proposed calls, and grades repeat stability with matched removal.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: no stubbed call reaches the network or a real ledger -- falsifier: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k stubs_isolate -q --no-cov passes against a mutant that lets one through'
+      - id: AC2
+        statement: 'AC2: for the three repeats of one context the proposed-call sets (call class and item key, order ignored) have pairwise Jaccard agreement at or above a tolerance read from a data file (starting value 0.8), a repeat set below it is flagged UNSTABLE with its rate reported, and an UNSTABLE cell is removed together with the matching cell of the other arm for the same boundary -- falsifier: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k "unstable_flagged or matched_removal" -q --no-cov finds a repeat set below the tolerance that is not flagged, a report without the UNSTABLE rate, or an unmatched cell retained'
+      - id: AC3
+        statement: 'AC3: a continuation that proposes gh pr merge is refused and logged, and a ledger write lands in the scratch copy only -- falsifier: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k "refused_call_logged or scratch_ledger_only" -q --no-cov fails on the planted call'
+evidence_requirements:
+  - kind: tests
+    description: The node's focused suite runs at the pushed head.
+    command: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21993-ac1
+    description: AC1 is the stubs_isolate cases, where the clean stubs reach no socket or subprocess and three mutants (a network pass-through, a subprocess pass-through and a write to the named real ledger) each turn the result into ISOLATION_BREACH.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k stubs_isolate -q --no-cov
+        cwd: .
+  - id: dod-omn21993-ac2
+    description: AC2 is the unstable_flagged and matched_removal cases, covering a set below the tolerance flagged UNSTABLE, the UNSTABLE rate in the report, removal of the other arm's cell at the boundary, an orphan cell, and the tolerance read from a data file.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k "unstable_flagged or matched_removal" -q --no-cov
+        cwd: .
+  - id: dod-omn21993-ac3
+    description: AC3 is the refused_call_logged case for gh pr merge and the scratch_ledger_only case, where a write naming the real ledger lands in the scratch copy and the real file is byte-identical.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k "refused_call_logged or scratch_ledger_only" -q --no-cov
+        cwd: .

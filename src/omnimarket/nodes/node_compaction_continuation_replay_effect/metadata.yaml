@@ -1,0 +1,25 @@
+name: node_compaction_continuation_replay_effect
+version: "1.0.0"
+description: "Replays a compacted context's continuation with every tool stubbed, records the proposed calls and grades repeat stability"
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_compaction_continuation_replay_effect: "omnimarket.nodes.node_compaction_continuation_replay_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read_write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "pydantic>=2.0"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "compaction", "measurement"]
+pack: "core"
+display_name: "Compaction Continuation Replay Effect"
+node_role: "effect"

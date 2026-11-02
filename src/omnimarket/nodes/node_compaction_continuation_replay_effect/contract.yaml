@@ -1,0 +1,61 @@
+---
+name: node_compaction_continuation_replay_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+runtime_profiles: [effects]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Continues one compacted context for N assistant turns with every tool stubbed (measurement
+  plan section 3.7), from recorded turns so no model is re-called. Ledger writes land in a scratch
+  copy only; gh, onex and network calls refuse and are logged; reads of frozen files return their
+  pinned text; anything else returns a typed refusal. Every proposed call is recorded with its call
+  class and item key. Isolation is audited: socket and subprocess attempts and any change to a
+  protected real file turn the result into ISOLATION_BREACH. Diff collection is git diff HEAD.
+  A second operation grades the three repeats of one context by pairwise Jaccard agreement against
+  a tolerance read from a data file, flags a set below it UNSTABLE, and removes an UNSTABLE cell
+  together with the matching cell of the other arm. No lease, one writer (the scratch ledger copy),
+  no terminal of its own; the replay-run lifecycle is the CM.0 model.
+
+handler:
+  module: omnimarket.nodes.node_compaction_continuation_replay_effect.handlers.handler_continuation_replay
+  class: HandlerContinuationReplay
+  input_model: omnimarket.nodes.node_compaction_continuation_replay_effect.models.ModelReplayRequest
+  output_model: omnimarket.nodes.node_compaction_continuation_replay_effect.models.ModelReplayResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: replay_continuation
+      handler:
+        name: HandlerContinuationReplay
+        module: omnimarket.nodes.node_compaction_continuation_replay_effect.handlers.handler_continuation_replay
+      input_model: omnimarket.nodes.node_compaction_continuation_replay_effect.models.ModelReplayRequest
+      output_model: omnimarket.nodes.node_compaction_continuation_replay_effect.models.ModelReplayResult
+    - operation: grade_repeat_stability
+      handler:
+        name: HandlerRepeatStability
+        module: omnimarket.nodes.node_compaction_continuation_replay_effect.handlers.handler_repeat_stability
+      input_model: omnimarket.nodes.node_compaction_continuation_replay_effect.models.ModelStabilityRequest
+      output_model: omnimarket.nodes.node_compaction_continuation_replay_effect.models.ModelStabilityResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful  # writes a scratch ledger copy; reads git diff HEAD of a scratch worktree
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.compaction-continuation-replay-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.compaction-continuation-replay-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.compaction-continuation-replay-start.v1
+
+terminal_event: onex.evt.omnimarket.compaction-continuation-replay-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.compaction-continuation-replay-completed.v1
