@@ -28,5 +28,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19986_local_identity.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
     binds_ac: ["AC1"]
+  - id: "dod-omn19986-deploy-local-store-readback"
+    description: "Hosted-runner deploy smoke opens a real local SQLite store, folds and replays a mint event, reads back one unchanged identity row and its cursor, and opens the initialized store read-only. It requires no external service."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn19986_local_identity.py -q --no-cov -k 'ac1_replaying or table_is_a_store_step'"
+        cwd: "."

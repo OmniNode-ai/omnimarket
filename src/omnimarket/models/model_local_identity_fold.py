@@ -17,71 +17,14 @@ contract lands and binds a handler that calls it.
 
 from __future__ import annotations
 
-import sqlite3
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
 from omnimarket.models.model_local_identity_minted import ModelLocalIdentityMinted
-from omnimarket.protocols.protocol_projection_database_sync import DatabaseAdapter
+from omnimarket.projection.protocol_database import DatabaseAdapter
 
 LOCAL_IDENTITY_TABLE = "local_identity"
 LOCAL_IDENTITY_KEY = "tenant_id"
-#: The local SQLite store step that creates the table. A store step, not a
-#: statement on every connect: the cursor seed is a write, so a read-only store,
-#: or a reader on a busy one, must not run it.
-LOCAL_IDENTITY_SQLITE_STEP = "omn19986_local_identity"
-
-# One row per tenant. Its cursor is stamped from a one-row sequence on insert
-# and update, as local_environment's is, so a changed row sorts after the rest.
-_STAMP = """
-    UPDATE local_identity_projection_cursor_seq SET last_value = last_value + 1;
-    UPDATE local_identity
-    SET projection_cursor = (SELECT last_value FROM local_identity_projection_cursor_seq)
-    WHERE rowid = NEW.rowid;
-"""
-_SQLITE_DDL = (
-    """
-CREATE TABLE IF NOT EXISTS local_identity (
-    tenant_id TEXT NOT NULL PRIMARY KEY,
-    minted_at TEXT NOT NULL,
-    event_id TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    projection_cursor INTEGER
-)
-""",
-    """
-CREATE TABLE IF NOT EXISTS local_identity_projection_cursor_seq (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    last_value INTEGER NOT NULL
-)
-""",
-    "INSERT OR IGNORE INTO local_identity_projection_cursor_seq (id, last_value) "
-    "VALUES (1, 0)",
-    "CREATE TRIGGER IF NOT EXISTS local_identity_cursor_on_insert "
-    "AFTER INSERT ON local_identity BEGIN" + _STAMP + "END",
-    "CREATE TRIGGER IF NOT EXISTS local_identity_cursor_on_update "
-    "AFTER UPDATE OF updated_at ON local_identity BEGIN" + _STAMP + "END",
-)
-
-
-def _create_local_identity_sqlite(conn: sqlite3.Connection) -> None:
-    for statement in _SQLITE_DDL:
-        conn.execute(statement)
-
-
-def local_identity_sqlite_steps(
-    conn: sqlite3.Connection, recorded: Callable[[sqlite3.Connection, str], bool]
-) -> list[tuple[str, Callable[[sqlite3.Connection], None], str]]:
-    """The local SQLite store steps this module owns that ``conn`` has not recorded."""
-    if recorded(conn, LOCAL_IDENTITY_SQLITE_STEP):
-        return []
-    return [
-        (
-            LOCAL_IDENTITY_SQLITE_STEP,
-            _create_local_identity_sqlite,
-            "created the local identity table and its cursor",
-        )
-    ]
 
 
 def _as_datetime(value: object) -> datetime:
@@ -135,9 +78,7 @@ def _apply(event: ModelLocalIdentityMinted, db: DatabaseAdapter) -> bool:
 
 __all__ = [
     "LOCAL_IDENTITY_KEY",
-    "LOCAL_IDENTITY_SQLITE_STEP",
     "LOCAL_IDENTITY_TABLE",
     "apply_local_identity_minted",
-    "local_identity_sqlite_steps",
     "plan_local_identity_write",
 ]
