@@ -1,0 +1,152 @@
+{
+ "grammar_version": "ledger-row-grammar/2",
+ "grammar_json": "{\n  \"field_rule\": \"a field is a pipe cell that starts with key=; lane, from, to, id and re are a whole cell holding one token\",\n  \"governed_ledgers\": [\n    \"ROLLING_WORK_LEDGER.md\"\n  ],\n  \"id_rule\": \"id=<the row's own timestamp>-<sender lane>; ids and re= never carry a line number\",\n  \"legacy_type_map\": {\n    \"ACTION\": \"STATUS\",\n    \"ADDENDUM\": \"STATUS\",\n    \"ANSWER\": \"MSG\",\n    \"ASSIGNMENT\": \"MSG\",\n    \"BLOCKED\": \"STATUS\",\n    \"BLOCKER\": \"STATUS\",\n    \"CHECKPOINT\": \"STATUS\",\n    \"CLAIM-AMEND\": \"CLAIM\",\n    \"CLAIM-EXTENSION\": \"CLAIM\",\n    \"CLAIM_UPDATE\": \"STATUS\",\n    \"CLEANUP\": \"STATUS\",\n    \"CLOSEOUT\": \"TERMINAL\",\n    \"CLOSE_SUPERSEDED\": \"TERMINAL\",\n    \"COORDINATION\": \"MSG\",\n    \"COUNTERSIGN\": \"STATUS\",\n    \"COUNTERSIGN-REVISED\": \"STATUS\",\n    \"DECISION\": \"RULING\",\n    \"DECISION-LINK\": \"STATUS\",\n    \"DECISION-REQUESTED\": \"MSG\",\n    \"DIAGNOSIS\": \"STATUS\",\n    \"DONE\": \"TERMINAL\",\n    \"EVIDENCE\": \"STATUS\",\n    \"FINDING\": \"STATUS\",\n    \"FRICTION-CORRECTION\": \"CORRECTION\",\n    \"HANDOFF\": \"MSG\",\n    \"HANDOFF_REQUEST\": \"MSG\",\n    \"HELD\": \"STATUS\",\n    \"INVENTORY\": \"STATUS\",\n    \"LANE-TERMINAL-STATE\": \"TERMINAL\",\n    \"LEASE\": \"HOLD\",\n    \"MERGED\": \"STATUS\",\n    \"NOTE\": \"STATUS\",\n    \"NOTE-CORRECTION\": \"CORRECTION\",\n    \"OBSERVATION\": \"STATUS\",\n    \"OPERATOR-RULING\": \"RULING\",\n    \"PROGRESS\": \"STATUS\",\n    \"QUESTION\": \"MSG\",\n    \"READBACK\": \"STATUS\",\n    \"RECONCILIATION\": \"STATUS\",\n    \"RECORD\": \"STATUS\",\n    \"RERUN_PENDING\": \"STATUS\",\n    \"RESULT\": \"STATUS\",\n    \"REVIEW\": \"STATUS\",\n    \"REVIEW_APPROVE\": \"MSG\",\n    \"REVIEW_FINDING\": \"STATUS\",\n    \"REVIEW_HOLD\": \"HOLD\",\n    \"REVIEW_REQUEST\": \"MSG\",\n    \"SEND\": \"STATUS\",\n    \"SLACK-SENT\": \"STATUS\",\n    \"STATUS_REQUEST\": \"MSG\",\n    \"TERMINAL HOLD\": \"TERMINAL\",\n    \"TERMINAL-ADDENDUM\": \"CORRECTION\",\n    \"TERMINAL-FAILURE\": \"TERMINAL\",\n    \"TICKET\": \"STATUS\",\n    \"TICKET-MINTED\": \"STATUS\",\n    \"TRIAGE\": \"STATUS\",\n    \"UPDATE\": \"STATUS\"\n  },\n  \"message_consent_markers\": [\n    \"APPROVED SCOPE\",\n    \"OUT OF SCOPE\",\n    \"OPERATOR-CONSENT\",\n    \"ROTATION-CONSENT\",\n    \"approved_by=\",\n    \"consent=\"\n  ],\n  \"row_shape\": \"<YYYY-MM-DDTHH:MM:SSZ> | <TYPE> | key=value | ... | free text\",\n  \"scope_placeholders_refused\": [\n    \"-\",\n    \"--\",\n    \".\",\n    \"?\",\n    \"n/a\",\n    \"na\",\n    \"nil\",\n    \"none\",\n    \"nothing\",\n    \"tbd\"\n  ],\n  \"tool_internal_types\": [\n    \"REPLAY\",\n    \"STRANDED-CLONE NOTE\"\n  ],\n  \"types\": {\n    \"ACK\": {\n      \"means\": \"I received the message, hold or ruling named by re=.\",\n      \"optional\": [\n        \"ticket\"\n      ],\n      \"required\": [\n        \"from\",\n        \"to\",\n        \"id\",\n        \"re\"\n      ],\n      \"rules\": [\n        \"id=<this row's timestamp>-<from lane>\",\n        \"re=<id> of the MSG or HOLD, or re=<timestamp> of the RULING being acknowledged\",\n        \"never consent-shaped, as for MSG\"\n      ]\n    },\n    \"CLAIM\": {\n      \"means\": \"I am about to do this work; nobody else should start it.\",\n      \"optional\": [\n        \"actor\",\n        \"model\",\n        \"scope\",\n        \"repo\",\n        \"pr\",\n        \"consent\",\n        \"ruling\",\n        \"follows\",\n        \"parent\",\n        \"related\",\n        \"contract-schema\",\n        \"dod-evidence\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"ticket|tickets\",\n        \"worktree\"\n      ],\n      \"rules\": [\n        \"carries actor= or model= and a rule-4 cost sentence 'est ~N lane-hours; displaces X; (OMN-n)' (existing ledger_lock CLAIM guards, unchanged)\",\n        \"consent-bound work cites its OPERATOR-CONSENT row with consent=\",\n        \"worktree=<path> or worktree=none, its own cell (OMN-20148); a script or launchd lane (actor=script:*, actor=launchd:*, model=none) is exempt\",\n        \"when ONEX_LEDGER_REQUIRE_CLAIM_CONTRACT is on (default OFF), contract-schema=<major.minor.patch> and dod-evidence=<non-empty JSON array> with a behavior-proving item are required (OMN-20029); exactly one actor= cell naming script:landing-controller, script:onex-remote-lane, or launchd:morning-worktree-prune is exempt\"\n      ]\n    },\n    \"CORRECTION\": {\n      \"means\": \"A row already on the ledger was wrong or incomplete; this is the fix.\",\n      \"optional\": [\n        \"ticket\",\n        \"cost\",\n        \"operator_span\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"corrects|amends|supersedes\"\n      ],\n      \"rules\": [\n        \"name the corrected row by its timestamp where you can; a line number moves when the ledger rolls\",\n        \"operator_span=<start>:<end> (with corrects=) marks the characters of the target row's first quoted cell that are the operator's words; it must lie inside that quote, and a target not on the ledger refuses it (OMN-18531, TA.4)\"\n      ]\n    },\n    \"FRICTION\": {\n      \"means\": \"Process friction this lane hit, with the ticket that owns it and what it cost.\",\n      \"optional\": [\n        \"cost\",\n        \"class\",\n        \"related\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"ticket|tickets|existing\"\n      ],\n      \"rules\": [\n        \"the ticket value is an OMN id and the row carries a cost estimate (friction guard, OMN-18274)\"\n      ]\n    },\n    \"HOLD\": {\n      \"means\": \"Stop: nobody proceeds on this scope until a RELEASE names this hold.\",\n      \"optional\": [\n        \"ticket\",\n        \"after\",\n        \"until\",\n        \"proof\",\n        \"release\",\n        \"ruling\",\n        \"reason\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"id\",\n        \"to|repo|pr|surface\"\n      ],\n      \"rules\": [\n        \"id=<this row's timestamp>-<lane>\",\n        \"carries at least one release condition: after=<PR[,PR...]>, until=<UTC timestamp>, proof=<row id[,row id...]>, or release=operator with ruling=<row stamp or id>\",\n        \"a hold on a proof surface (surface=) also carries until=<UTC timestamp>; this replaces the LEASE row\",\n        \"a surface HOLD is refused inside the lock while another lane holds that surface: a HOLD no RELEASE re=<its id> names, whose until= is later than the new row's timestamp (OMN-19261)\"\n      ]\n    },\n    \"MSG\": {\n      \"means\": \"A message from one lane to another lane, to all lanes, or to the operator.\",\n      \"optional\": [\n        \"ticket\",\n        \"repo\",\n        \"pr\",\n        \"re\"\n      ],\n      \"required\": [\n        \"from\",\n        \"to\",\n        \"id\"\n      ],\n      \"rules\": [\n        \"id=<this row's timestamp>-<from lane>\",\n        \"to=<lane>, a comma list of lanes, all, or operator\",\n        \"never consent-shaped: no APPROVED SCOPE, OUT OF SCOPE, OPERATOR-CONSENT, ROTATION-CONSENT, consent= or approved_by=, and from= is a lane, never the operator\",\n        \"lane=, if present, equals from=\"\n      ]\n    },\n    \"OPERATOR-CONSENT\": {\n      \"means\": \"The operator consented to a gated action; this row is the durable authorization (rule 18).\",\n      \"optional\": [\n        \"approved_by\",\n        \"ticket\",\n        \"prompt_id\",\n        \"covers\",\n        \"prompt_match\",\n        \"confirms\",\n        \"confirmed_by\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"\\\"<operator words>\\\"\",\n        \"APPROVED SCOPE: <list>\",\n        \"OUT OF SCOPE: <list>\"\n      ],\n      \"rules\": [\n        \"the prompt link fields are the RULING row's (OMN-18531, TA.4)\",\n        \"APPROVED SCOPE: and OUT OF SCOPE: each open their own cell and name something (-, none, n/a are refused)\",\n        \"a credential rotation also carries approved_by=<operator|jake> (rule 22)\"\n      ]\n    },\n    \"RELEASE\": {\n      \"means\": \"The hold (or claim) named by re= is released.\",\n      \"optional\": [\n        \"ticket\",\n        \"surface\",\n        \"pr\",\n        \"result\",\n        \"restored\",\n        \"reason\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"re\"\n      ],\n      \"rules\": [\n        \"re=<id> of the HOLD, or re=<timestamp> of the CLAIM being given up\",\n        \"a surface release (surface=) also carries result=<PASS|FAIL|ABORTED> and restored=<yes|no>\",\n        \"a RELEASE of a HOLD id with pr=<repo#n[,repo#n...]> and no surface= is a SCOPED release (OMN-20956): it frees only the named PRs, and the hold stays in force for every other PR it covers; a RELEASE of the id with no pr= frees the whole hold. Several scoped releases of one id add up, and the hold is released once its own pr= list is covered. Readers take the scope from release_scope() in this module\"\n      ]\n    },\n    \"RULING\": {\n      \"means\": \"An operator decision, recorded with the operator's own words.\",\n      \"optional\": [\n        \"ticket\",\n        \"amends\",\n        \"extends\",\n        \"supersedes\",\n        \"approved_by\",\n        \"prompt_id\",\n        \"covers\",\n        \"prompt_match\",\n        \"confirms\",\n        \"confirmed_by\",\n        \"reviewed\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"question\",\n        \"\\\"<operator words>\\\"\"\n      ],\n      \"rules\": [\n        \"question= names the question or options the operator's words answer; never empty or a placeholder\",\n        \"prompt_id=<uuid> with covers=<start>:<end> link the row to the captured operator prompt whose text holds the words; prompt_match=ambiguous marks several matches and carries neither; confirms=<sha256> with confirmed_by=<uuid> mark a confirmed candidate and need the link; reviewed=<first uuid>..<last uuid> names prompts the operator reviewed with nothing further to record (OMN-18531, TA.4)\",\n        \"the operator's words appear verbatim in double quotes\",\n        \"a second RULING on a subject with an unacknowledged one is refused (ruling guard, OMN-18258)\"\n      ]\n    },\n    \"STATUS\": {\n      \"means\": \"Where my lane is: progress, a finding, an action taken, a PR held, evidence.\",\n      \"optional\": [\n        \"ticket\",\n        \"repo\",\n        \"pr\",\n        \"head\",\n        \"state\",\n        \"claim\",\n        \"countersigns\",\n        \"verdict\",\n        \"relation\",\n        \"subject\",\n        \"object\"\n      ],\n      \"required\": [\n        \"lane\"\n      ],\n      \"rules\": [\n        \"a countersign of another lane's receipt carries countersigns=<receipt> and verdict=\"\n      ]\n    },\n    \"TERMINAL\": {\n      \"means\": \"My lane is done with this claim; here is the outcome and evidence.\",\n      \"optional\": [\n        \"ticket\",\n        \"closes\",\n        \"closes-CLAIM\",\n        \"outcome\",\n        \"pr\",\n        \"squash\",\n        \"worktree\"\n      ],\n      \"required\": [\n        \"lane\",\n        \"friction\"\n      ],\n      \"rules\": [\n        \"friction=none, or friction=<one line> naming this lane's FRICTION row(s), which must exist (friction guard, OMN-18274)\",\n        \"delegated=<n> with runs=, codex= or jev= ids (n >= 1), or delegated=0 with delegation_reason=<why> (lane-authored:<why> plus a pr= or diff= cell when the lane wrote the code itself) or a parenthesised (why), or delegation=na:<reason>; lab=<n> or glm=<n> (n >= 1) needs runs= ids; actor=script:*, actor=launchd:*, or model=none is exempt (OMN-17427)\",\n        \"worktree=removed:<path>, pinned-removed:<path>@<archive>, kept:<path>:<reason> or none is required when the CLAIM it closes named a worktree path; removed and pinned-removed are refused while the path still exists (OMN-20148)\"\n      ]\n    }\n  },\n  \"version\": \"ledger-row-grammar/2\"\n}",
+ "row_cases": [
+  {
+   "row": "2026-10-15T06:00:00Z | CLAIM | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | worktree=none | est ~1 lane-hours; displaces nothing; (OMN-1234) | scope=one change",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | CLAIM | lane=lane-a | ticket=OMN-1234 | worktree=none | scope=x",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | NOTE | lane=lane-a | ticket=OMN-1234 | here is where the lane is",
+   "refusals": [
+    "'NOTE' is a legacy type; write it as STATUS. Allowed types: ACK CLAIM CORRECTION FRICTION HOLD MSG OPERATOR-CONSENT RELEASE RULING STATUS TERMINAL"
+   ]
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | STATUS | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | halfway",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | TERMINAL | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | friction=none | delegated=0 delegation_reason=no-text-or-code | worktree=none | done",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | TERMINAL | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | friction=none | worktree=none | done",
+   "refusals": [
+    "TERMINAL row carries no delegation cell (OMN-17427): close with `delegated=<n> runs=<ids>` (or codex=/jev= ids; lab_agent= is crush use, not delegation), `delegated=0 delegation_reason=<why>`, or `delegation=na:<reason>`; each is read only from a pipe cell that starts with it, never from the free text"
+   ]
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | MSG | from=lane-a | to=lane-b | id=2026-10-15T06:00:00Z-lane-a | ticket=OMN-1234 | please look",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | MSG | from=lane-a | id=2026-10-15T06:00:00Z-lane-a | no recipient",
+   "refusals": [
+    "missing to= (its own cell): a lane, a comma list of lanes, all, or operator"
+   ]
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | HOLD | lane=lane-a | id=2026-10-15T06:00:00Z-lane-a | to=all | scope=fixer | repo=repo-x | until=2026-10-16T06:00:00Z | stop sending fixers",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | HOLD | lane=lane-a | id=2026-10-15T06:00:00Z-lane-a | to=all | scope=pr | pr=repo-x#12 | do not land repo-x#12 until further notice",
+   "refusals": [
+    "a HOLD needs a release condition: after=<repo>#<n>, until=<YYYY-MM-DDTHH:MM:SSZ>, proof=<row id>, or release=operator with ruling=<row stamp or id>"
+   ]
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | RELEASE | lane=lane-a | to=all | re=2026-10-15T06:00:00Z-lane-a | pr=repo-x#12 | lifted",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | RULING | lane=lane-a | ticket=OMN-1234 | kind=decision | \"go ahead\" | the operator said go",
+   "refusals": [
+    "missing question=",
+    "a RULING needs one non-empty question= cell naming the question or options the operator's words answer (OMN-20656)"
+   ]
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | OPERATOR-CONSENT | lane=lane-a | ticket=OMN-1234 | \"yes do it\" | APPROVED SCOPE: one change | OUT OF SCOPE: anything else",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | OPERATOR-CONSENT | lane=lane-a | ticket=OMN-1234 | \"yes do it\" | APPROVED SCOPE: one change",
+   "refusals": [
+    "missing a cell opening with 'OUT OF SCOPE:' (OMN-16728, rule 18)"
+   ]
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | FRICTION | lane=lane-a | ticket=OMN-1234 | cost ~1h | a gate cost time",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | CORRECTION | lane=lane-a | corrects=2026-10-15T06:00:00Z-lane-a | the row was wrong",
+   "refusals": []
+  },
+  {
+   "row": "2026-10-15T06:00:00Z | WIBBLE | lane=lane-a | unknown type",
+   "refusals": [
+    "'WIBBLE' is not a row type. Allowed types: ACK CLAIM CORRECTION FRICTION HOLD MSG OPERATOR-CONSENT RELEASE RULING STATUS TERMINAL"
+   ]
+  },
+  {
+   "row": "not a row at all",
+   "refusals": [
+    "a new row is '<YYYY-MM-DDTHH:MM:SSZ> | <TYPE> | key=value | ... | text': the full UTC timestamp first, then the type cell, with no bullet and no leading table pipe"
+   ]
+  }
+ ],
+ "state_cases": [
+  {
+   "payload": "2026-10-15T06:00:00Z | HOLD | lane=lane-a | id=2026-10-15T06:00:00Z-lane-a | to=all | scope=fixer | repo=repo-x | until=2026-10-16T06:00:00Z | again",
+   "existing": "2026-10-15T06:00:00Z | HOLD | lane=lane-a | id=2026-10-15T06:00:00Z-lane-a | to=all | scope=fixer | repo=repo-x | until=2026-10-16T06:00:00Z | stop\n",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": "OMN-19256 row grammar rejected append to ROLLING_WORK_LEDGER.md -- line 1: id=2026-10-15T06:00:00Z-lane-a is already declared on this ledger; an id names one row. Nothing was written."
+  },
+  {
+   "payload": "2026-10-15T07:00:00Z | RELEASE | lane=lane-a | to=all | re=2026-10-15T06:00:00Z-lane-a | repo=repo-x | lifted",
+   "existing": "2026-10-15T06:00:00Z | HOLD | lane=lane-a | id=2026-10-15T06:00:00Z-lane-a | to=all | scope=fixer | repo=repo-x | until=2026-10-16T06:00:00Z | stop\n",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": null
+  },
+  {
+   "payload": "2026-10-15T07:00:00Z | RELEASE | lane=lane-a | to=all | re=2020-01-01T00:00:00Z-lane-z | repo=repo-x | lifted",
+   "existing": "2026-10-15T06:00:00Z | HOLD | lane=lane-a | id=2026-10-15T06:00:00Z-lane-a | to=all | scope=fixer | repo=repo-x | until=2026-10-16T06:00:00Z | stop\n",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": null
+  }
+ ],
+ "payload_cases": [
+  {
+   "payload": "2026-10-15T06:00:00Z | CLAIM | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | worktree=none | est ~1 lane-hours; displaces nothing; (OMN-1234) | scope=one change",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": null
+  },
+  {
+   "payload": "2026-10-15T06:00:00Z | CLAIM | lane=lane-a | ticket=OMN-1234 | worktree=none | scope=x",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": null
+  },
+  {
+   "payload": "2026-10-15T06:00:00Z | NOTE | lane=lane-a | ticket=OMN-1234 | here is where the lane is",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": "OMN-19256 row grammar rejected append to ROLLING_WORK_LEDGER.md -- line 1: 'NOTE' is a legacy type; write it as STATUS. Allowed types: ACK CLAIM CORRECTION FRICTION HOLD MSG OPERATOR-CONSENT RELEASE RULING STATUS TERMINAL. Nothing was written. The grammar is printed by 'onex-ledger --print-grammar'."
+  },
+  {
+   "payload": "2026-10-15T06:00:00Z | STATUS | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | halfway",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": null
+  },
+  {
+   "payload": "2026-10-15T06:00:00Z | TERMINAL | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | friction=none | delegated=0 delegation_reason=no-text-or-code | worktree=none | done",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": null
+  },
+  {
+   "payload": "2026-10-15T06:00:00Z | TERMINAL | lane=lane-a | ticket=OMN-1234 | actor=codex | model=gpt | friction=none | worktree=none | done",
+   "ledger_name": "ROLLING_WORK_LEDGER.md",
+   "refusal": "OMN-19256 row grammar rejected append to ROLLING_WORK_LEDGER.md -- line 1: TERMINAL row carries no delegation cell (OMN-17427): close with `delegated=<n> runs=<ids>` (or codex=/jev= ids; lab_agent= is crush use, not delegation), `delegated=0 delegation_reason=<why>`, or `delegation=na:<reason>`; each is read only from a pipe cell that starts with it, never from the free text. Nothing was written. The grammar is printed by 'onex-ledger --print-grammar'."
+  },
+  {
+   "payload": "2026-10-15T06:00:00Z | NOTE | lane=lane-a | ticket=OMN-1234 | here is where the lane is",
+   "ledger_name": "scratch.md",
+   "refusal": null
+  }
+ ]
+}
