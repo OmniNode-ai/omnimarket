@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-16176"
+title: "Work ledger on the bus only, plan task L2: operator-capture rows reach the ledger as accepted append commands"
+summary: "The ledger host's operator-capture appends its STATUS and RULING rows through the append handler as the operator principal, so each row carries req= and via=bus:capture. Before this change the capture rows went through the raw append runner and landed with neither cell (201 STATUS rows of 2026-11-01 lacked via=). The three-day exact-receipt window of plan task L2 is an observation after deploy, not part of this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn16176-l2-capture-rows-accepted-append"
+    statement: |-
+      Every row the operator capture writes is an accepted append command, so the daily parity receipt finds no capture STATUS row without a via cell.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a capture row appended through the ledger host's append handler carries req= and via=bus:capture, and the same prompt sent twice is one row -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_effect/test_capture_accepted_append.py -q"
+      - id: "AC2"
+        statement: "AC2: the ledger host's capture host, given the append handler and the operator principal, writes only rows carrying req= and via= -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_effect/test_operator_capture_serve.py -k carry_req_and_via -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The accepted-append cases for the operator capture pass."
+    command: "uv run pytest tests/unit/nodes/node_operator_capture_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn16176-capture-accepted-append"
+    description: "A capture row carries req= and via=bus:capture and a repeated prompt is a duplicate, not a second row."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_operator_capture_effect/test_capture_accepted_append.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn16176-capture-host-rows"
+    description: "The capture host writes through the append handler when it knows the operator principal."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_operator_capture_effect/test_operator_capture_serve.py -k carry_req_and_via -q --no-cov"
+        cwd: "."
+  - id: "dod-omn16176-deploy-receipt-model"
+    description: "The evaluated GitHub head serves the accepted-append port of the operator capture; the behavior tests run it without a broker or lab service."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_operator_capture_effect/handlers/capture_ports.py" | grep -q "def accepted_ledger_appender"
+        cwd: "."
