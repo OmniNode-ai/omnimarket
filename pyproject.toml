@@ -511,6 +511,7 @@ node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_co
 node_skill_contract_validate_compute = "omnimarket.nodes.node_skill_contract_validate_compute"
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_contract_projection_check_effect = "omnimarket.nodes.node_contract_projection_check_effect"
+node_package_announce_effect = "omnimarket.nodes.node_package_announce_effect"
 node_ticket_contract_prerequisite_effect = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
 node_branch_protection_audit_effect = "omnimarket.nodes.node_branch_protection_audit_effect"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
