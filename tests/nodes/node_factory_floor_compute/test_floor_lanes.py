@@ -26,6 +26,7 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from tests.nodes.node_factory_floor_compute.support import (
     NOW,
     ago,
+    config,
     pr,
     request,
     row,
@@ -470,3 +471,95 @@ def test_a_host_the_table_takes_out_of_selection_for_another_reason_is_out_not_i
     )
     bay = result.machines[0]
     assert (bay.state, bay.note) == ("out", "placement paused for an install")
+
+
+def test_an_account_draws_the_open_sessions_of_its_own_list_not_the_entries_of_the_accounts_file() -> (
+    None
+):
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(
+                name="h200",
+                login="ok",
+                cap=17,
+                active=tuple(f"stale-{n}" for n in range(7)),
+            ),
+        ),
+        receipts=(
+            cloud_receipt("live-a", 10, run_id="r-a"),
+            cloud_receipt("live-b", 20, run_id="r-b"),
+            cloud_receipt("live-c", 30, run_id="r-c"),
+            cloud_receipt("done", 90, run_id="r-d", final=True, status="done"),
+        ),
+    ).cloud
+    (account,) = result.accounts
+    assert account.open_sessions == 3
+    assert account.open_sessions == sum(
+        1 for s in result.sessions if s.account == "h200" and s.open
+    )
+    assert "7" in account.record_note
+    assert "3" in account.record_note
+
+
+def test_an_account_whose_file_entries_agree_with_its_list_carries_no_stale_note() -> (
+    None
+):
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(name="h200", login="ok", active=("r-a",)),
+        ),
+        receipts=(cloud_receipt("live-a", 10, run_id="r-a"),),
+    ).cloud
+    assert (result.accounts[0].open_sessions, result.accounts[0].record_note) == (
+        1,
+        "",
+    )
+
+
+def test_the_open_count_covers_an_open_session_the_capped_list_would_cut() -> None:
+    limit = config().cloud_sessions_limit
+    finished = tuple(
+        cloud_receipt(f"done-{n}", 10 + n, run_id=f"d{n}", final=True, status="done")
+        for n in range(limit + 2)
+    )
+    result = floor(
+        cloud_accounts=(ModelFloorCloudAccount(name="h200", login="ok"),),
+        receipts=(*finished, cloud_receipt("old-live", 600, run_id="old")),
+    ).cloud
+    assert result.accounts[0].open_sessions == 1
+    assert [s.lane for s in result.sessions if s.open] == ["old-live"]
+    assert len(result.sessions) <= limit
+
+
+def test_every_ready_account_is_drawn_and_an_unread_cap_or_count_stays_unread() -> None:
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(name="h200", login="ok", cap=17),
+            ModelFloorCloudAccount(name="h101", login="ok"),
+        ),
+        receipts=(cloud_receipt("live-a", 10, run_id="r-a"),),
+    ).cloud
+    assert [(a.name, a.cap, a.open_sessions) for a in result.accounts] == [
+        ("h101", None, 0),
+        ("h200", 17, 1),
+    ]
+    unread = floor(
+        cloud_accounts=(ModelFloorCloudAccount(name="h200", login="ok", cap=17),),
+    ).cloud
+    assert unread.accounts[0].open_sessions is None
+
+
+def test_a_signed_in_account_the_overlay_does_not_declare_is_counted_in_the_note_with_its_cause() -> (
+    None
+):
+    result = floor(
+        cloud_accounts=(
+            ModelFloorCloudAccount(name="h200", login="ok", cap=14),
+            ModelFloorCloudAccount(name="h203", login="ok", cap=10),
+            ModelFloorCloudAccount(name="h101", login="no-claude-ai-login"),
+        ),
+    ).cloud
+    assert [a.name for a in result.accounts] == ["h200"]
+    assert "1 signed-in account" in result.note
+    assert "not on the declared machine list" in result.note
+    assert "1 listed machines hold no cloud login" in result.note
