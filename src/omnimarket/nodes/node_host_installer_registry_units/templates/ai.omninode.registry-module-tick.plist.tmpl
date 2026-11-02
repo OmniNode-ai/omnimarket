@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Registry module tick, rendered by node_host_installer_registry_units from its contract.
+     Placeholders: __LABEL__ __UNIT__ __UV__ __PROJECT__ __MODULE__ __OMNI_HOME__ __EVIDENCE_DIR__
+                   __HOME__ __USER__ __STATE_DIR__ __START_INTERVAL__ __RUN_AT_LOAD__ __ENVIRONMENT__
+     __PROJECT__ is the canonical registry clone, or the project path override the install named. The agent
+     runs the unit's module with the interpreter of that project's own environment, so nothing is copied.
+     `uv` is a literal path because launchd has a restricted PATH. The frozen flag keeps the run from rewriting
+     the project's lock. No PYTHONPATH: the module must import from the project's environment.
+     Not KeepAlive: this is a periodic job, and a restart the instant it exits would rerun it. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>--frozen</string>
+    <string>--project</string>
+    <string>__PROJECT__</string>
+    <string>python</string>
+    <string>-m</string>
+    <string>__MODULE__</string>
+    <string>--omni-home</string>
+    <string>__OMNI_HOME__</string>
+    <string>--state-dir</string>
+    <string>__EVIDENCE_DIR__</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>__START_INTERVAL__</integer>
+
+  <key>RunAtLoad</key>
+  __RUN_AT_LOAD__
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>__HOME__</string>
+    <key>USER</key><string>__USER__</string>
+    <key>LOGNAME</key><string>__USER__</string>
+    <key>OMNI_HOME</key><string>__OMNI_HOME__</string>
+    <key>PATH</key><string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>__ENVIRONMENT__
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>__OMNI_HOME__</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>__STATE_DIR__/__UNIT__.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__STATE_DIR__/__UNIT__.err.log</string>
+</dict>
+</plist>

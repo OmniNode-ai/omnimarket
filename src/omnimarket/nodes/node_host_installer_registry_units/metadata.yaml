@@ -1,0 +1,24 @@
+name: node_host_installer_registry_units
+version: "1.0.0"
+description: "Renders and installs registry module tick units, with a project path override for branch checkouts"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_installer_registry_units: "omnimarket.nodes.node_host_installer_registry_units"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["install", "launchd", "registry-unit", "branch", "effect"]
+pack: "install"
+display_name: "Host Installer Registry Units"
+node_role: "effect"

@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22171"
+title: "Installers install a branch revision of overlays and registry tick units"
+summary: "Two nodes: node_overlay_tree_install_effect installs the overlay plugin tree from a branch or commit (built whole, checked equal, smoked, swapped by rename, rolled back on failure, revision recorded), and node_host_installer_registry_units renders and installs a registry_module_tick unit whose contract declares a project path override, so the unit runs a branch checkout and records the revision it runs."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22171-branch-install"
+    statement: "A fix installs from its branch for overlays and for registry tick units, through nodes with contracts."
+    acceptance:
+      - id: "AC1"
+        statement: "The overlay tree install builds the overlay tree from a revision, checks it equals the commit, smokes it and rolls back on failure; a tree that differs from its commit is refused."
+      - id: "AC2"
+        statement: "A registry_module_tick unit contract declares a project path override, and the rendered unit runs the branch checkout and not the canonical clone."
+      - id: "AC3"
+        statement: "Both pieces are nodes with a contract.yaml, registered as onex.nodes entry points, with no standalone script."
+      - id: "AC4"
+        statement: "The two fix branches are installed through the new route on the host that runs the launchd job, and two consecutive unit publishes advance published_at of the served publish-status."
+      - id: "AC5"
+        statement: "No installed file is hand-edited and the installed unit records the revision it runs."
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused node tests for both new nodes."
+    command: "uv run pytest tests/nodes/node_overlay_tree_install_effect tests/nodes/node_host_installer_registry_units -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22171-overlay-install"
+    description: "The overlay install tests include a case where the overlay tree differs from its commit and the install is refused, a smoke refusal and a rollback."
+    source: "manual"
+    binds_ac: ["AC1", "AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_overlay_tree_install_effect -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22171-registry-units"
+    description: "The registry unit tests include the rendered unit naming the branch checkout and no argument naming the canonical clone, and the install record of the revision."
+    source: "manual"
+    binds_ac: ["AC2", "AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22171-node-shape"
+    description: "Each new node directory carries a contract.yaml, and the contract names a handler and entrypoint that import."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "grep -q '^name: node_overlay_tree_install_effect' src/omnimarket/nodes/node_overlay_tree_install_effect/contract.yaml && grep -q '^name: node_host_installer_registry_units' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml"
+        cwd: "."
+  - id: "dod-omn22171-lab-run"
+    description: "Run both node test directories on a lab host at the exact head. The install on the launchd host and the two publishes are recorded as a Lab comment on the pull request. The hosted verifier does not run this local Done check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-omn22171 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_overlay_tree_install_effect tests/nodes/node_host_installer_registry_units -q --no-cov'
+        cwd: "."

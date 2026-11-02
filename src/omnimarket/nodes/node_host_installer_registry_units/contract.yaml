@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_registry_units
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Render and install a launchd registry_module_tick unit that runs a node module of a project with
+  `uv run --frozen --project <project> python -m <module>`. The project is the canonical registry clone unless the
+  unit declares a project path override and the request names a checkout: then the rendered unit runs that checkout,
+  which must be a clean git checkout carrying the unit's entry file (and, when the request names an expected
+  revision, be at it). The revision the unit runs is read from the checkout and written to the unit's install record
+  beside its state directory, so the installed unit records the revision it runs. A unit may also declare
+  environment variables whose value is a path the request may override (the installed overlay tree, for the factory
+  floor publisher); an override of any other variable is refused.
+input_model:
+  name: ModelRegistryUnitsRequest
+  module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
+output_model:
+  name: ModelRegistryUnitsResult
+  module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
+handler:
+  name: HandlerRegistryUnits
+  module: omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units
+entrypoint:
+  name: NodeHostInstallerRegistryUnits
+  module: omnimarket.nodes.node_host_installer_registry_units.node
+execution:
+  deterministic: false
+  side_effects: true
+# The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
+# {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given).
+units:
+  factory-floor-publish:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.factory-floor-publish
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    module: omnimarket.nodes.node_factory_floor_publish_effect
+    entry_file: src/omnimarket/nodes/node_factory_floor_publish_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_PLANS_KB_PATH: "{plans_path}"
+      CLAUDE_PLUGIN_ROOT: "{marketplace_root}/plugins/omni"
+      ONEX_LEDGER_PATH: "{registry_root}/docs/tracking/ROLLING_WORK_LEDGER.md"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/factory-floor-publish/last-run.json
+    state_directory: .onex_state/factory-floor-publish

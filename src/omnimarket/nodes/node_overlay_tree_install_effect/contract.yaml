@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_tree_install_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install the onex-overlays plugin tree from one commit of a clone, tested before and after, with automatic rollback.
+  The tree is built whole from the commit (git archive: every file, dotfiles included), checked equal to the commit's
+  tree blob for blob, and smoked (the plugin manifest names the plugin, every overlay.yaml parses to a mapping). It is
+  swapped in by rename, the checks run again on the installed tree, and any failure renames the previous tree back.
+  The commit is recorded in the record file and as the gitCommitSha of the installed_plugins.json entry for the
+  install path, so the installed tree always equals its recorded revision. A branch, a tag or a commit names the
+  revision; verify smokes the installed tree and checks it against the recorded revision.
+input_model:
+  name: ModelOverlayTreeInstallRequest
+  module: omnimarket.nodes.node_overlay_tree_install_effect.models.model_overlay_tree_install
+output_model:
+  name: ModelOverlayTreeInstallResult
+  module: omnimarket.nodes.node_overlay_tree_install_effect.models.model_overlay_tree_install
+handler:
+  name: HandlerOverlayTreeInstall
+  module: omnimarket.nodes.node_overlay_tree_install_effect.handlers.handler_overlay_tree_install
+entrypoint:
+  name: NodeOverlayTreeInstallEffect
+  module: omnimarket.nodes.node_overlay_tree_install_effect.node
+execution:
+  deterministic: false
+  side_effects: true
