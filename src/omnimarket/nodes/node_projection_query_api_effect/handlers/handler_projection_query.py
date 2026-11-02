@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, assert_never
 
 from omnimarket.handlers.projection_ordering import sort_for_presentation
 from omnimarket.nodes.node_projection_query_api_effect.models import (
@@ -140,6 +140,8 @@ class HandlerProjectionQuery:
                         'data: {"authority":"projection_state_required"}\n\n'
                     ),
                 )
+            case _:
+                assert_never(route.kind)
 
     async def _generate(
         self, request: ModelProjectionQueryRequest
