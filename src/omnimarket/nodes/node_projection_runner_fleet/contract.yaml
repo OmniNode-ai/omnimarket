@@ -107,6 +107,12 @@ db_io:
     - runner_name
   ordering_key: observed_at
 
+# OMN-21733: the newest observation is also saved as one JSON file under the state directory the named variable gives,
+# the file the factory floor reads for each machine's CI runners (node_factory_floor_effect, runner_fleet_relpath).
+state_file:
+  dir_env: ONEX_STATE_DIR
+  relpath: runner-fleet/runner-fleet.json
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnibase-infra.runner-fleet.v1

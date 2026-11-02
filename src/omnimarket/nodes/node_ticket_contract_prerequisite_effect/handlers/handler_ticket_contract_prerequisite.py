@@ -11,6 +11,12 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
     cited_tickets,
     contract_prerequisite,
 )
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_integration_proof import (
+    check_integration_proof,
+)
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_integration_proof_request import (
+    ModelIntegrationProofRequest,
+)
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
     ModelTicketContractPrerequisiteRequest,
 )
@@ -41,6 +47,18 @@ def _is_release_cut(sha: str, base: str) -> bool:
     return "CHANGELOG.md" in paths and paths <= _RELEASE_CUT_PATHS
 
 
+def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
+    """The paths the commit changes against the merge base; unreadable fails closed."""
+    try:
+        merge_base = _git("merge-base", base, sha)
+        listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
+    except (OSError, subprocess.SubprocessError):
+        # An unreadable diff cannot show that nothing runs, so it counts as a
+        # change that runs (unknown fails closed as runtime).
+        return ("src/<unreadable diff>",)
+    return tuple(path for path in listing.split("\0") if path)
+
+
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
@@ -60,6 +78,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         return ()
     failures = []
     release_cut: bool | None = None
+    changed: tuple[str, ...] | None = None
     for ticket in tickets:
         path = f"contracts/{ticket}.yaml"
         exists = subprocess.run(
@@ -78,6 +97,18 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
                 continue
         if failure:
             failures.append(failure)
+            continue
+        if text is None:
+            continue
+        if changed is None:
+            changed = _changed_paths(sha, base)
+        proof = check_integration_proof(
+            ModelIntegrationProofRequest(
+                ticket_id=ticket, contract_text=text, changed_paths=changed
+            )
+        )
+        if proof.failure:
+            failures.append(proof.failure)
     return tuple(failures)
 
 
