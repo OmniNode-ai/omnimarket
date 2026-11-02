@@ -87,3 +87,30 @@ def test_stop_opens_only_from_an_emit_of_a_registered_class_by_the_authorised_ro
         .stops
     )
     assert stop.scope.key == "key-fixture"
+
+
+def test_stop_opens_only_from_an_emit_a_hold_row_leaves_the_dispatch_gate_admitting(
+    tmp_path: Path,
+) -> None:
+    """The dispatch gate reads the stops the queue opens, so a HOLD row alone refuses nothing."""
+    from omnimarket.handlers.rules_stop_gate import (
+        gate_dispatch,
+        load_andon_stop_contract,
+    )
+    from omnimarket.models.stop_gate import (
+        EnumStopGateOutcome,
+        EnumStopGateReason,
+        ModelStopScope,
+    )
+    from tests.nodes.node_andon_stop_reducer.stop_gate_facts import STOPPED, facts
+
+    opened = handler.HandlerOpenStops().handle(
+        models.ModelOpenStopsRequest(state_dir=tmp_path)
+    )
+    result = gate_dispatch(
+        facts(tmp_path, "enforce", *opened.stops),
+        (ModelStopScope(kind="engine", key=STOPPED),),
+        load_andon_stop_contract()[0],
+    )
+    assert result.outcome is EnumStopGateOutcome.ADMIT
+    assert result.reason is EnumStopGateReason.NO_STOP
