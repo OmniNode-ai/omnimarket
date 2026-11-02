@@ -64,7 +64,6 @@ config:
   done_outcomes: [done, merged, handed-off]
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
-  advertisement_stale_factor: 3
   station_name_template: "Wave {wave}"
   fallback_station_id: tasks
   fallback_station_name: Task table (no manifest)

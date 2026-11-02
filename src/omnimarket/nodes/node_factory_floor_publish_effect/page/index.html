@@ -711,7 +711,7 @@ function freshRows(rec, status, health, manifest, delegation){
   flag("Factory record", "Placement markers (units)", s.placement_markers_read);
   flag("Factory record", "Remote-lane receipts", s.receipts_read);
   flag("Factory record", "Cloud accounts", s.cloud_accounts_read);
-  flag("Factory record", "CI runner fleet observation", s.runner_fleet_read, "no node writes this file yet");
+  flag("Factory record", "CI runner fleet observation", s.runner_fleet_read, s.runner_fleet_cause || "no observation read");
   flag("Factory record", "Friction report", s.stoppage_report);
   flag("Factory record", "Linear issues", num(s.linear_issues) > 0, num(s.linear_issues) > 0 ? `${fmt(num(s.linear_issues))} issues read` : "");
   if (status && Array.isArray(status.steps)){
