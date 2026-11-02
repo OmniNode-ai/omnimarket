@@ -35,12 +35,21 @@ handler_routing:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+runtime_dispatch:
+  addressable: false
+  invocation_mode: library
+  external_trigger: Called in process by node_merged_running_count_effect with typed models read by its sources.
 descriptor:
   node_archetype: compute
   purity: pure
   runtime_profiles: []
   idempotent: true
   timeout_ms: 1000
+metadata:
+  transport_type: local
+  description: Count merged work per day and the part with evidence it runs on dev.
+  author: OmniNode Team
+  created: '2026-11-01'
 # The declared config (ModelMrcConfig). An overlay supplies another object of the same type; the repositories
 # and labels of the live deployment belong in that overlay. A repository named in no evidence source reads
 # no_evidence_source_reason: its merges are merged-not-running, never running.

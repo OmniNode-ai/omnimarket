@@ -43,6 +43,7 @@ runtime_dispatch:
 descriptor:
   node_archetype: effect
   purity: effectful
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 30000
 # Where each source is, relative to the registry home (home_env); the ledger path is the one ledger_env names.
