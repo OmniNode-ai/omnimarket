@@ -72,10 +72,23 @@ dod_evidence:
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane point-query-integration-proof-1102 -- uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py tests/unit/nodes/node_work_ledger_query_effect/test_point_query_postgres_reader.py -q --no-cov"
         cwd: "."
   - id: dod-omn21948-deploy-probe-point-query-state
-    description: Hosted smoke runs the point-query state suite at the checked-out head, which asserts every point-query kind answers from work_ledger_state with a page size and a watermark and that a database fault answers status=error. Reverting the node's state read makes it fail. It needs no lab network or running container.
+    description: Hosted source-artifact readback compares the published point-query handler and Postgres reader at the evaluated commit with this checkout, requires their state-page read, and runs the point-query state suite to assert page size, watermark and fault errors. It reads GitHub and needs no lab network or running container. This checks the published source artifact and local behavior, not a deployed runtime.
     source: manual
     execution_scope: hosted_and_local
     checks:
-      - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -q --no-cov --tb=line
+      - check_type: command
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          for module in handler_work_ledger_query work_ledger_query_reader; do
+            path="src/omnimarket/nodes/node_work_ledger_query_effect/handlers/$module.py";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/$module.py";
+            cmp "$path" "$readback_dir/$module.py";
+            grep -F 'read_state_page' "$readback_dir/$module.py";
+          done;
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -q --no-cov --tb=line
         cwd: .
