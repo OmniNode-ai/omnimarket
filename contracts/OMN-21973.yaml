@@ -24,7 +24,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Compaction verdict compute tests for OMN-21973."
-    command: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov"
+    command: "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -35,7 +35,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'returns_helps or returns_no_difference or returns_harm or returns_inconclusive'"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'returns_helps or returns_no_difference or returns_harm or returns_inconclusive'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21973-ac2-order-and-unit"
@@ -43,7 +43,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'shuffling or resampling_is_by_session'"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'shuffling or resampling_is_by_session'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21973-ac3-joint-power"
@@ -51,7 +51,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'joint_power or session_clustering or refused or not_powered'"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'joint_power or session_clustering or refused or not_powered'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21973-ac4-zero-event"
@@ -59,7 +59,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k zero_event_safeguard"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k zero_event_safeguard"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21973-ac5-live-coverage"
@@ -67,7 +67,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'live_block'"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'live_block'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21973-deploy-probe"
