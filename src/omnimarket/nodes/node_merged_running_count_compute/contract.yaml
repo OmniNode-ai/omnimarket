@@ -35,12 +35,19 @@ handler_routing:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+runtime_dispatch:
+  external_trigger: node_merged_running_count_effect reads the sources and calls HandlerMergedRunningCount.handle with this contract's config block.
 descriptor:
   node_archetype: compute
   purity: pure
   runtime_profiles: []
   idempotent: true
   timeout_ms: 1000
+metadata:
+  transport_type: local
+  description: Count merged work per operator-timezone day, the part with running evidence, and the idle slots per host. Pure.
+  author: OmniNode Team
+  created: '2026-11-01'
 # The declared config (ModelMrcConfig). An overlay supplies another object of the same type; the repositories
 # and labels of the live deployment belong in that overlay. A repository named in no evidence source reads
 # no_evidence_source_reason: its merges are merged-not-running, never running.
