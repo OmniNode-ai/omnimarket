@@ -112,6 +112,9 @@ dod_evidence:
   binds_ac:
   - AC7
   checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -k test_a_pr_attributes_only_to_the_ticket_of_its_title_and_branch_not_its_body -q --no-cov --tb=line
+    cwd: .
   - check_type: command
     check_value: |
       set -eu;
