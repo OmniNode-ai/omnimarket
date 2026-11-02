@@ -41,6 +41,7 @@ from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract_instruction,
     render_response_contract_instruction,
 )
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -54,7 +55,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _ENDPOINT = "http://stickybeatz-studio:8401/v1/chat/completions"
 _MODEL_ID = "mlx-community/Qwen3.6-35B-A3B-8bit"
