@@ -38,7 +38,12 @@ from omnimarket.nodes.node_question_guard_compute.protocols import (
 )
 from tests.node_overlay_support import install_node_overlay
 
-from .test_question_guard import RESTORE_ASK, RULING_ROWS, SUBAGENT_ASK, _recorded
+from .test_golden_chain_question_guard import (
+    RESTORE_ASK,
+    RULING_ROWS,
+    SUBAGENT_ASK,
+    _recorded,
+)
 
 
 class InMemoryBus:
