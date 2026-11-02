@@ -7,13 +7,15 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.routing.routing_tiers_path import (
+    load_delegation_routing_overlay,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendSurface,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_harness_escalation_chain import (
     resolve_class_escalation_chain,
 )
-from omnimarket.routing.routing_tiers_path import load_delegation_routing_overlay
 
 pytestmark = pytest.mark.unit
 _CONFIGS = Path(__file__).resolve().parents[3] / "src/omnimarket/configs"

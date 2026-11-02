@@ -41,6 +41,9 @@ import pytest
 import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    resolve_delegation_backend as _real_resolve_delegation_backend,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
@@ -74,9 +77,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend as _real_resolve_delegation_backend,
 )
 from tests.fixtures.task_class_transitions import with_declared_transitions
 
