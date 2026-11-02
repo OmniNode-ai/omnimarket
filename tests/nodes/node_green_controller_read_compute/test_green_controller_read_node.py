@@ -131,3 +131,61 @@ def test_the_contract_names_the_handler_models_and_entrypoint() -> None:
     assert contract["entrypoint"]["name"] == "NodeGreenControllerReadCompute"
     assert contract["input_model"]["name"] == "ModelGreenControllerReadRequest"
     assert contract["output_model"]["name"] == "ModelGreenControllerReadResult"
+
+
+# OMN-22109: omnibase_infra#5555 (head d8823dd2c059) merged from the merge queue at 2026-11-01T21:36:43Z. The PR watcher
+# kept the record OPEN (last read 20:55:18Z), so the throughput tick listed it "green, unlanded" for 16 hours and called
+# it a CONTROLLER_DEFECT; the controller's own live read (last-facts.json, tick 6356) had it `merged`.
+HEAD_5555 = "d8823dd2c0594e70532a4ec7f0efcf130a93bf29"
+HEADS_5555 = {"omnibase_infra#5555": HEAD_5555}
+MERGED_5555 = {
+    "pr": "OmniNode-ai/omnibase_infra#5555",
+    "head_sha": HEAD_5555,
+    "state": "merged",
+    "merge_state": "unknown",
+    "ci": "green",
+    "red_checks": [],
+    "gate_reasons": ["lab_unproven"],
+    "suspensions": ["gate"],
+    "merge_queue": True,
+}
+
+
+def read_5555(entry: Any) -> frozenset[str]:
+    return read(facts(entry), heads=HEADS_5555)
+
+
+@pytest.mark.parametrize("state", ["merged", "closed", "MERGED", "Closed"])
+def test_a_head_the_controller_reads_merged_or_closed_is_not_unlanded(
+    state: str,
+) -> None:
+    assert read_5555({**MERGED_5555, "state": state}) == {"omnibase_infra#5555"}
+
+
+@pytest.mark.parametrize("state", ["open", "OPEN", "", None])
+def test_a_head_the_controller_reads_open_and_green_stays_green(
+    state: str | None,
+) -> None:
+    assert read_5555({**MERGED_5555, "state": state}) == frozenset()
+
+
+def test_a_merged_read_at_another_head_than_the_watchers_is_not_applied() -> None:
+    assert read_5555({**MERGED_5555, "head_sha": "f" * 40}) == frozenset()
+
+
+def test_the_recorded_5555_case_is_read_the_same_on_both_profiles(
+    tmp_path: Path,
+) -> None:
+    """Two profiles: the handler called in process on the facts document, and the node entry reading it from the
+    controller's state directory (last-facts.json). Both give the same answer for the recorded case and for the open one."""
+    for entry, expected in (
+        (MERGED_5555, {"omnibase_infra#5555"}),
+        ({**MERGED_5555, "state": "open"}, set()),
+    ):
+        doc = facts(entry)
+        (tmp_path / "last-facts.json").write_text(json.dumps(doc))
+        in_process = set(read(doc, heads=HEADS_5555))
+        through_node = node.controller_not_green(
+            tmp_path, HEADS_5555, now=NOW, bound_min=30
+        )
+        assert in_process == through_node == expected
