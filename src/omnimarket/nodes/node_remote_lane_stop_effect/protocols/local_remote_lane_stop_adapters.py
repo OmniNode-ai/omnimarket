@@ -128,6 +128,7 @@ class LocalStopTransport:
             if os.waitpid(pid, os.WNOHANG) != (0, 0):  # a child of ours that has ended
                 return False
         except ChildProcessError:
+            # Not our child, so waitpid cannot reap it; the signal-0 probe below answers.
             pass
         try:
             os.kill(pid, 0)

@@ -90,7 +90,7 @@ dod_evidence:
         check_value: |-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_remote_lane_stop_effect/handlers/handler_remote_lane_stop.py" | python3 -c '\''import sys
           source = sys.stdin.read()
-          required = ["class HandlerRemoteLaneStop", "self._transport.stop_tree", "self._ledger.write_terminal"]
+          required = ["class HandlerRemoteLaneStop", "self._transport.signal_lab", "self._transport.signal_local", "self._transport.lab_tree_alive", "self._ledger.write_terminal"]
           assert all(call in source for call in required), "Published stop handler is incomplete"
           print("Published stop handler signals through the transport and writes through the ledger port")'\'''
         cwd: .
