@@ -6,5 +6,14 @@ from omnimarket.nodes.node_landing_worker_engine_compute.models.model_landing_wo
     ModelLandingWorkerEngineRequest,
     ModelLandingWorkerEngineResult,
 )
+from omnimarket.nodes.node_landing_worker_engine_compute.models.model_worker_engine_facts import (
+    ModelEngineAvailability,
+    ModelWorkerEngineConfig,
+)
 
-__all__ = ["ModelLandingWorkerEngineRequest", "ModelLandingWorkerEngineResult"]
+__all__ = [
+    "ModelEngineAvailability",
+    "ModelLandingWorkerEngineRequest",
+    "ModelLandingWorkerEngineResult",
+    "ModelWorkerEngineConfig",
+]
