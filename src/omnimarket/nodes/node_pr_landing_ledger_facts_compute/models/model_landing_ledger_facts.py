@@ -49,6 +49,13 @@ class ModelLandingLedgerFacts(BaseModel):
     fixer_hold: tuple[str, ...] = Field(
         description="Repos (or 'all') under the fixer kill switch."
     )
+    fixer_hold_released_prs: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "owner/repo#n lifted out of a fixer HOLD by a scoped RELEASE (re= plus pr=); "
+            "the rest of that repository stays held."
+        ),
+    )
     cause_owners: tuple[ModelLandingCauseOwner, ...]
     cause_owners_skipped: tuple[ModelLandingCauseOwnerSkipped, ...] = Field(
         default=(),
