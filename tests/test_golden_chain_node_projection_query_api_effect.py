@@ -14,6 +14,7 @@ declared route lands on the declared terminal
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -170,3 +171,31 @@ def test_runtime_can_construct_the_handler_without_arguments() -> None:
     handler = HandlerProjectionQuery()
     assert handler._topic_map is None
     assert handler._owned_source is None
+
+
+def test_handler_names_no_topic_and_evidence_routes_declare_their_correlation_source() -> (
+    None
+):
+    """Every topic the node answers with is written in its contract, never its handler.
+
+    The compliance sweep refuses an ``onex.`` topic literal in a node handler, so the
+    correlation source an evidence page names in its body is declared per route.
+    """
+    from omnimarket.nodes.node_projection_query_api_effect.ports.contract_routes import (
+        contract_routes,
+    )
+
+    hardcoded_topic = re.compile(r'"onex\.[a-z]+\.[a-z]+\.[a-z]')
+    handler_dir = _CONTRACT.parent / "handlers"
+    offenders = [
+        f"{path.name}:{lineno}"
+        for path in sorted(handler_dir.glob("*.py"))
+        for lineno, line in enumerate(path.read_text().splitlines(), 1)
+        if hardcoded_topic.search(line)
+    ]
+    assert offenders == []
+    evidence = [r for r in contract_routes() if r.kind == "evidence_page"]
+    assert evidence
+    assert {r.correlation_source for r in evidence} == {
+        "onex.snapshot.projection.delegation.correlation-trace.v1"
+    }

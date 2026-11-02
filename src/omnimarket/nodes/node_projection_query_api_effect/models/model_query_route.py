@@ -53,6 +53,10 @@ class ModelQueryRoute(BaseModel):
     topic: str | None = Field(
         default=None, description="The projection topic an evidence route reads."
     )
+    correlation_source: str | None = Field(
+        default=None,
+        description="The projection topic an evidence page names as its authoritative correlation source.",
+    )
     body_model: str | None = Field(
         default=None, description="Dotted path of the request body model, if any."
     )

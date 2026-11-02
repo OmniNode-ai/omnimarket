@@ -112,7 +112,8 @@ query_routes:
     kind: evidence_page
     methods: [GET]
     paths: ["/v1/evidence-pipeline/dashboard", "/v1/evidence-pipeline/stages"]
-    topic: onex.snapshot.projection.evidence_pipeline.stages.v1
+    topic: onex.snapshot.projection.evidence_pipeline.stages.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    correlation_source: &correlation_source onex.snapshot.projection.delegation.correlation-trace.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
     dependencies: [topic_map, row_source]
     query: &evidence_query
       - {name: cursor, type: str}
@@ -125,21 +126,24 @@ query_routes:
     kind: evidence_page
     methods: [GET]
     paths: ["/v1/evidence-pipeline/correlation-traces", "/v1/evidence-pipeline/correlations"]
-    topic: onex.snapshot.projection.evidence_pipeline.correlations.v1
+    topic: onex.snapshot.projection.evidence_pipeline.correlations.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    correlation_source: *correlation_source
     dependencies: [topic_map, row_source]
     query: *evidence_query
   - id: evidence_readiness
     kind: evidence_page
     methods: [GET]
     paths: ["/v1/evidence-pipeline/readiness"]
-    topic: onex.snapshot.projection.evidence_pipeline.readiness.v1
+    topic: onex.snapshot.projection.evidence_pipeline.readiness.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    correlation_source: *correlation_source
     dependencies: [topic_map, row_source]
     query: *evidence_query
   - id: evidence_live_events
     kind: evidence_page
     methods: [GET]
     paths: ["/v1/evidence-pipeline/events"]
-    topic: onex.snapshot.projection.evidence_pipeline.live_events.v1
+    topic: onex.snapshot.projection.evidence_pipeline.live_events.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+    correlation_source: *correlation_source
     dependencies: [topic_map, row_source]
     query: *evidence_query
   - id: evidence_event_stream

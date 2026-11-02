@@ -387,7 +387,7 @@ class HandlerProjectionQuery:
                 "version": PROJECTION_VERSION,
                 "generated_at": generated_at,
                 "query_scope": "evidence_pipeline",
-                "authoritative_correlation_source": "onex.snapshot.projection.delegation.correlation-trace.v1",  # onex-topic-allow: projection-snapshot topic named in the response body, no existing registry const (OMN-13944)
+                "authoritative_correlation_source": route.correlation_source,
                 "projection_cursor": latest_row.get(cfg.cursor_column),
                 "next_cursor": next_cursor,
                 "last_event_id": _column_value(latest_row, cfg.last_event_id_column),
