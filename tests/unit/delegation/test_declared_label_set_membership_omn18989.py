@@ -313,7 +313,7 @@ def test_the_capability_travels_onto_the_resolved_backend() -> None:
     declared it.
     """
 
-    from omnimarket.routing.delegation_backend_resolution import (
+    from omnimarket.handlers.routing.delegation_backend_resolution import (
         ModelResolvedDelegationBackend,
     )
 
@@ -351,7 +351,7 @@ def test_the_resolved_backend_and_the_helper_compose() -> None:
     here rather than only in an integration run.
     """
 
-    from omnimarket.routing.delegation_backend_resolution import (
+    from omnimarket.handlers.routing.delegation_backend_resolution import (
         ModelResolvedDelegationBackend,
     )
 
@@ -406,6 +406,7 @@ async def test_declared_labels_survive_the_gate_and_terminal(
     An undeclared backend gets no provider directive, and its schema-ignoring
     answer is still refused with the refusal counted in ``attempts``.
     """
+    from omnimarket.handlers.routing import delegation_backend_resolution
     from omnimarket.models.delegation.wire.model_delegate_skill_request import (
         ModelDelegateSkillRequest,
     )
@@ -415,7 +416,6 @@ async def test_declared_labels_survive_the_gate_and_terminal(
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
         port_local_delegation_dispatch as dispatch,
     )
-    from omnimarket.routing import delegation_backend_resolution
 
     monkeypatch.setattr(
         delegation_backend_resolution,

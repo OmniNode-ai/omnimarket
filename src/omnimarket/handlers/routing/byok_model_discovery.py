@@ -14,7 +14,7 @@ So the catalogue declares a model PREFERENCE per provider row
 (``model_preference``) and the provider's own list-models endpoint
 (``models_url``), and this module asks the provider, with the customer's key,
 which ids that key may use, then picks the best match
-(:func:`omnimarket.routing.byok_provider_backends.select_byok_model`).
+(:func:`omnimarket.handlers.routing.byok_provider_backends.select_byok_model`).
 
 Where it runs
 -------------
@@ -46,13 +46,13 @@ import httpx
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ModelByokProviderBackend,
+    select_byok_model,
+)
 from omnimarket.inference.provider_response_error import (
     failure_class_for_status,
     provider_message_from_text,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ModelByokProviderBackend,
-    select_byok_model,
 )
 
 logger = logging.getLogger(__name__)

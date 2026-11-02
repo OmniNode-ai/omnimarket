@@ -31,6 +31,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     EnumNamedTestRunStatus,
@@ -48,7 +49,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 # Tiny transport timeout (ms) so the contract-resolved ceiling is small and the
 # test runs fast and deterministically.

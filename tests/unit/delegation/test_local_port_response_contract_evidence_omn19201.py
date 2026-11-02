@@ -39,6 +39,7 @@ from omnimarket.delegation.deliverable_extraction import (
     canonical_deliverable_contract_sha256,
     resolve_task_class_deliverable_contract,
 )
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -52,7 +53,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _ENDPOINT = "http://127.0.0.1:8000/v1/chat/completions"
 _MODEL_ID = "Qwen3.8-27B"

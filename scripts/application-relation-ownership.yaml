@@ -982,6 +982,12 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_local_environment/migrations/0000_create_local_environment.sql
       access: read_write
       role: local_environment
+    - name: local_alerts
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_local_alerts/migrations/0000_create_local_alerts.sql
+      access: read_write
+      role: local_alerts
     - name: traces
       database_ref: application
       schema: omninode_internal

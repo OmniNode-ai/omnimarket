@@ -46,16 +46,17 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ByokCatalogError,
+    customer_provider_catalogue,
+)
+
 # OMN-21217: the create request and its catalogue check live here now; the
 # publisher re-exports the request, so the patch goes where the check reads it.
 from omnimarket.models import model_inference_credential_create_request as request_mod
 from omnimarket.projection.credential_publisher import (
     ModelInferenceCredentialCreateRequest,
     ProviderCatalogueUnavailableError,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ByokCatalogError,
-    customer_provider_catalogue,
 )
 
 pytestmark = pytest.mark.unit
