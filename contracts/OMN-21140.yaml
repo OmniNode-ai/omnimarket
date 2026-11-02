@@ -60,12 +60,13 @@ dod_evidence:
     description: "AC5: the diff adds no line to omnibase_infra, and the omnimarket harness replays offline without a model client or ledger reader. The replay and import checks require this PR's harness, so an absent feature cannot satisfy the boundary assertion."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_extraction_rung_harness_compute/test_harness.py tests/nodes/node_extraction_rung_harness_compute/test_contracts.py -q -p no:randomly --no-cov -k 'replay_is_byte_identical_and_opens_no_socket or the_node_imports_no_model_client_and_no_ledger_reader'"
       - check_type: "command"
         check_value: |-
           bash -o pipefail -c '
           changed_files="$(git diff origin/dev --name-only)" || exit
-          if grep -q omnibase_infra <<< "$changed_files"; then exit 1; fi
-          uv run pytest tests/nodes/node_extraction_rung_harness_compute/test_harness.py tests/nodes/node_extraction_rung_harness_compute/test_contracts.py -q -p no:randomly --no-cov -k "replay_is_byte_identical_and_opens_no_socket or the_node_imports_no_model_client_and_no_ledger_reader"'
+          if grep -q omnibase_infra <<< "$changed_files"; then exit 1; fi'
     binds_ac: ["AC5"]
   - id: "dod-omn21140-deploy-container-verify"
     description: "Hosted deployment smoke: install the frozen package as a wheel in a disposable Python container, replay an answer behind a think block and a fence, and require a hit with no parse failure. The checkout is mounted read-only; the container needs no lab endpoint."
