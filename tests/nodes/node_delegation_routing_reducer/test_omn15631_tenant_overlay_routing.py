@@ -34,6 +34,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.customer_key_terminus import (
+    CustomerKeyRefusedError,
+    EnumDelegationSurface,
+)
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_tenant_scoped_api_key_async,
@@ -53,10 +57,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.customer_key_terminus import (
-    CustomerKeyRefusedError,
-    EnumDelegationSurface,
-)
 from omnimarket.routing.tenant_overlay_resolver import (
     TENANT_OVERLAY_TABLE,
     ModelTenantRoutingOverlayBackend,

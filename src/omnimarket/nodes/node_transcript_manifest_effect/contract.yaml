@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_transcript_manifest_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Build an immutable case manifest from pinned operator-host transcript snapshots.
+input_model:
+  name: ModelTranscriptManifestSourceRequest
+  module: omnimarket.nodes.node_transcript_manifest_effect.models.model_transcript_manifest_source
+output_model:
+  name: ModelTranscriptManifestSourceResult
+  module: omnimarket.nodes.node_transcript_manifest_effect.models.model_transcript_manifest_source
+handler:
+  module: omnimarket.nodes.node_transcript_manifest_effect.handlers.handler_transcript_manifest_source
+  class: HandlerTranscriptManifestSource
+  input_model: omnimarket.nodes.node_transcript_manifest_effect.models.model_transcript_manifest_source.ModelTranscriptManifestSourceRequest
+  output_model: omnimarket.nodes.node_transcript_manifest_effect.models.model_transcript_manifest_source.ModelTranscriptManifestSourceResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerTranscriptManifestSource
+        module: omnimarket.nodes.node_transcript_manifest_effect.handlers.handler_transcript_manifest_source
+      event_model:
+        name: ModelTranscriptManifestSourceRequest
+        module: omnimarket.nodes.node_transcript_manifest_effect.models.model_transcript_manifest_source
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+io_operations:
+  - operation_type: filesystem_read
+  - operation_type: filesystem_write
+terminal_event: onex.evt.omnimarket.transcript-manifest-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.transcript-manifest-requested.v1]
+  publish_topics: [onex.evt.omnimarket.transcript-manifest-completed.v1]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.transcript-manifest-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.transcript-manifest-completed.v1

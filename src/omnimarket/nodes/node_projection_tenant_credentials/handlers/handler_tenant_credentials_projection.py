@@ -73,6 +73,10 @@ from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     terminal_event_time,
 )
@@ -91,10 +95,6 @@ from omnimarket.projection.runner import (
 from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
     resolve_write_tenant,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
