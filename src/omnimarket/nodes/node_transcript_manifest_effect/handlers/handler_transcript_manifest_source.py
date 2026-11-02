@@ -148,6 +148,7 @@ class HandlerTranscriptManifestSource:
                 with target.open("xb") as stream:
                     stream.write(data)
             except FileExistsError:
+                # Already written by an earlier run; the read-back below checks its bytes.
                 pass
             if target.read_bytes() != data:
                 raise ManifestRefusalError("bundle read-back bytes differ")
