@@ -59,7 +59,7 @@
 #   PROVIDER_MODEL_NOT_FOUND. A credential with no stored model (the provider
 #   could not be reached at registration, or an event from before this change)
 #   carries the marker `byok-model-unresolved`, which the effect resolves before
-#   the call. Code: routing/byok_model_discovery.py.
+#   the call. Code: handlers/routing/byok_model_discovery.py.
 #
 #   Each row's first preference is still the cheapest family that answers, which
 #   is a default and not a constraint. A per-tenant model override belongs in

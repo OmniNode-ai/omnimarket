@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.routing.task_class_contract_path import (
+from omnimarket.handlers.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 

@@ -17,6 +17,9 @@ import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.inference.provider_quota_state import (
     ModelProviderQuotaBlock,
     ModelProviderQuotaSnapshot,
@@ -33,9 +36,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
 pytestmark = pytest.mark.unit

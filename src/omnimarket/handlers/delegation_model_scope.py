@@ -25,15 +25,15 @@ from typing import Final, Literal, cast, get_args
 
 from omnibase_infra.errors import ProtocolConfigurationError
 
-from omnimarket.inference.local_byok_credential_adapter import local_model_tests_path
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     byok_declared_price_per_1m,
     resolve_byok_backend_by_id,
 )
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
-from omnimarket.routing.local_byok_route import is_local_url_backend
+from omnimarket.handlers.routing.local_byok_route import is_local_url_backend
+from omnimarket.inference.local_byok_credential_adapter import local_model_tests_path
 
 ModelScopeRule = Literal["local", "free"]
 MODEL_SCOPE_RULES: Final[tuple[str, ...]] = get_args(ModelScopeRule)

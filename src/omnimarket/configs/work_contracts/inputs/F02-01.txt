@@ -4,7 +4,7 @@ Q2: What is the first docstring line of the definition named resolve_effective_m
 Q3: What is the first docstring line of the definition named resolve_timeout_seconds?
 
 Public repository: OmniNode-ai/omnimarket
-Module: src/omnimarket/routing/delegation_backend_resolution.py
+Module: src/omnimarket/handlers/routing/delegation_backend_resolution.py
 Revision: 8ea4f7a0bc9794e48d6fe7d2a99d075f8c93a22a
 
 BEGIN PUBLIC SOURCE
@@ -71,7 +71,7 @@ from omnimarket.inference.task_class_authority import withheld_delegation_refusa
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
 )
-from omnimarket.routing.customer_key_terminus import is_customer_attributed
+from omnimarket.handlers.routing.customer_key_terminus import is_customer_attributed
 
 logger = logging.getLogger(__name__)
 

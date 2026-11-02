@@ -29,6 +29,15 @@ from pydantic import SecretStr
 
 from omnimarket.cli import cli_secret
 from omnimarket.cli.cli_secret import secret_group
+from omnimarket.handlers.routing import byok_model_discovery
+from omnimarket.handlers.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+)
+from omnimarket.handlers.routing.byok_provider_backends import (
+    catalogue_prefers_model,
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_model,
@@ -37,15 +46,6 @@ from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     ModelInferenceCredentialCreateRequest,
     register_inference_credential,
-)
-from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.byok_model_discovery import (
-    describe_discovery_refusal,
-    discover_byok_model_sync,
-)
-from omnimarket.routing.byok_provider_backends import (
-    catalogue_prefers_model,
-    resolve_byok_provider_backend,
 )
 
 pytestmark = pytest.mark.unit

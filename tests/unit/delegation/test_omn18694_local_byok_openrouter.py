@@ -28,6 +28,13 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import (
+    house_provider_slug,
+    substitute_local_byok_route,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LOCAL_INSTALL_TENANT_ID,
     LocalByokCredentialError,
@@ -41,13 +48,6 @@ from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     clear_secret_store_resolver_cache,
     resolve_api_key,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import (
-    house_provider_slug,
-    substitute_local_byok_route,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
