@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20748"
 title: "S6: The bus path acts on red, one class at a time, runner first"
-summary: "node_pr_lifecycle_orchestrator's ci_red_triage.act is one flag per red class: runner true, pr_own false, shared_cause false, dev_head false. For a runner red the bus path publishes one rerun_runs request per head to node_pr_landing_github_effect and records the owner claim; every other class stays record-only. The controller half of the pinned pair is a separate pull request. AC1 is read live on the dev lane after the deploy agent rolls it."
+summary: "node_pr_lifecycle_orchestrator's ci_red_triage.act is one flag per red class: runner true, pr_own false, shared_cause false, dev_head false. For a runner red the bus path publishes one rerun_runs request per head to node_pr_landing_github_effect and records the owner claim; every other class stays record-only. The pr_own class (second of the plan order) is tested on the bus path with its flag still false; the controller half and the flip are separate pull requests, and the flag turns true only after the controller half is merged and installed. AC1 is read live on the dev lane after the deploy agent rolls it."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,10 +14,18 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: "AC1: for each flipped class, the bus path acts and the controller does not -- falsifier: one red of that class handled twice in a day"
+  - id: "req-ac2"
+    statement: "The act flag is per class and a rollback is a flag set to false."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the flag is per class and a rollback is a flag set to false -- falsifier: a contract test that loads ci_red_triage.act with pr_own false and starts nothing for a pr_own red, with a positive control that runner true still reruns"
 evidence_requirements:
   - kind: "tests"
     description: "AC1, bus half: the runner class publishes one rerun_runs request per head with an owner claim, the other classes stay record-only, and a replayed record, a second red at the head or a restart never reruns the same head and cause twice."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_runner_act.py -q"
+  - kind: "tests"
+    description: "AC1 and AC2, pr_own class, bus half: a recorded pr_own red among three members yields exactly one fix_only owner start, a replayed duplicate yields none, and with pr_own false the bus starts nothing while a runner red still reruns."
+    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_pr_own_act.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -37,4 +45,27 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_ci_red_triage.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def ci_red_act_flags'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20748-ac1-pr-own-one-owner-start"
+    description: "AC1, pr_own bus half: a recorded pr_own red among three members yields exactly one fix_only owner start with its owner claim, a replayed duplicate, a restart and a wider failing set at the same deciding check yield no second action, and a new head earns its own one start."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_pr_own_act.py -q -k 'three_members or replayed_duplicate or new_head or wider_failing_set'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20748-ac2-pr-own-flag-per-class"
+    description: "AC2: the contract loads ci_red_triage.act with pr_own false and starts nothing for a pr_own red, with the positive controls that a runner red still reruns and that the same contract with the pr_own overlay bound true acts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_pr_own_act.py -q -k 'pr_own_false or overlay_reference or contract_with_pr_own_false'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20748-pr-own-deploy-probe"
+    description: "Deploy probe. The test file this change adds exists at the checked-out commit; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base. The dev-lane readout after the deploy agent rolls it is the action_applied field of onex.evt.omnimarket.ci-red-triage-decided.v1 records for class pr_own: false while the flag is false."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_pr_own_act.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^async def test_a_pr_own_red_among_three_members'"
         cwd: "${OMNI_HOME}/omnimarket"
