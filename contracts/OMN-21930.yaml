@@ -109,8 +109,6 @@ dod_evidence:
 - id: dod-omn21930-deploy-packaged-pr-attribution
   description: Hosted-runner deploy smoke imports the built wheel in a disposable Python container with the locked dependencies, no network and no source checkout, and checks title and branch attribution against body-only references. It needs no broker, lab route or production credentials and fails if the wheel restores body attribution or drops a title or branch ticket.
   source: manual
-  binds_ac:
-  - AC7
   checks:
   - check_type: command
     check_value: |
