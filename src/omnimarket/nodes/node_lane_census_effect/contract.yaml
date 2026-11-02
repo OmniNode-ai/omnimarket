@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-timer effect, like node_host_reconcile_effect: no subscription and no onex.nodes entry
+# point, invoked by `python -m` on the host whose Docker it reads. `experimental` is the drift
+# gate's marker for an intentionally unregistered node; the topic graph sees it as an externally
+# triggered ingress root.
+name: lane_census_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Runs the lane census (omnibase_infra scripts/lane-census-check.sh) once on the host that carries
+  the Docker Engine it reads, and proves the run: the collector's verdict, a snapshot written by
+  this run, and an inventory that was observed.
+input_model: omnimarket.models.model_lane_census.ModelLaneCensusCommand
+output_model: omnimarket.models.model_lane_census.ModelLaneCensusRunResult
+handler:
+  # Invoked by __main__.py on a host timer. No handler_routing: this handler is not
+  # boot-resolvable or dispatched by the runtime. Run with:
+  # python -m omnimarket.nodes.node_lane_census_effect --omni-home <workspace>
+  module: omnimarket.nodes.node_lane_census_effect.handlers.handler_lane_census_effect
+  class: HandlerLaneCensusEffect
+  input_model: omnimarket.models.model_lane_census.ModelLaneCensusCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 900000
+  runtime_profiles:
+  - effects
+# The collector publishes the drift event itself, inside the host's broker container, and writes
+# the snapshot file. This node publishes nothing: stdout is the typed run result.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: true
+# The node owns its schedule. Which hosts run the census is the node overlay
+# (<root>/node_lane_census_effect/overlay.yaml, hosts:) and the package names no host. Every
+# declared host carries a Docker Engine (`docker: engine`) and is scheduled by a systemd user
+# timer; there is no launchd scheduler, because a Docker Desktop host that is not running reads as
+# "docker inventory could not be observed" (collector exit 4).
+# `python -m omnimarket.nodes.node_lane_census_effect schedule check` fails for any host row that
+# does not declare both.
+schedule:
+  unit_name: onex-lane-census
+  collector: omnibase_infra/scripts/lane-census-check.sh
+  dispatch_venv: .onex-dispatch-venv
+  state_directory: .onex_state/lane-census
+  snapshot_name: census-snapshot.json
+  timeout_seconds: 1200
+  cadence:
+    on_calendar: hourly
+    randomized_delay: 120s
+    persistent: true
+    description: hourly
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+metadata:
+  transport_type: none
+  execution_locus: host-local
+  requires_docker_engine: true
+inputs:
+  collector:
+    type: str
+    required: true
+    description: Path of lane-census-check.sh on this host.
+  snapshot:
+    type: str
+    required: true
+    description: Where the census snapshot is written.
+outputs:
+  outcome:
+    type: str
+    description: The collector verdict the exit code names.
+  snapshot_fresh:
+    type: bool
+    description: The snapshot was written by this run.
+  docker_observed:
+    type: bool
+    description: The Docker inventory was read.
