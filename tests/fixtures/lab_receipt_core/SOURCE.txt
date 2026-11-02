@@ -1,0 +1,4 @@
+Copies of the omnibase_core lab_receipt fixture set (tests/fixtures/validation/lab_receipt) for OMN-21826.
+Source: omnibase_core#2202 head 2b9a0314794d6029681442ebcf7131e1c3f06ed6 (ticket OMN-21823).
+Refresh these files from the core tag the pyproject pins and update SHA256SUMS; test_core_fixture_set_is_the_pinned_copy refuses a drifted copy.
+One core fixture, counted_internal_source.json, is not copied: it names a private repository, which a public repository never holds. Its golden entry is in golden_lab_receipt.json by name only.
