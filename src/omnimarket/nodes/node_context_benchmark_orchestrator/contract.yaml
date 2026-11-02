@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_benchmark_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Runs each task twice on copies of the same source tree, once with CLAUDE.md and
+  AGENTS.md present and once with every file of those names removed, for a headless
+  Claude lane, a headless Codex lane, delegation-route models and Jev, and reports
+  one row per model and condition: tasks run, passes, mean tokens and the paired
+  on-off difference. The task's own check decides the outcome. An absent token count
+  is UNKNOWN, never 0. A model with fewer than min_paired_tasks paired tasks is
+  underpowered and carries no verdict.
+
+input_model:
+  name: ModelContextBenchmarkRequest
+  module: omnimarket.nodes.node_context_benchmark_orchestrator.models.model_context_benchmark
+
+output_model:
+  name: ModelContextBenchmarkResult
+  module: omnimarket.nodes.node_context_benchmark_orchestrator.models.model_context_benchmark
+
+handler:
+  module: omnimarket.nodes.node_context_benchmark_orchestrator.handlers.handler_context_benchmark
+  class: HandlerContextBenchmark
+  input_model: omnimarket.nodes.node_context_benchmark_orchestrator.models.model_context_benchmark.ModelContextBenchmarkRequest
+  output_model: omnimarket.nodes.node_context_benchmark_orchestrator.models.model_context_benchmark.ModelContextBenchmarkResult
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_context_benchmark_orchestrator.handlers.handler_context_benchmark:HandlerContextBenchmark
+  handlers:
+    - operation: run_context_benchmark
+      handler:
+        name: HandlerContextBenchmark
+        module: omnimarket.nodes.node_context_benchmark_orchestrator.handlers.handler_context_benchmark
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 5400000
+
+# The Jev arm. The key is resolved inside node_typed_decision_effect from the
+# delegation credential store by this reference; this node never reads, passes or
+# records it, and never reaches Jev through an MCP server.
+jev:
+  backend_id: cloud-typesafe-jev
+  secret_ref: llm.typesafe.api_key
+  resolution: delegation_credential_store
+  via_mcp: false
+  task_shape: typed_decision_only
+
+outputs:
+  rows: {type: array, description: "one report row per model and condition"}
+  runs: {type: array, description: "one record per task, arm and lane"}
+  blocked_lanes: {type: array, description: "lanes that could not run, with the reason and host"}
+
+benchmark:
+  context_files: [CLAUDE.md, AGENTS.md]
+  min_paired_tasks: 10
+  token_absent_marker: UNKNOWN
+
+terminal_event: onex.evt.omnimarket.context-benchmark-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-benchmark-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-benchmark-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-benchmark-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-benchmark-completed.v1
+
+metadata:
+  transport_type: inmemory
+  description: Paired on/off context file benchmark
+  author: OmniNode Team
+  created: "2026-11-01"
+  related_tickets: [OMN-21896]

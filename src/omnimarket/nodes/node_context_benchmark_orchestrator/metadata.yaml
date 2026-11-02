@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_context_benchmark_orchestrator
+version: "1.0.0"
+description: Paired on/off benchmark of CLAUDE.md and AGENTS.md for headless Claude, Codex, Jev and delegation-route lanes
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_context_benchmark_orchestrator: omnimarket.nodes.node_context_benchmark_orchestrator
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: effectful
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [orchestrator, benchmark, delegation, context]
+node_role: orchestrator
+pack: "routing"
+display_name: "Context Benchmark Orchestrator"
