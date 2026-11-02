@@ -21,15 +21,19 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_containers impor
     with_application_containers,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
+    build_bays,
     build_cloud,
     build_lanes,
     build_machines,
+    name_tokens,
+    names_task,
+    pr_key,
 )
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFactoryFloorResult,
     ModelFloorAndon,
-    ModelFloorBay,
     ModelFloorItem,
+    ModelFloorLane,
     ModelFloorLine,
     ModelFloorPrRef,
     ModelFloorSection,
@@ -52,6 +56,9 @@ class _Index:
     by_mention: dict[str, tuple[int, ...]]
     # Per ticket, the newest CLAIM and the newest CLAIM by any other lane: (ts, lane, other-lane ts).
     claim_tips: dict[str, tuple[datetime, str, datetime | None]]
+    # Ledger positions by lane, and each lane's name as words: a lane named for a task (``one-rt-t10-...``) builds it.
+    by_lane: dict[str, tuple[int, ...]]
+    lane_words: dict[str, tuple[str, ...]]
 
 
 def _tip(
@@ -86,7 +93,10 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
     by_ticket: dict[str, list[int]] = {}
     by_mention: dict[str, list[int]] = {}
     tips: dict[str, tuple[datetime, str, datetime | None]] = {}
+    by_lane: dict[str, list[int]] = {}
     for position, row in enumerate(request.ledger):
+        if row.lane:
+            by_lane.setdefault(row.lane, []).append(position)
         if row.kind == "CLAIM":
             for ticket in row.tickets:
                 tips[ticket] = _tip(tips.get(ticket), row)
@@ -110,6 +120,8 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
         by_ticket={key: tuple(value) for key, value in by_ticket.items()},
         by_mention={key: tuple(value) for key, value in by_mention.items()},
         claim_tips=tips,
+        by_lane={key: tuple(value) for key, value in by_lane.items()},
+        lane_words={lane: name_tokens(lane) for lane in by_lane},
     )
 
 
@@ -201,7 +213,17 @@ def _task_rows(
 ) -> tuple[ModelFloorLedgerRow, ...]:
     by_ticket = (p for ticket in task.tickets for p in index.by_ticket.get(ticket, ()))
     if task.scoped:
-        return tuple(request.ledger[position] for position in sorted(set(by_ticket)))
+        # Another plan's lane says "t5" too, so a lane named for the task counts only when it carries a ticket of this plan.
+        named = (
+            position
+            for lane, positions in index.by_lane.items()
+            if names_task(task.id, index.lane_words[lane])
+            for position in positions
+            if _intersects(request.ledger[position].tickets, scope)
+        )
+        return tuple(
+            request.ledger[position] for position in sorted({*by_ticket, *named})
+        )
     candidates = {
         *index.by_task.get(task.id, ()),
         *index.by_mention.get(task.id, ()),
@@ -506,9 +528,16 @@ def _asks_orchestrator(
 
 
 def _ledger_stops(
-    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest, index: _Index
+    plan: ModelFloorPlanInput,
+    request: ModelFactoryFloorRequest,
+    index: _Index,
+    items: tuple[ModelFloorItem, ...],
 ) -> tuple[str, ...]:
-    """Open stops the ledger records on the plan's tickets: a lane that ended blocked, an ask nobody answered."""
+    """Open stops the ledger records on the plan's tickets: a lane that ended blocked, an ask nobody answered.
+
+    A stop is over when the work moved on (another lane claimed its ticket after it), when every pull request it names
+    has merged, or when every ticket it names belongs only to parts of this plan that are done.
+    """
     config = request.config
     scope = _scope(plan)
     answered = {
@@ -516,11 +545,20 @@ def _ledger_stops(
         for row in request.ledger
         if row.kind in config.ask_answer_kinds and row.re
     }
+    merged = {pr_key(pr.key) for pr in request.watcher.prs if pr.state == "MERGED"}
+    merged.update(pr_key(merge.key) for merge in request.watcher.merges)
+    done_tickets = {
+        ticket for item in items if item.state == "done" for ticket in item.tickets
+    }
     stops: tuple[str, ...] = ()
     for row in sorted(request.ledger, key=_row_key):
         if not _intersects(row.tickets, scope) or _resumed(row, index):
             continue
-        said = (row.text or row.reason)[: config.note_chars]
+        if row.prs and all(pr_key(pr) in merged for pr in row.prs):
+            continue
+        if row.tickets and set(row.tickets) <= done_tickets:
+            continue
+        said = (row.reason or row.text)[: config.note_chars]
         age = _minutes(request, row.ts)
         if row.kind == "TERMINAL" and row.outcome in config.stop_outcomes:
             stops += (f"lane {row.lane} ended {row.outcome} {age} min ago: {said}",)
@@ -582,8 +620,15 @@ def _line(
         if has_manifest
         else tuple(_table_item(row, holds, request) for row in plan.table_tasks)
     )
-    causes = (
-        tuple(
+    hard = (
+        (
+            (
+                f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table",
+            )
+            if not tasks
+            else ()
+        )
+        + tuple(
             f"HOLD {hold.row_id}: {hold.reason or hold.text}"
             for hold in holds
             if _andon(hold, request.config)
@@ -602,14 +647,10 @@ def _line(
             and item.kind == request.config.gate_kind
             and item.state == "stop"
         )
-        + _red_prs(items, request)
-        + _ledger_stops(plan, request, index)
     )
-    if not tasks:
-        causes = (
-            f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table",
-            *causes,
-        )
+    causes = (
+        hard + _red_prs(items, request) + _ledger_stops(plan, request, index, items)
+    )
     reason = (
         causes[0] + (f" (+{len(causes) - 1} more)" if len(causes) > 1 else "")
         if causes
@@ -641,7 +682,10 @@ def _line(
         percent_built=percent,
         stations=_stations(tasks, items, request.config),
         andon=ModelFloorAndon(
-            flag=bool(causes), reason=reason[: request.config.note_chars], causes=causes
+            flag=bool(causes),
+            reason=reason[: request.config.note_chars],
+            causes=causes,
+            hard=bool(hard),
         ),
     )
 
@@ -671,21 +715,6 @@ def _floor(
     plans: tuple[ModelFloorPlanInput, ...],
     lines: tuple[ModelFloorLine, ...],
 ) -> ModelFloorSection:
-    bays: tuple[ModelFloorBay, ...] = ()
-    for host in sorted(request.placement, key=lambda host: host.host_name):
-        stale = (
-            (request.generated_at - host.advertised_at).total_seconds()
-            > host.cadence_seconds * request.config.advertisement_stale_factor
-        )
-        bays += (
-            ModelFloorBay(
-                host=host.host_name,
-                slots=host.max_units,
-                running=host.running_units,
-                stale=stale,
-                free=0 if stale else max(0, host.max_units - host.running_units),
-            ),
-        )
     since = request.generated_at - timedelta(hours=request.config.shipped_window_hours)
     merges = sorted(
         (
@@ -736,17 +765,39 @@ def _floor(
             request.stoppages, key=lambda s: (-s.cost_minutes, -s.occurrences, s.name)
         )[: request.config.stoppage_limit]
     )
-    lanes = build_lanes(request, lines)
+    scopes = {_line_id(plan): _scope(plan) for plan in plans}
+    lanes = build_lanes(request, lines, scopes)
+    machines = build_machines(request, lanes)
     return ModelFloorSection(
-        machines=build_machines(request, lanes),
+        machines=machines,
         cloud=build_cloud(request),
         lanes=lanes,
         stall_minutes=request.config.stall_minutes,
         lane_window_minutes=request.config.lane_live_window_minutes,
-        bays=bays,
+        bays=build_bays(machines),
         shipped=shipped,
         waiting=waiting,
         stoppages=stoppages,
+    )
+
+
+def _running(
+    lines: tuple[ModelFloorLine, ...], lanes: tuple[ModelFloorLane, ...]
+) -> tuple[ModelFloorLine, ...]:
+    """A line stopped only by red pull requests and ledger stops is building while a lane that is not stalled works on it."""
+    working = {
+        lane.station.line_id
+        for lane in lanes
+        if lane.station is not None and not lane.stalled
+    }
+    return tuple(
+        line.model_copy(update={"status_pill": "building"})
+        if line.status_pill == "stopped"
+        and line.andon.flag
+        and not line.andon.hard
+        and line.line_id in working
+        else line
+        for line in lines
     )
 
 
@@ -762,11 +813,13 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
     index = _index(request, _task_ids(selected))
     lines = tuple(_line(plan, holds, request, index) for plan in selected)
     newest = max((row.ts for row in request.ledger), default=None)
+    floor = _floor(request, selected, lines)
+    lines = _running(lines, floor.lanes)
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
         generated_at=_stamp(request.generated_at),
         lines=with_application_containers(request, lines + _undrawn(request)),
-        floor=_floor(request, selected, lines),
+        floor=floor,
         sources=ModelFloorSources(
             watcher_last_tick=_stamp(request.watcher.last_tick),
             ledger_rows=len(request.ledger),

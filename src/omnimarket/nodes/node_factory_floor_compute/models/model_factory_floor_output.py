@@ -51,6 +51,9 @@ class ModelFloorAndon(BaseModel):
     flag: bool
     reason: str
     causes: tuple[str, ...]
+    # True when a hold, a failed gate or a plan with no tasks stops the line whatever runs on it. False when every cause
+    # is a red pull request or a stop the ledger recorded, which a running lane on the line is already working through.
+    hard: bool = False
 
 
 class ModelFloorLaneContainers(BaseModel):

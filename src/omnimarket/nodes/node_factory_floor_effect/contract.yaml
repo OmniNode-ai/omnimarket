@@ -81,8 +81,8 @@ runtime:
     # The Linear snapshot with ticket titles (plans-today writes it beside the status text file).
     linear_titles_glob: linear-*.json
     # The runner monitor's fleet observation (docker/runners/runner-monitor.sh builds the event with
-    # scripts/runner_fleet_event.py); no node writes it to this path yet, so a bay draws its CI runners as unread
-    # until one does.
+    # scripts/runner_fleet_event.py); node_projection_runner_fleet saves the newest observation to this path (its
+    # state_file), and a bay draws its CI runners as unread until it has.
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
   # The machine bays and the live lanes (OMN-21733). The remote-lane receipts are the runner's per-run JSON files;
   # the pool receipt is the one `onex_lab_run.py --hosts` writes: the landing placement's pool read (load, memory,

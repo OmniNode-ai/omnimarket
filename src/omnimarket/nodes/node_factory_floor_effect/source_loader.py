@@ -168,8 +168,9 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
                 fields.setdefault(key, tokens[0] if tokens else "")
                 if len(tokens) > 1:
                     remainders.append(" ".join(tokens[1:]))
-            elif sep and key == "reason":
-                fields.setdefault(key, value.strip()[:300])
+            elif sep and key in {"reason", "blocker"}:
+                # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
+                fields.setdefault("reason", value.strip()[:300])
         free_text = (
             cells[-1]
             if not re.match(r"^[A-Za-z_-]+=", cells[-1])
@@ -513,6 +514,28 @@ def _git_show(kb: Path, ref: str, relative: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def is_section_heading(label: str, text: str) -> bool:
+    """True when the plan has a markdown heading that opens with the label (``### A.1 The pattern``)."""
+    return (
+        re.search(rf"^#{{1,6}}\s+{re.escape(label)}(?![\w.])", text, re.MULTILINE)
+        is not None
+    )
+
+
+def _with_table_evidence(
+    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
+) -> ModelFloorManifestTask:
+    """A written task with the tickets and pull requests the plans-today row of the same label found for it."""
+    if row is None:
+        return task
+    return task.model_copy(
+        update={
+            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
+            "prs": tuple(sorted({*task.prs, *row.prs})),
+        }
+    )
+
+
 def _plan_input(
     *,
     relative: str,
@@ -534,15 +557,27 @@ def _plan_input(
         if entry is not None
         else tuple(sorted(set(TICKET_RE.findall(header))))
     )
-    if (manifest is None or not manifest.tasks) and not table:
-        # Neither a manifest nor a plans-today table: the plan's own task paragraphs are the line's tasks.
+    # A section heading is not a part: the plans-today table lists a plan's ``### A.1`` headings beside its tasks.
+    sections = {row.label for row in table if is_section_heading(row.label, text)}
+    parts = tuple(row for row in table if row.label not in sections)
+    if (manifest is None or not manifest.tasks) and (not table or sections):
+        # Neither a manifest nor a table of parts: the plan's own task paragraphs are the line's tasks.
         header_tickets = TICKET_RE.findall(header)
         written = parse_heading_tasks(
             text, links, epic=header_tickets[0] if header_tickets else ""
         )
         if written:
-            manifest = ModelFloorManifest(tasks=written)
+            by_label = {row.label: row for row in table}
+            manifest = ModelFloorManifest(
+                tasks=tuple(
+                    _with_table_evidence(task, by_label.get(task.id))
+                    for task in written
+                )
+            )
             tickets = tuple(sorted({*tickets, *header_tickets}))
+            table = ()
+        elif parts:
+            table = parts
     return ModelFloorPlanInput(
         plan_path=relative,
         title=title.group(1).strip() if title else "",
@@ -929,8 +964,8 @@ def runner_fleet_cause(path: Path) -> str:
     """Why the runner fleet observation at ``path`` is unread, naming the file; empty when it reads."""
     if not path.exists():
         return (
-            f"the runner fleet file {path.name} does not exist: the runner monitor publishes the observation "
-            "to the bus and no node saves it to a file this record reads"
+            f"the runner fleet file {path.name} does not exist: node_projection_runner_fleet saves the runner monitor's "
+            "observation there, and none has been saved on this host"
         )
     try:
         load_runner_fleet_strict(path)

@@ -329,7 +329,6 @@ class ModelFactoryFloorConfig(BaseModel):
     done_outcomes: tuple[str, ...] = Field(min_length=1)
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
-    advertisement_stale_factor: int = Field(gt=0)
     station_name_template: str = Field(min_length=1)
     fallback_station_id: str = Field(min_length=1)
     fallback_station_name: str = Field(min_length=1)
