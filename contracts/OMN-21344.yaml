@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21344"
 title: "The delegation time limit is set per work class in the contract overlay instead of a fixed 240 seconds"
-summary: "Every task class's execution ceiling was validated against a fixed 240 s cap in code, so neither the contract nor a site could give a large delegation more time. The task-class contract's execution_budgets entry is now the base, and a site overlay at <root>/delegation_budgets/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS can override any field of a class's entry. The merged entry is validated as a whole, with a 900 s bound. An overlay that is unreadable, malformed, or names a class with no contract budget is refused. The runtime port's wait and the handler's own bound treat their contract values as floors and rise with the largest declared class, so a raised class is not cut off at 300 s. The terminal accepts a budget_source key consumer-first. The producer stamps it once omniclaude's pin carries this consumer, which is AC2's remaining step."
+summary: "Every task class's execution ceiling was validated against a fixed 240 s cap in code, so neither the contract nor a site could give a large delegation more time. The task-class contract's execution_budgets entry is now the base, and a site overlay at <root>/delegation_budgets/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS can override any field of a class's entry. The merged entry is validated as a whole, with a 900 s bound. An overlay that is unreadable, malformed, or names a class with no contract budget is refused. The runtime port's wait and the handler's own bound treat their contract values as floors and rise with the largest declared class, so a raised class is not cut off at 300 s. The terminal accepted a budget_source key consumer-first. Now that omniclaude's pin carries that consumer, the terminal declares budget_source and the delegate-skill handler stamps it on every terminal it builds, naming the contract entry or overlay file the run's budget came from. omnibase_infra copies it into receipt.json (OMN-21604)."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,6 +14,9 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: the delegation time limit is read from the contract overlay per work class, and no 240 s constant remains in the delegate path -- falsifier: uv run pytest on a handler test that sets an overlay limit of 600 s and asserts a 300 s stub call completes
+      - id: "AC2"
+        statement: |-
+          AC2: a run's receipt records the limit it ran under and where it came from -- falsifier: uv run pytest asserting the receipt field names the overlay source
 evidence_requirements:
   - kind: "tests"
     description: "The handler, with an overlay that sets code_generation's ceiling to 600 s, completes a request that asks for 300 s. At the merge base the same request is refused before dispatch at the 240 s ceiling. The tests also cover the budget source, the derived port wait and handler bound, the 900 s bound, broken-overlay refusals, and the consumer-first budget_source key."
@@ -37,3 +40,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/execution_budget_overlay.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c -e '^EXECUTION_BUDGET_OVERLAY_ID = \"delegation_budgets\"$' -e 'path = find_node_overlay(EXECUTION_BUDGET_OVERLAY_ID, environ)' | grep -qx 2"
+  - id: "dod-omn21344-ac2-terminal-budget-source"
+    description: "The delegate-skill handler stamps budget_source on its terminal, and the wire payload carries it. A run under a delegation_budgets overlay that sets code_generation to 600 s names that overlay file; a run without one, and a pre-dispatch refusal at the 240 s contract ceiling, name the contract entry. omnibase_infra copies the key into receipt.json beside budget_evidence or budget_refusal (OMN-21604). At the merge base the terminal declares no budget_source, so all three tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_budget_source_omn21344.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

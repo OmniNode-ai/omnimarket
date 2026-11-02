@@ -48,6 +48,7 @@ from omnimarket.enums.enum_delegation_attempt_kind import EnumDelegationAttemptK
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.handlers.execution_budget_overlay import execution_budget_source
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
@@ -1062,6 +1063,7 @@ def _response_from_result(
     queue_wait_ms: int | None,
     execution_duration_ms: int,
     budget_evidence: ModelDelegationBudgetEvidence | None,
+    budget_source: str | None = None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -1324,6 +1326,7 @@ def _response_from_result(
         terminal_failure_reason=returned_reason,
         response_contract_evidence=result.get("response_contract_evidence"),
         budget_evidence=budget_evidence,
+        budget_source=budget_source,
         preamble_chars=result.get("preamble_chars"),
         output_refusal=result.get("output_refusal"),
         quality_gates_failed=quality_failures,
@@ -1560,6 +1563,9 @@ class HandlerDelegateSkill:
         picked_up_monotonic = time.monotonic()
         queue_wait_ms = _queue_wait_ms(request, datetime.now(UTC))
         execution_budget = resolve_task_class_execution_budget(request.task_type)
+        # OMN-21344 AC2: the terminal names the contract entry or overlay
+        # file this budget came from, and the receipt copies it.
+        budget_source = execution_budget_source(request.task_type)
         requested_timeout_seconds = request.requested_timeout_seconds
         timeout_ceiling_seconds = execution_budget.task_class_timeout_ceiling_seconds
         if (
@@ -1580,6 +1586,7 @@ class HandlerDelegateSkill:
                     requested_timeout_seconds=requested_timeout_seconds,
                     task_class_timeout_ceiling_seconds=timeout_ceiling_seconds,
                 ),
+                budget_source=budget_source,
                 error_message=(
                     "timeout_exceeds_task_class_ceiling: "
                     f"requested_timeout_seconds={requested_timeout_seconds}; "
@@ -1751,6 +1758,7 @@ class HandlerDelegateSkill:
                 queue_wait_ms=queue_wait_ms,
                 execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 budget_evidence=budget_evidence,
+                budget_source=budget_source,
             )
         except TimeoutError:
             # OMN-15504/OMN-19619: the handler's own budget expired. This is not
@@ -1801,6 +1809,7 @@ class HandlerDelegateSkill:
                     queue_wait_ms=queue_wait_ms,
                     execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                     budget_evidence=budget_evidence,
+                    budget_source=budget_source,
                 )
             )
         except Exception as exc:
@@ -1825,6 +1834,7 @@ class HandlerDelegateSkill:
                 # terminal by map-miss fallback.
                 terminal_failure_cause=failure_cause,
                 budget_evidence=budget_evidence,
+                budget_source=budget_source,
             )
 
         finally:
@@ -1843,6 +1853,7 @@ class HandlerDelegateSkill:
                 queue_wait_ms=queue_wait_ms,
                 execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 budget_evidence=budget_evidence,
+                budget_source=budget_source,
             )
         )
 
