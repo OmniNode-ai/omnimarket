@@ -357,6 +357,7 @@ node_remote_lane_handoff_compute = "omnimarket.nodes.node_remote_lane_handoff_co
 node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
 node_remote_lane_effect = "omnimarket.nodes.node_remote_lane_effect"
 node_remote_lane_stop_effect = "omnimarket.nodes.node_remote_lane_stop_effect"
+node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_service_redeploy_effect"
 node_dev_cause_lane_receiver_effect = "omnimarket.nodes.node_dev_cause_lane_receiver_effect"
 node_merge_sweep_plan_compute = "omnimarket.nodes.node_merge_sweep_plan_compute"
 node_merge_sweep_request_compute = "omnimarket.nodes.node_merge_sweep_request_compute"

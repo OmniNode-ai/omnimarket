@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22172
+title: Scoped deploy-agent redeploy of one standalone compose service (the factory floor web server)
+summary: A new effect node, node_standalone_service_redeploy_effect, publishes the signed deploy-agent command that recreates one declared service of one declared standalone compose file. Its contract declares the dev lane as the only allowed lane and one compose file and service as the only target; a request outside either is refused before anything is published. This PR is the publishing half; the host-side recreate effect is a separate change, and AC3 (the live redeploy and the gated response from the tailnet address) is the live proof and is not claimed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22172-scoped-redeploy-publish
+  statement: A request to redeploy a compose file or service the contract does not declare, or on any lane but dev, is refused and nothing is published; a declared request on the dev lane is published signed to the contract topic.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the route refuses a compose file or service that is not declared in the node contract, and refuses any prod lane -- falsifier: uv run pytest tests/nodes/node_standalone_service_redeploy_effect -q -k refused'
+  - id: AC4
+    statement: 'AC4: the new piece is a node with a contract.yaml and the command goes over the bus -- falsifier: uv run pytest tests/nodes/node_standalone_service_redeploy_effect -q'
+evidence_requirements:
+- kind: tests
+  description: The node's refusal cases and its signed publish to the contract topic.
+  command: uv run pytest tests/nodes/node_standalone_service_redeploy_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22172-ac2
+  description: AC2 each of an undeclared compose file, an undeclared service, the prod lane and one other lane is refused with a typed reason and nothing is published.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_standalone_service_redeploy_effect -q --no-cov --tb=line -k refused
+    cwd: .
+- id: dod-omn22172-ac4
+  description: AC4 a declared dev request is published signed to the contract's one topic, and the contract declares dev only and one target.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_standalone_service_redeploy_effect -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22172-deploy-probe
+  description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines the redeploy effect, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_standalone_service_redeploy_effect/handlers/handler_standalone_service_redeploy.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerStandaloneServiceRedeploy" > /dev/null'
+    cwd: .
