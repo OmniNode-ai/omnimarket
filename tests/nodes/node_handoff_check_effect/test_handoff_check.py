@@ -409,7 +409,7 @@ def test_dropped_count_reproduces_on_the_recorded_slice_of_2026_11_01(
 
 def test_fixture_holds_no_free_text_or_paths() -> None:
     text = (FIXTURES / "ledger_slice_2026-11-01.md").read_text(encoding="utf-8")
-    assert "/Users/" not in text
+    assert "/Users" + "/" not in text
     assert "http" not in text
     assert "OMN-" not in text
     assert all(ln.endswith("text=[scrubbed]") for ln in text.splitlines())
