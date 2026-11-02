@@ -22,7 +22,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.bus_binding import outbox
-from omnimarket.handlers.bus_binding.guard_refusal import GuardPorts
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.models.work_ledger_append import ModelWorkLedgerAppendRequest
 
 

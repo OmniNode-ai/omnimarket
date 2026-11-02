@@ -21,12 +21,12 @@ the append are four ports the caller binds; this module reads and writes none of
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
 from omnimarket.handlers.bus_binding import recovery
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.models.bus_binding.model_guard_refusal import (
     EnumGuardRefusal,
     ModelGuardRefusal,
@@ -62,22 +62,6 @@ _REFUSED_PATH = re.compile(r"kept the refused request at (?P<path>\S+)")
 _CLOSES = re.compile(r"closes-CLAIM=(?P<stamp>\S+)")
 _WORKTREE_CELL = re.compile(r"\| worktree=(?P<value>[^|\s]+)")
 _FRICTION_CELL = re.compile(r"\| friction=(?P<value>[^|]+)")
-
-
-@dataclass(frozen=True)
-class GuardPorts:
-    """What the actor may ask of the world. None of them raises for an unreachable thing: it answers no."""
-
-    lane_rows: Callable[
-        [str], Sequence[str]
-    ]  # every ledger row, archive rolls included, naming lane=<lane>
-    refused_rows: Callable[
-        [str], str | None
-    ]  # the rows of the refused request kept at a path; None when unreadable here
-    path_exists: Callable[[str], bool]
-    append: Callable[
-        [str], bool
-    ]  # append rows as a new request; True when the ledger accepted them
 
 
 def _stamp(now: datetime) -> str:

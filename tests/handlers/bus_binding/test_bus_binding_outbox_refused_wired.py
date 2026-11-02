@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 
 from omnimarket.handlers.bus_binding import outbox, recovery, select
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.handlers.bus_binding.guard_ports import local_guard_ports
-from omnimarket.handlers.bus_binding.guard_refusal import GuardPorts
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,

@@ -44,7 +44,7 @@ from omnimarket.delegated_test_loop.lane_bus import (
     open_lab_run_bus,
 )
 from omnimarket.handlers.bus_binding import exception_actor, outbox, recovery
-from omnimarket.handlers.bus_binding.guard_refusal import GuardPorts
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.handlers.bus_binding.recovery import ALARM_CLASS, raise_alarm
 from omnimarket.handlers.bus_binding.reducer import (
     reduce_binding_state,

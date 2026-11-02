@@ -35,7 +35,7 @@ from omnimarket.nodes.node_exception_queue_effect.models import (
 )
 
 if TYPE_CHECKING:
-    from omnimarket.handlers.bus_binding import guard_refusal
+    from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 
 ALARM_CLASS = "bus-binding-degraded"
 OUTAGE_CLASS = "bus-binding-outage"
@@ -234,7 +234,7 @@ def report_refused_to_writers(
     observed_at: datetime,
     *,
     since_ns: int = 0,
-    guard: guard_refusal.GuardPorts | None = None,
+    guard: GuardPorts | None = None,
 ) -> int:
     """Emit one non-decision case per refused request nobody has been told about yet; return how many.
 
@@ -306,7 +306,7 @@ def report_refused_to_writers(
 
 
 def _settle_open_guard_cases(
-    state_dir: Path, observed_at: datetime, guard: guard_refusal.GuardPorts | None
+    state_dir: Path, observed_at: datetime, guard: GuardPorts | None
 ) -> None:
     """Settle the open guard-refusal cases whose cause is gone; an unsettled one is left as it is."""
     if guard is None:
