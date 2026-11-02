@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
+from collections.abc import Iterator
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,9 @@ _ADOPTED = re.compile(
 )
 
 
+_ARCHIVE_DATE = re.compile(r"_(?P<date>\d{4}-\d{2}-\d{2})-split\.md$")
+
+
 class ModelSourceLabels(BaseModel):
     """The words the files use and the labels the count's pull request states take, from the effect's contract."""
 
@@ -44,6 +48,9 @@ class ModelSourceLabels(BaseModel):
     claim_row: str = Field(min_length=1)
     terminal_row: str = Field(min_length=1)
     lane_live_window_hours: int = Field(gt=0)
+    # A ledger roll moves older rows to archive/<ledger name>_<date>-split.md; archives rolled inside this many days
+    # of the clock are read with the live file, so a roll does not take a recent day's evidence away.
+    ledger_archive_days: int = Field(default=8, gt=0)
 
 
 def _cells(line: str) -> dict[str, str]:
@@ -82,6 +89,22 @@ class SourceLocalFiles:
         self._now = now
         self._lab_pass = lab_pass
         self._lab_pass_cause = lab_pass_cause
+
+    def _ledger_lines(self) -> Iterator[str]:
+        """The archives rolled inside the window in date order, then the live file: rows come in time order."""
+        archive = self._ledger.parent / "archive"
+        floor = (self._now - timedelta(days=self._labels.ledger_archive_days)).date()
+        rolled: list[tuple[date, Path]] = []
+        if archive.is_dir():
+            for path in archive.glob(f"{self._ledger.stem}_*-split.md"):
+                found = _ARCHIVE_DATE.search(path.name)
+                if found is not None and date.fromisoformat(found["date"]) >= floor:
+                    rolled.append((date.fromisoformat(found["date"]), path))
+        for path in [p for _, p in sorted(rolled)] + [self._ledger]:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                # A roll leaves an HTML comment that quotes the heading it rolled; it is not a row.
+                if not line.startswith("<!--"):
+                    yield line
 
     def read_prs(self) -> tuple[ModelMrcPr, ...]:
         state: dict[str, Any] = json.loads(
@@ -123,7 +146,7 @@ class SourceLocalFiles:
 
     def read_evidence(self) -> tuple[ModelMrcEvidence, ...]:
         found: list[ModelMrcEvidence] = []
-        for line in self._ledger.read_text(encoding="utf-8").splitlines():
+        for line in self._ledger_lines():
             match = _ADOPTED.match(line)
             if match is None or match["lane"] != self._labels.adopt_lane:
                 continue
@@ -197,7 +220,7 @@ class SourceLocalFiles:
     def read_live_lanes(self) -> tuple[ModelMrcLiveLane, ...]:
         """Lanes with a CLAIM naming a host, no later TERMINAL, claimed inside the live window."""
         claimed: dict[str, tuple[datetime, str]] = {}
-        for line in self._ledger.read_text(encoding="utf-8").splitlines():
+        for line in self._ledger_lines():
             ts, _, rest = line.partition(" | ")
             kind, _, tail = rest.partition(" | ")
             if kind not in (self._labels.claim_row, self._labels.terminal_row):

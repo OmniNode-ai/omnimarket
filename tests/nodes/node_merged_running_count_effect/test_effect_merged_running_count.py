@@ -256,3 +256,40 @@ def test_a_declared_timezone_in_the_overlay_config_moves_the_day(
 def test_the_container_serves_only_the_declared_protocol(tmp_path: Path) -> None:
     with pytest.raises(LookupError):
         _Container(_sources(tmp_path)).get_service(object)
+
+
+def _roll(tmp_path: Path, rows_in_archive: list[str], kept: list[str]) -> Path:
+    """A ledger after a roll: older rows in archive/<name>_<date>-split.md, newer rows in the live file."""
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    (archive / "ledger_2026-11-01-split.md").write_text(
+        "\n".join(rows_in_archive) + "\n"
+    )
+    (tmp_path / "state.json").write_text(json.dumps(WATCHER))
+    (tmp_path / "ledger.md").write_text("\n".join(kept) + "\n")
+    (tmp_path / "hosts.yaml").write_text(yaml.safe_dump(HOST_TABLE))
+    return tmp_path
+
+
+def test_adopted_rows_rolled_into_the_archive_are_still_evidence(
+    tmp_path: Path,
+) -> None:
+    rows = LEDGER.splitlines()
+    rolled = [r for r in rows if "ADOPTED pr=" in r and r.startswith("2026-11-01T1")]
+    kept = [r for r in rows if r not in rolled]
+    _roll(tmp_path, rolled, kept)
+    sources = SourceLocalFiles(
+        watcher_state=tmp_path / "state.json",
+        ledger=tmp_path / "ledger.md",
+        labels=LABELS,
+        hosts_table=tmp_path / "hosts.yaml",
+        placement_read=tmp_path / "absent-hosts.json",
+        now=NOW,
+    )
+    container: Any = _Container(sources)
+    result = HandlerMergedRunningCountEffect(container).handle(
+        ModelMergedRunningCountRunRequest(now=NOW, config=_config())
+    )
+    day = next(d for d in result.count.days if d.local_date == "2026-11-01")
+    assert (day.merged, day.running, day.not_running) == (4, 3, 1)
+    assert result.evidence_records_read == 3

@@ -78,6 +78,7 @@ runtime:
     claim_row: CLAIM
     terminal_row: TERMINAL
     lane_live_window_hours: 24
+    ledger_archive_days: 8
 metadata:
   transport_type: local
   description: Read the merged-and-running count's sources and call the compute node.
