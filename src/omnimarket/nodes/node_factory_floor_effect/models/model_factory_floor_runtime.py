@@ -86,6 +86,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     manifest_suffix: str = Field(min_length=1)
     plan_header_keys: tuple[str, ...] = Field(min_length=1)
     plans_relpath: str = Field(min_length=1)
+    heading_task_patterns: tuple[str, ...] = Field(min_length=1)
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
     container_source: ModelFactoryFloorContainerSource

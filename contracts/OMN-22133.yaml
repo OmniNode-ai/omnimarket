@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-22133
+title: The factory floor draws every task of a line's plan as a station with its own state and ticket
+summary: node_factory_floor_compute draws one station per task (contract config station_grouping task), the station carrying its task's state, tickets and wave label; tasks come from the plan's tasks.yaml, else its task headings read by the contract-declared heading patterns; a merged pull request sets its task's station through the existing merged-PR mapping.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22133-station-per-task
+  statement: 'Five of six plan lines on the published floor drew one station each (a 59-task plan read as one box) because stations were grouped by wave and a plan that declares no wave fell back to one station.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every task of a line''s plan is a station with its own state and tickets, for a tasks.yaml plan, a task-headings plan and a wave manifest -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -q'
+  - id: AC2
+    statement: 'AC2: stations come from the plan''s tasks.yaml (id, state, tickets) where it has one, else from its task headings; the heading rule is declared in the effect contract, not in a handler -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k "heading_rule or recorded_done" -q'
+  - id: AC3
+    statement: 'AC3: one fixture per plan shape runs under the in-memory and the overlay profile, and each fails on the merge base -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q'
+  - id: AC4
+    statement: 'AC4: a merged pull request sets its task''s station through the existing merged-PR mapping, with no second mapping -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q'
+  - id: AC5
+    statement: 'AC5: the three floor node suites pass -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q'
+evidence_requirements:
+- kind: tests
+  description: The station-per-task tests and the three floor node suites.
+  command: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22133-ac1
+  description: AC1 each plan shape draws one station per task with the task's state and tickets.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22133-ac2
+  description: AC2 a recorded done in tasks.yaml is not built without a merged pull request, and the headings plan reads no task without the contract's heading pattern.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k "heading_rule or recorded_done" -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22133-ac3
+  description: AC3 the three plan-shape fixtures under the in-memory and the overlay profile.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22133-ac4
+  description: AC4 the merged pull request of each fixture reaches only its own task's station, through floor_merged_mapping.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22133-ac5
+  description: AC5 the three floor node suites pass; hosted CI at the exact head is the evidence for this cloud-placed lane.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line
+    cwd: .

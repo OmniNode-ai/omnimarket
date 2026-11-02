@@ -35,7 +35,7 @@ class ModelFloorItem(BaseModel):
 
 
 class ModelFloorStation(BaseModel):
-    """One station: a wave or stage of a plan."""
+    """One station: a task of a plan (or, under wave grouping, a wave of tasks)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -44,6 +44,10 @@ class ModelFloorStation(BaseModel):
     state: ItemState
     items: tuple[ModelFloorItem, ...]
     feeders: tuple[str, ...]
+    # The wave label of the station's task ("" when the plan declares none): the band a renderer groups stations by.
+    group: str = ""
+    # The tickets of the station's own parts.
+    tickets: tuple[str, ...] = ()
 
 
 class ModelFloorAndon(BaseModel):

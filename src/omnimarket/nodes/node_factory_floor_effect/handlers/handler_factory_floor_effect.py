@@ -157,6 +157,7 @@ class HandlerFactoryFloorEffect:
                 plans_relpath=rt.plans_relpath,
                 manifest_suffix=rt.manifest_suffix,
                 header_keys=rt.plan_header_keys,
+                heading_task_patterns=rt.heading_task_patterns,
                 contains=contains,
                 plans_today=plans_today,
                 # A plan not on the default branch is read from its open pull request's head when no declared ref names it.

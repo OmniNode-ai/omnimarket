@@ -30,6 +30,7 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
     ModelFactoryFloorTaskLinks,
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+    heading_patterns,
     load_contract,
     load_lane_containers,
     load_plans,
@@ -44,6 +45,8 @@ CONTRACT = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_factory_floor_effect/contract.yaml"
 )
+PATTERNS = load_contract(CONTRACT).runtime.heading_task_patterns
+COMPILED = heading_patterns(PATTERNS)
 PLAN_TEXT = """# A plan
 
 - **Tickets:** OMN-100 (the epic), OMN-200.
@@ -64,7 +67,10 @@ PLAN_TEXT = """# A plan
 
 
 def test_a_plans_own_paragraphs_become_scoped_tasks() -> None:
-    tasks = {t.id: t for t in parse_heading_tasks(PLAN_TEXT, {}, epic="OMN-100")}
+    tasks = {
+        t.id: t
+        for t in parse_heading_tasks(PLAN_TEXT, {}, epic="OMN-100", patterns=COMPILED)
+    }
     # D1 and the S items lose to the most common letter; only the T tasks remain.
     assert list(tasks) == ["T1", "T2"]
     assert all(task.scoped for task in tasks.values())
@@ -76,13 +82,19 @@ def test_a_plans_own_paragraphs_become_scoped_tasks() -> None:
 
 def test_list_items_read_their_whole_line_and_the_epic_belongs_to_no_task() -> None:
     text = "1. **S1, now:** tokens, OMN-100 and OMN-300.\n2. **S2:** the models.\n"
-    tasks = {t.id: t for t in parse_heading_tasks(text, {}, epic="OMN-100")}
+    tasks = {
+        t.id: t
+        for t in parse_heading_tasks(text, {}, epic="OMN-100", patterns=COMPILED)
+    }
     assert list(tasks) == ["S1", "S2"]
     assert tasks["S1"].tickets == ("OMN-300",)
 
 
 def test_links_add_the_tickets_a_plan_does_not_name() -> None:
-    tasks = {t.id: t for t in parse_heading_tasks(PLAN_TEXT, {"T1": ("OMN-500",)})}
+    tasks = {
+        t.id: t
+        for t in parse_heading_tasks(PLAN_TEXT, {"T1": ("OMN-500",)}, patterns=COMPILED)
+    }
     assert tasks["T1"].tickets == ("OMN-500",)
 
 
@@ -103,6 +115,7 @@ def _load(
         plans_relpath="beta/plans",
         manifest_suffix=".tasks.yaml",
         header_keys=("ticket", "tickets", "epic"),
+        heading_task_patterns=PATTERNS,
         contains=("a-plan", "unmerged"),
         plans_today={
             "plans": [{"path": "beta/plans/2026-11-01-a-plan.md", "tasks": []}]

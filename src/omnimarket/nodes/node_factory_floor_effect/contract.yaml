@@ -73,6 +73,14 @@ runtime:
   # one of these keys (text before the first section heading), never from every mention in its prose.
   plan_header_keys: [ticket, tickets, epic]
   plans_relpath: beta/plans
+  # A plan with no manifest and no plans-today table of parts draws its tasks from its own text. Each pattern reads one
+  # task: its named group "id" is the task id, "title" its title, "rest" the rest of its lead line. The first pattern
+  # that finds a task in the plan is the plan's form; the others are not read. Bold-led task paragraphs
+  # (``**T1. Title.** ...``, ``1. **S1, now:** ...``) come first; markdown task headings of level 2 to 4
+  # (``### T1. Title``, ``## Task W2.3: Title``) are read for a plan that has none.
+  heading_task_patterns:
+    - '^(?:\d+\.\s+|[-*]\s+)?\*\*(?P<id>[A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?(?:\s+(?P<title>.+?))?\*\*(?P<rest>.*)$'
+    - '^#{2,4}\s+(?:Task\s+)?(?P<id>[A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?\s+(?P<title>.+?)\s*$'
   sources:
     watcher_relpath: .claude_scratch/pr-watcher/state.json
     plans_today_dir: .claude_scratch/plans-today
