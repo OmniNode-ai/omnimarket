@@ -43,6 +43,9 @@ CASES: list[dict[str, str]] = json.loads(FIXTURE.read_text(encoding="utf-8"))["c
 CLAIMS: dict[str, str] = json.loads(FIXTURE.read_text(encoding="utf-8"))[
     "ledger_claims_read_2026-11-02T04:18Z"
 ]
+KEPT_WORKTREES: dict[str, str] = json.loads(FIXTURE.read_text(encoding="utf-8"))[
+    "kept_mismatch_worktrees"
+]
 
 
 def _case(suffix: str) -> dict[str, str]:
@@ -181,7 +184,7 @@ def _bodies() -> dict[str, str]:
         ): "2026-10-27T05:34:45Z | TERMINAL | lane=codex-integration-pass-61 | ticket=OMN-17427 | friction=ledger-broker-dns-unavailable | closes-CLAIM=2026-10-27T05:33:10Z | outcome=done",
         path_of(
             "17a09c33"
-        ): "2026-10-27T11:51:50Z | TERMINAL | lane=controller-rebase-install-1150 | ticket=OMN-19998 | friction=none | worktree=kept:/Users/dev/Code/shared_internal/omni_worktrees/OMN-19998/plugin-clone:pushed | closes-CLAIM=2026-10-27T11:46:43Z | outcome=done",
+        ): f"2026-10-27T11:51:50Z | TERMINAL | lane=controller-rebase-install-1150 | ticket=OMN-19998 | friction=none | worktree=kept:{KEPT_WORKTREES['refused']}:pushed | closes-CLAIM=2026-10-27T11:46:43Z | outcome=done",
         path_of(
             "c4300b3a"
         ): "2026-10-27T16:19:33Z | TERMINAL | lane=lean-skills-mac-1810 | ticket=OMN-21433 | friction=omniclaude has no prose-only skill registration | closes-CLAIM=2026-10-27T16:11:10Z | outcome=done",
@@ -227,11 +230,8 @@ def test_bus_binding_outbox_refused_guard_replay_after_the_causes_are_made_good(
     # what code cannot decide stays open, with what is missing named
     kept = by_lane["controller-rebase-install-1150"]
     assert not kept.resolved
-    assert "/Users/dev/Code/registry/omni_worktrees/OMN-19998/plugin-clone" in kept.how
-    assert (
-        "/Users/dev/Code/shared_internal/omni_worktrees/OMN-19998/plugin-clone"
-        in kept.how
-    )
+    assert KEPT_WORKTREES["claimed"] in kept.how
+    assert KEPT_WORKTREES["refused"] in kept.how
     assert "cost" in by_lane["lean-skills-mac-1810"].how
     assert "no CLAIM" in by_lane["codex-integration-pass-20261028T052803Z"].how
     remaining = sorted(_open_keys(tmp_path))

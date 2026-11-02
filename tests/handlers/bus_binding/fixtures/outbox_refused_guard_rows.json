@@ -64,5 +64,9 @@
     "codex-integration-pass-61": "2026-10-27T05:33:10Z | CLAIM | lane=codex-integration-pass-61 | ticket=OMN-17427 | worktree=none",
     "controller-rebase-install-1150": "2026-10-27T11:46:43Z | CLAIM | lane=controller-rebase-install-1150 | ticket=OMN-19998 | worktree=/Users/dev/Code/registry/omni_worktrees/OMN-19998/plugin-clone",
     "lean-skills-mac-1810": "2026-10-27T16:11:10Z | CLAIM | lane=lean-skills-mac-1810 | ticket=OMN-21433 | worktree=/Users/dev/Code/registry/omni_worktrees/OMN-21433/omniclaude"
+  },
+  "kept_mismatch_worktrees": {
+    "claimed": "/Users/dev/Code/registry/omni_worktrees/OMN-19998/plugin-clone",
+    "refused": "/Users/dev/Code/shared_internal/omni_worktrees/OMN-19998/plugin-clone"
   }
 }
