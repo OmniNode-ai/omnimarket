@@ -100,14 +100,14 @@ requirements:
     statement: |-
       The floor's lines match the work: a plan with no manifest and no table is drawn from its own task paragraphs and linked to merged work only through its tickets and pull requests, a plan on an unmerged branch is drawn from that branch until it merges, the one-runtime line reads each lane's application containers over ssh and draws a host it cannot read as UNKNOWN with the cause, and an unread runner fleet names why.
     acceptance:
-      - id: "AC23"
-        statement: "AC23: a plan whose manifest and plans-today table are both empty is drawn from its bold-led task paragraphs, each task linked only through the tickets and pull requests its lead names and the overlay's task links, never through a bare id such as T5 -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
-      - id: "AC24"
-        statement: "AC24: a plan that is only on an unmerged ref is read from the ref the overlay names until a plan of the same path is on the clone's branch -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k unmerged_ref"
-      - id: "AC25"
-        statement: "AC25: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
-      - id: "AC26"
-        statement: "AC26: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
+      - id: "AC27"
+        statement: "AC27: a plan whose manifest and plans-today table are both empty is drawn from its bold-led task paragraphs, each task linked only through the tickets and pull requests its lead names and the overlay's task links, never through a bare id such as T5 -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
+      - id: "AC28"
+        statement: "AC28: a plan that is only on an unmerged ref is read from the ref the overlay names until a plan of the same path is on the clone's branch -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k unmerged_ref"
+      - id: "AC29"
+        statement: "AC29: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
+      - id: "AC30"
+        statement: "AC30: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -374,34 +374,34 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^<script id=\"theme-bridge\">'"
-  - id: "dod-omn21733-ac23"
-    description: "AC23 task paragraphs, scoped links and the indexed ledger lookups agree with their definitions."
+  - id: "dod-omn21733-ac27"
+    description: "AC27 task paragraphs, scoped links and the indexed ledger lookups agree with their definitions."
     source: "manual"
-    binds_ac: ["AC23"]
+    binds_ac: ["AC27"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov --tb=line -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-ac24"
-    description: "AC24 a plan on an unmerged ref is drawn from the ref until it merges."
+  - id: "dod-omn21733-ac28"
+    description: "AC28 a plan on an unmerged ref is drawn from the ref until it merges."
     source: "manual"
-    binds_ac: ["AC24"]
+    binds_ac: ["AC28"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k unmerged_ref"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-ac25"
-    description: "AC25 lane containers are read per declared host and an unread host is UNKNOWN with its cause."
+  - id: "dod-omn21733-ac29"
+    description: "AC29 lane containers are read per declared host and an unread host is UNKNOWN with its cause."
     source: "manual"
-    binds_ac: ["AC25"]
+    binds_ac: ["AC29"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-ac26"
-    description: "AC26 an unread runner fleet names its cause."
+  - id: "dod-omn21733-ac30"
+    description: "AC30 an unread runner fleet names its cause."
     source: "manual"
-    binds_ac: ["AC26"]
+    binds_ac: ["AC30"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k runner_fleet"
@@ -409,7 +409,7 @@ dod_evidence:
   - id: "dod-omn21733-floor-suites"
     description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."
     source: "manual"
-    binds_ac: ["AC23", "AC24", "AC25", "AC26"]
+    binds_ac: ["AC27", "AC28", "AC29", "AC30"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_compute/test_hold_exemption.py tests/nodes/node_factory_floor_compute/test_live_lines.py tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py tests/nodes/node_factory_floor_compute/test_undrawn_lines.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line"
