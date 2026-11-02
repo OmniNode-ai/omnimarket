@@ -129,9 +129,16 @@ def build_brief(
         if contract.get("controller_evidence_host")
         else ""
     )
+    # the repository is a deployment fact: no key, no line, and the brief gate reports the brief
+    opens = (
+        f"Opens PR in: {contract['controller_fix_repo']}\n"
+        if contract.get("controller_fix_repo")
+        else ""
+    )
     return (
         f"# Lane {lane}: fix the landing controller defect that leaves green PRs unlanded ({contract['ticket']})\n"
         f"{contract['controller_fix_route']}\n"
+        f"{opens}"
         f"Authority: {contract['ruling']} and RULING 2026-10-17 (OMN-19998): a PR green on every check and not merged or "
         "queued past the bound is a CONTROLLER_DEFECT, fixed in the controller; the throughput tick dispatched this lane "
         "by itself and a person is not waited on.\n"
