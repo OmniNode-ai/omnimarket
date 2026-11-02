@@ -104,3 +104,11 @@ dod_evidence:
           assert stock["net"]["value"] == 900, stock
           ' "$probe_dir/receipt.json"
         cwd: "."
+  - id: "dod-omn21966-integration-proof"
+    description: "The pushed head ran the node suite on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane comp-cm6-r2-1102 -- uv run --frozen pytest tests/nodes/node_compaction_cost_compute -q --no-cov'
+        cwd: "."
