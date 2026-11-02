@@ -24,7 +24,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: The focused node suite grades the fixture continuations.
-    command: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov
+    command: uv run pytest tests/nodes/node_compaction_action_score_compute/test_action_score.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -37,7 +37,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov --tb=line -k "acted or prompted or checked or idle or malformed or not_due or nothing or read_only or refused_by_design or another"
+        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute/test_action_score.py -q --no-cov --tb=line -k "acted or prompted or checked or idle or malformed or not_due or nothing or read_only or refused_by_design or another"
         cwd: .
   - id: dod-omn21971-ac2
     description: AC2 grades the fixture version of the container-fold case by event order. A status read before the operator prompt and the relaunch after it is PROMPTED, never ACTED. A read alone with no progress is CHECKED. A relaunch before the prompt is ACTED. The recorded transcript is not located, so grading the recorded case is owed.
@@ -46,7 +46,7 @@ dod_evidence:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov --tb=line -k "container_fold or prompt_naming_another"
+        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute/test_action_score.py -q --no-cov --tb=line -k "container_fold or prompt_naming_another"
         cwd: .
   - id: dod-omn21971-ac3
     description: AC3 runs the same continuation at N of 10, 25, 50 and all three together and checks the turn of first progress is 30 in every run while the outcome moves from CHECKED to ACTED only at the cutoff.
@@ -55,5 +55,59 @@ dod_evidence:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute -q --no-cov --tb=line -k "changing_n or beyond_n or default_horizons"
+        check_value: uv run pytest tests/nodes/node_compaction_action_score_compute/test_action_score.py -q --no-cov --tb=line -k "changing_n or beyond_n or default_horizons"
+        cwd: .
+  - id: dod-omn21971-deploy-local-runtime
+    description: The hosted runner dispatches the packaged compute node through the ONEX local runtime with the in-memory backend and asserts all five outcomes, malformed-call refusal, the headline share and a hold violation. No broker or Docker daemon is required.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT;
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          request = {
+              "continuation_id": "compaction-action-score-smoke",
+              "judged_at": "2026-11-02T06:00:00Z",
+              "items": [{"key": key, "kind": "OPEN_CLAIM", "held": key == "held"} for key in ("acted", "prompted", "checked", "idle", "malformed", "held")],
+              "events": [
+                  {"turn": 1, "source": "tool_call", "call_class": "relaunch", "text": "acted"},
+                  {"turn": 2, "source": "operator_prompt", "text": "prompted"},
+                  {"turn": 3, "source": "tool_call", "call_class": "relaunch", "text": "prompted"},
+                  {"turn": 4, "source": "tool_call", "call_class": "status_read", "text": "checked"},
+                  {"turn": 5, "source": "assistant_text", "text": "idle"},
+                  {"turn": 6, "source": "tool_call", "call_class": "relaunch", "text": "malformed", "refused": "malformed"},
+                  {"turn": 7, "source": "tool_call", "call_class": "git_push", "text": "held-repo"}],
+              "policy": {"progress_classes": {"OPEN_CLAIM": ["relaunch"]}, "read_only_classes": ["status_read"], "hold_classes": ["git_push"]},
+              "holds": [{"scope": "held-repo"}]}
+          Path(sys.argv[1]).write_text(json.dumps(request))
+          ' "$probe_dir/request.json";
+          onex node node_compaction_action_score_compute --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          expected = {"acted": "ACTED", "prompted": "PROMPTED", "checked": "CHECKED", "idle": "IDLE", "malformed": "IDLE", "held": "NOT_DUE"}
+          assert {item["key"]: next(row["outcome"] for row in item["outcomes"] if row["horizon"] == 25) for item in result["items"]} == expected, result
+          assert result["headline_acted_share"] == 0.2, result
+          assert [(row["scope"], row["call_class"], row["turn"]) for row in result["hold_violations"]] == [("held-repo", "git_push", 7)], result
+          print(json.dumps({"run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": result}, sort_keys=True))
+          ' "$probe_dir/receipt.json"
+        cwd: .
+  - id: dod-omn21971-integration-proof
+    description: The local Done gate places the focused action-score suite on a lab host with the checkout dependencies. The hosted deploy item above separately exercises the packaged node through the ONEX local runtime and asserts its returned scores.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21971 -- uv run --frozen pytest tests/nodes/node_compaction_action_score_compute/test_action_score.py -q --no-cov
         cwd: .

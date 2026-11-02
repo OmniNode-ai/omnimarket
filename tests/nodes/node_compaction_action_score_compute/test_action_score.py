@@ -14,6 +14,7 @@ import importlib
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import yaml
@@ -66,14 +67,17 @@ CLAIM = ModelOpenLoopItem(key=LANE, kind=EnumOpenLoopKind.OPEN_CLAIM)
 
 
 def call(
-    turn: int, call_class: str, text: str, refused: str | None = None
+    turn: int,
+    call_class: str,
+    text: str,
+    refused: Literal["by_design", "malformed"] | None = None,
 ) -> ModelContinuationEvent:
     return ModelContinuationEvent(
         turn=turn,
         source=EnumEventSource.TOOL_CALL,
         call_class=call_class,
         text=text,
-        refused=refused,  # type: ignore[arg-type]
+        refused=refused,
     )
 
 
