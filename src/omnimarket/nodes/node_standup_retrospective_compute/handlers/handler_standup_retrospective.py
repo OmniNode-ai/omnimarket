@@ -4,7 +4,9 @@
 
 RULING 2026-10-20T13:51:27Z, amended to Friday by RULING 2026-10-20T13:58:45Z. Entries are a JSON list of
 ``{role, product_use, idea | friction, process_change}``. Only those fields are read, so a name an entry carries never
-reaches the sheet; credit is the role. Drafts are never filed here.
+reaches the sheet; credit is a role of the policy's vocabulary. Drafts are never filed here. The weekday, the keys,
+the role vocabulary, the draft state, the credit grammar and every sentence are the injected policy's
+(``config.standup_retrospective`` of the contract, overlaid), none is a literal here.
 """
 
 import json
@@ -12,96 +14,153 @@ from datetime import datetime
 from typing import Any
 
 from omnimarket.nodes.node_standup_retrospective_compute.models.model_standup_retrospective import (
+    ModelStandupRetrospectivePolicy,
     ModelStandupRetrospectiveRequest,
     ModelStandupRetrospectiveResult,
 )
-
-FRIDAY = 4
-RETRO_FIELDS = ("product_use", "idea_or_friction", "process_change")
+from omnimarket.nodes.node_standup_retrospective_compute.overlay import (
+    load_standup_retrospective_policy,
+)
 
 
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _error(detail: str) -> str:
-    return f"retrospective: {detail.splitlines()[0] if detail else 'unparsable input'}"
-
-
-def retrospective_lines(
-    retrospective: dict[str, Any], drafts: list[dict[str, Any]]
-) -> list[str]:
-    """The text sheet's retrospective and ticket-draft sections; none when there is no retrospective."""
-    if not retrospective:
-        return []
-    people = retrospective["people"]
-    lines = [f"retrospective ({len(people)}):"]
-    for row in people:
-        parts = [
-            f"use: {row['product_use'] or 'not reported'}",
-            f"{row['kind'] or 'idea or friction'}: {row['idea_or_friction'] or 'not reported'}",
-            f"process change: {row['process_change'] or 'not reported'}",
-        ]
-        lines.append(f"  {row['role']}: {'; '.join(parts)}")
-    lines.append(f"ticket drafts ({len(drafts)}, not filed):")
-    lines += [
-        f"  [{draft['state']}] {draft['title']} (credit: {draft['credit']})"
-        for draft in drafts
-    ]
-    return lines
-
-
 class HandlerStandupRetrospective:
+    def __init__(self, policy: ModelStandupRetrospectivePolicy | None = None) -> None:
+        # the runtime builds a handler from its contract with no policy argument: the contract's
+        # config with the deployment overlay laid over it is the default; a caller injects its own
+        self.policy = (
+            policy if policy is not None else load_standup_retrospective_policy()
+        )
+        self._roles = {
+            role.strip().lower(): role for role in self.policy.role_vocabulary
+        }
+
+    def _error(self, detail: str) -> str:
+        first = (
+            detail.splitlines()[0] if detail else self.policy.messages.unparsable_detail
+        )
+        return f"{self.policy.messages.error_prefix}{first}"
+
+    def render(
+        self, retrospective: dict[str, Any], drafts: list[dict[str, Any]]
+    ) -> list[str]:
+        """The text sheet's retrospective and ticket-draft sections; none when there is no retrospective."""
+        if not retrospective:
+            return []
+        labels = self.policy.labels
+        people = retrospective["people"]
+        lines = [labels.section_heading.format(count=len(people))]
+        for row in people:
+            parts = [
+                labels.use_part.format(text=row["product_use"] or labels.not_reported),
+                labels.detail_part.format(
+                    kind=row["kind"] or labels.default_kind_label,
+                    text=row["idea_or_friction"] or labels.not_reported,
+                ),
+                labels.change_part.format(
+                    text=row["process_change"] or labels.not_reported
+                ),
+            ]
+            lines.append(
+                labels.person_line.format(
+                    role=row["role"], parts=labels.part_separator.join(parts)
+                )
+            )
+        lines.append(labels.drafts_heading.format(count=len(drafts)))
+        lines += [
+            labels.draft_line.format(
+                state=draft["state"], title=draft["title"], credit=draft["credit"]
+            )
+            for draft in drafts
+        ]
+        return lines
+
     def handle(
         self, request: ModelStandupRetrospectiveRequest
     ) -> ModelStandupRetrospectiveResult:
-        result = ModelStandupRetrospectiveResult()
-        if datetime.fromisoformat(request.until).weekday() != FRIDAY:
+        policy, messages = self.policy, self.policy.messages
+        notes: list[str] = []
+        errors: list[str] = []
+        drafts: list[dict[str, Any]] = []
+        retrospective: dict[str, Any] = {}
+        if datetime.fromisoformat(request.until).weekday() != policy.retro_weekday:
             if request.entries is not None:
-                result.notes.append("not a Friday: no retrospective section")
-            return result
+                notes.append(messages.not_a_retro_day_note)
+            return ModelStandupRetrospectiveResult(notes=notes)
         people: list[dict[str, Any]] = []
-        result.retrospective.update(friday=True, people=people)
+        retrospective.update(friday=True, people=people)
+        entries: Any = None
         if request.entries is None:
-            result.notes.append(
-                "Friday: no retrospective input (--retro); the section is empty"
-            )
-            return result
-        try:
-            entries = json.loads(request.entries)
-        except ValueError as error:
-            result.errors.append(_error(str(error)))
-            return result
-        if not isinstance(entries, list):
-            result.errors.append(_error("input is not a JSON list of entries"))
-            return result
-        for number, entry in enumerate(entries, 1):
-            role = _text(entry.get("role")) if isinstance(entry, dict) else ""
-            if not role:
-                result.errors.append(_error(f"entry {number} has no role; skipped"))
+            notes.append(messages.no_input_note)
+        else:
+            try:
+                entries = json.loads(request.entries)
+            except ValueError as error:
+                errors.append(self._error(str(error)))
+            else:
+                if not isinstance(entries, list):
+                    errors.append(self._error(messages.not_a_list_detail))
+                    entries = []
+        for number, entry in enumerate(entries or [], 1):
+            raw = entry if isinstance(entry, dict) else {}
+            said = _text(raw.get(policy.role_key))
+            if not said:
+                errors.append(
+                    self._error(messages.no_role_detail.format(number=number))
+                )
                 continue
-            idea, friction = _text(entry.get("idea")), _text(entry.get("friction"))
+            role = self._roles.get(said.lower())
+            if role is None:
+                errors.append(
+                    self._error(messages.unknown_role_detail.format(number=number))
+                )
+                continue
+            idea, friction = (
+                _text(raw.get(policy.idea_key)),
+                _text(raw.get(policy.friction_key)),
+            )
             row: dict[str, Any] = {
                 "role": role,
-                "product_use": _text(entry.get("product_use")),
+                "product_use": _text(raw.get(policy.product_use_key)),
                 "idea_or_friction": idea or friction,
-                "kind": "idea" if idea else "friction" if friction else "",
-                "process_change": _text(entry.get("process_change")),
+                "kind": policy.idea_kind
+                if idea
+                else policy.friction_kind
+                if friction
+                else "",
+                "process_change": _text(raw.get(policy.process_change_key)),
             }
-            row["missing"] = [key for key in RETRO_FIELDS if not row[key]]
+            row["missing"] = [
+                key
+                for key, value in row.items()
+                if key not in ("role", "kind", "missing") and not value
+            ]
             people.append(row)
             if row["idea_or_friction"]:
-                result.ticket_drafts.append(
+                credit = policy.credit_template.format(role=role)
+                drafts.append(
                     {
-                        "title": row["idea_or_friction"].splitlines()[0][:120],
-                        "state": "Backlog",
+                        "title": row["idea_or_friction"].splitlines()[0][
+                            : policy.draft_title_max_chars
+                        ],
+                        "state": policy.draft_state,
                         "kind": row["kind"],
-                        "credit": role,
-                        "description": (
-                            f"{row['idea_or_friction']}\n\nContributed at the Friday "
-                            f"retrospective ending {request.until}, credited to the {role}."
+                        "credit": credit,
+                        "description": policy.draft_description_template.format(
+                            text=row["idea_or_friction"],
+                            until=request.until,
+                            credit=credit,
                         ),
                         "filed": False,
                     }
                 )
-        return result
+        return ModelStandupRetrospectiveResult(
+            retrospective=retrospective,
+            ticket_drafts=drafts,
+            section_lines=self.render(retrospective, drafts),
+            errors=errors,
+            notes=notes,
+        )

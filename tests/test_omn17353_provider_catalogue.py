@@ -37,11 +37,8 @@ import pytest
 import yaml
 from pydantic import SecretStr
 
-from omnimarket.projection.credential_publisher import (
-    ModelInferenceCredentialCreateRequest,
-)
-from omnimarket.routing import byok_provider_backends as mod
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing import byok_provider_backends as mod
+from omnimarket.handlers.routing.byok_provider_backends import (
     CATALOG_PATH,
     ByokCatalogError,
     ModelByokProviderBackend,
@@ -51,6 +48,9 @@ from omnimarket.routing.byok_provider_backends import (
     load_byok_not_offered_providers,
     load_byok_plan_catalog,
     load_byok_provider_catalog,
+)
+from omnimarket.projection.credential_publisher import (
+    ModelInferenceCredentialCreateRequest,
 )
 
 pytestmark = pytest.mark.unit

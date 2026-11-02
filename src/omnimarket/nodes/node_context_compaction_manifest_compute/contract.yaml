@@ -14,6 +14,8 @@
 # and returns every boundary as a case or a typed exclusion. The required variables
 # ONEX_TRANSCRIPT_ROOT and ONEX_CONTEXT_REPLAY_ROOT are read by the bundle helpers, which fail
 # with a typed error naming the unset one.
+# The operator entry is node_transcript_manifest_effect; it validates a frozen inventory and
+# writes the compute operation's bundle files without returning private content in its receipt.
 # Hash rules and the exclusions (ORCHESTRATION_STATE, REPO_STATE) are in the handler docstring and
 # written into the manifest itself.
 name: context_compaction_manifest_compute

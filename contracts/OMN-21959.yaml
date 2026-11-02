@@ -15,6 +15,13 @@ requirements:
         statement: 'AC2: a test asserts a queued append whose request id is already on the ledger is settled as a duplicate, never moved to refused as a loss, and a differing payload under the same id is refused with the id and both digests named -- falsifier: uv run pytest tests -q -k outbox_request_id_clash'
       - id: AC3
         statement: 'AC3: a detector test recognises the classes bus-binding-degraded, bus-binding-outage and bus-binding-outbox-refused from their recorded evidence blocks and the actor resolves each in code, emitting to the exception queue only a case it cannot resolve -- falsifier: uv run pytest tests -q -k bus_binding_exception_actor'
+  - id: req-omn21959-wired-degraded-settlement
+    statement: The bus binding runs its declared degraded exception settlement on client commands.
+    acceptance:
+      - id: AC4
+        statement: 'open_bound_bus resolves this lane''s recorded non-decision bus-binding-degraded rows on a healthy durable command with empty outbox, without needing remembered episode, while decision rows and rows with queued requests stay open -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k "recorded_row_left_open or decision_row or requests_still_queued"'
+      - id: AC5
+        statement: 'one degraded episode appends only one alarm row even after external closure, and a subsequent episode appends a new row -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k episode'
 evidence_requirements:
   - kind: tests
     description: The bus-binding suites run at the pushed head on a lab host.
@@ -77,4 +84,49 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_outage_replay.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21959-guard-refusal
+    description: The replay puts the seven recorded guard-refusal cases in a real exception queue and expects none resolved as recorded, then expects the superseded, now-valid and still-open cases told apart after the causes are made good, with nothing appended for a superseded case and a decision row left alone.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/handlers/bus_binding/test_bus_binding_outbox_refused_guard.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21959-deploy-probe-guard-refusal
+    description: 'Deploy probe: the guard-refusal actor GitHub serves at the checked-out commit defines settle_guard_refusals. The module is absent at the merge base, so the content read fails there.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/bus_binding/guard_refusal.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def settle_guard_refusals" > /dev/null'
+        cwd: .
+      - check_type: command
+        check_value: grep -F 'def settle_guard_refusals' src/omnimarket/handlers/bus_binding/guard_refusal.py
+        cwd: .
+  - id: dod-omn21959-wired-ac4
+    description: open_bound_bus resolves this lane's recorded non-decision bus-binding-degraded rows on a healthy durable command with empty outbox, without needing remembered episode, while decision rows and rows with queued requests stay open
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k "recorded_row_left_open or decision_row or requests_still_queued"
+        cwd: .
+  - id: dod-omn21959-wired-ac5
+    description: one degraded episode appends only one alarm row even after external closure, and a subsequent episode appends a new row
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k episode
+        cwd: .
+  - id: dod-omn21959-deploy-probe-wired-policy
+    description: 'this hosted smoke checks the runtime settlement policy loaded from node_bus_binding_reducer/contract.yaml: alarm_scope episode and settle_on_healthy_read bus-binding-degraded'
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k the_contract_declares_the_settlement_step
         cwd: .

@@ -139,12 +139,23 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
+    # OMN-19991: migration-only until its contract and entry point land.
+    "node_projection_local_alerts",
+    # OMN-19986: migration-only until its contract and entry point land.
+    "node_projection_local_identity",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = set()
+MIGRATION_ONLY_NODE_DIRS: set[str] = {
+    # OMN-19991: the local alerts migrations precede its contract, which
+    # follows the omnibase_infra release that vendors them.
+    "node_projection_local_alerts",
+    # OMN-19986: the local identity migrations precede its contract, which
+    # follows the omnibase_infra release that vendors them.
+    "node_projection_local_identity",
+}
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -381,7 +392,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_host_drift_fleet is called in process with an injected bus, clock and
     # state store and reads with one stable group per host, not by a bus command,
     # so it is experimental with no handler_routing: 28 -> 29.
-    assert summary["skipped"] == 29
+    # node_lane_census_effect is run by a host systemd user timer through its own
+    # entry point, not by a bus command, so it is experimental with no
+    # handler_routing: 29 -> 30.
+    # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
+    # load_bringup_graph and declares no handler, so it is experimental with no
+    # handler_routing: 30 -> 31.
+    assert summary["skipped"] == 31
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

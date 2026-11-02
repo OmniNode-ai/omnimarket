@@ -53,18 +53,20 @@ if TYPE_CHECKING:
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.inference.local_byok_credential_adapter import (
-    LocalByokCredentialStore,
-    is_local_store_only_ref,
     local_secret_remediation,
+)
+from omnimarket.models.secret_store.model_secret_resolution_error import (
+    SecretResolutionError,
+    SecretStoreRefusedError,
+)
+from omnimarket.nodes.node_secret_store_effect.handlers.delegation_key_store import (
+    NodeSecretStore,
+    is_node_resolved_ref,
 )
 from omnimarket.tenant_credential_ref import (
     is_tenant_credential_ref,
     tenant_hint_from_ref,
 )
-
-
-class SecretResolutionError(RuntimeError):
-    """Raised when a declared ``api_key_ref`` cannot be resolved fail-closed."""
 
 
 class LocalSecretNotRegisteredError(SecretResolutionError):
@@ -165,13 +167,37 @@ class _SecretStoreOwnerLoop:
 _STORE_OWNER_LOOP = _SecretStoreOwnerLoop()
 
 
-class _MappedSecretStore:
+class _ReadOnlySecretStore:
+    """The write, list and lifecycle half of a read-only ``ProtocolSecretStore``."""
+
+    _label = "Lane"
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError(f"{self._label} secret store is read-only")
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError(f"{self._label} secret store is read-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        del prefix
+        return []
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        del timeout_seconds
+
+
+class _MappedSecretStore(_ReadOnlySecretStore):
     """``ProtocolSecretStore`` adapter over infra's logical secret resolver.
 
     Every read runs on :data:`_STORE_OWNER_LOOP` (OMN-20453), because this
     store is cached process-wide and the resolver behind it holds
     loop-bound asyncio locks.
     """
+
+    _label = "Mapped"
 
     def __init__(self, resolver: SecretResolver) -> None:
         self._resolver = resolver
@@ -184,25 +210,8 @@ class _MappedSecretStore:
             return None
         return resolved.get_secret_value()
 
-    async def set_secret(self, key: str, value: str) -> bool:
-        raise RuntimeError("Mapped secret store is read-only")
 
-    async def delete_secret(self, key: str) -> bool:
-        raise RuntimeError("Mapped secret store is read-only")
-
-    async def list_keys(self, prefix: str | None = None) -> list[str]:
-        del prefix
-        return []
-
-    async def health_check(self) -> bool:
-        return True
-
-    async def close(self, timeout_seconds: float = 30.0) -> None:
-        del timeout_seconds
-        return
-
-
-class _ConventionFallbackSecretStore:
+class _ConventionFallbackSecretStore(_ReadOnlySecretStore):
     """Default local store: literal env lookup, then dotted-ref → ENV_VAR convention.
 
     OMN-13861: the bare ``AdapterEnvSecretStore`` resolves ``os.environ[key]``
@@ -227,6 +236,8 @@ class _ConventionFallbackSecretStore:
     only. See ``get_secret``.
     """
 
+    _label = "Convention-fallback"
+
     def __init__(self) -> None:
         self._literal: ProtocolSecretStore = AdapterEnvSecretStore()
         self._convention: ProtocolSecretStore = _MappedSecretStore(
@@ -236,46 +247,19 @@ class _ConventionFallbackSecretStore:
         )
 
     async def get_secret(self, key: str) -> str | None:
-        # OMN-18694 AC4 put a tenant-ref branch here, returning the local
-        # credential store's answer before any of the three env lookups below.
-        # OMN-18695 moved that decision UP, into ``_select_resolver``, and
-        # widened it: a tenant ref and a contract-declared provider ref are
-        # both answered by the local store, so neither can reach this class at
-        # all. The branch is deleted rather than kept as a second guard --
-        # two places deciding the same thing is how they come to disagree, and
-        # the surviving one is the choke point every resolution passes
-        # through. ``test_omn18694_local_byok_openrouter.py`` still passes: it
-        # asserts the BEHAVIOUR, which is unchanged, not this call site.
+        # A tenant ref or a contract-declared provider ref never reaches this
+        # class: ``_select_resolver`` hands it to the secret store node (OMN-18695).
         literal = await self._literal.get_secret(key)
         if literal:
             return literal
         convention = await self._convention.get_secret(key)
         if convention:
             return convention
-        # OMN-18695: the provider-native alias map that used to sit here
-        # (``OPENROUTER_API_KEY`` / ``GEMINI_API_KEY``, OMN-13960/OMN-16891) is
-        # DELETED, not disabled. It named exactly the two refs that are now
-        # answered only by the local secret store, so it had become
-        # unreachable -- and an unreachable env alias for a provider key is
-        # the shape this change exists to remove, not something to keep in
-        # case the routing changes back.
+        # OMN-18695: no provider-native env alias (OPENROUTER_API_KEY, ...) remains.
         return None
-
-    async def set_secret(self, key: str, value: str) -> bool:
-        raise RuntimeError("Convention-fallback secret store is read-only")
-
-    async def delete_secret(self, key: str) -> bool:
-        raise RuntimeError("Convention-fallback secret store is read-only")
 
     async def list_keys(self, prefix: str | None = None) -> list[str]:
         return await self._literal.list_keys(prefix)
-
-    async def health_check(self) -> bool:
-        return True
-
-    async def close(self, timeout_seconds: float = 30.0) -> None:
-        del timeout_seconds
-        return
 
 
 # OMN-16984: the Infisical machine-identity bootstrap. These are the SAME
@@ -634,7 +618,7 @@ def injected_secret_store(store: ProtocolSecretStore | None) -> Iterator[None]:
         _INJECTED_STORE.reset(token)
 
 
-class _LazyConfiguredSecretStore:
+class _LazyConfiguredSecretStore(_ReadOnlySecretStore):
     """Builds the lane store on the first read, so a command that never resolves a secret in process
     (the durable route resolves it on the runtime) needs no machine identity (OMN-20275)."""
 
@@ -653,23 +637,6 @@ class _LazyConfiguredSecretStore:
 
     async def get_secret(self, key: str) -> str | None:
         return await self._built().get_secret(key)
-
-    async def set_secret(self, key: str, value: str) -> bool:
-        raise RuntimeError("Lane secret store is read-only")
-
-    async def delete_secret(self, key: str) -> bool:
-        raise RuntimeError("Lane secret store is read-only")
-
-    async def list_keys(self, prefix: str | None = None) -> list[str]:
-        del prefix
-        return []
-
-    async def health_check(self) -> bool:
-        return True
-
-    async def close(self, timeout_seconds: float = 30.0) -> None:
-        del timeout_seconds
-        return
 
 
 def secret_store_from_resolver_config(
@@ -883,8 +850,9 @@ def _select_resolver(
        resolves what the durable runtime resolves;
     2. a lane-CONFIGURED store (``ONEX_SECRET_RESOLVER_CONFIG_PATH``) wins next,
        for the same reason -- the lane declared its own mapping;
-    3. otherwise this is the LOCAL path, and a provider or tenant ref
-       (OMN-18695) is answered by this machine's own store and nothing else;
+    3. otherwise a provider or tenant ref (OMN-18695) is answered by the secret
+       store node and nothing else, through the store this machine's overlay
+       names (OMN-21921), and the node's own default is the machine's database;
     4. any other ref keeps the pre-existing convention/env behaviour unchanged.
     """
     if store is not None:
@@ -895,8 +863,9 @@ def _select_resolver(
     configured = _configured_secret_store()
     if configured is not None:
         return configured, EnumSecretSource.LANE_SECRET_STORE, False
-    if is_local_store_only_ref(api_key_ref):
-        return LocalByokCredentialStore(), EnumSecretSource.LOCAL_STORE, True
+    if is_node_resolved_ref(api_key_ref):
+        node_store = NodeSecretStore()
+        return node_store, node_store.source, True
     # Everything else keeps the pre-existing default. Routed through
     # :func:`_default_secret_store` rather than constructing the store inline
     # so that function stays the single substitution seam it already is for
@@ -925,7 +894,12 @@ async def _resolve_ref_value(
     """
     resolver, source, store_only = _select_resolver(api_key_ref, store=store)
 
-    value = await resolver.get_secret(api_key_ref)
+    try:
+        value = await resolver.get_secret(api_key_ref)
+    except SecretStoreRefusedError:
+        if required:
+            raise
+        return None, None
     if value:
         return SecretStr(value), source
 
@@ -944,7 +918,7 @@ async def _resolve_ref_value(
     if store_only:
         raise LocalSecretNotRegisteredError(
             f"Secret reference {api_key_ref!r} is declared by the routing "
-            "authority but this machine's local secret store holds no value "
+            "authority but this machine's secret store holds no value "
             f"for it. Register it with: {local_secret_remediation(api_key_ref)} "
             "(the value is read from stdin, never from an argument). "
             "Environment variables are not consulted for a provider "
@@ -1242,6 +1216,8 @@ async def resolve_tenant_scoped_api_key_async(
         )
         return resolved
     except SecretResolutionError as exc:
+        if isinstance(exc, SecretStoreRefusedError):
+            raise
         message = (
             f"Tenant {tenant_id!r} overlay backend declared secret_ref "
             f"{api_key_ref!r} which could not be resolved from the secret "

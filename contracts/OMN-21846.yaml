@@ -44,7 +44,7 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_operator_voice_gate.py -k operator_voice_marker -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21846-ac3-bus-decision
-  description: AC3 sends the two invented-approval fixtures and the plain summary through the gate's real wiring on the in-memory bus and reads the verdict from the gate's result topic. The dev-lane receipts of the same three prompts are in the PR body; a hosted runner cannot read the lab.
+  description: AC3 sends the two invented-approval fixtures and the plain summary through the gate's real wiring on the in-memory bus and reads the verdict from the gate's result topic. This check is the in-repo half of AC3 only. The dev-lane half is still owed and a hosted runner cannot read the lab. The three dev-lane runs in the change's PR body (85e2a132-3a3b-4d1b-8089-61323717fbb4, 7dbaa1e6-0492-4bda-b436-a4c8c356ff35, 22b17fd8-0dad-49a7-8db5-f84d05b7e204) ran on a build without the check and are the before-merge baseline, not the AC3 proof. AC3 is met when the same three prompts are re-run on the dev lane at or past the merge, the two fixture receipts name the operator_voice check as the refusal, and the plain-summary receipt is accepted.
   source: manual
   binds_ac:
   - AC3
@@ -53,7 +53,7 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_operator_voice_bus.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21846-deploy-probe
-  description: Read the published gate handler at the checked-out commit. It imports and calls the operator_voice check; the symbol is absent at the merge base, so a head without the wiring fails the probe.
+  description: Read the published gate handler at the checked-out commit. It imports and calls the operator_voice check; the symbol is absent when merged fix 921fd26a48ac17d3e21a172a51bc0f6167a542fa is reverted for the control, so a head without the wiring fails the probe.
   source: manual
   checks:
   - check_type: command

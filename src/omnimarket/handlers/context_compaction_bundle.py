@@ -25,6 +25,8 @@ from omnimarket.nodes.node_context_compaction_manifest_compute.models.model_comp
     ModelLedgerFile,
 )
 from omnimarket.nodes.node_context_compaction_manifest_compute.models.model_transcript_manifest import (
+    ModelCheckpointSnapshot,
+    ModelObligationCount,
     ModelSummaryPin,
     ModelTranscriptFile,
     ModelTranscriptManifestRequest,
@@ -80,6 +82,8 @@ def build_transcript_manifest_from_env(
     ledger_files: Iterable[ModelLedgerFile],
     seed: str,
     summary_pins: Iterable[ModelSummaryPin] = (),
+    obligation_counts: Iterable[ModelObligationCount] = (),
+    checkpoints: Iterable[ModelCheckpointSnapshot] = (),
 ) -> ModelTranscriptManifestResult:
     """Read the transcripts, build the manifest and write it under the replay root.
 
@@ -92,12 +96,15 @@ def build_transcript_manifest_from_env(
             transcripts=read_transcript_files(transcript_root),
             ledger_files=tuple(ledger_files),
             summary_pins=tuple(summary_pins),
+            obligation_counts=tuple(obligation_counts),
+            checkpoints=tuple(checkpoints),
             seed=seed,
         )
     )
     write_bundle_files(
         replay_root,
         (
+            *result.bundle_files,
             ModelBundleFile(
                 path=TRANSCRIPT_MANIFEST_NAME,
                 content=result.manifest_yaml.encode("utf-8"),

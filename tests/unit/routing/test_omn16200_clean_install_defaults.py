@@ -20,11 +20,11 @@ import pytest
 import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
 )
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +65,9 @@ def _merged(*, local_endpoint: str | None) -> list[dict[str, object]]:
 def test_a_customer_with_no_model_is_told_which_file_to_write(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from omnimarket.routing import delegation_backend_resolution as resolution_mod
+    from omnimarket.handlers.routing import (
+        delegation_backend_resolution as resolution_mod,
+    )
 
     overlay = tmp_path / ".omninode" / "delegation" / "bifrost_overrides.yaml"
     monkeypatch.setattr(resolution_mod, "_OVERLAY_PATH", overlay)
@@ -93,7 +95,9 @@ def test_the_message_survives_the_consume_boundary_sanitizer(
     redaction marker on any credential-shaped word."""
     from omnibase_infra.utils import sanitize_error_message
 
-    from omnimarket.routing import delegation_backend_resolution as resolution_mod
+    from omnimarket.handlers.routing import (
+        delegation_backend_resolution as resolution_mod,
+    )
 
     monkeypatch.setattr(resolution_mod, "_OVERLAY_PATH", tmp_path / "o.yaml")
     monkeypatch.delenv("BIFROST_CONTRACT_PATH", raising=False)
