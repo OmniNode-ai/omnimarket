@@ -1127,8 +1127,8 @@ def test_page_tabs_a_hash_that_names_no_tab_falls_back_to_the_remembered_one() -
     result = _run_shell(SHELL_FILES, hash="#nonsense", stored="map")
     assert result["sel"] == ["tab-map"]
     result = _run_shell(SHELL_FILES, stored="quality")
-    assert result["sel"] == ["tab-quality"]
-    assert result["hash"] == "#quality"
+    assert result["sel"] == ["tab-dashboard"]
+    assert result["hash"] == "#dashboard"
 
 
 def test_page_tabs_blocked_browser_storage_still_opens_the_dashboard() -> None:
@@ -1216,7 +1216,7 @@ def test_page_tabs_carry_a_lamp_and_a_caption_read_from_the_same_files() -> None
     assert "1 of 2 lines stopped" in out["sub-dashboard"]
     assert "3 better, 1 worse" in out["sub-process"]
     assert "snapshot" in out["sub-map"]
-    assert "data unread" in out["sub-quality"]
+    assert "sub-quality" not in out
 
 
 def test_page_dashboard_without_a_record_draws_nothing_and_says_it_is_unread() -> None:
