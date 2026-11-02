@@ -170,6 +170,7 @@ class ModelWorkLedgerRowRecord(BaseModel):
     source: str
     projected_at: datetime | None = None
     ledger_seq: int | None = Field(default=None, ge=1)
+    legacy_ordinal: int | None = Field(default=None, ge=1)
     ingested_at: AwareDatetime | None = None
 
 
@@ -197,7 +198,20 @@ class ModelWorkLedgerHoldInForce(BaseModel):
     pr: str | None = None
     surface: str | None = None
     until: str | None = None
+    freed: tuple[str, ...] = ()
     row: ModelWorkLedgerRowRecord
+
+
+class ModelWorkLedgerStaleHold(BaseModel):
+    """An ``until=open`` hold nothing released that is older than 14 days (OMN-21947).
+
+    Listed apart from the holds in force, with its age; never an enforcing hold.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    hold: ModelWorkLedgerHoldInForce
+    age_days: int
 
 
 class ModelWorkLedgerHoldCounts(BaseModel):
@@ -266,6 +280,7 @@ class ModelWorkLedgerQueryResult(BaseModel):
     rows: tuple[ModelWorkLedgerRowRecord, ...] = ()
     open_claims: tuple[ModelWorkLedgerOpenClaim, ...] = ()
     holds: tuple[ModelWorkLedgerHoldInForce, ...] = ()
+    stale_holds: tuple[ModelWorkLedgerStaleHold, ...] = ()
     hold_counts: ModelWorkLedgerHoldCounts | None = None
     inbox: tuple[ModelWorkLedgerInbox, ...] = ()
     freshness: ModelWorkLedgerFreshness | None = None

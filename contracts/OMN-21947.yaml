@@ -1,0 +1,98 @@
+schema_version: 1.0.0
+ticket_id: OMN-21947
+title: Adjudicate the work ledger verb disagreement between file and database and import the history with legacy_ordinal and the line-citation table
+summary: Each hold and claim the file and the database answer differently falls in one class (file-window truncation, database fold difference, before the database's first row), with the settled stale-hold rule applied first. The database replay now folds scoped releases and reads in the ordering contract (rows without a sequence by legacy_ordinal, then by ledger_seq). A tested, idempotent command (parity backfill) imports the archive splits and the live file once as source=archive-import with a legacy_ordinal, never touching an assigned ledger_seq, and fills ledger_line_citation with generation-aware keys.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21947-classes
+    statement: Every differing hold and claim is classified, with one test per class, and the stale-hold rule runs first.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: each differing hold and claim of M8 is classified as file-window truncation, database fold difference or before the first database row, with one test per class -- falsifier: uv run pytest tests -k "hold_class or claim_class" -q in omnimarket and in omnibase_core'
+  - id: req-omn21947-verb-parity
+    statement: The verbs return the same items from both sources after the 14-day stale-hold rule, stale holds listed under a separate heading with their age.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: holds, open-claims, open-rulings and inbox return the same items from both sources for one UTC day after the 14-day stale-hold rule, stale holds listed under a separate stale heading with their age -- falsifier: the L1 receipt of that day shows verb_diff=0 for every verb'
+  - id: req-omn21947-import
+    statement: The history import keeps every assigned ledger_seq and gives imported rows a legacy_ordinal.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the database''s earliest row equals the oldest archive split''s first stamp, the 99,042 assigned ledger_seq values are unchanged and unique, and imported rows keep ledger_seq null with a legacy_ordinal -- falsifier: select min(row_ts) against the oldest split, a before-and-after hash of the ledger_seq column, and select count(*), count(distinct ledger_seq) equal over assigned rows'
+  - id: req-omn21947-citations
+    statement: ledger_line_citation resolves a ledger:line citation as the file guard did.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: ledger_line_citation is built with generation-aware keys and every ledger:line citation in ACK and amends cells of the last 14 days resolves to the row_id the file guard resolves -- falsifier: uv run pytest tests -k citation_resolution -q over a recorded 14 days'
+evidence_requirements:
+  - kind: tests
+    description: The focused suites run on a lab host at the pushed head, and the Postgres proof runs against a loopback database.
+    command: uv run pytest tests/unit/nodes/node_projection_work_ledger tests/unit/nodes/node_work_ledger_query_effect tests/test_work_ledger_history_import_postgres.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21947-ac1
+    description: AC1 runs one test per class of difference (file-window truncation, before the first database row, database fold difference, stale hold, unclassified) for holds and for claims, and the database replay's per-cause fold tests.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger tests/unit/nodes/node_work_ledger_query_effect -k "hold_class or claim_class" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21947-ac2
+    description: AC2 is judged by the L1 receipt of a UTC day after the import runs on the live projection; the stale rule, the scoped-release fold and the ordering contract it needs are covered by the unit tests, and the import is proved on a loopback database.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_verb_adjudication.py tests/unit/nodes/node_work_ledger_query_effect -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21947-ac3
+    description: AC3 runs the import against a loopback Postgres in a disposable schema, twice, and compares the sha256 of the assigned ledger_seq column, its count and distinct count, min(row_ts) and the imported rows' legacy_ordinal, with a negative control that rolls back.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_history_import_plan.py tests/test_work_ledger_history_import_postgres.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21947-ac4
+    description: AC4 judges the citation table against a simulated ledger that rolls, recording what the file guard saw at each citing row, with a header-shift case and an unresolved case.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests -k citation_resolution -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21947-deploy-source-readback
+    description: Hosted-runner source-artifact readback requires the published migration and handlers at the evaluated commit to match this checkout. The change adds a migration and a command and wires no running service, so there is no service to probe; this checks the source artifact, and the focused tests exercise the behaviour.
+    source: manual
+    binds_ac:
+      - AC3
+      - AC4
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for module in migrations/0007_work_ledger_history_import.sql handlers/work_ledger_history_import.py handlers/work_ledger_citation.py; do
+            path="src/omnimarket/nodes/node_projection_work_ledger/$module"
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.out"
+            cmp "$path" "$readback_dir/source.out"
+          done
+          printf 'history-import source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_citation_resolution.py -q --no-cov --tb=line
+        cwd: .

@@ -21,6 +21,7 @@ from omnimarket.models.work_ledger_query.model_work_ledger_query import (
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
     ModelWorkLedgerRowRecord,
+    ModelWorkLedgerStaleHold,
 )
 from omnimarket.models.work_ledger_query.model_work_ledger_state import (
     ModelWorkLedgerLaneActivity,
@@ -50,6 +51,7 @@ __all__ = [
     "ModelWorkLedgerQueryRequest",
     "ModelWorkLedgerQueryResult",
     "ModelWorkLedgerRowRecord",
+    "ModelWorkLedgerStaleHold",
     "ModelWorkLedgerStateCursor",
     "ModelWorkLedgerStateEntity",
     "ModelWorkLedgerStatePage",
