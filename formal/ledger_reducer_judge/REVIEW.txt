@@ -1,0 +1,98 @@
+LedgerReducerJudge design review (OMN-21949, plan task L9, AC3)
+
+Reviewer lane:   ledger-l9c-1102 (claude sonnet). Not the modelling lanes (ledger-l9-1102,
+                 ledger-l9b-1102) and not the 2026-10-04 reviewer.
+Commit reviewed: omnimarket origin/dev 63fc12c0bb3e7169645cbc962000c5d62ea3c8af, which contains
+                 the merged model (omnimarket#4823, squash c8a3c9fe0). LedgerReducerJudge.tla
+                 sha256 19e33d993c2a58d3f4778420551386c6017550db4be1b2ac86b9e30feb63144e, equal to line 1 of results/SUMMARY.txt.
+Codex run:       codex exec, reasoning effort high, config-default model, read-only sandbox,
+                 thread 01a19da2-2ba6-7711-8136-f577427d9835, one prompt of 19,867 characters
+                 (plan L9 text, README abstractions, cfg summary, the .tla without its header).
+                 The harness-delegate wrapper refused first (run 45a95be8-c22d-42fc-947f-9863695dcb24,
+                 outcome=unavailable: codex config.toml on this host sets no model, and a model flag
+                 is not passed), so the same prompt ran through codex exec directly.
+
+VERDICT: approved
+
+No finding below is material: none lets the model pass while the modelled design is wrong, and none
+hides a failure from an AC1 or AC2 property. Each finding was checked against the .tla; the
+disposition says what was checked. Items marked CARRY are limits the next tasks (L10 to L13) must
+keep in view; they are not defects of the model.
+
+Questions put to Codex
+  Q1 crash in every gap (command, guard decision, one transaction, event, receipt, offset commit,
+     outbox relay) and a redelivery
+  Q2 do the invariants and the liveness state what the plan says
+  Q3 do the README abstractions hide an interleaving that matters
+  Q4 is each control a faithful negation, and does it fail on the named invariant only
+  Q5 does the adopted bound or the fairness assumption mask a liveness hole
+
+Findings and dispositions
+  F1 (Q1) Offset commit can precede publication of the event and receipt (CommitOffset vs
+     RelayPublish). Checked: true, Write..Commit..CommitOffset can run with no relay step. The
+     receipt is an outbox entry written in the same transaction, so it is durable at Commit; the
+     relay publishes later and EveryRequestAnswered and EveryCommittedRowPublished hold across it.
+     Plan section 4 says "offsets commit after the receipt"; the model reads that as durable in the
+     outbox. NOT MATERIAL (transactional outbox is the design). Resolved by a reading note in
+     README.txt (Review section). Gap coverage otherwise confirmed: WorkerCrash is enabled in every
+     pc other than idle (fetched, locked, decided, written, early, committed); a crash after Commit
+     redelivers and the guard answers duplicate (witness W2); RelayCrash sits between publish and
+     mark (witness W5).
+  F2 (Q2) "One receipt" is not checked; receipts is a set, so a republished receipt is invisible and
+     a request can hold an accepted and a duplicate receipt (witnesses W2, W3). Checked: true. Plan
+     L9 lists ReceiptTruth only, and both receipts carry the same seq as the committed row. The
+     "one row, no gap and one receipt" wording is in plan acceptance item 5 for L10's test.
+     NOT MATERIAL for L9. CARRY to L10: the writer must treat accepted-then-duplicate as one answer.
+  F3 (Q3) Receipt loss after publication is not modelled, so Answered stays true. Checked: true,
+     and README says so ("a lost receipt is the writer's replay"). The receipts topic is a durable
+     topic; loss before publication is the crash-before-relay case the model does cover, and the
+     writer replay path is exercised (W3). NOT MATERIAL. CARRY to L10: writer-side consumption is
+     not part of this model.
+  F4 (Q4) C1 can commit without ever sending the early receipt (Write to Commit skips EarlyReceipt
+     when ReceiptBeforeCommit=TRUE). Checked: true, the receipt is then dropped from the outbox.
+     This adds a harmless path to the control; TLC still reaches the early-receipt path and C1 is
+     rejected on ReceiptTruth (reproduced, below). NOT MATERIAL. Not edited.
+  F4b (Q4) Controls do not fail exclusively on the named invariant. Checked: true by design, and
+     reproduced for C2 (below). Each control cfg checks one property, so TLC reports that one; AC2
+     asks for rejection on the named invariant, which holds. C2 with SeqMatchesEventOrder,
+     PrincipalInterleavingSerial, ReceiptTruth and NoDuplicateRow added reports
+     PrincipalInterleavingSerial first. A gap in seq numbers violates the seq invariants together.
+     NOT MATERIAL. The "named invariant only" wording is not evidenced and is not claimed.
+  F5 (Q5) Liveness holds only because MaxCrashes and MaxRelayCrashes are finite; weak fairness on
+     WorkerStep and RelayStep does not exclude an unbounded fetch/crash or publish/crash loop.
+     Checked: true, and README states "crashes are bounded". Standard eventual-recovery
+     assumption. NOT MATERIAL. CARRY to L10: the shadow reducer needs a real recovery bound.
+  F6 (Q5) Weak fairness on Lock does not prevent one worker starving another under continuing
+     traffic; finite RowsPer and MaxReplays hide it. Checked: true (Lock needs holder = None, so it
+     is not continuously enabled). The adopted bounds (two principals, one row each) are stated in
+     README. NOT MATERIAL for AC1. CARRY to L10: use a fair (FIFO) acquisition or per-tenant
+     fairness in the build.
+
+Reviewer observation, not from Codex
+  O1 The falsifiers of AC1 and AC2 name bash formal/ledger_reducer_judge/run_all.sh. That file is
+     not in the tree at 63fc12c0b; the runner is python3 tests/formal/ledger_reducer_judge_tlc.py
+     (README Run section), and tests/formal/test_ledger_reducer_judge_model.py reads its results.
+     The merged commit message also names run_all.sh. A criterion line is not edited; the ticket
+     owner should decide whether to restate the falsifier or add a one-line wrapper.
+  O2 README.txt named the verdict file VERDICT.txt; the file is REVIEW.txt. Fixed in this change.
+
+Reproduction on a lab host (host h051, origin/dev 63fc12c0b, TLC from tla2tools.jar sha256
+936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88 through the
+eclipse-temurin:17-jre-alpine image; no java on the host)
+  C1_receipt_before_commit.cfg   Invariant ReceiptTruth is violated (341 states generated)
+  C2_seq_outside_tx.cfg          Invariant SeqGapless is violated (2437 states generated)
+  C2 widened (scratch cfg)       Invariant PrincipalInterleavingSerial is violated first
+  LedgerReducerJudge_adopted_conflict.cfg  Model checking completed. No error has been found. 6462581 states
+                                 generated, 1409415 distinct, finished in 12min 10s (distinct count equals
+                                 the checked-in results/ run); safety and both liveness properties checked.
+
+Not rerun here: the other controls, the witnesses and LedgerReducerJudge_adopted (12,737,053
+states, about 18 minutes). Their evidence is the checked-in results/ and SUMMARY.txt, whose model
+sha256 matches the tree reviewed.
+
+Commands run
+  python3 pr_state_local.py --pr omnimarket#4823            (state=MERGED)
+  harness_delegate.py run --harness codex --effort high     (refused, no model in config)
+  codex exec -C <empty dir> --skip-git-repo-check -c model_reasoning_effort="high" -s read-only --json -o <file> - < prompt
+  onex_lab_run.py --via bus --lane ledger-l9c-1102 --repo omnimarket --ref dev -- bash <probe script>
+  docker run eclipse-temurin:17-jre-alpine java -cp tla2tools.jar tlc2.TLC -workers 4 -config <cfg> LedgerReducerJudge.tla
