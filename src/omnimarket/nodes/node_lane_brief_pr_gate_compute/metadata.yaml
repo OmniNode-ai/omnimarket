@@ -1,0 +1,20 @@
+name: node_lane_brief_pr_gate_compute
+version: "1.0.0"
+description: "Pure brief gate check: a PR-opening brief names the repository in its Opens PR in line and is judged by the shared WIP rule; the mode (observe or enforce) is an injected overlay value - no LLM calls, no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_brief_pr_gate_compute: "omnimarket.nodes.node_lane_brief_pr_gate_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "lane-brief", "wip", "gate", "deterministic"]
+pack: "core"
+display_name: "Lane Brief PR Gate"
+node_role: "compute"
+tickets: ["OMN-21440"]

@@ -63,6 +63,7 @@ def _render(
         f"ROUTE: model={shell.model} effort={shell.effort}",
         f"Parent: {shell.parent}. Ticket: {request.ticket}. Repo: {shell.repo}. "
         f"Model: {shell.model}. Effort: {shell.effort}.",
+        f"Opens PR in: {shell.repo}",
         "",
         "## 1. Premises",
         "",

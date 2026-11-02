@@ -1,0 +1,21 @@
+name: node_package_announce_effect
+version: "1.0.0"
+description: "Announces every installed node package's contracts on the bus before any container exists and builds the node catalog from the announcements."
+omnibase_core_compat: ">=0.47.60,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_package_announce_effect: "omnimarket.nodes.node_package_announce_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  side_effect_class: bus_publish_consume
+dependencies:
+  - "omnibase_core>=0.47.60"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "announce", "catalog"]
+pack: "core"
+display_name: "Package Announce Effect"
+node_role: "effect"

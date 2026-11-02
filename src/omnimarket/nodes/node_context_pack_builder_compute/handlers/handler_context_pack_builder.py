@@ -10,6 +10,10 @@ import json
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
+from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus
+from omnibase_core.models.context.model_context_source_result import (
+    ModelContextSourceResult,
+)
 from omnibase_core.models.pack.model_context_chunk import ModelContextChunk
 from omnibase_core.models.pack.model_context_pack import ModelContextPack
 from omnibase_core.utils.util_context_pack import compute_chunk_id
@@ -78,9 +82,33 @@ def _missing_required_factors(
     profile: ModelContextProfile,
 ) -> tuple[EnumContextFactor, ...]:
     available = {artifact.factor for artifact in artifacts}
+    empty_allowed = set(profile.empty_allowed_factors)
     return tuple(
-        factor for factor in profile.required_factors if factor not in available
+        factor
+        for factor in profile.required_factors
+        if factor not in available and factor not in empty_allowed
     )
+
+
+def fails_build(
+    profile: ModelContextProfile,
+    factor: EnumContextFactor,
+    answer: ModelContextSourceResult,
+) -> bool:
+    """A required tier that is not usable fails the build.
+
+    The one exception is a factor the profile lists in ``empty_allowed_factors``
+    whose source affirms nothing is there: status ``unresolved`` with no error code.
+    Unavailable, stale, denied, ambiguous and errored answers still fail it.
+    """
+    if factor not in profile.required_factors:
+        return False
+    affirmed_empty = (
+        factor in profile.empty_allowed_factors
+        and answer.status is EnumContextSourceStatus.UNRESOLVED
+        and answer.error_code is None
+    )
+    return not affirmed_empty
 
 
 def _content_sha256(content: str) -> str:
