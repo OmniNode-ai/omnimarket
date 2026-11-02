@@ -1,0 +1,98 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21927"
+title: "The delegation-health verdict is a node in omnimarket: timeout share and silent-rung rules declared in its contract"
+summary: >-
+  Adds node_delegation_health_compute, a pure compute node that takes the counts a caller read
+  (per model and backend over 1h, the quiet window and 24h, the expected and pin-only rungs, the
+  outcome counts by terminal_failure_cause, whether lanes were running) and returns OK, DEGRADED
+  with a reason and one FIX per finding, UNREADABLE or UNTRUSTED. The timeout share, the minimum
+  run count and the expected-rung rule are the contract's verdict_rules. The counts of
+  2026-11-02T00:01Z are a regression fixture. The SQL reads and the ssh reader stay in the script.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-delegation-health-verdict-node"
+    statement: |-
+      The delegation-health verdict is a contract-driven pure compute node, and the 2026-11-02T00:01Z false green reads DEGRADED through it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: node_delegation_health_compute in omnimarket has a contract.yaml, a metadata.yaml, typed input and output models with extra=forbid and a handler, and returns OK, DEGRADED with reasons, or UNREADABLE as a typed verdict from the counts alone -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k verdict_types
+      - id: "AC2"
+        statement: |-
+          AC2: a regression test built from the recorded counts of 2026-11-02T00:01Z (132 of 172 timeouts, local-coder 0 attempts, local-heavy-reasoning serving the same model; fixture under tests/nodes/node_delegation_health_compute/fixtures) returns DEGRADED naming both the timeout share and the silent rung, and the same counts through the pre-fix rule read OK -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k recorded_2026_11_02T0001Z
+      - id: "AC3"
+        statement: |-
+          AC3: the timeout share, the minimum run count and the expected-rung rule are read from the contract, and changing the share in the contract changes the verdict with no code change -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k declared_threshold
+      - id: "AC4"
+        statement: |-
+          AC4: a window with fewer than the minimum runs never reads DEGRADED on timeouts, and a table without the outcome column reads as not judged with that said in the verdict -- falsifier: uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -q -k not_judged
+      - id: "AC5"
+        statement: |-
+          AC5: the suite passes on a lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4: the node suite, including the recorded-counts regression fixture."
+    command: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21927-ac1-verdict_types"
+    description: "AC1: the node's contract, metadata, extra=forbid models and handler return OK, DEGRADED, UNREADABLE and UNTRUSTED as a typed verdict from counts alone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k verdict_types -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21927-ac2-recorded_2026_11_02t0001z"
+    description: "AC2: the recorded counts read DEGRADED naming the timeout share and the silent rung, and OK through the pre-fix model-count rule."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k recorded_2026_11_02T0001Z -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21927-ac3-declared_threshold"
+    description: "AC3: a copy of the contract with a changed share, minimum or expected-rung rule changes the verdict with no code change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k declared_threshold -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21927-ac4-not_judged"
+    description: "AC4: 19 of 19 timeouts reads OK with the minimum named, and a missing outcome column is said in not_judged and the summary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py -k not_judged -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21927-ac5-suite"
+    description: "AC5: the whole node suite passes; the lab-run receipt (host, sha, exit code) is in the PR body."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21927-deploy-contract-rules"
+    description: "Deploy probe: read the node's contract.yaml at the checked-out commit from GitHub and require the declared timeout share. The base has no such file and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_health_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^  timeout_share_percent: 50$' | grep -qx 1
+  - id: "dod-omn21927-integration-proof"
+    description: "The pushed head ran the delegation-health node suite, including its golden chain, on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21927 -- uv run --frozen pytest tests/nodes/node_delegation_health_compute/test_delegation_health_verdict.py tests/nodes/node_delegation_health_compute/test_golden_chain_delegation_health_compute.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "."

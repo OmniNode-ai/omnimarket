@@ -1,0 +1,80 @@
+# Synthetic ledger rows preserving the source fixture grammar cases.
+# Each row follows a group and case description.
+
+## refused: do not land, unquoted, capitals
+2026-09-26T02:00:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:00:00Z-lane-a | pr=repo#12 | DO NOT LAND repo#12 at this head. An amended head will follow.
+
+## refused: superseded, do not land; order matters
+2026-09-26T02:01:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:01:00Z-lane-a | pr=repo#12 | ORDER MATTERS: land repo#12 first, then repo-b#13. SUPERSEDED, do NOT land repo#11.
+
+## refused: do not land before; lands after
+2026-09-26T02:02:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:02:00Z-lane-a | pr=repo#12 | DRAFT, stacked on repo#11; do not land before #11. It also lands after repo-b#13.
+
+## refused: do not land until checks are green
+2026-09-26T02:03:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:03:00Z-lane-a | pr=repo#12 | PR #12 is ready for review; do not land until required checks are green.
+
+## refused: must not land alone
+2026-09-26T02:04:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:04:00Z-lane-a | pr=repo#12 | The patch needs another rebase. repo-b#13 is held with it (must not land alone).
+
+## refused: needs land after another PR
+2026-09-26T02:05:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:05:00Z-lane-a | pr=repo#12 | repo#11 needs LAND. repo#12 needs LAND after repo#11; route the dependent work to lane-b.
+
+## refused: land after two other PRs
+2026-09-26T02:06:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:06:00Z-lane-a | pr=repo#12 | land after #10 and #11; verify the checks at the selected head.
+
+## refused: restates another row's hold, unquoted
+2026-09-26T02:07:00Z | STATUS | lane=lane-a | pr=repo#12 | Read the HOLD row (do not land repo#12 or any tooling PR); the earlier PASS remains proof only.
+
+## refused: withdrawn, do not land until a new MSG
+2026-09-26T02:08:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:08:00Z-lane-a | pr=repo#12 | WITHDRAWN, do NOT land repo#12 until a new MSG from this lane with a new head and proof.
+
+## refused: must not land in the current order
+2026-09-26T02:09:00Z | CLAIM | lane=lane-a | pr=repo#12 | ticket=OMN-1234 | worktree=none | Tell lane-b about armed PRs that must not land in their current order; repo#12 is still blocked.
+
+## refused: dependent landing after another PR
+2026-09-26T02:10:00Z | MSG | from=lane-a | to=lane-b | id=2026-09-26T02:10:00Z-lane-a | pr=repo#12 | Draft PR https://example.test/repo/pull/12 ready for dependent landing after #11; never arm.
+
+## allowed: never arm; land by REST once green
+2026-09-26T02:11:00Z | STATUS | lane=lane-a | pr=repo#12 | ARM-OFF, never arm; land by REST squash once green. The required check has no proof yet.
+
+## allowed: conduct list never arm/merge/rerun CI
+2026-09-26T02:12:00Z | CLAIM | lane=lane-a | pr=repo#12 | ticket=OMN-1234 | worktree=none | scope=add coverage for repo#12; never arm/merge/rerun CI. est ~2 lane-hours; displaces nothing
+
+## allowed: conduct list Never merge, arm or rerun
+2026-09-26T02:13:00Z | CLAIM | lane=lane-a | pr=repo#12 | ticket=OMN-1234 | worktree=none | scope=independent verifier of repo#12; Never merge, arm or rerun; use temporary registries only.
+
+## allowed: conduct list Never merge, ready-flip, release
+2026-09-26T02:14:00Z | CLAIM | lane=lane-a | pr=repo#12 | ticket=OMN-1234 | worktree=none | scope=stage repo#12 and repo-b#13. Never merge, ready-flip, release, or touch shared services.
+
+## allowed: names hyphenated hold vocabulary as nouns
+2026-09-26T02:15:00Z | STATUS | lane=lane-a | pr=repo#12 | The hold:auto-merge label means ARM-OFF. The audit mentioned do-not-merge/standalone/merge-order vocabulary; no arm, no merge.
+
+## refused: never arm, but restates an ordering dependency in prose
+2026-09-26T02:16:00Z | STATUS | lane=lane-a | pr=repo#12 | never arm; verification says repo#12 merges dev only after #11 lands. Keep the claim for another pass.
+
+## allowed: operator ruling naming a do-not-land set
+2026-09-26T02:17:00Z | RULING | lane=lane-a | pr=repo#12 | Operator says "review the open PRs". Standing exclusions: the DO-NOT-LAND set repo#12, repo-b#13.
+
+## allowed: surface HOLD with until=
+2026-09-26T02:18:00Z | HOLD | lane=lane-a | id=2026-09-26T02:18:00Z-lane-a | surface=surface-a | until=2026-09-26T03:00:00Z | reason=disposable proof on host-a at 192.0.2.10; the shared runtime is unchanged
+
+## hold-refused: prose until, no release field
+2026-09-26T02:19:00Z | HOLD | lane=lane-a | id=2026-09-26T02:19:00Z-lane-a | pr=repo#12 | reason=missing coverage | until: backstop lands and is verified
+
+## hold-refused: no release condition
+2026-09-26T02:20:00Z | HOLD | lane=lane-a | id=2026-09-26T02:20:00Z-lane-a | pr=repo#12 | Do not land repo#12 or any tooling PR; an explicit release must follow the replacement.
+
+## refused: do not merge before another PR is on dev
+2026-09-26T02:21:00Z | CLAIM | lane=lane-a | pr=repo#12 | ticket=OMN-1234 | worktree=none | scope=fix the validation failure; do NOT merge before repo-b#13 is on dev and in the test image.
+
+## allowed: never arm, repo drain status
+2026-09-26T02:22:00Z | STATUS | lane=lane-a | pr=repo#12 | ARM-OFF auto-merge label (never arm; merge by REST on the exact head). The checks are pending.
+
+## allowed: RELEASE reporting a stale instruction in single quotes
+2026-09-26T02:23:00Z | RELEASE | lane=lane-a | pr=repo#12 | re=2026-09-26T01:00:00Z-lane-b | class=STALE | releases=MSG 'Do not merge, arm or rerun' | the instruction was addressed to lane-b at an obsolete head
+
+## allowed: worker conduct list must not merge/arm/relabel
+2026-09-26T02:24:00Z | CLAIM | lane=lane-a | pr=repo#12 | ticket=OMN-1234 | worktree=none | scope=add a shared CI check; source=repo-docs | Codex must not merge/arm/relabel
+
+## allowed: merge as a noun, then a new clause naming a PR
+2026-09-26T02:25:00Z | STATUS | lane=lane-a | pr=repo#12 | no runtime merge this cycle; after #11 lands its start is a separate step recorded against the ruling

@@ -33,14 +33,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from scripts.ci.check_integration_skips import (
-    GuardConfig,
-    classify_skip,
-    evaluate,
+import yaml
+from omnibase_core.nodes.node_integration_skips_check_compute.runtime_integration_skips_check import (
     main,
-    parse_junit,
 )
+
+# OMN-21940: the guard is omnibase_core's integration-skip-guard runtime; this repo
+# supplies the two configs (merge-gating and nightly) and the workflow wiring.
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _NIGHTLY_CONFIG = _REPO_ROOT / "scripts" / "ci" / "nightly_chain_skip_guard.yaml"
@@ -91,47 +90,66 @@ _JUNIT_ZERO_COLLECTED = """<?xml version="1.0" encoding="utf-8"?>
 <testsuites><testsuite name="pytest" tests="0" skipped="0"></testsuite></testsuites>"""
 
 
-@pytest.fixture
-def nightly_cfg() -> GuardConfig:
-    return GuardConfig.load(_NIGHTLY_CONFIG)
-
-
-@pytest.fixture
-def merge_gating_cfg() -> GuardConfig:
-    return GuardConfig.load(_MERGE_GATING_CONFIG)
-
-
 def _write(tmp_path: Path, name: str, body: str) -> Path:
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")
     return path
 
 
+def _junit_one_skip(reason: str) -> str:
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" tests="1" skipped="1">
+ <testcase classname="tests.delegation_golden.test_layer2_live_runner.TestDelegationGoldenTasksLive"
+   name="test_case_behaves_as_expected[I1]" time="0.0">
+   <skipped type="pytest.skip" message="{reason}"/>
+ </testcase>
+</testsuite></testsuites>"""
+
+
+def _verdict(
+    tmp_path: Path, body: str, config: Path, capsys: pytest.CaptureFixture[str]
+) -> tuple[int, str]:
+    report = _write(tmp_path, "report.xml", body)
+    rc = main(["--junit", str(report), "--config", str(config)])
+    captured = capsys.readouterr()
+    return rc, captured.out + captured.err
+
+
 @pytest.mark.unit
 class TestNightlyConfigClassification:
     """AC1 — both observed skip reasons are false-greens, not optional skips."""
 
-    def test_live_flag_skip_is_a_false_green(self, nightly_cfg: GuardConfig) -> None:
-        offending, is_allowed = classify_skip(_REASON_LIVE_FLAG_UNSET, nightly_cfg)
-        assert offending is not None, (
+    def test_live_flag_skip_is_a_false_green(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc, out = _verdict(
+            tmp_path, _junit_one_skip(_REASON_LIVE_FLAG_UNSET), _NIGHTLY_CONFIG, capsys
+        )
+        assert rc == 1, (
             "the nightly SETS OMN_ALLOW_LIVE_E2E_PROBE itself; a skip citing it "
             "unset means the job env broke, which is a false-green, not an opt-out"
         )
-        assert not is_allowed
+        assert "FALSE-GREEN" in out
 
     def test_lane_password_skip_is_a_false_green(
-        self, nightly_cfg: GuardConfig
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        offending, is_allowed = classify_skip(_REASON_LANE_PASSWORD_UNSET, nightly_cfg)
-        assert offending is not None
-        assert not is_allowed
+        rc, out = _verdict(
+            tmp_path,
+            _junit_one_skip(_REASON_LANE_PASSWORD_UNSET),
+            _NIGHTLY_CONFIG,
+            capsys,
+        )
+        assert rc == 1
+        assert "FALSE-GREEN" in out
 
-    def test_nothing_is_optional_on_the_nightly(self, nightly_cfg: GuardConfig) -> None:
-        assert nightly_cfg.allowed_optional_patterns == [], (
+    def test_nothing_is_optional_on_the_nightly(self) -> None:
+        config = yaml.safe_load(_NIGHTLY_CONFIG.read_text(encoding="utf-8"))
+        assert not config.get("allowed_optional_skip_patterns"), (
             "the nightly provisions the lane it probes; no skip on it is legitimate"
         )
-        assert nightly_cfg.silent_skip_allowed is False
-        assert nightly_cfg.require_executed_min >= 1
+        assert config["silent_skip_allowed"] is False
+        assert config["require_executed_min"] >= 1
 
 
 @pytest.mark.unit
@@ -139,34 +157,26 @@ class TestNightlyGateVerdicts:
     """AC2 — an all-skipped or zero-collected session must exit non-zero."""
 
     def test_all_skipped_night_turns_the_gate_red(
-        self, tmp_path: Path, nightly_cfg: GuardConfig
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        report = _write(tmp_path, "all_skipped.xml", _JUNIT_ALL_SKIPPED)
-        violations = evaluate(parse_junit([report]), nightly_cfg, strict=False)
-        assert violations, "seven green nights over zero live cases is the defect"
-        joined = " ".join(violations)
-        assert "ZERO/UNDER-COLLECTION" in joined
-        assert "FALSE-GREEN" in joined
-
-    def test_all_skipped_night_exits_non_zero_through_the_cli(
-        self, tmp_path: Path
-    ) -> None:
-        report = _write(tmp_path, "all_skipped.xml", _JUNIT_ALL_SKIPPED)
-        rc = main(["--junit", str(report), "--config", str(_NIGHTLY_CONFIG)])
-        assert rc == 1, "the workflow step reads this exit code; 0 is the false-green"
+        rc, out = _verdict(tmp_path, _JUNIT_ALL_SKIPPED, _NIGHTLY_CONFIG, capsys)
+        assert rc == 1, "seven green nights over zero live cases is the defect"
+        assert "ZERO/UNDER-COLLECTION" in out
+        assert "FALSE-GREEN" in out
 
     def test_zero_collected_night_turns_the_gate_red(
-        self, tmp_path: Path, nightly_cfg: GuardConfig
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        report = _write(tmp_path, "zero.xml", _JUNIT_ZERO_COLLECTED)
-        violations = evaluate(parse_junit([report]), nightly_cfg, strict=False)
-        assert any("ZERO/UNDER-COLLECTION" in v for v in violations)
+        rc, out = _verdict(tmp_path, _JUNIT_ZERO_COLLECTED, _NIGHTLY_CONFIG, capsys)
+        assert rc == 1
+        assert "ZERO/UNDER-COLLECTION" in out
 
-    def test_genuine_live_night_passes(self, tmp_path: Path) -> None:
-        report = _write(tmp_path, "live.xml", _JUNIT_LIVE_RUN)
-        rc = main(["--junit", str(report), "--config", str(_NIGHTLY_CONFIG)])
+    def test_genuine_live_night_passes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc, out = _verdict(tmp_path, _JUNIT_LIVE_RUN, _NIGHTLY_CONFIG, capsys)
         assert rc == 0, (
-            "a real live run must not be flagged; the gate has to stay usable"
+            f"a real live run must not be flagged; the gate has to stay usable: {out}"
         )
 
 
@@ -196,27 +206,42 @@ class TestMergeGatingConfigUnchanged:
     """AC5 — and the demonstration of why a second config was necessary."""
 
     def test_merge_gating_still_treats_live_optin_as_optional(
-        self, merge_gating_cfg: GuardConfig
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        offending, is_allowed = classify_skip(
-            "live e2e probe; set OMN_ALLOW_LIVE_E2E_PROBE=true to enable",
-            merge_gating_cfg,
-        )
-        assert offending is None
-        assert is_allowed, (
+        body = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" tests="2" skipped="1">
+ <testcase classname="tests.live.TestLive" name="test_probe" time="0.0">
+   <skipped type="pytest.skip" message="live e2e probe; set OMN_ALLOW_LIVE_E2E_PROBE=true to enable"/>
+ </testcase>
+ <testcase classname="tests.live.TestLive" name="test_executed" time="0.1"/>
+</testsuite></testsuites>"""
+        rc, out = _verdict(tmp_path, body, _MERGE_GATING_CONFIG, capsys)
+        assert rc == 0, (
             "on a PR job no lane is provisioned, so this skip is legitimate — "
-            "OMN-14172 behaviour must not regress"
+            f"OMN-14172 behaviour must not regress: {out}"
         )
 
     def test_merge_gating_config_would_not_have_caught_the_class_level_skip(
-        self, merge_gating_cfg: GuardConfig
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        offending, is_allowed = classify_skip(_REASON_LIVE_FLAG_UNSET, merge_gating_cfg)
+        body = (
+            _JUNIT_ALL_SKIPPED.replace(
+                _REASON_LANE_PASSWORD_UNSET, _REASON_LIVE_FLAG_UNSET
+            )
+            .replace('tests="2" skipped="2"', 'tests="3" skipped="2"')
+            .replace(
+                "</testsuite>",
+                '<testcase classname="tests.live.TestLive" name="test_executed" time="0.1"/>'
+                "</testsuite>",
+            )
+        )
+        merge_rc, merge_out = _verdict(tmp_path, body, _MERGE_GATING_CONFIG, capsys)
+        nightly_rc, _ = _verdict(tmp_path, body, _NIGHTLY_CONFIG, capsys)
         # This is the reason the nightly cannot simply reuse the merge-gating
         # config: it classifies the exact skip that produced seven silent nights
         # as legitimately optional.
-        assert offending is None
-        assert is_allowed
+        assert merge_rc == 0, merge_out
+        assert nightly_rc == 1
 
 
 @pytest.mark.unit
@@ -226,14 +251,14 @@ class TestNightlyWorkflowWiring:
     def test_pytest_step_emits_a_junit_report_the_guard_reads(self) -> None:
         body = _NIGHTLY_WORKFLOW.read_text(encoding="utf-8")
         assert "--junitxml=" in body, "no report means nothing to evaluate"
-        assert "check_integration_skips.py" in body
+        assert "runtime_integration_skips_check" in body
         assert "nightly_chain_skip_guard.yaml" in body, (
             "the guard must run against the nightly config, not the merge-gating one"
         )
 
     def test_guard_step_runs_even_when_pytest_fails(self) -> None:
         body = _NIGHTLY_WORKFLOW.read_text(encoding="utf-8")
-        guard_idx = body.index("check_integration_skips.py")
+        guard_idx = body.index("runtime_integration_skips_check")
         # The guard step's own `if:` must precede its run block.
         preceding = body[:guard_idx]
         step_start = preceding.rindex("- name:")
