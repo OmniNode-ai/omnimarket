@@ -38,22 +38,22 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_context_install_confirm_compute tests/nodes/node_context_compaction_receipts_fold_compute tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21115-ac2
-    description: "AC2 is the permutation-with-duplicates tests of the install-confirm compute and of the receipts and current-context folds, both on dev."
+    description: "AC2 is the permutation-with-duplicates tests of the install-confirm compute and of the receipts and current-context folds, both on dev, plus a trigger-chain permutation test that is new in this change."
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py::test_every_permutation_with_duplicates_folds_to_one_result tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py::test_every_permutation_with_duplicates_folds_to_one_state tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py::test_200_permutations_with_random_duplicate_insertion -q --no-cov --tb=line
+        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py::test_every_permutation_with_duplicates_folds_to_one_result tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py::test_every_permutation_with_duplicates_folds_to_one_state tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py::test_200_permutations_with_random_duplicate_insertion tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py::test_trigger_chunk_permutations_with_duplicates_yield_one_confirmation -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21115-ac3
-    description: "AC3 is the append-a-later-boundary tests of the compute and of the fold, both on dev."
+    description: "AC3 is the append-a-later-boundary tests of the compute and of the fold, both on dev, plus a trigger-chain later-activation replay test that is new in this change."
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py::test_appending_a_later_boundary_never_changes_an_earlier_fact tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py::test_later_boundary_preserves_earlier_activation_folds -q --no-cov --tb=line
+        check_value: uv run pytest tests/nodes/node_context_install_confirm_compute/test_handler_context_install_confirm.py::test_appending_a_later_boundary_never_changes_an_earlier_fact tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py::test_later_boundary_preserves_earlier_activation_folds tests/nodes/node_context_install_confirm_trigger_effect/test_handler_context_install_confirm_trigger.py::test_trigger_replay_with_a_later_activation_keeps_the_earlier_fact -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21115-ac4
     description: "AC4 is the writer suite on dev plus a new chain test: a confirmation the trigger produces, replayed twice, reaches the writer and reports rows_upserted above zero with every row verdict installed; the writer suite also pins zero for a refused insert."

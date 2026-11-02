@@ -296,3 +296,66 @@ def test_replay_runs_only_the_fold_with_no_process_network_or_transcript_read(
         .rows
     )
     assert rows
+
+
+def test_trigger_chunk_permutations_with_duplicates_yield_one_confirmation() -> None:
+    """AC2 through the trigger: chunk order and duplicates never change the result."""
+    import random
+
+    ordered = chunks(package(), 3)
+    expected = (
+        HandlerContextInstallConfirmTrigger()
+        .handle(
+            APPLIED,
+            FakeSessionCompactSource(
+                snapshot(chunks=ordered, activations=(activation(),))
+            ),
+        )
+        .confirmation
+    )
+    assert expected is not None
+    rng = random.Random(21115)
+    for _ in range(25):
+        shuffled = [*ordered, *rng.sample(ordered, k=rng.randint(1, len(ordered)))]
+        rng.shuffle(shuffled)
+        reader = FakeSessionCompactSource(
+            snapshot(chunks=tuple(shuffled), activations=(activation(),))
+        )
+        got = HandlerContextInstallConfirmTrigger().handle(APPLIED, reader).confirmation
+        assert got == expected
+
+
+def test_trigger_replay_with_a_later_activation_keeps_the_earlier_fact() -> None:
+    """AC3 through the trigger: appending a later activation leaves the earlier fact identical."""
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from omnimarket.models.context_install_confirm import ModelPublishedActivation
+
+    handler = HandlerContextInstallConfirmTrigger()
+    base = handler.handle(
+        APPLIED,
+        FakeSessionCompactSource(
+            snapshot(chunks=chunks(package(), 3), activations=(activation(),))
+        ),
+    ).confirmation
+    assert base is not None
+    later = ModelPublishedActivation(
+        activation_id=UUID("9f3c0000-0000-4000-8000-000000000002"),
+        installed_messages_hash="f" * 64,
+        published_at=datetime(2026, 10, 17, 13, tzinfo=UTC),
+    )
+    after = handler.handle(
+        APPLIED,
+        FakeSessionCompactSource(
+            snapshot(chunks=chunks(package(), 3), activations=(activation(), later))
+        ),
+    ).confirmation
+    assert after is not None
+    earlier = {f.activation_id: f.model_dump_json() for f in base.facts}
+    kept = {
+        f.activation_id: f.model_dump_json()
+        for f in after.facts
+        if f.activation_id in earlier
+    }
+    assert kept == earlier
