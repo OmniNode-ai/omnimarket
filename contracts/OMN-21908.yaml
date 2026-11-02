@@ -1,0 +1,96 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21908"
+title: "A host table row decides which lab hosts take Docker work"
+summary: "Bus placement checked `--need docker` against the advertised tool list, which is one constant on every host, so a host with no Docker passed. Operator RULING 2026-11-01T20:24:40Z takes Docker off the Macs, so the host table gains a `docker` capability column the placement node judges."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21908-docker-column"
+    statement: |-
+      A caller's need for a tool that names a host capability column is judged against the host table row, so a row declaring `docker: false` takes no Docker unit though it advertises the tool.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a unit needing docker is refused on a `docker: false` row with a reason naming the capability, and is placed on a row that takes Docker; alone with such a row it is refused as HOST_TABLE."
+  - id: "req-omn21908-other-units-unchanged"
+    statement: |-
+      A unit with no such need still runs on a `docker: false` row, and a tool that names no capability column stays a plain tool check.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a unit with no Docker need is placed on a `docker: false` row, and a need for `gh` is decided by the advertised tools alone."
+evidence_requirements:
+  - kind: "tests"
+    description: "The lab host table placement tests pass, the Docker column ones among them."
+    command: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21908-docker-refused"
+    description: "A Docker unit is refused on a no-Docker row and placed on a row that takes Docker."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k docker_unit"
+        cwd: "."
+  - id: "dod-omn21908-other-units"
+    description: "Units without a Docker need are unchanged on that row."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k 'no_docker_still_runs or not_a_capability_column'"
+        cwd: "."
+  - id: "dod-omn21908-deploy-local-placement"
+    description: "Hosted-runner deploy smoke invokes the placement node through the ONEX local runtime with an in-memory backend. It asserts Docker work is refused on a no-Docker row and admitted on a Docker row, while ordinary work is admitted on both. No broker, Docker daemon or production rollout is required."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          python -c '
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          request = {"repo": "omnimarket", "kind": "test", "host_names": ["with-docker", "without-docker"], "table": [{"name": "with-docker", "target": "with-docker", "docker": True}, {"name": "without-docker", "target": "without-docker", "docker": False}], "need_tools": ["docker"]}
+          (root / "docker.json").write_text(json.dumps(request))
+          request["need_tools"] = []
+          (root / "ordinary.json").write_text(json.dumps(request))
+          ' "$probe_dir"
+          for expected in docker ordinary; do
+            onex node node_lab_placement_compute --input "$probe_dir/$expected.json" --state-root "$probe_dir/$expected.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$expected.receipt.json"
+            python -c '
+          import json
+          import sys
+          from pathlib import Path
+          expected, path = sys.argv[1:]
+          receipt = json.loads(Path(path).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"] == "omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement.ModelLabPlacementResult", receipt
+          result = receipt["result"]
+          rows = {row["host_name"]: row for row in result["verdicts"]}
+          assert set(rows) == {"with-docker", "without-docker"}, result
+          assert rows["with-docker"]["eligible"] is True, result
+          if expected == "docker":
+              assert result["unit"]["needs"] == ["docker"], result
+              assert rows["without-docker"]["eligible"] is False, result
+              assert "lacks docker" in rows["without-docker"]["reason"], result
+          else:
+              assert result["unit"]["needs"] == [], result
+              assert rows["without-docker"]["eligible"] is True, result
+          print(json.dumps({"probe": expected, "run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": result}, sort_keys=True))
+          ' "$expected" "$probe_dir/$expected.receipt.json"
+          done
+        cwd: "."
