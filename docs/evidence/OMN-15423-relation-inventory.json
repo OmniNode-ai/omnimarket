@@ -9542,6 +9542,7 @@
     {
       "accessor_nodes": [
         "node_projection_work_ledger",
+        "node_work_ledger_query_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -9553,7 +9554,8 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml"
+        "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
+        "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -9588,7 +9590,8 @@
       "partitioning": [],
       "producer": "node_projection_work_ledger",
       "readers": [
-        "node_pr_landing_orchestrator"
+        "node_pr_landing_orchestrator",
+        "node_work_ledger_query_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [
