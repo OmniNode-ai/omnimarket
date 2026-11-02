@@ -223,6 +223,7 @@ def read_ledger_rows(
     *,
     window_days: int,
     cut_chars: int,
+    timeout_seconds: int,
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
@@ -243,12 +244,12 @@ def read_ledger_rows(
                 [sys.executable, str(reader), *query],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=timeout_seconds,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise SourceRefusedError(
-                f"ledger reader {reader} timed out: repair the reader or supply ledger_rows_file"
+                f"ledger reader {reader} did not finish within {timeout_seconds} s: repair the reader or supply ledger_rows_file"
             ) from exc
         if result.returncode:
             raise SourceRefusedError(

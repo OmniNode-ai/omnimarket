@@ -142,6 +142,7 @@ class HandlerFactoryFloorEffect:
             ledger=read_ledger_rows(
                 window_days=rt.ledger_window_days,
                 cut_chars=rt.ledger_cut_chars,
+                timeout_seconds=rt.ledger_timeout_seconds,
                 plugin_root=Path(plugin_root) if plugin_root else None,
                 plugin_root_env=rt.plugin_root_env,
                 ledger_rows_file=Path(request.ledger_rows_file)

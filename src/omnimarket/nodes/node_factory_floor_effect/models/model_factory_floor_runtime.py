@@ -81,6 +81,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     plugin_root_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
+    ledger_timeout_seconds: int = Field(gt=0)
     watcher_max_age_min: int = Field(gt=0)
     manifest_suffix: str = Field(min_length=1)
     plan_header_keys: tuple[str, ...] = Field(min_length=1)

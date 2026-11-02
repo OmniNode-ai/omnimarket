@@ -96,19 +96,25 @@ runtime:
   # names the missing lines, so a line the board cannot draw is never silent.
   record_step: factory_floor
   steps:
+  # The hosts step listens for a fixed window (two advertisement cadences plus two seconds, 22 s) after the command starts.
+  # Measured 2026-11-01 on the launching Mac at load 56 on 24 cores: 27 s in the foreground, 103 s as the registry module tick
+  # runs it (launchd ProcessType Background clamps CPU), so 120 s refused it on a load spike.
   - name: hosts
     kind: capture
     required: false
-    timeout_seconds: 120
+    timeout_seconds: 300
     argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
     output_relpath: .claude_scratch/lab-run/hosts.json
   # The landing placement's pool read of every machine (load, memory, swap, cap, or UNREADABLE), the one the
   # throughput tick reads; it writes its receipt (hosts-probe/latest.json in the remote-lane directory), which
-  # node_factory_floor_effect reads for the machine bays. It takes about 30 seconds: every host is probed over its link.
+  # node_factory_floor_effect reads for the machine bays. Every host is probed in parallel and the launching Mac probes
+  # itself with a full parity probe that the plugin bounds at 60 s. Measured 2026-11-01 at load 56 on 24 cores: the pool read
+  # took 66 s in the foreground, and the Mac's own probe 20 s in the foreground against 139 s under the Background clamp, which
+  # drew h200 unread.
   - name: pool
     kind: command
     required: false
-    timeout_seconds: 180
+    timeout_seconds: 300
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
     kind: copy

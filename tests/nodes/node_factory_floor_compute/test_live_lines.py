@@ -119,7 +119,10 @@ def test_a_live_lane_on_the_line_keeps_it_building_with_its_stop_still_listed() 
     result = compute_factory_floor(
         request(
             plans=(plan_of(scoped("T3", "OMN-3"), scoped("T10")),),
-            ledger=(blocked_stop(), claim("one-rt-t10-delegation-1101", minutes_ago=5)),
+            ledger=(
+                blocked_stop(tickets=("OMN-3",)),
+                claim("one-rt-t10-delegation-1101", minutes_ago=5),
+            ),
         )
     )
     line = result.lines[0]
@@ -151,11 +154,10 @@ def test_a_hold_stops_the_line_whatever_runs_on_it() -> None:
 def test_a_stalled_lane_does_not_keep_a_stopped_line_building() -> None:
     result = compute_factory_floor(
         request(
-            plans=(plan_of(scoped("T10")),),
+            plans=(plan_of(scoped("T3", "OMN-3"), scoped("T10")),),
             ledger=(
-                blocked_stop(),
-                claim("one-rt-t10-delegation-1101", minutes_ago=300),
-                row("STATUS", 200, "one-rt-t10-delegation-1101", tickets=(EPIC,)),
+                blocked_stop(tickets=("OMN-3",)),
+                claim("one-rt-t10-delegation-1101", minutes_ago=100),
             ),
         )
     )
