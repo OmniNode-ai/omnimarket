@@ -139,10 +139,10 @@ class HandlerCredentialRowWrite:
 
         def statement(bind: Callable[[str], str], now: str) -> str:
             return (
-                f"INSERT INTO {_CREDENTIALS} ({', '.join(columns)}, created_at) "
-                f"VALUES ({', '.join(bind(column) for column in columns)}, {now}) "
+                f"INSERT INTO {_CREDENTIALS} ({', '.join(columns)}, created_at, version) "
+                f"VALUES ({', '.join(bind(column) for column in columns)}, {now}, 1) "
                 f"ON CONFLICT (api_key_ref) DO UPDATE SET {updates}, "
-                f"version = {_CREDENTIALS}.version + 1 RETURNING version"
+                f"version = COALESCE({_CREDENTIALS}.version, 0) + 1 RETURNING version"
             )
 
         return ModelCredentialRowWrite(
@@ -159,11 +159,11 @@ class HandlerCredentialRowWrite:
         def statement(bind: Callable[[str], str], now: str) -> str:
             return (
                 f"INSERT INTO {_CREDENTIALS} "
-                "(api_key_ref, tenant_id, name, provider, created_at, revoked_at) "
+                "(api_key_ref, tenant_id, name, provider, created_at, revoked_at, version) "
                 f"VALUES ({bind('api_key_ref')}, {bind('tenant_id')}, NULL, NULL, "
-                f"{now}, {now}) ON CONFLICT (api_key_ref) DO UPDATE SET "
+                f"{now}, {now}, 1) ON CONFLICT (api_key_ref) DO UPDATE SET "
                 f"revoked_at = COALESCE({_CREDENTIALS}.revoked_at, EXCLUDED.revoked_at), "
-                f"version = {_CREDENTIALS}.version + 1 RETURNING version"
+                f"version = COALESCE({_CREDENTIALS}.version, 0) + 1 RETURNING version"
             )
 
         return ModelCredentialRowWrite(
