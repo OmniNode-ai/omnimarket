@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Request and result of the retrospective prompt cost estimate (OMN-20388).
+"""Request and result of the retrospective prompt cost estimate.
 
 A visitor's usage export goes in; every prompt comes out with its task class,
 what it cost on the model that answered it, the model the delegate would have
 routed it to, and what that would have cost. Every money field is a modelled
-estimate priced from the canonical pricing manifest, and a token count read
-from text length rather than from the export says so on its row.
+estimate priced from the canonical pricing manifest. Each row says how its
+token counts were obtained, and the saving is a range: each manifest entry's
+confidence and each row's token method widen it by the spread the contract
+declares, and ``basis`` names every manifest entry that priced a row.
 """
 
 from __future__ import annotations
@@ -18,6 +20,9 @@ from typing import Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.savings_estimate import EnumSavingsBasis
+from omnimarket.nodes.node_prompt_cost_estimate_compute.models.model_prompt_cost_estimate_config import (
+    EnumTokenMethod,
+)
 
 PRICING_SOURCE: Literal["omnibase_infra pricing_manifest.yaml"] = (
     "omnibase_infra pricing_manifest.yaml"
@@ -83,18 +88,51 @@ class ModelPromptCostRow(BaseModel):
     model_source: EnumModelSource
     tokens_in: int = Field(..., ge=0)
     tokens_out: int = Field(..., ge=0)
-    tokens_estimated: bool
+    tokens_estimated: bool = Field(
+        ..., description="True when any token count was read from text length."
+    )
+    token_method: EnumTokenMethod
     actual_cost_usd: Decimal = Field(..., ge=Decimal("0"))
     recommended_model: str = Field(..., min_length=1)
     recommended_tier: str = Field(..., min_length=1)
     delegated_cost_usd: Decimal = Field(..., ge=Decimal("0"))
-    saving_usd: Decimal = Field(..., ge=Decimal("0"))
+    saving_usd: Decimal = Field(
+        ...,
+        ge=Decimal("0"),
+        description="The saving at the manifest's listed prices and the counted tokens.",
+    )
+    saving_usd_low: Decimal = Field(..., ge=Decimal("0"))
+    saving_usd_high: Decimal = Field(..., ge=Decimal("0"))
 
     @model_validator(mode="after")
     def _saving_is_the_difference(self) -> ModelPromptCostRow:
         if self.saving_usd != self.actual_cost_usd - self.delegated_cost_usd:
             raise ValueError("saving_usd must equal actual minus delegated cost")
+        if not self.saving_usd_low <= self.saving_usd <= self.saving_usd_high:
+            raise ValueError("saving_usd lies within its range")
+        if self.tokens_estimated != (self.token_method is not EnumTokenMethod.REPORTED):
+            raise ValueError("tokens_estimated is true exactly when not reported")
         return self
+
+
+class ModelPricingBasis(BaseModel):
+    """One pricing manifest entry that priced at least one row, and how far to trust it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str = Field(..., min_length=1)
+    confidence: str = Field(..., min_length=1)
+    source: str = Field(..., min_length=1)
+    evidence_authoritative: bool = Field(
+        ..., description="The entry's evidence.authoritative; false when absent."
+    )
+    sample_count: int = Field(..., ge=0)
+    checked_against_invoices: bool = Field(
+        ...,
+        description="Authoritative evidence over at least one reported sample.",
+    )
+    spread: Decimal = Field(..., ge=Decimal("0"))
+    rows_priced: int = Field(..., ge=1)
 
 
 class ModelUnpricedModel(BaseModel):
@@ -117,6 +155,8 @@ class ModelTaskTypeSavings(BaseModel):
     actual_cost_usd: Decimal = Field(..., ge=Decimal("0"))
     delegated_cost_usd: Decimal = Field(..., ge=Decimal("0"))
     saving_usd: Decimal = Field(..., ge=Decimal("0"))
+    saving_usd_low: Decimal = Field(..., ge=Decimal("0"))
+    saving_usd_high: Decimal = Field(..., ge=Decimal("0"))
 
 
 class ModelPromptCostEstimateResult(BaseModel):
@@ -134,10 +174,34 @@ class ModelPromptCostEstimateResult(BaseModel):
     prompts_total: int = Field(..., ge=0)
     prompts_priced: int = Field(..., ge=0)
     prompts_unpriced: int = Field(..., ge=0)
-    prompts_tokens_estimated: int = Field(..., ge=0)
+    prompts_tokens_estimated: int = Field(
+        ..., ge=0, description="Priced rows with any token count read from text."
+    )
+    tokens_total: int = Field(default=0, ge=0)
+    tokens_from_text_length: int = Field(default=0, ge=0)
+    tokens_estimated_share: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        le=Decimal("1"),
+        description="tokens_from_text_length over tokens_total; zero with no tokens.",
+    )
     actual_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     delegated_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
-    saving_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    saving_usd: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        description=(
+            "Point figure: the saving at the manifest's listed prices and the "
+            "counted tokens. The range saving_usd_low to saving_usd_high is the "
+            "answer; this figure lies within it."
+        ),
+    )
+    saving_usd_low: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    saving_usd_high: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    pricing_basis: tuple[ModelPricingBasis, ...] = Field(
+        default=(),
+        description="Every pricing manifest entry that priced at least one row.",
+    )
 
     @model_validator(mode="after")
     def _counts_agree(self) -> ModelPromptCostEstimateResult:
@@ -147,4 +211,12 @@ class ModelPromptCostEstimateResult(BaseModel):
             raise ValueError("every prompt is either priced or unpriced")
         if self.prompts_unpriced != sum(group.prompts for group in self.unpriced):
             raise ValueError("every unpriced prompt is listed under its model")
+        if self.prompts_tokens_estimated != sum(
+            1 for row in self.rows if row.tokens_estimated
+        ):
+            raise ValueError("prompts_tokens_estimated counts the estimated rows")
+        if self.tokens_from_text_length > self.tokens_total:
+            raise ValueError("estimated tokens are a part of all tokens")
+        if not self.saving_usd_low <= self.saving_usd <= self.saving_usd_high:
+            raise ValueError("saving_usd lies within its range")
         return self

@@ -3,16 +3,17 @@
 name: node_prompt_cost_estimate_compute
 contract_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
 node_type: compute
 node_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
 description: >
   A visitor's uploaded usage export (ChatGPT or Claude conversations.json,
-  Claude Code session JSONL, or a CSV with a prompt column) priced prompt by
+  Claude Code session JSONL, or a CSV in the shape config.csv_import_schema
+  declares) priced prompt by
   prompt: the task class the delegation router would give it, what it cost on
   the model that answered it, the model the router's own tier ladder would have
   sent it to, and what that would have cost. A modelled estimate, typed
@@ -26,8 +27,24 @@ description: >
   carry, or naming none, is counted under that model as unpriced and excluded
   from every total; it is never priced at another model's rate.
 
+  ONE CSV SCHEMA. config.csv_import_schema is the only declaration of the CSV
+  upload shape: the required column, the optional ones, and each token column's
+  accepted names in precedence order. The parser reads it from this contract
+  and so does the upload page, so a file one accepts the other accepts.
+
   ESTIMATED TOKENS ARE MARKED. An export without token counts is read by text
-  length, and every such row carries tokens_estimated.
+  length. Every row carries tokens_estimated and a token_method (reported,
+  text_length_input, text_length_output or text_length_both), and the result
+  totals the estimated rows, all tokens, the estimated tokens and their share.
+
+  THE SAVING IS A RANGE. saving_usd_low and saving_usd_high widen the point
+  saving by config.saving_range: one spread per pricing manifest confidence
+  level and one per token method. pricing_basis names every manifest entry that
+  priced a row, with its confidence, its source and whether its evidence is
+  checked against invoices (evidence.authoritative over a non-zero
+  sample_count). saving_usd stays as the point figure at the manifest's listed
+  prices. A deployment overlay (prompt_cost_estimate) may replace saving_range;
+  the CSV schema is never overlaid.
 
   CONSENT FIRST. The request type admits only consent_given true.
 handler_routing:
@@ -39,14 +56,52 @@ handler_routing:
       module: omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.handler_prompt_cost_estimate
     input_model: omnimarket.nodes.node_prompt_cost_estimate_compute.models.model_prompt_cost_estimate.ModelPromptCostEstimateRequest
     output_model: omnimarket.nodes.node_prompt_cost_estimate_compute.models.model_prompt_cost_estimate.ModelPromptCostEstimateResult
+    topic: onex.cmd.omnimarket.prompt-cost-estimate-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.prompt-cost-estimate-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.prompt-cost-estimate-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.prompt-cost-estimate-requested.v1
+terminal_event: onex.evt.omnimarket.prompt-cost-estimate-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.prompt-cost-estimate-completed.v1
 descriptor:
   node_archetype: compute
   purity: pure
+  runtime_profiles: [main]
   idempotent: true
   side_effects: []
+runtime_profiles: [main]
+config:
+  csv_import_schema:
+    schema_version: "1.0.0"
+    required_columns:
+      prompt: [prompt]
+    optional_columns:
+      model: [model]
+      conversation_id: [conversation_id]
+      timestamp: [timestamp]
+      response: [response]
+      tokens_in: [tokens_in, input_tokens, prompt_tokens]
+      tokens_out: [tokens_out, output_tokens, completion_tokens]
+  saving_range:
+    # Fractional half-widths. confidence: one entry per level the pricing
+    # manifest model declares, applied to each model's price. token_method:
+    # applied to the saving of a row whose counts were read from text length.
+    confidence:
+      MEASURED: "0.05"
+      LOW_CONFIDENCE: "0.25"
+    token_method:
+      reported: "0"
+      text_length_input: "0.25"
+      text_length_output: "0.25"
+      text_length_both: "0.4"
 metadata:
   ticket: OMN-20388
   origin_tickets:
   - OMN-19979
+  - OMN-22126
   transport_type: in_process
 lifecycle: experimental
