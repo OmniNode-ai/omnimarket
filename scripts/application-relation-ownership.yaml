@@ -1262,6 +1262,17 @@ database_objects:
   # OMN-19988: cursor for the per-service environment rows. Declared ahead of
   # the node's migrations: omnibase_infra vendors them first, and its SQL gate
   # needs every sequence a vendored GRANT names to have one owner here.
+  # OMN-21970: the integer walk cursor 0065 adds to delegation_events, so the
+  # decisions exposure can be paged past its newest 500 runs. Declared ahead of
+  # the node's migrations: omnibase_infra vendors them first, and its SQL gate
+  # needs the sequence the writer grant names to have exactly one owner here.
+  - name: delegation_events_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   - name: local_environment_projection_cursor_seq
     kind: sequence
     database_ref: application
@@ -1695,6 +1706,24 @@ relation_evidence:
       scope to make the numbers mean anything, which a reader that derives its
       scope from a tenant filter cannot do -- it saw no rows and published
       zeros that read as a quiet period.
+  - name: projection_delegation_daily
+    kind: view
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0066_delegation_daily_view.sql
+    classification_evidence: >-
+      tenant read view over delegation_events with one row per tenant whose days
+      list holds every UTC day's runs, verdict counts and token totals, so the
+      dashboard's daily charts cover the whole selected range (OMN-21970).
+      Declared ahead of its vendoring for the same reason as its cursor sequence.
   - name: projection_delegation_token_usage
     kind: view
     database_ref: application
