@@ -62,7 +62,7 @@ dod_evidence:
       - check_type: "command"
         check_value: "python3 -c \"import json,os,sys; r=json.load(open(os.environ['OMNI_HOME']+'/.onex_state/factory-floor-publish/factory-floor-publish.installed.json')); sys.exit(0 if r['revision'] and not r['project_is_canonical'] else 1)\""
         cwd: "."
-  - id: "dod-omn22171-lab-run"
+  - id: "dod-omn22171-integration-proof"
     description: "Run both node test directories on a lab host at the exact head. The install on the launchd host and the two publishes are recorded as a Lab comment on the pull request. The hosted verifier does not run this local Done check."
     source: "manual"
     execution_scope: "local_done_gate"
