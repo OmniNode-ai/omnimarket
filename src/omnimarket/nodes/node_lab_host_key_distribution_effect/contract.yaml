@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_host_key_distribution_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: 0.1.0
+description: Distribute public user and host SSH keys between every ordered pair of
+  explicitly selected lab hosts.
+input_model:
+  name: ModelLabHostKeyDistributionRequest
+  module: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution
+  description: Explicit host scope, optional host table, public key paths and dry-run
+    flag.
+output_model:
+  name: ModelLabHostKeyDistributionResult
+  module: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution
+  description: Ordered pair outcomes, exit code and any table or scope refusal.
+handler:
+  module: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_key_distribution
+  class: HandlerLabHostKeyDistribution
+  input_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution.ModelLabHostKeyDistributionRequest
+  output_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution.ModelLabHostKeyDistributionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_key_distribution:HandlerLabHostKeyDistribution
+  handlers:
+  - operation: distribute
+    handler:
+      name: HandlerLabHostKeyDistribution
+      module: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_key_distribution
+    input_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution.ModelLabHostKeyDistributionRequest
+    output_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_key_distribution.ModelLabHostKeyDistributionResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The onex-host-key-distribution console script (runtime_lab_host_key_distribution)
+    on the launching host, or python -m omnimarket.nodes.node_lab_host_key_distribution_effect.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 900000
+  side_effects:
+  - appends missing public user keys to ~/.ssh/authorized_keys over ssh
+  - appends missing public host keys to ~/.ssh/known_hosts over ssh
+metadata:
+  transport_type: local
+  ticket: OMN-22115
+  description: Distribute public user and host SSH keys between every ordered pair
+    of explicitly selected lab hosts.
+  author: OmniNode Team
+  tags:
+  - effect
+  - lab
+  - ssh
+  - public-keys
+  related_tickets:
+  - OMN-22115
+  - OMN-20348
