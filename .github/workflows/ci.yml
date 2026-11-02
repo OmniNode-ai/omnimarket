@@ -840,6 +840,8 @@ jobs:
       # suite, because a contract.yaml change has no import edge to the test.
       # Shrink-only exception lists. SYNC with pre-commit hook
       # 'node-auto-wiring-in-process' and the release workflows.
+      - name: Host declaration regressions (OMN-21908)
+        run: uv run --frozen pytest tests/unit/nodes/node_host_profile_compute tests/unit/nodes/node_host_drift_check_effect tests/unit/nodes/node_host_gap_unit_effect -q --no-cov -n 0 -p no:randomly -m "not kafka"
       - name: Node auto-wiring and dispatch-id limits gate (OMN-17427)
         run: uv run pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q -p no:randomly
       - name: Patch apply dispatch node (OMN-17427)
