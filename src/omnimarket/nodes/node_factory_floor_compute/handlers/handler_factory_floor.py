@@ -67,6 +67,14 @@ class _Index:
     lane_words: dict[str, tuple[str, ...]]
     # Every open or merged pull request, the merge list included, by key: a task row is built from these (OMN-21930).
     records: dict[str, PrRecord]
+    # Integration-proof STATUS rows by pull request, ticket and task id.
+    proof_by_pr: dict[str, tuple[int, ...]]
+    proof_by_ticket: dict[str, tuple[int, ...]]
+    proof_by_task: dict[str, tuple[int, ...]]
+    # The merged pull requests shown running on dev (``repo#number``); None when no reader read the records.
+    running: frozenset[str] | None
+    # When each pull request merged, where the watcher's merge record says.
+    merged_at: dict[str, datetime]
 
 
 def _tip(
@@ -102,7 +110,17 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
     by_mention: dict[str, list[int]] = {}
     tips: dict[str, tuple[datetime, str, datetime | None]] = {}
     by_lane: dict[str, list[int]] = {}
+    proof_by_pr: dict[str, list[int]] = {}
+    proof_by_ticket: dict[str, list[int]] = {}
+    proof_by_task: dict[str, list[int]] = {}
     for position, row in enumerate(request.ledger):
+        if row.kind == "STATUS" and row.state == request.config.integration_state:
+            for pr in row.prs:
+                proof_by_pr.setdefault(pr_key(pr), []).append(position)
+            for ticket in row.tickets:
+                proof_by_ticket.setdefault(ticket, []).append(position)
+            if row.task:
+                proof_by_task.setdefault(row.task, []).append(position)
         if row.lane:
             by_lane.setdefault(row.lane, []).append(position)
         if row.kind == "CLAIM":
@@ -131,6 +149,19 @@ def _index(request: ModelFactoryFloorRequest, task_ids: frozenset[str]) -> _Inde
         by_lane={key: tuple(value) for key, value in by_lane.items()},
         lane_words={lane: name_tokens(lane) for lane in by_lane},
         records=pr_records(request),
+        proof_by_pr={key: tuple(value) for key, value in proof_by_pr.items()},
+        proof_by_ticket={key: tuple(value) for key, value in proof_by_ticket.items()},
+        proof_by_task={key: tuple(value) for key, value in proof_by_task.items()},
+        running=None
+        if request.running_evidence is None
+        else frozenset(
+            f"{item.repo.rsplit('/', 1)[-1]}#{item.number}"
+            for item in request.running_evidence
+            if item.number is not None
+        ),
+        merged_at={
+            pr_key(merge.key): merge.merged_at for merge in request.watcher.merges
+        },
     )
 
 
@@ -252,6 +283,68 @@ def _live_claim(
     )
 
 
+def _proof(
+    prs: tuple[str, ...],
+    tickets: tuple[str, ...],
+    task_id: str,
+    request: ModelFactoryFloorRequest,
+    index: _Index,
+) -> ModelFloorLedgerRow | None:
+    """The newest integration-proof row naming the item, written after the item's newest known merge."""
+    positions = {
+        *(p for pr in prs for p in index.proof_by_pr.get(pr_key(pr), ())),
+        *(p for ticket in tickets for p in index.proof_by_ticket.get(ticket, ())),
+        *(index.proof_by_task.get(task_id, ()) if task_id else ()),
+    }
+    merged = [
+        index.merged_at[pr_key(pr)] for pr in prs if pr_key(pr) in index.merged_at
+    ]
+    since = max(merged, default=None)
+    return max(
+        (
+            row
+            for row in (request.ledger[p] for p in positions)
+            if since is None or row.ts >= since
+        ),
+        key=_row_key,
+        default=None,
+    )
+
+
+def _settle(
+    why: str,
+    prs: tuple[str, ...],
+    tickets: tuple[str, ...],
+    task_id: str,
+    request: ModelFactoryFloorRequest,
+    index: _Index,
+) -> tuple[ItemState, str]:
+    """Work reported finished (merged, a done TERMINAL, Linear done) is done only when it also runs on dev and is proven.
+
+    Anything less is integrating, with the reason, and the built percent does not count it.
+    """
+    if not prs:
+        return "integrating", f"{why}: no merged pull request to show running"
+    if index.running is None:
+        return "integrating", f"{why}: running-on-dev records unread"
+    behind = tuple(pr for pr in prs if pr_key(pr) not in index.running)
+    if behind:
+        return "integrating", f"{why}, not running on dev: {','.join(behind)}"
+    config = request.config
+    proof = _proof(prs, tickets, task_id, request, index)
+    if proof is None or proof.verdict not in {
+        *config.integration_pass_verdicts,
+        *config.integration_fail_verdicts,
+    }:
+        return "integrating", f"{why}, running on dev, integration proof not recorded"
+    if proof.verdict in config.integration_fail_verdicts:
+        return (
+            "integrating",
+            f"{why}, running on dev, integration proof failed {_stamp(proof.ts)}",
+        )
+    return "done", f"{why}, running on dev, integration proof passed {_stamp(proof.ts)}"
+
+
 def _evidence(
     task: ModelFloorManifestTask,
     prs: tuple[str, ...],
@@ -273,19 +366,24 @@ def _evidence(
         record.key for record in index.records.values() if record.state == "MERGED"
     }
     linear = {issue.id: issue.status_type for issue in request.linear}
+
+    def settle(why: str, named: tuple[str, ...]) -> tuple[ItemState, str]:
+        return _settle(why, named, task.tickets, task.id, request, index)
+
     if is_built(task, prs, index.records):
-        return "done", "PRs merged"
+        return settle("PRs merged", prs)
     if terminal and unclaimed and terminal.outcome in request.config.done_outcomes:
-        return "done", f"terminal {terminal.outcome}"
+        named = tuple(dict.fromkeys(prs + terminal.prs))
+        return settle(f"terminal {terminal.outcome}", named)
     if terminal and unclaimed and terminal.outcome in request.config.handoff_outcomes:
         merged_keys = {pr_key(pr) for pr in merged}
         unmerged = tuple(pr for pr in terminal.prs if pr_key(pr) not in merged_keys)
         if terminal.prs and not unmerged:
-            return "done", "PRs merged"
+            return settle("PRs merged", terminal.prs)
         waiting = ",".join(unmerged) if unmerged else "no pull request named"
         return "active", f"handed to landing by {terminal.lane}: {waiting}"
     if task.tickets and all(linear.get(t) == "completed" for t in task.tickets):
-        return "done", "Linear done"
+        return settle("Linear done", prs)
     matching = tuple(h for h in holds if _hold_matches(h, task, prs, index))
     for hold in matching:
         if _andon(hold, request.config):
@@ -382,6 +480,14 @@ def _manifest_items(
     )
 
 
+def _table_prs(row: ModelFloorTableTask, index: _Index) -> tuple[str, ...]:
+    """The pull requests that are the work of a table row, by the tickets in their titles and branches."""
+    task = ModelFloorManifestTask(
+        id=row.label, tickets=row.tickets, prs=row.prs, scoped=True
+    )
+    return task_prs(task, row.tickets, index.records)
+
+
 def _table_built(
     row: ModelFloorTableTask, request: ModelFactoryFloorRequest, index: _Index
 ) -> bool:
@@ -389,7 +495,7 @@ def _table_built(
     task = ModelFloorManifestTask(
         id=row.label, tickets=row.tickets, prs=row.prs, scoped=True
     )
-    if is_built(task, task_prs(task, row.tickets, index.records), index.records):
+    if is_built(task, _table_prs(row, index), index.records):
         return True
     linear = {issue.id: issue.status_type for issue in request.linear}
     return bool(row.tickets) and all(linear.get(t) == "completed" for t in row.tickets)
@@ -403,11 +509,20 @@ def _table_item(
 ) -> ModelFloorItem:
     state: ItemState
     if row.state == "merged":
-        state, note = (
-            ("done", "PRs merged")
-            if _table_built(row, request, index)
-            else ("wait", "recorded merged, no merged pull request read")
-        )
+        if _table_built(row, request, index):
+            state, note = _settle(
+                "PRs merged",
+                _table_prs(row, index),
+                row.tickets,
+                "",
+                request,
+                index,
+            )
+        else:
+            state, note = (
+                "wait",
+                "recorded merged, no merged pull request read",
+            )
     elif row.state in {"open-green", "open-red"}:
         state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
     elif row.state == "not-started":
@@ -440,7 +555,7 @@ def _station_state(
         return "stop"
     if all(item.state == "done" for item in items):
         return "done"
-    if any(item.state in {"active", "done"} for item in items):
+    if any(item.state in {"active", "integrating", "done"} for item in items):
         return "active"
     return "prep" if all(states.get(f) == "done" for f in feeders) else "wait"
 
@@ -712,7 +827,7 @@ def _line(
         else "done"
         if percent == 100 and items
         else "building"
-        if any(i.state in {"done", "active"} for i in items)
+        if any(i.state in {"done", "integrating", "active"} for i in items)
         else "queued",
         percent_built=percent,
         stations=_stations(tasks, items, request.config),
@@ -868,6 +983,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             host_table_read=request.host_table is not None,
             placement_markers_read=request.placed is not None,
             receipts_read=request.receipts is not None,
+            running_evidence_read=request.running_evidence is not None,
             cloud_accounts_read=request.cloud_accounts is not None,
             runner_fleet_read=request.runner_fleet is not None,
             runner_fleet_cause=request.runner_fleet_cause,

@@ -257,7 +257,8 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert stations["1a"]["feeders"] == ["0"]
     old = lines["2026-10-01-old-plan"]
     assert old["source"] == "plan-task-table"
-    assert [i["state"] for i in old["stations"][0]["items"]] == ["done", "prep"]
+    # The merged part is integrating, not done: this runtime supplies no running-on-dev records (OMN-22106).
+    assert [i["state"] for i in old["stations"][0]["items"]] == ["integrating", "prep"]
     floor = document["floor"]
     # The bays follow the machines the overlay declares; this overlay declares none, so the bus advertisement does not make one.
     assert floor["bays"] == []

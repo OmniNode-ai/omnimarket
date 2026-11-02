@@ -27,6 +27,7 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_merged_running_count import ModelMrcEvidence
 
 CONTRACT = (
     Path(__file__).resolve().parents[3]
@@ -99,7 +100,11 @@ def table_plan(path: str = "beta/plans/2026-10-01-old-plan.md") -> ModelFloorPla
         tickets=("OMN-7", "OMN-8", "OMN-9"),
         table_tasks=(
             ModelFloorTableTask(
-                label="T1", text="first", tickets=("OMN-7",), state="merged"
+                label="T1",
+                text="first",
+                tickets=("OMN-7",),
+                prs=("repo#1",),
+                state="merged",
             ),
             ModelFloorTableTask(
                 label="T2",
@@ -184,4 +189,26 @@ def request(
         watcher=ModelFloorWatcher(last_tick=ago(3), prs=prs, merges=merges),
         ledger=ledger,
         **extra,
+    )
+
+
+def running_on_dev(*keys: str) -> tuple[ModelMrcEvidence, ...]:
+    """Deploy-receipt evidence that each ``repo#number`` pull request runs on dev."""
+    return tuple(
+        ModelMrcEvidence(
+            repo=key.rsplit("#", 1)[0],
+            kind="deploy-receipt",
+            source="deploy agent receipt",
+            number=int(key.rsplit("#", 1)[1]),
+            observed_at=ago(1),
+        )
+        for key in keys
+    )
+
+
+def proven(*keys: str) -> tuple[ModelFloorLedgerRow, ...]:
+    """A passed integration-proof STATUS row for each ``repo#number`` pull request, newer than any merge."""
+    return tuple(
+        row("STATUS", 0.5, state="integration", verdict="pass", prs=(key,))
+        for key in keys
     )

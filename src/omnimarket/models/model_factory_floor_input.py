@@ -20,8 +20,9 @@ from omnimarket.models.model_host_capacity_advertisement import (
 from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetVerdict,
 )
+from omnimarket.models.model_merged_running_count import ModelMrcEvidence
 
-ItemState = Literal["done", "active", "prep", "wait", "stop"]
+ItemState = Literal["done", "integrating", "active", "prep", "wait", "stop"]
 TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unread"]
 PrState = Literal["OPEN", "MERGED", "CLOSED"]
 CiState = Literal["green", "red", "pending", "none", "unread"]
@@ -331,6 +332,12 @@ class ModelFactoryFloorConfig(BaseModel):
     # A lane that ended by handing its pull request to landing has built nothing that runs until the request merges:
     # the task is active while a pull request it named is unmerged, and done once all of them have merged.
     handoff_outcomes: tuple[str, ...] = ()
+    # Done means merged, running on dev and integration-proven. The proof is the newest STATUS row of the item (named by
+    # its pull request, its ticket or its task id) in this state, written after the item's newest merge: a verdict in
+    # the pass list proves it, one in the fail list names a failed proof, anything else is no proof yet.
+    integration_state: str = Field(min_length=1)
+    integration_pass_verdicts: tuple[str, ...] = Field(min_length=1)
+    integration_fail_verdicts: tuple[str, ...] = Field(min_length=1)
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
     station_name_template: str = Field(min_length=1)
@@ -378,6 +385,9 @@ class ModelFactoryFloorRequest(BaseModel):
     watcher: ModelFloorWatcher
     ledger: tuple[ModelFloorLedgerRow, ...] = ()
     linear: tuple[ModelFloorLinearIssue, ...] = ()
+    # Records that a merge runs on dev (a deploy receipt, an adoption row), each naming the merged pull request. None
+    # when no reader could read them: an unread source never shows a merge as running.
+    running_evidence: tuple[ModelMrcEvidence, ...] | None = None
     placement: tuple[ModelHostCapacityAdvertisement, ...] = ()
     stoppages: tuple[ModelFloorStoppage, ...] = ()
     machines: tuple[ModelFloorMachineDecl, ...] = ()

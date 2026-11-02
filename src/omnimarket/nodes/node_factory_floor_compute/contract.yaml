@@ -63,6 +63,11 @@ config:
   gate_pass_verdicts: [pass]
   done_outcomes: [done, merged]
   handoff_outcomes: [handed-off]
+  # Done is merged AND running on dev AND integration-proven (the running_evidence input and a STATUS row in this
+  # state); merged without both is integrating, which the built percent does not count.
+  integration_state: integration
+  integration_pass_verdicts: [pass]
+  integration_fail_verdicts: [fail]
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
   station_name_template: "Wave {wave}"

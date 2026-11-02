@@ -1,0 +1,89 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22106"
+title: "The factory floor counts an item done only when merged, running on dev and integration-proven; merged-not-running is INTEGRATING"
+summary: "node_factory_floor_compute resolves an item to done only when its pull requests are merged, a running-on-dev record names each merge, and a passed integration-proof STATUS row follows the merge. A merged PR, a Linear done status or a done TERMINAL without both is a separate integrating state with a reason, and the built percent does not count it. The new input is the typed running_evidence field of the request and the integration vocabulary is declared in the node contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22106-integrating"
+    statement: |-
+      A merged item that does not run on dev, or whose integration proof has not passed, is integrating with a reason and is excluded from the built percent.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a task whose PRs are all merged but whose deployed revision on dev is behind the merge, or whose integration proof has not passed, resolves to INTEGRATING with a reason and is excluded from the built percent"
+  - id: "req-omn22106-done"
+    statement: |-
+      Done needs merged, running at or past the merge and integration-proven; a Linear done status or a done TERMINAL alone never yields done.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a task resolves to done only when merged, running at or past the merge and integration-proven, and a Linear done status or a done TERMINAL alone never yields done"
+  - id: "req-omn22106-lab"
+    statement: |-
+      The node suite passes on the lab runtime.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the new behaviour is proven on the lab runtime with a lab-run receipt of exit code 0 for the node suite"
+evidence_requirements:
+  - kind: "tests"
+    description: "The factory floor compute node tests pass."
+    command: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22106-integrating"
+    description: "Merged-not-running, merged-and-running without a proof, a failed proof, a stale proof and unread running records all resolve to integrating and the built percent stays at zero."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov -k integrating"
+        cwd: "."
+  - id: "dod-omn22106-merged-and-running"
+    description: "Merged, running and proven is done; Linear done alone and a done TERMINAL alone are integrating."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov -k merged_and_running"
+        cwd: "."
+  - id: "dod-omn22106-node-suite"
+    description: "The whole factory floor compute node suite passes."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22106-source-readback"
+    description: "Hosted-runner source-artifact readback requires the factory floor handler and contract at the evaluated commit to match this checkout and to carry the integrating rule. It checks the source artifact only; nothing here runs on a runtime."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for path in src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py src/omnimarket/nodes/node_factory_floor_compute/contract.yaml; do
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.txt"
+            cmp "$path" "$readback_dir/source.txt"
+          done
+          grep -q 'integrating' src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py
+          grep -q 'integration_state' src/omnimarket/nodes/node_factory_floor_compute/contract.yaml
+          printf 'integrating source readback matched %s\n' "$revision"
+        cwd: "."
+  - id: "dod-omn22106-integration-proof"
+    description: "The pushed head ran the factory floor compute node suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22106 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_compute -q -p no:randomly --no-cov"
+        cwd: "."

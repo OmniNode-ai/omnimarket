@@ -338,6 +338,8 @@ class ModelFloorSources(BaseModel):
     receipts_read: bool
     cloud_accounts_read: bool
     runner_fleet_read: bool
+    # False when no reader supplied the running-on-dev records, so no merge could be shown running.
+    running_evidence_read: bool = False
     # Why the runner fleet is unread, in the reader's words; empty when it was read.
     runner_fleet_cause: str = ""
     # Why the merged-and-running count is unread, in the reader's words; empty when it was read.

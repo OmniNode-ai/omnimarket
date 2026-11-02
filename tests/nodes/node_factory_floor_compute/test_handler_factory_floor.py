@@ -34,8 +34,10 @@ from tests.nodes.node_factory_floor_compute.support import (
     manifest_of,
     merge,
     pr,
+    proven,
     request,
     row,
+    running_on_dev,
     table_plan,
     task,
     wave_plan,
@@ -100,7 +102,8 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
         request(
             plans=(plan,),
             prs=(pr("kb#1", "MERGED", title="W0.1 reuse verification"),),
-            ledger=(row("CLAIM", 10, task="W0.2"),),
+            ledger=(row("CLAIM", 10, task="W0.2"), *proven("kb#1")),
+            running_evidence=running_on_dev("kb#1"),
         )
     )
     line = _line(result)
@@ -124,7 +127,9 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert (station0.name, station0.feeders) == ("Wave 0", ())
     assert (station1a.name, station1a.feeders) == ("Wave 1a", ("0",))
     notes = {item.id: item.note for item in station0.items}
-    assert notes["W0.1"] == "PRs merged"
+    assert notes["W0.1"].startswith(
+        "PRs merged, running on dev, integration proof passed"
+    )
     assert notes["W0.2"] == "claim lane-a"
     assert notes["G0"] == "waits for W0.2"
     assert line.andon.flag is False
@@ -141,7 +146,9 @@ def test_manifest_gate_pass_opens_next_station_to_prep() -> None:
             ledger=(
                 row("STATUS", 5, state="gate", subject="0", verdict="pass"),
                 row("STATUS", 4, state="gate", subject="elsewhere", verdict="fail"),
+                *proven("kb#1", "kb#2"),
             ),
+            running_evidence=running_on_dev("kb#1", "kb#2"),
         )
     )
     line = _line(result)
@@ -170,7 +177,9 @@ def test_manifest_all_done_is_a_finished_line() -> None:
             ledger=(
                 row("STATUS", 9, state="gate", subject="0", verdict="pass"),
                 row("STATUS", 8, state="gate", subject="1a", verdict="pass"),
+                *proven("kb#1", "kb#2", "kb#3"),
             ),
+            running_evidence=running_on_dev("kb#1", "kb#2", "kb#3"),
         )
     )
     line = _line(result)
@@ -218,13 +227,13 @@ def test_manifest_evidence_from_terminal_linear_open_pr_and_stale_claim() -> Non
     states = _states(_line(result))
     notes = {i.id: i.note for st in _line(result).stations for i in st.items}
     assert states == {
-        "A": "done",
+        "A": "integrating",
         "B": "active",
         "C": "active",
         "D": "prep",
         "E": "wait",
     }
-    assert notes["A"] == "Linear done"
+    assert notes["A"] == "Linear done: no merged pull request to show running"
     assert notes["B"] == "Linear in progress"
     assert notes["C"] == "PR repo#3 open"
     assert notes["E"] == "lane x ended blocked"
@@ -338,6 +347,8 @@ def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table
         request(
             plans=(table_plan(),),
             prs=(pr("repo#1", "MERGED", title="feat(OMN-7): the first task"),),
+            ledger=proven("repo#1"),
+            running_evidence=running_on_dev("repo#1"),
         )
     )
     line = _line(result)

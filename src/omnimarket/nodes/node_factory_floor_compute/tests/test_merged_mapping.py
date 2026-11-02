@@ -20,7 +20,13 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFloorItem,
 )
-from tests.nodes.node_factory_floor_compute.support import merge, pr, request
+from tests.nodes.node_factory_floor_compute.support import (
+    merge,
+    pr,
+    proven,
+    request,
+    running_on_dev,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -42,7 +48,20 @@ def items(
     prs: tuple[ModelFloorPr, ...] = (),
     merges: tuple[ModelFloorMerge, ...] = (),
 ) -> dict[str, ModelFloorItem]:
-    result = compute_factory_floor(request(plans=plans, prs=prs, merges=merges))
+    merged = tuple(
+        dict.fromkeys(
+            [p.key for p in prs if p.state == "MERGED"] + [m.key for m in merges]
+        )
+    )
+    result = compute_factory_floor(
+        request(
+            plans=plans,
+            prs=prs,
+            merges=merges,
+            ledger=proven(*merged),
+            running_evidence=running_on_dev(*merged),
+        )
+    )
     return {
         item.id: item for station in result.lines[0].stations for item in station.items
     }

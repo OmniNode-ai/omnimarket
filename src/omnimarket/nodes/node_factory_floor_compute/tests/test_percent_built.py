@@ -14,7 +14,12 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     compute_factory_floor,
 )
-from tests.nodes.node_factory_floor_compute.support import pr, request
+from tests.nodes.node_factory_floor_compute.support import (
+    pr,
+    proven,
+    request,
+    running_on_dev,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -32,7 +37,7 @@ def alignment_plan() -> ModelFloorPlanInput:
             id=f"W{n}",
             title=f"W{n}",
             wave=str(n % GATES),
-            prs=(f"repo#{n}",) if n < DONE else (),
+            prs=(f"repo#{n + 1}",) if n < DONE else (),
         )
         for n in range(PARTS - GATES)
     )
@@ -51,7 +56,9 @@ def test_percent_built_is_merged_parts_over_every_part_of_the_plans_own_list() -
     result = compute_factory_floor(
         request(
             plans=(alignment_plan(),),
-            prs=tuple(pr(f"repo#{n}", "MERGED") for n in range(DONE)),
+            prs=tuple(pr(f"repo#{n + 1}", "MERGED") for n in range(DONE)),
+            ledger=proven(*(f"repo#{n + 1}" for n in range(DONE))),
+            running_evidence=running_on_dev(*(f"repo#{n + 1}" for n in range(DONE))),
         )
     )
     line = result.lines[0]
@@ -61,10 +68,34 @@ def test_percent_built_is_merged_parts_over_every_part_of_the_plans_own_list() -
     assert line.percent_built == 8  # 6 of 68 is 8.8, shown as 8, never 12 (6 of 48)
 
 
+def test_percent_built_does_not_count_merged_parts_that_are_not_running_on_dev() -> (
+    None
+):
+    result = compute_factory_floor(
+        request(
+            plans=(alignment_plan(),),
+            prs=tuple(pr(f"repo#{n + 1}", "MERGED") for n in range(DONE)),
+            running_evidence=(),
+        )
+    )
+    line = result.lines[0]
+    parts = [item for station in line.stations for item in station.items]
+    assert sum(item.state == "integrating" for item in parts) == DONE
+    assert line.percent_built == 0
+
+
 def test_percent_built_reaches_100_only_when_every_part_including_its_gates_is_done() -> (
     None
 ):
     plan = alignment_plan()
-    merged = tuple(pr(f"repo#{n}", "MERGED") for n in range(PARTS - GATES))
-    result = compute_factory_floor(request(plans=(plan,), prs=merged))
+    merged = tuple(pr(f"repo#{n + 1}", "MERGED") for n in range(PARTS - GATES))
+    keys = tuple(f"repo#{n + 1}" for n in range(PARTS - GATES))
+    result = compute_factory_floor(
+        request(
+            plans=(plan,),
+            prs=merged,
+            ledger=proven(*keys),
+            running_evidence=running_on_dev(*keys),
+        )
+    )
     assert result.lines[0].percent_built < 100
