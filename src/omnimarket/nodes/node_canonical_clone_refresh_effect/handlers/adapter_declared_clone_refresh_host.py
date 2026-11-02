@@ -273,3 +273,10 @@ def declared_command(
                     err=True,
                 )
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    # ``python -m`` on the serve module runs that file as ``__main__``, a second copy of its group that
+    # never meets the ``declared`` command attached here to the package's copy. This entry runs the
+    # package's group, so ``serve``, ``publish`` and ``declared`` are all listed (OMN-22149).
+    clone_refresh_group()

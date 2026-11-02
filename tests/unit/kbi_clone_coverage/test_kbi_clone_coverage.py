@@ -7,6 +7,9 @@ the home ``Code`` directory, outside the registry-root scan). Real git repositor
 gives each host its own HOME.
 """
 
+import subprocess
+import sys
+
 import pytest
 
 from omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh import (
@@ -140,3 +143,28 @@ def test_kbi_clone_coverage_an_empty_table_is_a_refusal_not_a_clean_run(
         layout.table, "no-such-repo", HomesTransport(layout.homes)
     )
     assert handler.handle(ModelDeclaredCloneRefreshRequest()).refused
+
+
+def test_kbi_clone_coverage_declared_command_is_listed_by_the_adapter_module_entry() -> (
+    None
+):
+    """The adapter module is the ``python -m`` entry of the whole group: ``declared`` is listed beside the others."""
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.adapter_declared_clone_refresh_host",
+            "--help",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    commands = {
+        line.split()[0]
+        for line in done.stdout.split("Commands:")[-1].splitlines()
+        if line.strip()
+    }
+    assert {"declared", "publish", "serve"} <= commands
