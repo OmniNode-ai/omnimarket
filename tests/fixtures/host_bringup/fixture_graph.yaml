@@ -1,0 +1,40 @@
+# Fixture bring-up graph for tests/unit/nodes/test_node_host_bringup_plan_compute.py.
+# Shaped like the target rows of a bring-up orchestrator contract; names are symbolic.
+targets:
+  - name: os_packages
+    stage: A
+    needs: []
+    check: {kind: package_installed, subject: base_packages}
+    falsifier: "the base package query reports a package absent"
+    action: apt_packages
+  - name: operator_sudo
+    stage: A
+    needs: []
+    check: {kind: person_confirmed, subject: passwordless_sudo}
+    falsifier: "a non-interactive sudo probe asks for a password"
+    action: person_step
+  - name: tailnet_joined
+    stage: B
+    needs: [os_packages, operator_sudo]
+    check: {kind: host_state, subject: tailnet_status}
+    falsifier: "the tailnet status probe reports logged out"
+    action: tailnet_login
+  - name: runtime_env_file
+    stage: B
+    needs: [os_packages]
+    check: {kind: file_state, subject: runtime_env}
+    falsifier: "the runtime env file is absent or empty"
+    action: file_content
+  - name: container_engine
+    stage: C
+    needs: [os_packages, operator_sudo]
+    check: {kind: service_active, subject: container_engine}
+    falsifier: "the container engine service is not active"
+    action: service_enabled
+  - name: runtime_stack
+    stage: D
+    top: true
+    needs: [container_engine, runtime_env_file, tailnet_joined]
+    check: {kind: host_state, subject: runtime_health}
+    falsifier: "the runtime health endpoint does not answer healthy"
+    action: host_unit_install
