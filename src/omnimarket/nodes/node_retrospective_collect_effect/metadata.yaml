@@ -1,0 +1,27 @@
+name: node_retrospective_collect_effect
+version: 1.0.0
+description: Collect the week's evidence records into one immutable snapshot. (scaffold, no logic)
+omnibase_core_compat: '>=0.40.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_retrospective_collect_effect: omnimarket.nodes.node_retrospective_collect_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effect
+dependencies:
+- omnibase_core>=0.40.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- retrospective
+- effect
+- scaffold
+pack: retrospective
+display_name: Retrospective Collect Effect
+node_role: effect

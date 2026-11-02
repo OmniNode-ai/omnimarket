@@ -1,0 +1,45 @@
+/* GENERATED FILE — DO NOT EDIT.
+ *
+ * Compiled from a ModelThemeInstance by `npm run compile:tokens` (OMN-16886).
+ * Hand-editing a value here does not change what any surface renders — it only
+ * makes this artifact disagree with the theme instance it claims to compile,
+ * which `npm run check:tokens` turns into a failing build.
+ *
+ * To change a token VALUE, publish a new instance revision upstream and
+ * recapture. Editing a value is never a code change.
+ */
+
+[data-onex-theme='onex.theme.dark'] {
+  --onex-theme-id: onex.theme.dark;
+  --onex-theme-revision: 1.0.0;
+  --onex-theme-schema-version: 1.0.0;
+  --onex-theme-digest: sha256:f73b1716faa9d73f53c0331ded08ff5c72d2d5217a05c5fdb91c7ad3ab26c26f;
+  --onex-border-radius-lg: 1rem;
+  --onex-border-radius-md: 0.5rem;
+  --onex-border-radius-sm: 0.25rem;
+  --onex-color-accent-primary: #6366f1;
+  --onex-color-accent-secondary: #818cf8;
+  --onex-color-background-elevated: #334155;
+  --onex-color-background-primary: #0f172a;
+  --onex-color-background-secondary: #1e293b;
+  --onex-color-border-default: #334155;
+  --onex-color-border-strong: #475569;
+  --onex-color-status-error: #ef4444;
+  --onex-color-status-info: #38bdf8;
+  --onex-color-status-success: #22c55e;
+  --onex-color-status-warning: #f59e0b;
+  --onex-color-text-disabled: #475569;
+  --onex-color-text-primary: #f8fafc;
+  --onex-color-text-secondary: #94a3b8;
+  --onex-font-family-base: 'Inter', system-ui, sans-serif;
+  --onex-font-size-lg: 1.125rem;
+  --onex-font-size-md: 1rem;
+  --onex-font-size-sm: 0.875rem;
+  --onex-font-weight-bold: 700;
+  --onex-font-weight-normal: 400;
+  --onex-spacing-lg: 1.5rem;
+  --onex-spacing-md: 1rem;
+  --onex-spacing-sm: 0.5rem;
+  --onex-spacing-xl: 2rem;
+  --onex-spacing-xs: 0.25rem;
+}
