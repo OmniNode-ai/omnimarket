@@ -40,6 +40,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
 )
@@ -53,7 +54,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
     transport,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 

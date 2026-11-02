@@ -134,7 +134,9 @@ def _point_module_defaults_at(
     from omnimarket.adapters.llm.bifrost import (
         config_loader_bifrost_delegation as loader_mod,
     )
-    from omnimarket.routing import delegation_backend_resolution as resolution_mod
+    from omnimarket.handlers.routing import (
+        delegation_backend_resolution as resolution_mod,
+    )
 
     monkeypatch.setattr(resolution_mod, "_BIFROST_CONFIG_PATH", contract)
     monkeypatch.setattr(resolution_mod, "_OVERLAY_PATH", home_overlay)
@@ -235,10 +237,12 @@ def test_both_callers_share_one_binding_resolver() -> None:
     today and drift tomorrow — which is the history this ticket is the third
     instalment of. Identity cannot drift.
     """
+    from omnimarket.handlers.routing import (
+        delegation_backend_resolution as resolution_mod,
+    )
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing_mod,
     )
-    from omnimarket.routing import delegation_backend_resolution as resolution_mod
 
     assert (
         routing_mod.resolve_bifrost_path_binding

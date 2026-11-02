@@ -14,8 +14,12 @@ import pytest
 
 from omnimarket.delegation.rubric import attempt_verdict
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceDecision
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
+)
+from omnimarket.models.routing.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     _attempt_records,
@@ -35,10 +39,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_respon
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
-)
-from omnimarket.routing import delegation_backend_resolution
-from omnimarket.routing.model_escalation_decision_result import (
-    ModelEscalationDecisionResult,
 )
 from tests.unit.delegation.test_local_port_response_contract_evidence_omn19201 import (
     _FIELDS_CONTRACT,

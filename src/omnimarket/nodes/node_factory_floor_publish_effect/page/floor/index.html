@@ -751,7 +751,10 @@ function renderMergedRunning(floor){
   const hosts = (mr.idle_hosts || []).map(h => {
     let text;
     if (h.state === "unread") text = `unread${h.cause ? " (" + h.cause + ")" : ""}`;
-    else if (h.state === "out") text = "out of service";
+    else if (h.state === "out") {
+      const fallback = h.slots_source === "table_cap" ? `; ${h.slots} slots from the host table cap${h.cause ? " (" + h.cause + ")" : ""}` : "";
+      text = `out of service${fallback}`;
+    }
     else {
       const basis = h.slots_source === "table_cap" ? ` of ${h.slots}, from the host table cap${h.cause ? " (" + h.cause + ")" : ""}` : ` of ${h.slots}, from the machine's own count`;
       text = `${h.idle} idle${basis}`;

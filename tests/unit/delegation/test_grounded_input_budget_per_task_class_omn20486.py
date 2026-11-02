@@ -21,6 +21,9 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
@@ -33,9 +36,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 
 pytestmark = pytest.mark.unit
