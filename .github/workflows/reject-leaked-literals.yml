@@ -16,7 +16,9 @@
 #
 # OMN-17320: this job ALSO enforces the delegated exposed-identifier class --
 # a salted-SHA256 denylist of customer identifiers that must never re-enter this
-# PUBLIC repo (scripts/validation/check_exposed_identifiers.py). It is wired here,
+# PUBLIC repo, scanned by omnibase_core's exposed-identifier-gate runtime with this
+# repo's denylist (scripts/validation/exposed_identifiers_denylist.json; OMN-21940
+# deleted the repository copy of the scanner). It is wired here,
 # inside an already-required context, rather than as its own workflow so that it
 # blocks the moment it lands: no branch-protection edit, and no new job to
 # classify against tests/unit/scripts/ci/test_ci_summary_gate.py's completeness
@@ -70,3 +72,17 @@ jobs:
       - name: Run leak gate in blocking mode
         run: |
           bash scripts/validation/check_leaked_literals.sh blocking all
+
+      # OMN-21940: the exposed-identifier class, full tree. The scanner is
+      # omnibase_core's, at the same dev-merge tag as the pre-commit hook
+      # 'exposed-identifier-gate' (SYNC with that rev); this repo supplies only the
+      # denylist. A throwaway venv keeps the job on the stdlib and the runner's
+      # python, with no extra action to pin.
+      - name: Exposed identifier gate (OMN-17320, omnibase_core runtime)
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/core-venv"
+          "${RUNNER_TEMP}/core-venv/bin/python" -m pip install --quiet \
+            'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0'
+          "${RUNNER_TEMP}/core-venv/bin/python" -m omnibase_core.nodes.node_exposed_identifiers_check_compute.runtime_exposed_identifiers_check \
+            --mode blocking --scope all \
+            --denylist scripts/validation/exposed_identifiers_denylist.json

@@ -259,9 +259,8 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert old["source"] == "plan-task-table"
     assert [i["state"] for i in old["stations"][0]["items"]] == ["done", "prep"]
     floor = document["floor"]
-    assert floor["bays"] == [
-        {"host": "h201", "slots": 3, "running": 1, "free": 2, "stale": False}
-    ]
+    # The bays follow the machines the overlay declares; this overlay declares none, so the bus advertisement does not make one.
+    assert floor["bays"] == []
     assert [s["pr"] for s in floor["shipped"]] == ["kb#1"]
     assert [(w["pr"], w["detail"]) for w in floor["waiting"]] == [("kb#2", "draft")]
     assert [s["name"] for s in floor["stoppages"]] == ["gate-refusal"]
