@@ -27,6 +27,7 @@ from omnimarket.handlers.handler_measured_selection_config import (
     load_measured_selection_contract,
     read_selection_contract,
 )
+from omnimarket.handlers.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.models.delegation.model_measured_selection import (
     ModelMeasuredSelectionContract,
     ModelPricedModel,
@@ -44,7 +45,6 @@ from omnimarket.nodes.node_measured_model_selection_compute.handlers.handler_mea
     recorded_runs_from_rows,
     select_by_measure,
 )
-from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 
 
 def routing_contract_candidates() -> tuple[ModelSelectionCandidate, ...]:

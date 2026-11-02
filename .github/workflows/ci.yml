@@ -657,6 +657,10 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: uv run python -m omnimarket.nodes.node_ticket_contract_prerequisite_effect --head "$PR_HEAD" --title "$PR_TITLE"
 
+      # Paired with pr-handoff-dod-receipt-regression (pre-commit).
+      - name: PR handoff DoD receipt, HandlerPrHandoffDodReceipt (OMN-21285)
+        run: uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" --no-cov -p no:randomly -n 0
+
       # OMN-20838: dod_verify reads PR and commit facts from the canonical
       # clone and the PR watcher's state; this fails when its read layer spawns
       # gh for a read a local source holds. SYNC with pre-commit hook

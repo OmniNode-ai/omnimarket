@@ -45,6 +45,10 @@ handler_routing:
     handler:
       name: HandlerReportsPublish
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports_publish
+  - operation: publish_operator_reports
+    handler:
+      name: HandlerOperatorAccess
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_operator_access
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -72,6 +76,8 @@ descriptor:
   - writes the tab page, the factory floor page, the status, the process-health series, the delegation counts and the record to the serving host's directory over ssh
   - writes a timestamped snapshot of the record under the history subdirectory on the serving host, and removes past-window snapshots beyond the declared count there
   - reads the data files of the reports site under the registry home and writes the reports index, each report's page and data, and the reports manifest to the same serving directory over ssh
+  - reads the tailnet status on the publishing host, writes the operator-only allowed-address include to the access directory beside the serving directory, reloads the web server container and reads its configuration back over ssh
+  - writes the operator-only reports (page and data) to the serving directory once the web server carries the gate, and removes them from it when it does not
   - writes last-run.json into the tick's state directory
 
 # Where the record is, which input steps run before it is read, and what the served files are called. Paths are
@@ -113,11 +119,17 @@ runtime:
   # stopped, with the declared text as its plan_path), and its detail
   # names the missing lines, so a line the board cannot draw is never silent.
   record_step: factory_floor
+  # OMN-21733: the four input steps before the record are independent of each other, so they run together
+  # (`concurrent`), and the process-health series, which moves in days and cost 3 m 50 s of git log reads per run,
+  # is rebuilt only when its file is older than 900 s. Measured 2026-11-02 on the launching Mac under the Background
+  # clamp: one run took 10 m 0 s in sequence against a 300 s tick, so the heartbeat the throughput tick judges
+  # (older than twice the interval is MISSING) was stale for half of every cycle.
   steps:
   # The hosts step listens for a fixed window (two advertisement cadences plus two seconds, 22 s) after the command starts.
   # Measured 2026-11-01 on the launching Mac at load 56 on 24 cores: 27 s in the foreground, 103 s as the registry module tick
   # runs it (launchd ProcessType Background clamps CPU), so 120 s refused it on a load spike.
   - name: hosts
+    concurrent: true
     kind: capture
     required: false
     timeout_seconds: 300
@@ -130,11 +142,13 @@ runtime:
   # took 66 s in the foreground, and the Mac's own probe 20 s in the foreground against 139 s under the Background clamp, which
   # drew h200 unread.
   - name: pool
+    concurrent: true
     kind: command
     required: false
     timeout_seconds: 300
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
+    concurrent: true
     kind: copy
     required: false
     timeout_seconds: 30
@@ -142,10 +156,13 @@ runtime:
     select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
   - name: process_health
+    concurrent: true
     kind: module
     required: false
     timeout_seconds: 600
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
+    fresh_relpath: .onex_state/process-health/process-health.json
+    fresh_seconds: 900
   - name: factory_floor
     kind: module
     required: true
@@ -224,6 +241,26 @@ runtime:
         remote: reports/decision-map/decisions.json
         relpath: .claude_scratch/reports/decision-map/decisions.json
         as_of_key: asof
+  # The reports only the operator's own devices may read (OMN-22119). They are published to the serving directory like
+  # the reports above but are never listed in the manifest, the index or the shared page: the web server answers 403
+  # to every address that is not one of the operator's own devices. Before any of these files is written the publish
+  # writes the allowed-address include to the access directory beside the serving directory, reloads the web server
+  # and reads its configuration back; a server that does not carry the gate has these files withdrawn and the publish
+  # refuses. The owner's login is the overlay's owner_login key; the addresses are read from the tailnet status at
+  # every publish and are never written down.
+  operator_reports:
+    access:
+      tailscale_argv: ["tailscale", "status", "--json"]
+      # Platform classes of the operator's own devices (the status's OS field): the Macs and the phone. The owner
+      # login also owns lab hosts; those are not the operator's hand and are not admitted.
+      operator_os: ["macOS", "iOS"]
+      access_dirname: access
+      include_name: operator-only.conf
+      container_name: omninode-factory-floor-web
+      gate_marker: operator-only report gate
+    # Read by the operator-only pages for the age of their data; the shared manifest never lists these reports.
+    manifest: reports/decision-quality/manifest.json
+    entries:
     - id: decision_quality
       title: Decision quality, October
       summary: How the operator's 465 October rulings held up, what was reversed or reshaped, and which directions had to be restated.

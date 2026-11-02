@@ -1,0 +1,23 @@
+name: node_host_bringup_orchestrator
+version: "0.1.0"
+description: "The declared host bring-up target graph: 57 targets with a check, a falsifier and an enum action each"
+pack: host_bringup
+node_role: orchestrator
+display_name: "Host Bring-up Orchestrator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_bringup_orchestrator: "omnimarket.nodes.node_host_bringup_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "host-bringup", "dependency-graph"]
