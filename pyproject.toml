@@ -381,6 +381,7 @@ node_merged_running_count_effect = "omnimarket.nodes.node_merged_running_count_e
 node_lane_queue_start_decision_compute = "omnimarket.nodes.node_lane_queue_start_decision_compute"
 node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owed_compute"
 node_question_guard_compute = "omnimarket.nodes.node_question_guard_compute"
+node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
 node_skill_exec_decision_compute = "omnimarket.nodes.node_skill_exec_decision_compute"
 node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admission_compute"
 node_ledger_row_grammar_compute = "omnimarket.nodes.node_ledger_row_grammar_compute"

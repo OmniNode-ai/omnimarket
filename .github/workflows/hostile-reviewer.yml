@@ -713,6 +713,18 @@ jobs:
             exit 1
           fi
 
+      - name: Accept an agent review receipt in place of lost voters (OMN-22176)
+        # One node call and nothing else: the gate-accept node reads this attempt's
+        # voter result and the pull request's reviews, asks the verifier about each
+        # receipt, and writes `decision` (unchanged, pass_agent or refuse), `reason`
+        # and `receipt_id` to this step's outputs and its summary line to the step
+        # summary. Only `pass_agent` skips the enforcement step below; on any other
+        # decision that step runs exactly as before. `if: always()` so a skipped or
+        # failed review step cannot hide the decision.
+        id: accept
+        if: always()
+        run: onex run-node node_agent_review_gate_accept_effect --timeout 120 --input "{\"repository\":\"${{ github.repository }}\",\"pull_request\":${{ github.event.pull_request.number }},\"head_sha\":\"${{ github.event.pull_request.head.sha }}\",\"voter_result_path\":\"${{ runner.temp }}/hostile-reviewer-result.json\",\"step_output_path\":\"$GITHUB_OUTPUT\",\"step_summary_path\":\"$GITHUB_STEP_SUMMARY\"}"
+
       - name: Enforce hostile-review verdict (OMN-15110)
         # DEGRADED must not satisfy the gate. Historically this workflow's
         # three verdict-producing branches (the preflight short-circuit at
@@ -735,7 +747,7 @@ jobs:
         # need to emit accurate step outputs for the PR-comment step, and
         # `blocked` already exits 1 at its own branch -- this step is
         # idempotent in that case, not a behavior change.
-        if: always()
+        if: always() && steps.accept.outputs.decision != 'pass_agent'
         run: |
           VERDICT="${{ steps.review.outputs.verdict || steps.preflight.outputs.verdict }}"
           echo "Resolved verdict: ${VERDICT:-unknown}"

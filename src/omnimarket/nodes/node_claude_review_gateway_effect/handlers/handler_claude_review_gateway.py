@@ -94,6 +94,7 @@ from omnimarket.models.delegation.prompt_text_block import (
 )
 from omnimarket.models.review_cost import ModelReviewCallProvenance
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+    EnumReviewGatewayReason,
     ModelClaudeReviewGatewayRequest,
     ModelReviewGatewayKey,
     ModelReviewGatewayPlan,
@@ -555,8 +556,22 @@ def signature_is_valid(
     return hmac.compare_digest(expected, signature)
 
 
-def _error(status: int, kind: str, message: str) -> tuple[int, dict[str, Any]]:
-    return status, {"error": {"type": kind, "message": message}}
+def _error(
+    status: int,
+    kind: str,
+    message: str,
+    reason: EnumReviewGatewayReason | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """An error reply. ``reason`` follows ``type`` and precedes ``message``.
+
+    The voter's transport keeps only a leading snippet of the reply body, so the
+    typed reason sits ahead of the free-text message and survives truncation.
+    """
+    body: dict[str, Any] = {"type": kind}
+    if reason is not None:
+        body["reason"] = reason.value
+    body["message"] = message
+    return status, {"error": body}
 
 
 def _completion(model: str, outcome: ProtocolCallOutcome) -> dict[str, Any]:
@@ -627,6 +642,13 @@ class ClaudeReviewGateway:
     def candidate_keys(
         self, now: datetime | None = None
     ) -> list[ModelReviewGatewayKey]:
+        return [
+            key
+            for key in self._host_keys(now)
+            if key.api_key_ref not in self._set_aside
+        ]
+
+    def _host_keys(self, now: datetime | None = None) -> list[ModelReviewGatewayKey]:
         # OMN-21819: the tenant's keys may be stamped with its name or its
         # registry UUID; read both forms and let the filter accept both.
         forms = sync_tenant_identity_forms(self._catalog, self._request.tenant_id)
@@ -645,7 +667,7 @@ class ClaudeReviewGateway:
             host=self._request.host,
             now=now if now is not None else datetime.now(UTC),
         )
-        return [key for key in keys if key.api_key_ref not in self._set_aside]
+        return keys
 
     def _translate(
         self, payload: Mapping[str, Any], key: ModelReviewGatewayKey
@@ -745,10 +767,16 @@ class ClaudeReviewGateway:
             return _error(400, "invalid_request", "the review has no user message")
         keys = self.candidate_keys()
         if not keys:
+            # Keys bound here that this process already set aside are the same
+            # exhausted-credit state the first refused call reported.
+            exhausted = any(
+                key.api_key_ref in self._set_aside for key in self._host_keys()
+            )
             return _error(
                 503,
                 "gateway_no_key",
                 f"no live {GATEWAY_PROVIDER} key is bound to host {self._request.host}",
+                EnumReviewGatewayReason.CREDIT_EXHAUSTED if exhausted else None,
             )
         for key in keys:
             if not await self._key_values.get_secret(key.api_key_ref):
@@ -777,11 +805,13 @@ class ClaudeReviewGateway:
                 503,
                 "gateway_upstream_failed",
                 f"the review call failed ({failure}); overflow to the next voter",
+                EnumReviewGatewayReason.GATEWAY_UPSTREAM_FAILED,
             )
         return _error(
             503,
             "gateway_keys_set_aside",
             f"every key bound to host {self._request.host} was refused or is out of credit",
+            EnumReviewGatewayReason.CREDIT_EXHAUSTED,
         )
 
 

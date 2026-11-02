@@ -1,0 +1,101 @@
+schema_version: 1.0.0
+ticket_id: OMN-22176
+title: 'Typed credit_exhausted reply from the review gateway and the gate-accept node: the Hostile Review job accepts a verified agent receipt in omnimarket and omniclaude'
+summary: The review gateway's 503 for every key set aside now carries reason credit_exhausted, apart from gateway_upstream_failed. The gate-accept effect node decides unchanged, pass_agent or refuse for one Hostile Review attempt from its voter result and the receipts in the pull request's reviews, and the Hostile Reviewer workflow calls it in one step.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22176-ac1
+  statement: The typed reason is machine-checkable
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The typed reason is machine-checkable -- falsifier: a schema test in `uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q` fails when `reason` is not exactly `credit_exhausted` for the exhausted-credit reply or not exactly `gateway_upstream_failed` for a non-key failure, or when the rendered error of the new 503 body, passed through `substitutable_failure`, is not `was unavailable`'
+- id: req-omn22176-ac2
+  statement: The gate passes on an agent receipt only through `pass_agent` and fails closed otherwise
+  acceptance:
+  - id: AC2
+    statement: 'AC2: The gate passes on an agent receipt only through `pass_agent` and fails closed otherwise -- falsifier: in either repository `uv run pytest tests/ci/test_hostile_review_agent_accept.py -v -rs` does not report `3 passed` with no skip (one test per decision), or any gate-accept node case of the plan (no receipt, valid passing receipt with degraded voters, same receipt with passed voters, blocking finding from a succeeded voter, forged receipt, receipt for another head, receipt in a review by another identity, unreadable voter result file, blocked receipt) returns another decision'
+- id: req-omn22176-ac3
+  statement: The workflow adds no logic
+  acceptance:
+  - id: AC3
+    statement: 'AC3: The workflow adds no logic -- falsifier: a workflow-file test fails when the added step holds anything but an `onex run-node` call, `if: always()` and `if:` conditions over the node outputs, or when the `run:` text of the "Enforce hostile-review verdict" step differs from the default branch'
+- id: req-omn22176-ac4
+  statement: Agent substitution needs a `degraded` verdict; a CI `passed` stays sufficient and a `blocked` stays red
+  acceptance:
+  - id: AC4
+    statement: 'AC4: Agent substitution needs a `degraded` verdict; a CI `passed` stays sufficient and a `blocked` stays red -- falsifier: the workflow test that runs the workflow own steps finds a required context not green after a `degraded` voter result with `pass_agent`, not green after a `passed` voter result with `unchanged`, or green after a `blocked` voter result whatever the node fake returns, asserted on every required context in both repositories (both names in omnimarket, the Gate in omniclaude)'
+- id: req-omn22176-ac5
+  statement: The typed signal needs no real key
+  acceptance:
+  - id: AC5
+    statement: 'AC5: The typed signal needs no real key -- falsifier: with a gateway whose key a provider-free double reports billed out, the reply is not 503 with `reason: credit_exhausted`'
+- id: req-omn22176-ac6
+  statement: The gate-accept node loads through dependency injection in both profiles and each unsuccessful voter typed cause is named in the summary line
+  acceptance:
+  - id: AC6
+    statement: 'AC6: The gate-accept node loads through dependency injection in both profiles and each unsuccessful voter typed cause is named in the summary line -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect -v -rs` fails to show one `[inmemory] PASSED` and one `[redpanda_overlay] PASSED` line per test function with equal counts and no SKIPPED line, or a summary-line test finds a missing cause'
+evidence_requirements:
+- kind: tests
+  description: The focused suites run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22176-ac1
+  description: 'Gateway schema tests: reason is exactly credit_exhausted or gateway_upstream_failed; the rendered 503 error is classified unavailable.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22176-ac2
+  description: One workflow test per decision, plus the gate-accept node cases of the plan, run the workflow's own steps and the node's handler.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_hostile_review_agent_accept.py tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22176-ac3
+  description: The step-shape test pins the added step to one node call and the enforcement step's run text by digest.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_hostile_review_accept_step_shape.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22176-ac4
+  description: The workflow tests assert every required context after each voter verdict and decision.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_hostile_review_agent_accept.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22176-ac5
+  description: The gateway test reports the key billed out through a provider-free double and reads reason credit_exhausted in the 503.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_gateway_typed_reason.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22176-ac6
+  description: The profile check runs every node test in the in-memory and the Redpanda overlay profile.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect -q --no-cov --tb=line
+    cwd: .

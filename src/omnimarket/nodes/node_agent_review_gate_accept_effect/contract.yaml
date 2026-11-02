@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_gate_accept_effect
+node_type: effect
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decides, for one Hostile Review attempt, whether a verified agent receipt replaces the
+  CI voters. It reads this attempt's voter result file into a status per voter (succeeded,
+  blocking finding, typed lost-voter cause credit_exhausted, unavailable or timeout),
+  reads the pull request's reviews through the source-control port, asks the verifier port
+  about each receipt a review by the publisher carries, and returns one declared decision:
+  unchanged, pass_agent or refuse, with a typed reason, the receipt id and a summary line
+  that names each unsuccessful voter's cause. It writes the step output and the step
+  summary through its file port. A receipt replaces the voters only when the attempt shows
+  no passing quorum, no blocking finding from a succeeded voter and a typed cause for every
+  unsuccessful voter; an agent pass never overrides a CI blocked verdict. Anything it
+  cannot read or verify refuses. The publisher identity and the verifier endpoint are
+  deployment facts of the agent_review_gate_accept overlay.
+input_model:
+  name: ModelGateAcceptRequest
+  module: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept
+output_model:
+  name: ModelGateAcceptResult
+  module: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept
+handler:
+  module: omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_gate_accept
+  class: HandlerGateAccept
+  input_model: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept.ModelGateAcceptRequest
+  output_model: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept.ModelGateAcceptResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_gate_accept:HandlerGateAccept
+  handlers:
+    - operation: decide_gate_accept
+      topic: onex.cmd.omnimarket.agent-review-gate-accept-requested.v1
+      handler:
+        name: HandlerGateAccept
+        module: omnimarket.nodes.node_agent_review_gate_accept_effect.handlers.handler_gate_accept
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 120000
+inputs:
+  repository: {type: str, required: true, description: "owner/name of the repository under review."}
+  pull_request: {type: int, required: true, description: "The pull request number."}
+  head_sha: {type: str, required: true, description: "The head commit this gate attempt runs on."}
+  voter_result_path: {type: str, required: true, description: "This attempt's voter result file."}
+  step_output_path: {type: str, required: true, description: "The step output file the decision is appended to."}
+  step_summary_path: {type: str, required: true, description: "The step summary file the summary line is appended to."}
+outputs:
+  decision: {type: str, description: "unchanged, pass_agent or refuse."}
+  reason: {type: str, description: "The typed reason of the decision."}
+  receipt_id: {type: str, description: "The accepted receipt id, empty unless pass_agent."}
+  summary_line: {type: str, description: "One line naming the decision and each unsuccessful voter's typed cause."}
+config:
+  agent_review_gate_accept:
+    transport: in_memory
+    receipt_fence: onex-review-receipt
+    blocking_severities: [critical, error]
+    causes:
+      credit_exhausted:
+        - '^\[ONEX_CORE_205_SERVICE_UNAVAILABLE\] Server error \(503\) from [^\n]*? :: response_body=\{\s*"error":\s*\{\s*"type":\s*"[a-z_]+",\s*"reason":\s*"credit_exhausted"'
+      timeout:
+        - 'ONEX_CORE_092_TIMEOUT_ERROR'
+      unavailable:
+        - '^\[ONEX_CORE_205_SERVICE_UNAVAILABLE\] Server error \((?:502|503|504)\) from '
+        - '^\[ONEX_CORE_090_NETWORK_ERROR\] Connection to \S+ failed after \d+ attempts'
+        - '^unreachable: the TCP reachability probe of '
+        - '^could not read the served model id from \S+: (?:HTTP Error (?:502|503|504): |<urlopen error \[Errno \d+\] (?:Connection refused|No route to host|Network is unreachable|Connection reset by peer)>\. |<urlopen error timed out>\. |timed out\. |\[Errno \d+\] Connection reset by peer\. |Remote end closed connection without response\. )'
+terminal_event: onex.evt.omnimarket.agent-review-gate-accept-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.agent-review-gate-accept-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.agent-review-gate-accept-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.agent-review-gate-accept-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-review-gate-accept-decided.v1
+published_events:
+  - event_type: AgentReviewGateAcceptDecided
+    topic: onex.evt.omnimarket.agent-review-gate-accept-decided.v1
+    description: The gate-accept decision for one Hostile Review attempt.
+metadata:
+  transport_type: inmemory
+  description: Lets a verified agent receipt replace lost CI voters on the Hostile Review job
+  author: OmniNode Team
+  created: "2026-11-02"
