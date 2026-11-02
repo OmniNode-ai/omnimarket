@@ -2,7 +2,7 @@
 name: node_handoff_check_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
-runtime_profiles: [main]
+runtime_profiles: [effects]
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Assembles a session handoff from the rolling work ledger, the PR watcher reader and
