@@ -59,7 +59,6 @@ dod_evidence:
   - id: "dod-omn21887-stale-base-deploy-probe"
     description: "Deploy probe: the checked-out prerequisite handler selects the commits a push owns with _own_revisions. The function is absent at the merge base, so the grep fails there."
     source: "manual"
-    binds_ac: ["AC1"]
     checks:
       - check_type: "command"
         check_value: "grep -F 'def _own_revisions(' src/omnimarket/nodes/node_ticket_contract_prerequisite_effect/handlers/handler_ticket_contract_prerequisite.py"
