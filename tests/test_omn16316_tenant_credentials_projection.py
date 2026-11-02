@@ -100,6 +100,9 @@ class TestContractShape:
             TOPIC_REVOKED,
             "onex.evt.omnimarket.tenant-credential-state.v1",
             "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
+            # OMN-19996: the delegation terminals, for each key's last use.
+            "onex.evt.omnimarket.delegate-skill-completed.v1",
+            "onex.evt.omnimarket.delegate-skill-failed.v1",
         ]
 
     def test_known_table_guard_rejects_unlisted_table(self) -> None:

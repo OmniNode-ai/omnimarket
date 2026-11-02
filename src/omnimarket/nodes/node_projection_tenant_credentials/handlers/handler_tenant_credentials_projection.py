@@ -67,18 +67,37 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
+from omnimarket.events.topics import (
+    DELEGATE_SKILL_COMPLETED_TOPIC_V1,
+    DELEGATE_SKILL_FAILED_TOPIC_V1,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    terminal_event_time,
+)
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.dlq import (
+    correlation_id_from_payload,
+    dlq_topics_from_contract,
+    route_to_dlq,
+)
+from omnimarket.projection.envelope import envelope_event_timestamp
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
+)
+from omnimarket.projection.tenant_isolation import (
+    TenantRequiredError,
+    resolve_write_tenant,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 from .handler_tenant_credentials_store import (
     registered_expected_version,
@@ -93,9 +112,13 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
 
 
 #: The full credential-state row: every catalog column, never a secret.
+#: OMN-19996: last_used_at rides along so a register or revoke publishes the
+#: row with the key's last-used time instead of dropping it from the served
+#: snapshot; the state topic's exposure does not list it and never carries it.
 _CREDENTIAL_STATE_COLUMNS = (
     "api_key_ref, tenant_id, name, provider, created_at, revoked_at, "
-    "fingerprint, set_at, expires_at, bound_host, workspace_id, models, version"
+    "fingerprint, set_at, expires_at, bound_host, workspace_id, models, version, "
+    "last_used_at"
 )
 
 
@@ -125,6 +148,29 @@ def _credential_state(route_row: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(state, str):
         state = json.loads(state)
     return state if isinstance(state, dict) else None
+
+
+def _terminal_secret_refs(data: dict[str, Any]) -> list[str]:
+    """The distinct key references a delegate-skill terminal names (OMN-19996).
+
+    The top-level ``secret_ref`` first, as before, then each attempt's
+    ``secret_ref`` that has the minted tenant-key shape, in order, never twice.
+    """
+    refs: list[str] = []
+    top = data.get("secret_ref")
+    if isinstance(top, str) and top:
+        refs.append(top)
+    attempts = data.get("attempts")
+    if isinstance(attempts, list):
+        for row in attempts:
+            ref = row.get("secret_ref") if isinstance(row, dict) else None
+            if (
+                isinstance(ref, str)
+                and is_tenant_credential_ref(ref)
+                and ref not in refs
+            ):
+                refs.append(ref)
+    return refs
 
 
 def _optional_text(value: object) -> str | None:
@@ -179,6 +225,8 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         _path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(_path) as f:
             self._contract: dict[str, Any] = yaml.safe_load(f)
+        # OMN-13548: a malformed inbound event goes to the contract-declared DLQ.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
         self._standalone_db_tables = tuple(_tables)
@@ -230,6 +278,21 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             for exposure in self._snapshot_exposures
             if exposure.topic in _subscribed
         }
+        # OMN-19996: the delegation terminals (completed and failed) this node
+        # reads for the key each run used. A topic counts only when the
+        # contract both subscribes to and routes it AND the canonical topic
+        # registry names it as a delegate-skill terminal, so a later, unrelated
+        # subscription is never read as a terminal.
+        _routed = {
+            str(entry.get("topic"))
+            for entry in self._contract.get("handler_routing", {}).get("handlers", [])
+            if isinstance(entry, dict)
+        }
+        self._terminal_topics: frozenset[str] = frozenset(
+            {DELEGATE_SKILL_COMPLETED_TOPIC_V1, DELEGATE_SKILL_FAILED_TOPIC_V1}
+            & _subscribed
+            & _routed
+        )
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -275,6 +338,8 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             return await self._apply_credential_state(data)
         if state_table == self._table_routing_overlay:
             return await self._apply_overlay_state(data)
+        if topic in self._terminal_topics:
+            return await self._project_last_used(data, meta)
         return False
 
     async def _publish_snapshot_if_available(
@@ -284,16 +349,20 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         data: dict[str, Any],
         *,
         table: str | None = None,
+        required_column: str | None = None,
     ) -> None:
         """Best-effort snapshot publish (OMN-15800): a no-op unless this node
         declares a bus_backed exposure of ``table`` AND the write returned a
-        real row. ``table`` defaults to the credential catalog."""
+        real row. ``table`` defaults to the credential catalog.
+        ``required_column`` limits the publish to exposures that list it."""
         if row is None:
             return
         table = table or self._table_credentials
         source_event_id = str(data.get("correlation_id") or meta.fallback_id)
         for exposure in self._snapshot_exposures:
             if exposure.table != table:
+                continue
+            if required_column is not None and required_column not in exposure.columns:
                 continue
             await self.publish_snapshot_delta(
                 exposure,
@@ -309,6 +378,99 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                 source_offset=meta.offset,
                 tenant_id=str(row["tenant_id"]),
             )
+
+    async def _route_malformed_to_dlq(
+        self, data: dict[str, Any], reason: str, meta: MessageMeta
+    ) -> bool:
+        """Route a malformed inbound event to the contract-declared DLQ topic.
+
+        The payload, the reason and its correlation_id are published to the DLQ
+        so the event stays recoverable on the bus; returning True commits the
+        offset instead of reprocessing it in a loop (OMN-13548).
+        """
+        await route_to_dlq(
+            publish=await self.get_publish_fn(),
+            dlq_topics=self._dlq_topics,
+            original_message=data,
+            failure_reason=reason,
+            handler="node_projection_tenant_credentials",
+            correlation_id=correlation_id_from_payload(data, fallback=meta.fallback_id),
+        )
+        return True
+
+    async def _project_last_used(self, data: dict[str, Any], meta: MessageMeta) -> bool:
+        """Record a delegation terminal's time on the key it ran with (OMN-19996).
+
+        The terminal's ``secret_ref`` is the key reference the run resolved;
+        a run that resolved none names none and records nothing. The time is
+        the one the run's delegation_events row records (``terminal_event_time``:
+        the terminal's own ``emitted_at``, else its envelope time; the runtime
+        kernel's ``_envelope_timestamp`` serves as the envelope time on that
+        seam), never the time this consumer saw it, and an un-timed terminal
+        records nothing rather than an invented time.
+
+        One guarded UPDATE, scoped to the terminal's tenant: another tenant's
+        key never changes, a ref with no catalog row (a house key, an unknown
+        ref) creates nothing, and a terminal older than the stored time never
+        lowers it, so terminals may arrive in any order. A revoked key still
+        records use. The version is not raised: the compacted state topic does
+        not carry this column, so the changed row is published only to the
+        exposures that list it.
+
+        Amendment 1: every key the run used moves, not only the top-level
+        ``secret_ref``. A deployed-path run can name earlier keys on its
+        attempts; each distinct minted tenant key gets the same terminal time
+        through the same guarded UPDATE.
+        """
+        api_key_refs = _terminal_secret_refs(data)
+        try:
+            used_at = terminal_event_time(data) or envelope_event_timestamp(data)
+        except ValidationError as exc:
+            # OMN-13548: a terminal whose time is not an aware timestamp is
+            # malformed; it goes to the declared DLQ rather than being dropped.
+            return await self._route_malformed_to_dlq(
+                data,
+                f"delegation terminal time is not an aware timestamp: {exc}",
+                meta,
+            )
+        if not api_key_refs or used_at is None:
+            logger.debug(
+                "delegation terminal names no secret_ref or envelope time -- "
+                "no credential last-used write"
+            )
+            return True
+        try:
+            tenant = resolve_write_tenant(
+                data.get("tenant_id"), table=self._table_credentials
+            )
+        except TenantRequiredError:
+            logger.warning(
+                "delegation terminal for correlation_id=%s carries no tenant_id "
+                "under enforced isolation -- no credential last-used write",
+                data.get("correlation_id"),
+            )
+            return True
+        for api_key_ref in api_key_refs:
+            rows = await self.db_for(
+                self._table_credentials, operation="write"
+            ).execute(
+                f"""
+                UPDATE {self._table_credentials}
+                   SET last_used_at = $2
+                 WHERE api_key_ref = $1
+                   AND tenant_id = $3
+                   AND (last_used_at IS NULL OR last_used_at < $2)
+                RETURNING {_CREDENTIAL_STATE_COLUMNS}
+                """,
+                api_key_ref,
+                used_at,
+                tenant,
+                tenant=tenant,
+            )
+            await self._publish_snapshot_if_available(
+                rows[0] if rows else None, meta, data, required_column="last_used_at"
+            )
+        return True
 
     async def _apply_credential_state(self, data: dict[str, Any]) -> bool:
         """Apply one committed credential row read back from the state topic.

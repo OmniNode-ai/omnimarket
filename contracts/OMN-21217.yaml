@@ -12,6 +12,8 @@ summary: >-
   retain the same list/version semantics. Real PostgreSQL proof must come from
   the hosted CI service, not a database started on the shared lab host. T6
   routing and T7 dashboard management remain separate changes after T5 merges.
+  AC4 (merged on dev in #4540): every onex.snapshot exposure declares its own
+  cleanup.policy on that exposure item.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched: [events, protocols, public_api]

@@ -38,6 +38,10 @@ from omnimarket.projection.protocol_database import (
     ProtocolProjectionAttestedWrite,
     ProtocolProjectionDatabaseSync,
 )
+from omnimarket.protocols.protocol_credential_last_used_write import (
+    ProtocolCredentialLastUsedWrite,
+    credential_used_at_instant,
+)
 from omnimarket.protocols.protocol_credential_route_write import (
     ProtocolCredentialRouteWrite,
 )
@@ -335,10 +339,39 @@ def apply_credential_revoked(data: dict[str, Any], db: ProtocolCredentialStore) 
     return True
 
 
+def apply_credential_last_used(
+    api_key_ref: str | None,
+    used_at: str,
+    db: object,
+    *,
+    tenant_id: str | None = None,
+) -> bool:
+    """Record that a run used the key, moving ``last_used_at`` forward only.
+
+    OMN-19996. ``api_key_ref`` is the run's ``secret_ref``; a run that resolved
+    no credential names none and records nothing. A ``tenant_id`` limits the
+    write to that tenant's row; ``None`` adds no tenant predicate, for one
+    install's own local store, whose keys carry the tenant given to
+    ``onex secret`` rather than the install's identity. A ref with no row (a house key) creates no row, and an
+    earlier instant never lowers a later one. The time is normalised to UTC
+    before it reaches the store; a time with no offset raises ``ValueError``.
+    Returns whether a row changed, and ``False`` for a store without that write.
+    """
+    if not api_key_ref:
+        return False
+    utc_used_at = credential_used_at_instant(used_at).isoformat()
+    if not isinstance(db, ProtocolCredentialLastUsedWrite):
+        return False
+    return db.record_credential_last_used(
+        str(api_key_ref), utc_used_at, tenant_id=tenant_id
+    )
+
+
 __all__ = [
     "CREDENTIALS_TABLE",
     "OVERLAY_TABLE",
     "ProtocolCredentialStore",
+    "apply_credential_last_used",
     "apply_credential_registered",
     "apply_credential_revoked",
 ]

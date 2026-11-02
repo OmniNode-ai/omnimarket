@@ -1,0 +1,14 @@
+-- OMN-19996: a credential row records when its key was last used in a run.
+--
+-- last_used_at: the terminal time of the latest delegation terminal
+-- (onex.evt.omnimarket.delegate-skill-completed.v1 or
+-- onex.evt.omnimarket.delegate-skill-failed.v1) whose secret_ref names this
+-- row's api_key_ref: the terminal's own emitted_at when present, else the
+-- envelope time its producer stamped, the same time its delegation_events
+-- row records. The projection only ever moves it forward, so a terminal
+-- that arrives late never lowers it, and a terminal naming a key with no row
+-- here (a house key, an unknown ref) creates nothing.
+--
+-- Nullable with no default and no backfill: NULL means the key has not been
+-- used in a run since this column existed.
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;

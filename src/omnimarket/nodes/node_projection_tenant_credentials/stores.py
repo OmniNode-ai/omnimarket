@@ -20,6 +20,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from omnimarket.models.model_credential_route_write import ModelCredentialRouteWrite
 from omnimarket.models.model_credential_row_write import ModelCredentialRowWrite
+from omnimarket.protocols.protocol_credential_last_used_write import (
+    credential_used_at_instant,
+)
 
 # OMN-19968: the local half of the tenant BYOK credential projection's two
 # tables, declared from node_projection_tenant_credentials/migrations (0000,
@@ -41,7 +44,8 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     bound_host  TEXT,
     workspace_id TEXT,
     models      TEXT,
-    version     INTEGER NOT NULL DEFAULT 1
+    version     INTEGER NOT NULL DEFAULT 1,
+    last_used_at TEXT
 )
 """
 
@@ -63,6 +67,9 @@ _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
     # raises the version on each write exactly as the Postgres runner does, so
     # both stores hold the same row (tests/test_omn19968_writer_store_parity.py).
     "version": 1,
+    # 0010 (OMN-19996): the terminal time of the latest run that used the key,
+    # ISO text; NULL until a run names it.
+    "last_used_at": None,
 }
 
 
@@ -303,6 +310,59 @@ class CredentialSqliteStore(_SqliteBase):
         finally:
             conn.close()
 
+    def record_credential_last_used(
+        self, api_key_ref: str, used_at: str, *, tenant_id: str | None = None
+    ) -> bool:
+        """OMN-19996: move the key's last-used time forward, never insert.
+
+        SQLite has no time type, so the stored text cannot be compared in SQL:
+        ``05:00+02:00`` sorts after ``04:00+00:00`` though it is earlier. The
+        stored time is read and compared as an instant inside one immediate
+        transaction, so a row written in any ISO form (including one stored
+        before this rule) is never lowered, and no second writer interleaves.
+        A stored value that is not a time is replaced. ``tenant_id`` adds a
+        tenant predicate; ``None`` adds none (the local store).
+        """
+        new_instant = credential_used_at_instant(used_at)
+        where = "api_key_ref = :ref"
+        params = {"ref": api_key_ref, "used_at": used_at}
+        if tenant_id is not None:
+            where += " AND tenant_id = :tenant"
+            params["tenant"] = tenant_id
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                f"SELECT last_used_at FROM tenant_inference_credentials WHERE {where}",
+                params,
+            ).fetchone()
+            if row is None:
+                conn.rollback()
+                return False
+            stored = row["last_used_at"]
+            if stored is not None:
+                try:
+                    stored_instant: datetime | None = credential_used_at_instant(
+                        str(stored)
+                    )
+                except ValueError:
+                    stored_instant = None
+                if stored_instant is not None and stored_instant >= new_instant:
+                    conn.rollback()
+                    return False
+            conn.execute(
+                "UPDATE tenant_inference_credentials SET last_used_at = :used_at "
+                f"WHERE {where}",
+                params,
+            )
+            conn.commit()
+            return True
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
 
 class CredentialPgStore(_PgBase):
     """The credential writes of ``PostgresSyncProjectionAdapter``."""
@@ -354,5 +414,38 @@ class CredentialPgStore(_PgBase):
                 )
                 current = cur.fetchone()
                 return written is not None, None if current is None else int(current[0])
+        finally:
+            conn.close()
+
+    def record_credential_last_used(
+        self, api_key_ref: str, used_at: str, *, tenant_id: str | None = None
+    ) -> bool:
+        """OMN-19996: move the key's last-used time forward, never insert.
+
+        TIMESTAMPTZ compares instants, so one guarded UPDATE suffices. With a
+        ``tenant_id`` it runs under that tenant like every tenant-scoped write
+        here and names it too, so another tenant's key with the same ref is
+        never touched whether or not the table carries a row-level policy.
+        ``None`` adds no tenant predicate and no tenant scope.
+        """
+        statement = (
+            "UPDATE tenant_inference_credentials "
+            "SET last_used_at = %(used_at)s::TIMESTAMPTZ "
+            "WHERE api_key_ref = %(ref)s "
+            "AND (last_used_at IS NULL OR last_used_at < %(used_at)s::TIMESTAMPTZ)"
+        )
+        params: dict[str, object] = {"ref": api_key_ref, "used_at": used_at}
+        conn = self._connect()
+        try:
+            if tenant_id is None:
+                with conn.cursor() as cur:
+                    cur.execute(statement, params)
+                    return bool(cur.rowcount > 0)
+            with self._tenant_scoped(conn, tenant_id), conn.cursor() as cur:
+                cur.execute(
+                    statement + " AND tenant_id = %(tenant)s",
+                    {**params, "tenant": tenant_id},
+                )
+                return bool(cur.rowcount > 0)
         finally:
             conn.close()

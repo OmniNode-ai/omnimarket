@@ -23,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    TypeAdapter,
     ValidationError,
     field_validator,
     model_validator,
@@ -772,10 +773,32 @@ def _payload_with_envelope_timestamp(
     return normalized
 
 
+#: The payload keys ``ModelDelegateSkillTerminalProjection.emitted_at`` reads,
+#: in its alias order.
+_TERMINAL_TIME_KEYS = ("emitted_at", "emittedAt", "timestamp")
+_AWARE_DATETIME: TypeAdapter[datetime] = TypeAdapter(AwareDatetime)
+
+
 def _has_timestamp(payload: Mapping[str, object]) -> bool:
-    return any(
-        payload.get(key) is not None for key in ("emitted_at", "emittedAt", "timestamp")
-    )
+    return any(payload.get(key) is not None for key in _TERMINAL_TIME_KEYS)
+
+
+def terminal_event_time(payload: Mapping[str, object]) -> datetime | None:
+    """The time ``from_payload`` records for a delegate-skill terminal, or None.
+
+    OMN-19996. The same rule the delegation_events row's ``timestamp`` comes
+    from: the payload's own ``emitted_at`` (or its aliases) when present, else
+    the wire envelope's ``envelope_timestamp``. Where ``from_payload`` would
+    fall back to the current time this returns None, so a caller never records
+    an invented time. Raises ``ValidationError`` for a value that is not an
+    aware time, as ``from_payload`` does.
+    """
+    normalized = _payload_with_envelope_timestamp(payload)
+    for key in _TERMINAL_TIME_KEYS:
+        value = normalized.get(key)
+        if value is not None:
+            return _AWARE_DATETIME.validate_python(value)
+    return None
 
 
 __all__ = [
@@ -786,4 +809,5 @@ __all__ = [
     "ModelDelegationEventProjectionRow",
     "ModelProjectionEnvelopeMetadata",
     "ModelTaskDelegatedSavingsSource",
+    "terminal_event_time",
 ]

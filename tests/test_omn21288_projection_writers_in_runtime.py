@@ -69,6 +69,10 @@ EXPECTED_SUBSCRIPTIONS = {
         # (the registries' replay source), routed to the same runtime writer.
         "onex.evt.omnimarket.tenant-credential-state.v1",
         "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
+        # OMN-19996: the delegation terminals, read for the key each run used,
+        # so the key's row records when it was last used in a run.
+        "onex.evt.omnimarket.delegate-skill-completed.v1",
+        "onex.evt.omnimarket.delegate-skill-failed.v1",
     ),
     "tenant_registry": ("onex.tenant.events",),
 }
