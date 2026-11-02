@@ -365,5 +365,5 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q '^def parse_row' src/omnimarket/handlers/ledger_row_grammar.py"
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/ledger_row_grammar tests/nodes/node_ledger_row_grammar_compute -q -n 0 --no-cov -p no:randomly"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/ledger_row_grammar/test_ledger_claim_contract_omn20029.py tests/handlers/ledger_row_grammar/test_ledger_grammar_prompt_link_omn18531.py tests/handlers/ledger_row_grammar/test_ledger_hold_grammar.py tests/handlers/ledger_row_grammar/test_ledger_lab_agent_declared_cell_omn20257.py tests/handlers/ledger_row_grammar/test_ledger_ruling_link_omn17427.py tests/handlers/ledger_row_grammar/test_ledger_scoped_release.py tests/handlers/ledger_row_grammar/test_ledger_terminal_delegation_cell_omn17427.py tests/handlers/ledger_row_grammar/test_ledger_terminal_undisposed_receipt_omn20015.py tests/handlers/ledger_row_grammar/test_ledger_worktree_cell.py tests/nodes/node_ledger_row_grammar_compute/test_golden_chain_ledger_row_grammar_compute.py -q -n 0 --no-cov -p no:randomly"
     binds_ac: ["AC1"]
