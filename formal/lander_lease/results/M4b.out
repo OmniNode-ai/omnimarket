@@ -1,0 +1,175 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 83 and seed -5328374243389734621 with 2 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LanderLease.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LanderLease
+Starting... (2026-11-02 22:53:30)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 22:53:30.
+Error: Invariant SingleOwnerOfTree is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "none"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 2: <GrantLease line 138, col 5 to line 143, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 3: <SendRelease line 216, col 5 to line 221, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"rel"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 4: <ReleaseLock line 420, col 5 to line 424, col 73 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "R"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "locked"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 5: <ReleaseCloseout line 427, col 5 to line 432, col 58 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "removed"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = TRUE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "closed"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "R"
+/\ hres = "none"
+
+183 states generated, 98 distinct states found, 56 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 2 (minimum is 1, the maximum 5 and the 95th percentile is 5).
+Finished in 00s at (2026-11-02 22:53:30)
+exit=12

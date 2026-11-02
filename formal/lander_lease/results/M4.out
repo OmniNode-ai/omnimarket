@@ -1,0 +1,81 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 119 and seed 882193202190776451 with 2 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LanderLease.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LanderLease
+Starting... (2026-11-02 22:52:18)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 22:52:18.
+Error: Invariant SingleOwnerOfTree is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "none"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 2: <RemoverRuns line 444, col 5 to line 449, col 74 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "removed"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = TRUE
+/\ lease = "none"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "X"
+/\ hres = "none"
+
+11 states generated, 9 distinct states found, 5 states left on queue.
+The depth of the complete state graph search is 3.
+Finished in 01s at (2026-11-02 22:52:18)
+exit=12

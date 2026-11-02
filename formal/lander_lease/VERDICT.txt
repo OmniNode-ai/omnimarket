@@ -1,0 +1,57 @@
+LanderLease model verdict
+=========================
+
+Question: are the permit, the fenced push and the kept tree safe to build as the lane lander,
+before any lander node exists?
+
+Checked: TLC 2.19 (v1.7.4) over LanderLease.tla on h201. The base config checks four
+invariants (AtMostOneAuthorizedPublisher, NoLostUpdate, ExactlyOnceChild, SingleOwnerOfTree)
+and the liveness property NoStrand. Five mutation configs plus a second SingleOwnerOfTree
+mutant each flip one design knob and each violate the one property they target. A draft that
+lets the cold dispatch read only an unchanged head with no push lease fails base.cfg first.
+
+TLC receipt: formal/lander_lease/results/SUMMARY.txt (the outputs are in
+formal/lander_lease/results/; run on h201 at branch omn-22186-lander-lease-model, head
+b226b60ce55f430cd5955f9856b5fdb204c22eba).
+
+Results
+-------
+draft  base.cfg on draft/LanderLease.tla   violated AtMostOneAuthorizedPublisher  exit=12
+base   base.cfg                            No error has been found                exit=0
+M1     drop the lease from the push        violates NoLostUpdate                  exit=12
+M2     cold dispatch during a live permit  violates AtMostOneAuthorizedPublisher  exit=12
+M3     respawn the engine on a repeat      violates ExactlyOnceChild              exit=12
+M4     remover ignores the record          violates SingleOwnerOfTree             exit=12
+M4b    lock file inside the tree           violates SingleOwnerOfTree             exit=12
+M5     no fallback after cutoff_at         violates NoStrand                      exit=13
+
+What the model found
+--------------------
+The fenced push and the cold worker's push must each carry a lease on the head they started
+from: with either dropped, a push accepted late (after cutoff_at, from a paused host) loses
+the other's commit (M1, and the draft). A cold dispatch must wait for the permit to be ended
+(observed terminal or cutoff_at), not only for an unchanged head (M2, draft).
+NoStrand is stated for a pull request that still needs a fix: a late permit push can move
+the head after the controller saw the pull request stranded, so the property holds only
+while the head has not moved.
+
+Design points the build follows
+-------------------------------
+1. The permit is a lease on the pull request; the cold fallback is dispatched only after the
+   permit is ended (status shows it terminal, or now >= cutoff_at), on the first decision
+   tick at or after cutoff_at, as a worker, a named gate or the head-cap escalation (M2, M5).
+2. Both pushes lease on the head they started from. The plan's guarantee is that no update is
+   lost, not that no push lands late (M1).
+3. A repeated offer finds the permit record and starts nothing, also after the job died (M3).
+4. Every remover and writer takes the tree lock without waiting and skips a tree a record
+   names; only a release job holding the grant removes it (M4).
+5. The lock file lives outside every path a tree removal deletes (M4b).
+
+Limits
+------
+One author, no independent reviewer. One pull request, one tree, one permit, Horizon 4 and
+HoldS 2. The lane unit and engine scope drain, the WIP push, the amended-head refusal and
+the controller budget are outside the model. The node build needs its own check against this
+model.
+
+verdict: BUILD model=LanderLease.tla sha256=62e74777aed711f0ccd786d2cd39b2484ffc09965b494b2368c317b3fcb2a1a3
