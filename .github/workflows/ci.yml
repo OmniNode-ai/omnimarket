@@ -576,6 +576,9 @@ jobs:
           src/omnimarket/configs/bifrost_delegation.yaml
           src/omnimarket/configs/routing_tiers.yaml
           src/omnimarket/data/model_registry/model_registry_v1.yaml
+      # Paired with the compaction-arm-producer pre-commit hook (OMN-22036).
+      - name: Compaction arm producer
+        run: uv run --frozen pytest tests/nodes/node_compaction_arm_run_effect -q --no-cov
       # OMN-15630: routing-completeness invariant. For every task class declared
       # in task_class_contracts.v1.yaml, every tier in that class's OWN
       # escalation_policy.tier_order must be served by >=1 backend's use_for,

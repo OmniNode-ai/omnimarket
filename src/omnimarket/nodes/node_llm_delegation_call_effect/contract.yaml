@@ -205,6 +205,7 @@ event_bus:
     patch: 0
 
   subscribe_topics:
+    - "onex.cmd.omniintelligence.native-compaction-fork-requested.v1"
     - "onex.cmd.omnimarket.delegation-target-execute.v1"
     - "onex.cmd.omnimarket.lab-job-submitted.v1"
     - "onex.cmd.omnimarket.delegation-execute.v1"
@@ -227,8 +228,12 @@ event_bus:
     - "onex.evt.omnibase-infra.inference-response-failed.v1"
     - "onex.evt.omnimarket.delegation-target-completed.v1"
     - "onex.evt.omnimarket.lab-job-transitioned.v1"
+    - "onex.cmd.omniintelligence.native-compaction-fork-completed.v1"
 
   subscribe_topic_metadata:
+    "onex.cmd.omniintelligence.native-compaction-fork-requested.v1":
+      schema_ref: "omnimarket.models.compaction_replay.model_native_compaction_fork.ModelNativeCompactionForkRequest"
+      description: "Frozen transcript prefix and its case pin for native headless compaction."
     "onex.cmd.omnimarket.delegation-target-execute.v1":
       schema_ref: "omnimarket.models.delegation.model_delegation_target.ModelDelegationTargetRequest"
       description: "ModelEventEnvelope v1 carrying a logical target; endpoint authority remains in caller/runtime contracts."
@@ -243,6 +248,9 @@ event_bus:
       description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."
 
   publish_topic_metadata:
+    "onex.cmd.omniintelligence.native-compaction-fork-completed.v1":
+      schema_ref: "omnimarket.models.compaction_replay.model_native_compaction_fork.ModelNativeCompactionForkResult"
+      description: "Restricted native context, usage estimates and retained-fork evidence."
     "onex.evt.omnimarket.delegation-target-completed.v1":
       schema_ref: "omnimarket.models.delegation.model_delegation_target.ModelDelegationTargetResult"
       description: "Typed adapter result and session receipt reference, including failed/timed_out statuses."
@@ -331,6 +339,10 @@ externally_consumed_topics:
   - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
   - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
   - "onex.evt.omnimarket.delegation-model-degraded.v1"
+  # The native compaction fork reply is read as the declared request-reply
+  # terminal of node_compaction_arm_run_effect (its request_response instance
+  # compaction_arm_native_fork), not through a subscribe_topics dispatch.
+  - "onex.cmd.omniintelligence.native-compaction-fork-completed.v1"
 
 # === HANDLER ROUTING ===
 externally_produced_topics:
@@ -340,6 +352,14 @@ externally_produced_topics:
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
+    - operation: "native_compaction_fork"
+      event_type: "omniintelligence.native-compaction-fork-requested"
+      event_model:
+        name: "ModelNativeCompactionForkRequest"
+        module: "omnimarket.models.compaction_replay.model_native_compaction_fork"
+      handler:
+        name: "HandlerNativeCompactionFork"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_native_compaction_fork"
     - operation: "execute_delegation_target"
       event_type: "omnimarket.delegation-target-execute"
       event_model:
@@ -381,6 +401,9 @@ handler_routing:
 # inference-response.v1. event_type is the Model-prefix-stripped short class
 # name the applier looks up (OMN-12294).
 published_events:
+  - event_type: "NativeCompactionForkResult"
+    topic: "onex.cmd.omniintelligence.native-compaction-fork-completed.v1"
+    description: "Native context and usage estimates, or explicit headless premise refusal."
   - event_type: "DelegationTargetResult"
     topic: "onex.evt.omnimarket.delegation-target-completed.v1"
     description: "The terminal adapter receipt; status distinguishes completion, failure and timeout."
@@ -506,3 +529,14 @@ claude_credential_probe:
   max_timeout_seconds: 300
   terminate_grace_seconds: 5
   output_chars: 600
+
+# Native compaction belongs to this existing sanctioned model-call effect.
+native_compaction_fork:
+  state_root_env: ONEX_STATE_DIR
+  workspace_subdirectory: native-compaction-forks
+  session_store_env: ONEX_COMPACTION_SESSION_STORE
+  session_store_relative: .claude/projects
+  client_config_env: CLAUDE_CONFIG_DIR
+  executable_env: ONEX_COMPACTION_CLIENT
+  executable: claude
+  timeout_s: 180.0

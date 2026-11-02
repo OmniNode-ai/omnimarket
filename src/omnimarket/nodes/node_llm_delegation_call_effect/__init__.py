@@ -46,6 +46,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
     HandlerLlmDelegationCall,
     current_call_observer,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_native_compaction_fork import (
+    HandlerNativeCompactionFork,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_codex_harness_attempt import (
     ModelCodexHarnessPolicy,
     ModelCodexHarnessReceipt,
@@ -77,6 +80,7 @@ __all__ = [
     "HandlerHarnessEvalProcess",
     "HandlerLabJobDelegation",
     "HandlerLlmDelegationCall",
+    "HandlerNativeCompactionFork",
     "ModelClaudeCredentialProbeReceipt",
     "ModelClaudeCredentialProbeRequest",
     "ModelCodexHarnessPolicy",

@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_arm_run_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+runtime_profiles: [effects]
+description: >-
+  Fork a pinned case into isolated workspaces, produce native, pinned-pack,
+  recorded and control contexts, and record usage and hashes append-only.
+  Stock carrying custom-boundary evidence is invalid. A failed headless
+  premise is reported as REFUSED and uses recorded stock with the planted
+  safeguard not established and the answerer-only A/A control.
+input_model:
+  name: ModelArmRunRequest
+  module: omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run
+output_model:
+  name: ModelArmRunResult
+  module: omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run
+handler:
+  module: omnimarket.nodes.node_compaction_arm_run_effect.handlers.handler_arm_run_runtime
+  class: HandlerCompactionArmRunRuntime
+  input_model: omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run.ModelArmRunRequest
+  output_model: omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run.ModelArmRunResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCompactionArmRunRuntime
+        module: omnimarket.nodes.node_compaction_arm_run_effect.handlers.handler_arm_run_runtime
+      event_model:
+        name: ModelArmRunRequest
+        module: omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+dependencies:
+  - name: node_context_pack_orchestrator
+    type: node
+    optional: false
+  - name: node_llm_delegation_call_effect
+    type: node
+    optional: false
+arm_adapters:
+  stock_rerun: headless_native_fork
+  mod: pinned_context_pack
+  stock_recorded: verified_transcript_summary
+  controls: [oracle, empty, inverted]
+arm_run_handlers:
+  run:
+    handler:
+      name: HandlerCompactionArmRun
+      module: omnimarket.nodes.node_compaction_arm_run_effect.handlers.handler_arm_run
+  workspace:
+    handler:
+      name: HandlerForkWorkspace
+      module: omnimarket.nodes.node_compaction_arm_run_effect.handlers.workspace
+  adapters:
+    handler:
+      name: HandlerNativeForkAdapter
+      module: omnimarket.nodes.node_compaction_arm_run_effect.handlers.arm_adapters
+arm_runtime:
+  state_root_env: ONEX_STATE_DIR
+  workspace_subdirectory: compaction-arm-runs
+  native_timeout_s: 210.0
+  pack_timeout_s: 30.0
+  profile_name: compaction_orchestrator
+  tenant_id_env: ONEX_CONTEXT_SOURCE_TENANT_ID
+  pack_requested_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+  pack_built_topic: onex.cmd.omniintelligence.context-pack-built.v1
+  pack_failed_topic: onex.cmd.omniintelligence.context-pack-failed.v1
+  native_requested_topic: onex.cmd.omniintelligence.native-compaction-fork-requested.v1
+  native_completed_topic: onex.cmd.omniintelligence.native-compaction-fork-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omniintelligence.compaction-arm-run-requested.v1
+  publish_topics:
+    - onex.cmd.omniintelligence.compaction-arm-run-completed.v1
+    - onex.cmd.omniintelligence.context-pack-requested.v1
+    - onex.cmd.omniintelligence.native-compaction-fork-requested.v1
+  request_response:
+    instances:
+      - name: compaction_arm_pack_build
+        request_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+        reply_topics:
+          completed: onex.cmd.omniintelligence.context-pack-built.v1
+          failed: onex.cmd.omniintelligence.context-pack-failed.v1
+        correlation: {location: body, field: correlation_id}
+        timeout_seconds: 30
+      - name: compaction_arm_native_fork
+        request_topic: onex.cmd.omniintelligence.native-compaction-fork-requested.v1
+        reply_topics:
+          completed: onex.cmd.omniintelligence.native-compaction-fork-completed.v1
+        correlation: {location: body, field: correlation_id}
+        timeout_seconds: 210
+test_profiles:
+  default: inmemory
+  selector_env: ONEX_COMPACTION_ARM_TEST_PROFILE
+  topics:
+    requested: onex.cmd.omniintelligence.compaction-arm-test-requested.v1
+    completed: onex.cmd.omniintelligence.compaction-arm-test-completed.v1
+  redpanda:
+    bootstrap_servers_env: ONEX_COMPACTION_ARM_TEST_BROKER
+    security_protocol_env: ONEX_COMPACTION_ARM_TEST_SECURITY_PROTOCOL
+    sasl_mechanism_env: ONEX_COMPACTION_ARM_TEST_SASL_MECHANISM
+    sasl_username_env: ONEX_COMPACTION_ARM_TEST_SASL_USERNAME
+    sasl_password_env: ONEX_COMPACTION_ARM_TEST_SASL_PASSWORD
+terminal_event: onex.cmd.omniintelligence.compaction-arm-run-completed.v1
+externally_consumed_topics:
+  - onex.cmd.omniintelligence.compaction-arm-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.compaction-arm-run-requested.v1
+metadata:
+  transport_type: kafka

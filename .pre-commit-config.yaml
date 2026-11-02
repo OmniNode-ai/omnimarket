@@ -2644,6 +2644,16 @@ repos:
         verbose: true
         stages: [pre-push]
 
+  - repo: local
+    hooks:
+      - id: compaction-arm-producer
+        name: Compaction arm producer (OMN-22036)
+        entry: uv run --frozen pytest tests/nodes/node_compaction_arm_run_effect -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/(nodes/node_compaction_arm_run_effect/|models/compaction_replay/|nodes/node_llm_delegation_call_effect/(handlers/handler_native_compaction_fork\.py|contract\.yaml|metadata\.yaml))|tests/nodes/node_compaction_arm_run_effect/|contracts/OMN-22036\.yaml$)
+        stages: [pre-commit]
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 fail_fast: false

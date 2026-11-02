@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_compaction_arm_run_effect
+version: 1.0.0
+description: Isolated, pinned compaction arms with explicit refusals and usage recordings.
+pack: core
+node_role: effect
+display_name: Compaction Arm Run Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_compaction_arm_run_effect: omnimarket.nodes.node_compaction_arm_run_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.11.0
+  - node_context_pack_orchestrator
+  - node_llm_delegation_call_effect
+license: MIT
+tags: [effect, compaction, measurement]
