@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_check_effect
+version: 1.0.0
+description: Compare a lab host's measured clones, venvs, prepush workroot and systemd units to its profile through an injected measurement port; fail on anything undeclared or missing.
+pack: distributed_validation
+node_role: effect
+display_name: Host Drift Check Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_drift_check_effect: omnimarket.nodes.node_host_drift_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- host-declaration
