@@ -219,22 +219,26 @@ class ProtocolAppendAcceptor(Protocol):
         request: ModelWorkLedgerAppendRequest,
         *,
         writer_principal: str | None = None,
-    ) -> ModelWorkLedgerAppendReceipt: ...
+    ) -> ModelWorkLedgerAppendReceipt:
+        """Accept or refuse one append request and return its receipt."""
 
 
 class ProtocolOperatorPrincipal(Protocol):
     @property
-    def operator_principal(self) -> str | None: ...
+    def operator_principal(self) -> str | None:
+        """The operator's writer principal, or None when the host knows none."""
 
 
 class ProtocolCaptureLedgerHandler(ProtocolAppendAcceptor, Protocol):
     """The ledger host's append handler, with the host name and the writers it knows."""
 
     @property
-    def host_name(self) -> str: ...
+    def host_name(self) -> str:
+        """The ledger host's name."""
 
     @property
-    def writers(self) -> ProtocolOperatorPrincipal: ...
+    def writers(self) -> ProtocolOperatorPrincipal:
+        """The writer principals the ledger host knows."""
 
 
 def stamp_request_cells(rows: str, request_id: str) -> str:

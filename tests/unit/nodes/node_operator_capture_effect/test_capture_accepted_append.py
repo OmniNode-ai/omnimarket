@@ -41,17 +41,18 @@ RULING = (
 )
 
 
-def _append_command(ledger: Path) -> LocalLedgerAppendCommand:
-    return LocalLedgerAppendCommand(
-        [
-            sys.executable,
-            "-c",
-            "import sys; from pathlib import Path; "
-            "p = Path(sys.argv[1]); "
-            "p.write_text(p.read_text() + sys.argv[3] + '\\n')",
-            str(ledger),
-        ]
+_APPEND_SCRIPT = "; ".join(
+    (
+        "import sys",
+        "from pathlib import Path",
+        "p = Path(sys.argv[1])",
+        "p.write_text(p.read_text() + sys.argv[3] + '\\n')",
     )
+)
+
+
+def _append_command(ledger: Path) -> LocalLedgerAppendCommand:
+    return LocalLedgerAppendCommand([sys.executable, "-c", _APPEND_SCRIPT, str(ledger)])
 
 
 def _handler(ledger: Path) -> HandlerWorkLedgerAppendEffect:
@@ -109,7 +110,8 @@ def test_a_retried_identical_prompt_is_a_duplicate_not_a_second_row(
     append = accepted_ledger_appender(
         _handler(ledger), principal=OPERATOR, host_name="h-ledger"
     )
-    assert append(STATUS)[0]
+    first_ok, _ = append(STATUS)
+    assert first_ok
     ok, _ = append(STATUS)
     assert ok
     assert len(_rows(ledger)) == 1
