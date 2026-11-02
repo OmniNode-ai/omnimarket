@@ -428,6 +428,45 @@ _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS = (
     + "END",
 )
 
+# OMN-19986: the local install's tenant identity and when it was minted, one row
+# per tenant, folded from local-identity-minted events. Its cursor is stamped
+# from a one-row sequence on insert and update, as local_environment's is.
+_LOCAL_IDENTITY_DDL = """
+CREATE TABLE IF NOT EXISTS local_identity (
+    tenant_id TEXT NOT NULL PRIMARY KEY,
+    minted_at TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    projection_cursor INTEGER
+)
+"""
+_LOCAL_IDENTITY_CURSOR_SEQ_DDL = """
+CREATE TABLE IF NOT EXISTS local_identity_projection_cursor_seq (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_value INTEGER NOT NULL
+)
+"""
+_LOCAL_IDENTITY_CURSOR_SEQ_SEED = (
+    "INSERT OR IGNORE INTO local_identity_projection_cursor_seq "
+    "(id, last_value) VALUES (1, 0)"
+)
+_LOCAL_IDENTITY_CURSOR_STAMP = """
+    UPDATE local_identity_projection_cursor_seq SET last_value = last_value + 1;
+    UPDATE local_identity
+    SET projection_cursor = (
+        SELECT last_value FROM local_identity_projection_cursor_seq
+    )
+    WHERE rowid = NEW.rowid;
+"""
+_LOCAL_IDENTITY_CURSOR_TRIGGERS = (
+    "CREATE TRIGGER IF NOT EXISTS local_identity_cursor_on_insert "
+    "AFTER INSERT ON local_identity BEGIN" + _LOCAL_IDENTITY_CURSOR_STAMP + "END",
+    "CREATE TRIGGER IF NOT EXISTS local_identity_cursor_on_update "
+    "AFTER UPDATE OF updated_at ON local_identity BEGIN"
+    + _LOCAL_IDENTITY_CURSOR_STAMP
+    + "END",
+)
+
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
     tenant_id TEXT NOT NULL,
@@ -697,6 +736,9 @@ _DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
 # store step, not a statement on every connect: the sequence seed is a write, so
 # a read-only store, or a reader on a busy one, must not run it.
 _LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
+# OMN-19986: the local identity table, its cursor sequence and triggers; a store
+# step for the same reason as the local environment's.
+_LOCAL_IDENTITY_STEP = "omn19986_local_identity"
 # OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
 # them in a legacy table and create the current shape before its indexes.
 _CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
@@ -1002,6 +1044,14 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "created the local environment table and its cursor",
                 )
             )
+        if not cls._store_step_recorded(conn, _LOCAL_IDENTITY_STEP):
+            pending.append(
+                (
+                    _LOCAL_IDENTITY_STEP,
+                    cls._create_local_identity,
+                    "created the local identity table and its cursor",
+                )
+            )
         if not cls._store_step_recorded(conn, _CLAIMS_DELIVERY_ID_SHAPE_STEP):
             pending.append(
                 (
@@ -1171,6 +1221,15 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL)
         conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
         for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
+            conn.execute(trigger)
+
+    @staticmethod
+    def _create_local_identity(conn: sqlite3.Connection) -> None:
+        """OMN-19986: the local identity table, its cursor sequence and triggers."""
+        conn.execute(_LOCAL_IDENTITY_DDL)
+        conn.execute(_LOCAL_IDENTITY_CURSOR_SEQ_DDL)
+        conn.execute(_LOCAL_IDENTITY_CURSOR_SEQ_SEED)
+        for trigger in _LOCAL_IDENTITY_CURSOR_TRIGGERS:
             conn.execute(trigger)
 
     @classmethod
