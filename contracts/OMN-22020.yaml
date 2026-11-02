@@ -186,3 +186,11 @@ dod_evidence:
     check_value: env ONEX_VIEW_SEAM_PROFILE=redpanda uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests
       -k "three_part_proof_node_roundtrip_profile or vs_01 or vs_02 or vs_04" -q --no-cov
     cwd: .
+- id: dod-omn22020-integration-proof
+  description: The pushed head ran the view seam focused tests (graph declaration, three-part proof, throughput seam readings) on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22020 -- uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests src/omnimarket/nodes/node_throughput_tick_decision_compute/tests -k "seam_graph_declared or three_part_proof or seam_readings" -q --no-cov
+    cwd: .
