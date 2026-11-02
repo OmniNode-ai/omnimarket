@@ -1,0 +1,59 @@
+schema_version: work_ledger_runtime_inventory.v1
+snapshot_file: host_snapshot.yaml
+reserved_tenant_slugs:
+  - tenant-house
+  - tenant-existing
+required_exclusion_classes:
+  - production
+  - in-the-shop
+rows:
+  - id: runtime-a
+    host: host-1
+    lane: lane-a
+    overlay: overlays/lane-a.yaml
+    current_tenant: house
+    proposed_tenant_slug: slug-a
+    forwarder_instance: fwd-slug-a (proposed-not-deployed)
+    matches:
+      - compose_project:project-a@host-1
+      - manifest_lane:lane-a
+  - id: runtime-b
+    host: host-1
+    lane: lane-b
+    overlay: overlays/lane-b.yaml
+    current_tenant: blank
+    proposed_tenant_slug: slug-b
+    forwarder_instance: fwd-slug-b (proposed-not-deployed)
+    matches:
+      - compose_project:project-b@host-1
+  - id: runtime-host-2
+    host: host-2
+    lane: host
+    overlay: overlays/hosts.yaml
+    current_tenant: house
+    proposed_tenant_slug: slug-host-2
+    forwarder_instance: fwd-slug-host-2 (proposed-not-deployed)
+    matches:
+      - writer_host:host-2
+      - unreadable_host:host-2
+exclusions:
+  - id: excl-production
+    class: production
+    reason: synthetic production runtime, never given a tenant
+    matches: []
+  - id: excl-host-3
+    class: in-the-shop
+    reason: synthetic host under repair
+    matches:
+      - writer_host:host-3
+      - unreadable_host:host-3
+  - id: excl-cache
+    class: non-runtime
+    reason: synthetic cache container
+    matches:
+      - compose_project:cache@host-1
+  - id: excl-no-host
+    class: none
+    reason: rows that name no host
+    matches:
+      - writer_host:none

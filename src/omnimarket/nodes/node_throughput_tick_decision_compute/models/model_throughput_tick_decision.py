@@ -51,6 +51,10 @@ class ModelLabReceipt(BaseModel):
     lane: str | None = Field(
         default=None, description="The lane the receipt dispatched (OMN-20840)."
     )
+    ticket: str | None = Field(
+        default=None,
+        description="The dispatched ticket; a later running or done receipt of the same ticket supersedes a failed one.",
+    )
     run_id: str | None = None
     brief: str | None = Field(
         default=None,

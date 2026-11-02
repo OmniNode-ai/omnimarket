@@ -1,0 +1,24 @@
+[
+  {
+    "started_at": "2026-11-02T15:19:47Z",
+    "final": true,
+    "status": "no-host",
+    "lane": "comp-cm11-1102-r3",
+    "run_id": "rlane-comp-cm11-1102-r3-f37c31",
+    "host": null,
+    "brief": "/briefs/comp-cm11-1102-r3-brief.md",
+    "path": "/receipts/rlane-comp-cm11-1102-r3-f37c31.json",
+    "ticket": "recorded-ticket"
+  },
+  {
+    "started_at": "2026-11-02T16:59:37Z",
+    "final": false,
+    "status": "running",
+    "lane": "comp-cm11-1102-r4",
+    "run_id": "rlane-comp-cm11-1102-r4-ec7069",
+    "host": "h051",
+    "brief": "/briefs/comp-cm11-1102-r4-brief.md",
+    "path": "/receipts/rlane-comp-cm11-1102-r4-ec7069.json",
+    "ticket": "recorded-ticket"
+  }
+]

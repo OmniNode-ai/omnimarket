@@ -1,6 +1,6 @@
 name: node_claude_code_hook_adapter_effect
 version: "1.0.0"
-description: "Generic edge adapter for Claude Code hook bindings: publishes the typed command a binding names and maps the correlated events to the hook's output shape"
+description: "Generic edge adapter for Claude Code hook bindings: publishes the typed command a binding names and maps correlated events to the hook output; an off compaction arm returns native without publishing"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -17,7 +17,7 @@ dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "hooks", "claude-code", "adapter", "client-bindings", "latency-qualification"]
+tags: ["effect", "hooks", "claude-code", "adapter", "client-bindings", "latency-qualification", "compaction-experiment"]
 pack: "core"
 display_name: "Claude Code Hook Adapter"
 node_role: "effect"

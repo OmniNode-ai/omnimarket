@@ -1,96 +1,157 @@
----
-schema_version: "1.0.0"
-ticket_id: "OMN-21908"
-title: "A host table row decides which lab hosts take Docker work"
-summary: "Bus placement checked `--need docker` against the advertised tool list, which is one constant on every host, so a host with no Docker passed. Operator RULING 2026-11-01T20:24:40Z takes Docker off the Macs, so the host table gains a `docker` capability column the placement node judges."
+schema_version: 1.0.0
+ticket_id: OMN-21908
+title: Declare a lab host once
+summary: Derive host declarations, report drift and plan four idempotent installer units from one host
+  profile.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- public_api
+- protocols
 requirements:
-  - id: "req-omn21908-docker-column"
-    statement: |-
-      A caller's need for a tool that names a host capability column is judged against the host table row, so a row declaring `docker: false` takes no Docker unit though it advertises the tool.
-    acceptance:
-      - id: "AC1"
-        statement: "AC1: a unit needing docker is refused on a `docker: false` row with a reason naming the capability, and is placed on a row that takes Docker; alone with such a row it is refused as HOST_TABLE."
-  - id: "req-omn21908-other-units-unchanged"
-    statement: |-
-      A unit with no such need still runs on a `docker: false` row, and a tool that names no capability column stays a plain tool check.
-    acceptance:
-      - id: "AC2"
-        statement: "AC2: a unit with no Docker need is placed on a `docker: false` row, and a need for `gh` is decided by the advertised tools alone."
+- id: req-omn21908-docker-column
+  statement: 'A caller''s need for a tool that names a host capability column is judged against the host
+    table row, so a row declaring `docker: false` takes no Docker unit though it advertises the tool.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a unit needing docker is refused on a `docker: false` row with a reason naming the
+      capability, and is placed on a row that takes Docker; alone with such a row it is refused as HOST_TABLE.'
+- id: req-omn21908-other-units-unchanged
+  statement: 'A unit with no such need still runs on a `docker: false` row, and a tool that names no capability
+    column stays a plain tool check.'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a unit with no Docker need is placed on a `docker: false` row, and a need for `gh`
+      is decided by the advertised tools alone.'
+- id: req-host-declaration
+  statement: One host profile derives host declarations and drives drift measurement and dry-run installer
+    units.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a host profile derives a host''s clones, per-clone venvs, prepush rows, prepush workroot
+      and liveness rows, and each derived row for h053 equals the existing declaration''s row -- falsifier:
+      uv run pytest tests/unit/nodes -q -k host_profile_derive'
+  - id: AC4
+    statement: 'AC4: the drift check fails when a host has an undeclared clone or lacks a declared one,
+      and passes for a matching host -- falsifier: uv run pytest tests/unit/nodes -q -k host_drift_check'
+  - id: AC5
+    statement: 'AC5: each of the four gaps has an idempotent installer unit that takes the profile as
+      its only input and is dry-run by default -- falsifier: uv run pytest tests/unit/nodes -q -k host_gap_unit'
 evidence_requirements:
-  - kind: "tests"
-    description: "The lab host table placement tests pass, the Docker column ones among them."
-    command: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov"
+- kind: tests
+  description: The lab host table placement tests pass, the Docker column ones among them.
+  command: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov
+- kind: tests
+  description: Host declaration node regressions and runtime dispatch.
+  command: uv run pytest tests/unit/nodes/node_host_profile_compute tests/unit/nodes/node_host_drift_check_effect
+    tests/unit/nodes/node_host_gap_unit_effect -q --no-cov -m "not kafka"
 emergency_bypass:
   enabled: false
-  justification: ""
-  follow_up_ticket_id: ""
+  justification: ''
+  follow_up_ticket_id: ''
 dod_evidence:
-  - id: "dod-omn21908-docker-refused"
-    description: "A Docker unit is refused on a no-Docker row and placed on a row that takes Docker."
-    source: "manual"
-    binds_ac: ["AC1"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k docker_unit"
-        cwd: "."
-  - id: "dod-omn21908-other-units"
-    description: "Units without a Docker need are unchanged on that row."
-    source: "manual"
-    binds_ac: ["AC2"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k 'no_docker_still_runs or not_a_capability_column'"
-        cwd: "."
-  - id: "dod-omn21908-deploy-local-placement"
-    description: "Hosted-runner deploy smoke invokes the placement node through the ONEX local runtime with an in-memory backend. It asserts Docker work is refused on a no-Docker row and admitted on a Docker row, while ordinary work is admitted on both. No broker, Docker daemon or production rollout is required."
-    source: "manual"
-    binds_ac: ["AC1", "AC2"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov"
-        cwd: "."
-      - check_type: "command"
-        check_value: |
-          set -eu
-          export PYTHONDONTWRITEBYTECODE=1
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
-          python -c '
-          import json
-          import sys
-          from pathlib import Path
-          root = Path(sys.argv[1])
-          request = {"repo": "omnimarket", "kind": "test", "host_names": ["with-docker", "without-docker"], "table": [{"name": "with-docker", "target": "with-docker", "docker": True}, {"name": "without-docker", "target": "without-docker", "docker": False}], "need_tools": ["docker"]}
-          (root / "docker.json").write_text(json.dumps(request))
-          request["need_tools"] = []
-          (root / "ordinary.json").write_text(json.dumps(request))
-          ' "$probe_dir"
-          for expected in docker ordinary; do
-            onex node node_lab_placement_compute --input "$probe_dir/$expected.json" --state-root "$probe_dir/$expected.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$expected.receipt.json"
-            python -c '
-          import json
-          import sys
-          from pathlib import Path
-          expected, path = sys.argv[1:]
-          receipt = json.loads(Path(path).read_text())
-          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
-          assert receipt["result_model"] == "omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement.ModelLabPlacementResult", receipt
-          result = receipt["result"]
-          rows = {row["host_name"]: row for row in result["verdicts"]}
-          assert set(rows) == {"with-docker", "without-docker"}, result
-          assert rows["with-docker"]["eligible"] is True, result
-          if expected == "docker":
-              assert result["unit"]["needs"] == ["docker"], result
-              assert rows["without-docker"]["eligible"] is False, result
-              assert "lacks docker" in rows["without-docker"]["reason"], result
-          else:
-              assert result["unit"]["needs"] == [], result
-              assert rows["without-docker"]["eligible"] is True, result
-          print(json.dumps({"probe": expected, "run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": result}, sort_keys=True))
-          ' "$expected" "$probe_dir/$expected.receipt.json"
-          done
-        cwd: "."
+- id: dod-omn21908-docker-refused
+  description: A Docker unit is refused on a no-Docker row and placed on a row that takes Docker.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k docker_unit
+    cwd: .
+- id: dod-omn21908-other-units
+  description: Units without a Docker need are unchanged on that row.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -k 'no_docker_still_runs
+      or not_a_capability_column'
+    cwd: .
+- id: dod-omn21908-deploy-local-placement
+  description: Hosted-runner deploy smoke invokes the placement node through the ONEX local runtime with
+    an in-memory backend. It asserts Docker work is refused on a no-Docker row and admitted on a Docker
+    row, while ordinary work is admitted on both. No broker, Docker daemon or production rollout is required.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: "set -eu\nexport PYTHONDONTWRITEBYTECODE=1\nprobe_dir=\"$(mktemp -d)\"\ntrap 'rm -rf\
+      \ \"$probe_dir\"' EXIT\nexport PATH=\"$(uv run --frozen python -c 'import sys; from pathlib import\
+      \ Path; print(Path(sys.executable).parent)'):$PATH\"\npython -c '\nimport json\nimport sys\nfrom\
+      \ pathlib import Path\nroot = Path(sys.argv[1])\nrequest = {\"repo\": \"omnimarket\", \"kind\":\
+      \ \"test\", \"host_names\": [\"with-docker\", \"without-docker\"], \"table\": [{\"name\": \"with-docker\"\
+      , \"target\": \"with-docker\", \"docker\": True}, {\"name\": \"without-docker\", \"target\": \"\
+      without-docker\", \"docker\": False}], \"need_tools\": [\"docker\"]}\n(root / \"docker.json\").write_text(json.dumps(request))\n\
+      request[\"need_tools\"] = []\n(root / \"ordinary.json\").write_text(json.dumps(request))\n' \"$probe_dir\"\
+      \nfor expected in docker ordinary; do\n  onex node node_lab_placement_compute --input \"$probe_dir/$expected.json\"\
+      \ --state-root \"$probe_dir/$expected.state\" --backend event_bus=inmemory --timeout 30 --output\
+      \ receipt --omnibase-path \"$PWD\" > \"$probe_dir/$expected.receipt.json\"\n  python -c '\nimport\
+      \ json\nimport sys\nfrom pathlib import Path\nexpected, path = sys.argv[1:]\nreceipt = json.loads(Path(path).read_text())\n\
+      assert receipt[\"status\"] == \"success\" and receipt[\"exit_code\"] == 0, receipt\nassert receipt[\"\
+      result_model\"] == \"omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement.ModelLabPlacementResult\"\
+      , receipt\nresult = receipt[\"result\"]\nrows = {row[\"host_name\"]: row for row in result[\"verdicts\"\
+      ]}\nassert set(rows) == {\"with-docker\", \"without-docker\"}, result\nassert rows[\"with-docker\"\
+      ][\"eligible\"] is True, result\nif expected == \"docker\":\n    assert result[\"unit\"][\"needs\"\
+      ] == [\"docker\"], result\n    assert rows[\"without-docker\"][\"eligible\"] is False, result\n\
+      \    assert \"lacks docker\" in rows[\"without-docker\"][\"reason\"], result\nelse:\n    assert\
+      \ result[\"unit\"][\"needs\"] == [], result\n    assert rows[\"without-docker\"][\"eligible\"] is\
+      \ True, result\nprint(json.dumps({\"probe\": expected, \"run_id\": receipt[\"run_id\"], \"runtime_identity\"\
+      : receipt[\"runtime_identity\"], \"result\": result}, sort_keys=True))\n' \"$expected\" \"$probe_dir/$expected.receipt.json\"\
+      \ndone\n"
+    cwd: .
+- id: dod-host-declaration-ac1
+  description: a host profile derives a host's clones, per-clone venvs, prepush rows, prepush workroot
+    and liveness rows, and each derived row for h053 equals the existing declaration's row
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_profile_compute -q --no-cov -m "not kafka"
+- id: dod-host-declaration-ac2
+  description: the drift check fails when a host has an undeclared clone or lacks a declared one, and
+    passes for a matching host
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_drift_check_effect -q --no-cov -m "not kafka"
+- id: dod-host-declaration-ac3
+  description: each of the four gaps has an idempotent installer unit that takes the profile as its only
+    input and is dry-run by default
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_gap_unit_effect -q --no-cov -m "not kafka"
+- id: dod-host-declaration-runtime-dispatch
+  description: Hosted-runner deploy smoke wires all three contracts through the installed runtime dispatcher
+    and observes terminal results with in-memory and YAML profiles. Live scheduled dev integration remains
+    a successor check.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_profile_compute/test_host_declaration_bus.py
+      -q --no-cov -m "not kafka"
+    cwd: .
+- id: dod-omn21908-integration-proof
+  description: The pushed head ran the host declaration node suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21908 -- uv run --frozen pytest tests/unit/nodes/node_host_profile_compute tests/unit/nodes/node_host_drift_check_effect tests/unit/nodes/node_host_gap_unit_effect -q --no-cov -m "not kafka"
+    cwd: .
