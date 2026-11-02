@@ -789,6 +789,7 @@
   "tests/nodes/node_extraction_verify_compute/test_contracts.py": 0.09,
   "tests/nodes/node_extraction_verify_compute/test_verify.py": 0.13,
   "tests/nodes/node_factory_floor_compute/test_floor_lanes.py": 0.58,
+  "tests/nodes/node_factory_floor_compute/test_floor_truth.py": 1.91,
   "tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py": 0.54,
   "tests/nodes/node_factory_floor_compute/test_hold_exemption.py": 0.08,
   "tests/nodes/node_factory_floor_compute/test_live_lines.py": 0.15,
