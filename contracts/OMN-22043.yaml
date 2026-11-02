@@ -1,0 +1,81 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22043
+title: Compaction arm assignment and binding toggle
+summary: Pure seeded block assignment, manifest-bound incident attribution and an off binding that returns native.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - events
+  - topics
+  - public_api
+requirements:
+  - id: req-compaction-experiment
+    statement: Assign live orchestrator sessions by seeded blocks and stop treatment on two distinct mod-attributed incidents.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the arm is a pure function of the ordered projection -- falsifier: two readers disagree'
+      - id: AC2
+        statement: 'AC2: the whole incident-to-disable path holds: after two mod-attributed incidents with distinct dedup keys the arm is `off` and a FRICTION row exists, and a duplicate key or a signal-only event changes nothing -- falsifier: the mutant that ignores the incident count, or one that counts a duplicate key or a refusal alone'
+      - id: AC3
+        statement: 'AC3: the arm is balanced within every block -- falsifier: a block with two sessions in one arm'
+      - id: AC4
+        statement: 'AC4: the installed package''s rendered stamps are read from the pack build manifest bound to the installed hash, a missing manifest yields `UNAVAILABLE` and not "absent", and more than 10 percent unreadable `on` boundaries is `HOLD` naming `NO_PACKAGE_EVIDENCE` -- falsifier: a missing manifest counted as an absent stamp, or an unreadable rate above 10 percent with no `HOLD`'
+evidence_requirements:
+  - kind: tests
+    description: Focused assignment, incident mutants, evidence and native-binding controls.
+    command: uv run pytest tests/nodes/node_compaction_arm_assignment_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-arm-determinism
+    description: Two readers fold reversed inputs identically; markers name only the first eligible hook event.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k 'projection_order or first_hook'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]
+  - id: dod-incident-disable
+    description: Distinct incidents, duplicate and signal controls, all three AC2 mutants, native binding and runtime dispatch.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k 'incident or duplicate or signal_alone or ac2 or binding or off_adapter or same_fixture'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC2]
+  - id: dod-block-balance
+    description: Every complete seeded block has one session in each arm in hash-selected order.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k projection_order_seeded_blocks
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-package-evidence
+    description: Unavailable and mismatched manifests never establish absence; unreadable boundary rate uses unique on boundaries and a strict ten-percent threshold.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k 'manifest or unreadable or stamp or off_boundary'
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC4]
+  - id: dod-deploy-runtime-dispatch
+    description: Hosted smoke discovers the node contract and dispatches the complete incident fixture through RuntimeLocal's in-memory bus; lab selects the Redpanda profile on the same fixture.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k same_fixture_under_selected_bus_profile
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: []
+  - id: dod-omn22043-integration-proof
+    description: The pushed head ran the assignment fixture on a lab host through the bus with the Redpanda profile selected and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane comp-cm16-1102-r-land -- env ONEX_COMPACTION_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k same_fixture_under_selected_bus_profile
+        cwd: .
+    binds_ac: []
