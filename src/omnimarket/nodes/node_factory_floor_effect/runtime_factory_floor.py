@@ -23,6 +23,17 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
 )
+from omnimarket.nodes.node_merged_running_count_effect.runtime_merged_running_count import (
+    MergedRunningCountReader,
+)
+from omnimarket.protocols.protocol_merged_running_count_reader import (
+    ProtocolMergedRunningCountReader,
+)
+
+
+def bind_merged_running_reader() -> ProtocolMergedRunningCountReader:
+    """The composition point: the command line is the one place the floor meets the count's local-file reader."""
+    return MergedRunningCountReader()
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -64,7 +75,9 @@ def request_from_args(a: argparse.Namespace) -> ModelFactoryFloorRunRequest:
 
 def main(argv: list[str] | None = None) -> int:
     try:
-        result = HandlerFactoryFloorEffect().handle(request_from_args(parse_args(argv)))
+        result = HandlerFactoryFloorEffect(
+            merged_running=bind_merged_running_reader()
+        ).handle(request_from_args(parse_args(argv)))
     except (SourceRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor: {exc}\n")
         return 2
