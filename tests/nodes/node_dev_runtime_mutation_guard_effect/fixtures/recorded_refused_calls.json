@@ -1,0 +1,56 @@
+{
+  "description": "Read-only docker calls that the dev runtime mutation check refused or could not judge on 2026-11-02. The rolling ledger rows hold the refusal text and the call's description, not the command line, so each command below is the call as described, rebuilt in the shapes a lane runs it; hosts and addresses are scrubbed to lab-dev-host. Each command carries a lifecycle word (stop, start, restart, up), which is what hands a call to the node. Every entry must be classified non-mutating.",
+  "expect": "allow",
+  "calls": [
+    {
+      "id": "compose-up-dry-run-window",
+      "source": "ledger TERMINAL 2026-11-02T09:07:13Z: up --dry-run refused",
+      "command": "ssh lab-dev-host 'cd /data/omninode/omnibase_infra/docker && docker compose -p omnibase-infra --profile runtime up -d --no-build --dry-run'"
+    },
+    {
+      "id": "compose-up-dry-run-local",
+      "source": "ledger TERMINAL 2026-11-02T09:07:13Z: up --dry-run refused",
+      "command": "docker compose -p omnibase-infra up --dry-run"
+    },
+    {
+      "id": "compose-up-dry-run-compose-file",
+      "source": "ledger TERMINAL 2026-11-02T09:07:13Z: up --dry-run refused",
+      "command": "docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.dev-lane.yml up -d --dry-run"
+    },
+    {
+      "id": "events-since-until",
+      "source": "ledger FRICTION 2026-11-02T09:52:18Z: docker events could not judge (exit 1)",
+      "command": "docker events --since 10m --until 1m --filter event=stop --filter event=start --filter event=die"
+    },
+    {
+      "id": "events-since-until-ssh",
+      "source": "ledger TERMINAL 2026-11-02T09:52:53Z: three docker events variants blocked",
+      "command": "ssh lab-dev-host 'docker events --since 2026-11-02T09:00:00 --until 2026-11-02T09:30:00 --filter label=com.docker.compose.project=omnibase-infra --filter event=restart'"
+    },
+    {
+      "id": "events-filter-container-ssh",
+      "source": "ledger TERMINAL 2026-11-02T09:52:53Z: three docker events variants blocked",
+      "command": "ssh lab-dev-host 'docker events --since 30m --until 0s --filter container=omninode-runtime --filter event=kill --format {{.Status}}'"
+    },
+    {
+      "id": "ps-project",
+      "source": "the read-only family of the same two refusals",
+      "command": "docker ps -a --filter label=com.docker.compose.project=omnibase-infra --filter status=exited | grep -i restart"
+    },
+    {
+      "id": "inspect-container",
+      "source": "the read-only family of the same two refusals",
+      "command": "docker inspect omninode-runtime --format '{{.State.StartedAt}}' | grep -i start"
+    },
+    {
+      "id": "logs-container-ssh",
+      "source": "the read-only family of the same two refusals",
+      "command": "ssh lab-dev-host 'docker logs --since 10m omninode-runtime | grep -i stop'"
+    },
+    {
+      "id": "compose-config",
+      "source": "the read-only family of the same two refusals",
+      "command": "docker compose -p omnibase-infra config --services | grep -i restart"
+    }
+  ]
+}
