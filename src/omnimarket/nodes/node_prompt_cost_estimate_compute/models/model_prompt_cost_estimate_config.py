@@ -19,7 +19,6 @@ from omnibase_infra.models.pricing.model_pricing_entry import PricingConfidence
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _ZERO = Decimal("0")
-_ONE = Decimal("1")
 
 
 class EnumTokenMethod(StrEnum):
@@ -127,7 +126,7 @@ class ModelSavingRangeSpread(BaseModel):
         if set(self.token_method) != set(EnumTokenMethod):
             raise ValueError("token_method must name every token method")
         for spread in (*self.confidence.values(), *self.token_method.values()):
-            if not _ZERO <= spread < _ONE:
+            if not _ZERO <= spread < 1:
                 raise ValueError("every spread is a fraction in [0, 1)")
         return self
 
