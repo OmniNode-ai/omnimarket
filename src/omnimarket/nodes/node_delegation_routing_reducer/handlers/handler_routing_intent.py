@@ -27,6 +27,9 @@ from omnimarket.handlers.handler_capability_start import (
     read_capability_cells,
     resolve_capability_cell_reader,
 )
+from omnimarket.handlers.routing.customer_key_terminus import (
+    routing_surface_for_runtime,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.provider_quota_state import (
     ProtocolProviderQuotaReader,
@@ -39,7 +42,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
-from omnimarket.routing.customer_key_terminus import routing_surface_for_runtime
 from omnimarket.routing.dod_overlay import (
     ProtocolDodOutcomeReader,
     ProtocolEvalLineReader,

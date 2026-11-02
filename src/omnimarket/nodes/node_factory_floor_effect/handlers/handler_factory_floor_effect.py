@@ -33,6 +33,9 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorOverlay,
 )
+from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
+    load_phoenix_traces,
+)
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
     load_cloud_accounts,
@@ -209,6 +212,9 @@ class HandlerFactoryFloorEffect:
             runner_fleet_cause=""
             if runner_fleet is not None
             else runner_fleet_cause(fleet_path),
+            phoenix_traces=load_phoenix_traces(
+                os.environ.get(rt.phoenix_url_env, "").strip(), now
+            ),
             lane_containers=load_lane_containers(
                 source=rt.container_source,
                 hosts=overlay.container_hosts if overlay is not None else (),
