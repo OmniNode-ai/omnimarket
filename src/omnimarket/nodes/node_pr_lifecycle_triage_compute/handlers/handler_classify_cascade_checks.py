@@ -35,9 +35,13 @@ COVERAGE_GATE_RE = re.compile(r"^coverage sweep gate$", re.I)
 SHARD_CHECK_RE = re.compile(r"^tests \(split\b", re.I)
 DETECT_CHECK_RE = re.compile(r"^detect changes$", re.I)
 SHARDS_NOT_RUN = frozenset({"cancelled", "skipped"})
-# The hostile-review family (OMN-20067). By its workflow's contract it never fails on a finding: a red is an
-# upstream change-control preflight failure or a degraded reviewer quorum. Neither is a code red.
-REVIEWER_POOL_RE = re.compile(r"hostile review", re.I)
+# The hostile-review family (OMN-20067): "Hostile Review Gate" and "Hostile Reviewer (adversarial gate)". By their
+# workflow's contract they never fail on a finding: a red is an upstream change-control preflight failure or a
+# degraded reviewer quorum. Neither is a code red. The "Hostile Review Thread Gate" (OMN-17427) is not in the
+# family: it fails on a finding left without a ``fixed-in <sha>`` or ``rejected: <reason>`` reply, the pull
+# request's own red that a worker clears with ``onex scm pr-thread-reply``. A reviewer rerun does not clear it, so it
+# stays in the worker's red names.
+REVIEWER_POOL_RE = re.compile(r"hostile review(?!\s+thread gate)", re.I)
 # repo-evidence / dod-verify matches CASCADE_CHECK_RE ("evidence"), but its "always-pass" refusal is the PR's own
 # red (the bound test passes at the merge base), not the change-control cascade (OMN-20417). The reclassification
 # is read from the check's failure annotation and applies only when ``annotations`` are passed.
