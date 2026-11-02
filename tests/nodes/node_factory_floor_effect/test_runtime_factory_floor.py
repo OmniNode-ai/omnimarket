@@ -246,7 +246,7 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert set(lines) == {"2026-10-31-wave-plan", "2026-10-01-old-plan"}
     wave = lines["2026-10-31-wave-plan"]
     assert wave["source"] == "manifest"
-    assert wave["status_pill"] == "stopped"
+    assert wave["condition"] == "stopped"
     assert wave["andon"]["flag"] is True
     assert wave["andon"]["causes"] == [
         "HOLD 2026-10-31T11:41:00Z-lane-a: andon:gate:0:W0.2",
@@ -283,7 +283,7 @@ def test_a_declared_plan_with_no_file_is_written_as_a_stopped_line_with_its_caus
     lines = {line["line_id"]: line for line in document["lines"]}
     assert list(lines) == ["2026-10-31-wave-plan", "absent-plan"]
     absent = lines["absent-plan"]
-    assert (absent["status_pill"], absent["source"]) == ("stopped", "undrawn")
+    assert (absent["condition"], absent["source"]) == ("stopped", "undrawn")
     assert absent["plan_path"] == "absent-plan"
     assert absent["andon"]["causes"] == [
         "plan file not found: no plan path contains absent-plan"

@@ -56,7 +56,7 @@ def test_dead_lane_older_than_the_stall_window_does_not_stop_its_line() -> None:
     assert not line.andon.flag
     assert line.andon.causes == ()
     # The state that is true: nothing is built and nothing runs on it.
-    assert (line.status_pill, line.percent_built) == ("queued", 0)
+    assert (line.condition, line.progress.percent) == ("queued", 0.0)
 
 
 def test_dead_lane_closed_by_the_runner_with_a_later_status_row_stops_nothing() -> None:
@@ -72,7 +72,7 @@ def test_dead_lane_closed_by_the_runner_with_a_later_status_row_stops_nothing() 
         request(plans=(context_plan(),), ledger=(blocked(DEAD_MINUTES), closeout))
     ).lines[0]
     assert line.andon.causes == ()
-    assert line.status_pill == "queued"
+    assert line.condition == "queued"
 
 
 def test_dead_lane_that_claimed_again_after_its_terminal_is_not_over() -> None:
@@ -80,7 +80,7 @@ def test_dead_lane_that_claimed_again_after_its_terminal_is_not_over() -> None:
     line = compute_factory_floor(
         request(plans=(context_plan(),), ledger=(blocked(DEAD_MINUTES), again))
     ).lines[0]
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
 
 
 def test_dead_lane_inside_the_stall_window_still_stops_its_line() -> None:
@@ -88,7 +88,7 @@ def test_dead_lane_inside_the_stall_window_still_stops_its_line() -> None:
     line = compute_factory_floor(
         request(plans=(context_plan(),), ledger=(blocked(window - 1),))
     ).lines[0]
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert "lane plan-r8-0605 ended blocked" in line.andon.causes[0]
 
 

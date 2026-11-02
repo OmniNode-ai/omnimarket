@@ -12,8 +12,8 @@ node_version: 1.0.0
 description: >-
   Join plans, their task manifests, the PR watcher state, the ledger's CLAIM, TERMINAL, HOLD, RELEASE and
   gate STATUS rows, the Linear snapshot plans-today writes, the lab placement reading and the landing
-  controller's merges into one assembly-line record per selected plan (line id, name, status pill, percent
-  built, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
+  controller's merges into one assembly-line record per selected plan (line id, name, condition, blocker, progress,
+  gates, line evidence, data age, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
   waiting pull requests, stoppages from the friction report). A plan with no manifest falls back to the
   plans-today task table. Pure and deterministic: the caller supplies every fact, including the time.
 input_model:
@@ -63,6 +63,18 @@ config:
   gate_pass_verdicts: [pass]
   done_outcomes: [done, merged]
   handoff_outcomes: [handed-off]
+  # Merged work is verified by a STATUS row in this state (task=, ticket= or pr= naming it) with a verdict in the pass
+  # list, written after its newest merge. Verified and running-on-dev are counted apart from the built percent.
+  integration_state: integration
+  integration_pass_verdicts: [pass]
+  # Progress: merged work tasks over valid work tasks (gates are counted apart), to this many decimals, rounded half-up.
+  percent_decimals: 1
+  progress_note_known: "{completed} / {total} work tasks complete"
+  progress_note_no_tasks: No work tasks declared
+  progress_note_unscoped: Work task total not read
+  progress_note_duplicate_ids: Work task total not valid, task ids repeat
+  progress_note_under_review: "Scope needs review: {note}"
+  pending_gate_blocker: "All work tasks recorded done; gate {gates} pending"
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
   # How a line's parts become stations: "task" draws every task of the plan as its own station (its state, tickets and

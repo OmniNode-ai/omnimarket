@@ -87,7 +87,7 @@ def test_a_scoped_task_is_finished_by_the_merge_of_its_ticket() -> None:
     )
     line = result.lines[0]
     assert line.stations[0].items[0].state == "done"
-    assert line.percent_built == 100
+    assert line.progress.percent == 100.0
 
 
 def test_resumed_agrees_with_the_definition_on_every_pair() -> None:

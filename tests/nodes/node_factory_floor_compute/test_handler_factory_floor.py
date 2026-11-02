@@ -110,10 +110,10 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert line.name == "Orchestration alignment, the wave plan (tasks)"
     assert line.plan_path == PLAN_PATH
     assert line.source == "manifest"
-    assert line.status_pill == "building"
-    assert (
-        line.percent_built == 20
-    )  # W0.1 done of the plan's five parts, its two gates included
+    assert line.condition == "building"
+    # W0.1 done of the plan's three work tasks; its two gates are counted apart.
+    assert (line.progress.completed, line.progress.total) == (1, 3)
+    assert line.progress.percent == 33.3
     assert _states(line) == {
         "W0.1": "done",
         "W0.2": "active",
@@ -156,8 +156,9 @@ def test_manifest_gate_pass_opens_next_station_to_prep() -> None:
         "G1a": "wait",
     }
     assert _station_states(line) == {"0": "done", "1a": "prep"}
-    assert line.status_pill == "building"
-    assert line.percent_built == 60
+    assert line.condition == "building"
+    assert (line.progress.completed, line.progress.total) == (2, 3)
+    assert line.progress.percent == 66.7
 
 
 def test_manifest_all_done_is_a_finished_line() -> None:
@@ -177,7 +178,7 @@ def test_manifest_all_done_is_a_finished_line() -> None:
         )
     )
     line = _line(result)
-    assert (line.status_pill, line.percent_built) == ("done", 100)
+    assert (line.condition, line.progress.percent) == ("complete", 100.0)
     assert set(_station_states(line).values()) == {"done"}
 
 
@@ -262,7 +263,7 @@ def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -
         )
     )
     line = _line(result)
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.flag is True
     assert line.andon.reason == "HOLD hold-andon-1: andon:gate:0:W0.2 (+1 more)"
     assert line.andon.causes == (
@@ -363,8 +364,8 @@ def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table
     ]
     assert only.items[1].note == "PR open, red: CI Summary red"
     assert only.state == "active"
-    assert line.percent_built == 33
-    assert line.status_pill == "building"
+    assert line.progress.percent == 33.3
+    assert line.condition == "building"
     assert line.andon.flag is False
 
 
@@ -375,7 +376,7 @@ def test_andon_or_fallback_table_plan_row_stops_on_an_andon_hold_of_its_ticket()
     result = compute_factory_floor(request(plans=(table_plan(),), ledger=(hold,)))
     line = _line(result)
     assert _states(line)["T3"] == "stop"
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.reason == "HOLD andon-9: red"
 
 

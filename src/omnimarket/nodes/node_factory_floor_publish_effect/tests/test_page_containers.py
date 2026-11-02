@@ -143,8 +143,14 @@ def _record(
         "name": "First plan",
         "plan_path": "beta/plans/one-plan.md",
         "source": "manifest",
-        "status_pill": "building",
-        "percent_built": 8,
+        "condition": "building",
+        "progress": {
+            "state": "known",
+            "completed": 8,
+            "total": 100,
+            "percent": 8.0,
+            "note": "",
+        },
         "andon": {"flag": False, "reason": "", "causes": []},
         "stations": [
             {

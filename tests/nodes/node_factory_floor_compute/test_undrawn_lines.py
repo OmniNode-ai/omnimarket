@@ -153,7 +153,7 @@ def test_a_declared_text_matching_no_plan_file_is_drawn_stopped_with_its_cause()
         assert any(token in line.plan_path for line in result.lines)
     for token in (WAVE, RUNTIME):
         line = next(x for x in result.lines if x.plan_path == token)
-        assert line.status_pill == "stopped"
+        assert line.condition == "stopped"
         assert line.source == "undrawn"
         assert line.andon.flag is True
         assert line.andon.causes == (
@@ -187,7 +187,7 @@ def test_a_plan_that_matched_but_has_no_tasks_is_drawn_stopped_as_no_task_table(
     empty = ModelFloorPlanInput(plan_path=f"beta/plans/2026-10-30-{RUNTIME}.md")
     line = next(x for x in compute((empty,)).lines if RUNTIME in x.plan_path)
     assert line.source == "plan-task-table"
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.causes[0].startswith("no task table")
 
 
@@ -199,7 +199,7 @@ def test_an_unanswered_ask_stops_the_line_with_cause_and_age_and_a_long_dead_ter
 ):
     result = compute((wave_plan(),), ledger=(orchestrator_ask(), blocked_terminal()))
     line = by_id(result)[f"2026-10-30-{WAVE}"]
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     causes = line.andon.causes
     assert (
         f"MSG {ASK} to orchestrator-31d9 unanswered for 857 min: Track B stopped"
@@ -227,7 +227,7 @@ def test_an_ack_that_names_the_ask_closes_it() -> None:
         f"2026-10-30-{WAVE}"
     ]
     assert line.andon.causes == ()
-    assert line.status_pill != "stopped"
+    assert line.condition != "stopped"
 
 
 def test_a_claim_by_another_lane_on_the_ticket_after_the_stop_resumes_the_line() -> (
@@ -283,7 +283,7 @@ def test_the_validators_line_is_stopped_by_its_red_gating_pr_and_never_by_the_ho
     None
 ):
     line = by_id(validators_facts(red=True))[f"2026-10-28-{VALIDATORS}"]
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.causes == ("PR repo#7 CI red (repo-evidence / dod-verify)",)
 
 
@@ -291,7 +291,7 @@ def test_the_validators_line_is_not_stopped_when_only_the_exempting_hold_is_open
     None
 ):
     line = by_id(validators_facts(red=False))[f"2026-10-28-{VALIDATORS}"]
-    assert line.status_pill != "stopped"
+    assert line.condition != "stopped"
     assert line.andon.causes == ()
 
 

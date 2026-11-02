@@ -227,5 +227,7 @@ def test_built_ahead_of_gate_left_out_of_built_percent(
     assert w11["state"] != "done"
     assert w11["items"][0]["note"] == f"{label} G1b: PRs merged"
     assert stations["G1b"]["state"] == "stop"
-    # Built: W0.1 and W0.2 of five parts; W1.1 is left out.
-    assert _line(document)["percent_built"] == 100 * 2 // 5
+    # Built: W0.1 and W0.2 of four work tasks; W1.1 is left out and the gate is counted apart.
+    line = _line(document)
+    assert line["progress"]["percent"] == 50.0
+    assert line["gates"]["failed"] == 1

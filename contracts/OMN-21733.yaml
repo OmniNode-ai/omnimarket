@@ -126,6 +126,24 @@ requirements:
         statement: "AC43: a signed-in account the overlay does not declare is not drawn as a card but is counted in the cloud note with the cause, not dropped silently -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k 'overlay_does_not_declare'"
       - id: "AC44"
         statement: "AC44: the cloud card's headline count of open sessions equals the sum of the open counts of the accounts drawn beneath it -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k headline_open_count"
+  - id: "req-omn21733-floor-p0-projection"
+    statement: |-
+      The factory floor compute node projects one condition, blocker, progress, gates, line evidence and data age for every line, so every surface reads the same facts: built percent counts merged work tasks only with gates counted apart, unknown is never zero, and a line is complete only when its work is done and every gate has passed.
+    acceptance:
+      - id: "AC47"
+        statement: "AC47: Line B projects progress completed=6, total=48, percent=12.5 with gates passed/failed/waiting counted apart and never in the total -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k line_b_work_tasks_and_gates"
+      - id: "AC48"
+        statement: "AC48: a line stopped only by soft causes while a live non-stalled lane works it projects condition building with its blocker kept, and no field reads stopped -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k one_condition_building_keeps_blocker"
+      - id: "AC49"
+        statement: "AC49: a missing total projects progress.state unknown with percent None, zero declared tasks projects no_tasks, and a known 0 of 6 projects known with percent 0.0 -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k unknown_is_not_zero"
+      - id: "AC50"
+        statement: "AC50: every work task done with a gate failed or waiting never projects condition complete -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k all_tasks_done_gate_pending_not_complete"
+      - id: "AC51"
+        statement: "AC51: a task done only by a terminal outcome or a closed ticket counts toward condition and not toward progress.completed, and line_evidence carries merged, running_on_dev and verified apart with None for an unread source -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k merged_only_percent_and_separate_evidence"
+      - id: "AC52"
+        statement: "AC52: every line, undrawn lines included, carries data_age -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k data_age_on_every_line"
+      - id: "AC53"
+        statement: "AC53: the change is proven by a real publish: the served factory-floor.json carries progress, gates, condition and data_age on its lines after the publish -- falsifier: grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -480,3 +498,58 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane floor-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn21733-ac47"
+    description: "AC47 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC47"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k line_b_work_tasks_and_gates"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac48"
+    description: "AC48 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC48"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k one_condition_building_keeps_blocker"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac49"
+    description: "AC49 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC49"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k unknown_is_not_zero"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac50"
+    description: "AC50 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC50"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k all_tasks_done_gate_pending_not_complete"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac51"
+    description: "AC51 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC51"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k merged_only_percent_and_separate_evidence"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac52"
+    description: "AC52 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC52"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k data_age_on_every_line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac53"
+    description: "AC53 the projection models the served record carries exist at the checked-out commit; the real publish readback is recorded in the PR body because hosted runners cannot reach the tailnet."
+    source: "manual"
+    binds_ac: ["AC53"]
+    checks:
+      - check_type: "command"
+        check_value: "grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"

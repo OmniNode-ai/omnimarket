@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
@@ -37,11 +38,19 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping i
     task_prs,
 )
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
+    Condition,
+    EvidenceKind,
     ModelFactoryFloorResult,
     ModelFloorAndon,
+    ModelFloorBlocker,
+    ModelFloorDataAge,
+    ModelFloorGateRef,
+    ModelFloorGates,
     ModelFloorItem,
     ModelFloorLane,
     ModelFloorLine,
+    ModelFloorLineEvidence,
+    ModelFloorProgress,
     ModelFloorPrRef,
     ModelFloorSection,
     ModelFloorSources,
@@ -68,6 +77,22 @@ class _Index:
     lane_words: dict[str, tuple[str, ...]]
     # Every open or merged pull request, the merge list included, by key: a task row is built from these (OMN-21930).
     records: dict[str, PrRecord]
+    # Integration-proof STATUS rows by pull request, ticket and task id.
+    proof_by_pr: dict[str, tuple[int, ...]]
+    proof_by_ticket: dict[str, tuple[int, ...]]
+    proof_by_task: dict[str, tuple[int, ...]]
+    # The merged pull requests shown running on dev (``repo#number``); None when no reader read the records.
+    running: frozenset[str] | None
+    # When each pull request merged, where the watcher's merge record says.
+    merged_at: dict[str, datetime]
+
+
+@dataclass(frozen=True)
+class _Cause:
+    """One reason a line is stopped: its sentence and the refs (task ids, pull requests, ledger rows) that show it."""
+
+    text: str
+    refs: tuple[str, ...] = ()
 
 
 def _tip(
@@ -147,7 +172,17 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
     by_pr: dict[str, list[int]] = {}
     tips: dict[str, tuple[datetime, str, datetime | None]] = {}
     by_lane: dict[str, list[int]] = {}
+    proof_by_pr: dict[str, list[int]] = {}
+    proof_by_ticket: dict[str, list[int]] = {}
+    proof_by_task: dict[str, list[int]] = {}
     for position, row in enumerate(request.ledger):
+        if row.kind == "STATUS" and row.state == request.config.integration_state:
+            for pr in row.prs:
+                proof_by_pr.setdefault(pr_key(pr), []).append(position)
+            for ticket in row.tickets:
+                proof_by_ticket.setdefault(ticket, []).append(position)
+            if row.task:
+                proof_by_task.setdefault(row.task, []).append(position)
         if row.lane:
             by_lane.setdefault(row.lane, []).append(position)
         if row.kind == "CLAIM":
@@ -175,6 +210,19 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
         by_lane={key: tuple(value) for key, value in by_lane.items()},
         lane_words={lane: name_tokens(lane) for lane in by_lane},
         records=pr_records(request),
+        proof_by_pr={key: tuple(value) for key, value in proof_by_pr.items()},
+        proof_by_ticket={key: tuple(value) for key, value in proof_by_ticket.items()},
+        proof_by_task={key: tuple(value) for key, value in proof_by_task.items()},
+        running=None
+        if request.running_evidence is None
+        else frozenset(
+            f"{item.repo.rsplit('/', 1)[-1]}#{item.number}"
+            for item in request.running_evidence
+            if item.number is not None
+        ),
+        merged_at={
+            pr_key(merge.key): merge.merged_at for merge in request.watcher.merges
+        },
     )
 
 
@@ -303,7 +351,8 @@ def _evidence(
     request: ModelFactoryFloorRequest,
     index: _Index,
     mapped_merged: bool = False,
-) -> tuple[ItemState, str] | None:
+) -> tuple[ItemState, str, EvidenceKind] | None:
+    """The state a work task's evidence gives it, the note, and what kind of evidence backs a ``done``."""
     rows = _task_rows(task, scope, request, index)
     terminal = max(
         (row for row in rows if row.kind == "TERMINAL"),
@@ -319,38 +368,38 @@ def _evidence(
     linear = {issue.id: issue.status_type for issue in request.linear}
     # Merged work outranks any lane TERMINAL: a stale blocked, partial or never-sent row cannot unbuild it.
     if is_built(task, prs, index.records):
-        return "done", "PRs merged"
+        return "done", "PRs merged", "merged"
     if mapped_merged:
-        return "done", "PRs merged (task-to-ticket map)"
+        return "done", "PRs merged (task-to-ticket map)", "merged"
     if terminal and unclaimed and terminal.outcome in request.config.done_outcomes:
-        return "done", f"terminal {terminal.outcome}"
+        return "done", f"terminal {terminal.outcome}", "terminal"
     if terminal and unclaimed and terminal.outcome in request.config.handoff_outcomes:
         merged_keys = {pr_key(pr) for pr in merged}
         unmerged = tuple(pr for pr in terminal.prs if pr_key(pr) not in merged_keys)
         if terminal.prs and not unmerged:
-            return "done", "PRs merged"
+            return "done", "PRs merged", "merged"
         waiting = ",".join(unmerged) if unmerged else "no pull request named"
-        return "active", f"handed to landing by {terminal.lane}: {waiting}"
+        return "active", f"handed to landing by {terminal.lane}: {waiting}", ""
     if task.tickets and all(linear.get(t) == "completed" for t in task.tickets):
-        return "done", "Linear done"
+        return "done", "Linear done", "linear_done"
     matching = tuple(h for h in holds if _hold_matches(h, task, prs, index))
     for hold in matching:
         if _andon(hold, request.config):
-            return "stop", f"andon hold {hold.row_id}: {hold.reason}"
+            return "stop", f"andon hold {hold.row_id}: {hold.reason}", ""
     claim = _live_claim(rows, request, index)
     if claim:
-        return "active", f"claim {claim.lane}"
+        return "active", f"claim {claim.lane}", ""
     open_prs = {pr.key for pr in request.watcher.prs if pr.state == "OPEN"}
     for pr in prs:
         if pr in open_prs:
-            return "active", f"PR {pr} open"
+            return "active", f"PR {pr} open", ""
     if any(linear.get(t) == "started" for t in task.tickets):
-        return "active", "Linear in progress"
+        return "active", "Linear in progress", ""
     if terminal and unclaimed and terminal.outcome in request.config.blocked_outcomes:
-        return "wait", f"lane {terminal.lane} ended {terminal.outcome}"
+        return "wait", f"lane {terminal.lane} ended {terminal.outcome}", ""
     if matching:
         hold = matching[0]
-        return "wait", f"held {hold.row_id}: {hold.reason}"
+        return "wait", f"held {hold.row_id}: {hold.reason}", ""
     return None
 
 
@@ -376,13 +425,13 @@ def _gate(
     return None
 
 
-def _recorded(state: ItemState) -> tuple[ItemState, str] | None:
+def _recorded(state: ItemState) -> tuple[ItemState, str, EvidenceKind] | None:
     """The state a manifest records for a task with no other evidence; a recorded done needs a merged pull request."""
     if state == "done":
-        return "wait", "recorded done, no merged pull request read"
+        return "wait", "recorded done, no merged pull request read", "recorded"
     if state == "prep":
         return None
-    return state, f"recorded {state}"
+    return state, f"recorded {state}", "recorded"
 
 
 def _manifest_items(
@@ -404,10 +453,12 @@ def _manifest_items(
             return memo[task_id]
         task = by_id[task_id]
         gate = task.kind == request.config.gate_kind
-        evidence = (
-            _gate(task, request)
-            if gate
-            else _evidence(
+        evidence: tuple[ItemState, str, EvidenceKind] | None
+        if gate:
+            verdict = _gate(task, request)
+            evidence = None if verdict is None else (verdict[0], verdict[1], "")
+        else:
+            evidence = _evidence(
                 task,
                 prs[task_id],
                 _scope(plan),
@@ -416,7 +467,6 @@ def _manifest_items(
                 index,
                 task_id in mapped_merged,
             )
-        )
         if evidence is None and task.state is not None:
             evidence = _recorded(task.state)
         if evidence is None:
@@ -431,8 +481,9 @@ def _manifest_items(
                 if unmet
                 else ("prep", "ready to run" if gate else "ready")
             )
+            kind: EvidenceKind = ""
         else:
-            state, note = evidence
+            state, note, kind = evidence
         failed = tuple(
             dep
             for dep in task.depends_on
@@ -453,6 +504,7 @@ def _manifest_items(
             note=note[: request.config.note_chars],
             tickets=task.tickets,
             prs=prs[task_id],
+            evidence_kind=kind,
         )
         memo[task_id] = item
         return item
@@ -464,15 +516,17 @@ def _manifest_items(
 
 def _table_built(
     row: ModelFloorTableTask, request: ModelFactoryFloorRequest, index: _Index
-) -> bool:
-    """A table row is built from merged pull requests (or its tickets done in Linear), never from its recorded state."""
+) -> EvidenceKind:
+    """What builds a table row: merged pull requests, or its tickets done in Linear; never its recorded state ("" if none)."""
     task = ModelFloorManifestTask(
         id=row.label, tickets=row.tickets, prs=row.prs, scoped=True
     )
     if is_built(task, task_prs(task, row.tickets, index.records), index.records):
-        return True
+        return "merged"
     linear = {issue.id: issue.status_type for issue in request.linear}
-    return bool(row.tickets) and all(linear.get(t) == "completed" for t in row.tickets)
+    if row.tickets and all(linear.get(t) == "completed" for t in row.tickets):
+        return "linear_done"
+    return ""
 
 
 def _table_item(
@@ -482,12 +536,15 @@ def _table_item(
     index: _Index,
 ) -> ModelFloorItem:
     state: ItemState
+    kind: EvidenceKind = ""
     if row.state == "merged":
+        kind = _table_built(row, request, index)
         state, note = (
-            ("done", "PRs merged")
-            if _table_built(row, request, index)
+            ("done", "Linear done" if kind == "linear_done" else "PRs merged")
+            if kind
             else ("wait", "recorded merged, no merged pull request read")
         )
+        kind = kind or "recorded"
     elif row.state in {"open-green", "open-red"}:
         state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
     elif row.state == "not-started":
@@ -508,6 +565,7 @@ def _table_item(
         note=note[: request.config.note_chars],
         tickets=row.tickets,
         prs=row.prs,
+        evidence_kind=kind,
     )
 
 
@@ -616,7 +674,7 @@ def _exempts(
 
 def _red_prs(
     items: tuple[ModelFloorItem, ...], request: ModelFactoryFloorRequest
-) -> tuple[str, ...]:
+) -> tuple[_Cause, ...]:
     """The open pull requests of parts being built whose CI is red: the cause a line is really stopped by."""
     red = {
         pr.key: pr.ci_note
@@ -624,10 +682,15 @@ def _red_prs(
         if pr.state == "OPEN" and (pr.red or pr.ci == "red")
     }
     found = dict.fromkeys(
-        pr for item in items if item.state == "active" for pr in item.prs if pr in red
+        (pr, item.id)
+        for item in items
+        if item.state == "active"
+        for pr in item.prs
+        if pr in red
     )
     return tuple(
-        f"PR {pr} CI red" + (f" ({red[pr]})" if red[pr] else "") for pr in found
+        _Cause(f"PR {pr} CI red" + (f" ({red[pr]})" if red[pr] else ""), (pr, task))
+        for pr, task in found
     )
 
 
@@ -677,12 +740,17 @@ def _asks_orchestrator(
     )
 
 
+def _ledger_refs(row: ModelFloorLedgerRow) -> tuple[str, ...]:
+    """The refs that show a ledger stop: the row's id (else its lane) and the pull requests it names."""
+    return tuple(dict.fromkeys((row.row_id or row.lane, *row.prs)))
+
+
 def _ledger_stops(
     plan: ModelFloorPlanInput,
     request: ModelFactoryFloorRequest,
     index: _Index,
     items: tuple[ModelFloorItem, ...],
-) -> tuple[str, ...]:
+) -> tuple[_Cause, ...]:
     """Open stops the ledger records on the plan's tickets: a lane that ended blocked, an ask nobody answered.
 
     A stop is over when the work moved on (another lane claimed its ticket after it), when every pull request it names
@@ -700,7 +768,7 @@ def _ledger_stops(
     done_tickets = {
         ticket for item in items if item.state == "done" for ticket in item.tickets
     }
-    stops: tuple[str, ...] = ()
+    stops: tuple[_Cause, ...] = ()
     for row in sorted(request.ledger, key=_row_key):
         if not _intersects(row.tickets, scope) or _resumed(row, index):
             continue
@@ -713,14 +781,280 @@ def _ledger_stops(
         said = (row.reason or row.text)[: config.note_chars]
         age = _minutes(request, row.ts)
         if row.kind == "TERMINAL" and row.outcome in config.stop_outcomes:
-            stops += (f"lane {row.lane} ended {row.outcome} {age} min ago: {said}",)
+            stops += (
+                _Cause(
+                    f"lane {row.lane} ended {row.outcome} {age} min ago: {said}",
+                    _ledger_refs(row),
+                ),
+            )
         elif (
             row.kind == "MSG"
             and _asks_orchestrator(row, config)
             and row.row_id not in answered
         ):
-            stops += (f"MSG {row.row_id} to {row.to} unanswered for {age} min: {said}",)
+            stops += (
+                _Cause(
+                    f"MSG {row.row_id} to {row.to} unanswered for {age} min: {said}",
+                    _ledger_refs(row),
+                ),
+            )
     return stops
+
+
+def _is_gate(item: ModelFloorItem, request: ModelFactoryFloorRequest) -> bool:
+    return item.kind == request.config.gate_kind
+
+
+def _work_items(
+    items: tuple[ModelFloorItem, ...], request: ModelFactoryFloorRequest
+) -> tuple[ModelFloorItem, ...]:
+    """The work tasks: every item whose kind is not the contract's gate kind. Gates are never counted as work."""
+    return tuple(item for item in items if not _is_gate(item, request))
+
+
+def _merged_work(work: tuple[ModelFloorItem, ...]) -> tuple[ModelFloorItem, ...]:
+    """The work tasks done by merged evidence (a merged pull request or the task-to-ticket map's merged outcome) only.
+
+    A task done only by a terminal outcome or a closed Linear issue is recorded done: it counts toward the condition,
+    never toward the progress.
+    """
+    return tuple(
+        item for item in work if item.state == "done" and item.evidence_kind == "merged"
+    )
+
+
+def _gates(
+    items: tuple[ModelFloorItem, ...], request: ModelFactoryFloorRequest
+) -> ModelFloorGates:
+    """The gates counted apart from the work: passed (done), failed (stop) and waiting (anything else), with their ids."""
+    refs = tuple(
+        ModelFloorGateRef(
+            id=item.id,
+            state="passed"
+            if item.state == "done"
+            else "failed"
+            if item.state == "stop"
+            else "waiting",
+        )
+        for item in items
+        if _is_gate(item, request)
+    )
+    return ModelFloorGates(
+        passed=sum(ref.state == "passed" for ref in refs),
+        failed=sum(ref.state == "failed" for ref in refs),
+        waiting=sum(ref.state == "waiting" for ref in refs),
+        items=refs,
+    )
+
+
+def _percent(completed: int, total: int, decimals: int) -> float:
+    """``completed / total x 100`` rounded half-up to ``decimals`` places (6 of 48 is 12.5, never truncated to 12)."""
+    exact = Decimal(completed) * 100 / Decimal(total)
+    return float(exact.quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP))
+
+
+def _progress(
+    plan: ModelFloorPlanInput,
+    items: tuple[ModelFloorItem, ...],
+    request: ModelFactoryFloorRequest,
+) -> ModelFloorProgress:
+    """Merged work tasks over valid work tasks; unknown is never 0.
+
+    ``unknown`` when the plan's scope is under review, its task ids repeat, or no manifest and no table was read;
+    ``no_tasks`` when zero work tasks are declared; ``known`` otherwise, a real 0 completed included.
+    """
+    config = request.config
+    work = _work_items(items, request)
+    manifest = plan.manifest
+    if manifest is not None and manifest.scope_status == "needs_review":
+        return ModelFloorProgress(
+            state="unknown",
+            completed=None,
+            total=None,
+            percent=None,
+            note=config.progress_note_under_review.format(
+                note=manifest.scope_note
+            ).strip()[: config.note_chars],
+        )
+    ids = tuple(task.id for task in manifest.tasks) if manifest is not None else ()
+    if len(ids) != len(set(ids)):
+        return ModelFloorProgress(
+            state="unknown",
+            completed=None,
+            total=None,
+            percent=None,
+            note=config.progress_note_duplicate_ids,
+        )
+    if manifest is None and not plan.table_tasks:
+        return ModelFloorProgress(
+            state="unknown",
+            completed=None,
+            total=None,
+            percent=None,
+            note=config.progress_note_unscoped,
+        )
+    if not work:
+        return ModelFloorProgress(
+            state="no_tasks",
+            completed=None,
+            total=0,
+            percent=None,
+            note=config.progress_note_no_tasks,
+        )
+    completed = len(_merged_work(work))
+    return ModelFloorProgress(
+        state="known",
+        completed=completed,
+        total=len(work),
+        percent=_percent(completed, len(work), config.percent_decimals),
+        note=config.progress_note_known.format(completed=completed, total=len(work)),
+    )
+
+
+def _proof(
+    item: ModelFloorItem,
+    prs: tuple[str, ...],
+    request: ModelFactoryFloorRequest,
+    index: _Index,
+) -> ModelFloorLedgerRow | None:
+    """The newest integration-proof row naming the item, written after the item's newest known merge."""
+    positions = {
+        *(p for pr in prs for p in index.proof_by_pr.get(pr_key(pr), ())),
+        *(p for ticket in item.tickets for p in index.proof_by_ticket.get(ticket, ())),
+        *index.proof_by_task.get(item.id, ()),
+    }
+    merged = [
+        index.merged_at[pr_key(pr)] for pr in prs if pr_key(pr) in index.merged_at
+    ]
+    since = max(merged, default=None)
+    return max(
+        (
+            row
+            for row in (request.ledger[p] for p in positions)
+            if since is None or row.ts >= since
+        ),
+        key=_row_key,
+        default=None,
+    )
+
+
+def _line_evidence(
+    work: tuple[ModelFloorItem, ...],
+    request: ModelFactoryFloorRequest,
+    index: _Index,
+) -> ModelFloorLineEvidence:
+    """Counts over the work tasks, one per kind of evidence, never added together.
+
+    ``merged`` counts merged work tasks. ``running_on_dev`` counts those whose merged pull requests all appear in the
+    running-on-dev records, and ``verified`` those that also have a passing integration-proof row written after the
+    merge. Both are None when the running-on-dev records were not read: unread is not 0.
+    """
+    merged = _merged_work(work)
+    if index.running is None:
+        return ModelFloorLineEvidence(
+            merged=len(merged), running_on_dev=None, verified=None, of=len(work)
+        )
+    merged_keys = {
+        pr_key(record.key)
+        for record in index.records.values()
+        if record.state == "MERGED"
+    }
+    running = verified = 0
+    for item in merged:
+        named = tuple(pr for pr in item.prs if pr_key(pr) in merged_keys) or item.prs
+        if not named or any(pr_key(pr) not in index.running for pr in named):
+            continue
+        running += 1
+        proof = _proof(item, named, request, index)
+        if (
+            proof is not None
+            and proof.verdict in request.config.integration_pass_verdicts
+        ):
+            verified += 1
+    return ModelFloorLineEvidence(
+        merged=len(merged), running_on_dev=running, verified=verified, of=len(work)
+    )
+
+
+def _data_age(request: ModelFactoryFloorRequest) -> ModelFloorDataAge:
+    """The oldest read among the sources a line depends on, and its age in minutes against the request's own time.
+
+    The watcher's tick is always one; the ledger, Linear and running-on-dev reads count when the caller supplied
+    their read times. A source with no read time is not guessed.
+    """
+    reads = request.source_reads
+    stamps = [request.watcher.last_tick]
+    stamps += [
+        stamp
+        for stamp in (
+            reads.ledger,
+            reads.linear,
+            reads.running_evidence if request.running_evidence is not None else None,
+        )
+        if stamp is not None
+    ]
+    oldest = min(stamps)
+    return ModelFloorDataAge(
+        read_at=_stamp(oldest), age_min=max(0, _minutes(request, oldest))
+    )
+
+
+def _condition(
+    *,
+    progress: ModelFloorProgress,
+    work: tuple[ModelFloorItem, ...],
+    items: tuple[ModelFloorItem, ...],
+    gates: ModelFloorGates,
+    hard: bool,
+    causes: bool,
+) -> Condition:
+    """The one condition of the line.
+
+    stopped for a hard cause (an andon hold, a failed gate, no task table); needs_review while progress is unknown;
+    stopped for a soft cause (a red pull request, a ledger stop; ``_running`` turns it building while a live lane works
+    the line); complete only when every work task is done by merged, terminal or closed-ticket evidence and every gate
+    has passed; building when work is done or active; else queued.
+    """
+    if hard:
+        return "stopped"
+    if progress.state == "unknown":
+        return "needs_review"
+    if causes:
+        return "stopped"
+    if (
+        progress.state == "known"
+        and all(item.state == "done" for item in work)
+        and gates.passed == len(gates.items)
+    ):
+        return "complete"
+    if any(item.state in {"done", "active"} for item in items):
+        return "building"
+    return "queued"
+
+
+def _blocker(
+    causes: tuple[_Cause, ...],
+    work: tuple[ModelFloorItem, ...],
+    gates: ModelFloorGates,
+    request: ModelFactoryFloorRequest,
+) -> ModelFloorBlocker | None:
+    """The first cause as the reason with its refs; else the pending gate of a line whose work is all done; else None."""
+    if causes:
+        first = causes[0]
+        more = f" (+{len(causes) - 1} more)" if len(causes) > 1 else ""
+        return ModelFloorBlocker(
+            reason=(first.text + more)[: request.config.note_chars],
+            evidence=first.refs,
+        )
+    waiting = tuple(ref.id for ref in gates.items if ref.state == "waiting")
+    if work and waiting and all(item.state == "done" for item in work):
+        return ModelFloorBlocker(
+            reason=request.config.pending_gate_blocker.format(gates=",".join(waiting))[
+                : request.config.note_chars
+            ],
+            evidence=waiting,
+        )
+    return None
 
 
 def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
@@ -732,8 +1066,28 @@ def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
             name=token,
             plan_path=token,
             source="undrawn",
-            status_pill="stopped",
-            percent_built=0,
+            condition="stopped",
+            blocker=ModelFloorBlocker(
+                reason=f"{cause}: no plan path contains {token}"[
+                    : request.config.note_chars
+                ],
+                evidence=(token,),
+            ),
+            progress=ModelFloorProgress(
+                state="unknown",
+                completed=None,
+                total=None,
+                percent=None,
+                note=request.config.progress_note_unscoped,
+            ),
+            gates=ModelFloorGates(passed=0, failed=0, waiting=0, items=()),
+            line_evidence=ModelFloorLineEvidence(
+                merged=0,
+                running_on_dev=None,
+                verified=None,
+                of=0,
+            ),
+            data_age=_data_age(request),
             stations=(),
             andon=ModelFloorAndon(
                 flag=True,
@@ -775,63 +1129,67 @@ def _line(
     )
     hard = (
         (
-            (
-                f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table",
+            _Cause(
+                f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table"
+            ),
+        )
+        if not tasks
+        else ()
+    ) + tuple(
+        _Cause(
+            f"HOLD {hold.row_id}: {hold.reason or hold.text}",
+            (hold.row_id,) if hold.row_id else (),
+        )
+        for hold in holds
+        if _andon(hold, request.config)
+        and (
+            _intersects(hold.tickets, _scope(plan))
+            or any(
+                _hold_matches(hold, task, item.prs, index)
+                for task, item in zip(tasks, items, strict=True)
             )
-            if not tasks
-            else ()
         )
-        + tuple(
-            f"HOLD {hold.row_id}: {hold.reason or hold.text}"
-            for hold in holds
-            if _andon(hold, request.config)
-            and (
-                _intersects(hold.tickets, _scope(plan))
-                or any(
-                    _hold_matches(hold, task, item.prs, index)
-                    for task, item in zip(tasks, items, strict=True)
-                )
-            )
-        )
-        + tuple(
-            f"GATE {item.id} failed"
-            for item in items
-            if has_manifest
-            and item.kind == request.config.gate_kind
-            and item.state == "stop"
-        )
+    )
+    hard += tuple(
+        _Cause(f"GATE {item.id} failed", (item.id,))
+        for item in items
+        if has_manifest and _is_gate(item, request) and item.state == "stop"
     )
     causes = (
         hard + _red_prs(items, request) + _ledger_stops(plan, request, index, items)
     )
     reason = (
-        causes[0] + (f" (+{len(causes) - 1} more)" if len(causes) > 1 else "")
+        causes[0].text + (f" (+{len(causes) - 1} more)" if len(causes) > 1 else "")
         if causes
         else ""
     )
-    # Every part of the plan's own list counts, gates included: built percent is the parts done over all of them.
-    percent = (
-        100 * sum(item.state == "done" for item in items) // len(items) if items else 0
-    )
+    work = _work_items(items, request)
+    progress = _progress(plan, items, request)
+    gates = _gates(items, request)
     line_id = _line_id(plan)
     return ModelFloorLine(
         line_id=line_id,
         name=(manifest.title if manifest is not None else "") or plan.title or line_id,
         plan_path=plan.plan_path,
         source="manifest" if has_manifest else "plan-task-table",
-        status_pill="stopped"
-        if causes
-        else "done"
-        if percent == 100 and items
-        else "building"
-        if any(i.state in {"done", "active"} for i in items)
-        else "queued",
-        percent_built=percent,
+        condition=_condition(
+            progress=progress,
+            work=work,
+            items=items,
+            gates=gates,
+            hard=bool(hard),
+            causes=bool(causes),
+        ),
+        blocker=_blocker(causes, work, gates, request),
+        progress=progress,
+        gates=gates,
+        line_evidence=_line_evidence(work, request, index),
+        data_age=_data_age(request),
         stations=_stations(tasks, items, request.config),
         andon=ModelFloorAndon(
             flag=bool(causes),
             reason=reason[: request.config.note_chars],
-            causes=causes,
+            causes=tuple(cause.text for cause in causes),
             hard=bool(hard),
         ),
     )
@@ -935,15 +1293,18 @@ def _floor(
 def _running(
     lines: tuple[ModelFloorLine, ...], lanes: tuple[ModelFloorLane, ...]
 ) -> tuple[ModelFloorLine, ...]:
-    """A line stopped only by red pull requests and ledger stops is building while a lane that is not stalled works on it."""
+    """A line stopped only by soft causes (red pull requests, ledger stops) is building while a live lane works on it.
+
+    Only the condition changes: the blocker stays, and no other field reads stopped.
+    """
     working = {
         lane.station.line_id
         for lane in lanes
         if lane.station is not None and not lane.stalled
     }
     return tuple(
-        line.model_copy(update={"status_pill": "building"})
-        if line.status_pill == "stopped"
+        line.model_copy(update={"condition": "building"})
+        if line.condition == "stopped"
         and line.andon.flag
         and not line.andon.hard
         and line.line_id in working

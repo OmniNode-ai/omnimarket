@@ -509,7 +509,7 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
     assert runtime.names.data == "factory-floor.json"
     assert runtime.names.page == "index.html"
     for field in (
-        "generated_at", "lines", "floor", "sources", "line_id", "status_pill", "percent_built", "stations",
+        "generated_at", "lines", "floor", "sources", "line_id", "condition", "progress", "percent", "stations",
         "andon", "flag", "reason", "causes", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
         "stoppages", "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale",
         "state", "note", "label", "cap", "lanes_placed", "load_per_core", "mem_free_gb", "mem_total_gb",
@@ -602,8 +602,8 @@ FLOOR_RECORD = {
             "name": "Second plan",
             "plan_path": "beta/plans/two-plan.md",
             "source": "manifest",
-            "status_pill": "stopped",
-            "percent_built": 37,
+            "condition": "stopped",
+            "progress": {"state": "known", "completed": 37, "total": 100, "percent": 37.0, "note": ""},
             "andon": {"flag": True, "reason": "gate failed", "causes": ["G9"]},
             "stations": [
                 {"id": "0", "name": "Look first", "state": "done", "feeders": [],
@@ -953,8 +953,8 @@ SHELL_RECORD = {
             "name": "Second plan",
             "plan_path": "beta/plans/two-plan.md",
             "source": "manifest",
-            "status_pill": "stopped",
-            "percent_built": 37,
+            "condition": "stopped",
+            "progress": {"state": "known", "completed": 37, "total": 100, "percent": 37.0, "note": ""},
             "andon": {"flag": True, "reason": "PR repo#9 CI red (2 red of 10)", "causes": ["PR repo#9 CI red (2 red of 10)"]},
             "stations": [
                 {"id": "0", "name": "Look first", "state": "done", "feeders": [],
@@ -1424,8 +1424,14 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
                 "name": "alpha-plan",
                 "plan_path": "alpha-plan",
                 "source": "undrawn",
-                "status_pill": "stopped",
-                "percent_built": 0,
+                "condition": "stopped",
+                "progress": {
+                    "state": "unknown",
+                    "completed": None,
+                    "total": None,
+                    "percent": None,
+                    "note": "",
+                },
                 "stations": [],
                 "andon": {
                     "flag": True,

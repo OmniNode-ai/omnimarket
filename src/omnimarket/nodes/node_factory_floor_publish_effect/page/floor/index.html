@@ -369,8 +369,8 @@ const PART_NAMES = {frame:"Frame",engine:"Engine",wiring:"Wiring",body:"Body",gl
 const PART_ORDER = ["frame","wiring","engine","body","glass","lights","wheels"];
 const STATE_LABEL = {done:"Done",active:"Being built",prep:"Parts staged",wait:"Waiting",stop:"Stopped"};
 const STATE_WORD = {done:"finished",active:"being built",prep:"parts staged",wait:"not started",stop:"stopped"};
-const PILL_CLASS = {stopped:"stop",done:"done",building:"active",queued:"wait"};
-const PILL_LABEL = {stopped:"Stopped",done:"Done",building:"Building",queued:"Queued"};
+const PILL_CLASS = {stopped:"stop",complete:"done",building:"active",queued:"wait",needs_review:"wait"};
+const PILL_LABEL = {stopped:"Stopped",complete:"Complete",building:"Building",queued:"Queued",needs_review:"Needs review"};
 const TONE = {ok:"var(--ok)",warn:"var(--warn)",stop:"var(--stop)",idle:"var(--idle)"};
 
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -474,7 +474,7 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.status_pill === "stopped" || !!(L.andon && L.andon.flag)};
+    stopped: L.condition === "stopped" || !!(L.andon && L.andon.flag)};
 }
 
 function stationName(stations, id){
@@ -503,7 +503,7 @@ function renderLine(slot, i){
   const parts = partStates(f.stations);
   const map = partStations(f.n);
   const pos = (f.cur + 0.5) / Math.max(f.n, 1);
-  const pct = Math.max(0, Math.min(100, num(L.percent_built)));
+  const pct = Math.max(0, Math.min(100, num(L.progress && L.progress.percent)));
   const reason = L.andon && L.andon.reason ? L.andon.reason : "";
   const causes = (L.andon && L.andon.causes || []).filter(x => x !== reason && x.trim()).map(esc).join("; ");
   const source = L.source === "manifest" ? "task manifest" : "plan task table";
@@ -511,7 +511,7 @@ function renderLine(slot, i){
       <div class="line-head">
         ${carSVG(sid, parts)}
         <div class="meta">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill ${PILL_CLASS[L.status_pill] || "wait"}">${esc(PILL_LABEL[L.status_pill] || L.status_pill)}</span></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill ${PILL_CLASS[L.condition] || "wait"}">${esc(PILL_LABEL[L.condition] || L.condition)}</span></div>
           <h2 id="h-${sid}">${esc(L.name)}</h2>
           <button type="button" class="drill" data-drill="line-${sid}">Show this line's detail</button>
           <span class="plan">Plan file ${esc(L.plan_path)} · read from its ${esc(source)}</span>

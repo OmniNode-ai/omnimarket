@@ -16,6 +16,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
+    ModelFloorSourceReads,
 )
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
@@ -70,6 +71,14 @@ OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 COMPUTE_CONTRACT = (
     Path(__file__).resolve().parents[2] / "node_factory_floor_compute" / "contract.yaml"
 )
+
+
+def _file_time(path: Path) -> datetime | None:
+    """When the file was last written; None when it cannot be read (the age is then not guessed)."""
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return None
 
 
 class HandlerFactoryFloorEffect:
@@ -143,6 +152,9 @@ class HandlerFactoryFloorEffect:
             if overlay is not None and overlay.host_table_relpath
             else None
         )
+        linear_snapshot = newest_linear_snapshot(
+            home / src.plans_today_dir, src.linear_snapshot_glob
+        )
         titles = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_titles_glob
         )
@@ -185,12 +197,18 @@ class HandlerFactoryFloorEffect:
                 else None,
             ),
             linear=merge_linear_titles(
-                load_linear(
-                    newest_linear_snapshot(
-                        home / src.plans_today_dir, src.linear_snapshot_glob
-                    )
-                ),
+                load_linear(linear_snapshot),
                 load_linear(titles),
+            ),
+            source_reads=ModelFloorSourceReads(
+                # The ledger is read live at ``now`` unless a rows file stands in for it; the Linear snapshot is as old
+                # as the file plans-today wrote.
+                ledger=_file_time(Path(request.ledger_rows_file))
+                if request.ledger_rows_file
+                else now,
+                linear=_file_time(linear_snapshot)
+                if linear_snapshot is not None
+                else None,
             ),
             placement=load_placement(home / src.placement_relpath),
             stoppages=load_stoppages(home / src.friction_report_relpath),

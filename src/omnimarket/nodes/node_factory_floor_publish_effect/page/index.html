@@ -554,7 +554,7 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.status_pill === "stopped" || !!(L.andon && L.andon.flag)};
+    stopped: L.condition === "stopped" || !!(L.andon && L.andon.flag)};
 }
 
 const CAR = `<svg class="car" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:var(--c);stroke:var(--belt)" stroke-width="2"/><circle cx="17" cy="22" r="5" style="fill:var(--belt)"/><circle cx="48" cy="22" r="5" style="fill:var(--belt)"/></svg>`;
@@ -581,9 +581,9 @@ function lineCard(slot, i){
     </article>`;
   }
   const L = slot.line, f = lineFacts(L);
-  const pill = f.stopped ? ["stop", "Stopped"] : L.status_pill === "done" ? ["done", "Done"] : L.status_pill === "building" ? ["active", "Building"] : ["wait", "Queued"];
+  const pill = f.stopped ? ["stop", "Stopped"] : L.condition === "complete" ? ["done", "Complete"] : L.condition === "building" ? ["active", "Building"] : ["wait", "Queued"];
   const cells = f.items.length ? f.items : f.stations;
-  const pct = Math.max(0, Math.min(100, num(L.percent_built)));
+  const pct = Math.max(0, Math.min(100, num(L.progress && L.progress.percent)));
   const reason = ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "");
   const causes = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
   const shown = causes.length ? causes : (reason ? [reason] : []);
@@ -905,7 +905,7 @@ function drillContent(d){
     const f = lineFacts(L);
     const reasons = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).concat(L.andon && L.andon.reason ? [L.andon.reason] : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
     const uniq = reasons.filter((c, i) => reasons.indexOf(c) === i);
-    return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.status_pill === "done" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.status_pill || "queued")}</span> <span class="pill wait">${fmt(num(L.percent_built))}% built</span></div>`
+    return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.condition === "complete" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.condition || "queued")}</span> <span class="pill wait">${fmt(num(L.progress && L.progress.percent))}% built</span></div>`
       + (f.stopped ? `<div class="cause"><b>Why it is stopped</b>${uniq.length ? uniq.map(c => `<span>${esc(c)}</span>`).join("") : "<span>The record flags this line stopped and gives no reason.</span>"}</div>` : "")
       + `<p class="facts">${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>`
       + (containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : "")
