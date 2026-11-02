@@ -405,6 +405,7 @@ node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compac
 node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
 node_compaction_verdict_compute = "omnimarket.nodes.node_compaction_verdict_compute"
 node_compaction_probe_compute = "omnimarket.nodes.node_compaction_probe_compute"
+node_compaction_probe_run_effect = "omnimarket.nodes.node_compaction_probe_run_effect"
 node_session_compaction_measurement_compute = "omnimarket.nodes.node_session_compaction_measurement_compute"
 node_compaction_action_score_compute = "omnimarket.nodes.node_compaction_action_score_compute"
 node_compaction_score_compute = "omnimarket.nodes.node_compaction_score_compute"
