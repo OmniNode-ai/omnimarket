@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-22096
+title: Cloud session placement is gated by the account's cloud credit only; a subscription five_hour or seven_day rate reading never holds an account, and a hold comes from a cloud session start the platform refused
+summary: record_cloud_rate keeps the subscription rate reading as telemetry and writes no hold, and cloud_account_skip honors only the credit gate, a hold stamped by a refused start or by mark_cloud_limited, and the concurrency cap. A hold the node wrote earlier from a rate header carries no stamp and stops gating through the code. note_cloud_refusal records a hold from a refusal that names a usage or rate limit, with the start error text as the stored reason, until the reset the text names or one hour. The live check of AC4 (the runner's cloud-credit --slots on the launching host) is pending the install of this branch there.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22096-credit-gates-cloud-placement
+    statement: The recorded h200 account of 2026-11-02 becomes a fixture, and each acceptance criterion has a test that fails without the change.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a regression test built from the recorded h200 record of 2026-11-02 (rate seven_day rejected, rate_refused_until 2026-11-04T22:00:00Z, credit 244 usable; fixture under the node''s tests, scrubbed of secrets) fails on the current code and passes on the fix, asserting cloud_slots offers h200 slots -- falsifier: uv run pytest -k cloud_hold_subscription_rate in omnimarket tests'
+      - id: AC2
+        statement: 'AC2: record_cloud_rate and cloud_account_skip never hold an account because of a five_hour or seven_day rate reading, whatever its status (allowed, allowed_warning, rejected); the cloud credit alone gates placement -- falsifier: uv run pytest -k cloud_rate_reading_never_holds in omnimarket tests, parametrized over type and status'
+      - id: AC3
+        statement: 'AC3: a cloud session start refused for a subscription reason records a hold from that measured refusal, with the start error text as the stored reason, and only until the reset the refusal names -- falsifier: uv run pytest -k cloud_measured_refusal_holds in omnimarket tests'
+evidence_requirements:
+  - kind: tests
+    description: The cloud session placement node's tests run at the pushed head on a lab host.
+    command: uv run pytest tests/nodes/node_cloud_session_placement_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22096-ac1
+    description: AC1 loads the scrubbed h200 record of 2026-11-02 into the accounts file and asserts cloud_slots offers h200 its 17 slots and cloud_account_skip and cloud_caps report no hold; on the code before the change the account reads limited until 2026-11-04T22:00:00Z.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --tb=line -k cloud_hold_subscription_rate
+        cwd: .
+  - id: dod-omn22096-ac2
+    description: AC2 records every five_hour and seven_day reading in each of the statuses allowed, allowed_warning and rejected, and asserts no hold key is written, the reading is kept in rate, and cloud_account_skip reports none, with the zero-credit gate still holding.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --tb=line -k cloud_rate_reading_never_holds
+        cwd: .
+  - id: dod-omn22096-ac3
+    description: AC3 records a refusal naming a usage limit and a reset and expects a hold with the error text as the reason that ends at the named reset, a refusal naming no reset holding for one hour, and a concurrency refusal holding nothing.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --tb=line -k cloud_measured_refusal_holds
+        cwd: .
+  - id: dod-omn22096-deploy-probe
+    description: 'Deploy probe: the cloud_accounts module GitHub serves at the checked-out commit defines the hold stamp, which the module at the merge base does not.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "CLOUD_HOLD_STAMP" > /dev/null'
+        cwd: .
