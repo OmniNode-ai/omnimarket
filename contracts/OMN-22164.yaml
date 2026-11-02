@@ -39,6 +39,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov -k recorded_relaunch
         cwd: .
+  - id: dod-lineage-integration-proof
+    description: The pushed head's lineage and recorded relaunch tests run on a lab pool host through the lab-work bus unit and exit 0. They drive the packaged throughput decision handler (the code the tick node serves) with receipts shaped like the recorded r3 and r4 receipts and read its printed MISSING dispatch lines. This proves the branch code on a lab host. It does not read the live tick adapter's receipts, which run on another host.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane tick-lineage-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov
+        cwd: .
   - id: dod-lineage-deploy-source
     description: The handler at the checked-out revision served by the repository includes ticket matching; the original handler fails this check.
     source: manual
