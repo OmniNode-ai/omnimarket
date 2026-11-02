@@ -29,3 +29,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_fixer_hold_scoped_release.py -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn19998-integration-proof
+    description: Run the scoped-release tests and the landing decision and ledger facts suites on a lab host at the pushed head. A scoped RELEASE leaves the repository HOLD in force, so the scoped-release tests are red at the merge base. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19998 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute tests/unit/nodes/node_pr_landing_ledger_facts_compute -q --no-cov
+        cwd: .
