@@ -766,10 +766,11 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
             cells.setdefault(key.strip(), value.strip())
         elif "REFUSED(" in part:
             refusal = part[part.index("(") + 1 :].rstrip(")")
-    cores, cap, slots = (
+    cores, cap, slots, lane_slots = (
         _number(cells.get("cores", "")),
         _number(cells.get("lane_cap", "") or cells.get("cap", "")),
         _number(cells.get("lane_slots", "") or cells.get("slots", "")),
+        _number(cells.get("lane_slots", "")),
     )
     return ModelFloorPoolReading(
         host=host,
@@ -782,6 +783,7 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
         swap_used_pct=_number(cells.get("swap", "")),
         cap=int(cap) if cap is not None else None,
         slots=int(slots) if slots is not None else None,
+        lane_slots=int(lane_slots) if lane_slots is not None else None,
         refusal=refusal,
     )
 

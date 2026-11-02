@@ -8,8 +8,11 @@ remote_lane_stop_ended_or_unknown, remote_lane_stop_scope.
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -390,3 +393,72 @@ def test_remote_lane_stop_scope_local_pid_gone_before_terminal(
     finally:
         child.kill()
         child.wait()
+
+
+def test_remote_lane_stop_lab_command(
+    receipts: Path, ledger: Path, ledger_tool: list[str], tmp_path: Path
+) -> None:
+    """Exercise the command and shell transport against a real process group.
+
+    The context and receipt use the runner's format. This portable regression
+    uses a local transport and a scratch ledger; a live runner proof is separate.
+    """
+    context = tmp_path / "runs" / f"{RUN_ID}.ctx"
+    context.mkdir(parents=True)
+    child = _sleeper()
+    # Reap the child before the shell's signal-0 poll, as the runner's guard does.
+    reaper = threading.Thread(target=child.wait)
+    reaper.start()
+    placement = tmp_path / "placement"
+    placement.mkdir()
+    marker = placement / f"h9.1793600000.{child.pid}"
+    marker.write_text(str(child.pid))
+    peer_marker = placement / "h9.1793600001.9999"
+    peer_marker.write_text("9999")
+    (context / "run.pid").write_text(str(child.pid))
+    write_receipt(receipts, host="h9", pid=child.pid)
+    request = _request(
+        receipts,
+        ledger,
+        ledger_tool,
+        hosts=[ModelStopHost(name="h9", ssh_argv=["env"], work_root=str(tmp_path))],
+        placement_dir=str(placement),
+    )
+    try:
+        # Use the same module command documented for dispatch hosts, with the
+        # real adapter's shell scripts; only its SSH prefix is local here.
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(sys.path)
+        stopped = subprocess.run(
+            [sys.executable, "-m", "omnimarket.nodes.node_remote_lane_stop_effect"],
+            input=request.model_dump_json(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+            env=env,
+        )
+        assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+        result = json.loads(stopped.stdout)
+        assert result["outcome"] == "stopped"
+        assert result["lane"] == LANE
+        assert result["run_id"] == RUN_ID
+        assert result["signals"] == ["TERM"]
+        reaper.join(timeout=5)
+        assert not reaper.is_alive()
+        assert child.returncode is not None
+        assert not marker.exists()
+        assert peer_marker.exists(), "a peer lane's slot is retained"
+        rows = _terminals(ledger)
+        assert len(rows) == 1
+        assert f"lane={LANE}" in rows[0]
+        assert f"run={RUN_ID}" in rows[0]
+        assert "outcome=stopped" in rows[0]
+        assert "stopped-by=orchestrator-1" in rows[0]
+        assert "operator asked for a stop" in rows[0]
+        assert f"closes-CLAIM={CLAIM_TS}" in rows[0]
+        assert result["terminal_ts"] in rows[0]
+    finally:
+        if child.poll() is None:
+            child.kill()
+        reaper.join(timeout=5)
