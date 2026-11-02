@@ -13,10 +13,12 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorLedgerRow,
     ModelFloorMachineDecl,
+    ModelFloorPoolReading,
     ModelFloorPr,
     ModelFloorReceipt,
 )
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
+    ModelFloorAdmission,
     ModelFloorBay,
     ModelFloorCloud,
     ModelFloorCloudAccountOut,
@@ -100,6 +102,9 @@ def _engine(model: str, request: ModelFactoryFloorRequest) -> str:
     )
 
 
+DOTTED_TASK_RE = re.compile(r"[A-Za-z]+\.\d+")
+
+
 def name_tokens(text: str) -> tuple[str, ...]:
     """The lower-case alphanumeric words of a lane name or a task id (``one-rt-t10-x`` is one, rt, t10, x)."""
     return tuple(part for part in re.split(r"[^0-9a-z]+", text.casefold()) if part)
@@ -109,9 +114,14 @@ def names_task(task_id: str, lane_tokens: tuple[str, ...]) -> bool:
     """True when the task id's words appear in a row in the lane's name: ``T10`` is in ``one-rt-t10-delegation``, never in ``t1``."""
     wanted = name_tokens(task_id)
     width = len(wanted)
-    return width > 0 and any(
-        lane_tokens[i : i + width] == wanted
-        for i in range(len(lane_tokens) - width + 1)
+    # A dotted id (``CM.6``) is one word in a lane name (``comp-cm6-r2``); ``CM.1`` is never ``cm12``.
+    joined = "".join(wanted) if DOTTED_TASK_RE.fullmatch(task_id) else ""
+    return (joined != "" and joined in lane_tokens) or (
+        width > 0
+        and any(
+            lane_tokens[i : i + width] == wanted
+            for i in range(len(lane_tokens) - width + 1)
+        )
     )
 
 
@@ -294,6 +304,28 @@ def _runners(
     )
 
 
+def _admission(
+    reading: ModelFloorPoolReading | None, cap: int | None, units: int
+) -> tuple[int, ModelFloorAdmission]:
+    """The free slots the tick's admission reads for one machine, and whether it takes new work at all.
+
+    A reading that carries a refusal takes none, with the reading's own reason. Otherwise the free count is the
+    reading's own ``lane_slots`` cell when its line carries one, else the cap less the placed UNITS (not lanes), never
+    negative. The floor parses the reading's cells; it does not re-derive the admission rules.
+    """
+    if reading is None:
+        return 0, ModelFloorAdmission(state="unread", reason="")
+    if reading.refusal:
+        return 0, ModelFloorAdmission(state="refused", reason=reading.refusal)
+    if reading.lane_slots is not None:
+        free = reading.lane_slots
+    elif cap is not None:
+        free = cap - units
+    else:
+        free = 0
+    return max(0, free), ModelFloorAdmission(state="open", reason="")
+
+
 def build_machines(
     request: ModelFactoryFloorRequest, lanes: tuple[ModelFloorLane, ...]
 ) -> tuple[ModelFloorMachine, ...]:
@@ -343,6 +375,14 @@ def build_machines(
         else:
             state, note = "read", ""
         measured = reading if state == "read" and reading is not None else None
+        cap = (
+            row.cap
+            if row is not None and row.cap is not None
+            else (reading.cap if reading else None)
+        )
+        free_slots, admission = _admission(
+            measured, cap, units if units is not None else len(mine)
+        )
         cores = measured.cores if measured else None
         load = measured.load1 if measured else None
         machines.append(
@@ -363,12 +403,10 @@ def build_machines(
                 mem_free_gb=measured.mem_free_gb if measured else None,
                 mem_total_gb=measured.mem_total_gb if measured else None,
                 swap_used_pct=measured.swap_used_pct if measured else None,
-                cap=(
-                    row.cap
-                    if row is not None and row.cap is not None
-                    else (reading.cap if reading else None)
-                ),
+                cap=cap,
                 refusal=measured.refusal if measured else "",
+                free_slots=free_slots,
+                admission=admission,
                 lanes_placed=len(mine),
                 lanes=mine,
                 units_placed=units,

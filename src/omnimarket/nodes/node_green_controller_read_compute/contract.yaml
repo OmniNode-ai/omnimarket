@@ -6,7 +6,8 @@ node_version: "1.0.0"
 description: >
   Read which open heads the landing controller's newest facts (last-facts.json) say are not green-landable, for the
   throughput tick's CONTROLLER_DEFECT alarm: a head the controller read conflicting, or red on named checks, at the
-  head the PR watcher reads, in facts observed within the bound. Such a head is not listed green-unlanded. Pure: the
+  head the PR watcher reads, in facts observed within the bound, or a head the controller reads merged or closed
+  (OMN-22109). Such a head is not listed green-unlanded. Pure: the
   handler reads nothing and writes nothing.
 input_model:
   name: ModelGreenControllerReadRequest

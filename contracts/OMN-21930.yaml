@@ -10,17 +10,21 @@ requirements:
   statement: 'Four lines of the live factory floor read wrong: containers per lane were never drawn, orchestration alignment read 12 percent for 6 of 68 parts, a lane that ended blocked 9918 minutes ago stopped the context line, and the page said 9 live lanes name no machine without saying which or why.'
   acceptance:
   - id: AC1
-    statement: 'AC1: the page draws application_containers per lane (running of declared, per lane class), and a record with no containers draws no row for that line -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -k containers -q'
+    statement: 'AC1: the page draws application_containers per lane (running of declared, per lane class), and a record with no containers draws no row for that line -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k containers -q'
   - id: AC2
-    statement: 'AC2: orchestration alignment percent_built equals merged parts over total parts from the plan''s own part list (6 of 68 reads 8 percent), with a fixture of the recorded live inputs that fails on the current code -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k percent_built -q'
+    statement: 'AC2: orchestration alignment percent_built equals merged parts over total parts from the plan''s own part list (6 of 68 reads 8 percent), with a fixture of the recorded live inputs that fails on the current code -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k percent_built -q'
   - id: AC3
-    statement: 'AC3: a lane whose last row is a TERMINAL older than the stall window does not stop its line, and the line shows the state that is true -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k dead_lane -q'
+    statement: 'AC3: a lane whose last row is a TERMINAL older than the stall window does not stop its line, and the line shows the state that is true -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k dead_lane -q'
   - id: AC4
-    statement: 'AC4: every live lane either names a machine the floor draws or is listed under the cause that it names none, and the count line states the lanes it counts -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k lane_machine -q'
+    statement: 'AC4: every live lane either names a machine the floor draws or is listed under the cause that it names none, and the count line states the lanes it counts -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k lane_machine -q'
   - id: AC5
     statement: 'AC5: from a real publish of the branch, the preview address on h051 shows the containers row, 8 percent on the alignment line, a context line not stopped by plan-r8-0605 and no unnamed-machine count that the lanes contradict -- falsifier: curl of the preview factory-floor.json and page on h051 compared with the lab-run receipt in the PR body'
   - id: AC6
-    statement: 'AC6: the suites pass on a lab host through lab-run -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q'
+    statement: 'AC6: the suites pass on a lab host through lab-run -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q'
+  - id: AC8
+    statement: 'AC8: task headings under the plan task section supply the station items; review checklist entries are excluded from both heading and plans-today table inputs, while an ordinary parts table remains usable.'
+  - id: AC9
+    statement: 'AC9: a lane named comp-cm6-r2-1102 matches task CM.6; CM.1 does not match cm12 and CM.2 does not match cm6.'
 - id: req-omn21930-pr-attribution
   statement: A factory floor PR belongs to the tickets in its title and head branch; tickets mentioned only in its body do not attribute it to other tasks.
   acceptance:
@@ -29,7 +33,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The three floor node suites, which now hold their tests beside the node.
-  command: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line
+  command: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -42,7 +46,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -k containers -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k containers -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac2
   description: AC2 percent_built is parts done over every part of the plan's list; the fixture of the live inputs reads 12 on the previous code and 8 now.
@@ -51,7 +55,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k percent_built -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k percent_built -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac3
   description: AC3 a blocked TERMINAL that is a lane's last row and is older than the stall window stops no line.
@@ -60,7 +64,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k dead_lane -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k dead_lane -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac4
   description: AC4 an unplaced lane carries its cause and the page counts the lanes by cause with their names.
@@ -69,7 +73,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -k lane_machine -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k lane_machine -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac5
   description: AC5 the page and compute behaviours the preview readback shows; the readback itself is quoted in the PR body from the h051 preview.
@@ -78,7 +82,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests src/omnimarket/nodes/node_factory_floor_compute/tests -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-ac6
   description: AC6 the three floor node suites pass; the lab-run receipt is quoted in the PR body.
@@ -87,7 +91,25 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-merged-mapping
+  description: A task row is built from the merged pull requests of the tickets it names, the watcher's merge list included; a pull request that names other tickets is not on the row, and a table row's recorded merged state is not trusted. These cases fail on this pull request's merge base.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests -k merged_mapping -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-draft-pr-plan
+  description: A plan only on an open pull request's head branch is drawn from the local clone's ref, and a task id the plan's prose pairs with tickets reaches its task row. These cases fail on this pull request's merge base.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_factory_floor_effect/tests -k "draft_pr_plan or plan_prose" -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21930-integration-proof
   description: The pushed head ran the three floor node suites, with the new tests, on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
@@ -95,7 +117,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floor-page-lines-2-1102 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_dead_lane.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_lane_machine.py src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane floor-page-lines-2-1102 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_compute/tests src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov
     cwd: .
 - id: dod-omn21930-ac7-pr-attribution
   description: The PR attribution regression reads a watcher snapshot with body-only ticket references and requires that only the title and head branch attribute the PR.
@@ -109,9 +131,10 @@ dod_evidence:
 - id: dod-omn21930-deploy-packaged-pr-attribution
   description: Hosted-runner deploy smoke imports the built wheel in a disposable Python container with the locked dependencies, no network and no source checkout, and checks title and branch attribution against body-only references. It needs no broker, lab route or production credentials and fails if the wheel restores body attribution or drops a title or branch ticket.
   source: manual
-  binds_ac:
-  - AC7
   checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -k test_a_pr_attributes_only_to_the_ticket_of_its_title_and_branch_not_its_body -q --no-cov --tb=line
+    cwd: .
   - check_type: command
     check_value: |
       set -eu;
@@ -164,4 +187,46 @@ dod_evidence:
       assert actual == [('OMN-100', 'OMN-200')], actual
       print(json.dumps({'artifact': wheels[0].name, 'pr': 'omnimarket#4856', 'tickets': actual}))
       PY
+    cwd: .
+- id: dod-omn21930-compaction-task-inputs
+  description: AC8 exercises the plan task headings, rejects review-only heading and table entries, and preserves an ordinary parts table. The heading and review cases fail on this pull request's merge base.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -k 'review_checklist or table_of_the_checklist or review_section or real_table_of_parts' -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-compaction-lane-match
+  description: AC9 matches a dotted task id to the complete joined lane token and rejects neighbouring task numbers. This case fails on this pull request's merge base.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_compute/test_live_lines.py -k dotted_task_id -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-compaction-deploy-probe
+  description: Hosted-runner source artifact readback compares both published implementation files at the evaluated commit with this checkout and requires the task-section parser and joined dotted-token match. This checks published source, not a serving floor deployment.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      readback_dir="$(mktemp -d)"
+      trap 'rm -rf "$readback_dir"' EXIT
+      revision="$(git rev-parse HEAD)"
+      loader=src/omnimarket/nodes/node_factory_floor_effect/source_loader.py
+      lanes=src/omnimarket/nodes/node_factory_floor_compute/handlers/floor_lanes.py
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$loader" \
+        --output "$readback_dir/source_loader.py"
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$lanes" \
+        --output "$readback_dir/floor_lanes.py"
+      cmp "$loader" "$readback_dir/source_loader.py"
+      cmp "$lanes" "$readback_dir/floor_lanes.py"
+      grep -F 'sectioned = _heading_tasks(text, links, epic)' "$readback_dir/source_loader.py"
+      grep -F 'joined in lane_tokens' "$readback_dir/floor_lanes.py"
+      printf 'factory floor task source readback matched %s\n' "$revision"
     cwd: .
