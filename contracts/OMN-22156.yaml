@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-22156
+title: Morning phase tools guard runs in required CI and records configured session tools
+summary: Wire the existing tools-only guard into pre-commit and the strict CI lint job, and record each phase session's configured tools under the morning-workflows runs directory. The first post-merge morning run remains a live observation for the orchestrator.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-morning-phase-tools
+    statement: Every morning phase session has only its typed deterministic tools, and the existing guard runs on every commit and CI run.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a change that gives a morning phase session a shell or generic tool turns the guard test red, and the unchanged tree passes it -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q passes on main, then the same command fails against a fixture phase tool set that adds a shell tool'
+      - id: AC2
+        statement: 'AC2: the guard test is named by a pre-commit hook and by a step of the required ci workflow, so no path filter can skip it -- falsifier: uv run pytest tests -q -k morning_phase_tools_wiring, a test that reads .pre-commit-config.yaml and .github/workflows/ci.yml and asserts both name the guard test, red on the current tree'
+      - id: AC3
+        statement: 'AC3: the first morning run after the merge builds its phase sessions through the gateway and its run receipt records the phase tool set with built-in tools off, within 24 hours of the merge -- falsifier: read the morning-ground-state run receipt under the morning-workflows runs directory for the first post-merge run and grep it for the phase tool set and the built-in-tools-off field, then uv run python ruling_mechanisms.py --days 14 --json no longer lists RULING 2026-10-21T22:32:15Z as unmechanized'
+evidence_requirements:
+  - kind: tests
+    description: The existing guard and its wiring test run at the evaluated revision.
+    command: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-morning-tools-ac1
+    description: The existing guard passes and its shell fixture negative control invokes the same guard and expects an assertion failure.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+        cwd: .
+  - id: dod-morning-tools-ac2
+    description: Both check-only integrations name the existing guard; the hook always runs and the required CI lint step has no condition or path filter.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_morning_phase_tools_wiring.py -q
+        cwd: .
+  - id: dod-morning-tools-ac3-producer
+    description: The gateway writes the phase tool names and built_in_tools_off into a per-phase receipt using both the overlay root and an explicit state root. This checks the producer; the post-merge run and ruling audit remain pending live evidence.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q -k test_the_gateway_runs_the_tools_only_transport_and_reads_its_typed_result
+        cwd: .
+  - id: dod-morning-tools-deploy-source
+    description: Hosted runner reads the handler at the evaluated repository revision and checks that it records the built-in-tools-off field. This source readback does not claim a live host install.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_morning_ground_state_orchestrator/handlers/handler_morning_phase_session_files.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "\"built_in_tools_off\": True"'
+        cwd: .
+  - id: dod-morning-tools-live-receipt
+    description: The orchestrator supplies the first post-merge receipt path after the installed morning run. The path is under the overlay tools root at .onex_state/morning-workflows/runs/DATE/CORRELATION_HEX/PHASE.tools.json. The ruling audit is separate live evidence; neither is claimed by the producer test.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run python -c 'import json, os; from pathlib import Path; from omnimarket.nodes.node_morning_ground_state_orchestrator.tools.phases import phase_tools; receipt = json.loads(Path(os.environ["MORNING_PHASE_TOOLS_RECEIPT"]).read_text()); assert receipt["built_in_tools_off"] is True; assert receipt["phase_tools"] == [tool.name for tool in phase_tools(receipt["phase"])]; assert receipt["transport"] == "--tools-only"; print(receipt)'
+        cwd: .

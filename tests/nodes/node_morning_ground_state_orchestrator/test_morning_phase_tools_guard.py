@@ -16,7 +16,9 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -26,6 +28,7 @@ from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers import (
     handler_morning_phase_tools as hpt,
 )
 from omnimarket.nodes.node_morning_ground_state_orchestrator.models import (
+    ModelMorningGroundStateRequest,
     ModelMorningOverlay,
     ModelMorningPhaseRequest,
 )
@@ -228,6 +231,19 @@ def test_phase_tool_sets_name_built_catalog_tools_only(label: str) -> None:
 
 
 @pytest.mark.unit
+def test_guard_rejects_fixture_phase_tool_set_with_shell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    label = PHASES[0]
+    tools = phase_tools(label)
+    shell = replace(tools[0], name="Bash")
+    monkeypatch.setitem(globals(), "phase_tools", lambda _: [*tools, shell])
+    # Exercise the existing guard itself; do not duplicate its tool policy.
+    with pytest.raises(AssertionError):
+        test_phase_tool_sets_name_built_catalog_tools_only(label)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("label", PHASES)
 def test_the_server_lists_and_runs_only_the_phase_tools(
     label: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -382,8 +398,13 @@ def test_a_committing_phase_waits_for_the_phase_that_pushes_its_branch(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("custom_state_root", [False, True])
+@pytest.mark.parametrize("host_models", [False, True])
 def test_the_gateway_runs_the_tools_only_transport_and_reads_its_typed_result(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    custom_state_root: bool,
+    host_models: bool,
 ) -> None:
     _env(monkeypatch, tmp_path)
     result = {"date": "2026-08-30", "clock_utc": "x", "phases": [], "residuals": []}
@@ -393,12 +414,39 @@ def test_the_gateway_runs_the_tools_only_transport_and_reads_its_typed_result(
         f"print(json.dumps({{'is_error': False, 'structured_output': {result!r}}}))\n",
     )
     phase = _phase("idempotency-precheck", "Precheck", {"type": "object"})
-    assert asyncio.run(_gateway(tmp_path).run(request(), phase)) == result
+    run = request()
+    if host_models:
+        # The installed host wrapper owns distinct request/phase model classes.
+        run = cast(
+            ModelMorningGroundStateRequest,
+            SimpleNamespace(**run.model_dump(), window_start=run.window_start),
+        )
+        phase = cast(ModelMorningPhaseRequest, SimpleNamespace(**phase.model_dump()))
+    gateway = (
+        _gateway(tmp_path)
+        if custom_state_root
+        else hpt.HandlerMorningPhaseTools(overlay=_overlay())
+    )
+    assert asyncio.run(gateway.run(run, phase)) == result
     argv = json.loads(marker.read_text())
     assert argv[:2] == ["--tools-only", "sonnet"]
     config = json.loads(Path(argv[2]).read_text())
     assert list(config["mcpServers"]) == ["morning"]
     assert json.loads(Path(argv[3]).read_text()) == {"type": "object"}
+    state = (
+        tmp_path / "state"
+        if custom_state_root
+        else tmp_path / "root" / ".onex_state" / "morning-workflows"
+    )
+    receipts = list((state / "runs").glob("*/*/*.tools.json"))
+    assert len(receipts) == 1
+    receipt = json.loads(receipts[0].read_text())
+    assert receipt["phase"] == phase.label
+    assert receipt["phase_tools"] == [tool.name for tool in phase_tools(phase.label)]
+    assert receipt["built_in_tools_off"] is True
+    assert receipt["transport"] == "--tools-only"
+    assert receipt["correlation_id"] == str(run.correlation_id)
+    assert receipt["date"] == run.date
 
 
 @pytest.mark.unit
@@ -415,6 +463,7 @@ def test_a_transport_refusal_is_a_typed_phase_failure(
                 request(), _phase("idempotency-precheck", "Precheck", {})
             )
         )
+    assert len(list((tmp_path / "state" / "runs").glob("*/*/*.tools.json"))) == 1
 
 
 @pytest.mark.unit
