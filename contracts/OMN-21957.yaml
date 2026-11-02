@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+ticket_id: OMN-21957
+title: The runner checks at launch that a lane's target is still valid, as a contract-driven compute node, report-only first with its would-refuse count
+summary: node_launch_validity_compute decides at launch whether the named PR is open at the expected head and not queued or merged, whether the ticket or plan task is done by a merged PR and whether a live CLAIM owns the target; report-only first.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21957-ac2
+  statement: "a node in omnimarket with its own contract.yaml refuses a launch when the named PR is not open, is queued or merged, or its head differs from the expected head, when the ticket or plan task is done by a merged PR, or when a live CLAIM owns the target"
+  acceptance:
+  - id: AC2
+    statement: "AC2: a node in omnimarket with its own contract.yaml refuses a launch when the named PR is not open, is queued or merged, or its head differs from the expected head, when the ticket or plan task is done by a merged PR, or when a live CLAIM owns the target -- falsifier: uv run pytest -k launch_validity -q in omnimarket"
+- id: req-omn21957-ac3
+  statement: "a failed or unreadable live read refuses and names the read that failed, never passes"
+  acceptance:
+  - id: AC3
+    statement: "AC3: a failed or unreadable live read refuses and names the read that failed, never passes -- falsifier: uv run pytest -k launch_validity_read_failure -q"
+- id: req-omn21957-ac4
+  statement: "the mode (report-only or refuse) and every limit are read from the contract and its overlay with no literal in the handler, report-only emits one would-refuse record per refusal and never blocks, and a replay over the last four days of recorded launches prints the would-refuse count"
+  acceptance:
+  - id: AC4
+    statement: "AC4: the mode (report-only or refuse) and every limit are read from the contract and its overlay with no literal in the handler, report-only emits one would-refuse record per refusal and never blocks, and a replay over the last four days of recorded launches prints the would-refuse count -- falsifier: uv run pytest -k launch_validity_replay -q against the recorded fixture rows, plus the node's printed count line"
+- id: req-omn21957-ac5
+  statement: "the node gives identical decisions on the in-memory overlay and on the Redpanda overlay"
+  acceptance:
+  - id: AC5
+    statement: "AC5: the node gives identical decisions on the in-memory overlay and on the Redpanda overlay -- falsifier: uv run pytest -k launch_validity_parity -q with the bus overlay selected"
+evidence_requirements:
+- kind: tests
+  description: The launch validity suite runs at the pushed head on a lab host.
+  command: uv run pytest tests/nodes/node_launch_validity_compute -q --no-cov -m 'not kafka'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21957-ac2
+  description: "AC2 runs on the in-memory overlay; the Redpanda overlay case is the kafka-marked parity test, run on a lab host."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_launch_validity_compute -k launch_validity -q --no-cov -m 'not kafka'
+    cwd: .
+- id: dod-omn21957-ac3
+  description: "AC3 runs on the in-memory overlay; the Redpanda overlay case is the kafka-marked parity test, run on a lab host."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_launch_validity_compute -k launch_validity_read_failure -q --no-cov
+    cwd: .
+- id: dod-omn21957-ac4
+  description: "AC4 runs on the in-memory overlay; the Redpanda overlay case is the kafka-marked parity test, run on a lab host."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_launch_validity_compute -k launch_validity_replay -q --no-cov
+    cwd: .
+- id: dod-omn21957-ac5
+  description: "AC5 runs on the in-memory overlay; the Redpanda overlay case is the kafka-marked parity test, run on a lab host."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_launch_validity_compute -k launch_validity_parity -q --no-cov
+    cwd: .
+- id: dod-omn21957-deploy-probe-contract
+  description: "Deploy probe. GitHub serves the node contract at the checked-out HEAD with the handler bound and the report_only default; it fails at the merge base, which has neither."
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_launch_validity_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerLaunchValidity", "mode: report_only")); print("launch validity deploy probe: PASS")'
+    cwd: .

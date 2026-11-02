@@ -166,6 +166,8 @@ not_routing_resolution_sites:
     reason: the knowledge-base clone name and the variable that holds its path, rendered into a lane's shell lines; a host-local input, not a route for delegated work
   - site: "src/omnimarket/nodes/node_umbrella_ticket_compute/handlers/handler_umbrella_ticket.py:resolve_setting('node_umbrella_ticket_compute')"
     reason: the umbrella ticket set a PR-opening lane is refused on; a ticket list, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_launch_validity_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: the mode, bus transport and read-age limit of the launch validity check; it decides whether a lane's target is still valid and chooses no backend, model or tier
 not_routing_configs:
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes

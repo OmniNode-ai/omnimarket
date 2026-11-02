@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_launch_validity_compute
+version: 0.1.0
+description: Decide at launch whether a lane's target is still valid; report-only first.
+pack: distributed_validation
+node_role: compute
+display_name: Launch Validity Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_launch_validity_compute: omnimarket.nodes.node_launch_validity_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- omnibase_infra
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane
