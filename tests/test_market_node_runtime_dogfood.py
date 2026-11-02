@@ -376,10 +376,15 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_seam_read_orchestrator is a graph contract only until its handler lands, so it is
     # experimental with no handler_routing: 26 -> 27. node_delegation_seam_orchestrator binds
     # a handler, so it is routable and adds nothing.
+    # node_ilo_redfish_effect is called in process by the lab tooling and has no
+    # bus route, so it is experimental with no handler_routing: 27 -> 28.
+    # node_host_drift_fleet is called in process with an injected bus, clock and
+    # state store and reads with one stable group per host, not by a bus command,
+    # so it is experimental with no handler_routing: 28 -> 29.
     # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
     # load_bringup_graph and declares no handler, so it is experimental with no
-    # handler_routing: 27 -> 28.
-    assert summary["skipped"] == 28
+    # handler_routing: 29 -> 30.
+    assert summary["skipped"] == 30
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

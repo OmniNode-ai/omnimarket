@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
@@ -46,7 +46,18 @@ from .models import (
     ModelExceptionResolveRequest,
     ModelExceptionResolveResult,
     ModelExceptionRow,
+    ModelOpenStopsRequest,
+    ModelOpenStopsResult,
+    ModelStopEventRequest,
+    ModelStopEventResult,
 )
+
+if TYPE_CHECKING:
+    from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
+        ModelFSMSubcontract,
+    )
+
+    from omnimarket.models.stop_gate import ModelAndonStopConfig
 
 QUEUE_FILE = "exception-queue.jsonl"
 MECHANIZE_FILE = "exception-queue.mechanize.json"
@@ -85,6 +96,12 @@ def _read_queue(state_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, A
             row = json.loads(line)
             if "resolves" in row:
                 opened = [r for r in opened if r["id"] != row["resolves"]]
+            elif "stop_update" in row:
+                for held in rows:
+                    if held["id"] == row["stop_update"]:
+                        held["stop"] = row["stop"]
+            elif "stop_refused" in row:
+                continue
             else:
                 rows.append(row)
                 opened.append(row)
@@ -214,7 +231,40 @@ def _mechanize(request: ModelExceptionEmitRequest, rows: list[dict[str, Any]]) -
     return f"sent:{lane}" if sent else f"unsent:{detail}"
 
 
+def _contract() -> tuple[ModelFSMSubcontract, ModelAndonStopConfig]:
+    from omnimarket.handlers.rules_stop_gate import load_andon_stop_contract
+
+    return load_andon_stop_contract()
+
+
+def _resolve_contract(
+    fsm: ModelFSMSubcontract | None, config: ModelAndonStopConfig | None
+) -> tuple[ModelFSMSubcontract, ModelAndonStopConfig]:
+    """The injected machine and config, else the packaged reducer contract's."""
+    if fsm is not None and config is not None:
+        return fsm, config
+    loaded_fsm, loaded_config = _contract()
+    return (fsm or loaded_fsm), (config or loaded_config)
+
+
+def _parse_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
 class HandlerExceptionEmit:
+    """Queue one row. A row whose class is in the stop registry of the reducer's contract also opens a stop, and
+    only a caller of the contract's opening role may; any other class opens a failure record and no stop."""
+
+    def __init__(
+        self,
+        *,
+        fsm: ModelFSMSubcontract | None = None,
+        config: ModelAndonStopConfig | None = None,
+    ) -> None:
+        self._fsm = fsm
+        self._config = config
+
     def handle(self, request: ModelExceptionEmitRequest) -> ModelExceptionEmitResult:
         row = request.row
         invalid = [
@@ -228,23 +278,199 @@ class HandlerExceptionEmit:
             return ModelExceptionEmitResult(
                 "refused", "", 0, "", "Invalid fields: " + ", ".join(invalid)
             )
+        fsm, config = _resolve_contract(self._fsm, self._config)
+        stop_class = config.stop_class(row.cls)
         with _locked(request.state_dir):
             rows, opened = _read_queue(request.state_dir)
             same_class = [r for r in rows if r["cls"] == row.cls]
             existing = next(
                 (r for r in opened if r["cls"] == row.cls and r["key"] == row.key), None
             )
+            stop_note = "none:class_not_registered"
             if existing is not None:
                 status, row_id = "repeat", existing["id"]
+                if stop_class is not None:
+                    stop_note = f"repeat:{row_id}"
             else:
                 row_id = f"{request.now}-{row.cls}-{hashlib.sha1(row.key.encode('utf-8')).hexdigest()[:8]}"
                 stored = {"id": row_id, "at": request.now, **asdict(row)}
+                if stop_class is not None:
+                    from omnimarket.models.stop_gate import (
+                        OPEN_ROLE_KEY,
+                        ModelStopRecord,
+                        ModelStopScope,
+                    )
+
+                    expected = config.writer_roles[OPEN_ROLE_KEY].value
+                    if request.role != expected:
+                        reason = f"role_not_allowed:{request.role or 'none'}"
+                        _append(
+                            request.state_dir,
+                            {
+                                "stop_refused": row_id,
+                                "at": request.now,
+                                "event": OPEN_ROLE_KEY,
+                                "role": request.role,
+                                "reason": reason,
+                            },
+                        )
+                        return ModelExceptionEmitResult(
+                            "refused",
+                            "",
+                            0,
+                            "",
+                            f"A stop opens only from role {expected}: {reason}",
+                        )
+                    record = ModelStopRecord(
+                        id=row_id,
+                        cls=row.cls,
+                        scope=ModelStopScope(
+                            kind=stop_class.scope_key_kind, key=row.key
+                        ),
+                        state=fsm.initial_state,
+                        stopped_at=_parse_time(request.now),
+                        readback_command=row.readback_command,
+                    )
+                    stored["stop"] = record.model_dump(mode="json")
+                    stop_note = f"opened:{row_id}"
                 _append(request.state_dir, stored)
                 same_class.append(stored)
                 status = "appended"
             occurrence = len(same_class)
             mechanize = _mechanize(request, same_class) if occurrence >= 2 else ""
-            return ModelExceptionEmitResult(status, row_id, occurrence, mechanize, "")
+            return ModelExceptionEmitResult(
+                status, row_id, occurrence, mechanize, "", stop_note
+            )
+
+
+class HandlerStopEvent:
+    """Persist one writer's event to one stop: the role check and the transition are the reducer's rule, the
+    append, the decision rows and the closing of a finished stop are the queue's. A refusal is recorded."""
+
+    def __init__(
+        self,
+        *,
+        fsm: ModelFSMSubcontract | None = None,
+        config: ModelAndonStopConfig | None = None,
+    ) -> None:
+        self._fsm = fsm
+        self._config = config
+
+    def handle(self, request: ModelStopEventRequest) -> ModelStopEventResult:
+        from omnimarket.handlers.rules_stop_gate import fold_stop_event
+        from omnimarket.models.stop_gate import (
+            EnumFoldStatus,
+            ModelStopRecord,
+        )
+
+        fsm, config = _resolve_contract(self._fsm, self._config)
+        event = request.event
+        with _locked(request.state_dir):
+            _, opened = _read_queue(request.state_dir)
+            held = next(
+                (r for r in opened if r["id"] == event.stop_id and r.get("stop")), None
+            )
+
+            def refuse(
+                reason: str, stop: ModelStopRecord | None
+            ) -> ModelStopEventResult:
+                _append(
+                    request.state_dir,
+                    {
+                        "stop_refused": event.stop_id,
+                        "at": request.now,
+                        "event": event.kind.value,
+                        "role": event.role,
+                        "reason": reason,
+                    },
+                )
+                return ModelStopEventResult(
+                    "refused",
+                    reason,
+                    stop,
+                    0,
+                    f"REFUSED stop:{event.stop_id} event={event.kind.value} reason={reason}",
+                )
+
+            if held is None:
+                return refuse("unknown_stop", None)
+            record = ModelStopRecord.model_validate(held["stop"])
+            folded = fold_stop_event(record, event, fsm, config)
+            if folded.status is EnumFoldStatus.REFUSED:
+                return refuse(folded.reason, record)
+            _append(
+                request.state_dir,
+                {
+                    "stop_update": event.stop_id,
+                    "at": request.now,
+                    "event": event.kind.value,
+                    "trigger": folded.trigger,
+                    "stop": folded.stop.model_dump(mode="json"),
+                },
+            )
+            decisions = folded.actions.count("emit_decision_row")
+            for _ in range(decisions):
+                key = (
+                    f"{event.stop_id}:{folded.trigger}:{folded.stop.state}"
+                    f":{folded.stop.lease_replacements_used}:{folded.stop.replacements_extended}"
+                )
+                _append(
+                    request.state_dir,
+                    {
+                        "id": f"{request.now}-andon-stop-decision-{hashlib.sha1(key.encode('utf-8')).hexdigest()[:8]}",
+                        "at": request.now,
+                        "cls": "andon-stop-decision",
+                        "key": key,
+                        "source": "node_andon_stop_reducer",
+                        "evidence": folded.line,
+                        "tried": f"folded {event.kind.value} from role {event.role} through the stop machine",
+                        "proposed_fix": f"rule on stop {event.stop_id} ({record.cls} {record.scope.kind}:{record.scope.key})",
+                        "decision": True,
+                        "ticket": held.get("ticket", ""),
+                        "repo": held.get("repo", ""),
+                        "readback_command": "",
+                    },
+                )
+            if folded.stop.state in fsm.terminal_states:
+                _append(
+                    request.state_dir,
+                    {
+                        "resolves": event.stop_id,
+                        "at": request.now,
+                        "by": "node_andon_stop_reducer",
+                        "how": folded.stop.state,
+                    },
+                )
+            return ModelStopEventResult(
+                "applied", "", folded.stop, decisions, folded.line
+            )
+
+
+class HandlerOpenStops:
+    """The stops not yet cleared or declared false, and the recorded refusals, for ``stop_gate`` and the read."""
+
+    def handle(self, request: ModelOpenStopsRequest) -> ModelOpenStopsResult:
+        from omnimarket.models.stop_gate import ModelStopRecord
+
+        with _locked(request.state_dir):
+            _, opened = _read_queue(request.state_dir)
+            path = request.state_dir / QUEUE_FILE
+            lines = (
+                path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+            )
+        refusals = tuple(
+            json.loads(line)
+            for line in lines
+            if line.strip() and '"stop_refused"' in line
+        )
+        return ModelOpenStopsResult(
+            tuple(
+                ModelStopRecord.model_validate(r["stop"])
+                for r in opened
+                if r.get("stop")
+            ),
+            refusals,
+        )
 
 
 class HandlerExceptionQueue:
@@ -423,6 +649,8 @@ class HandlerExceptionCli:
             "--id",
             "--by",
             "--how",
+            "--role",
+            "--readback-command",
         ):
             ap.add_argument(flag, default="")
         ap.add_argument("--parent")
@@ -453,9 +681,12 @@ class HandlerExceptionCli:
                 args.decision,
                 args.ticket,
                 args.repo,
+                args.readback_command,
             )
             result = self._emit.handle(
-                ModelExceptionEmitRequest(where, row, now, runner, args.parent)
+                ModelExceptionEmitRequest(
+                    where, row, now, runner, args.parent, args.role
+                )
             )
             detail = f" | {result.detail}" if result.detail else ""
             out = (

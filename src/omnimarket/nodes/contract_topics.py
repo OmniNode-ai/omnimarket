@@ -101,6 +101,49 @@ def contract_section(contract_path: Path, *keys: str) -> object:
     return node
 
 
+_NODES = Path(__file__).resolve().parent
+
+# Codex adapter topic key -> (owning node, event_bus section, topic suffix).
+_CODEX_TOPICS: dict[str, tuple[str, str, str]] = {
+    "pattern_b_dispatch_command": (
+        "node_pattern_b_broker",
+        "publish_topics",
+        ".pattern-b-dispatch.v1",
+    ),
+    "pattern_b_dispatch_completed": (
+        "node_pattern_b_broker",
+        "subscribe_topics",
+        ".pattern-b-dispatch-completed.v1",
+    ),
+    "delegate_skill_command": (
+        "node_delegate_skill_orchestrator",
+        "subscribe_topics",
+        ".delegate-skill.v1",
+    ),
+    "delegate_skill_completed": (
+        "node_delegate_skill_orchestrator",
+        "publish_topics",
+        ".delegate-skill-completed.v1",
+    ),
+    "delegate_skill_failed": (
+        "node_delegate_skill_orchestrator",
+        "publish_topics",
+        ".delegate-skill-failed.v1",
+    ),
+}
+
+
+def codex_topic(key: str) -> str:
+    """Return the Codex adapter topic ``key`` from its owning node's contract.
+
+    The Pattern B dispatch pair comes from ``node_pattern_b_broker`` and the
+    delegate-skill command and terminals from ``node_delegate_skill_orchestrator``,
+    so no topic string lives in ``adapters/codex/topics.py``.
+    """
+    node, section, suffix = _CODEX_TOPICS[key]
+    return contract_topic(_NODES / node / "contract.yaml", section, suffix)
+
+
 def _contract_topics(contract_path: Path, key: str) -> tuple[str, ...]:
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
@@ -117,6 +160,7 @@ def _contract_topics(contract_path: Path, key: str) -> tuple[str, ...]:
 
 
 __all__ = [
+    "codex_topic",
     "contract_publish_topics",
     "contract_secret_ref",
     "contract_section",
