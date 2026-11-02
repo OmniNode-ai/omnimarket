@@ -31,8 +31,9 @@ the classifier weighs), blank content, and records with no correlation id
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import cache
+from importlib import import_module
 
 from omnimarket.nodes.node_prompt_intent_classify_compute.models.model_content_captured_record import (
     ModelContentCapturedRecord,
@@ -52,14 +53,39 @@ PromptClassifier = Callable[[str], ModelPromptIntentVerdict]
 
 @cache
 def _omniintelligence_functions() -> tuple[
-    Callable[..., object], Callable[..., object]
+    Callable[[str], Mapping[str, object]], Callable[[str, float], object]
 ]:
+    """Bind the classify and resolve calls to what omniintelligence exports.
+
+    The installed module defines ``HandlerIntentClassifier`` and
+    ``HandlerTypedClassification``, each with ``handle(request)``; it has no
+    module-level ``classify_intent`` (OMN-21898).
+    """
     from omniintelligence.nodes.node_intent_classifier_compute.handlers.handler_intent_classification import (  # type: ignore[import-not-found]
-        classify_intent,
+        HandlerIntentClassifier,
     )
     from omniintelligence.nodes.node_intent_classifier_compute.handlers.handler_typed_classification import (  # type: ignore[import-not-found]
-        resolve_typed_intent,
+        HandlerTypedClassification,
     )
+
+    models = import_module(
+        "omniintelligence.nodes.node_intent_classifier_compute.models"
+    )
+    classifier = HandlerIntentClassifier()
+    typed_resolver = HandlerTypedClassification()
+
+    def classify_intent(prompt: str) -> Mapping[str, object]:
+        result: Mapping[str, object] = classifier.handle(
+            models.ModelClassifyIntentRequest(content=prompt)
+        )
+        return result
+
+    def resolve_typed_intent(category: str, confidence: float) -> object:
+        return typed_resolver.handle(
+            models.ModelResolveTypedIntentRequest(
+                intent_category=category, confidence=confidence
+            )
+        )
 
     return classify_intent, resolve_typed_intent
 
@@ -69,7 +95,7 @@ def classify_with_omniintelligence(prompt: str) -> ModelPromptIntentVerdict:
     classify_intent, resolve_typed_intent = _omniintelligence_functions()
     raw = classify_intent(prompt)
     if not isinstance(raw, dict):
-        msg = f"classify_intent returned {type(raw).__name__}, expected a mapping"
+        msg = f"the classifier returned {type(raw).__name__}, expected a mapping"
         raise TypeError(msg)
     category = str(raw.get("intent_category", "unknown"))
     confidence = float(raw.get("confidence", 0.0))
