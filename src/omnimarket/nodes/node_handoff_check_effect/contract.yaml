@@ -1,0 +1,228 @@
+---
+name: node_handoff_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+runtime_profiles: [effects]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Assembles a session handoff from the rolling work ledger, the PR watcher reader and
+  live service probes, and validates it against the declared handoff contract below.
+  A ruling or consent in the window with no status of done, in_flight, dropped or held
+  refuses the handoff (exit 1); an unhealthy service is recorded and never refuses.
+  Every factual line carries its source and read time, and a read older than its
+  declared age is marked STALE. Three commands: assemble, resume (re-probe the stale
+  lines of the newest committed handoff) and record-slice (record a scrubbed ledger
+  slice as a test fixture). Reads the ledger, its archive rolls, the PR watcher state
+  and the committed handoffs of the shared document clone; writes only under the
+  out_dir it is given.
+
+handler:
+  module: omnimarket.nodes.node_handoff_check_effect.handlers.handler_handoff_check
+  class: HandlerHandoffCheck
+  input_model: omnimarket.nodes.node_handoff_check_effect.models.ModelHandoffCheckRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: handoff_check
+      handler:
+        name: HandlerHandoffCheck
+        module: omnimarket.nodes.node_handoff_check_effect.handlers.handler_handoff_check
+
+descriptor:
+  node_archetype: effect
+  purity: effectful  # reads the ledger, its archive rolls, the PR watcher state and committed handoffs; probes services; writes only under out_dir
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+inputs:
+  command:
+    type: str
+    enum: [assemble, resume, record-slice]
+    required: true
+  ledger:
+    type: str
+    required: false
+    description: "Rolling work ledger path; ONEX_LEDGER_PATH when absent, no default"
+  archive_dir:
+    type: str
+    required: false
+  now:
+    type: str
+    required: false
+    description: "UTC time to evaluate at; the clock when absent"
+  out_dir:
+    type: str
+    required: false
+    description: "assemble: directory to write the handoff into"
+  kb_clone:
+    type: str
+    required: false
+    description: "resume: the shared document clone"
+
+outputs:
+  exit_code:
+    type: int
+    description: "0 ok, 1 refused, 2 bad input, 3 no handoff found (resume)"
+  output:
+    type: list[str]
+  refused:
+    type: list[str]
+  stale_lines:
+    type: int
+  written_path:
+    type: str
+    required: false
+    nullable: true
+
+terminal_event: onex.evt.omnimarket.handoff-check-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.handoff-check-start.v1
+  publish_topics:
+    - onex.evt.omnimarket.handoff-check-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.handoff-check-start.v1
+
+# Explicit SINK declaration (contract topic graph closure): the completed event leaves the
+# node graph here; the /onex:handoff skill reads it through onex run-node.
+externally_consumed_topics:
+  - onex.evt.omnimarket.handoff-check-completed.v1
+
+# The session handoff contract. The handler reads this section and nothing else for policy:
+# the sections a handoff must carry, the ages after which a read is stale, the statuses a
+# ruling may hold, and the live probes. Edit the policy here, not in the handler.
+handoff_check:
+  contract_version: 1
+
+  output:
+    # Relative to the root of the shared document clone; the handler writes only under the
+    # out_dir it is given, never to a default.
+    directory: beta/handoffs
+    filename: "{stamp}-{session}-handoff.md"
+
+  # The one hard gate. Every RULING and OPERATOR-CONSENT row in the window needs a status from
+  # this list and evidence for it, or the handoff is refused (exit 1) naming each item.
+  # A service that is down is never a gate: it is recorded as a line.
+  ruling_gate:
+    row_types: [RULING, OPERATOR-CONSENT]
+    statuses: [done, in_flight, dropped, held]
+    window_hours: 24
+    # A ticket that many lanes claim proves nothing about one ruling, so no status is derived from
+    # lane activity on it and a ruling whose only ticket is such a ticket cannot be called dropped.
+    # A ticket is an umbrella when this many distinct lanes claimed it in the scan window.
+    umbrella_min_lanes: 20
+    umbrella_scan_days: 3
+    # TERMINAL outcomes that let a ruling read as done when the ticket has no open CLAIM.
+    done_outcomes: [done, merged, completed]
+
+  # The operator's experiment: rulings and goes with no live lane, PR or finish in this many hours.
+  dropped_decision:
+    hours: 24
+    # Decisions this far back from now are judged (twice the horizon: one day to mature, one to read).
+    scan_hours: 48
+    evidence_row_types: [CLAIM, TERMINAL]
+    evidence_pr_cells: [pr, handed-off]
+
+  lanes:
+    claim_scan_days: 3
+    max_lines_per_class: 12
+    live_within_minutes: 120
+    dead_after_hours: 6
+
+  holds:
+    max_lines: 20
+
+  stopped_work:
+    window_hours: 24
+    ok_outcomes: [done, handed-off, merged, skipped-owned, completed, no-change, superseded]
+    max_lines: 25
+
+  operator_asks:
+    window_hours: 72
+    max_lines: 15
+
+  prs:
+    window_hours: 24
+    max_prs: 30
+    reader: skills/merge-drain/scripts/pr_state_local.py
+
+  limits:
+    # RELEASE rows with a re= naming one of these still lift a freeze case by case.
+    window_hours: 24
+
+  # A read older than its stale_after_seconds is marked STALE (0 = never stale). The resume
+  # step re-probes every line that is stale when it runs.
+  stale:
+    default_seconds: 3600
+    by_source:
+      ledger: 3600
+      pr-watcher: 900
+      probe: 600
+      plan-file: 86400
+      writer: 0
+
+  # Live probes. The target comes from the named environment variable, never from this file.
+  # kind file_age: healthy when the file exists and is younger than max_age_seconds.
+  # kind tcp: healthy when host:port accepts a connection. kind http: healthy on a 2xx answer.
+  # An unset variable is recorded as unconfigured. Unhealthy and unconfigured are recorded,
+  # never refused.
+  probes:
+    - name: ledger
+      kind: file_age
+      env: ONEX_LEDGER_PATH
+      max_age_seconds: 3600
+    - name: pr-watcher-state
+      kind: file_age
+      env: ONEX_PR_WATCHER_STATE
+      max_age_seconds: 900
+    - name: dev-bus
+      kind: tcp
+      env: KAFKA_BOOTSTRAP_SERVERS
+    - name: runtime-health
+      kind: http
+      env: ONEX_RUNTIME_HEALTH_URL
+
+  # Every section a handoff carries, in order. source names the reader the facts come from;
+  # every factual line carries its source and read time.
+  sections:
+    - id: session
+      title: Session id and time
+      source: writer
+    - id: goal
+      title: Goal
+      source: writer
+    - id: plans
+      title: Active plans and task position
+      source: plan-file
+    - id: rulings
+      title: Rulings and consents in the window, with status and evidence
+      source: ledger
+    - id: holds
+      title: Holds in force
+      source: ledger
+    - id: lanes
+      title: Live lanes and dead CLAIMs
+      source: ledger
+    - id: stopped
+      title: Stopped work and how to restart it
+      source: ledger
+    - id: asks
+      title: Asks waiting on the operator
+      source: ledger
+    - id: prs
+      title: PR state, merged apart from running
+      source: pr-watcher
+    - id: limits
+      title: Limits in force
+      source: ledger
+    - id: services
+      title: Service probes
+      source: probe
+    - id: unverified
+      title: Unverified
+      source: writer

@@ -31,11 +31,15 @@ handler_routing:
     handler:
       name: HandlerHostCapability
       module: omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability
+  - operation: place_pr_create
+    handler:
+      name: HandlerPrCreatePlacement
+      module: omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct Python invocation with supplied host readings.
+  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create).
 descriptor:
   node_archetype: compute
   purity: pure
