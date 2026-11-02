@@ -37,7 +37,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21961-scm-bus-caller"
-    description: "The scm-pr-create check against an omnimarket whose ScmBusCaller sets only _bus reads ok, reads missing on a broker refusal and stays unknown on a bus with no ungrouped read, never the _group error."
+    description: "The scm-pr-create check against an omnimarket whose ScmBusCaller sets only _bus reads ok, reads missing on a broker refusal and stays unknown on a bus with no ungrouped read, never the _group error. The returned probe lines then drive placement: only the host reading ok is admitted."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
@@ -77,7 +77,7 @@ dod_evidence:
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21961 -- uv run --frozen python -c \"from omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability import parse_capability_lines as p; from omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement import HandlerPrCreatePlacement as H; from omnimarket.nodes.node_host_capability_compute.models import ModelHostReading as R, ModelPrCreatePlacementRequest as Q; r = lambda h, t: R(host=h, capabilities=p(t)); v = {x.host: x for x in H().handle(Q(needs=frozenset({'scm-pr-create'}), hosts=(r('a', 'PARITY-CAP scm-pr-create missing x'), r('b', 'PARITY-CAP scm-pr-create unknown y'), r('c', 'PARITY-CAP scm-pr-create ok z')))).verdicts}; assert v['a'].refusal == 'capability_missing' and v['b'].refusal == 'unknown_while_peer_reads_ok' and v['c'].admitted, v; print('pr-create placement ok')\""
         cwd: "."
   - id: "dod-omn21961-deploy-local-placement"
-    description: "Hosted-runner smoke runs the placement handler in process with no broker: a host reading missing is refused with the typed reason and a host reading ok is admitted."
+    description: "Hosted-runner smoke runs the placement handler in process and in a disposable container with the source mounted read-only and its Pydantic and PyYAML versions from uv.lock. A missing reading is refused as capability_missing, an unknown reading beside an ok peer is refused as unknown_while_peer_reads_ok, and the ok peer is admitted. No broker or lab route is needed."
     source: "manual"
     binds_ac: ["AC2", "AC3"]
     checks:
@@ -85,6 +85,25 @@ dod_evidence:
         check_value: |
           set -eu
           uv run --frozen python -c '
+          from omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability import parse_capability_lines
+          from omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement import HandlerPrCreatePlacement
+          from omnimarket.nodes.node_host_capability_compute.models import ModelHostReading, ModelPrCreatePlacementRequest
+          def reading(host, text):
+              return ModelHostReading(host=host, capabilities=parse_capability_lines(text))
+          request = ModelPrCreatePlacementRequest(needs=frozenset({"scm-pr-create"}), hosts=(
+              reading("without-credential", "PARITY-CAP scm-pr-create missing lane-declaration-not-found:/x"),
+              reading("unread", "PARITY-CAP scm-pr-create unknown bus-check-failed:x"),
+              reading("with-credential", "PARITY-CAP scm-pr-create ok subscribed:t")))
+          rows = {v.host: v for v in HandlerPrCreatePlacement().handle(request).verdicts}
+          assert not rows["without-credential"].admitted and rows["without-credential"].refusal == "capability_missing", rows
+          assert not rows["unread"].admitted and rows["unread"].refusal == "unknown_while_peer_reads_ok", rows
+          assert rows["with-credential"].admitted, rows
+          print("pr-create placement ok")
+          '
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONPATH=/workspace/src ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --no-project --with pydantic==2.13.5 --with pyyaml==6.0.3 python -c '
           from omnimarket.nodes.node_host_capability_compute.handlers.handler_host_capability import parse_capability_lines
           from omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement import HandlerPrCreatePlacement
           from omnimarket.nodes.node_host_capability_compute.models import ModelHostReading, ModelPrCreatePlacementRequest

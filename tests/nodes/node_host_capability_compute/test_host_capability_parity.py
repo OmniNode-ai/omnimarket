@@ -399,3 +399,49 @@ def test_scm_bus_caller_over_a_bus_with_no_ungrouped_read_stays_unknown_never_ok
     verdict, detail = scm_check_against_stub_omnimarket(tmp_path)
     assert verdict == "unknown"
     assert "no_subscribe_ungrouped" in detail
+
+
+def test_scm_bus_caller_readings_drive_pr_create_placement(tmp_path: Path) -> None:
+    """Feed the probe's actual answers over a group-less bus into placement."""
+    from omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement import (
+        HandlerPrCreatePlacement,
+    )
+    from omnimarket.nodes.node_host_capability_compute.models import (
+        EnumPrCreateRefusal,
+        ModelHostReading,
+        ModelPrCreatePlacementRequest,
+    )
+
+    answers = {
+        "available": scm_check_against_stub_omnimarket(
+            tmp_path / "available", STUB_UNGROUPED="1"
+        ),
+        "refused": scm_check_against_stub_omnimarket(
+            tmp_path / "refused", STUB_UNGROUPED="1", STUB_REFUSE="1"
+        ),
+        "unreadable": scm_check_against_stub_omnimarket(tmp_path / "unreadable"),
+    }
+    assert {host: verdict for host, (verdict, _) in answers.items()} == {
+        "available": "ok",
+        "refused": "missing",
+        "unreadable": "unknown",
+    }
+    assert all("_group" not in detail for _, detail in answers.values())
+    request = ModelPrCreatePlacementRequest(
+        needs=frozenset({cap.SCM_PR_CREATE}),
+        hosts=tuple(
+            ModelHostReading(
+                host=host,
+                capabilities=cap.parse_capability_lines(
+                    f"PARITY-CAP scm-pr-create {verdict} {detail}"
+                ),
+            )
+            for host, (verdict, detail) in answers.items()
+        ),
+    )
+    result = HandlerPrCreatePlacement().handle(request)
+    assert {v.host: (v.admitted, v.refusal) for v in result.verdicts} == {
+        "available": (True, None),
+        "refused": (False, EnumPrCreateRefusal.CAPABILITY_MISSING),
+        "unreadable": (False, EnumPrCreateRefusal.UNKNOWN_WHILE_PEER_READS_OK),
+    }
