@@ -50,14 +50,17 @@ replay:
   deterministic: true
 # PLACEMENT RULES (OMN-17232). The lab host table (the document ONEX_LAB_RUN_HOSTS names, or the
 # lab_hosts overlay) is the one source placement reads for what a host may take: `available`, and the
-# columns `avx2`, `min_free_gb`, `job_kinds`, `max_weight` and `speed`. The rules below are the other
+# columns `avx2`, `docker`, `min_free_gb`, `job_kinds`, `max_weight` and `speed`. The rules below are the other
 # half, read by HandlerLabPlacement: what a unit needs of a host, and what a host
 # row that omits a column means. Nothing about a repository or a machine is a literal in code.
 #   weights            lightest to heaviest; a host's `max_weight` is the heaviest unit it takes.
 #   weight_by_kind     the weight a unit has when its caller declares none (`--weight`).
 #   host_defaults      the meaning of a host row that omits the column. `avx2: true` because every
 #                      pool host but the one that declares `avx2: false` reads AVX2; `speed` is
-#                      relative to h101 (1.0).
+#                      relative to h101 (1.0). `docker: true` because only macOS rows lack it, and each
+#                      declares `docker: false` (operator RULING 2026-11-01T20:24:40Z: Docker work never
+#                      lands on a Mac); a table row is the one place that says so, since the advertised
+#                      tool list is the same constant on every host. A caller's `--need docker` is judged here.
 #   unit_needs         the rules that name PUBLIC repositories (none today: the census of 2026-10-29 found no public
 #                      repository whose unit suite needs a capability a pool host lacks); a private repository's rule is
 #                      the table document's own `unit_needs`, beside the host rows. A unit of `repo` (the repository name, without its owner; `kind` narrows it)
@@ -73,6 +76,7 @@ placement:
     build: heavy
   host_defaults:
     avx2: true
+    docker: true
     max_weight: heavy
     speed: 1.0
   unit_needs: []

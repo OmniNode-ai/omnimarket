@@ -249,6 +249,10 @@ class HandlerFactoryFloorPublish:
         )
         page = (NODE_DIR / rt.page_relpath).read_bytes()
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
+        theme_css = [
+            (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
+            for name in rt.names.theme_css
+        ]
         health = self._read_process_health(home / rt.process_health_relpath)
         delegation = self._read_delegation(home / rt.delegation_relpath)
         status = json.dumps(
@@ -264,6 +268,7 @@ class HandlerFactoryFloorPublish:
 
         # The record goes last: a reader that gets the new record always finds a page that reads it.
         files: list[tuple[str, bytes]] = [
+            *theme_css,
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
             (rt.names.status, status),

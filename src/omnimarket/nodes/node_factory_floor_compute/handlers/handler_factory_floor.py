@@ -282,6 +282,13 @@ def _evidence(
         return "done", "PRs merged"
     if terminal and unclaimed and terminal.outcome in request.config.done_outcomes:
         return "done", f"terminal {terminal.outcome}"
+    if terminal and unclaimed and terminal.outcome in request.config.handoff_outcomes:
+        merged_keys = {pr_key(pr) for pr in merged}
+        unmerged = tuple(pr for pr in terminal.prs if pr_key(pr) not in merged_keys)
+        if terminal.prs and not unmerged:
+            return "done", "PRs merged"
+        waiting = ",".join(unmerged) if unmerged else "no pull request named"
+        return "active", f"handed to landing by {terminal.lane}: {waiting}"
     if task.tickets and all(linear.get(t) == "completed" for t in task.tickets):
         return "done", "Linear done"
     matching = tuple(h for h in holds if _hold_matches(h, task, prs, index))

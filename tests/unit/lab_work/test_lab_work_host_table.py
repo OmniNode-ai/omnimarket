@@ -74,6 +74,9 @@ TABLE_YAML = """
 hosts:
   - name: h101
     target: lab-h101
+  - name: h102-mac
+    target: lab-h102-mac
+    docker: false
   - name: h201
     target: lab-h201
     penalty: 0.25
@@ -115,13 +118,14 @@ def _ad(
     *,
     free_gb: float = 32,
     max_units: int = 4,
+    tools: tuple[str, ...] = (),
 ) -> ModelHostCapacityAdvertisement:
     return ModelHostCapacityAdvertisement(
         host_name=host,
         cores=cores,
         load1=load1,
         mem_available_bytes=int(free_gb * GB),
-        tools=["git", "uv"],
+        tools=["git", "uv", *tools],
         running_units=0,
         max_units=max_units,
         rank_penalty=0.0,
@@ -140,6 +144,7 @@ def _place(
     weight: str | None = None,
     only_host: str | None = None,
     min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
+    need_tools: tuple[str, ...] = (),
 ) -> ModelPlacement:
     return HandlerLabPoolPlace(judge=HandlerLabPlacement(rules), environ={}).handle(
         ModelLabPoolPlaceRequest(
@@ -151,6 +156,7 @@ def _place(
             weight=weight,
             only_host=only_host,
             min_free_bytes=min_free_bytes,
+            need_tools=need_tools,
         )
     )
 
@@ -187,7 +193,12 @@ def test_a_rule_naming_an_unknown_capability_is_refused_at_load() -> None:
             {
                 "weights": ["light"],
                 "weight_by_kind": {"lint": "light"},
-                "host_defaults": {"avx2": True, "max_weight": "light", "speed": 1.0},
+                "host_defaults": {
+                    "avx2": True,
+                    "docker": True,
+                    "max_weight": "light",
+                    "speed": 1.0,
+                },
                 "unit_needs": [{"repo": "x", "needs": ["gpu"], "reason": "r"}],
             }
         )
@@ -278,6 +289,60 @@ def test_an_avx2_unit_is_refused_on_a_no_avx2_host_and_placed_on_an_avx2_host(
     assert not refused.eligible
     assert "lacks avx2" in refused.reason
     assert "native_audio_ext" in refused.reason
+
+
+# ---------------------------------------------- Docker work against the docker column
+
+_REPO = "OmniNode-ai/omnimarket"
+
+
+def test_a_docker_unit_is_refused_on_a_no_docker_row_though_it_advertises_docker(
+    table: ModelLabHostsTable, rules: ModelPlacementRules
+) -> None:
+    # The advertised tool list is one constant on every host, so the row has to decide.
+    ads = [
+        _ad("h102-mac", 0.5, 12, tools=("docker",)),
+        _ad("h201", 6.0, 32, tools=("docker",)),
+    ]
+    result = _place(ads, table, rules, repo=_REPO, need_tools=("docker",))
+    assert result.host_name == "h201"
+    refused = next(v for v in result.verdicts if v.host_name == "h102-mac")
+    assert not refused.eligible
+    assert "lacks docker" in refused.reason
+
+
+def test_a_docker_unit_alone_with_a_no_docker_row_is_refused(
+    table: ModelLabHostsTable, rules: ModelPlacementRules
+) -> None:
+    result = _place(
+        [_ad("h102-mac", 0.5, 12, tools=("docker",))],
+        table,
+        rules,
+        repo=_REPO,
+        need_tools=("docker",),
+    )
+    assert result.decision is EnumPlacementDecision.REFUSED
+    assert result.refusal is EnumRefusalReason.HOST_TABLE
+
+
+def test_a_unit_that_needs_no_docker_still_runs_on_the_no_docker_row(
+    table: ModelLabHostsTable, rules: ModelPlacementRules
+) -> None:
+    result = _place([_ad("h102-mac", 0.5, 12)], table, rules, repo=_REPO)
+    assert result.host_name == "h102-mac"
+
+
+def test_a_tool_that_is_not_a_capability_column_stays_a_tool_check(
+    table: ModelLabHostsTable, rules: ModelPlacementRules
+) -> None:
+    result = _place(
+        [_ad("h102-mac", 0.5, 12, tools=("gh",))],
+        table,
+        rules,
+        repo=_REPO,
+        need_tools=("gh",),
+    )
+    assert result.host_name == "h102-mac"
 
 
 def test_a_public_repository_the_census_cleared_runs_on_the_no_avx2_host(

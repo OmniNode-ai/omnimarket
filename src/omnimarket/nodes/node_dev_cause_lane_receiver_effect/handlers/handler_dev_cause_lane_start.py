@@ -39,6 +39,7 @@ _BRIEF = """\
 ROUTE: band=B2 score=6 dims=S1A1R1V1N1C1J0 dest=remote model={model} effort=high
 
 # Lane {lane}: fix forward the red {cause} on {repo}@{branch}
+Opens PR in: {repo}
 
 The landing branch head {head_sha} of {repo} is red on the check "{check}" (observed {observed_at}).
 Operator ruling 2026-10-14T03:57:46Z: fix forward on dev, no revert, and a component alarm starts

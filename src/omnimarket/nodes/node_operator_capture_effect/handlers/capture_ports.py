@@ -9,7 +9,9 @@
   names one.
 * The ledger port appends one row through the ledger's own append command, so every row passes
   the ledger's lock and guards. On the ledger host the work-ledger serve process lends its own
-  append runner (:func:`runner_ledger_appender`). The one-shot ``process`` command reads
+  append runner (:func:`runner_ledger_appender`), or, when it knows the operator principal, its
+  own append handler (:func:`accepted_ledger_appender`), so each row is an accepted append
+  command carrying ``req=`` and ``via=bus:`` cells like every other bus write (OMN-16176). The one-shot ``process`` command reads
   ``ONEX_OPERATOR_CAPTURE_LEDGER_BIN`` (the command) and ``ONEX_LEDGER_PATH`` (the ledger); with
   either unset the append fails and the prompt stays in the inbox for the next run, never
   dropped.
@@ -17,16 +19,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
+from uuid import NAMESPACE_URL, uuid5
 
+from omnimarket.models.work_ledger_append import (
+    EnumWorkLedgerAppendStatus,
+    ModelWorkLedgerAppendReceipt,
+    ModelWorkLedgerAppendRequest,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerAppendRunner,
 )
@@ -37,6 +48,10 @@ LEDGER_PATH_ENV = "ONEX_LEDGER_PATH"
 # 0 appended the row; 78 appended it too and says the ledger clone is stranded (OMN-18433: "the
 # row landed"), so a retry would write it a second time.
 LEDGER_ROW_LANDED_EXITS = frozenset({0, 78})
+CAPTURE_VIA = "bus:capture"
+CAPTURE_LANE = "operator-capture"
+_ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
+_FIELD = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*=")
 DELEGATE_TIMEOUT_S = 330
 DELEGATE_TASK_CLASS = "summarization"
 
@@ -196,7 +211,92 @@ def runner_ledger_appender(runner: ProtocolLedgerAppendRunner) -> LedgerAppender
     return append
 
 
+class ProtocolAppendAcceptor(Protocol):
+    """The ledger host's append handler: one request in, one receipt out."""
+
+    def handle(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        *,
+        writer_principal: str | None = None,
+    ) -> ModelWorkLedgerAppendReceipt:
+        """Accept or refuse one append request and return its receipt."""
+
+
+class ProtocolOperatorPrincipal(Protocol):
+    @property
+    def operator_principal(self) -> str | None:
+        """The operator's writer principal, or None when the host knows none."""
+
+
+class ProtocolCaptureLedgerHandler(ProtocolAppendAcceptor, Protocol):
+    """The ledger host's append handler, with the host name and the writers it knows."""
+
+    @property
+    def host_name(self) -> str:
+        """The ledger host's name."""
+
+    @property
+    def writers(self) -> ProtocolOperatorPrincipal:
+        """The writer principals the ledger host knows."""
+
+
+def stamp_request_cells(rows: str, request_id: str) -> str:
+    """Every row gains ``req=`` and ``via=bus:capture`` before its free text.
+
+    A row whose last cell is free text (the quoted words) keeps it last; a row ending in a
+    ``key=value`` cell takes the two cells at its end. Continuation lines are left alone.
+    """
+    out: list[str] = []
+    for line in rows.splitlines():
+        if _ROW_START.match(line):
+            parts = line.split(" | ")
+            cells = [f"req={request_id}", f"via={CAPTURE_VIA}"]
+            if len(parts) > 2 and not _FIELD.match(parts[-1].strip()):
+                line = " | ".join([*parts[:-1], *cells, parts[-1]])
+            else:
+                line = " | ".join([*parts, *cells])
+        out.append(line)
+    return "\n".join(out)
+
+
+def accepted_ledger_appender(
+    handler: ProtocolAppendAcceptor, *, principal: str, host_name: str
+) -> LedgerAppender:
+    """The ledger port as an accepted append command, judged by the ledger host's own handler.
+
+    The request id is a function of the rows, so the same rows sent twice are one request: a
+    retry after a lost receipt answers ``duplicate`` instead of writing a second row.
+    """
+
+    def append(rows: str) -> tuple[bool, str]:
+        digest = hashlib.sha256(rows.encode("utf-8")).hexdigest()
+        request_id = uuid5(NAMESPACE_URL, f"onex:work-ledger:operator-capture:{digest}")
+        request = ModelWorkLedgerAppendRequest(
+            request_id=request_id,
+            rows=stamp_request_cells(rows, str(request_id)),
+            requested_by_lane=CAPTURE_LANE,
+            requesting_host=host_name,
+            requested_at=datetime.now(UTC),
+        )
+        receipt = handler.handle(request, writer_principal=principal)
+        if receipt.status in (
+            EnumWorkLedgerAppendStatus.ACCEPTED,
+            EnumWorkLedgerAppendStatus.DUPLICATE,
+        ):
+            return True, _one_line(receipt.message, 120)
+        return (
+            False,
+            f"ledger append {receipt.status.value} exit {receipt.exit_code}: "
+            f"{_one_line(receipt.message)}",
+        )
+
+    return append
+
+
 __all__ = [
+    "CAPTURE_LANE",
+    "CAPTURE_VIA",
     "DELEGATE_TASK_CLASS",
     "LEDGER_BIN_ENV",
     "LEDGER_PATH_ENV",
@@ -205,7 +305,12 @@ __all__ = [
     "DelegateAnswer",
     "DelegateRunner",
     "LedgerAppender",
+    "ProtocolAppendAcceptor",
+    "ProtocolCaptureLedgerHandler",
+    "ProtocolOperatorPrincipal",
+    "accepted_ledger_appender",
     "onex_delegate_runner",
     "onex_ledger_appender",
     "runner_ledger_appender",
+    "stamp_request_cells",
 ]
