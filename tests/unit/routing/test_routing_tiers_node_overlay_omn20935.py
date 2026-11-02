@@ -9,15 +9,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.inference.delegation_config_provenance import (
-    EnumDelegationConfigSource,
-    resolve_path_config,
-)
-from omnimarket.routing.routing_tiers_path import (
+from omnimarket.handlers.routing.routing_tiers_path import (
     ROUTING_TIERS_OVERLAY_NODE,
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     ROUTING_TIERS_PATH_ENV_KEY,
     resolve_routing_tiers_path,
+)
+from omnimarket.inference.delegation_config_provenance import (
+    EnumDelegationConfigSource,
+    resolve_path_config,
 )
 from tests.node_overlay_support import install_node_overlay
 

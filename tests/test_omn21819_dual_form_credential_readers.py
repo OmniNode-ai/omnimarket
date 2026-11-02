@@ -23,6 +23,7 @@ from typing import Any, cast
 
 import pytest
 
+from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     GATEWAY_PROVIDER,
     ClaudeReviewGateway,
@@ -40,7 +41,6 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
 )
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 
 pytestmark = pytest.mark.unit
 

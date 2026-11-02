@@ -53,6 +53,10 @@ from fastapi.testclient import TestClient
 
 from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.handlers import handler_model_keys
+from omnimarket.handlers.routing import byok_model_discovery
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_ref,
@@ -70,8 +74,6 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
     SqliteTableRowSource,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
 pytestmark = pytest.mark.unit
 
