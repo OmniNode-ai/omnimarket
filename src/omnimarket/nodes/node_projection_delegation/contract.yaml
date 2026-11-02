@@ -19,20 +19,71 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    # OMN-18159 Phase 2. The DelegationProjectionRunner entry is gone. One
-    # contract had two handlers for one subscription set, and the surviving one
-    # is the only one the runtime can reach: HandlerProjectionDelegation already
-    # branches on every source this node names -- the quality-gate result,
-    # both node-generation terminals, both delegate-skill
-    # terminals, both delegation terminals, and the shadow comparison as the
-    # fallthrough. The runner was reachable only because a standalone Deployment
-    # ran its module directly as its command, bypassing routing altogether.
-    - operation: projection_delegation
+    # OMN-21288. The in-process writer is the only routed handler. It declares
+    # onex_runtime_inprocess_dispatch and composes DelegationProjectionRunner
+    # once per delivery: the runner owns a consume loop, so a folded runtime
+    # that dispatched it as itself would subscribe these topics and write
+    # nothing (OMN-17448). The runner carries every source this node names (the
+    # quality-gate result, both node-generation terminals, both delegate-skill
+    # terminals, both delegation terminals and the shadow comparison); the
+    # writer reuses it unchanged, so the SQL, tenant stamping and snapshots are
+    # the standalone writer's.
+    - topic: onex.evt.omniclaude.delegation-shadow-comparison.v1
+      message_category: event
+      operation: delegation_projection_writer
       handler:
-        name: HandlerProjectionDelegation
-        module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
-      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
-      event_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.node-generation-completed.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.node-generation-failed.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.delegate-skill-completed.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnibase-infra.delegation-completed.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnibase-infra.delegation-failed.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+    - topic: onex.evt.omnibase-infra.quality-gate-result.v1
+      message_category: event
+      operation: delegation_projection_writer
+      handler:
+        name: DelegationProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
 
 descriptor:
   node_archetype: reducer

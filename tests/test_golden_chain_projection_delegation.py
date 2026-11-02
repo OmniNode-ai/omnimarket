@@ -168,10 +168,19 @@ class TestDelegationProjection:
         # DelegationProjectionRunner routing entry is gone, and it must not come
         # back -- it was reachable only because a standalone Deployment ran its
         # module directly as its command, bypassing routing altogether.
+        #
+        # OMN-21288: the runner is reachable again, but never as itself. The one
+        # routed handler is the in-process writer that composes the runner once
+        # per delivery, so a folded runtime dispatches it and the runner's own
+        # consume loop never starts. The pure fold is not routed beside it.
         routed = contract["handler_routing"]["handlers"]
-        assert [entry["operation"] for entry in routed] == ["projection_delegation"]
+        assert {entry["operation"] for entry in routed} == {
+            "delegation_projection_writer"
+        }
         assert all(
-            "handler_delegation" not in entry["handler"]["module"] for entry in routed
+            entry["handler"]["module"]
+            == "omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer"
+            for entry in routed
         )
         topics = contract["event_bus"]["subscribe_topics"]
         # OMN-13629: the legacy compat task-delegated.v1 secondary path was dropped;

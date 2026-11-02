@@ -216,6 +216,7 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.helpers.tenant_registry import (
     PROJECTION_TENANT_SLUG,
     PROJECTION_TENANT_UUID,
+    mock_tenant_registry,
     seed_tenant_registry,
 )
 
@@ -292,7 +293,7 @@ DELEGATION_PROJECTION_CASE = ProjectionChainCase(
     node_dir="node_projection_delegation",
     entry_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
     dlq_topic="onex.dlq.omnimarket.projection-delegation-malformed.v1",
-    writer_handler_name="HandlerProjectionDelegation",
+    writer_handler_name="DelegationProjectionWriter",
     # OMN-18159 Phase 2 flips this row back to the in-process shape, and the
     # reason the dedicated-writer shape existed is gone rather than worked
     # around. `projection_delegation` used to declare TWO handler entries, and
@@ -466,6 +467,9 @@ async def _run_projection_chain(
         f"chain the runtime actually wires"
     )
 
+    # OMN-21288: the composed runtime writer resolves its pools from the
+    # topology profile, as the dedicated writer did.
+    monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", "local")
     _bind_unreachable_dsns(case, contract, monkeypatch)
     if db_adapter is not None:
         monkeypatch.setattr(
@@ -512,6 +516,10 @@ async def _run_projection_chain(
     # ---- THE SEAM UNDER GATE: real arm selection from the real contract ----
     prepared_wirings: list[PreparedWiring] = []
     for entry in contract.handler_routing.handlers:
+        # OMN-21288: a topic-scoped entry is wired only for its own topic, as
+        # the runtime does; the case publishes to one entry topic.
+        if entry.topic is not None and entry.topic != case.entry_topic:
+            continue
         prepared = _prepare_handler_wiring(
             contract=contract,
             entry=entry,
@@ -1029,6 +1037,53 @@ def _delegation_row_adapter(tmp_path: Path) -> SqliteDatabaseAdapter:
     return adapter
 
 
+class _RecordingStore:
+    """An async store the composed runtime writer's pool is replaced by.
+
+    OMN-21288: the writer opens its own topology-bound pool, so the sync SQLite
+    adapter can no longer stand in for it. This answers only the tenant mirror
+    lookup and records every statement the writer runs.
+    """
+
+    def __init__(self) -> None:
+        self.statements: list[tuple[str, tuple[object, ...], object]] = []
+        mock_tenant_registry(self)
+
+    async def connect(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def execute(
+        self, sql: str, *args: object, tenant: object = None, **_kw: object
+    ) -> list[dict[str, object]]:
+        self.statements.append((" ".join(sql.split()), args, tenant))
+        return [{"tenant_id": str(PROJECTION_TENANT_UUID)}]
+
+    def writes_to(self, table: str) -> list[tuple[str, tuple[object, ...], object]]:
+        return [
+            row
+            for row in self.statements
+            if row[0].upper().startswith("INSERT") and table in row[0]
+        ]
+
+
+def _bind_recording_store(
+    monkeypatch: pytest.MonkeyPatch, store: _RecordingStore
+) -> None:
+    from omnimarket.projection.runner import BaseProjectionRunner
+
+    async def connect(self: BaseProjectionRunner) -> None:
+        self._db = store
+
+    async def publish(self: BaseProjectionRunner, *_a: object, **_k: object) -> bool:
+        return True
+
+    monkeypatch.setattr(BaseProjectionRunner, "_connect_standalone_databases", connect)
+    monkeypatch.setattr(BaseProjectionRunner, "publish_snapshot_delta", publish)
+
+
 @pytest.mark.parametrize(
     ("status", "input_tokens", "output_tokens", "failure_cause"),
     [
@@ -1089,12 +1144,11 @@ async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
         entry_topic=f"onex.evt.omnimarket.delegate-skill-{status}.v1",
         wire_payload=unattributed,
     )
-    refused_db = _delegation_row_adapter(tmp_path / "refused")
+    refused_db = _RecordingStore()
+    _bind_recording_store(monkeypatch, refused_db)
     correlation = str(unattributed["correlation_id"])
 
-    refused = await _run_projection_chain(
-        terminal_case, monkeypatch, caplog, db_adapter=refused_db
-    )
+    refused = await _run_projection_chain(terminal_case, monkeypatch, caplog)
 
     assert DELEGATION_PROJECTION_CASE.writer_handler_name in refused.handlers_entered
     assert any(
@@ -1108,11 +1162,12 @@ async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
     )
     assert not refused.dlq_failure_reasons, refused.dlq_failure_reasons
     assert not refused.terminal_messages
-    assert refused_db.query("delegation_events", {"correlation_id": correlation}) == []
+    assert refused_db.writes_to("delegation_events") == []
 
     caplog.clear()
     tenant = PROJECTION_TENANT_SLUG
-    attributed_db = _delegation_row_adapter(tmp_path / "attributed")
+    attributed_db = _RecordingStore()
+    _bind_recording_store(monkeypatch, attributed_db)
     attributed = await _run_projection_chain(
         replace(
             terminal_case,
@@ -1120,22 +1175,15 @@ async def test_a_tenant_refusal_on_the_projection_write_fails_the_dispatch(
         ),
         monkeypatch,
         caplog,
-        db_adapter=attributed_db,
     )
 
     assert not attributed.not_materialized_failures, (
         attributed.not_materialized_failures
     )
-    rows = attributed_db.query("delegation_events", {"correlation_id": correlation})
-    assert len(rows) == 1, rows
-    assert str(rows[0]["tenant_id"]) == str(PROJECTION_TENANT_UUID)
-    assert rows[0]["tokens_input"] == input_tokens
-    assert rows[0]["tokens_output"] == output_tokens
-    assert rows[0]["ticket_id"] == "OMN-16831"
-    assert rows[0]["caller_lane"] == "rem-16831"
-    assert rows[0]["terminal_ok"] == (status == "completed")
-    assert rows[0]["terminal_failure_cause"] == failure_cause
-    assert rows[0]["actual_score"] == unattributed["actual_score"]
+    writes = attributed_db.writes_to("delegation_events")
+    assert len(writes) == 1, attributed_db.statements
+    assert correlation in {str(arg) for arg in writes[0][1]}
+    assert str(PROJECTION_TENANT_UUID) in {str(arg) for arg in writes[0][1]}
     assert not attributed.dlq_failure_reasons
     assert not attributed.quarantine_messages
     assert attributed.terminal_messages

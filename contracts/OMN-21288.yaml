@@ -212,3 +212,43 @@ dod_evidence:
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/work_ledger_bus/bus.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "await take_writer_topics(" > /dev/null'
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"
+  - id: "dod-omn21288-delegation-writer-ac1-prerequisite"
+    description: >-
+      AC1 prerequisite in omnimarket only, T10 of the one-runtime plan: the
+      delegation contract routes each unchanged subscription exactly once to
+      DelegationProjectionWriter, which declares onex_runtime_inprocess_dispatch,
+      and the standalone runner is not routed or declared beside it. A folded
+      runtime that dispatched the runner as itself would subscribe and write
+      nothing. This does not claim AC1 complete across repositories.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation/test_delegation_runtime_writer.py -q --no-cov --refuse-skips -k TestTheContractRoutesTheInProcessWriter"
+  - id: "dod-omn21288-delegation-writer-ac2-prerequisite"
+    description: >-
+      AC2 prerequisite in omnimarket only: one delivery through the writer's
+      runtime entry point writes a delegation_events row in a real migrated
+      PostgreSQL schema, a redelivery keeps one row, and no pool outlives the
+      delivery. The infra branch retires the delegation writer service only
+      after it pins this change; this does not claim the real compose is slim.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation -q --no-cov --refuse-skips"
+  - id: "dod-omn21288-delegation-writer-deploy-probe"
+    description: >-
+      Hosted structural smoke, requiring no lab route, broker or database: read
+      the delegation writer module at the checked-out PR head and require the
+      DelegationProjectionWriter class, then run the contract routing tests. It
+      fails against the merge base, which has no handler_runtime_writer module
+      in this node.
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation/handlers/handler_runtime_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class DelegationProjectionWriter" > /dev/null'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_delegation/test_delegation_runtime_writer.py -q --no-cov --refuse-skips -k TestTheContractRoutesTheInProcessWriter"
