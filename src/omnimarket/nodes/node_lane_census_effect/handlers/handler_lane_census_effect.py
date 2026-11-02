@@ -29,6 +29,9 @@ Clock = Callable[[], float]
 _NO_INVENTORY = frozenset({2, 3, 4, 5})
 
 
+_MTIME_SLACK_S = 2.0
+
+
 def run_collector(
     argv: Sequence[str], timeout_s: int
 ) -> subprocess.CompletedProcess[str]:
@@ -67,7 +70,10 @@ class HandlerLaneCensusEffect:
         started = self._clock()
         done = self._run(argv, request.timeout_s)
         outcome = OUTCOME_BY_EXIT.get(done.returncode, "collector-error")
-        fresh = snapshot.is_file() and snapshot.stat().st_mtime >= started
+        # Kernel file timestamps use a coarse clock that can read a few ms behind time.time().
+        fresh = (
+            snapshot.is_file() and snapshot.stat().st_mtime >= started - _MTIME_SLACK_S
+        )
         observed = fresh and done.returncode not in _NO_INVENTORY
         diagnostics = tuple(
             line for line in (done.stderr or "").splitlines() if line.strip()

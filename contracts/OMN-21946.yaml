@@ -49,6 +49,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC2"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_lane_census_effect_omn21946.py -q --no-cov -k main_refuses_a_zero"
+        cwd: "."
       - check_type: "command"
         check_value: |
           set -eu
