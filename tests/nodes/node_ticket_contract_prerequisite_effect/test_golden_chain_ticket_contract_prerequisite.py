@@ -61,7 +61,8 @@ def test_golden_chain_contract_resolves_handler_and_returns_verdict(
             "pull request cites OMN-20864 but carries no contracts/OMN-20864.yaml",
         )
     assert all(
-        args[0] in {"rev-parse", "show", "merge-base", "diff"} for args in commands
+        args[0] in {"rev-parse", "show", "merge-base", "diff", "log"}
+        for args in commands
     )
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert contract["runtime_dispatch"]["external_trigger"]
