@@ -758,6 +758,18 @@ def _walk_verdict(segments: Sequence[str]) -> EnumCheckProofClass:
     return EnumCheckProofClass.INDETERMINATE
 
 
+def command_heads(command: str) -> tuple[str, ...]:
+    """The resolved command head of each pipeline segment, wrappers stripped.
+
+    Quoted text is never a head: ``echo "onex run"`` resolves to ``echo``.
+    """
+    return tuple(
+        _segment_head_and_args(segment)[0]
+        for segment in _SEGMENT_SPLIT_RE.split(command)
+        if segment.strip()
+    )
+
+
 def classify_check(check: Mapping[str, Any]) -> EnumCheckProofClass:
     """Classify one declared check mapping from a ``dod_evidence`` item."""
     check_type = check.get("check_type") or ""
@@ -807,4 +819,5 @@ __all__ = [
     "classify_check",
     "classify_command",
     "classify_item_checks",
+    "command_heads",
 ]
