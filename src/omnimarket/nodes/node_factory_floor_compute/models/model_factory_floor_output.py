@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -300,6 +303,8 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
+    merged_running: ModelMergedRunningCountResult | None = None
 
 
 class ModelFloorSources(BaseModel):
@@ -321,6 +326,8 @@ class ModelFloorSources(BaseModel):
     runner_fleet_read: bool
     # Why the runner fleet is unread, in the reader's words; empty when it was read.
     runner_fleet_cause: str = ""
+    # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
+    merged_running_cause: str = ""
 
 
 class ModelFactoryFloorResult(BaseModel):
