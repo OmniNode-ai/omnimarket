@@ -47,6 +47,10 @@ from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetRequest,
     ModelLaneContainerBudgetVerdict,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
+    merge_task_links,
+    prose_task_tickets,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorContainerHost,
     ModelFactoryFloorContainerSource,
@@ -299,11 +303,7 @@ def load_watcher(path: Path, now: datetime, max_age_min: int) -> ModelFloorWatch
                     ci_note=_ci_note(ci),
                     title=facts.get("title", ""),
                     head_ref=facts.get("head_ref", ""),
-                    tickets=_tickets(
-                        facts.get("title", ""),
-                        facts.get("head_ref", ""),
-                        facts.get("body", ""),
-                    ),
+                    tickets=_tickets(facts.get("title", ""), facts.get("head_ref", "")),
                 )
             )
         merges = tuple(
@@ -652,8 +652,10 @@ def _plan_input(
     if (manifest is None or not manifest.tasks) and (not table or sections):
         # Neither a manifest nor a table of parts: the plan's own task paragraphs are the line's tasks.
         header_tickets = TICKET_RE.findall(header)
+        epic = header_tickets[0] if header_tickets else ""
+        # The plan's own prose pairs a task id with its tickets (``T0.1 OMN-21494``); the overlay's links add to them.
         written = parse_heading_tasks(
-            text, links, epic=header_tickets[0] if header_tickets else ""
+            text, merge_task_links(prose_task_tickets(text, epic), links), epic=epic
         )
         if written:
             by_label = {row.label: row for row in table}
@@ -759,6 +761,8 @@ def load_plans(
                     links=links_of(plan_ref.path),
                 )
             )
+            # The first readable ref of a plan draws it; a stale declared ref does not hide the pull request's head.
+            drawn.add(plan_ref.path)
     return tuple(plans)
 
 
@@ -850,10 +854,11 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
             cells.setdefault(key.strip(), value.strip())
         elif "REFUSED(" in part:
             refusal = part[part.index("(") + 1 :].rstrip(")")
-    cores, cap, slots = (
+    cores, cap, slots, lane_slots = (
         _number(cells.get("cores", "")),
         _number(cells.get("lane_cap", "") or cells.get("cap", "")),
         _number(cells.get("lane_slots", "") or cells.get("slots", "")),
+        _number(cells.get("lane_slots", "")),
     )
     return ModelFloorPoolReading(
         host=host,
@@ -866,6 +871,7 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
         swap_used_pct=_number(cells.get("swap", "")),
         cap=int(cap) if cap is not None else None,
         slots=int(slots) if slots is not None else None,
+        lane_slots=int(lane_slots) if lane_slots is not None else None,
         refusal=refusal,
     )
 

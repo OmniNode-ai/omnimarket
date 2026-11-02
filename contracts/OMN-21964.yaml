@@ -1,0 +1,97 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21964"
+title: "Live signal readers: already-ruled refusals and operator restatements"
+summary: "Plan task CM.4 adds the pure compute node node_compaction_live_signal_compute. Given typed session windows (a compaction boundary to the next boundary or the session end), FRICTION rows, operator prompts and RULING rows, it counts question-guard refusals and operator restatements per window and per hour, and places every question-guard row in exactly one window or in the unassigned list with a reason. The recorded-boundary hand count of AC1 and the ledger readback over the operator's transcripts are lab steps owed from a host that holds those transcripts."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21964-live-signal-counts"
+    statement: |-
+      The node counts already-ruled question-guard refusals and operator restatements per boundary window, per hour, and a restatement followed by an amending RULING within ten minutes is not counted.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the counts equal a hand count on the fixture and on 3 recorded boundaries read by the plan author -- falsifier: a differing count"
+  - id: "req-omn21964-row-partition"
+    statement: |-
+      Every question-guard row is assigned to a session window or reported unassigned with a reason.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the 90 question-guard rows of the ledger are each assigned to a session window or reported unassigned -- falsifier: a row in neither list"
+evidence_requirements:
+  - kind: "tests"
+    description: "The live signal node's focused tests pass: the hand-counted fixture, the amend window, the overlap threshold and the row partition."
+    command: "uv run pytest tests/nodes/node_compaction_live_signal_compute/test_live_signal.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21964-ac1-hand-count"
+    description: "The fixture of two question-guard rows and one restatement prompt yields 2 refusals (1.0 per hour) and 1 restatement (0.5 per hour) over a two-hour window, and a restatement followed by an amending RULING within ten minutes is not counted. The 3 recorded boundaries read by the plan author are not bound here: no lab host that was checked holds the operator's transcripts, so that hand count is owed."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_live_signal_compute/test_live_signal.py -q --no-cov -k 'fixture_hand_count or amending or overlap_threshold'"
+        cwd: "."
+  - id: "dod-omn21964-ac2-row-partition"
+    description: "Every question-guard row lands in exactly one of the assigned and unassigned lists, with an outside-windows or ambiguous-windows reason for the unassigned ones. The count of 90 rows is the plan's figure; the ledger snapshot read by the lane held 149 distinct rows, and the readback over the operator's windows is owed."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_live_signal_compute/test_live_signal.py -q --no-cov -k 'every_question_guard_row or overlapping_windows or window_end_is_exclusive'"
+        cwd: "."
+  - id: "dod-omn21964-deploy-local-runtime"
+    description: "Hosted-runner smoke invokes the node through the ONEX local runtime with an in-memory backend on the fixture and asserts the hand-counted result: 2 refusals, 1 restatement, one outside-windows row. No broker, Docker daemon or production rollout is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+          python -c '
+          import json
+          import sys
+          from pathlib import Path
+          quote = "keep the seed as an accepted exception until the operator says otherwise"
+          row = lambda row_id, when: {"row_id": row_id, "timestamp": when, "guard": "question_guard"}
+          request = {
+              "windows": [{"window_id": "w1", "session_id": "s1", "start": "2026-11-01T10:00:00Z", "end": "2026-11-01T12:00:00Z"}],
+              "guard_rows": [row("r1", "2026-11-01T10:30:00Z"), row("r2", "2026-11-01T11:10:00Z"), row("late", "2026-11-01T13:00:00Z")],
+              "prompts": [{"prompt_id": "p1", "session_id": "s1", "timestamp": "2026-11-01T10:45:00Z", "text": quote}],
+              "rulings": [{"stamp": "2026-11-01T09:00:00Z", "quote": quote}],
+          }
+          Path(sys.argv[1]).write_text(json.dumps(request))
+          ' "$probe_dir/request.json";
+          onex node node_compaction_live_signal_compute --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"].endswith("ModelLiveSignalResult"), receipt
+          result = receipt["result"]
+          [window] = result["windows"]
+          assert window["refusal_row_ids"] == ["r1", "r2"], result
+          assert window["refusals_per_hour"] == 1.0, result
+          assert window["restatement_count"] == 1 and window["restatements_per_hour"] == 0.5, result
+          assert [(u["row_id"], u["reason"]) for u in result["unassigned"]] == [("late", "outside_windows")], result
+          assert result["question_guard_rows"] == result["assigned_rows"] + len(result["unassigned"]), result
+          print(json.dumps({"probe": "live_signal", "run_id": receipt["run_id"], "result": result}, sort_keys=True))
+          ' "$probe_dir/receipt.json"
+        cwd: "."
+  - id: "dod-omn21964-integration-proof"
+    description: "The pushed head ran the live signal node's focused tests on a lab host with its real installed dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane comp-cm4-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_compaction_live_signal_compute -q --no-cov"
+        cwd: "."
