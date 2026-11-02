@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-21954
+title: A lab lane that ends keeps its run directory on h051 and h053 because the retention closeout refuses a symlinked lab-run root
+summary: run_retention.retain_run accepts a lab root that is a link to a lab-run directory and works on the resolved path, keeping every guard that protects a live lane or an unarchived result. The placement counter's cap fix and its test live in the plugin repository's pull request for this ticket and are not criteria of this repository's contract. The final-status set gains the statuses of lanes whose engine had ended or never started, each named in a table test, and the table names every other status the launcher writes with its reason for being kept.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21954-symlinked-lab-root
+    statement: Retention of an ended lane removes its run and ctx trees when the lab root is reached through a link, and never touches a live lane's tree.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a regression test built from the recorded host layout (a lab-run path that is a symlink to the real lab-run directory, a final receipt, a closed CLAIM and TERMINAL) shows retention removes the ended lane''s run and ctx trees and keeps a live lane''s tree -- falsifier: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q fails on the base and passes on the fix'
+      - id: AC2
+        statement: 'AC2: every receipt status the launcher can write either reaches retention or is named as kept with its reason -- falsifier: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k every_launcher_status -q fails on the base for each status added to the final set'
+  - id: req-omn21954-host-reap
+    statement: The run directories of ended lanes are removed on the lab hosts by four reads, and the pre-commit hooks pass at the pushed head.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: on h053 and h051 the run directories of lanes that have a TERMINAL and no live process are removed and the bytes freed are reported, with every live lane''s directory untouched -- falsifier: df of the run filesystem before and after, and a listing showing each live lane''s directory still present'
+      - id: AC5
+        statement: 'AC5: pre-commit passes on each branch -- falsifier: uv run pre-commit run --all-files rc 0 at each head'
+evidence_requirements:
+  - kind: tests
+    description: The run retention suite runs at the pushed head on a lab host.
+    command: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21954-ac1
+    description: AC1 builds the recorded layout in a temporary directory (a linked lab-run root, one ended lane with a final receipt and a closed CLAIM and TERMINAL, one live lane with a CLAIM only) and asserts the ended lane's trees are removed, the live lane's trees remain, and a link inside a tree or to a directory not named lab-run is still refused. Forty-nine cases of the file fail at the base.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21954-ac2
+    description: AC2 walks a table of every status the launcher writes, with the reason each is retained or kept, and asserts that membership in the final set agrees with the table.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k every_launcher_status -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21954-ac3
+    description: The repository side of AC3. The same recorded layout test shows the retention removes only the ended lane's run and ctx trees and leaves a live lane's tree. The host measurement (df of the run filesystem before and after on h053 and h051, the four reads per directory, the listing of live lanes afterwards) is recorded in the lane's terminal report, which the hosted runner cannot read.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k symlinked_lab_root_removes_ended_lane_and_keeps_live_lane -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21954-ac5
+    description: The hooks the repository runs on the change pass at the pushed head.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: command
+        check_value: uv run pre-commit run --files contracts/OMN-21954.yaml src/omnimarket/nodes/node_remote_lane_effect/run_retention.py tests/nodes/node_remote_lane_effect/test_run_retention.py
+        cwd: .

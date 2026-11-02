@@ -20,27 +20,22 @@ from pathlib import Path
 from typing import Any
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,160}\Z")
-_FINAL = frozenset(
-    {
-        "done",
-        "failed",
-        "rejected-no-delegation",
-        "interrupted",
-        "timeout",
-        "remote-failed",
-        "lane-error",
-        "lane-timeout",
-        "no-result",
-        "crashed",
-        "host-limited",
-    }
-)
+# Beyond the ordinary ends, the guard stops, usage limits and setup refusals of a lane
+# whose engine ended or never started. The receipt's final flag and a TERMINAL that
+# closes the lane's CLAIM are still required, so none of these frees a live lane.
+_FINAL_NAMES = """done failed rejected-no-delegation interrupted timeout remote-failed
+lane-error lane-timeout no-result crashed host-limited guard-runtime-max
+guard-memory-max glm-usage-limit codex-usage-limit host-auth-expired landing-failed
+glm-key-missing codex-missing codex-not-logged-in codex-sandbox-unavailable kb-absent
+capability-unavailable"""
+_FINAL = frozenset(_FINAL_NAMES.split())
 _ARTIFACT_KEYS = frozenset({"report", "report_path", "result_file", "result_path"})
 
 
-def _owners(ledger: str) -> tuple[set[str], set[str]]:
+def _owners(ledger: str) -> tuple[set[str], set[str], set[tuple[str, str]]]:
     active: dict[str, str] = {}
     known: set[str] = set()
+    runs: set[tuple[str, str]] = set()
     for line in ledger.splitlines():
         parts = [cell.strip() for cell in line.split(" | ")]
         if len(parts) < 3:
@@ -50,13 +45,14 @@ def _owners(ledger: str) -> tuple[set[str], set[str]]:
         if parts[1] == "CLAIM" and lane:
             active[lane] = parts[0]
             known.add(lane)
+            runs.add((lane, cells.get("run", "")))
         elif (
             parts[1] == "TERMINAL"
             and cells.get("closes-CLAIM") == active.get(lane)
             and lane in active
         ):
             del active[lane]
-    return set(active), known
+    return set(active), known, runs
 
 
 def _inside(root: Path, path: Path) -> Path:
@@ -108,9 +104,13 @@ def retain_run(
     Git-bearing trees are left for the runner's existing guarded git closeout.
     ``now`` exists for deterministic expiration tests; timestamps are UTC epochs.
     """
-    root = root.absolute()
-    if root.name != "lab-run" or root.is_symlink() or root.resolve() != root:
-        raise ValueError("lab root must be a real lab-run directory")
+    # A host may reach its lab-run directory through a link ($HOME/lab-run to a RAM
+    # filesystem). Work on the resolved directory; the tree checks below still
+    # refuse any link inside it.
+    given = root.absolute()
+    root = given.resolve()
+    if given.name != "lab-run" or root.name != "lab-run" or not root.is_dir():
+        raise ValueError("lab root must resolve to a real lab-run directory")
     if isinstance(keep_days, bool) or not isinstance(keep_days, int) or keep_days < 1:
         raise ValueError("keep_days must be a positive integer")
     lane, run = receipt.get("lane"), receipt.get("run_id")
@@ -128,18 +128,10 @@ def retain_run(
     )
     if ended_at.tzinfo is None:
         raise ValueError("ended_at must name a timezone")
-    active, known = _owners(ledger)
+    active, known, runs = _owners(ledger)
     if lane not in known or lane in active:
         raise ValueError("lane ownership not closed in ledger")
-    matching_run = False
-    for line in ledger.splitlines():
-        parts = [cell.strip() for cell in line.split(" | ")]
-        if len(parts) < 3 or parts[1] != "CLAIM":
-            continue
-        cells = dict(cell.split("=", 1) for cell in parts[2:] if "=" in cell)
-        if cells.get("lane") == lane and cells.get("run") == run:
-            matching_run = True
-    if not matching_run:
+    if (lane, run) not in runs:
         raise ValueError("receipt run does not match a ledger CLAIM")
     trees = [root / "runs" / run, root / "runs" / (run + ".ctx")]
     archive = root / "reports" / lane / run
@@ -157,7 +149,10 @@ def retain_run(
             references.extend(
                 re.findall(r"(?:report|result_file|result_path)=(/[^\s|`]+)", line)
             )
-    paths = {Path(p) for p in references}
+    paths = {
+        Path(str(root) + p[len(str(given)) :] if p.startswith(f"{given}/") else p)
+        for p in references
+    }
     ctx = trees[1]
     for name in ("result.txt", "result.json", "report.md"):
         path = ctx / name
