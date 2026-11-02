@@ -34,17 +34,17 @@ from uuid import uuid4
 import pytest
 import yaml
 
-from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
-    handler_delegation_routing as routing,
-)
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.customer_key_terminus import (
+from omnimarket.handlers.routing.customer_key_terminus import (
     CustomerKeyRefusedError,
     EnumCustomerKeyRefusalReason,
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     house_credential_refs,
 )
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+    handler_delegation_routing as routing,
+)
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
 pytestmark = pytest.mark.unit
 

@@ -59,6 +59,7 @@ import pytest
 import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.inference.local_byok_credential_adapter import (
     LOCAL_CREDENTIAL_TABLE,
     register_local_byok_credential,
@@ -79,7 +80,6 @@ from omnimarket.models.delegation.wire.model_named_test_run_request import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch,
 )
-from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,

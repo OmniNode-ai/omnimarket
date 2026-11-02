@@ -65,8 +65,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Final
 
+from omnimarket.handlers.routing import byok_provider_backends
 from omnimarket.projection.sqlite_database import default_evidence_db_path
-from omnimarket.routing.byok_provider_backends import require_byok_plan_permitted
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
@@ -340,7 +340,7 @@ def register_local_byok_credential(
     if not normalized:
         raise LocalByokCredentialError("provider must be a non-empty string")
     if plan:
-        require_byok_plan_permitted(normalized, plan)
+        byok_provider_backends.require_byok_plan_permitted(normalized, plan)
     if not secret_value or not secret_value.strip():
         raise LocalByokCredentialError(
             f"no value supplied for provider {normalized!r}; a blank credential "

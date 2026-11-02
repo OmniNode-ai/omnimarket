@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers.routing.byok_model_discovery import ModelByokModelDiscovery
 from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     ModelInferenceCredentialCreateRequest,
     register_inference_credential,
 )
-from omnimarket.routing.byok_model_discovery import ModelByokModelDiscovery
 
 
 def _request(**overrides: object) -> ModelInferenceCredentialCreateRequest:

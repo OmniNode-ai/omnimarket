@@ -8,6 +8,9 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 
+from omnimarket.handlers.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
 )
@@ -16,9 +19,6 @@ from omnimarket.models.context_profile_resolve.model_context_profile_resolve_res
 )
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
 ROLE_FIELDS = (

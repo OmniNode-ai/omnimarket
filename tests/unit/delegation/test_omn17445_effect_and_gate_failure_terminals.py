@@ -1114,6 +1114,9 @@ async def test_research_terminal_retains_real_usage_after_escalation(
 ) -> None:
     from dataclasses import replace
 
+    from omnimarket.models.routing.model_escalation_decision_result import (
+        ModelEscalationDecisionResult,
+    )
     from omnimarket.nodes.node_delegation_orchestrator.handlers import (
         handler_delegation_workflow as workflow_module,
     )
@@ -1121,9 +1124,6 @@ async def test_research_terminal_retains_real_usage_after_escalation(
         _canonical_result_to_task_delegated_payload,
     )
     from omnimarket.pricing import recompute_actual_cost_and_savings
-    from omnimarket.routing.model_escalation_decision_result import (
-        ModelEscalationDecisionResult,
-    )
 
     resolve_bar = workflow_module.resolve_required_bar_authority
     monkeypatch.setattr(
