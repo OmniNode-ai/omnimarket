@@ -240,6 +240,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC21288101"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -q --no-cov -p no:cacheprovider -k every_live_per_run_family"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_consumer_group_guard_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "runtime_local_terminal_t[0-9]+_run_" > /dev/null'
