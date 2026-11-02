@@ -51,6 +51,67 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_goal_run_stop_compute/test_goal_run_stop_decision.py -q --no-cov --tb=line -k "right_censored or censored_reading or excluded or only_goal_met or observed_time or not_scored"
         cwd: .
+  - id: dod-omn21974-deploy-local-runtime
+    description: The hosted runner dispatches the packaged goal-run stop node through the ONEX local runtime with the in-memory backend. Returned receipts must show continue, goal success, a right-censored token cap, an infra retry and exclusion after retries are spent, with the same run key throughout. No broker or Docker daemon is required.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT;
+          uv run --frozen python -c '
+          import copy
+          import json
+          import sys
+          from pathlib import Path
+          request = {
+              "correlation_id": "goal-run-stop-smoke",
+              "item_id": "goal-run-stop-smoke",
+              "goal": {"predicate_kind": "verify_run", "predicate_ref": "goal-run-stop-smoke", "predicate_sha256": "a" * 64},
+              "caps_file_text": "token_cap: 300000\nwall_clock_cap_s: 7200\nturn_cap: 40\ncompaction_cap: 3\nno_progress_window_turns: 8\n",
+              "counters": {"tokens": 100, "wall_clock_s": 60, "turns": 1, "compactions": 0, "turns_without_subcheck_change": 0}}
+          cases = {name: copy.deepcopy(request) for name in ("continue", "goal", "capped", "retry", "spent")}
+          cases["goal"]["signals"] = {"goal_met": True}
+          cases["capped"]["counters"]["tokens"] = 300000
+          cases["retry"]["signals"] = {"infra_fault": True}
+          cases["spent"]["signals"] = {"infra_fault": True}
+          cases["spent"]["infra_fault_retries_used"] = 2
+          for name, payload in cases.items():
+              Path(sys.argv[1], name + ".json").write_text(json.dumps(payload))
+          ' "$probe_dir";
+          for case in continue goal capped retry spent; do
+            onex node node_goal_run_stop_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/state-$case" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case-receipt.json";
+          done;
+          uv run --frozen python -c '
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          receipts = {name: json.loads(Path(sys.argv[1], name + "-receipt.json").read_text()) for name in ("continue", "goal", "capped", "retry", "spent")}
+          for receipt in receipts.values():
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          results = {name: receipt["result"] for name, receipt in receipts.items()}
+          assert results["continue"]["action"] == "continue" and results["continue"]["stop_reason"] is None, results
+          goal = results["goal"]
+          assert goal["action"] == "stop" and goal["stop_reason"] == "goal_met" and goal["analysis"]["counts_as_success"] is True, goal
+          capped = results["capped"]
+          assert capped["action"] == "stop" and capped["stop_reason"] == "token_cap", capped
+          assert capped["analysis"]["right_censored"] is True and capped["analysis"]["counts_as_success"] is False and capped["analysis"]["censored_at"]["tokens"] == 300000, capped
+          retry = results["retry"]
+          assert retry["action"] == "retry" and retry["retry_reason"] == "infra_fault" and retry["stop_reason"] is None, retry
+          spent = results["spent"]
+          assert spent["action"] == "stop" and spent["stop_reason"] == "infra_fault", spent
+          assert spent["analysis"]["role"] == "excluded" and spent["analysis"]["in_denominator"] is False and spent["analysis"]["exclusion_reason"], spent
+          assert len({result["run_key"] for result in results.values()}) == 1, results
+          request = json.loads(Path(sys.argv[1], "continue.json").read_text())
+          expected_hash = hashlib.sha256(request["caps_file_text"].encode()).hexdigest()
+          assert all(result["caps_file_sha256"] == expected_hash for result in results.values()), results
+          print(json.dumps({name: {"run_id": receipt["run_id"], "runtime_identity": receipt["runtime_identity"], "result": receipt["result"]} for name, receipt in receipts.items()}, sort_keys=True))
+          ' "$probe_dir"
+        cwd: .
   - id: dod-omn21974-integration-proof
     description: The pushed head ran the node's suite, including the golden chain through the registered contract on the in-memory bus, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual
