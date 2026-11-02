@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-22143
+title: The cause-ticket-unresolved exception class resolves in code when the lane_dispatch overlay names an open standing ticket
+summary: A detector recognises a cause-ticket-unresolved block from its merge-sweep lane key and from having tried the lane_dispatch overlay standing_tickets. An actor in node_cause_ticket_unresolved_effect resolves the case when the overlay names an open, non-umbrella standing ticket for the lane kind, and emits to the exception queue only a case it cannot resolve. A decision row is never resolved. The two recorded rows of 2026-10-30 and 2026-11-02 are replayed with a control that has no standing ticket and stays open. The overlay entry itself lives in another repository and is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22143-cause-ticket-unresolved
+    statement: The recorded cause-ticket-unresolved rows become fixtures, and each acceptance criterion has a test that fails without the change.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a detector test recognises both recorded cause-ticket-unresolved rows as a floor-only merge-sweep diagnose case whose overlay key is merge-sweep-diagnose, and ignores blocks of other classes -- falsifier: uv run pytest tests/nodes/node_cause_ticket_unresolved_effect -q -k detector'
+      - id: AC2
+        statement: 'AC2: a replay of the two recorded rows against a temporary exception queue resolves both when the overlay names the open standing ticket OMN-22143, leaves no row of the class open, and a control with no standing ticket stays open with no new row; an umbrella, closed or unread standing ticket is emitted, and a decision row is never resolved -- falsifier: uv run pytest tests/nodes/node_cause_ticket_unresolved_effect -q'
+evidence_requirements:
+  - kind: tests
+    description: The node suite runs at the pushed head.
+    command: uv run pytest tests/nodes/node_cause_ticket_unresolved_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22143-ac1
+    description: AC1 reads both recorded rows through classify_block and expects a floor-only diagnose case keyed on merge-sweep-diagnose, and None for blocks of other classes.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_cause_ticket_unresolved_effect/test_cause_ticket_unresolved_replay.py -q --no-cov --tb=line -k detector
+        cwd: .
+  - id: dod-omn22143-ac2
+    description: AC2 builds the queue as recorded (first row resolved, second open), replays both rows through the actor with the standing ticket and expects both resolved and none open, then replays the control with no standing ticket and expects the open row repeated, not resolved.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_cause_ticket_unresolved_effect/test_cause_ticket_unresolved_replay.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22143-deploy-probe
+    description: 'Deploy probe: the actor GitHub serves at the checked-out commit defines classify_block and HandlerCauseTicketUnresolved. The module is absent at the merge base, so the content read fails there.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cause_ticket_unresolved_effect/handler.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerCauseTicketUnresolved" > /dev/null'
+        cwd: .
+      - check_type: command
+        check_value: grep -F 'case = classify_block(row)' src/omnimarket/nodes/node_cause_ticket_unresolved_effect/handler.py
+        cwd: .

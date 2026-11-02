@@ -1,0 +1,32 @@
+{
+  "provenance": "The two exception-queue rows of class cause-ticket-unresolved recorded 2026-10-30T13:33:59Z and 2026-11-02T14:55:22Z. The key and tried cells are verbatim, and both ids follow from the key (the queue suffixes an id with sha1(key)[:8] = 1e88d862). The evidence cell is restated from the recorded evidence (kind=diagnose, prs=[], host_why); the source and proposed_fix cells are the dispatcher's, restated.",
+  "overlay_key": "merge-sweep-diagnose",
+  "rows": [
+    {
+      "id": "2026-10-30T13:33:59Z-cause-ticket-unresolved-1e88d862",
+      "at": "2026-10-30T13:33:59Z",
+      "cls": "cause-ticket-unresolved",
+      "key": "merge-sweep-diagnose:{\"reasons\": [\"under floor: omnimarket\"], \"reds\": [], \"repo\": null}",
+      "source": "merge_sweep.js",
+      "evidence": "kind=diagnose prs=[] reasons=[\"under floor: omnimarket\"] host_why=placed by the pool: floor-only reasons read the ledger and git history",
+      "tried": "red PR tickets, exact red commit subjects, explicit diagnose ticket, lane_dispatch overlay standing_tickets; umbrella excluded",
+      "proposed_fix": "name a standing ticket for merge-sweep-diagnose in the lane_dispatch overlay",
+      "decision": false,
+      "ticket": "",
+      "repo": ""
+    },
+    {
+      "id": "2026-11-02T14:55:22Z-cause-ticket-unresolved-1e88d862",
+      "at": "2026-11-02T14:55:22Z",
+      "cls": "cause-ticket-unresolved",
+      "key": "merge-sweep-diagnose:{\"reasons\": [\"under floor: omnimarket\"], \"reds\": [], \"repo\": null}",
+      "source": "merge_sweep.js",
+      "evidence": "kind=diagnose prs=[] reasons=[\"under floor: omnimarket\"] host_why=placed by the pool: floor-only reasons read the ledger and git history",
+      "tried": "red PR tickets, exact red commit subjects, explicit diagnose ticket, lane_dispatch overlay standing_tickets; umbrella excluded",
+      "proposed_fix": "name a standing ticket for merge-sweep-diagnose in the lane_dispatch overlay",
+      "decision": false,
+      "ticket": "",
+      "repo": ""
+    }
+  ]
+}
