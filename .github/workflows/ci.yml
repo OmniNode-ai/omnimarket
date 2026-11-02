@@ -761,6 +761,12 @@ jobs:
       # SYNC with pre-commit hook 'landing-stall-model'.
       - name: Landing stall model and verdict (OMN-21880)
         run: uv run pytest tests/formal/test_landing_stall_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-21949: the ledger reducer judge model passes both adopted configs, each
+      # control is rejected on its named invariant, and the results match the committed
+      # model, configs and outputs. The reviewer verdict is the review lane's.
+      # SYNC with pre-commit hook 'ledger-reducer-judge-model'.
+      - name: Ledger reducer judge model (OMN-21949)
+        run: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-20601: routing decisions come from overlays, never from omnimarket code
       # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
       # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
@@ -1658,8 +1664,12 @@ jobs:
             exit 1
           fi
           echo "Reading ${#reports[@]} JUnit report(s)."
-          uv run --no-project --with pyyaml python scripts/ci/skip_count_ratchet.py \
+          # OMN-21940: the ratchet is omnibase_core's node runtime, at the dev-merge tag the
+          # pre-commit hook 'skip-count-ratchet' pins; this repo supplies only the baseline.
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            python -m omnibase_core.nodes.node_skip_count_ratchet_check_compute.runtime_skip_count_ratchet_check \
             --suite omnimarket/test \
+            --baseline config/skip_count_baseline.yaml \
             --junit "${reports[@]}"
 
   # ============================================================================
@@ -1674,7 +1684,7 @@ jobs:
   # RED (Operating Rule #5: enforcement, not detection).
   #
   # This job PROVISIONS Postgres (mirroring the Tests job, OMN-14167) and runs
-  # ONLY the integration-marked tests, then asserts via check_integration_skips.py
+  # ONLY the integration-marked tests, then asserts via the integration-skip-guard runtime
   # that (1) none skipped citing a *provisioned* service's absence and (2) at
   # least one integration test actually executed (zero-collection is itself a
   # false-green). Legitimately-optional skips (Kafka broker not provisioned by
@@ -1820,7 +1830,11 @@ jobs:
       - name: Enforce no missing-service silent-skips (OMN-14172)
         if: always()
         run: |
-          uv run python scripts/ci/check_integration_skips.py \
+          # OMN-21940: omnibase_core's runtime, at the tag the pre-commit hook
+          # 'integration-skip-guard' pins; this repo supplies scripts/ci/integration_skip_guard.yaml.
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            python -m omnibase_core.nodes.node_integration_skips_check_compute.runtime_integration_skips_check \
+            --config scripts/ci/integration_skip_guard.yaml \
             --junit integration-guard.xml
 
       - name: Upload integration-guard results
@@ -2101,15 +2115,13 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
-      - name: Install packaging
-        # `packaging` is the gate script's only third-party import, so this job
-        # stays a sub-minute pip install instead of a full `uv sync
-        # --all-extras`. The gate's unit tests deliberately run in the MAIN test
-        # job rather than here, matching the other tests/scripts/* suites:
-        # tests/conftest.py imports asyncpg, omnibase_core and omnibase_infra,
-        # so collecting them under this lightweight environment would fail at
-        # import time regardless of what the tests themselves need.
-        run: python -m pip install --quiet "packaging>=24.0"
+      - name: Install uv
+        # OMN-21940: the gate is omnibase_core's runtime, installed by the gate step
+        # itself with `uv run --no-project --with`, so this job stays free of a full
+        # `uv sync --all-extras`.
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
       - name: No code merged onto a published version without a bump (OMN-16344)
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
@@ -2117,7 +2129,11 @@ jobs:
           set -euo pipefail
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
-          python scripts/check_release_identity.py --base "origin/${BASE}"
+          # OMN-21940: omnibase_core's runtime, at the tag the pre-commit hook
+          # 'check-release-identity' pins.
+          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+            python -m omnibase_core.nodes.node_release_identity_check_compute.runtime_release_identity_check \
+            --root . --base "origin/${BASE}"
 
   wire-compatibility-gate:
     name: Wire Compatibility Gate

@@ -4,7 +4,7 @@
 
 The defect being pinned is not "a helper miscomputes a patch number". It is a
 *sequencing* defect in the release train: publishing X.Y.Z from dev HEAD arms the
-release-identity gate (omnimarket's own ``scripts/check_release_identity.py``,
+release-identity gate (omnibase_core's ``check-release-identity`` runtime,
 OMN-16344) against dev itself, and nothing in the train disarms it. Two measured
 windows, in the omnibase_infra series this helper is ported from:
 
