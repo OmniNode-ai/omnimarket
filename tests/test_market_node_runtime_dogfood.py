@@ -381,7 +381,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_host_drift_fleet is called in process with an injected bus, clock and
     # state store and reads with one stable group per host, not by a bus command,
     # so it is experimental with no handler_routing: 28 -> 29.
-    assert summary["skipped"] == 29
+    # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
+    # load_bringup_graph and declares no handler, so it is experimental with no
+    # handler_routing: 29 -> 30.
+    assert summary["skipped"] == 30
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
