@@ -334,7 +334,12 @@ def test_andon_or_fallback_config_not_handler_defines_the_andon_word() -> None:
 def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table() -> (
     None
 ):
-    result = compute_factory_floor(request(plans=(table_plan(),)))
+    result = compute_factory_floor(
+        request(
+            plans=(table_plan(),),
+            prs=(pr("repo#1", "MERGED", title="feat(OMN-7): the first task"),),
+        )
+    )
     line = _line(result)
     assert line.source == "plan-task-table"
     assert line.line_id == "2026-10-01-old-plan"
