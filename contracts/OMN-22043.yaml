@@ -78,4 +78,10 @@ dod_evidence:
         check_value: |-
           uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane comp-cm16-1102-r-land -- env ONEX_COMPACTION_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov -k same_fixture_under_selected_bus_profile
         cwd: .
-    binds_ac: []
+  - id: dod-omn22043-deploy-live-content
+    description: The pushed head carries the assignment handler on the repository, read live from GitHub at the head commit; the check fails when the handler is absent at that commit.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_compaction_arm_assignment_compute/handlers/handler_arm_assignment.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerCompactionArmAssignment'
+        cwd: ${OMNI_HOME}/omnimarket
