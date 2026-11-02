@@ -334,6 +334,7 @@ def test_the_applied_payload_carries_the_fleet_facts_not_a_bare_ack(
         "rows_tombstoned",
         "runner_rows",
         "tombstoned_runner_names",
+        "state_file",
     }
     assert result["runner_rows"][0]["status"] == "offline"
 
