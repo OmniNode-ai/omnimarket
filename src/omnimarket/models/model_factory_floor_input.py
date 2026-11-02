@@ -219,6 +219,7 @@ class ModelFloorPoolReading(BaseModel):
     swap_used_pct: float | None = None
     cap: int | None = None
     slots: int | None = None
+    lane_slots: int | None = None
     refusal: str = ""
 
     _utc = field_validator("read_at")(_aware)
