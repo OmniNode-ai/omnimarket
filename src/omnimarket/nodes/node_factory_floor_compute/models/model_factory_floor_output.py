@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -51,6 +54,33 @@ class ModelFloorAndon(BaseModel):
     flag: bool
     reason: str
     causes: tuple[str, ...]
+    # True when a hold, a failed gate or a plan with no tasks stops the line whatever runs on it. False when every cause
+    # is a red pull request or a stop the ledger recorded, which a running lane on the line is already working through.
+    hard: bool = False
+
+
+class ModelFloorLaneContainers(BaseModel):
+    """One lane's application containers on one host against its declared budget."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    lane: str
+    status: Literal["PASS", "FAIL", "UNKNOWN"]
+    observed: int | None
+    budget: int | None
+    alarm_key: str
+    # The read's own sentence: the count against the budget, or why the host could not be read (UNKNOWN).
+    detail: str = ""
+
+
+class ModelFloorApplicationContainers(BaseModel):
+    """The container read shown on the selected line: per host and lane, or ``unread`` when no host was read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: Literal["read", "unread"]
+    lanes: tuple[ModelFloorLaneContainers, ...]
 
 
 class ModelFloorLine(BaseModel):
@@ -70,6 +100,8 @@ class ModelFloorLine(BaseModel):
     percent_built: int
     stations: tuple[ModelFloorStation, ...]
     andon: ModelFloorAndon
+    # Set on the line the selection names for the container read; every other line carries None.
+    application_containers: ModelFloorApplicationContainers | None = None
 
 
 class ModelFloorBay(BaseModel):
@@ -112,6 +144,8 @@ MachineState = Literal["read", "unread", "repair", "out"]
 SourceState = Literal["read", "unread"]
 LaneTitleSource = Literal["linear", "claim", "unread"]
 LanePlacement = Literal["machine", "cloud", "unplaced"]
+# Why a lane the floor cannot place is unplaced: no row names a host, or the host named is not a drawn machine.
+PlacementCause = Literal["", "no-host-cell", "host-not-drawn"]
 
 
 class ModelFloorRunnersOut(BaseModel):
@@ -178,6 +212,9 @@ class ModelFloorLane(BaseModel):
     engine: str
     placement: LanePlacement
     host: str
+    # Set only on an unplaced lane: the reason it names no drawn machine, and the host as written when it named one.
+    placement_cause: PlacementCause = ""
+    named_host: str = ""
     cloud_account: str
     started_at: str
     run_minutes: int
@@ -209,7 +246,7 @@ class ModelFloorLamp(BaseModel):
 
 
 class ModelFloorCloudAccountOut(BaseModel):
-    """One cloud account: whether it is signed in, its session cap and how many sessions are open."""
+    """One cloud account: whether it is signed in, its session cap and how many of its listed sessions are open (None when the receipts could not be read)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -217,7 +254,8 @@ class ModelFloorCloudAccountOut(BaseModel):
     ready: bool
     login: str
     cap: int | None
-    open_sessions: int
+    open_sessions: int | None
+    record_note: str
     credit_remaining: float | None
     credit_read_at: str
     rate_status: str
@@ -265,6 +303,8 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
+    merged_running: ModelMergedRunningCountResult | None = None
 
 
 class ModelFloorSources(BaseModel):
@@ -284,6 +324,10 @@ class ModelFloorSources(BaseModel):
     receipts_read: bool
     cloud_accounts_read: bool
     runner_fleet_read: bool
+    # Why the runner fleet is unread, in the reader's words; empty when it was read.
+    runner_fleet_cause: str = ""
+    # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
+    merged_running_cause: str = ""
 
 
 class ModelFactoryFloorResult(BaseModel):

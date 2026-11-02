@@ -30,6 +30,25 @@ class ModelLabFillTickHost(BaseModel):
     free: int = Field(ge=0)
 
 
+class ModelLabFillTickCloud(BaseModel):
+    """The overlay's cloud placement switch (OMN-21881), read by the caller from its overlay.
+
+    ``enabled`` is the one flag: off, no lane carries ``--placement auto``. ``lane_kinds``
+    are the repo-only lane kinds the overlay offers to a cloud session; a row is eligible
+    when its ``lane_kind`` is one of them and node_cloud_session_placement_effect's route
+    action does not refuse it. ``placement_dir`` and ``account`` name the account state the
+    credit is read from; either empty, the credit reads ``unmeasured``.
+    """
+
+    model_config = _FROZEN
+
+    enabled: bool = False
+    lane_kinds: tuple[str, ...] = ()
+    excluded_repos: tuple[str, ...] = ()
+    placement_dir: str = ""
+    account: str = ""
+
+
 class ModelLabFillTickRequest(BaseModel):
     """Fill the free slots of one fire from the approved-work list."""
 
@@ -65,6 +84,8 @@ class ModelLabFillTickRequest(BaseModel):
     # Brief-check refusals of one ticket before it is parked, and for how many hours.
     park_after: int = Field(default=2, ge=1)
     park_hours: int = Field(default=24, ge=1)
+    # OMN-21881: the overlay's cloud placement switch; the default is off.
+    cloud: ModelLabFillTickCloud = Field(default_factory=ModelLabFillTickCloud)
 
     @field_validator("ledger_path", "approved_work_path", "brief_dir")
     @classmethod
@@ -94,6 +115,8 @@ class ModelLabFillTickDispatch(BaseModel):
     host: str
     priority: PriorityClass
     receipt: str = ""
+    # ``auto`` when the lane went with --placement auto (OMN-21881); empty otherwise.
+    placement: str = ""
 
 
 class ModelLabFillTickSkip(BaseModel):
@@ -173,10 +196,14 @@ class ModelLabFillTickResult(BaseModel):
     placed: int = 0
     # The STATUS row's ``refusals=`` value: ``none`` only when every lane made was placed.
     refusals_cell: str = "none"
+    # OMN-21881: one line - the cloud placement verdict and why, the age of the newest
+    # host=cloud CLAIM in the ledger, and the cloud credit left (``unmeasured`` when unread).
+    cloud_line: str = ""
 
 
 __all__: list[str] = [
     "ModelLabFillTickAlarm",
+    "ModelLabFillTickCloud",
     "ModelLabFillTickDispatch",
     "ModelLabFillTickHost",
     "ModelLabFillTickRefusal",

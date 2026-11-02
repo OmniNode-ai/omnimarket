@@ -17,6 +17,9 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     HandlerFactoryFloor,
 )
@@ -33,6 +36,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_compute_config,
     load_contract,
     load_host_table,
+    load_lane_containers,
     load_linear,
     load_placed,
     load_placement,
@@ -48,7 +52,11 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     read_ledger_rows,
     resolve_dir,
     resolve_home,
+    runner_fleet_cause,
     write_result,
+)
+from omnimarket.protocols.protocol_merged_running_count_reader import (
+    ProtocolMergedRunningCountReader,
 )
 
 NODE_NAME = "node_factory_floor_effect"
@@ -60,6 +68,22 @@ COMPUTE_CONTRACT = (
 
 class HandlerFactoryFloorEffect:
     """Boundary of the factory floor: every read and the one write happen here, none in the compute node."""
+
+    def __init__(
+        self, merged_running: ProtocolMergedRunningCountReader | None = None
+    ) -> None:
+        self._merged_running = merged_running
+
+    def _read_merged_running(
+        self, now: datetime
+    ) -> tuple[ModelMergedRunningCountResult | None, str]:
+        """The count and an empty cause, or None and why it was not read: a count that fails never stops the floor."""
+        if self._merged_running is None:
+            return None, "no merged-running count reader is bound"
+        try:
+            return self._merged_running.read(now), ""
+        except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
+            return None, f"{type(exc).__name__}: {exc}"
 
     def handle(
         self, request: ModelFactoryFloorRunRequest
@@ -86,6 +110,7 @@ class HandlerFactoryFloorEffect:
             overlay.plan_path_contains if overlay is not None else ()
         )
         machines = overlay.machines if overlay is not None else ()
+        container_read_line = overlay.container_read_line if overlay is not None else ""
         now = request.now or datetime.now(UTC)
         src = rt.sources
         plans_today_file = newest_dated_file(
@@ -115,10 +140,14 @@ class HandlerFactoryFloorEffect:
         titles = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_titles_glob
         )
+        fleet_path = home / src.runner_fleet_relpath
+        runner_fleet = load_runner_fleet(fleet_path)
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
-            selection=ModelFloorSelection(plan_path_contains=contains),
+            selection=ModelFloorSelection(
+                plan_path_contains=contains, container_read_line=container_read_line
+            ),
             plans=load_plans(
                 kb=Path(kb_value),
                 plans_relpath=rt.plans_relpath,
@@ -126,6 +155,8 @@ class HandlerFactoryFloorEffect:
                 header_keys=rt.plan_header_keys,
                 contains=contains,
                 plans_today=plans_today,
+                plan_refs=overlay.plan_refs if overlay is not None else (),
+                task_links=overlay.plan_task_links if overlay is not None else (),
             ),
             watcher=load_watcher(
                 home / src.watcher_relpath, now, rt.watcher_max_age_min
@@ -133,6 +164,7 @@ class HandlerFactoryFloorEffect:
             ledger=read_ledger_rows(
                 window_days=rt.ledger_window_days,
                 cut_chars=rt.ledger_cut_chars,
+                timeout_seconds=rt.ledger_timeout_seconds,
                 plugin_root=Path(plugin_root) if plugin_root else None,
                 plugin_root_env=rt.plugin_root_env,
                 ledger_rows_file=Path(request.ledger_rows_file)
@@ -163,9 +195,28 @@ class HandlerFactoryFloorEffect:
                 result_chars=ls.result_chars,
             ),
             cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
-            runner_fleet=load_runner_fleet(home / src.runner_fleet_relpath),
+            runner_fleet=runner_fleet,
+            runner_fleet_cause=""
+            if runner_fleet is not None
+            else runner_fleet_cause(fleet_path),
+            lane_containers=load_lane_containers(
+                source=rt.container_source,
+                hosts=overlay.container_hosts if overlay is not None else (),
+                declarations=overlay.container_budgets if overlay is not None else (),
+            ),
         )
         result = HandlerFactoryFloor().handle(compute_request)
+        merged_running, merged_running_cause = self._read_merged_running(now)
+        result = result.model_copy(
+            update={
+                "floor": result.floor.model_copy(
+                    update={"merged_running": merged_running}
+                ),
+                "sources": result.sources.model_copy(
+                    update={"merged_running_cause": merged_running_cause}
+                ),
+            }
+        )
         target = home / rt.output.relpath
         write_result(target, result.model_dump(mode="json"))
         return ModelFactoryFloorRunResult(

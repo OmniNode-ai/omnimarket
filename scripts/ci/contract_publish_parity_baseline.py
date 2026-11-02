@@ -42,7 +42,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_contract_reducer",
     "node_coverage_sweep",
     "node_dashboard_sweep",
-    "node_data_flow_sweep",
     "node_database_sweep",
     "node_decision_store_orchestrator",
     "node_decompose_epic_orchestrator",

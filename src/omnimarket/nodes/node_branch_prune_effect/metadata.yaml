@@ -1,0 +1,25 @@
+name: node_branch_prune_effect
+version: "1.0.0"
+description: "Prune merged and closed remote branches under an overlay keep policy, recording tips before deletion."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_branch_prune_effect: "omnimarket.nodes.node_branch_prune_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "omnibase-infra>=0.38.66"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "git", "branches", "retention"]
+pack: "observability"
+display_name: "Branch Prune Effect"
+node_role: "effect"

@@ -55,6 +55,10 @@ descriptor:
   runtime_profiles:
     - effects
 
+# The one publish topic is the terminal event, as in node_pr_review_fsm_reducer;
+# the handler names no bus and no event envelope.
+terminal_event: onex.evt.omnimarket.redeploy-fsm-state-updated.v1
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.redeploy-phase-advance.v1

@@ -1,0 +1,22 @@
+name: node_andon_stop_reducer
+version: "0.1.0"
+description: "folds writer events into an andon stop and decides whether new work into its scope is admitted"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_andon_stop_reducer: "omnimarket.nodes.node_andon_stop_reducer"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "andon", "stop", "pure"]
+pack: "routing"
+display_name: "Andon Stop Reducer"
+node_role: "reducer"

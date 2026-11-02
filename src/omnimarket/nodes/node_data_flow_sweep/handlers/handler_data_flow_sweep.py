@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import logging
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.contract_topics import contract_section
 from omnimarket.nodes.node_data_flow_sweep.lane_target import (
     LaneResolutionError,
     ModelLaneTarget,
@@ -21,12 +23,30 @@ from omnimarket.nodes.node_data_flow_sweep.lane_target import (
 
 _log = logging.getLogger(__name__)
 
-# Built-in critical-chain topics. Declared here (not only in ``__main__``) so the
+# Built-in critical-chain topics. Resolved here (not only in ``__main__``) so the
 # RuntimeLocal dispatch path resolves the same default stub set as the CLI
-# (OMN-13534). ``onex-topic-allow`` until contract auto-wiring lands.
-NODE_INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"  # onex-topic-allow: pending contract auto-wiring
-PATTERN_LEARNED_TOPIC = "onex.evt.omniintelligence.pattern-learned.v1"  # onex-topic-allow: pending contract auto-wiring
-ROUTING_DECISION_TOPIC = "onex.evt.omniclaude.routing-decision.v1"  # onex-topic-allow: pending contract auto-wiring
+# (OMN-13534). The node PROBES these topics and never consumes them, so the
+# contract declares them under ``probed_topics``, not ``event_bus``.
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _probed_topic(suffix: str) -> str:
+    """Return the one ``probed_topics`` entry of the node contract ending ``suffix``."""
+    declared = contract_section(_CONTRACT, "probed_topics")
+    if not isinstance(declared, list):
+        raise ValueError(f"{_CONTRACT}: probed_topics must be a list")
+    matches = [t for t in declared if isinstance(t, str) and t.endswith(suffix)]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{_CONTRACT} must declare exactly one probed_topics entry ending "
+            f"{suffix!r}, found {len(matches)}"
+        )
+    return matches[0]
+
+
+NODE_INTROSPECTION_TOPIC = _probed_topic(".node-introspection.v1")
+PATTERN_LEARNED_TOPIC = _probed_topic(".pattern-learned.v1")
+ROUTING_DECISION_TOPIC = _probed_topic(".routing-decision.v1")
 
 # ---------------------------------------------------------------------------
 # Enums

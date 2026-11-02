@@ -1,0 +1,74 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21901"
+title: "The Wire Compatibility Gate grades each omnimarket payload against the dev-merge tag its consumers pin, and refuses what any real consumer pin cannot decode"
+summary: "The gate graded the commit parsed out of omniclaude's uv.lock, and its second real-history control graded dev against the newest release tag, which refused omnimarket#4614 for adding budget_source before any release carried it. The gate now reads the dev-merge tag each declared consumer pins in its own pyproject.toml and uv.lock, refuses a sha, branch, release, registry source, unreadable file, disagreeing lock or unresolvable or moved tag, grades every distinct pinned tag on its own so the oldest pin stays the strict baseline, and prints one verdict per pin. The release-baselined positive control is replaced by a control that replays the OMN-18852 history through the pin path."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: ["public_api"]
+requirements:
+  - id: "req-omn21901-baseline-is-the-pinned-dev-tag"
+    statement: |-
+      The gate resolves its baseline from the dev-merge tags first-party consumers pin for omnimarket, never from a release tag and never from a sha parsed out of a lock file.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the gate resolves its baseline from the dev-merge tags that first-party consumers actually pin for omnimarket, never from a release tag and never from a sha parsed out of a lock file -- falsifier: uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -k consumer_tag in omnimarket, planted tag pin resolves and a planted sha or release pin is refused"
+  - id: "req-omn21901-oldest-pin-stays-strict"
+    statement: |-
+      A payload the oldest tag pinned by any real consumer cannot decode is refused, a payload every pin decodes passes, and the real-history control still executes.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a payload that the oldest tag pinned by any real consumer cannot decode is still refused, and a payload that every pinned consumer decodes passes -- falsifier: uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -k oldest_pin, one refusing and one passing planted case, plus the OMN-18852 real-history control still executing"
+  - id: "req-omn21901-per-pin-verdicts"
+    statement: |-
+      The gate prints one verdict per pinned tag, so a PR can be re-graded and the per-pin result stated.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: omnimarket#4614 is re-graded by the changed gate and the PR body or a PR comment states per consumer pin whether it passes and why -- falsifier: uv run python scripts/ci/check_wire_compatibility.py run against the head of omnimarket#4614 with the printed per-pin verdicts"
+evidence_requirements:
+  - kind: "tests"
+    description: "The pin-reading, oldest-pin and wiring tests pass."
+    command: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21901-consumer-tag"
+    description: "A planted dev-merge tag pin resolves and is graded; a planted sha, release, branch, registry, disagreeing-lock, unfetched or moved-tag pin is refused with no verdict and no release fallback."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py tests/ci/test_omniclaude_pin_follows_dev_omn19998.py -q --no-cov -k 'consumer_tag or pinned_dev_tag or declared_consumer'"
+        cwd: "."
+  - id: "dod-omn21901-oldest-pin"
+    description: "A payload the older of two pinned tags cannot decode is refused while the newer passes, and a payload both decode passes with one verdict per pin; the OMN-18852 real-history replay runs through the pin path."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k oldest_pin"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k test_the_gate_job_runs_the_real_history_controls"
+        cwd: "."
+  - id: "dod-omn21901-per-pin-verdicts"
+    description: "The printed per-pin verdict lines name the pinned tag and the consumers that pin it, for a refusing and a passing pin; the PR comment starting Lab: head= carries the same lines for omnimarket#4614."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k 'oldest_pin or consumer_tag_pin_resolves'"
+        cwd: "."
+  - id: "dod-omn21901-deploy-probe-pinned-consumers"
+    description: "Deploy probe: the gate script GitHub serves at the checked-out commit declares PINNED_CONSUMERS; the declaration is absent at the merge base, so the content read answers false there."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/scripts/ci/check_wire_compatibility.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"PINNED_CONSUMERS\")' | grep -qx true"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -k oldest_pin"
+        cwd: "."

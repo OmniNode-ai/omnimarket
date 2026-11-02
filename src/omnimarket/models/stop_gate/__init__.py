@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Shared types of the andon stop, used by the reducer, the queue and every dispatcher."""
+
+from omnimarket.models.stop_gate.model_stop_gate import (
+    CLASS_ID_PATTERN,
+    OPEN_ROLE_KEY,
+    EnumFoldStatus,
+    EnumReadingOrigin,
+    EnumReadingVerdict,
+    EnumStopEventKind,
+    EnumStopGateOutcome,
+    EnumStopGateReason,
+    EnumStopMode,
+    EnumStopRole,
+    ModelAndonStopConfig,
+    ModelHandFixEvidence,
+    ModelStopClass,
+    ModelStopEvent,
+    ModelStopFoldRequest,
+    ModelStopFoldResult,
+    ModelStopGateRequest,
+    ModelStopGateResult,
+    ModelStopPolicy,
+    ModelStopReading,
+    ModelStopRecord,
+    ModelStopScope,
+)
+
+__all__ = [
+    "CLASS_ID_PATTERN",
+    "OPEN_ROLE_KEY",
+    "EnumFoldStatus",
+    "EnumReadingOrigin",
+    "EnumReadingVerdict",
+    "EnumStopEventKind",
+    "EnumStopGateOutcome",
+    "EnumStopGateReason",
+    "EnumStopMode",
+    "EnumStopRole",
+    "ModelAndonStopConfig",
+    "ModelHandFixEvidence",
+    "ModelStopClass",
+    "ModelStopEvent",
+    "ModelStopFoldRequest",
+    "ModelStopFoldResult",
+    "ModelStopGateRequest",
+    "ModelStopGateResult",
+    "ModelStopPolicy",
+    "ModelStopReading",
+    "ModelStopRecord",
+    "ModelStopScope",
+]

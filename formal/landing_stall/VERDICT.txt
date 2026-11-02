@@ -1,0 +1,49 @@
+LandingStall model verdict (OMN-21880)
+======================================
+
+Question: is the stall rule safe to build as a pure extension of
+node_landing_stall_expectation_compute, ahead of any controller wiring?
+
+Checked: TLC 2.19 (v1.7.4) over LandingStall.tla. The design config checks eleven
+invariants over two contexts, one of them calm; the live config checks two liveness
+properties over one context. Eighteen mutant configs each flip one design knob and each
+violates the one property it targets; three witness configs show the exception, the
+question and a close after an exception are reachable. Results are in results/.
+
+What the model found: its first draft took a snapshot only after a change or a tick, so
+a context that stopped changing was read once and the stall sat open forever (a liveness
+counterexample, fixed in the model). The build must therefore evaluate the snapshot on
+every controller tick, whether or not a pull request changed.
+
+Design points the build follows
+-------------------------------
+1. One stall per required context. The key is the context, not the pull request set and
+   not the snapshot (M4).
+2. Both tests are inclusive: exactly 80 percent, and exactly five open pull requests,
+   open a stall (M2, M3). Below five open pull requests nothing opens (M1).
+3. The stall's first instant is kept while the red holds (M18); the exception row, the
+   cause lane and the question are each written once per episode (M6, M7, M14).
+4. At the exception time the controller stops sending repair workers at that context
+   only; it keeps sending at every other context and, before the exception time, at
+   this one (M8, M9, M10).
+5. The question waits the question time and is skipped while an eligible repair exists
+   (M12, M13).
+6. A stall closes after ClearReads consecutive clear snapshots, not on one (M15), and
+   closing lifts the block (M11, M16).
+
+Open choices, not in the ruling
+-------------------------------
+ClearReads is 2, the model's choice: one clear snapshot is a flap, not a repair. The
+build reads it from the overlay beside the ruling's thresholds, so the operator can
+change it without a code change. "Eligible repair" is an input to the fold, not
+something the pure node decides.
+
+Limits
+------
+The model has one author and no independent reviewer: the CiRedTriage precedent ran an
+adversarial Codex review per round, and this model has not. Time is 30 minute ticks
+standing for the ruling's 60 and 120 minutes. The controller's other holds, a cause
+lane's own success and delivery of the row, the lane and the question are outside the
+model. The controller wiring is a later slice and needs its own check against this model.
+
+verdict: BUILD model=LandingStall.tla sha256=bc52559375d42da988613455df76bb72d7ebd1388380757860e71556472d78d5

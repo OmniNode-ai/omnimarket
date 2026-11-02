@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The recovery-call list: a tool call after a compaction counts as recovery only when
+# it matches an entry here (tool name in tool_names and, when given, target_regex found
+# in the call's target: a path, a skill name or a command). A request may carry its own
+# list, which replaces this one; the list fixed by the plan's data change goes there.
+patterns:
+  - pattern_id: ledger-read-file
+    kind: ledger_read
+    tool_names: [Read]
+    target_regex: 'ROLLING_WORK_LEDGER(\.md)?$'
+  - pattern_id: ledger-read-shell
+    kind: ledger_read
+    tool_names: [Bash]
+    target_regex: '\b(cat|head|tail|sed|rg|grep)\b[^|;&]*ROLLING_WORK_LEDGER\.md(\s|$)'
+  - pattern_id: checkpoint-read
+    kind: checkpoint_read
+    tool_names: [Read]
+    target_regex: '(^|/)checkpoints?/|(^|/)checkpoint[^/]*$'
+  - pattern_id: ledger-ask-skill
+    kind: ledger_ask
+    tool_names: [Skill]
+    target_regex: '^(omni:)?ledger-ask$'
+  - pattern_id: catchup-skill
+    kind: catchup_skill
+    tool_names: [Skill]
+    target_regex: '^(omni:)?ledger-catchup$'
+  - pattern_id: resume-skill
+    kind: resume_skill
+    tool_names: [Skill]
+    target_regex: '^(omni:session-resume|onex:resume_session)$'
+  - pattern_id: handoff-read
+    kind: handoff_read
+    tool_names: [Read]
+    target_regex: '(?i)(^|/)handoff[^/]*$|/handoffs?/'

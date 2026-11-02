@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_wire_consumer_pin_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Read the dev-merge tag each first-party consumer pins for omnimarket from the consumer's own
+  pyproject.toml and uv.lock, and return one baseline per distinct pinned tag, oldest first, for
+  the Wire Compatibility Gate (OMN-21901; operator ruling 2026-11-01T17:05:10Z: releases are
+  optional and internal consumers run from dev-merge tags). A sha, branch, release or registry pin,
+  an unreadable file, a lock that disagrees with its pyproject, a required consumer that was not
+  supplied, and a tag that does not resolve to the commit its name carries are each refused with
+  their own outcome token; nothing falls back to a release.
+input_model: omnimarket.models.model_wire_consumer_pin.ModelWireConsumerPinRequest
+output_model: omnimarket.models.model_wire_consumer_pin.ModelWireConsumerPinResult
+handler:
+  module: omnimarket.handlers.handler_wire_consumer_pin
+  class: HandlerWireConsumerPin
+  input_model: omnimarket.models.model_wire_consumer_pin.ModelWireConsumerPinRequest
+  output_model: omnimarket.models.model_wire_consumer_pin.ModelWireConsumerPinResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.handlers.handler_wire_consumer_pin:HandlerWireConsumerPin
+  handlers:
+    - operation: read_consumer_pins
+      handler:
+        name: HandlerWireConsumerPin
+        module: omnimarket.handlers.handler_wire_consumer_pin
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+terminal_event: onex.evt.omnimarket.wire-consumer-pins-read.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.wire-consumer-pins-read-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.wire-consumer-pins-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.wire-consumer-pins-read.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.wire-consumer-pins-read.v1
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-21901]

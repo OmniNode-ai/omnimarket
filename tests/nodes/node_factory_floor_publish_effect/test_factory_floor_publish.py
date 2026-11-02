@@ -35,6 +35,14 @@ from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_pu
 
 pytestmark = pytest.mark.unit
 
+# The only links the page may carry: the empty icon and the vendored theme files published beside it.
+_ICON_AND_THEME_LINKS = [
+    '<link rel="icon" href="data:,">',
+    '<link rel="stylesheet" href="onex.theme.light.css">',
+    '<link rel="stylesheet" href="onex.theme.dark.css">',
+    '<link rel="stylesheet" href="onex.theme.warm.css">',
+]
+
 RECORD = {
     "schema_id": "factory-floor/1",
     "generated_at": "2026-10-31T12:00:00+00:00",
@@ -173,6 +181,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         "factory-floor.json",
         "floor",
         "index.html",
+        "onex.theme.dark.css",
+        "onex.theme.light.css",
+        "onex.theme.warm.css",
         "publish-status.json",
     ]
     assert [p.name for p in (site / "floor").iterdir()] == ["index.html"]
@@ -187,6 +198,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
         NODE_DIR / "page/floor/index.html"
     ).read_bytes()
     assert result.published == (
+        "onex.theme.light.css",
+        "onex.theme.dark.css",
+        "onex.theme.warm.css",
         "floor/index.html",
         "index.html",
         "publish-status.json",
@@ -194,6 +208,9 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     )
     # The snapshot goes first and the live record last of the copies; the listing for pruning follows.
     assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -401,6 +418,9 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
     result = HandlerFactoryFloorPublish(runner).handle(request, environ={})
     assert result.process_health_published is True
     assert result.published == (
+        "onex.theme.light.css",
+        "onex.theme.dark.css",
+        "onex.theme.warm.css",
         "floor/index.html",
         "index.html",
         "publish-status.json",
@@ -638,20 +658,20 @@ def test_page_draws_the_declared_lines_in_order_with_an_unmatched_one_unread() -
         }
     )
     lines = out["lines"]
-    assert lines.index("Line A") < lines.index("Line B") < lines.index("Line C")
-    assert "No plan read for this line" in lines
+    assert lines.index("Line B") < lines.index("Line A") < lines.index("Line C")
+    assert "2 more lines are planned but have no plan file yet" in lines
+    assert "no plan file matches" in lines
     assert "first-plan" in lines
     assert "third-plan" in lines
     assert "Frame finished" in lines
-    assert "Cord pulled: gate failed" in lines
-    assert "37% of the car built" in lines
-    assert "Line C · not in the record" in out["andon"]
+    assert "Stopped:</b> gate failed (G9)" in lines
+    assert "About 37 percent built" in lines
 
 
 def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
     out = _run_floor({"factory-floor.json": FLOOR_RECORD})
-    assert "7,311" in out["tally"]
-    assert "Machines · unread" in out["andon"]
+    assert "7,311" in out["sourceList"]
+    assert "lists no machines" in out["baysNote"]
     assert "lab-idle" in out["stopChart"]
     assert "4,321" in out["stopChart"]
     assert "Unread" in out["delegBody"]
@@ -757,14 +777,17 @@ def test_page_draws_a_bay_per_machine_with_its_lanes_against_the_cap() -> None:
     out = _run_floor({"factory-floor.json": BAYS_RECORD})
     grid = out["bayGrid"]
     assert "bay-x" in grid
-    assert '2</span> lanes placed of a cap of <span class="mono">4' in grid
+    assert (
+        '<span class="mono">2</span> of <span class="mono">4</span> worker slots in use'
+        in grid
+    )
     assert grid.count('class="cap"') >= 1
     assert "0.5" in grid
     assert "12 GB of 32" in grid
     assert "swap used" in grid
     assert "unit work" in grid
-    assert "1 placed beside the lanes" in grid
-    assert "CI runners" in grid
+    assert "1 placed beside the workers" in grid
+    assert "check runners" in grid
 
 
 def test_page_states_the_stall_and_window_the_record_judged_lanes_by() -> None:
@@ -795,12 +818,13 @@ def test_page_draws_a_lane_with_title_kind_engine_status_pr_ci_and_a_station_lin
     assert '<span class="chip">fix</span>' in grid
     assert "Claude" in grid
     assert "pushed the effect fields" in grid
-    assert "repo#7 · CI red" in grid
+    assert "failing checks" in grid
+    assert "repo#7: feat: lanes · 2 red of 150" in grid
     assert "pushed the effect fields; waiting on CI for the long full row" in grid
     assert 'data-jump="st-plan-two-1"' in grid
     assert "Line A · Then build · Part B" in grid
     assert (
-        'title="OMN-9 · Show every lane on the floor · pushed the effect fields; waiting'
+        'title="Show every lane on the floor · OMN-9 · pushed the effect fields; waiting'
         in grid
     )
 
@@ -810,11 +834,11 @@ def test_page_marks_a_stalled_lane_and_a_lane_with_no_title_or_status_as_unread(
 ):
     grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
     assert "chip stall" in grid
-    assert "stalled · silent 90 min" in grid
+    assert "stalled · silent for 90 min" in grid
     assert "ticket title unread" in grid
-    assert "no status written" in grid
-    assert "no PR yet" in grid
-    assert "no station on the lines holds this ticket" in grid
+    assert "no update written" in grid
+    assert "no change yet" in grid
+    assert "no station on the lines holds this worker" in grid
 
 
 def test_page_puts_a_lane_with_no_machine_in_its_own_bay_and_a_cloud_lane_in_the_cloud_bay() -> (
@@ -832,13 +856,11 @@ def test_page_puts_a_lane_with_no_machine_in_its_own_bay_and_a_cloud_lane_in_the
 
 
 def test_page_lights_the_andon_lamps_for_machines_lanes_and_the_cloud_stop() -> None:
-    andon = _run_floor({"factory-floor.json": BAYS_RECORD})["andon"]
-    assert "Machines · 2 lanes placed" in andon
-    assert "1 of 4 read" in andon
-    assert "1 unread, 2 in repair or out" in andon
-    assert "Lanes · 4 live" in andon
-    assert "1 stalled" in andon
-    assert "Cloud · stop" in andon
+    grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
+    assert "1 running, 1 stalled, 2 free" in grid
+    assert "mbay unread" in grid
+    assert "mbay repair" in grid
+    assert "Cloud sessions are ending without a pull request" in grid
 
 
 def test_page_shows_the_part_of_the_car_a_lane_builds_with_a_link_back_to_the_lane() -> (
@@ -847,13 +869,12 @@ def test_page_shows_the_part_of_the_car_a_lane_builds_with_a_link_back_to_the_la
     lines = _run_floor({"factory-floor.json": BAYS_RECORD})["lines"]
     assert 'id="st-plan-two-1"' in lines
     assert 'id="part-plan-two-1-b"' in lines
-    assert 'Built by <a data-jump="lane-lane-one"' in lines
+    assert 'Worker: <a data-jump="lane-lane-one"' in lines
 
 
 def test_page_without_machine_fields_says_the_bays_are_unread_never_empty() -> None:
     out = _run_floor({"factory-floor.json": FLOOR_RECORD})
-    assert "declares no machine bays" in out["baysNote"]
-    assert "Machines · unread" in out["andon"]
+    assert "lists no machines" in out["baysNote"]
 
 
 def test_page_draws_the_delegation_card_from_its_file() -> None:
@@ -1206,7 +1227,7 @@ def test_page_tabs_shell_carries_no_secret_no_host_and_no_external_url() -> None
     assert not re.search(
         r"secret|password|api[_-]?key|bearer|token", SHELL, re.IGNORECASE
     )
-    assert SHELL.count("<link") == 1
+    assert re.findall(r"<link[^>]*>", SHELL) == _ICON_AND_THEME_LINKS
     assert "src=" not in SHELL
     assert SHELL.count("${esc(") > 20
     for raw in ("${L.name}", "${m.label}", "${l.title}", "${p.title}"):
@@ -1422,5 +1443,105 @@ def test_page_draws_a_declared_line_the_record_carries_stopped_with_its_cause_no
         }
     )
     lines = out["lines"]
-    assert "Cord pulled: plan file not found: no plan path contains alpha-plan" in lines
+    assert (
+        "<b>Stopped:</b> plan file not found: no plan path contains alpha-plan" in lines
+    )
     assert "No plan read for this line" not in lines
+
+
+def _cloud_account(name: str, **cells: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "name": name,
+        "ready": True,
+        "login": "ok",
+        "cap": 17,
+        "open_sessions": 0,
+        "record_note": "",
+        "credit_remaining": 244.0,
+        "credit_read_at": "2098-12-30T00:00:00Z",
+        "rate_status": "",
+        "rate_resets_at": "",
+    }
+    return {**base, **cells}
+
+
+def _cloud_card(accounts: list[dict[str, object]], **cloud_cells: object) -> str:
+    record = {
+        **BAYS_RECORD,
+        "floor": {
+            **BAYS_RECORD["floor"],
+            "cloud": {
+                "state": "read",
+                "note": "",
+                "accounts": accounts,
+                "sessions": [],
+                "lamps": [],
+                **cloud_cells,
+            },
+        },
+    }
+    grid = _run_floor({"factory-floor.json": record})["bayGrid"]
+    start = grid.index('id="bay-cloud"')
+    end = grid.find("<article", start)
+    return grid[start : end if end != -1 else len(grid)]
+
+
+def test_page_draws_the_open_figure_the_record_gives_and_the_stale_note_beside_it() -> (
+    None
+):
+    card = _cloud_card(
+        [
+            _cloud_account(
+                "acct-a",
+                open_sessions=3,
+                record_note="the accounts file holds 7 active entries; 3 sessions are open",
+            )
+        ]
+    )
+    assert "3 open of 17" in card
+    assert "the accounts file holds 7 active entries; 3 sessions are open" in card
+
+
+def test_page_draws_both_ready_accounts_and_an_unread_cap_or_credit_as_unread() -> None:
+    card = _cloud_card(
+        [
+            _cloud_account("acct-a", open_sessions=3),
+            _cloud_account(
+                "acct-b",
+                open_sessions=0,
+                cap=None,
+                credit_remaining=None,
+                credit_read_at="",
+            ),
+        ]
+    )
+    assert "acct-a" in card
+    assert "acct-b" in card
+    assert "3 open of 17" in card
+    assert "0 open · cap unread" in card
+    assert "credit unread" in card
+    assert "of 0" not in card
+
+
+def test_page_draws_an_open_count_the_record_could_not_read_as_unread_never_zero() -> (
+    None
+):
+    card = _cloud_card([_cloud_account("acct-a", open_sessions=None)])
+    assert "open unread" in card
+    assert "0 open" not in card
+
+
+def test_page_headline_open_count_is_the_sum_of_the_drawn_accounts() -> None:
+    card = _cloud_card(
+        [
+            _cloud_account("acct-a", open_sessions=3),
+            _cloud_account("acct-b", open_sessions=2, cap=None),
+        ]
+    )
+    per_account = [int(n) for n in re.findall(r'class="mono">(\d+) open', card)]
+    assert per_account == [3, 2]
+    headline = re.search(
+        r'id="cloud-open">(\d+) open sessions across (\d+) accounts', card
+    )
+    assert headline is not None
+    assert (int(headline.group(1)), int(headline.group(2))) == (sum(per_account), 2)

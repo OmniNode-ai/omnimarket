@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import re
+from collections import Counter
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from omnimarket.models.model_factory_floor_input import (
@@ -14,6 +17,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorReceipt,
 )
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
+    ModelFloorBay,
     ModelFloorCloud,
     ModelFloorCloudAccountOut,
     ModelFloorCloudSession,
@@ -96,15 +100,43 @@ def _engine(model: str, request: ModelFactoryFloorRequest) -> str:
     )
 
 
+def name_tokens(text: str) -> tuple[str, ...]:
+    """The lower-case alphanumeric words of a lane name or a task id (``one-rt-t10-x`` is one, rt, t10, x)."""
+    return tuple(part for part in re.split(r"[^0-9a-z]+", text.casefold()) if part)
+
+
+def names_task(task_id: str, lane_tokens: tuple[str, ...]) -> bool:
+    """True when the task id's words appear in a row in the lane's name: ``T10`` is in ``one-rt-t10-delegation``, never in ``t1``."""
+    wanted = name_tokens(task_id)
+    width = len(wanted)
+    return width > 0 and any(
+        lane_tokens[i : i + width] == wanted
+        for i in range(len(lane_tokens) - width + 1)
+    )
+
+
 def _station(
+    lane: str,
     lane_tickets: tuple[str, ...],
     pr: str,
     lines: tuple[ModelFloorLine, ...],
+    scopes: Mapping[str, tuple[str, ...]],
 ) -> ModelFloorStationRef | None:
     for line in lines:
         for station in line.stations:
             for item in station.items:
                 if (pr and pr in item.prs) or set(lane_tickets) & set(item.tickets):
+                    return ModelFloorStationRef(
+                        line_id=line.line_id, station_id=station.id, item_id=item.id
+                    )
+    # A lane that carries only its plan's own ticket, named for the task it builds (``one-rt-t10-...``).
+    tokens = name_tokens(lane)
+    for line in lines:
+        if not set(lane_tickets) & set(scopes.get(line.line_id, ())):
+            continue
+        for station in line.stations:
+            for item in station.items:
+                if names_task(item.id, tokens):
                     return ModelFloorStationRef(
                         line_id=line.line_id, station_id=station.id, item_id=item.id
                     )
@@ -117,7 +149,9 @@ def _first_sentence(text: str, limit: int) -> str:
 
 
 def build_lanes(
-    request: ModelFactoryFloorRequest, lines: tuple[ModelFloorLine, ...]
+    request: ModelFactoryFloorRequest,
+    lines: tuple[ModelFloorLine, ...],
+    scopes: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[ModelFloorLane, ...]:
     """Every lane with a CLAIM no TERMINAL has closed and a row inside the live window."""
     now, config = request.generated_at, request.config
@@ -153,6 +187,13 @@ def build_lanes(
         )
         cloud = host.startswith(config.cloud_host_prefix)
         placement = "cloud" if cloud else "machine" if host in declared else "unplaced"
+        cause = (
+            ""
+            if placement != "unplaced"
+            else "host-not-drawn"
+            if host
+            else "no-host-cell"
+        )
         started = (
             receipt.started_at
             if receipt is not None
@@ -192,6 +233,8 @@ def build_lanes(
                 ),
                 placement=placement,
                 host=host if placement == "machine" else "",
+                placement_cause=cause,
+                named_host=host if cause == "host-not-drawn" else "",
                 cloud_account=(receipt.account if receipt and cloud else ""),
                 started_at=_stamp(started),
                 run_minutes=_minutes(now, started),
@@ -207,7 +250,7 @@ def build_lanes(
                 pr_state=watched.state if watched else ("unread" if pr else ""),
                 pr_ci=watched.ci if watched else ("unread" if pr else ""),
                 pr_ci_note=watched.ci_note if watched else "",
-                station=_station(tickets, pr, lines),
+                station=_station(lane, tickets, pr, lines, scopes or {}),
                 claim_full=claim.text,
             )
         )
@@ -228,7 +271,8 @@ def _runners(
             online=None,
             busy=None,
             observed_at="",
-            note="no runner fleet observation has been recorded",
+            note=request.runner_fleet_cause
+            or "no runner fleet observation has been recorded",
         )
     if not decl.runner_labels:
         return ModelFloorRunnersOut(
@@ -335,6 +379,35 @@ def build_machines(
     return tuple(machines)
 
 
+def build_bays(machines: tuple[ModelFloorMachine, ...]) -> tuple[ModelFloorBay, ...]:
+    """One bay per drawn machine: the lanes placed on it against its cap, from the same pool read the machine row is.
+
+    A machine the pool did not read (unread, in repair or out of selection) or read too long ago has no free bay: its
+    count is the lanes the ledger places there, and it is marked stale rather than shown as room.
+    """
+    bays: list[ModelFloorBay] = []
+    for machine in sorted(machines, key=lambda m: m.host):
+        slots = machine.cap or 0
+        stale = machine.state != "read" or machine.stale
+        bays.append(
+            ModelFloorBay(
+                host=machine.host,
+                slots=slots,
+                running=machine.lanes_placed,
+                free=0 if stale else max(0, slots - machine.lanes_placed),
+                stale=stale,
+            )
+        )
+    return tuple(bays)
+
+
+def _stale_entries_note(entries: int, open_now: int, receipts_read: bool) -> str:
+    """What the cloud accounts file holds when it disagrees with the open sessions of the receipts; empty when they agree."""
+    if not receipts_read or entries == open_now:
+        return ""
+    return f"the accounts file holds {entries} active entries; {open_now} sessions are open"
+
+
 def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     now, config = request.generated_at, request.config
     declared = {m.host for m in request.machines}
@@ -343,6 +416,17 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
             r
             for r in request.receipts or ()
             if r.host.startswith(config.cloud_host_prefix) and r.account in declared
+        ),
+        key=lambda r: r.started_at,
+        reverse=True,
+    )
+    open_receipts = [r for r in cloud_receipts if not r.final]
+    listed = sorted(
+        (
+            *open_receipts,
+            *[r for r in cloud_receipts if r.final][
+                : max(0, config.cloud_sessions_limit - len(open_receipts))
+            ],
         ),
         key=lambda r: r.started_at,
         reverse=True,
@@ -358,7 +442,7 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
             open=not r.final,
             result=_short(r.session_detail or r.result, config.status_chars),
         )
-        for r in cloud_receipts[: config.cloud_sessions_limit]
+        for r in listed
     )
     finished = [r for r in cloud_receipts if r.final]
     newest = max(finished, key=lambda r: r.ended_at or r.started_at, default=None)
@@ -386,29 +470,54 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
             sessions=sessions,
             lamps=lamps,
         )
+    open_by_account = Counter(r.account for r in open_receipts)
+    ready = [
+        a
+        for a in sorted(request.cloud_accounts, key=lambda a: a.name)
+        if a.name in declared and a.login in config.cloud_ready_logins
+    ]
     accounts = tuple(
         ModelFloorCloudAccountOut(
             name=a.name,
-            ready=a.login in config.cloud_ready_logins,
+            ready=True,
             login=a.login,
             cap=a.cap,
-            open_sessions=len(a.active),
+            open_sessions=open_by_account[a.name]
+            if request.receipts is not None
+            else None,
+            record_note=_stale_entries_note(
+                len(a.active), open_by_account[a.name], request.receipts is not None
+            ),
             credit_remaining=a.credit_remaining,
             credit_read_at=a.credit_read_at,
             rate_status=a.rate_status,
             rate_resets_at=a.rate_resets_at,
         )
-        for a in sorted(request.cloud_accounts, key=lambda a: a.name)
-        if a.name in declared and a.login in config.cloud_ready_logins
+        for a in ready
     )
     others = sum(
         1
         for a in request.cloud_accounts
         if a.name in declared and a.login not in config.cloud_ready_logins
     )
+    undeclared = sum(
+        1
+        for a in request.cloud_accounts
+        if a.name not in declared and a.login in config.cloud_ready_logins
+    )
+    notes = [
+        text
+        for text in (
+            f"{others} listed machines hold no cloud login" if others else "",
+            f"{undeclared} signed-in account{'s' if undeclared > 1 else ''} not on the declared machine list {'are' if undeclared > 1 else 'is'} not drawn"
+            if undeclared
+            else "",
+        )
+        if text
+    ]
     return ModelFloorCloud(
         state="read",
-        note=f"{others} listed machines hold no cloud login" if others else "",
+        note="; ".join(notes),
         accounts=accounts,
         sessions=sessions,
         lamps=lamps,

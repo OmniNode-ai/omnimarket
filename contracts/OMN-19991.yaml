@@ -24,6 +24,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Every rule the compute's contract declares has a positive and a negative fixture in the compute node's rule_fixtures.yaml, read by rule code, and a rule without one is reported missing. The fixture file, a source file of the compute node, does not exist at the merge base, so these tests fail there."
     command: "uv run pytest tests/test_omn19991_local_alert_rule_fixtures.py -q"
+  - kind: "tests"
+    description: "Ownership half of the projection step only: the local_alerts cursor sequence is declared once in the application relation ownership manifest, in the tenant domain, owned by the projection migration runner, ahead of omnibase_infra vendoring node_projection_local_alerts' migrations. The declaration and the test are absent at the merge base, so the test fails there."
+    command: "uv run pytest tests/test_omn19991_local_alerts_cursor_ownership_declared.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -44,4 +47,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19991_local_alert_rule_fixtures.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19991-ac1-local-alerts-cursor-ownership"
+    description: "Ownership half of the projection step only. The local_alerts cursor sequence is declared exactly once, in the tenant domain, owned by the projection migration runner, so omnibase_infra's application SQL gate accepts the vendored writer grant that names it. It does not prove the migrations, the writer or the publication. Absent at the merge base."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19991_local_alerts_cursor_ownership_declared.py -q"
         cwd: "${OMNI_HOME}/omnimarket"

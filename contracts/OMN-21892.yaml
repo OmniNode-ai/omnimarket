@@ -1,0 +1,90 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21892"
+title: "A lane's live application container count over its declared budget raises one FAIL alarm per host and lane"
+summary: >
+  node_lane_container_budget_compute judges a host's recorded container listing against the application
+  container budget declared for each of its lanes. Over budget reads FAIL, an unreadable host reads UNKNOWN and
+  UNKNOWN fails, and each failing lane raises one alarm keyed lane-budget:<host>:<lane> that a rerun replaces.
+  node_factory_floor_compute shows the read on the line its selection names. The per-lane budget declaration lives
+  in the private overlay, a frozen repository this change does not write; it is reported as owed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21892-over-budget-fails-one-alarm"
+    statement: "A recorded container listing over a lane's declared budget reads FAIL, never WARN, and raises one alarm per host and lane."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a recorded docker ps fixture over budget yields FAIL and not WARN, raising one alarm keyed lane-budget:<host>:<lane> that upserts on rerun -- falsifier: uv run pytest tests/nodes/node_lane_container_budget_compute -q runs the fixture twice and finds one row"
+  - id: "req-omn21892-unknown-fails"
+    statement: "A host that cannot be read reads UNKNOWN and fails."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: an unreadable host reads UNKNOWN and FAILs -- falsifier: uv run pytest tests/nodes/node_lane_container_budget_compute -q -k unknown with an empty fixture"
+  - id: "req-omn21892-floor-line"
+    statement: "The floor's one-runtime line shows each lane's application containers from the read."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the floor's one-runtime line shows application containers per lane from this read -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k one_runtime"
+evidence_requirements:
+  - kind: "tests"
+    description: "The budget node and the floor line tests pass."
+    command: "uv run pytest tests/nodes/node_lane_container_budget_compute tests/nodes/node_factory_floor_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21892-ac1-over-budget-one-alarm"
+    description: "AC1 runs the recorded listing twice against a declared budget and finds FAIL, no WARN status, and one alarm row under lane-budget:<host>:<lane>. It fails at the merge base, which has no such node."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line"
+        cwd: "."
+  - id: "dod-omn21892-ac2-unknown-fails"
+    description: "AC2 runs an empty listing, a failed read, a line that is not JSON and a host with no declared budget, and requires UNKNOWN with failed true each time."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line -k unknown"
+        cwd: "."
+  - id: "dod-omn21892-ac3-floor-line"
+    description: "AC3 computes the floor with the budget read and requires the line the selection names to carry observed, budget, status and alarm key per host and lane, unread without a read, and no container block on other lines."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov --tb=line -k one_runtime"
+        cwd: "."
+  - id: "dod-omn21892-deploy-probe"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_lane_container_budget_compute through the in-process ONEX runtime with a two-container listing against a budget of one, and require a successful typed receipt whose verdict is FAIL with the alarm key lane-budget:probe-host:probe-lane. It fails at the merge base, where the node does not exist."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov"
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"host": "probe-host", "docker_ps": "{\"Names\": \"probe-a-1\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=probe\"}\n{\"Names\": \"probe-b-1\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=probe\"}", "declarations": [{"host": "probe-host", "lane": "probe-lane", "compose_project": "probe", "application_container_budget": 1}]}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21892-deploy-probe "$runtime_bin/onex" node node_lane_container_budget_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["status"] == "FAIL" and result["failed"] is True, result
+          assert [a["key"] for a in result["alarms"]] == ["lane-budget:probe-host:probe-lane"], result
+          print(json.dumps({"run_id": receipt["run_id"], "alarms": [a["key"] for a in result["alarms"]]}))
+          ' "$probe_dir/receipt.json";
+        cwd: "."

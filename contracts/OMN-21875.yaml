@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21875"
+title: "omnimarket adopts the receipt-gate that keeps work-contract digest swaps pin-only"
+summary: "Bot core-pin-bump PRs rewrite the environment.sha256 digests in src/omnimarket/configs/work_contracts/contracts/*.yaml. The receipt-gate at dev-20261101005012-ac2f26e3e5bf refuses the writer pin-only exemption for those files ('pin swap: path is not allowed ... F01-01.yaml'), so those PRs fail Repo Evidence Dependency. omnibase_core#2214 (merge commit 2fc5e461f) fixes the gate. The caller now calls receipt-gate.yml at dev-20261101103701-2fc5e461fca7. The test-side pin constant and the action-ref golden move with it in the same commit, and the caller's with: inputs are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21875-caller-pin"
+    statement: |-
+      The omnimarket repo-evidence caller pins the omnibase_core receipt-gate reusable at dev-20261101103701-2fc5e461fca7 or a later dev-merge tag, and the test-side pin constant equals the caller's pin.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: .github/workflows/call-repo-evidence-gate.yml calls OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml at a dev-merge tag stamped 20261101103701 or later, and tests/ci/receipt_gate_pin.py RECEIPT_GATE_PIN_TAG equals it -- falsifier: uv run pytest tests/ci/test_receipt_gate_pin_digest_swap_omn21875.py fails at the merge base, whose pin is dev-20261101005012-ac2f26e3e5bf"
+  - id: "req-omn21875-caller-tests"
+    statement: |-
+      The existing receipt-gate caller pin, verifier floor and action-ref golden tests pass at the new pin.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the receipt-gate caller pin, verifier floor and action-ref golden tests pass at the new pin -- falsifier: uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py tests/ci/test_omn20558_ratchet_burndown_characterization.py exits non-zero"
+evidence_requirements:
+  - kind: "tests"
+    description: "The receipt-gate pin tests pass."
+    command: "uv run pytest tests/ci/test_receipt_gate_pin_digest_swap_omn21875.py tests/ci/test_receipt_gate_caller_pin_omn20134.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21875-caller-pin"
+    description: "The caller pins the receipt-gate at or after the digest-swap fix tag, and the test-side constant matches."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_receipt_gate_pin_digest_swap_omn21875.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21875-caller-tests"
+    description: "The caller pin, verifier floor and action-ref golden tests pass at the new pin."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py tests/ci/test_repo_evidence_caller_verifier_floor_omn20032.py tests/ci/test_omn20558_ratchet_burndown_characterization.py -q --no-cov"
+        cwd: "."

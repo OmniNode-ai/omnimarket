@@ -21,6 +21,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 _CLEARED_MODULES: tuple[str, ...] = (
     "src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py",
+    "src/omnimarket/nodes/node_redeploy_fsm_reducer/handlers/handler_redeploy_fsm.py",
+    "src/omnimarket/nodes/node_regression_test_orchestrator/handlers/handler_regression_test_orchestrator.py",
+    "src/omnimarket/nodes/node_user_correction_observer_effect/handler_user_correction_observer.py",
 )
 
 

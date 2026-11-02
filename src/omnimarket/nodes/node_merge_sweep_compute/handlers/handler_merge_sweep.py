@@ -21,9 +21,12 @@ import asyncio
 import concurrent.futures
 import logging
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.nodes.contract_topics import contract_topic
 
 if TYPE_CHECKING:
     pass
@@ -31,10 +34,13 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 # Topic bindings from contract.yaml event_bus — import from here, never inline elsewhere
-TOPIC_MERGE_SWEEP_START: str = (
-    "onex.cmd.omnimarket.merge-sweep-start.v1"  # onex-topic-allow: contract-declared
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+TOPIC_MERGE_SWEEP_START: str = contract_topic(
+    _CONTRACT, "subscribe_topics", "merge-sweep-start.v1"
 )
-TOPIC_MERGE_SWEEP_COMPLETED: str = "onex.evt.omnimarket.merge-sweep-completed.v1"  # onex-topic-allow: contract-declared
+TOPIC_MERGE_SWEEP_COMPLETED: str = contract_topic(
+    _CONTRACT, "publish_topics", "merge-sweep-completed.v1"
+)
 
 
 class EnumPRTrack(StrEnum):
