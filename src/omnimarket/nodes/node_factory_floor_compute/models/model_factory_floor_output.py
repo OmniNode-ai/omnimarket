@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -300,6 +301,7 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    phoenix_traces: ModelFloorPhoenixTraces
 
 
 class ModelFloorSources(BaseModel):

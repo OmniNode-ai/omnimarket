@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22097"
+title: "Dev runtime spans reach Phoenix: the exporter posts to the wrong path and the runtime has one span site"
+summary: >-
+  The factory floor record carries the Phoenix trace count and the newest span age. node_factory_floor_effect reads
+  them from the Phoenix GraphQL API at the URL the ONEX_FACTORY_FLOOR_PHOENIX_URL variable names and passes them to
+  node_factory_floor_compute, which puts them in floor.phoenix_traces for the machinery panel to draw. A read that
+  fails is recorded as unread with the exception class, never as a count of zero. The panel row itself is not drawn
+  by this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22097-floor-phoenix-reading"
+    statement: |-
+      The floor record carries the Phoenix trace count and the newest span age, read from the Phoenix API through a configured URL.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the Phoenix trace count and the newest span age appear as a row on the machinery panel of the factory floor, read from the Phoenix API -- falsifier: the served floor page has no row carrying both values, or the age does not grow while no span arrives
+evidence_requirements:
+  - kind: "tests"
+    description: "AC5 (reader and floor record): the Phoenix reader and the floor pass-through tests."
+    command: "uv run pytest tests/nodes/node_factory_floor_effect/test_phoenix_reader.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22097-ac5"
+    description: "AC5, reader half: the count sums every project, the age is measured from the newest end time and grows between two reads while the count is unchanged, an unreachable or malformed Phoenix is unread with no address in the detail, and the floor record carries the reading. The machinery panel does not exist at the base of this repository, so the row itself is not drawn here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_phoenix_reader.py -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC5"]
+  - id: "dod-omn22097-integration-proof"
+    description: "The pushed head ran the Phoenix reader, the floor compute and the floor effect suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22097 -- uv run --frozen pytest tests/nodes/node_factory_floor_effect tests/nodes/node_factory_floor_compute -q -p no:randomly --no-cov"
+        cwd: "."
