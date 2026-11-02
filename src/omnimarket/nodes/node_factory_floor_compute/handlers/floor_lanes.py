@@ -99,6 +99,9 @@ def _engine(model: str, request: ModelFactoryFloorRequest) -> str:
     )
 
 
+DOTTED_TASK_RE = re.compile(r"[A-Za-z]+\.\d+")
+
+
 def name_tokens(text: str) -> tuple[str, ...]:
     """The lower-case alphanumeric words of a lane name or a task id (``one-rt-t10-x`` is one, rt, t10, x)."""
     return tuple(part for part in re.split(r"[^0-9a-z]+", text.casefold()) if part)
@@ -108,9 +111,14 @@ def names_task(task_id: str, lane_tokens: tuple[str, ...]) -> bool:
     """True when the task id's words appear in a row in the lane's name: ``T10`` is in ``one-rt-t10-delegation``, never in ``t1``."""
     wanted = name_tokens(task_id)
     width = len(wanted)
-    return width > 0 and any(
-        lane_tokens[i : i + width] == wanted
-        for i in range(len(lane_tokens) - width + 1)
+    # A dotted id (``CM.6``) is one word in a lane name (``comp-cm6-r2``); ``CM.1`` is never ``cm12``.
+    joined = "".join(wanted) if DOTTED_TASK_RE.fullmatch(task_id) else ""
+    return (joined != "" and joined in lane_tokens) or (
+        width > 0
+        and any(
+            lane_tokens[i : i + width] == wanted
+            for i in range(len(lane_tokens) - width + 1)
+        )
     )
 
 
