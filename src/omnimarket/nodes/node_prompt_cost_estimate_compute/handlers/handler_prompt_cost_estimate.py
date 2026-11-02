@@ -59,12 +59,12 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.export_parsers 
 )
 from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
     EnumModelSource,
+    EnumTokenMethod,
     EnumUnpricedReason,
     ModelPricingBasis,
     ModelPromptCostEstimateRequest,
     ModelPromptCostEstimateResult,
     ModelPromptCostRow,
-    EnumTokenMethod,
     ModelSavingRangeSpread,
     ModelTaskTypeSavings,
     ModelUnpricedModel,

@@ -182,7 +182,7 @@ class ModelPromptCostEstimateResult(BaseModel):
     tokens_estimated_share: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
-        le=Decimal("1"),
+        le=1,
         description="tokens_from_text_length over tokens_total; zero with no tokens.",
     )
     actual_cost_usd: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
