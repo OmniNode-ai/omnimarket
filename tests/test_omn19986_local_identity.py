@@ -35,7 +35,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.handlers.handler_local_identity_store import (
+from omnimarket.models.model_local_identity_fold import (
     LOCAL_IDENTITY_TABLE,
     apply_local_identity_minted,
     plan_local_identity_write,

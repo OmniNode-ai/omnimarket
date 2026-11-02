@@ -10,6 +10,9 @@ of the same identity, writes nothing; an earlier one moves ``minted_at`` back.
 stored; the local SQLite path applies its plan here and the Postgres writer
 that follows applies the same plan, so the two stores cannot fold differently.
 The read and the write run in one write transaction when the store offers one.
+
+It lives beside the event model, not as a handler, until the projection node's
+contract lands and binds a handler that calls it.
 """
 
 from __future__ import annotations
