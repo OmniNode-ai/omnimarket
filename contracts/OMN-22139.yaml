@@ -87,6 +87,8 @@ dod_evidence:
           probe_dir="$(mktemp -d)"
           trap 'rm -rf "$probe_dir"' EXIT
           runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')"
+          export PATH="$runtime_bin:$PATH"
+          export ONEX_LANE=omn22139-deploy-probe
           uv run --locked python - "$probe_dir" <<'PY'
           import json
           import sys
@@ -98,7 +100,7 @@ dod_evidence:
               (root / f"{case}.json").write_text(json.dumps(dict(overlay=overlay, role="scm-writer")))
           PY
           for case in bound unbound; do
-            env ONEX_LANE=omn22139-deploy-probe "$runtime_bin/onex" node node_machine_grant_role_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case-receipt.json"
+            onex node node_machine_grant_role_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case-receipt.json"
           done
           uv run --locked python - "$probe_dir" <<'PY'
           import json
@@ -124,4 +126,36 @@ dod_evidence:
           assert receipts[1]["result"]["bindings"] == [], receipts[1]
           print(json.dumps({"run_ids": [r["run_id"] for r in receipts], "grant_count": len(grants), "unbound_count": 0}))
           PY
+        cwd: .
+  - id: dod-omn22139-integration-proof
+    description: >-
+      The local Done gate dispatches the installed node on its lab host and
+      asserts the synthetic machine's exact broker grants. This is local runtime
+      evidence; it does not apply broker ACLs.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |
+          env PYTHONDONTWRITEBYTECODE=1 ONEX_LANE=omn22139-integration-proof .venv/bin/onex node node_machine_grant_role_compute --input <(printf '%s' '{"overlay":{"schema_version":"developer_principal.v1","grants_source":"deployment-profile","principals":[{"principal":"grant-probe-machine","login":"grant-probe-svc","device":"grant-probe-device","role":"machine","grant_roles":["scm-writer"]}]},"role":"scm-writer"}') --state-root "$(mktemp -d)" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" | uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          import yaml
+          import omnimarket.nodes.node_github_repo_write_effect as write_node
+          receipt = json.load(sys.stdin)
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["status"] == "resolved", result
+          binding, = result["bindings"]
+          assert binding["principal"] == "grant-probe-machine" and binding["acl_principal"] == "User:grant-probe-machine", binding
+          assert binding["role"] == "scm-writer", binding
+          dispatch = yaml.safe_load((Path(write_node.__file__).parent / "contract.yaml").read_text())["runtime_dispatch"]
+          expected = {("write", dispatch["command_topic"])}
+          expected.update((op, topic) for topic in dispatch["terminal_events"].values() for op in ("read", "describe"))
+          grants = binding["grants"]
+          assert {(g["operation"], g["resource_name"]) for g in grants} == expected and len(grants) == len(expected), grants
+          assert all(g["resource_type"] == "topic" and g["pattern_type"] == "literal" for g in grants), grants
+          print(json.dumps({"run_id": receipt["run_id"], "grant_count": len(grants)}))
+          '
         cwd: .
