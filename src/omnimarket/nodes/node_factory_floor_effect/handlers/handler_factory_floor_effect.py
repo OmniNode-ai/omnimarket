@@ -20,6 +20,9 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     HandlerFactoryFloor,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import (
+    draft_plan_refs,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
     ModelFactoryFloorRunResult,
@@ -120,6 +123,7 @@ class HandlerFactoryFloorEffect:
         )
         fleet_path = home / src.runner_fleet_relpath
         runner_fleet = load_runner_fleet(fleet_path)
+        watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -133,12 +137,17 @@ class HandlerFactoryFloorEffect:
                 header_keys=rt.plan_header_keys,
                 contains=contains,
                 plans_today=plans_today,
-                plan_refs=overlay.plan_refs if overlay is not None else (),
+                # A plan not on the default branch is read from its open pull request's head when no declared ref names it.
+                plan_refs=draft_plan_refs(
+                    kb=Path(kb_value),
+                    plans_relpath=rt.plans_relpath,
+                    contains=contains,
+                    watcher=watcher,
+                    declared=overlay.plan_refs if overlay is not None else (),
+                ),
                 task_links=overlay.plan_task_links if overlay is not None else (),
             ),
-            watcher=load_watcher(
-                home / src.watcher_relpath, now, rt.watcher_max_age_min
-            ),
+            watcher=watcher,
             ledger=read_ledger_rows(
                 window_days=rt.ledger_window_days,
                 cut_chars=rt.ledger_cut_chars,
