@@ -139,10 +139,13 @@ client_bindings:
           - {name: reply_topic_package, source: "@awaited_event:0"}
           - {name: reply_topic_prepared, source: "@awaited_event:1"}
           - {name: reply_topic_fallback, source: "@awaited_event:2"}
-        awaited_events:
-          - onex.cmd.omniintelligence.context-compaction-package-for-{principal}.v1
-          - onex.evt.omnimarket.context-compaction-prepared-for-{principal}.v1
-          - onex.evt.omnimarket.context-compaction-fallback-for-{principal}.v1
+        # Declared in parts (as node_context_compaction_orchestrator does) because a
+        # `{principal}` slot inside a full topic string fails the topic-name lint; the loader
+        # renders them to onex.<kind>.<producer>.<name_prefix>{principal}.v<version>.
+        awaited_event_parts:
+          - {kind: cmd, producer: omniintelligence, name_prefix: "context-compaction-package-for-", version: 1}
+          - {kind: evt, producer: omnimarket, name_prefix: "context-compaction-prepared-for-", version: 1}
+          - {kind: evt, producer: omnimarket, name_prefix: "context-compaction-fallback-for-", version: 1}
         verdict_compute: context_compaction_verdict
         deadline_ms: 30000
         probe_rows: [P0, P6, P11a, P13, P14]
