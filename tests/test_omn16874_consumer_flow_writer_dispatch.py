@@ -408,6 +408,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # handler in those nodes also declares the capability.
     # DelegationBudgetReadingsProjectionWriter is its node's only DB writer,
     # dispatched once per consumed event by runtime auto-wiring.
+    # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
+    # only routed handler: it composes DelegationProjectionRunner once per
+    # delivery, and the runner itself does not declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -444,6 +447,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "TenantCredentialsProjectionWriter",
         "TenantMirrorProjectionWriter",
         "DelegationBudgetReadingsProjectionWriter",
+        "DelegationProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
