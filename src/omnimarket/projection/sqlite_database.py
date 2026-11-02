@@ -42,6 +42,16 @@ from omnibase_core.models.projection.model_upsert_plan import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.models.model_local_install_schema import (
+    _LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL,
+    _LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED,
+    _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS,
+    _LOCAL_ENVIRONMENT_DDL,
+    _LOCAL_IDENTITY_CURSOR_SEQ_DDL,
+    _LOCAL_IDENTITY_CURSOR_SEQ_SEED,
+    _LOCAL_IDENTITY_CURSOR_TRIGGERS,
+    _LOCAL_IDENTITY_DDL,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.stores import (
     _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
 )
@@ -371,63 +381,6 @@ CREATE TABLE IF NOT EXISTS run_trace (
 )
 """
 
-# OMN-19988: the latest environment report per (tenant, mode, service), with the
-# verdict and open alert the alert compute gave it. A row changes in place, so its
-# cursor is re-stamped from a one-row sequence on every insert and update, as
-# usage_by_model_day does: a row read again after it changed sorts after the rest.
-_LOCAL_ENVIRONMENT_DDL = """
-CREATE TABLE IF NOT EXISTS local_environment (
-    tenant_id TEXT NOT NULL,
-    mode TEXT NOT NULL,
-    service TEXT NOT NULL,
-    observed_state TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    versions TEXT NOT NULL DEFAULT '{}',
-    last_seen TEXT NOT NULL,
-    last_change TEXT NOT NULL,
-    verdict TEXT NOT NULL,
-    verdict_reason TEXT NOT NULL,
-    alert_code TEXT,
-    alert_severity TEXT,
-    alert_since TEXT,
-    store_kind TEXT,
-    store_location TEXT,
-    access_mode TEXT,
-    token_minted_at TEXT,
-    rotate_hint TEXT,
-    report_id TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    projection_cursor INTEGER,
-    PRIMARY KEY (tenant_id, mode, service)
-)
-"""
-_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL = """
-CREATE TABLE IF NOT EXISTS local_environment_projection_cursor_seq (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    last_value INTEGER NOT NULL
-)
-"""
-_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED = (
-    "INSERT OR IGNORE INTO local_environment_projection_cursor_seq "
-    "(id, last_value) VALUES (1, 0)"
-)
-_LOCAL_ENVIRONMENT_CURSOR_STAMP = """
-    UPDATE local_environment_projection_cursor_seq SET last_value = last_value + 1;
-    UPDATE local_environment
-    SET projection_cursor = (
-        SELECT last_value FROM local_environment_projection_cursor_seq
-    )
-    WHERE rowid = NEW.rowid;
-"""
-_LOCAL_ENVIRONMENT_CURSOR_TRIGGERS = (
-    "CREATE TRIGGER IF NOT EXISTS local_environment_cursor_on_insert "
-    "AFTER INSERT ON local_environment BEGIN" + _LOCAL_ENVIRONMENT_CURSOR_STAMP + "END",
-    "CREATE TRIGGER IF NOT EXISTS local_environment_cursor_on_update "
-    "AFTER UPDATE OF updated_at ON local_environment BEGIN"
-    + _LOCAL_ENVIRONMENT_CURSOR_STAMP
-    + "END",
-)
-
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
     tenant_id TEXT NOT NULL,
@@ -697,6 +650,9 @@ _DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
 # store step, not a statement on every connect: the sequence seed is a write, so
 # a read-only store, or a reader on a busy one, must not run it.
 _LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
+# OMN-19986: the local identity table, its cursor sequence and triggers; a store
+# step for the same reason as the local environment's.
+_LOCAL_IDENTITY_STEP = "omn19986_local_identity"
 # OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
 # them in a legacy table and create the current shape before its indexes.
 _CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
@@ -1002,6 +958,14 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "created the local environment table and its cursor",
                 )
             )
+        if not cls._store_step_recorded(conn, _LOCAL_IDENTITY_STEP):
+            pending.append(
+                (
+                    _LOCAL_IDENTITY_STEP,
+                    cls._create_local_identity,
+                    "created the local identity table and its cursor",
+                )
+            )
         if not cls._store_step_recorded(conn, _CLAIMS_DELIVERY_ID_SHAPE_STEP):
             pending.append(
                 (
@@ -1171,6 +1135,15 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_DDL)
         conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
         for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
+            conn.execute(trigger)
+
+    @staticmethod
+    def _create_local_identity(conn: sqlite3.Connection) -> None:
+        """OMN-19986: the local identity table, its cursor sequence and triggers."""
+        conn.execute(_LOCAL_IDENTITY_DDL)
+        conn.execute(_LOCAL_IDENTITY_CURSOR_SEQ_DDL)
+        conn.execute(_LOCAL_IDENTITY_CURSOR_SEQ_SEED)
+        for trigger in _LOCAL_IDENTITY_CURSOR_TRIGGERS:
             conn.execute(trigger)
 
     @classmethod

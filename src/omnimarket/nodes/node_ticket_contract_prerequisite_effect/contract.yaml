@@ -10,7 +10,9 @@ description: >
   commit through the invoking worktree's git context, then import dod_verify's
   static prerequisite for every branch/subject citation, or every explicit PR
   title citation. Never execute evidence, author contracts, commit or push.
-  Git read errors and missing evidence return a failed result. The CLI maps
+  Git read errors and missing evidence return a failed result. A push that changes
+  a path that runs (OMN-21887, operator ruling 2026-11-01T14:45:51Z) also needs an
+  integration-proof evidence item, checked by HandlerIntegrationProof. The CLI maps
   that result to exit 1; pre-push and CI invoke this same node in-process.
 descriptor:
   node_archetype: effect
@@ -31,6 +33,11 @@ handler_routing:
         name: HandlerTicketContractPrerequisite
         module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite
       event_model: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request.ModelTicketContractPrerequisiteRequest
+    - operation: check_integration_proof
+      handler:
+        name: HandlerIntegrationProof
+        module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_integration_proof
+      event_model: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_integration_proof_request.ModelIntegrationProofRequest
 input_model:
   name: ModelTicketContractPrerequisiteRequest
   module: omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request
