@@ -1,0 +1,12 @@
+{
+  "_meta": "Recorded 2026-11-01 from the rolling work ledger and archive/ (rows 2026-10-30T23:00:00Z to 2026-11-01T23:00:00Z, scrubbed to ids and tickets by handoff_check.py record-slice). now is the evaluation time; a decision is judged only once 24 hours of ledger follow it, and the 48 hours back from now are scanned.",
+  "now": "2026-11-01T23:00:00Z",
+  "dropped": 1,
+  "judged": 22,
+  "unlinkable": 5,
+  "pending_no_evidence_yet": 15,
+  "pending_evidenced": 18,
+  "dropped_items": [
+    "2026-10-31T00:44:47Z"
+  ]
+}
