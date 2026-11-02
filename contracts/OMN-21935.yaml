@@ -73,3 +73,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov -k handover"
         cwd: "."
+  - id: "dod-omn21935-integration-proof"
+    description: "The pushed head ran the golden chain for the infra routing decisions node on a lab host with its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane one-rt-t14-pr-0735 -- uv run --frozen pytest tests/test_golden_chain_projection_infra_routing_decisions.py -q --no-cov"
+        cwd: "."
