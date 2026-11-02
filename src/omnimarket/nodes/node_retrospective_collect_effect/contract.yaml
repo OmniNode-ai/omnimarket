@@ -49,7 +49,7 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
   runtime_profiles:
-  - main
+  - effects
 terminal_event: onex.evt.omnimarket.retrospective-evidence-snapshotted.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.retrospective-collect-requested.v1
