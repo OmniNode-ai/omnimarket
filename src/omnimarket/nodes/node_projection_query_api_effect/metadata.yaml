@@ -1,0 +1,27 @@
+name: node_projection_query_api_effect
+version: "0.1.0"
+description: "Answers the projection query routes (projections, status page, projection pages, evidence pipeline) from the writers' tables, served through the runtime's contract-declared ASGI mount"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_query_api_effect: "omnimarket.nodes.node_projection_query_api_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.1.0"
+  - "pydantic>=2.0"
+  - "fastapi>=0.100"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["projection", "query", "effect", "http", "dashboard"]
+pack: "projection"
+display_name: "Projection Query API Effect"
+node_role: "effect"

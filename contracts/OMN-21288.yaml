@@ -12,6 +12,9 @@ summary: >
   than N days (default 7). Unknown ownership, a symlink, a copy failure or git
   metadata keep both folders. The PR does not implement the ticket's own AC1 or AC2
   (the dev-stack compose check); those stay open on the ticket.
+  T17 adds node_projection_query_api_effect, the runtime query node that answers
+  every route the projection API service answers, served through the contract's
+  http_mount; the service is not retired by that change.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -54,6 +57,16 @@ requirements:
     acceptance:
       - id: "DoD3"
         statement: "DoD3: a writer topic whose subscribe fails is logged and skipped, the other writers keep appending, readiness is not degraded by it, and the next resubscribe takes it again; the shared command topic stays fatal -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov fails"
+  - id: "req-omn21288-t17-projection-query-node"
+    statement: >-
+      A runtime query node answers every route the projection API service answers,
+      with the same status and body, tenant-scoped, through the ASGI mount its
+      contract declares; the service's query logic exists once, in the node's handler.
+    acceptance:
+      - id: "DoD4"
+        statement: "DoD4: node_projection_query_api_effect's contract declares an http_mount and the routes of the projection API service, and its app answers a recorded request set with the same status and body as the service for every route -- falsifier: uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q --no-cov fails"
+      - id: "DoD5"
+        statement: "DoD5: a read of a tenant-scoped exposure through the node returns nothing of another tenant's rows under a NOSUPERUSER NOBYPASSRLS role on real Postgres -- falsifier: uv run pytest tests/projection/test_t17_projection_query_node_cross_tenant_real_postgres.py -q --no-cov --refuse-skips fails"
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
@@ -64,6 +77,12 @@ evidence_requirements:
   - kind: "tests"
     description: "A missing writer topic does not stop the work-ledger serve."
     command: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"
+  - kind: "tests"
+    description: "T17: the projection query node answers the recorded request set as the service does."
+    command: "uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q --no-cov"
+  - kind: "tests"
+    description: "T17: a cross-tenant read through the node returns nothing on real Postgres under a NOBYPASSRLS role."
+    command: "uv run pytest tests/projection/test_t17_projection_query_node_cross_tenant_real_postgres.py -q --no-cov --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -212,3 +231,34 @@ dod_evidence:
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/work_ledger_bus/bus.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "await take_writer_topics(" > /dev/null'
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/work_ledger_bus/test_missing_writer_topic.py -q --no-cov"
+  - id: "dod-omn21288-t17-route-parity"
+    description: "T17: every route of the projection API service, with its query parameters and status codes, is declared in the node contract and answered with the same status and body as the service, and as the service answered before its query logic moved. The tests fail at the merge base, which has no node_projection_query_api_effect."
+    source: "manual"
+    binds_ac: ["DoD4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-t17-cross-tenant"
+    description: "T17: on a throwaway PostgreSQL 16 container, a NOSUPERUSER NOBYPASSRLS reader serves each tenant only its own rows through the node, a request naming no tenant is refused, and a planted read of the other tenant's rows returns nothing."
+    source: "manual"
+    binds_ac: ["DoD5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_t17_projection_query_node_cross_tenant_real_postgres.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-t17-deploy-probe"
+    description: >-
+      Hosted structural deployment smoke, requiring no lab route, broker or database:
+      read the node contract at the checked-out PR head and require its http_mount
+      factory, then run the route parity tests. It fails against the merge base, which
+      has no node_projection_query_api_effect contract. The runtime serves the mount
+      only after the deploy agent recreates it.
+    source: "manual"
+    binds_ac: ["DoD4"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_query_api_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "asgi_app:create_app" > /dev/null'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_t17_projection_query_node_parity.py -q --no-cov"

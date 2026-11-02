@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+
+name: "node_projection_query_api_effect"
+contract_name: node_projection_query_api_effect
+node_name: node_projection_query_api_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Read-only EFFECT node that answers the routes the standalone projection API
+  service answers: liveness and readiness, the projection catalogue, the status
+  page, the page of one projection exposure, the evidence-pipeline pages and the
+  generation publisher. Every read is served from the table the exposure's
+  writer materializes and scoped by the exposure's tenant column. The runtime
+  serves the node's ASGI app on its own HTTP port through the http_mount block
+  below, under the declared path prefix. The routes, their query parameters and
+  the evidence topics are declared in query_routes; the handler holds none.
+node_type: effect
+input_model:
+  name: ModelProjectionQueryRequest
+  module: omnimarket.nodes.node_projection_query_api_effect.models.model_projection_query_request
+output_model:
+  name: ModelProjectionQueryResponse
+  module: omnimarket.nodes.node_projection_query_api_effect.models.model_projection_query_response
+
+outputs:
+  status_code:
+    type: int
+    description: The HTTP status the route answers with.
+  body:
+    type: object
+    required: false
+    description: The JSON body of the answer; absent for a page or a stream.
+  text:
+    type: str
+    required: false
+    description: The body of an HTML page or an event stream.
+
+handler:
+  name: HandlerProjectionQuery
+  module: omnimarket.nodes.node_projection_query_api_effect.handlers.handler_projection_query
+  class: HandlerProjectionQuery
+  input_model: omnimarket.nodes.node_projection_query_api_effect.models.model_projection_query_request.ModelProjectionQueryRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection-query.answer
+      message_category: command
+      handler:
+        name: HandlerProjectionQuery
+        module: omnimarket.nodes.node_projection_query_api_effect.handlers.handler_projection_query
+      event_model:
+        name: ModelProjectionQueryRequest
+        module: omnimarket.nodes.node_projection_query_api_effect.models.model_projection_query_request
+      event_type: omnimarket.projection-query
+      description: Answer one declared query route.
+
+# The ASGI app the runtime serves on its HTTP port. A mount is never the root of
+# the port, so every route below is served under this prefix; the mounted app
+# sees the request path unchanged.
+http_mount:
+  factory: "omnimarket.nodes.node_projection_query_api_effect.ports.asgi_app:create_app"
+  path_prefix: "/projection-api"
+
+# The routes of the mounted app, in serving order. Paths are the service's own;
+# the mount prefix is prepended. A route with no default on a query parameter
+# leaves the parameter optional.
+query_routes:
+  - id: health
+    kind: health
+    methods: [GET]
+    paths: ["/health"]
+    dependencies: [row_source, topic_map]
+  - id: ready
+    kind: ready
+    methods: [GET]
+    paths: ["/ready"]
+    dependencies: [row_source, topic_map]
+  - id: generate
+    kind: generate
+    methods: [POST]
+    paths: ["/api/generate"]
+    body_model: omnimarket.projection.generation_publisher.ModelGenerateRequest
+  - id: projections
+    kind: projections
+    methods: [GET]
+    paths: ["/projections"]
+    dependencies: [topic_map]
+  - id: status_page
+    kind: status_page
+    methods: [GET]
+    paths: ["/", "/morning"]
+    media_type: text/html
+    dependencies: [topic_map, row_source]
+    query:
+      - {name: refresh, type: int, ge: 5, le: 3600}
+  - id: projection_page
+    kind: projection_page
+    methods: [GET]
+    paths: ["/projection/{topic:path}"]
+    dependencies: [topic_map, row_source]
+    query:
+      - {name: correlation_id, type: str}
+      - {name: since, type: str}
+      - {name: limit, type: int, ge: 1}
+      - {name: order, type: str, pattern: "^(?i:asc|desc)$"}
+      - {name: order_by, type: str}
+      - {name: tenant, type: str}
+  - id: evidence_stages
+    kind: evidence_page
+    methods: [GET]
+    paths: ["/v1/evidence-pipeline/dashboard", "/v1/evidence-pipeline/stages"]
+    topic: onex.snapshot.projection.evidence_pipeline.stages.v1
+    dependencies: [topic_map, row_source]
+    query: &evidence_query
+      - {name: cursor, type: str}
+      - {name: correlation_id, type: str}
+      - {name: ticket_id, type: str}
+      - {name: repo, type: str}
+      - {name: pr_number, type: int}
+      - {name: limit, type: int, ge: 1, le: 500}
+  - id: evidence_correlations
+    kind: evidence_page
+    methods: [GET]
+    paths: ["/v1/evidence-pipeline/correlation-traces", "/v1/evidence-pipeline/correlations"]
+    topic: onex.snapshot.projection.evidence_pipeline.correlations.v1
+    dependencies: [topic_map, row_source]
+    query: *evidence_query
+  - id: evidence_readiness
+    kind: evidence_page
+    methods: [GET]
+    paths: ["/v1/evidence-pipeline/readiness"]
+    topic: onex.snapshot.projection.evidence_pipeline.readiness.v1
+    dependencies: [topic_map, row_source]
+    query: *evidence_query
+  - id: evidence_live_events
+    kind: evidence_page
+    methods: [GET]
+    paths: ["/v1/evidence-pipeline/events"]
+    topic: onex.snapshot.projection.evidence_pipeline.live_events.v1
+    dependencies: [topic_map, row_source]
+    query: *evidence_query
+  - id: evidence_event_stream
+    kind: evidence_stream
+    methods: [GET]
+    paths: ["/v1/evidence-pipeline/events/stream"]
+    media_type: text/event-stream
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.projection-query.v1
+  terminal_events:
+    success: onex.evt.omnimarket.projection-query-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.projection-query.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-query-completed.v1
+
+terminal_event: onex.evt.omnimarket.projection-query-completed.v1
+
+published_events:
+  - event_type: ProjectionQueryCompleted
+    topic: onex.evt.omnimarket.projection-query-completed.v1
+    description: The answer of one query route, or its named refusal.
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-query-completed.v1
+
+io_operations:
+  - operation_type: "database_read"
+    atomic: false
+    timeout_seconds: 15
+    validation_enabled: true
+
+tags:
+  - projection
+  - effect
+  - query
+  - http
+  - dashboard
