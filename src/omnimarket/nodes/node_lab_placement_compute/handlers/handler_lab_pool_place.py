@@ -76,6 +76,7 @@ class HandlerLabPoolPlace:
                     ),
                     table=document.hosts,
                     unit_needs=document.unit_needs,
+                    need_tools=request.need_tools,
                 )
             )
         except HostTableError as exc:

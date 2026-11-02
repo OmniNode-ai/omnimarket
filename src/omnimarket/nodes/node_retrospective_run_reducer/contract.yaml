@@ -1,0 +1,318 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - node_retrospective_run_reducer
+#
+# Scaffolded from the weekly_retrospective design by node_contract_seams_orchestrator and
+# finished into the canonical node shape. The handler is a typed pass-through: it holds no
+# domain logic until its wave fills it.
+name: node_retrospective_run_reducer
+contract_name: node_retrospective_run_reducer
+node_name: node_retrospective_run_reducer
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: REDUCER_GENERIC
+lifecycle: experimental
+description: 'Fold the evaluated verdicts into the run''s state. Scaffold from the weekly_retrospective
+  design: a typed pass-through, no logic.'
+handler:
+  module: omnimarket.nodes.node_retrospective_run_reducer.handlers.handler_retrospective_run_reducer
+  class: HandlerRetrospectiveRunReducer
+  input_model: omnimarket.nodes.node_retrospective_run_reducer.models.model_retrospective_run_reducer_request.ModelRetrospectiveRunReducerRequest
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: fold
+    topic: onex.evt.omnimarket.retrospective-verdicts-evaluated.v1
+    handler:
+      name: HandlerRetrospectiveRunReducer
+      module: omnimarket.nodes.node_retrospective_run_reducer.handlers.handler_retrospective_run_reducer
+    input_model: omnimarket.nodes.node_retrospective_run_reducer.models.model_retrospective_run_reducer_request.ModelRetrospectiveRunReducerRequest
+    output_model: omnimarket.nodes.node_retrospective_run_reducer.models.model_retrospective_run_reducer_result.ModelRetrospectiveRunReducerResult
+input_model:
+  name: ModelRetrospectiveRunReducerRequest
+  module: omnimarket.nodes.node_retrospective_run_reducer.models.model_retrospective_run_reducer_request
+  description: The key fields of the crossing this node consumes.
+output_model:
+  name: ModelRetrospectiveRunReducerResult
+  module: omnimarket.nodes.node_retrospective_run_reducer.models.model_retrospective_run_reducer_result
+  description: The key fields of the crossing this node publishes; a field this node does not hold yet
+    is unset.
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.retrospective-run-state-changed.v1
+runtime_dispatch:
+  command_topic: onex.evt.omnimarket.retrospective-verdicts-evaluated.v1
+  terminal_events:
+    success: onex.evt.omnimarket.retrospective-run-state-changed.v1
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.retrospective-verdicts-evaluated.v1
+  publish_topics:
+  - onex.evt.omnimarket.retrospective-run-state-changed.v1
+seams:
+- id: retrospective.verdicts_evaluated
+  seam: retrospective.verdicts_evaluated
+  role: consumer
+  topic: onex.evt.omnimarket.retrospective-verdicts-evaluated.v1
+  envelope_model: ModelRetrospectiveVerdictSet
+  envelope_version: v1
+  key_fields:
+  - name: run_id
+    field_type: str
+  - name: correlation_id
+    field_type: str
+  - name: input_hash
+    field_type: str
+  delivery_semantics: at_least_once
+- id: retrospective.run_state_changed
+  seam: retrospective.run_state_changed
+  role: producer
+  topic: onex.evt.omnimarket.retrospective-run-state-changed.v1
+  envelope_model: ModelRetrospectiveRunState
+  envelope_version: v1
+  key_fields:
+  - name: run_id
+    field_type: str
+  - name: correlation_id
+    field_type: str
+  - name: revision
+    field_type: int
+  delivery_semantics: at_least_once
+state_machine:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  state_machine_name: retrospective_run_fsm
+  state_machine_version:
+    major: 1
+    minor: 0
+    patch: 0
+  description: One weekly retrospective run, from opened to a rendered digest, degraded when evidence
+    is missing or refused when a gate refuses it.
+  initial_state: opened
+  terminal_states:
+  - rendered
+  - degraded
+  - refused
+  error_states:
+  - degraded
+  - refused
+  persistence_enabled: false
+  operations:
+  - operation_name: evidence_collected
+    operation_type: fold
+    description: The collect step produced the evidence snapshot.
+  - operation_name: metrics_calculated
+    operation_type: fold
+    description: The calculate step computed the cohort metrics.
+  - operation_name: metrics_audited
+    operation_type: fold
+    description: The audit step checked the metrics against their intake source.
+  - operation_name: verdicts_evaluated
+    operation_type: fold
+    description: The evaluator returned one verdict per experiment.
+  - operation_name: digest_rendered
+    operation_type: fold
+    description: The digest was rendered from the projected verdicts.
+  - operation_name: evidence_missing
+    operation_type: fold
+    description: The evidence fell below its floor; the run degrades.
+  - operation_name: gate_refused
+    operation_type: fold
+    description: A gate refused the run.
+  states:
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: opened
+    state_type: operational
+    description: The run is open for a review week; nothing is collected.
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: collected
+    state_type: operational
+    description: The week's evidence is one immutable snapshot.
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: calculated
+    state_type: operational
+    description: The cohort metrics are calculated from the snapshot.
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: audited
+    state_type: operational
+    description: The metrics agree with their independent intake source.
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: evaluated
+    state_type: operational
+    description: Every experiment has a verdict.
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: rendered
+    state_type: terminal
+    description: The digest is rendered from the verdicts.
+    is_terminal: true
+    is_recoverable: false
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: degraded
+    state_type: error
+    description: The evidence fell below its floor; the digest says so and states no verdict it cannot
+      support.
+    is_terminal: true
+    is_recoverable: false
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    state_name: refused
+    state_type: error
+    description: A gate refused the run.
+    is_terminal: true
+    is_recoverable: false
+  transitions:
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: opened_to_collected_on_evidence_collected
+    from_state: opened
+    to_state: collected
+    trigger: evidence_collected
+    priority: 2
+    conditions:
+    - condition_name: evidence_present
+      condition_type: expression
+      expression: record_count > 0
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: opened_to_degraded_on_evidence_collected
+    from_state: opened
+    to_state: degraded
+    trigger: evidence_collected
+    priority: 1
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: collected_to_calculated_on_metrics_calculated
+    from_state: collected
+    to_state: calculated
+    trigger: metrics_calculated
+    priority: 2
+    conditions:
+    - condition_name: denominator_present
+      condition_type: expression
+      expression: zero_denominator_count == 0
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: collected_to_degraded_on_metrics_calculated
+    from_state: collected
+    to_state: degraded
+    trigger: metrics_calculated
+    priority: 1
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: calculated_to_audited_on_metrics_audited
+    from_state: calculated
+    to_state: audited
+    trigger: metrics_audited
+    priority: 2
+    conditions:
+    - condition_name: cohort_reconciled
+      condition_type: expression
+      expression: unreconciled_count == 0
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: calculated_to_refused_on_metrics_audited
+    from_state: calculated
+    to_state: refused
+    trigger: metrics_audited
+    priority: 1
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: audited_to_evaluated_on_verdicts_evaluated
+    from_state: audited
+    to_state: evaluated
+    trigger: verdicts_evaluated
+    priority: 2
+    conditions:
+    - condition_name: verdict_present
+      condition_type: expression
+      expression: verdict_count > 0
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: audited_to_degraded_on_verdicts_evaluated
+    from_state: audited
+    to_state: degraded
+    trigger: verdicts_evaluated
+    priority: 1
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: evaluated_to_rendered_on_digest_rendered
+    from_state: evaluated
+    to_state: rendered
+    trigger: digest_rendered
+    priority: 2
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: opened_to_degraded_on_evidence_missing
+    from_state: opened
+    to_state: degraded
+    trigger: evidence_missing
+    priority: 2
+  - version:
+      major: 1
+      minor: 0
+      patch: 0
+    transition_name: opened_to_refused_on_gate_refused
+    from_state: opened
+    to_state: refused
+    trigger: gate_refused
+    priority: 2
+metadata:
+  design_id: weekly_retrospective
+  generated_by: node_contract_seams_orchestrator
+  transport_type: kafka

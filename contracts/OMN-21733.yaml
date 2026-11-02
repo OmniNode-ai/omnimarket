@@ -86,41 +86,35 @@ requirements:
     acceptance:
       - id: "AC22"
         statement: "AC22: the Factory floor tab has one verdict line and no lamp grid, shift report or tally, uses the glossary's plain words, shows Eastern time with UTC only in a title, counts each machine's slots under one legend, collapses lines with no plan file, and carries no text below twelve pixels -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q"
-  - id: "req-omn21733-merged-running-count"
+  - id: "req-omn21733-view-tokens-s1"
     statement: |-
-      The floor can be given the count of merged work and of merged-and-running work per operator day, and the idle slots per lab host, from a compute node whose inputs a reader effect supplies. The count is of merges, never of hand-offs.
+      The board's state colours come from the vendored OmniUI theme sets: the page's floor, panel, ink, muted, rule, ok, warn and stop variables alias OmniUI variables, data-theme selects the set through data-onex-theme, and the vendored theme CSS is pinned by sha256.
     acceptance:
-      - id: "AC31"
-        statement: "AC31: a pull request with a handed-off, armed or queued state and no merge adds nothing to the merged or running count, and the same pull request with a merge and no running evidence counts merged=1 running=0 -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute -q -k handoff_armed"
-      - id: "AC32"
-        statement: "AC32: a merge with adoption or deploy evidence counts as running with the evidence kind named, and removing the evidence row moves running by exactly one -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute -q -k evidence_row"
-      - id: "AC33"
-        statement: "AC33: idle slots per host are slots minus live lane slots for every host of the declared table, a full host reads idle 0, and a host removed from the table disappears -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute -q -k 'idle_slots or declared_table'"
-      - id: "AC34"
-        statement: "AC34: the declared timezone, window and evidence vocabulary change the output with no code change -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q -k declared"
-      - id: "AC35"
-        statement: "AC35: read through the container from files shaped like the lab's, the recorded day counts match the hand count -- falsifier: uv run pytest tests/nodes/node_merged_running_count_effect -q"
-      - id: "AC36"
-        statement: "AC36: the focused suites pass and mypy --strict is clean on both nodes -- falsifier: uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q && uv run mypy src/omnimarket/nodes/node_merged_running_count_compute src/omnimarket/nodes/node_merged_running_count_effect --strict"
+      - id: "AC23"
+        statement: "AC23: --floor, --panel, --ink, --muted, --rule, --ok, --warn and --stop resolve from the vendored OmniUI theme in both themes; changing one status token in a copy of the CSS changes the stop colour, and removing the alias makes the assertion fail -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'resolve or changing or removing or every_theme'"
+      - id: "AC24"
+        statement: "AC24: the vendored OmniUI theme CSS is pinned and a pin test fails when a vendored file's sha256 differs from the pin -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k pin"
+      - id: "AC25"
+        statement: "AC25: the publish copies the vendored theme files beside the page, ahead of it, under the names the contract declares -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q -k 'declared_theme or links_exactly'"
   - id: "req-omn21733-lines-match-reality"
     statement: |-
       The floor's lines match the work: a plan with no manifest and no table is drawn from its own task paragraphs and linked to merged work only through its tickets and pull requests, a plan on an unmerged branch is drawn from that branch until it merges, the one-runtime line reads each lane's application containers over ssh and draws a host it cannot read as UNKNOWN with the cause, and an unread runner fleet names why.
     acceptance:
-      - id: "AC23"
-        statement: "AC23: a plan whose manifest and plans-today table are both empty is drawn from its bold-led task paragraphs, each task linked only through the tickets and pull requests its lead names and the overlay's task links, never through a bare id such as T5 -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
-      - id: "AC24"
-        statement: "AC24: a plan that is only on an unmerged ref is read from the ref the overlay names until a plan of the same path is on the clone's branch -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k unmerged_ref"
-      - id: "AC25"
-        statement: "AC25: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
-      - id: "AC26"
-        statement: "AC26: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
+      - id: "AC27"
+        statement: "AC27: a plan whose manifest and plans-today table are both empty is drawn from its bold-led task paragraphs, each task linked only through the tickets and pull requests its lead names and the overlay's task links, never through a bare id such as T5 -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
+      - id: "AC28"
+        statement: "AC28: a plan that is only on an unmerged ref is read from the ref the overlay names until a plan of the same path is on the clone's branch -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k unmerged_ref"
+      - id: "AC29"
+        statement: "AC29: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
+      - id: "AC30"
+        statement: "AC30: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
     command: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov"
   - kind: "tests"
     description: "The four suites that hold the floor's tests. They live under tests/nodes; the node directories under src hold none, so a pytest over them collects nothing and exits 5."
-    command: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect tests/nodes/node_factory_floor_publish_effect tests/nodes/node_lane_container_budget_compute -q --no-cov"
+    command: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_compute/test_hold_exemption.py tests/nodes/node_factory_floor_compute/test_live_lines.py tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py tests/nodes/node_factory_floor_compute/test_undrawn_lines.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -350,88 +344,64 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-handoff"
-    description: "AC31 hand-offs never change the count."
-    source: "manual"
-    binds_ac: ["AC31"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute -q --no-cov --tb=line -k handoff_armed"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-evidence"
-    description: "AC32 evidence makes a merge run and its removal moves running by one."
-    source: "manual"
-    binds_ac: ["AC32"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute -q --no-cov --tb=line -k evidence_row"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-idle"
-    description: "AC33 idle slots per declared host."
-    source: "manual"
-    binds_ac: ["AC33"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute -q --no-cov --tb=line -k 'idle_slots or declared_table'"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-declared"
-    description: "AC34 declared timezone, window and vocabulary change the output."
-    source: "manual"
-    binds_ac: ["AC34"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line -k declared"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-recorded"
-    description: "AC35 the recorded day counts match the hand count."
-    source: "manual"
-    binds_ac: ["AC35"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-suites"
-    description: "AC36 both suites pass."
-    source: "manual"
-    binds_ac: ["AC36"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_merged_running_count_compute tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-mrc-deploy"
-    description: "Deploy probe reads the compute handler at the checked-out commit from GitHub and requires HandlerMergedRunningCount, the entry this change adds and the base tree lacks."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_merged_running_count_compute/handlers/handler_merged_running_count.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerMergedRunningCount:'"
   - id: "dod-omn21733-ac23"
-    description: "AC23 task paragraphs, scoped links and the indexed ledger lookups agree with their definitions."
+    description: "AC23 the state colours resolve from the vendored OmniUI theme in both themes."
     source: "manual"
     binds_ac: ["AC23"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov --tb=line -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'resolve or changing or removing or every_theme'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac24"
-    description: "AC24 a plan on an unmerged ref is drawn from the ref until it merges."
+    description: "AC24 the vendored theme CSS matches its sha256 pin."
     source: "manual"
     binds_ac: ["AC24"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k unmerged_ref"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k pin"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac25"
-    description: "AC25 lane containers are read per declared host and an unread host is UNKNOWN with its cause."
+    description: "AC25 the publish copies the theme files beside the page under the declared names."
     source: "manual"
     binds_ac: ["AC25"]
     checks:
       - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_theme_s1.py -q --no-cov --tb=line -k 'declared_theme or links_exactly'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-view-tokens-s1-deploy"
+    description: "Deploy probe reads the site's page at the checked-out commit from GitHub and requires the theme bridge script, which is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^<script id=\"theme-bridge\">'"
+  - id: "dod-omn21733-ac27"
+    description: "AC27 task paragraphs, scoped links and the indexed ledger lookups agree with their definitions."
+    source: "manual"
+    binds_ac: ["AC27"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov --tb=line -k 'paragraphs or list_items or links or empty_table or scoped or resumed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac28"
+    description: "AC28 a plan on an unmerged ref is drawn from the ref until it merges."
+    source: "manual"
+    binds_ac: ["AC28"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k unmerged_ref"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac29"
+    description: "AC29 lane containers are read per declared host and an unread host is UNKNOWN with its cause."
+    source: "manual"
+    binds_ac: ["AC29"]
+    checks:
+      - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn21733-ac26"
-    description: "AC26 an unread runner fleet names its cause."
+  - id: "dod-omn21733-ac30"
+    description: "AC30 an unread runner fleet names its cause."
     source: "manual"
-    binds_ac: ["AC26"]
+    binds_ac: ["AC30"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k runner_fleet"
@@ -439,8 +409,16 @@ dod_evidence:
   - id: "dod-omn21733-floor-suites"
     description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."
     source: "manual"
-    binds_ac: ["AC23", "AC24", "AC25", "AC26"]
+    binds_ac: ["AC27", "AC28", "AC29", "AC30"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect tests/nodes/node_factory_floor_publish_effect tests/nodes/node_lane_container_budget_compute -q --no-cov --tb=line"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_compute/test_hold_exemption.py tests/nodes/node_factory_floor_compute/test_live_lines.py tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py tests/nodes/node_factory_floor_compute/test_undrawn_lines.py tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_ledger_reader_timeout.py tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_floor_tab_plain_2302.py tests/nodes/node_factory_floor_publish_effect/test_page_local_time.py tests/nodes/node_factory_floor_publish_effect/test_reports_plain_floor_reports_plain_2303.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-integration-proof"
+    description: "The pushed head ran the floor's test suites on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane floor-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov"
+        cwd: "."

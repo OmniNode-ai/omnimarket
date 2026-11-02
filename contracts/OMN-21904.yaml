@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-21904
+title: The lab-fill priority declaration and rank configuration load from their overlays with strict validation (plan task T2, no ranking behaviour yet)
+summary: Frozen models for the operator-owned lab_fill_priority declaration (weights, boosts that expire, excludes) and the engineering-owned lab_fill_rank configuration (mode with no default, caps, priority map, size buckets), and a loader through the shared overlay reader. Nothing ranks, nothing reaches the tick's dispatch, and no mode is set; the later plan tasks build the node on top of these models.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21904-t2-overlay-load
+    statement: A missing overlay file refuses naming the missing key, and each malformed declaration or rank configuration fails the load without printing a value.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a missing file refuses naming the missing key; a boost without expires, an unknown key, a negative weight, an unquoted float where a quoted decimal is required, a non-positive cap and shares that do not sum to 1 each fail the load -- falsifier: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay.py -k lab_fill_priority_overlay -q fails on any of those'
+      - id: AC2
+        statement: 'AC2: an expired boost loads and is counted, a boost is valid through its expires day, and an expires further than max_boost_days (at most 30) ahead fails the load -- falsifier: the same command, the expired_boost, expires_day and capped_at_max_boost_days cases'
+      - id: AC3
+        statement: 'AC3: the rank configuration has no default mode and the loader sets none -- falsifier: the same command, the has_no_default_mode case, red when mode is omitted and the load succeeds'
+evidence_requirements:
+  - kind: tests
+    description: The overlay load suite runs at the pushed head on a lab host.
+    command: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21904-t2-ac1
+    description: AC1 loads placeholder overlays from a temporary root and asserts each refusal names the field and never a value.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay.py -k lab_fill_priority_overlay -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21904-t2-ac2
+    description: AC2 asserts the expiry count, the inclusive last day and the 30 day ceiling on max_boost_days.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay.py -k "expired_boost or expires_day or capped_at_max_boost_days" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21904-t2-ac3
+    description: AC3 omits mode from an otherwise valid rank configuration and expects the load to refuse.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay.py -k has_no_default_mode -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21904-t2-source-readback
+    description: Hosted-runner source-artifact readback requires the published loader and models at the evaluated commit to match this checkout. It checks the source artifact only; nothing here runs on a runtime and nothing reaches the tick.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          readback_dir="$(mktemp -d)"
+          trap 'rm -rf "$readback_dir"' EXIT
+          revision="$(git rev-parse HEAD)"
+          for path in src/omnimarket/handlers/lab_fill_priority_overlay.py src/omnimarket/models/lab_fill/model_lab_fill_priority.py; do
+            curl --fail --silent --show-error --location --max-time 10 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source.py"
+            cmp "$path" "$readback_dir/source.py"
+          done
+          printf 'lab fill priority overlay source readback matched %s\n' "$revision"
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/test_lab_fill_priority_overlay.py -q --no-cov --tb=line
+        cwd: .

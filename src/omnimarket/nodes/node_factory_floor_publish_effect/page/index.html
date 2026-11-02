@@ -1,35 +1,44 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-onex-theme="onex.theme.light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lean Factory Floor</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="onex.theme.light.css">
+<link rel="stylesheet" href="onex.theme.dark.css">
+<link rel="stylesheet" href="onex.theme.warm.css">
+<script id="theme-bridge">
+/* data-theme (light or dark, else the system setting) selects the OmniUI theme set; a skin is another set. */
+(function(){var r=document.documentElement,q=matchMedia("(prefers-color-scheme: dark)");
+function set(){r.setAttribute("data-onex-theme","onex.theme."+(r.getAttribute("data-theme")||(q.matches?"dark":"light")))}
+set();q.addEventListener("change",set)})();
+</script>
 <style>
 /* One page, a tab bar across the top. The first tab is a dashboard drawn from the same files the other tabs read:
    each assembly line with its stop reason, each machine with its lanes, today's merges and reds, and how old every
    source is. The other four tabs draw their own page inside this one. */
 :root{
-  --floor:#eceee9; --panel:#fbfbf8; --ink:#1c2320; --muted:#5b6660; --rule:#cdd3cc;
+  --floor:var(--onex-color-background-primary); --panel:var(--onex-color-background-secondary);
+  --ink:var(--onex-color-text-primary); --muted:var(--onex-color-text-secondary); --rule:var(--onex-color-border-default);
+  --ok:var(--onex-color-status-success); --warn:var(--onex-color-status-warning); --stop:var(--onex-color-status-error);
   --steel:#4b5c68; --car:#3d6f8f; --car-edge:#24475d;
   --safety:#d9a300; --safety-soft:#f6e6ae;
-  --ok:#2e8649; --warn:#bf7400; --stop:#c3352b; --stop-soft:#f3d2ce; --idle:#b4bdb6;
+  --stop-soft:#f3d2ce; --idle:#b4bdb6;
   --belt:#3a403d;
   --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
   --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
-  --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
+  --stop-soft:#4a2421; --idle:#4a554f;
   --belt:#0f1211; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
-  --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
+  --stop-soft:#4a2421; --idle:#4a554f;
   --belt:#0f1211; color-scheme:dark}
 
 *{box-sizing:border-box}

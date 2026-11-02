@@ -123,6 +123,15 @@ class ModelPublishNames(BaseModel):
     process_health: str = Field(min_length=1)
     delegation: str = Field(min_length=1)
     status: str = Field(min_length=1)
+    # The vendored OmniUI theme files the page links, published beside it under these names.
+    theme_css: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("theme_css")
+    @classmethod
+    def _theme_css(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for name in value:
+            _checked_remote_name(name)
+        return value
 
 
 class ModelHistoryRetention(BaseModel):
@@ -251,6 +260,8 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     overlay_file_env: str = Field(min_length=1)
     page_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
+    # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
+    theme_css_relpath: str = Field(min_length=1)
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)

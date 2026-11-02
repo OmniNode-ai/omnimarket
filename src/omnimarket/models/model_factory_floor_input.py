@@ -327,6 +327,9 @@ class ModelFactoryFloorConfig(BaseModel):
     gate_fail_verdicts: tuple[str, ...] = Field(min_length=1)
     gate_pass_verdicts: tuple[str, ...] = Field(min_length=1)
     done_outcomes: tuple[str, ...] = Field(min_length=1)
+    # A lane that ended by handing its pull request to landing has built nothing that runs until the request merges:
+    # the task is active while a pull request it named is unmerged, and done once all of them have merged.
+    handoff_outcomes: tuple[str, ...] = ()
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
     station_name_template: str = Field(min_length=1)
