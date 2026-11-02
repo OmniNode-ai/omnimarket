@@ -27,7 +27,7 @@ dod_evidence:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_prompt_intent_classify_compute -q --no-cov --tb=line
+        check_value: uv run pytest tests/nodes/node_prompt_intent_classify_compute/test_omn21898_omniintelligence_surface.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21898-deploy-source-readback
     description: Hosted-runner source-artifact readback requires the published prompt-intent handler at the evaluated commit to match this checkout, then runs the node suite against the recorded export surface of the runtime image. This checks the source artifact and the import path, not the runtime rollout; the DLQ high watermark and the dev runtime health readback follow the deploy.

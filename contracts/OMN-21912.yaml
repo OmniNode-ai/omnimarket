@@ -1,0 +1,32 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21912"
+title: "The OMN-21898 contract's bound pytest check names an existing test file, so Tests (Split 16/20) is green on dev"
+summary: "contracts/OMN-21898.yaml bound dod-omn21898-ac1 to a bare directory selector, which tests/ci/test_contract_evidence_selector_names_file_omn17427.py refuses. That one test failed Tests (Split 16/20) on dev and on every PR branched from it, including omnimarket#4781 and omnimarket#4787. The bound check now names tests/nodes/node_prompt_intent_classify_compute/test_omn21898_omniintelligence_surface.py, an existing file, and no test, gate or allowlist changes. This PR is filed under OMN-21912, the ticket of the ranker slice carried by omnimarket#4787; its cause lies in dev and does not touch the ranker."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21912-selector-names-file"
+    statement: |-
+      Every contract's bound pytest check names an existing repo test file or tests directory, so the selector guard passes on dev and Tests (Split 16/20) stops failing on that one test.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the selector guard test passes with no offender, and contracts/OMN-21898.yaml names an existing test file in its bound pytest check -- falsifier: uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q --no-cov fails or lists OMN-21898.yaml"
+evidence_requirements:
+  - kind: "tests"
+    description: "The selector guard passes at the PR head."
+    command: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21912-ac1"
+    description: "The selector guard test, RED on dev at a9495e791 with the OMN-21898.yaml offender and GREEN at the PR head."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q --no-cov"
+        cwd: "."
