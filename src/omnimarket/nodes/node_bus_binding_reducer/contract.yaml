@@ -64,6 +64,15 @@ recovery_policy:
   escalate_after_seconds: 900
   escalation_audience: orchestrator
 
+# How the binding settles its exception rows in code (OMN-21959). An episode emits one row; a degraded
+# command while that episode is open emits no other, whoever closed the row. A healthy durable command with
+# an empty outbox hands every open, non-decision row of these classes for its lane to the exception actor
+# (omnimarket.handlers.bus_binding.exception_actor.settle_open_cases), which resolves it.
+exception_settlement:
+  alarm_scope: episode
+  settle_on_healthy_read:
+    - bus-binding-degraded
+
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: bus_binding_fsm

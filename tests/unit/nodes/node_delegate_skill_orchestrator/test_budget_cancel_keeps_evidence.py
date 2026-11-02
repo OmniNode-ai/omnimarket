@@ -31,6 +31,11 @@ import pytest
 from pydantic import SecretStr
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.handlers.routing import byok_model_discovery as discovery
+from omnimarket.handlers.routing import byok_provider_backends as catalogue
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -56,11 +61,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing import byok_model_discovery as discovery
-from omnimarket.routing import byok_provider_backends as catalogue
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
     FakeModels,
     _isolated_effects,

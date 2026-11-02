@@ -3,8 +3,8 @@
 ---
 name: work_ledger_query_effect
 node_type: effect
-contract_version: {major: 1, minor: 1, patch: 0}
-node_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 # The main runtime declares ONEX_RUNTIME_LANE and carries OMNINODE_INTERNAL_DB_URL;
 # effects lacks the lane, so lane-scoped discovery fails closed there (OMN-19408).
 runtime_profiles: [main]
@@ -22,6 +22,15 @@ description: >
   row per lane; rulings and consents). Every answer carries freshness and the
   window's parity status from the daily parity receipts. A database error is
   an error answer, never an empty one.
+  The point queries (holds, open-claims, inbox, open-rulings) are answered from
+  omninode_internal.work_ledger_state by its generated is_open column instead
+  of folding rows: one keyset page of the open set, each entity joined to the
+  row that opened it, rendered with the markdown read rules so the answer's
+  lines are the onex-ledger verb's lines (a db:<row_id> tail where the file
+  prints its line number). Every point-query answer carries status (error
+  exactly when error is set), the page_size it was cut to and a watermark, the
+  newest projected_at of the state table at the read; a page that has more
+  carries next_cursor.
   A rows query carrying history reads an explicit ledger_seq interval using an exclusive
   database-ingest cutoff. It retains raw rows and source names, checks source
   coverage before discovery filters, and binds cursors to the request and the
@@ -50,6 +59,9 @@ event_bus:
 work_ledger_query:
   ledger_source:
     relation: omninode_internal.work_ledger_rows
+    # The entity table the point queries read (holds, open-claims, inbox,
+    # open-rulings), by its generated is_open column (OMN-21948).
+    state_relation: omninode_internal.work_ledger_state
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
     parity_receipt_lane: work-ledger-parity
@@ -61,6 +73,12 @@ db_io:
       migration: "0000_create_work_ledger.sql"
       access: read
       role: work_ledger_rows
+    - name: work_ledger_state
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_state
 golden_path:
   - "Command arrives"
   - "Read the window rows, receipts and freshness"
@@ -75,6 +93,14 @@ dod_evidence:
     description: "Every query returns the rows the markdown read verbs return over the fixture"
   - test: tests/test_golden_chain_work_ledger_query.py::test_work_ledger_query_golden_chain_real_runtime_typed_dispatch
     description: "Command reaches the node through real runtime typed dispatch"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py::test_point_query_holds_answers_the_verb_line_from_state
+    description: "A point query renders the verb's own line from work_ledger_state"
+  - test: tests/test_work_ledger_point_query_postgres.py::test_point_query_postgres_holds_read_is_open_not_the_log
+    description: "Against real PostgreSQL the is_open column, not a fold of rows, selects the holds"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py::test_point_query_fault_answers_status_error_never_an_empty_page
+    description: "A database fault answers status=error, never an empty page"
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py::test_page_and_watermark_ride_every_point_query_answer
+    description: "Every point-query answer carries a page size and a watermark"
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-20738, OMN-19513]
+  related_tickets: [OMN-20738, OMN-19513, OMN-21948]

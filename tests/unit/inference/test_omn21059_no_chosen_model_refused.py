@@ -37,6 +37,16 @@ from omnimarket.enums.enum_delegation_failure_class import (
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing import byok_model_discovery
+from omnimarket.handlers.routing.byok_model_discovery import (
+    BYOK_MODEL_NOT_CHOSEN,
+    discover_byok_model_sync,
+)
+from omnimarket.handlers.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    load_byok_plan_catalog,
+    resolve_byok_backend_by_id,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_model,
@@ -50,16 +60,6 @@ from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     ModelInferenceCredentialCreateRequest,
     register_inference_credential,
-)
-from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.byok_model_discovery import (
-    BYOK_MODEL_NOT_CHOSEN,
-    discover_byok_model_sync,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    load_byok_plan_catalog,
-    resolve_byok_backend_by_id,
 )
 from tests.chains.local.harness import store_model_credential, use_local_store
 

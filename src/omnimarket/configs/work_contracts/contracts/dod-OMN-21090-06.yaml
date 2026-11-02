@@ -32,7 +32,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: 7009f9fce16f5ddf7ec7dba3212beb1b8089313730f3196126e80cd5841b4331
+      sha256: be3bb08e491dcf92872f3163f8105443f16edef660cabbff84e7e07cd996a048
     expected_exit: 0
     ticket: OMN-21090
     evidence_id: dod-omn21090-ac5-measurement-accounting

@@ -17,17 +17,17 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import secret_group
+from omnimarket.handlers.routing.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import substitute_local_byok_route
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
-from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import substitute_local_byok_route
 
 # OMN-21059: every shipped row has the customer choose the model; this file
 # exercises the catalogue-pick path, which a row reaches with that flag off.
@@ -291,7 +291,7 @@ def test_a_recorded_plan_the_catalogue_does_not_route_fails_closed(
     from omnimarket.inference import local_byok_credential_adapter as adapter
 
     monkeypatch.setattr(
-        "omnimarket.routing.local_byok_route.resolve_local_byok_credential_plan",
+        "omnimarket.handlers.routing.local_byok_route.resolve_local_byok_credential_plan",
         lambda _provider, **_kw: recorded_plan,
     )
     house = _glm_house()
