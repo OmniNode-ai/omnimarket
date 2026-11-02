@@ -56,10 +56,10 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          set -eu
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_runtime_inventory_effect/runtime_inventory_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'def main'
-          out=$(uv run python -m omnimarket.nodes.node_work_ledger_runtime_inventory_effect.runtime_inventory_check --overlay-root tests/fixtures/runtime_inventory)
-          printf '%s\n' "$out"
+          set -eu;
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_runtime_inventory_effect/runtime_inventory_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'def main';
+          out=$(uv run python -m omnimarket.nodes.node_work_ledger_runtime_inventory_effect.runtime_inventory_check --overlay-root tests/fixtures/runtime_inventory);
+          printf '%s\n' "$out";
           test "$out" = "PASS rows=3 exclusions=4 observed=9"
         cwd: "."
   - id: "dod-omn21951-integration-proof"
