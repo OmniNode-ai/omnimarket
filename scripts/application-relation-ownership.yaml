@@ -982,6 +982,12 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_local_environment/migrations/0000_create_local_environment.sql
       access: read_write
       role: local_environment
+    - name: local_alerts
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_local_alerts/migrations/0000_create_local_alerts.sql
+      access: read_write
+      role: local_alerts
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -1263,6 +1269,17 @@ database_objects:
   # the node's migrations: omnibase_infra vendors them first, and its SQL gate
   # needs every sequence a vendored GRANT names to have one owner here.
   - name: local_environment_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19991: cursor for the local_alerts rows, one per (tenant, code,
+  # subject). Declared ahead of the node's migrations for the same reason as
+  # local_environment's: omnibase_infra vendors them first, and its SQL gate
+  # needs every sequence a vendored GRANT names to have one owner here.
+  - name: local_alerts_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: public
