@@ -1,0 +1,54 @@
+{
+  "provenance": "The four evidence shapes of the open bus-binding-degraded case on the exception queue (key lane=dev), read 2026-11-02T03:45Z: 897 rows of one case reduced to four shapes, each with its first id, last id and row count. The workspace path and the broker host name are replaced; the evidence text is cut where the queue cut it.",
+  "total_rows": 897,
+  "shapes": [
+    {
+      "name": "health-read-timeout",
+      "count": 165,
+      "first_id": "2026-10-27T02:02:05Z-bus-binding-degraded-c45ae905",
+      "last_id": "2026-11-02T04:02:44Z-bus-binding-degraded-c45ae905",
+      "cls": "bus-binding-degraded",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "durable bus health read failed: TimeoutError: ",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "restore the durable broker; the binding recovers on its own and replays the outbox on the next healthy command"
+    },
+    {
+      "name": "broker-unreachable",
+      "count": 344,
+      "first_id": "2026-10-27T11:42:04Z-bus-binding-degraded-c45ae905",
+      "last_id": "2026-11-02T04:03:25Z-bus-binding-degraded-c45ae905",
+      "cls": "bus-binding-degraded",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "durable bus health read failed: LabRunBusError: InfraConnectionError: [ONEX_CORE_205_SERVICE_UNAVAILABLE] Failed to connect to Kafka: KafkaConnectionError: Unable to bootstrap from [('<broker-host>",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "restore the durable broker; the binding recovers on its own and replays the outbox on the next healthy command"
+    },
+    {
+      "name": "no-lane-identity",
+      "count": 387,
+      "first_id": "2026-10-27T14:06:18Z-bus-binding-degraded-c45ae905",
+      "last_id": "2026-11-02T03:08:47Z-bus-binding-degraded-c45ae905",
+      "cls": "bus-binding-degraded",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "durable bus health read failed: LabRunBusError: lane 'dev' declares SASL_PLAINTEXT, declared in <workspace>/config/lab/ci_bus_lanes.yaml, and this machine holds no identity for it. Bus",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "automatic recovery: retry the durable health read and replay the local outbox"
+    },
+    {
+      "name": "lane-and-bootstrap-both-named",
+      "count": 1,
+      "first_id": "2026-10-31T11:37:38Z-bus-binding-degraded-c45ae905",
+      "last_id": "2026-10-31T11:37:38Z-bus-binding-degraded-c45ae905",
+      "cls": "bus-binding-degraded",
+      "key": "lane=dev",
+      "source": "omnimarket.handlers.bus_binding",
+      "evidence": "durable bus health read failed: LabRunBusError: --lane 'dev' and --kafka-bootstrap '127.0.0.1:1' both name a broker for this delegation. Pass one: --lane resolves the address from the lane declaration, --kafk",
+      "tried": "fell back to the in-memory event bus; ledger appends queue to the local outbox",
+      "proposed_fix": "automatic recovery: retry the durable health read and replay the local outbox"
+    }
+  ]
+}
