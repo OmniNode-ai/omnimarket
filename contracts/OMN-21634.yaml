@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-21634
+title: 'Weekly retrospective chain: contracts and seams for eight nodes, scaffolded and proven connected on two overlays'
+summary: >
+  The contracts-and-seams slice of the weekly retrospective. One design lists eight nodes and seven crossings; the
+  contracts-and-seams orchestrator connects it; the committed contracts carry the topics, the seams and the run
+  reducer's state machine; every node is a stub that returns its typed request fields; and the head event is driven to the
+  tail through the committed contracts on the in-memory overlay and on the Redpanda overlay. This slice is evidence
+  toward the carrier epic's wave gates and passes none of them: the gate rows of the epic stay unproven until their
+  own checks run.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn21634-retrospective-seams
+  statement: The weekly retrospective chain exists as contracts and seams, scaffolded without logic, and its head event reaches its tail on two overlays.
+  acceptance:
+  - id: AC21
+    statement: 'AC21: The weekly_retrospective design connects through node_contract_seams_orchestrator (every crossing matched, the chain walked and driven, the golden chain swept) and a design whose consumer disagrees is refused at match_seams -- falsifier: test_design_connects_through_the_p1_tool and test_a_design_whose_consumer_disagrees_is_refused_at_the_seam'
+  - id: AC22
+    statement: 'AC22: The committed contracts agree with each other: one producer per topic, every subscription fed, the head and the tail declared, both sides of every seam declared, no protocol from omnimarket.protocols, and every node registered in onex.nodes -- falsifier: test_topic_ownership_holds_across_the_chain, test_every_seam_is_declared_by_both_of_its_sides, test_no_node_declares_a_protocol_from_omnimarket_protocols and test_every_node_is_registered_in_onex_nodes'
+  - id: AC23
+    statement: 'AC23: The run reducer''s state machine passes analyze_fsm and core''s contract walker finds one golden path with no dead, unreachable or uncovered state, and a machine with no exit fails -- falsifier: test_reducer_fsm_is_valid_and_walks_one_golden_path and test_an_fsm_loop_with_no_exit_fails_analysis'
+  - id: AC24
+    statement: 'AC24: Each scaffold handler returns the identity fields of its request and leaves every other result field unset -- falsifier: test_scaffold_handler_carries_identity_and_leaves_the_rest_unset'
+  - id: AC25
+    statement: 'AC25: The head event reaches the tail through the committed contracts on the in-memory overlay, a dropped subscription stops the chain short of the tail, and the same chain reaches the tail on the Redpanda overlay on topics made for the run -- falsifier: test_chain_reaches_the_tail_on_the_in_memory_overlay, test_a_dropped_subscription_stops_the_chain_short_of_the_tail and the kafka-marked test_chain_reaches_the_tail_on_the_redpanda_overlay'
+evidence_requirements:
+- kind: tests
+  description: Focused retrospective chain tests.
+  command: uv run pytest tests/nodes/node_contract_seams_orchestrator -q --no-cov --tb=line -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21634-ac21
+  description: AC21 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC21
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_retrospective_chain.py -q --no-cov --tb=line -k "p1_tool or disagrees"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21634-ac22
+  description: AC22 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC22
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_retrospective_chain.py -q --no-cov --tb=line -k "ownership or both_of_its_sides or omnimarket_protocols or registered"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21634-ac23
+  description: AC23 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC23
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_retrospective_chain.py -q --no-cov --tb=line -k fsm
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21634-ac24
+  description: AC24 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC24
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_retrospective_chain.py -q --no-cov --tb=line -k scaffold_handler
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21634-ac25
+  description: AC25 falsifier tests pass on the in-memory overlay; the Redpanda overlay run is a kafka-marked test run on a lab host with the broker (the PR body carries its result).
+  source: manual
+  binds_ac:
+  - AC25
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_retrospective_chain.py -q --no-cov --tb=line -m "not kafka" -k "in_memory_overlay or dropped_subscription"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21634-deploy-probe
+  description: 'Deploy probe: the run reducer contract read from GitHub at the checked-out commit declares the retrospective_run_fsm state machine. The merge base lacks the file, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: |-
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_retrospective_run_reducer/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c 'state_machine_name: retrospective_run_fsm'
+    cwd: ${OMNI_HOME}/omnimarket

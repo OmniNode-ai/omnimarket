@@ -6,21 +6,29 @@ An append on the in-memory binding has no ledger host to reach. It is written he
 per request, written to a temporary name, fsynced and renamed, so a reader never sees half a request.
 The request id is the idempotency key the ledger host's serve deduplicates on, so a replay of a request
 whose first attempt did land is answered ``duplicate`` and the row is appended once. Accepted or
-duplicate removes the file; a refusal is final and moves it to ``refused/``; any other answer stops the
-drain and leaves the file for the next one. One drain at a time (an fcntl lock).
+duplicate removes the file; a refusal is final and moves it to ``refused/``, where the replay's caller
+reports it to the writer's lane (recovery.report_refused_to_writers); any other answer stops the drain and
+leaves the file for the next one. One drain at a time (an fcntl lock).
+
+A retry of a row whose first attempt got no answer (queued, or timed out) reuses that attempt's request id
+and rows, so the serve answers ``duplicate`` instead of appending or acknowledging the row a second time.
 """
 
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
+from omnimarket.models.bus_binding import ModelBusBindingDecision
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelWorkLedgerAppendReceipt,
@@ -30,6 +38,11 @@ from omnimarket.models.work_ledger_append import (
 OUTBOX_DIRNAME = "work-ledger-outbox"
 REFUSED_DIRNAME = "refused"
 DRAIN_LOCK_NAME = ".drain.lock"
+ATTEMPTS_DIRNAME = "attempts"
+# A retry follows its first attempt within minutes; past this the same words are a new row.
+RETRY_WINDOW = timedelta(minutes=30)
+_REQ_CELL = re.compile(r" \| req=[0-9a-fA-F-]{36}(?= \||$)")
+_ROW_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.MULTILINE)
 
 Sender = Callable[
     [ModelWorkLedgerAppendRequest], Awaitable[ModelWorkLedgerAppendReceipt]
@@ -129,10 +142,87 @@ async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResul
                     f"request {request.request_id} answered {receipt.status.value}"
                 )
                 break
+            settle(state_dir, request.request_id)
             path.unlink(missing_ok=True)
         return DrainResult(
             replayed, duplicates, refused, pending_count(state_dir), stopped
         )
+
+
+def _attempt_key(request: ModelWorkLedgerAppendRequest) -> str:
+    """The row's words without its stamp and request id, which a retry mints anew."""
+    words = _ROW_STAMP.sub("", _REQ_CELL.sub("", request.rows))
+    return hashlib.sha256(f"{request.requested_by_lane}\n{words}".encode()).hexdigest()
+
+
+def first_attempt(
+    state_dir: Path, request: ModelWorkLedgerAppendRequest
+) -> ModelWorkLedgerAppendRequest:
+    """The request to send: the first unanswered attempt at the same row, else this one (recorded).
+
+    The entry stays until ``settle`` is called with an answer, so a timeout (exit 75) or a queued append
+    is retried under its original request id and rows.
+    """
+    directory = outbox_dir(state_dir) / ATTEMPTS_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{_attempt_key(request)}.json"
+    try:
+        earlier = ModelWorkLedgerAppendRequest.model_validate_json(
+            target.read_text("utf-8")
+        )
+    except (OSError, ValueError):
+        earlier = None
+    if (
+        earlier is not None
+        and abs(request.requested_at - earlier.requested_at) <= RETRY_WINDOW
+    ):
+        return earlier
+    tmp = directory / f".{target.name}.{os.getpid()}.tmp"
+    tmp.write_text(request.model_dump_json(), encoding="utf-8")
+    tmp.replace(target)
+    return request
+
+
+def settle(state_dir: Path, request_id: UUID) -> None:
+    """Forget an answered attempt: accepted, duplicate or refused ends the row's retries."""
+    directory = outbox_dir(state_dir) / ATTEMPTS_DIRNAME
+    if not directory.is_dir():
+        return
+    for path in directory.glob("*.json"):
+        try:
+            recorded = ModelWorkLedgerAppendRequest.model_validate_json(
+                path.read_text("utf-8")
+            )
+        except (OSError, ValueError):
+            continue
+        if recorded.request_id == request_id:
+            path.unlink(missing_ok=True)
+
+
+async def send_once(
+    state_dir: Path,
+    request: ModelWorkLedgerAppendRequest,
+    append: Callable[..., Awaitable[ModelWorkLedgerAppendReceipt]],
+    timeout_s: float,
+) -> ModelWorkLedgerAppendReceipt:
+    """Send under the first unanswered attempt's id; an answer other than ``error`` ends its retries."""
+    receipt = await append(first_attempt(state_dir, request), timeout_s=timeout_s)
+    if receipt.status is not EnumWorkLedgerAppendStatus.ERROR:
+        settle(state_dir, receipt.request_id)
+    return receipt
+
+
+def queued_receipt(path: Path, decision: ModelBusBindingDecision) -> dict[str, object]:
+    """What the writer is told when its append is queued instead of sent."""
+    return {
+        "request_id": str(request_id_of(path)),
+        "status": "queued",
+        "exit_code": 0,
+        "binding": decision.binding.value,
+        "bus_state": decision.state.value,
+        "outbox": path.name,
+        "message": "durable bus unavailable; queued for replay under this request id",
+    }
 
 
 def request_id_of(path: Path) -> UUID:

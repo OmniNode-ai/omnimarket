@@ -8,10 +8,36 @@ from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_mo
     ModelDevTagPinMoveRequest,
     ModelDevTagPinMoveResult,
 )
+from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_set import (
+    EnumPinSetOutcome,
+    ModelPinSetCandidate,
+    ModelPinSetConflict,
+    ModelPinSetHeldBack,
+    ModelPinSetMove,
+    ModelPinSetRequest,
+    ModelPinSetResult,
+    ModelPinSetSibling,
+)
+from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_train import (
+    EnumTrainStatus,
+    ModelResolveOutcome,
+    ModelTrainReport,
+)
 
 __all__ = [
     "EnumConsumerTestOutcome",
     "EnumPinMoveRefusal",
+    "EnumPinSetOutcome",
+    "EnumTrainStatus",
     "ModelDevTagPinMoveRequest",
     "ModelDevTagPinMoveResult",
+    "ModelPinSetCandidate",
+    "ModelPinSetConflict",
+    "ModelPinSetHeldBack",
+    "ModelPinSetMove",
+    "ModelPinSetRequest",
+    "ModelPinSetResult",
+    "ModelPinSetSibling",
+    "ModelResolveOutcome",
+    "ModelTrainReport",
 ]

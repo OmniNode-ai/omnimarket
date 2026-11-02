@@ -31,7 +31,6 @@ from typing import Any
 
 import pytest
 from omnibase_core.contracts.contract_loader import load_contract
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.experiment.model_experiment_result import (
     ModelExperimentResult,
 )
@@ -82,6 +81,9 @@ def _resolve_wired_handler() -> type[HandlerRegressionTestOrchestrator]:
     event_bus = contract["event_bus"]
     assert isinstance(event_bus, dict)
     assert _SUBSCRIBE_TOPIC in event_bus["subscribe_topics"]
+    # The returned result is published by the runtime on the one contract
+    # publish topic, the terminal event.
+    assert event_bus["publish_topics"] == [TOPIC_REGRESSION_COMPLETED]
 
     routing = contract["handler_routing"]
     assert isinstance(routing, dict)
@@ -97,18 +99,12 @@ async def _replay_dispatch(chain: dict[str, Any]) -> ModelExperimentResult:
     """Replay the chain through the contract-loader-resolved handler dispatch."""
     handler = _resolve_wired_handler()()
     start = ModelRegressionSuiteStart.model_validate(chain["start"])
-    envelope: ModelEventEnvelope[ModelRegressionSuiteStart] = ModelEventEnvelope(
-        payload=start,
-        correlation_id=start.correlation_id,
-        event_type=_SUBSCRIBE_TOPIC,
-    )
-    output = await handler.handle(envelope)
+    output = await handler.handle(start)
     assert output.result is None, "ORCHESTRATOR must not return a result"
     assert len(output.events) == 1
     emitted = output.events[0]
-    assert emitted.event_type == TOPIC_REGRESSION_COMPLETED
-    assert isinstance(emitted.payload, ModelExperimentResult)
-    return emitted.payload
+    assert isinstance(emitted, ModelExperimentResult)
+    return emitted
 
 
 @pytest.mark.integration

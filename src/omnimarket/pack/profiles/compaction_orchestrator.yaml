@@ -10,6 +10,11 @@ required_factors:
   - operator_words_unrecorded
   - orchestration_state
   - open_work
+# A session whose lane has no open message addressed to itself has no open work;
+# the work-state source answers that unresolved, which would otherwise send every
+# such compaction to native. Any other status of open_work still fails the build.
+empty_allowed_factors:
+  - open_work
 optional_factors:
   - repo_state
   - conversation_tail

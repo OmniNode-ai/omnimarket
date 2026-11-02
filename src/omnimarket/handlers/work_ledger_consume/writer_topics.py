@@ -15,6 +15,7 @@ command topic and the mirror topics stay fatal in the host.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 from functools import partial
@@ -34,14 +35,13 @@ async def take_writer_topics(
     topics: ProtocolWriterTopics,
     enqueue: Callable[..., Awaitable[None]],
 ) -> tuple[str, ...]:
-    """Subscribe each writer's topic in name order; return the topics whose subscribe failed."""
-    unserved: list[str] = []
-    for principal in sorted(principals):
+    """Subscribe every writer's topic at once; return, in name order, the topics whose subscribe failed."""
+
+    async def one(principal: str) -> str | None:
         topic = topics.writer_command_topic(principal)
         try:
             await take(topic, partial(enqueue, writer_principal=principal), group)
         except Exception as exc:  # an absent topic cannot carry a row; serve the others
-            unserved.append(topic)
             logger.error(
                 "work-ledger host: writer topic %s is not served (%s: %s); "
                 "retaken on the next resubscribe",
@@ -49,4 +49,36 @@ async def take_writer_topics(
                 type(exc).__name__,
                 exc,
             )
-    return tuple(unserved)
+            return topic
+        return None
+
+    # Each writer's group joins on its own, and a join can hold for many seconds on the broker
+    # (OMN-20275): started one after another, the last writer in name order waited for all the others.
+    joined = await asyncio.gather(*(one(p) for p in sorted(principals)))
+    return tuple(topic for topic in joined if topic is not None)
+
+
+def subscriber(
+    bus: object,
+    unsubscribes: list[Callable[[], Awaitable[None]]],
+    subscribe: Callable[..., Awaitable[Callable[[], Awaitable[None]]]],
+) -> Callable[[str, Callable[[Any], Awaitable[None]], str], Awaitable[None]]:
+    """A ``take`` that subscribes from the earliest committed position and keeps the unsubscribe."""
+
+    async def take(
+        topic: str, callback: Callable[[Any], Awaitable[None]], group: str
+    ) -> None:
+        unsubscribes.append(await subscribe(bus, topic, callback, group, "earliest"))
+
+    return take
+
+
+async def take_together(
+    jobs: Iterable[Awaitable[object]], release: Callable[[], Awaitable[None]]
+) -> None:
+    """Run every subscribe job at once; when one fails, release what the others took and re-raise it."""
+    results = await asyncio.gather(*jobs, return_exceptions=True)
+    failed = [result for result in results if isinstance(result, BaseException)]
+    if failed:
+        await release()
+        raise failed[0]

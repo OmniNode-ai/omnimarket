@@ -6,7 +6,10 @@ description: >
   The exception queue (OMN-17427, operator 2026-10-18): a detector or actor that cannot resolve its case in code
   emits one typed row (class, key, evidence, what it tried, proposed fix); the operator reads only rows marked
   decision and the orchestrator drains the rest. A class's second occurrence dispatches one lane through the
-  remote-lane runner to mechanize it (a detector, an actor and a friction replay scenario). queue_status.py reaches it
+  remote-lane runner to mechanize it (a detector, an actor and a friction replay scenario). A row of a class in
+  the stop registry of node_andon_stop_reducer also opens an andon stop; stop_event persists a writer's event to it
+  through that reducer's rule (a write from a role other than the trigger's is refused and the refusal recorded),
+  and open_stops reads the stops for stop_gate. queue_status.py reaches it
   through --exception (HandlerExceptionCli) and prints its read (HandlerExceptionQueueRead) in every block.
 input_model:
   name: ModelExceptionEmitRequest
@@ -22,6 +25,12 @@ handler:
 entrypoint:
   name: NodeExceptionQueueEffect
   module: omnimarket.nodes.node_exception_queue_effect.node
+protocol_dependencies:
+  - {name: LED, protocol: "omnimarket.protocols.protocol_work_ledger_store:ProtocolWorkLedgerStore", bind_as: ledger, required: true}
+  - {name: STO, protocol: "omnibase_core.protocols.storage.protocol_state_store:ProtocolStateStore", bind_as: state, required: true}
+  - {name: CHG, protocol: "omnimarket.protocols.protocol_change_source:ProtocolChangeSource", bind_as: changes, required: true}
+  - {name: HST, protocol: "omnimarket.protocols.protocol_lane_host_pool:ProtocolLaneHostPool", bind_as: hosts, required: true}
+  - {name: CLK, protocol: "omnimarket.protocols.protocol_clock:ProtocolClock", bind_as: clock, required: true}
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_exception_queue_effect.handler:HandlerExceptionEmit
@@ -45,6 +54,16 @@ handler_routing:
       topic: onex.cmd.omnimarket.exception-queue-read-requested.v1
       handler:
         name: HandlerExceptionQueueRead
+        module: omnimarket.nodes.node_exception_queue_effect.handler
+    - operation: stop_event
+      topic: onex.cmd.omnimarket.stop-event-requested.v1
+      handler:
+        name: HandlerStopEvent
+        module: omnimarket.nodes.node_exception_queue_effect.handler
+    - operation: open_stops
+      topic: onex.cmd.omnimarket.open-stops-requested.v1
+      handler:
+        name: HandlerOpenStops
         module: omnimarket.nodes.node_exception_queue_effect.handler
 terminal_event: onex.evt.omnimarket.exception-queued.v1
 runtime_dispatch:

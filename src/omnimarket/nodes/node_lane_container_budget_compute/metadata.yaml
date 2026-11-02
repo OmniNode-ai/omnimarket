@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_container_budget_compute
+version: 1.0.0
+description: Judge a host's recorded container listing against the application container budget declared for each of
+  its lanes. A lane over its budget reads FAIL, a host that could not be read reads UNKNOWN, and UNKNOWN fails; there is
+  no warning status. Each failing lane raises one alarm keyed lane-budget:<host>:<lane>.
+pack: distributed_validation
+node_role: compute
+display_name: Lane Container Budget Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_container_budget_compute: omnimarket.nodes.node_lane_container_budget_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- lane-container-budget-compute
+- OMN-21892

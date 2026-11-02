@@ -65,7 +65,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@dev-20261101005012-ac2f26e3e5bf # omnibase_core dev-merge tag
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@dev-20261101103701-2fc5e461fca7 # omnibase_core dev-merge tag
     with:
       evidence-source: caller
       verifier-tag: dev-20261101000200-949993edf3b7

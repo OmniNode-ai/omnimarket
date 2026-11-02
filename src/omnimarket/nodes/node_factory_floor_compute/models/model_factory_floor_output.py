@@ -51,6 +51,33 @@ class ModelFloorAndon(BaseModel):
     flag: bool
     reason: str
     causes: tuple[str, ...]
+    # True when a hold, a failed gate or a plan with no tasks stops the line whatever runs on it. False when every cause
+    # is a red pull request or a stop the ledger recorded, which a running lane on the line is already working through.
+    hard: bool = False
+
+
+class ModelFloorLaneContainers(BaseModel):
+    """One lane's application containers on one host against its declared budget."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str
+    lane: str
+    status: Literal["PASS", "FAIL", "UNKNOWN"]
+    observed: int | None
+    budget: int | None
+    alarm_key: str
+    # The read's own sentence: the count against the budget, or why the host could not be read (UNKNOWN).
+    detail: str = ""
+
+
+class ModelFloorApplicationContainers(BaseModel):
+    """The container read shown on the selected line: per host and lane, or ``unread`` when no host was read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: Literal["read", "unread"]
+    lanes: tuple[ModelFloorLaneContainers, ...]
 
 
 class ModelFloorLine(BaseModel):
@@ -70,6 +97,8 @@ class ModelFloorLine(BaseModel):
     percent_built: int
     stations: tuple[ModelFloorStation, ...]
     andon: ModelFloorAndon
+    # Set on the line the selection names for the container read; every other line carries None.
+    application_containers: ModelFloorApplicationContainers | None = None
 
 
 class ModelFloorBay(BaseModel):
@@ -284,6 +313,8 @@ class ModelFloorSources(BaseModel):
     receipts_read: bool
     cloud_accounts_read: bool
     runner_fleet_read: bool
+    # Why the runner fleet is unread, in the reader's words; empty when it was read.
+    runner_fleet_cause: str = ""
 
 
 class ModelFactoryFloorResult(BaseModel):

@@ -100,6 +100,15 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_tick"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick.ModelLabFillTickRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick.ModelLabFillTickResult"
+# OMN-21881: behind the overlay flag cloud.enabled (default off), the tick passes
+# --placement auto for a row whose lane_kind is one of the overlay's cloud.lane_kinds,
+# when this node's route action does not refuse it, and reads the cloud credit left
+# through its credit action. The lane kinds come from the overlay, never this node.
+dependencies:
+  - name: omnimarket.nodes.node_cloud_session_placement_effect
+    dependency_type: internal
+    description: "route decides cloud eligibility; credit reads the account's recorded credit."
+    required: true
 descriptor:
   node_archetype: effect
   purity: effectful

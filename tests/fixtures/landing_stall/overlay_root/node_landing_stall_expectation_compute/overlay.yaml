@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The stall rule's thresholds as the operator's ruling of 2026-11-01 states them:
+# one required context red on at least 80 percent of at least five open pull
+# requests opens a stall; at 60 minutes one exception row and one cause lane; at
+# 120 minutes one question. clear_snapshots is the design's own choice (see the
+# model's VERDICT). "CI Summary" is the rollup of every other check, so it is red
+# on a pull request whenever anything is; it cannot name a repository-wide cause.
+share_percent: 80
+min_open_prs: 5
+exception_minutes: 60
+question_minutes: 120
+clear_snapshots: 2
+aggregate_contexts:
+  - CI Summary

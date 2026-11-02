@@ -48,5 +48,12 @@
     "basis": "sum of each file's measured pytest setup, call and teardown durations from one serial run of the unrecorded files after merging dev a5d36b85e; --store-durations -m 'not kafka' --timeout=300 --no-cov",
     "runner": "lab host h201, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "a5d36b85e0fb577db4555787d48af9a98a804139"
+  },
+  "supplement_omn17427": {
+    "recorded_on": "2026-11-01",
+    "files_added": 52,
+    "basis": "files the record did not hold, each the mean over CI runs 41330250154, 41332241621 and 41333545891 (pull_request, ci.yml test job, test-durations-shard-* artifacts) of its summed per-test seconds, as merge_test_durations.py record computes it; existing entries left as they were because a full refresh from those runs records tests/nodes/test_work_contract_checks.py at about 604 s, more than one shard share, and fails the 1.1x planned-spread guard",
+    "runner": "GitHub-hosted ubuntu-latest, 20-way full-suite ci.yml test job; the next full refresh replaces these entries",
+    "base_sha": "f801939ad5e668fd0017f60989bbb4e929f37df7"
   }
 }

@@ -33,6 +33,7 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.handlers.handler_packaged_contract_loader import (
     load_packaged_contract_section,
 )
+from omnimarket.nodes.contract_topics import contract_topic
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -47,7 +49,10 @@ from omnimarket.nodes.node_session_bootstrap.models.model_session_contract impor
     ModelSessionContract,
 )
 
-_TOPIC_SESSION_CRON_HEALTH_VIOLATION = "onex.evt.omnimarket.session-cron-health-violation.v1"  # onex-topic-allow: contract-declared
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
+_TOPIC_SESSION_CRON_HEALTH_VIOLATION = contract_topic(
+    _CONTRACT, "publish_topics", "session-cron-health-violation.v1"
+)
 
 logger = logging.getLogger(__name__)
 

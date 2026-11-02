@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_issuer_overlay_delivery_effect
+version: 1.0.0
+description: Deliver the principal-issuer overlay to the issuer host, set PRINCIPAL_ISSUER_OVERLAY_FILE in its env file and read both back from the host. Host, paths and the overlay come from the request, never from the contract.
+pack: host_bringup
+node_role: effect
+display_name: node_issuer_overlay_delivery_effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_issuer_overlay_delivery_effect: omnimarket.nodes.node_issuer_overlay_delivery_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- overlay-delivery

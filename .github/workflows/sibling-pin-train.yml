@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-21895: the nightly sibling-pin train, for the consumer that pins its
+# siblings by dev tag and whose siblings pin each other.
+#
+# RULING 2026-10-19T10:11:00Z (OMN-19998): "What we can do is we can turn this
+# into a nightly release train where all the tags are rolled up to a single
+# bump." omniclaude's sibling-lock-refresh.yml is that train; this file is the
+# same train for omnimarket, and it adds the step that train lacked: the
+# candidate tag set is resolved before any branch is pushed or PR opened.
+#
+# omnimarket pins omnibase_infra by a dev tag, and that infra commit's own
+# pyproject.toml names an omnibase-core dev tag. Moving omnibase-core alone
+# fails the Sibling Release Compatibility Gate (OMN-20381) with "Requirements
+# contain conflicting URLs for package omnibase-core" (omnimarket#4588 to
+# #4624, tests/ci/test_sibling_core_pin_pair_omn17427.py). The node moves the
+# sibling pins together to a tag set that co-resolves, locks that candidate in
+# a scratch copy, and only then pushes the one fixed branch and opens or
+# updates the one PR. When no tag set co-resolves it opens nothing, prints the
+# conflicting URLs and exits 0 with a SKIPPED row in the job summary.
+#
+# This workflow is schedule and workflow_dispatch only: it mints no pull_request
+# check context and changes no required context. The selection, the resolve and
+# the publish are node_dev_tag_pin_mover_compute (python -m ...runtime_dev_tag_pin_train); this
+# file only clones the siblings and calls it.
+#
+# Guarded by tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py.
+
+name: Sibling pin train
+
+on:
+  schedule:
+    # Daily at 06:41 UTC, after the siblings' overnight dev merges and beside
+    # omniclaude's 06:17 train.
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "OMN-21895: print the train's plan, resolve it, and open no PR."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sibling-pin-train
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Roll the sibling dev tags into one bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Mint onexbot-occ-writer app token
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # The train's members are read from pyproject.toml itself. Each is cloned
+      # with its tags (blobless: the node reads tag names, their commits and the
+      # pyproject.toml each tag carries). A member whose clone fails stops the
+      # job: a train that examined no clone is indistinguishable from one with
+      # nothing to move.
+      - name: Clone the train's siblings
+        run: |
+          set -euo pipefail
+          members="$(uv run python - <<'PY'
+          import tomllib
+          sources = tomllib.load(open("pyproject.toml", "rb"))["tool"]["uv"]["sources"]
+          repos = set()
+          for attrs in sources.values():
+              if isinstance(attrs, dict) and str(attrs.get("tag", "")).startswith("dev-"):
+                  repos.add(attrs["git"].rsplit("/", 1)[1].removesuffix(".git"))
+          print(" ".join(sorted(repos)))
+          PY
+          )"
+          echo "Train members: ${members:-<none>}"
+          for repo in $members; do
+            git clone --quiet --filter=blob:none --no-checkout \
+              "https://github.com/OmniNode-ai/${repo}.git" ".clones/${repo}"
+            git -C ".clones/${repo}" fetch --quiet --tags origin
+          done
+
+      - name: Select, resolve, then open or update the one bump PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          set -euo pipefail
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "307849072+onexbot-occ-writer[bot]@users.noreply.github.com"
+          mode=(--publish)
+          [[ "$DRY_RUN" == "true" ]] && mode=()
+          uv run python -m omnimarket.nodes.node_dev_tag_pin_mover_compute.runtime_dev_tag_pin_train \
+            --repo-root "$PWD" --registry-root "$PWD/.clones" --green-from github \
+            --base "${GITHUB_REF_NAME}" --workflow-name "${GITHUB_WORKFLOW}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --plan-out /tmp/sibling_pin_train_plan.json \
+            --body-out /tmp/sibling_pin_train_body.md "${mode[@]}" | tee /tmp/sibling_pin_train.log
+          {
+            echo "## Sibling pin train"
+            echo
+            cat /tmp/sibling_pin_train_body.md
+            if grep -q '^SKIPPED:' /tmp/sibling_pin_train.log; then
+              echo
+              echo '```'
+              sed -n '/^SKIPPED:/,$p' /tmp/sibling_pin_train.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

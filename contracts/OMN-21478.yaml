@@ -26,6 +26,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn21478-pr4639-machine-grant-role-runtime
+  description: Market's overlay reader round-trips named machine grant-role bindings through the installed core pin, keeps legacy rows unbound, and refuses developer bindings, duplicate roles and inline grants. The previous core pin refuses the valid machine binding.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_core_pin_principal_roles_omn21478.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn21478-omnimarket-workflow-and-rows
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
   source: manual
@@ -78,9 +87,9 @@ dod_evidence:
       import tomllib
       from pathlib import Path
       source = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]["omnibase-core"]
-      assert source["tag"] == "dev-20261031000524-fc6159b98026", source
+      assert source["tag"] == "dev-20261031202655-5bb91ae7e720", source
       installed = json.loads(importlib.metadata.distribution("omnibase-core").read_text("direct_url.json"))
-      assert installed["vcs_info"]["commit_id"] == "fc6159b9802687dcf8496ac34ff13a409a6d5230", installed
+      assert installed["vcs_info"]["commit_id"] == "5bb91ae7e72094a62a1198dbc92803448a05ec67", installed
       for module in (
           "omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate",
           "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep",

@@ -20,6 +20,7 @@ from .model_lab_fill_effect import (
 )
 from .model_lab_fill_tick import (
     ModelLabFillTickAlarm,
+    ModelLabFillTickCloud,
     ModelLabFillTickDispatch,
     ModelLabFillTickHost,
     ModelLabFillTickRefusal,
@@ -45,6 +46,7 @@ __all__ = [
     "ModelLabFillStatusWriteRequest",
     "ModelLabFillStatusWriteResult",
     "ModelLabFillTickAlarm",
+    "ModelLabFillTickCloud",
     "ModelLabFillTickDispatch",
     "ModelLabFillTickHost",
     "ModelLabFillTickRefusal",
