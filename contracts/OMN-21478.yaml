@@ -101,3 +101,62 @@ dod_evidence:
       print("PR 4618 installed core and migrated runtime imports passed")
       PY
     cwd: .
+- id: dod-omn21478-pr4722-current-sibling-pair
+  description: The required sibling context remains registered, and the source and lock resolve core 2080333acfaf beside infra c352b5618a45, whose core pin agrees. The exact-pair tests fail against the previous pair at the merge base.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_core_pin_pair_2080333acfaf_omn17427.py tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn21478-pr4722-hosted-package-deploy-readback
+  description: Hosted-runner readback checks both installed sibling commits against the current source and lock, imports the migrated consumers and core walker, and drives Market's overlay reader through the installed core. A different pair or a broken import fails without credentials or services. This package smoke supersedes the previous pin's package readback and does not attest a service rollout.
+  source: manual
+  evidence_artifact: supersedes_dod_evidence:dod-omn21478-pr4618-hosted-package-deploy-readback
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_core_pin_pair_2080333acfaf_omn17427.py tests/unit/test_core_pin_principal_roles_omn21478.py tests/scripts/test_check_dep_provenance.py -q --no-cov -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'PY'
+      import importlib
+      import importlib.metadata
+      import json
+      import tomllib
+      from pathlib import Path
+      sources = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]
+      packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+      expected = {
+          "omnibase-core": ("dev-20261101203942-2080333acfaf", "2080333acfaf6c076313be3ceadea9bc0394aaee"),
+          "omnibase-infra": ("dev-20261102124307-c352b5618a45", "c352b5618a45c31f686e94750098edb0d5913e28"),
+      }
+      for name, (tag, commit) in expected.items():
+          assert sources[name]["tag"] == tag, sources[name]
+          locked, = [package for package in packages if package["name"] == name]
+          assert locked["source"]["git"].endswith(f"?tag={tag}#{commit}"), locked
+          installed = json.loads(importlib.metadata.distribution(name).read_text("direct_url.json"))
+          assert installed["vcs_info"]["commit_id"] == commit, installed
+      for module in (
+          "omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate",
+          "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep",
+          "omnibase_core.nodes.node_contract_walker_check_compute.runtime_contract_walker_check",
+      ):
+          importlib.import_module(module)
+      from scripts.check_dep_provenance import load_policy
+      assert load_policy()["wrong_repo"].siblings
+      print("PR 4722 installed core 2080333acfaf and infra c352b5618a45 runtime imports passed")
+      PY
+    cwd: .
+- id: dod-omn21478-pr4722-integration-proof
+  description: On a lab host, run Market's overlay reader with the pinned core principal models, the generated-chain drivers with the installed core walker, and the current sibling-pair assertions. The focused commands use frozen real dependencies; hosted verification leaves this unbound item to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 COMPOSE_PROJECT_NAME=landing-l23455-lab uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane pin-integration-proof-21478 -- env PYTHONDONTWRITEBYTECODE=1 COMPOSE_PROJECT_NAME=landing-l23455-lab uv run --frozen pytest tests/unit/test_core_pin_principal_roles_omn21478.py tests/chains/generated/test_generated_chains.py tests/ci/test_core_pin_pair_2080333acfaf_omn17427.py -q --no-cov -p no:randomly
+    cwd: .
