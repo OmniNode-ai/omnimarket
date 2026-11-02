@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-21930
+title: The factory floor page draws containers per lane, orchestration alignment from merged parts, a context line that a long-ended lane cannot stop, and every live lane against a drawn machine
+summary: The floor page draws application_containers per lane class; percent_built divides by every part of the plan's own list; a TERMINAL that is a lane's last row and older than the stall window stops no line; a lane that names no drawn machine carries the cause and the page counts them by cause.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21930-floor-page-lines
+  statement: 'Four lines of the live factory floor read wrong: containers per lane were never drawn, orchestration alignment read 12 percent for 6 of 68 parts, a lane that ended blocked 9918 minutes ago stopped the context line, and the page said 9 live lanes name no machine without saying which or why.'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the page draws application_containers per lane (running of declared, per lane class), and a record with no containers draws no row for that line -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k containers -q'
+  - id: AC2
+    statement: 'AC2: orchestration alignment percent_built equals merged parts over total parts from the plan''s own part list (6 of 68 reads 8 percent), with a fixture of the recorded live inputs that fails on the current code -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k percent_built -q'
+  - id: AC3
+    statement: 'AC3: a lane whose last row is a TERMINAL older than the stall window does not stop its line, and the line shows the state that is true -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k dead_lane -q'
+  - id: AC4
+    statement: 'AC4: every live lane either names a machine the floor draws or is listed under the cause that it names none, and the count line states the lanes it counts -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k lane_machine -q'
+  - id: AC5
+    statement: 'AC5: from a real publish of the branch, the preview address on h051 shows the containers row, 8 percent on the alignment line, a context line not stopped by plan-r8-0605 and no unnamed-machine count that the lanes contradict -- falsifier: curl of the preview factory-floor.json and page on h051 compared with the lab-run receipt in the PR body'
+  - id: AC6
+    statement: 'AC6: the suites pass on a lab host through lab-run -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect -q'
+evidence_requirements:
+- kind: tests
+  description: The three floor node suites, which now hold their tests beside the node.
+  command: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21930-ac1
+  description: AC1 the floor and dashboard pages draw containers per lane class from the line's record, none when the record has none.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k containers -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-ac2
+  description: AC2 percent_built is parts done over every part of the plan's list; the fixture of the live inputs reads 12 on the previous code and 8 now.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k percent_built -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-ac3
+  description: AC3 a blocked TERMINAL that is a lane's last row and is older than the stall window stops no line.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k dead_lane -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-ac4
+  description: AC4 an unplaced lane carries its cause and the page counts the lanes by cause with their names.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute -k lane_machine -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-ac5
+  description: AC5 the page and compute behaviours the preview readback shows; the readback itself is quoted in the PR body from the h051 preview.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests src/omnimarket/nodes/node_factory_floor_compute -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21930-ac6
+  description: AC6 the three floor node suites pass; the lab-run receipt is quoted in the PR body.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line
+    cwd: .
