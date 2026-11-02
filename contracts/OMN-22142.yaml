@@ -54,9 +54,11 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov --tb=line -k ac3
     cwd: .
 - id: dod-omn22142-ac4-dev
-  description: AC4 is read after the node is deployed on dev and the watcher calls it once per tick; unbound because hosted CI cannot read the dev watcher state.
+  description: AC4 is read after the node is deployed on dev and the watcher calls it once per tick; its local_done_gate scope keeps it off the hosted runner, which cannot read the dev watcher state.
   source: manual
   execution_scope: local_done_gate
+  binds_ac:
+  - AC4
   checks:
   - check_type: command
     check_value: python3 "${OMNI_PLUGIN_ROOT:?}"/skills/merge-drain/scripts/pr_state_local.py --pr OmniNode-ai/omnibase_infra#5555

@@ -27,7 +27,7 @@ query($ids: [ID!]!) {
 GraphqlCall = Callable[..., dict[str, Any]]
 
 
-class AdapterGithubGraphqlNodeStates:
+class GithubGraphqlNodeStatesReader:
     def __init__(self, token: str, call: GraphqlCall = graphql) -> None:
         self._token = token
         self._call = call
@@ -58,4 +58,4 @@ class AdapterGithubGraphqlNodeStates:
         return out
 
 
-__all__ = ["NODE_STATES_QUERY", "AdapterGithubGraphqlNodeStates"]
+__all__ = ["NODE_STATES_QUERY", "GithubGraphqlNodeStatesReader"]

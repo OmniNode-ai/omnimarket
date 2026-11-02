@@ -30,8 +30,8 @@ from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_w
     ModelPrNodeState,
     ModelPrWatcherClosureReconcileRequest,
 )
-from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.protocols.adapter_github_graphql_node_states import (
-    AdapterGithubGraphqlNodeStates,
+from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.protocols.github_graphql_node_states_reader import (
+    GithubGraphqlNodeStatesReader,
 )
 from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.protocols.protocol_pr_node_state_reader import (
     ProtocolPrNodeStateReader,
@@ -336,7 +336,7 @@ def test_graphql_adapter_is_one_call_per_batch_and_maps_nulls() -> None:
             ],
         }
 
-    adapter = AdapterGithubGraphqlNodeStates("x", call=call)
+    adapter = GithubGraphqlNodeStatesReader("x", call=call)
     assert isinstance(adapter, ProtocolPrNodeStateReader)
     got = adapter.read_states(["A", "B"])
     assert len(seen) == 1
