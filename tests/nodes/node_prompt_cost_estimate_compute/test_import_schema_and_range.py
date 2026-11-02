@@ -279,8 +279,12 @@ def test_result_marks_estimated_and_range() -> None:
             assert row.saving_usd_low == row.saving_usd_high == 0
             continue
         table = ModelPricingTable.from_yaml()
-        c_a = spread.confidence[table.get_entry(row.source_model).confidence]  # type: ignore[union-attr]
-        c_d = spread.confidence[table.get_entry(row.recommended_model).confidence]  # type: ignore[union-attr]
+        entry_a = table.get_entry(row.source_model)
+        entry_d = table.get_entry(row.recommended_model)
+        assert entry_a is not None
+        assert entry_d is not None
+        c_a = spread.confidence[entry_a.confidence]
+        c_d = spread.confidence[entry_d.confidence]
         assert row.saving_usd_high == (
             row.actual_cost_usd * (1 + c_a) - row.delegated_cost_usd * (1 - c_d)
         )
