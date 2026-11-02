@@ -1,0 +1,35 @@
+{
+  "_note": "Fixture rows built from the measurement plan's wording and the ledger RULING grammar (question= cell, quoted decision). The first two quotes and questions are copied from RULING rows; the predecessor text and the third row are written for the fixture.",
+  "clean": {
+    "correlation_id": "fixture-cm7-clean",
+    "rulings": [
+      {
+        "stamp": "2026-11-01T14:06:53Z",
+        "kind": "RULING",
+        "question": "Gate repair and night friction plan: go, with a dedicated GitHub App for one-time merges, stopping fix workers after 60 minutes on a repo-wide red while one cause lane runs, a phone push at 120 minutes, start order T-A3, T-A4, T-D1?",
+        "quote": "Go with the friction plan.",
+        "required_spans": ["2026-11-01T14:06:53Z", "friction plan"],
+        "predecessor_text": "Keep sending fix workers to a repo-wide red until the base is green."
+      },
+      {
+        "stamp": "2026-11-01T15:09:26Z",
+        "kind": "RULING",
+        "question": "Does the operator approval cover source and tests only for the scoped ledger reader repair, with no live ACL, credential, network, service or broad shared grant change and no push, PR or merge?",
+        "quote": "You already have my approval, and I'm the operator, right?",
+        "required_spans": ["2026-11-01T15:09:26Z", "my approval"]
+      }
+    ]
+  },
+  "leak": {
+    "correlation_id": "fixture-cm7-leak",
+    "rulings": [
+      {
+        "stamp": "2026-11-01T16:00:00Z",
+        "kind": "RULING",
+        "question": "Should the night lanes go with the friction plan for the night?",
+        "quote": "Go with the friction plan for the night.",
+        "required_spans": ["2026-11-01T16:00:00Z"]
+      }
+    ]
+  }
+}
