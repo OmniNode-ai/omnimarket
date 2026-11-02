@@ -1,0 +1,37 @@
+# lab_fill_rank/overlay.yaml
+# Engineering-owned rank configuration for the lab fill priority ranker (OMN-21922). Every value
+# is a placeholder (plan sections 3.2 and 4.2), not a measured setting; the operator owns the
+# values from approval on and no agent edits them afterward. Decimals are quoted strings.
+#
+# `mode` is absent on purpose. The operator sets it (off, shadow or on); no agent writes it, not
+# even as off. While it is absent this overlay does not load (the loader refuses, naming `mode`),
+# so the ranked source stays off and the tick prints `UNKNOWN lab-fill-priority`.
+version: 1
+blocks_cap: 5
+age_days_cap: 90
+redispatch_cap: 3
+description_read_cap: 50
+max_boost_days: 30
+boost_multiplier_min: "1.0"
+boost_multiplier_max: "3.0"
+priority_share: "0.6"
+age_share: "0.4"
+priority_map:
+  1: "1.0"
+  2: "0.75"
+  3: "0.5"
+  4: "0.25"
+  0: "0.1"
+size_buckets:
+  - max_estimate: 1
+    size: "1.0"
+  - max_estimate: 3
+    size: "1.5"
+  - size: "2.0"
+size_unestimated: "1.5"
+# The three structural changes of the 2026-09-12 acceleration attribution, as the plan names them.
+# The mapping from tickets to these tags is a placeholder.
+throughput_tags:
+  - concurrent-lane coordination
+  - tests off the launching host
+  - mechanical evidence production
