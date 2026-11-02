@@ -93,7 +93,7 @@ dod_evidence:
     check_value: uv run pytest -k stop_gate -q --no-cov tests/nodes/node_idle_slot_fill_effect/test_stop_gate_fill.py tests/nodes/node_remote_lane_compute/test_stop_gate_runner_path.py tests/nodes/node_landing_worker_engine_compute/test_stop_gate_worker_engine.py
     cwd: .
   - check_type: command
-    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_landing_worker_engine_compute/handlers/handler_landing_worker_engine.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "stop_gate"
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_landing_worker_engine_compute/handlers/handler_landing_worker_engine.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep "stop_gate" > /dev/null
     cwd: .
   binds_ac:
   - AC1
