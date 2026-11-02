@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction mod verdict: the statistics and decision rule of the compaction measurement.
+# The replay handler compares the mod arm with the stock rerun, paired by boundary, with a
+# session-clustered bootstrap, Holm over the primaries, noninferiority safeguards with the
+# zero-event rule of three, per-arm Wilson as a display only and a joint power simulation;
+# every number comes from the pre-registered thresholds data file the request names. The live
+# handler is the block-paired bootstrap that resamples whole randomized blocks. Declares no
+# topic and no subscription: invoked directly by the measurement runner and its tests.
+name: node_compaction_verdict_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: >
+  Verdict of the compaction mod against the stock rerun (HELPS, NO_DIFFERENCE, HARM,
+  INCONCLUSIVE or HOLD on mod fallback) from a session-clustered paired bootstrap, Holm over
+  the two primaries, noninferiority safeguards with the session-level rule-of-three bound when
+  both arms have zero events, and a joint power simulation; a confirmatory run below the
+  pre-registered minimum sessions or power is refused. Also the live block-paired interval.
+input_model:
+  name: ModelCompactionVerdictRequest
+  module: omnimarket.nodes.node_compaction_verdict_compute.models.model_compaction_verdict
+output_model:
+  name: ModelCompactionVerdictReport
+  module: omnimarket.nodes.node_compaction_verdict_compute.models.model_compaction_verdict
+handler:
+  module: omnimarket.nodes.node_compaction_verdict_compute.handlers.handler_compaction_verdict
+  class: HandlerCompactionVerdict
+  input_model: omnimarket.nodes.node_compaction_verdict_compute.models.model_compaction_verdict.ModelCompactionVerdictRequest
+  output_model: omnimarket.nodes.node_compaction_verdict_compute.models.model_compaction_verdict.ModelCompactionVerdictReport
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCompactionVerdict
+        module: omnimarket.nodes.node_compaction_verdict_compute.handlers.handler_compaction_verdict
+      event_model:
+        name: ModelCompactionVerdictRequest
+        module: omnimarket.nodes.node_compaction_verdict_compute.models.model_compaction_verdict
+    - handler:
+        name: HandlerLiveBlockInterval
+        module: omnimarket.nodes.node_compaction_verdict_compute.handlers.handler_compaction_verdict
+      event_model:
+        name: ModelLiveIntervalRequest
+        module: omnimarket.nodes.node_compaction_verdict_compute.models.model_compaction_verdict
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation by the compaction measurement runner with scored boundaries and the thresholds data file path.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 120000
+replay:
+  deterministic: true
+metadata:
+  transport_type: local

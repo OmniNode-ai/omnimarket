@@ -1,0 +1,79 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21973"
+title: "Compaction verdict compute: clustered bootstrap, Wilson and safeguards"
+summary: >-
+  node_compaction_verdict_compute is a pure compute node with no topic. HandlerCompactionVerdict compares the compaction mod with the stock rerun, paired by boundary, with a session-clustered paired bootstrap, Holm over the primaries, one-sided noninferiority safeguards with the session-level rule-of-three bound when both arms have zero events, the feasibility rule that labels a run EXPLORATORY, the HOLD on mod fallback, per-arm Wilson intervals as a display only (the one Wilson function, promoted from the tier-comparison node to omnimarket.handlers.stats_wilson), and a joint power simulation at the corpus shape; it refuses a confirmatory run below the minimum sessions or power. Every number is read from the thresholds data file the request names; a missing number is refused by its field name and no production threshold ships. HandlerLiveBlockInterval is the live block-paired bootstrap over randomized blocks of one session per arm.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21973-compaction-verdict"
+    statement: "node_compaction_verdict_compute returns the compaction mod verdict from a session-clustered paired comparison with Holm, safeguards and a joint power simulation."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the four synthetic corpora return their verdicts (`HELPS`, `NO_DIFFERENCE`, `HARM`, `INCONCLUSIVE`) -- falsifier: any other verdict"
+      - id: "AC2"
+        statement: "AC2: shuffling boundary order changes nothing and resampling is by session -- falsifier: a changed verdict, or a resample unit below session"
+      - id: "AC3"
+        statement: "AC3: the report carries a joint power simulation for the corpus size that models session clustering, pairing by boundary, the Holm step and every safeguard, with the minimum power and minimum session count as numbers from the data file, and the node refuses a confirmatory run below them -- falsifier: a report with no simulated power, a simulation that ignores clustering, or a confirmatory run issued below the minimum"
+      - id: "AC4"
+        statement: "AC4: a safeguard with zero events in both arms is bounded by the session-level rule-of-three bound and reported `NOT_ESTABLISHED` when that bound exceeds its margin -- falsifier: `uv run pytest -k zero_event_safeguard`, which fails when such a safeguard passes"
+      - id: "AC5"
+        statement: "AC5: the live block-paired interval covers the true difference in 85 to 95 percent of 1,000 synthetic live experiments at nominal 90 percent, with blocks of one session per arm -- falsifier: coverage outside that range, or a resample unit below the block"
+evidence_requirements:
+  - kind: "tests"
+    description: "Compaction verdict compute tests for OMN-21973."
+    command: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21973-ac1-four-corpora"
+    description: "Known gain returns HELPS, an A/A corpus returns NO_DIFFERENCE, a contradiction excess returns HARM, a small zero-event A/A corpus returns INCONCLUSIVE."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'returns_helps or returns_no_difference or returns_harm or returns_inconclusive'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21973-ac2-order-and-unit"
+    description: "A shuffled corpus gives an identical report, and splitting a session's boundaries leaves every interval unchanged because the resample unit is the session."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'shuffling or resampling_is_by_session'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21973-ac3-joint-power"
+    description: "The report carries the joint power simulation with the data file's minimums, clustering lowers simulated power, and confirmatory runs below minimum sessions or power are refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'joint_power or session_clustering or refused or not_powered'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21973-ac4-zero-event"
+    description: "A zero-event safeguard is bounded by 3 / sessions and is NOT_ESTABLISHED when that bound exceeds its margin."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k zero_event_safeguard"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21973-ac5-live-coverage"
+    description: "The live block-paired 90 percent interval covers the true difference in 85 to 95 percent of 1,000 synthetic experiments; the resample unit is the block."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_verdict_compute -q --no-cov -k 'live_block'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21973-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines HandlerCompactionVerdict. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_compaction_verdict_compute/handlers/handler_compaction_verdict.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerCompactionVerdict'"
+        cwd: "${OMNI_HOME}/omnimarket"
