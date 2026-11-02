@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -40,6 +41,12 @@ class FakeHost:
         return self.files.get(path)
 
 
+def _handler(host: FakeHost) -> HandlerOverlayDelivery:
+    container = MagicMock()
+    container.get_service.return_value = host
+    return HandlerOverlayDelivery(container=container)
+
+
 def _request(**kw: str) -> ModelOverlayDeliveryRequest:
     base = {
         "overlay_content": OVERLAY,
@@ -52,7 +59,7 @@ def _request(**kw: str) -> ModelOverlayDeliveryRequest:
 
 def test_overlay_delivery_writes_overlay_and_env_and_reads_back() -> None:
     host = FakeHost({"/srv/issuer/issuer.env": "OTHER=1\n"})
-    result = HandlerOverlayDelivery(host).handle(_request())
+    result = _handler(host).handle(_request())
     assert result.delivered is True
     assert host.files["/srv/issuer/overlay.yaml"] == OVERLAY
     assert (
@@ -68,7 +75,7 @@ def test_overlay_delivery_replaces_a_stale_env_line_once() -> None:
     host = FakeHost(
         {"/srv/issuer/issuer.env": "PRINCIPAL_ISSUER_OVERLAY_FILE=/old\nA=b\n"}
     )
-    HandlerOverlayDelivery(host).handle(_request())
+    _handler(host).handle(_request())
     lines = host.files["/srv/issuer/issuer.env"].splitlines()
     assert lines.count("PRINCIPAL_ISSUER_OVERLAY_FILE=/srv/issuer/overlay.yaml") == 1
     assert not any(line.endswith("/old") for line in lines)
@@ -76,7 +83,7 @@ def test_overlay_delivery_replaces_a_stale_env_line_once() -> None:
 
 def test_overlay_delivery_not_delivered_when_host_readback_differs() -> None:
     host = FakeHost(drop_writes=True)
-    result = HandlerOverlayDelivery(host).handle(_request())
+    result = _handler(host).handle(_request())
     assert result.delivered is False
     assert "readback" in result.reason
 

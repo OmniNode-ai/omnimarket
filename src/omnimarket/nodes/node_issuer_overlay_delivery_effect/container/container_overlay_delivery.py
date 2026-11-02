@@ -1,19 +1,21 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Wire the overlay delivery handler to a host-file transport (OMN-21899)."""
+"""Wire the overlay delivery handler to the container that holds the host-file transport (OMN-21899)."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from omnimarket.nodes.node_issuer_overlay_delivery_effect.handlers.handler_overlay_delivery import (
     HandlerOverlayDelivery,
 )
-from omnimarket.nodes.node_issuer_overlay_delivery_effect.protocols import (
-    ProtocolIssuerHostFiles,
-)
+
+if TYPE_CHECKING:
+    from omnibase_core.container import ModelONEXContainer
 
 
 def create_handler_overlay_delivery(
-    host: ProtocolIssuerHostFiles,
+    container: ModelONEXContainer,
 ) -> HandlerOverlayDelivery:
-    """Return the handler bound to the given host-file transport."""
-    return HandlerOverlayDelivery(host)
+    """Return the handler bound to a container that serves ProtocolIssuerHostFiles."""
+    return HandlerOverlayDelivery(container)

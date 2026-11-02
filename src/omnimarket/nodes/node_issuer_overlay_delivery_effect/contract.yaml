@@ -29,6 +29,12 @@ handler_routing:
     handler:
       name: HandlerOverlayDelivery
       module: omnimarket.nodes.node_issuer_overlay_delivery_effect.handlers.handler_overlay_delivery
+dependencies:
+- name: ProtocolIssuerHostFiles
+  type: protocol
+  required: true
+  module: omnimarket.nodes.node_issuer_overlay_delivery_effect.protocols
+  description: Host-file transport resolved from the container by HandlerOverlayDelivery when the operation runs.
 event_bus:
   subscribe_topics: []
   publish_topics: []
