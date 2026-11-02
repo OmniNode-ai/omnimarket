@@ -246,6 +246,7 @@ def brief(item: Mapping[str, Any], lane: str, parent: str) -> str:
         f"# Lane {lane}: cloud backlog ticket {tid} ({repo})\n"
         f"ROUTE: model={require_lane_model(requested_engine='claude', lane_kind='cloud-backlog')} effort=high\n"
         f"Parent: {parent}. Ticket: {tid}. Repo: {repo}.\n"
+        f"Opens PR in: {repo}\n"
         f'Authority: {RULING}: operator, verbatim: "OK yeah I agree start sending backlog tickets to the cloud I mean '
         'they can use mocks right CI will catch issues."\n'
         f"Source: {item.get('source')}. Fact at dispatch (verbatim): {item.get('fact')}\n"

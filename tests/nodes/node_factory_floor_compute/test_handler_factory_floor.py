@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,8 @@ import pytest
 from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
+    ModelFloorMachineDecl,
+    ModelFloorPoolReading,
     ModelFloorStoppage,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
@@ -391,22 +394,42 @@ def test_selection_keeps_only_matching_plans_and_draws_an_unmatched_token_stoppe
 # --------------------------------------------------------------------------------------- floor
 
 
-def test_floor_bays_report_free_slots_and_zero_free_for_a_stale_host() -> None:
+def pool_reading(
+    host: str, *, cap: int, read_at: datetime | None = None
+) -> ModelFloorPoolReading:
+    return ModelFloorPoolReading(
+        host=host, read_at=read_at or ago(2), cores=80, load1=1.0, cap=cap
+    )
+
+
+def test_floor_bays_count_the_lanes_placed_against_the_cap_and_mark_an_unread_host_stale() -> (
+    None
+):
     result = compute_factory_floor(
         request(
-            placement=(
-                advertisement("h201", running=1, slots=4),
-                advertisement("h105", running=0, slots=2, age_seconds=500),
-                advertisement("h051", running=9, slots=2),
-            )
+            machines=(
+                ModelFloorMachineDecl(host="h051", label="h051"),
+                ModelFloorMachineDecl(host="h105", label="h105"),
+                ModelFloorMachineDecl(host="h201", label="h201"),
+            ),
+            pool=(
+                pool_reading("h051", cap=24),
+                pool_reading("h105", cap=2, read_at=ago(90)),
+            ),
+            ledger=tuple(
+                row("CLAIM", 5, f"lane-{n}", host="h051", tickets=(f"OMN-{n}",))
+                for n in range(20)
+            ),
+            # The bus advertisement says one unit slot and none running: it is not the lane count.
+            placement=(advertisement("h051", running=0, slots=1, age_seconds=500),),
         )
     )
     assert [
         (b.host, b.slots, b.running, b.free, b.stale) for b in result.floor.bays
     ] == [
-        ("h051", 2, 9, 0, False),
+        ("h051", 24, 20, 4, False),
         ("h105", 2, 0, 0, True),
-        ("h201", 4, 1, 3, False),
+        ("h201", 0, 0, 0, True),
     ]
 
 

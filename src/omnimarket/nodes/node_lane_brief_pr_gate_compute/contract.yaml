@@ -1,0 +1,83 @@
+name: node_lane_brief_pr_gate_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The PR-opening check of the brief gate (OMN-21440, factory task T-W3). A brief opens a PR in the
+  repository its column-zero Opens PR in line names (none declares it opens none). A brief with no such
+  line is reported under the observe mode and refused under enforce. A brief that names a repository is
+  judged by the shared WIP rule of node_wip_gate_reducer (omnimarket.handlers.rules_wip_gate): refused at the
+  repository's limit when the wip_limits overlay enforces, admitted on a valid exemption, admitted_override on
+  valid slot-reducer override evidence. The mode and its citation are the lane_brief_pr_gate overlay,
+  injected into the handler; the request has no mode field and can never loosen the injected mode or
+  policy. enforce with no citation is refused. Takes facts and now, reads no file, depends on no protocol.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_lane_brief_pr
+      handler:
+        name: HandlerLaneBriefPrGate
+        module: omnimarket.nodes.node_lane_brief_pr_gate_compute.handlers.handler_lane_brief_pr_gate
+      input_model: omnimarket.models.lane_brief_pr_gate.model_lane_brief_pr_gate_request.ModelLaneBriefPrGateRequest
+      output_model: omnimarket.models.lane_brief_pr_gate.model_lane_brief_pr_gate_result.ModelLaneBriefPrGateResult
+
+handler:
+  module: omnimarket.nodes.node_lane_brief_pr_gate_compute.handlers.handler_lane_brief_pr_gate
+  class: HandlerLaneBriefPrGate
+  input_model: omnimarket.models.lane_brief_pr_gate.model_lane_brief_pr_gate_request.ModelLaneBriefPrGateRequest
+  output_model: omnimarket.models.lane_brief_pr_gate.model_lane_brief_pr_gate_result.ModelLaneBriefPrGateResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  runtime_profiles: [main]
+
+inputs:
+  brief:
+    type: str
+    required: true
+    description: The brief text, as a producer wrote it.
+  dispatch_id:
+    type: str
+    required: true
+    description: The dispatch asking to open a PR.
+  now:
+    type: datetime
+    required: true
+    description: The time of the gate run.
+
+outputs:
+  verdict:
+    type: str
+  issues:
+    type: tuple
+  wip:
+    type: object
+  line:
+    type: str
+
+terminal_event: onex.evt.omnimarket.lane-brief-pr-gate-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-brief-pr-gate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-brief-pr-gate-checked.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-brief-pr-gate-checked.v1
+
+published_events:
+  - event_type: LaneBriefPrGateChecked
+    topic: onex.evt.omnimarket.lane-brief-pr-gate-checked.v1
+    description: The verdict on one brief's PR-opening line and WIP admission.
+
+metadata:
+  ticket: OMN-21440
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-brief-pr-gate-requested.v1

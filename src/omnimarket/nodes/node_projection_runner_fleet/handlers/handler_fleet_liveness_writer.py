@@ -21,12 +21,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_runner_fleet.handlers.fleet_state_file import (
+    save_observation,
+    state_file_path,
+)
 from omnimarket.nodes.node_projection_runner_fleet.handlers.handler_projection_runner_fleet import (
     HandlerProjectionRunnerFleet,
 )
@@ -209,7 +214,24 @@ class FleetLivenessProjectionWriter(BaseProjectionRunner):
             "rows_tombstoned": len(tombstoned),
             "runner_rows": written,
             "tombstoned_runner_names": tombstoned,
+            "state_file": self._save_state_file(data),
         }
+
+    def _save_state_file(self, data: dict[str, Any]) -> str:
+        """Save the observation for the factory floor; says why when it did not, never raises over the projection.
+
+        The projection above has already been written, so a file that cannot be written must not fail the message (a
+        redelivery would only be refused by the stale-write guard). The outcome is in the applied event's payload.
+        """
+        path = state_file_path(self._contract, os.environ)
+        if path is None:
+            return f"skipped: {self._contract['state_file']['dir_env']} is not set"
+        try:
+            return save_observation(
+                ModelRunnerFleetObservationWire.model_validate(data), path
+            )
+        except OSError as exc:
+            return f"failed: {type(exc).__name__}: {str(exc)[:160]}"
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta

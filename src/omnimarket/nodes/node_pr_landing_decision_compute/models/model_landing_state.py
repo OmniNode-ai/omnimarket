@@ -240,6 +240,15 @@ class ModelLandingCauseRecord(BaseModel):
         pattern=SHA_PATTERN,
         description="The repo's base head when the cause parked; None if unread.",
     )
+    not_shared_base_head: str | None = Field(
+        default=None,
+        pattern=SHA_PATTERN,
+        description=(
+            "The repo's base head when a worker answered cause_not_shared; None "
+            "if unread. While the base head read now equals it, the verdict holds "
+            "the key whatever the member set or the member heads do."
+        ),
+    )
     escalated: str | None = Field(
         default=None, description="<cause key>@<parked_until> of the last escalation."
     )

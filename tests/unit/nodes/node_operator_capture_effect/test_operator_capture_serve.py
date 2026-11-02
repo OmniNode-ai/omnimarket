@@ -28,6 +28,9 @@ from omnimarket.models.operator_capture import (
     EnumOperatorCaptureStatus,
     ModelOperatorPromptRecord,
 )
+from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ledger_host import (
+    ledger_host_capture,
+)
 from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import (
     DelegateAnswer,
     runner_ledger_appender,
@@ -35,14 +38,17 @@ from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import
 from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_serve import (
     OperatorCaptureHost,
     capture_group_id,
-    ledger_host_capture,
     load_operator_capture_topics,
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers.handler_operator_capture_effect import (
     HandlerOperatorCaptureEffect,
 )
+from omnimarket.nodes.node_work_ledger_append_effect import (
+    HandlerWorkLedgerAppendEffect,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerAppendCommand,
+    LocalLedgerFile,
 )
 
 pytestmark = pytest.mark.unit
@@ -274,7 +280,11 @@ def test_the_ledger_host_capture_appends_through_the_serve_process_runner(
             bus,
             ledger=ledger,
             append_runner=_file_append_command(ledger),
-            host_name="h-ledger",
+            append_handler=HandlerWorkLedgerAppendEffect(
+                _file_append_command(ledger),
+                LocalLedgerFile(ledger),
+                "h-ledger",
+            ),
             bus_lane=None,
             retry_seconds=0,
         )
@@ -300,3 +310,43 @@ def test_the_ledger_host_capture_appends_through_the_serve_process_runner(
     assert all("session=sess-op" in row for row in rows)
     assert not any("sess-lane" in row or "Build lane X" in row for row in rows)
     assert any('"Can you move the capture onto the bus?"' in row for row in rows)
+
+
+def test_the_ledger_host_capture_rows_carry_req_and_via_when_given_the_append_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Capture rows pass the append handler as accepted commands, so none lacks via= (OMN-16176)."""
+    monkeypatch.setenv("ONEX_OPERATOR_CAPTURE_DIR", str(tmp_path / "store"))
+    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger.write_text("# Ledger\n")
+    append_handler = HandlerWorkLedgerAppendEffect(
+        _file_append_command(ledger),
+        LocalLedgerFile(ledger),
+        "h-ledger",
+        operator_principal="dev-cli-operator",
+    )
+
+    async def scenario() -> None:
+        bus = _Bus()
+        await bus.start()
+        host = ledger_host_capture(
+            bus,
+            ledger=ledger,
+            append_runner=_file_append_command(ledger),
+            append_handler=append_handler,
+            bus_lane=None,
+            retry_seconds=0,
+        )
+        await host.start()
+        try:
+            await _publish(bus, _record().model_dump(mode="json"))
+            await _wait_for(lambda: host.handled == 1, timeout=10.0)
+        finally:
+            await host.stop()
+            await bus.close()
+
+    asyncio.run(scenario())
+    rows = ledger.read_text().splitlines()[1:]
+    assert rows, "no row was appended"
+    assert all("| via=bus:capture |" in row and "| req=" in row for row in rows)
+    assert all("principal=dev-cli-operator" in row for row in rows)

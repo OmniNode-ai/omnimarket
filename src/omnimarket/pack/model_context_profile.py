@@ -47,6 +47,9 @@ class ModelContextProfile(BaseModel):
     model_id: str = Field(min_length=1)
     required_factors: tuple[EnumContextFactor, ...] = Field(default_factory=tuple)
     optional_factors: tuple[EnumContextFactor, ...] = Field(default_factory=tuple)
+    # Required factors whose source may affirm "nothing here" (status unresolved,
+    # no error) without failing the build. Any other status still fails it.
+    empty_allowed_factors: tuple[EnumContextFactor, ...] = Field(default_factory=tuple)
     excluded_factors: tuple[EnumContextFactor, ...] = Field(default_factory=tuple)
     factor_precedence: tuple[EnumContextFactor, ...] = Field(default_factory=tuple)
     token_budget: int = Field(default=16000, gt=0)
@@ -78,6 +81,8 @@ class ModelContextProfile(BaseModel):
             raise ValueError("required_factors cannot also be excluded")
         if optional & excluded:
             raise ValueError("optional_factors cannot also be excluded")
+        if not set(self.empty_allowed_factors) <= required:
+            raise ValueError("empty_allowed_factors must all be in required_factors")
         selected = required | optional
         if (
             EnumContextFactor.CONVERSATION_TAIL in selected
@@ -176,17 +181,14 @@ class ModelContextProfile(BaseModel):
 
     def effective_window_tokens(self) -> int | None:
         """The declared window minus its reserved output and system shares (port item AP-B5)."""
-        if (
-            self.context_window_tokens is None
-            or self.reserved_output_tokens is None
-            or self.reserved_system_tokens is None
-        ):
-            return None
-        return (
-            self.context_window_tokens
-            - self.reserved_output_tokens
-            - self.reserved_system_tokens
+        window, output, system = (
+            self.context_window_tokens,
+            self.reserved_output_tokens,
+            self.reserved_system_tokens,
         )
+        if window is None or output is None or system is None:
+            return None
+        return window - output - system
 
     def conditional_factors(self) -> frozenset[EnumContextFactor]:
         """Optional factors loaded only when a task-kind rule that names them matches."""

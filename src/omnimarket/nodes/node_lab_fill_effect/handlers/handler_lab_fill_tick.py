@@ -214,6 +214,7 @@ def _brief(
         f"AUTHORITY: operator RULING {request.authority_ruling} "
         f"lane={request.authority_lane}; parent ticket {request.parent_ticket}.\n"
         f"Parent: {request.parent}. Ticket: {row['ticket']}. Repo: {row.get('repo') or 'none'}.\n"
+        f"Opens PR in: {row.get('repo') or 'none'}\n"
         + (f"Lane kind: {lane_kind}\n" if lane_kind else "")
         + "\n"
         f"{marker}\n\n"
@@ -308,7 +309,8 @@ def _diagnose_brief(
         f"ROUTE: model={request.engine} effort=high\n"
         f"AUTHORITY: operator RULING {request.authority_ruling} "
         f"lane={request.authority_lane}; parent ticket {request.parent_ticket}.\n"
-        f"Parent: {request.parent}. Ticket: {request.parent_ticket}. Repo: none.\n\n"
+        f"Parent: {request.parent}. Ticket: {request.parent_ticket}. Repo: none.\n"
+        "Opens PR in: none\n\n"
         f"Lab-fill ticks with free slots placed no lane for {alarm.streak} ticks running.\n"
         f"run_key={request.run_key} fire_id={request.fire_id} "
         f"free_slots={result.free_slots} placed={result.placed} outcome={result.outcome}\n"

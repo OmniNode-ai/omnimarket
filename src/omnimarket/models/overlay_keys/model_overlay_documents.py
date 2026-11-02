@@ -105,6 +105,9 @@ class ModelLabHostRow(_ModelOverlayBase):
     # means the default in the lab-work node contract's ``placement.host_defaults``.
     # ``avx2``: the host runs wheels built with AVX2 (an Ivy Bridge host does not).
     avx2: bool | None = None
+    # ``docker``: the host takes Docker work. ``false`` on every macOS row (operator RULING
+    # 2026-11-01T20:24:40Z): a host table row, because the advertised tool list is the same on every host.
+    docker: bool | None = None
     # ``min_free_gb``: this host's own memory admission bar for a unit, replacing the caller's bar.
     min_free_gb: float | None = Field(default=None, ge=0)
     # ``job_kinds``: the work kinds (test, build, lint, code_draft, other) the host takes; omitted: all.
