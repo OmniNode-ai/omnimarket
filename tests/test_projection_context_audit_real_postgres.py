@@ -85,7 +85,9 @@ async def test_replay_against_real_postgres_leaves_one_row_per_key(
     try:
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(_INFRA_053_TABLE.replace("public.", f"{schema}."))
-        migrations = sorted((NODE / "migrations").glob("*.sql"))
+        # 0001 grants a role the disposable database does not hold; its text is
+        # pinned in tests/test_golden_chain_projection_context_audit.py.
+        migrations = sorted((NODE / "migrations").glob("0000_*.sql"))
         assert [path.name for path in migrations] == [
             "0000_add_context_audit_event_key.sql"
         ]
