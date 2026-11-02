@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_engine_ladder import ladder_of
+from omnimarket.models.stop_gate import ModelStopGateFacts, ModelStopGateResult
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -36,6 +37,8 @@ class EnumRemoteLaneOutcome(StrEnum):
     VENV_DRIFT = "VENV_DRIFT"
     # A hash the drift check needs was not supplied: not a pass, not a drift.
     VENV_UNKNOWN = "VENV_UNKNOWN"
+    # An open andon stop in an enforce class refused the engine; the result names the stop and its swarm lane.
+    STOPPED = "STOPPED"
 
 
 class ModelRemoteLaneHostReading(BaseModel):
@@ -157,6 +160,10 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     escalation_reason: str | None = None
     # The lane the lane is bound to, when the caller binds it. None: the host's own ``bus_lane``.
     lane: str | None = Field(default=None, min_length=1)
+    # The open andon stops (read by the caller from the exception queue), the ``andon_stop`` overlay's
+    # policy, now and the lane's exemption claim and bindings (OMN-21958). None: no gate is installed
+    # and the decision is as before. A class in ``observe`` mode refuses nothing.
+    stop_gate: ModelStopGateFacts | None = None
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):
@@ -214,3 +221,8 @@ class ModelRemoteLanePlacementResult(BaseModel):
     rung: str | None = None
     rungs: tuple[ModelRemoteLaneRungVerdict, ...] = ()
     experiment: ModelEngineExperimentRow | None = None
+    # The refusal line that names the stop and its swarm lane, when a stop kept the engine off.
+    refusal: str | None = None
+    # ``stop_gate``'s answer for the engine when the request carried stop facts, whatever the outcome
+    # (an observed stop is named here and refuses nothing).
+    stop_gate: ModelStopGateResult | None = None
