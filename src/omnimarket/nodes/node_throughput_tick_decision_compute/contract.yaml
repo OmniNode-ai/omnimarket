@@ -16,8 +16,8 @@ description: >-
   port of the controller, merges, floors and escalation findings of the retired
   throughput_tick.py, and the lab-headroom finding from the pool, marks and receipts a caller read.
   OMN-20840: a park lasting past park_max_hours over a repository with zero merges is MISSING, an
-  unread lab host is UNKNOWN, a runner receipt that ended without running is MISSING until its brief
-  runs, and an open count rising more than open_rise_pct across three tick runs is MISSING.
+  unread lab host is UNKNOWN, a runner receipt that ended without running is MISSING until its brief,
+  ticket or relaunch lane lineage runs, and an open count rising more than open_rise_pct across three tick runs is MISSING.
 input_model:
   name: ModelThroughputTickRequest
   module: omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision
