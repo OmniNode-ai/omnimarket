@@ -185,3 +185,34 @@ class TestContentHash:
             _profile(token_budget=100).content_hash()
             != _profile(token_budget=101).content_hash()
         )
+
+
+class TestEmptyAllowedFactors:
+    def test_defaults_to_none_allowed(self) -> None:
+        assert _profile(required_factors=(F.OPEN_WORK,)).empty_allowed_factors == ()
+
+    def test_a_required_factor_may_be_declared_empty_allowed(self) -> None:
+        profile = _profile(
+            required_factors=(F.OPEN_WORK, F.ORCHESTRATION_STATE),
+            empty_allowed_factors=(F.OPEN_WORK,),
+        )
+        assert profile.empty_allowed_factors == (F.OPEN_WORK,)
+
+    def test_an_optional_factor_cannot_be_declared_empty_allowed(self) -> None:
+        with pytest.raises(ValidationError, match="empty_allowed_factors"):
+            _profile(
+                required_factors=(F.OPEN_WORK,),
+                optional_factors=(F.REPO_STATE,),
+                empty_allowed_factors=(F.REPO_STATE,),
+            )
+
+    def test_an_unlisted_factor_cannot_be_declared_empty_allowed(self) -> None:
+        with pytest.raises(ValidationError, match="empty_allowed_factors"):
+            _profile(empty_allowed_factors=(F.OPEN_WORK,))
+
+    def test_the_field_is_part_of_the_content_hash(self) -> None:
+        strict = _profile(required_factors=(F.OPEN_WORK,))
+        lenient = _profile(
+            required_factors=(F.OPEN_WORK,), empty_allowed_factors=(F.OPEN_WORK,)
+        )
+        assert strict.content_hash() != lenient.content_hash()

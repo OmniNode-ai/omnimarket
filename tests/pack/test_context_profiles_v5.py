@@ -236,3 +236,10 @@ def test_every_shipped_profile_declares_a_window_that_holds_its_budget(
     effective = profile.effective_window_tokens()
     assert effective is not None
     assert effective >= profile.token_budget
+
+
+def test_only_the_compaction_profile_allows_an_empty_required_factor() -> None:
+    assert _resolve("compaction_orchestrator").empty_allowed_factors == (F.OPEN_WORK,)
+    for name in PROFILE_NAMES:
+        if name != "compaction_orchestrator":
+            assert _resolve(name).empty_allowed_factors == (), name
