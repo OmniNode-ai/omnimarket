@@ -23,6 +23,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     load_inference_protocol_config,
@@ -44,7 +45,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 

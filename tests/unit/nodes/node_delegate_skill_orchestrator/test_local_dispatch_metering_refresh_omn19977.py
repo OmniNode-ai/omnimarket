@@ -54,6 +54,7 @@ from click.testing import CliRunner
 from omnimarket import pricing
 from omnimarket.cli.cli_metering import metering_command
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.inference.provider_quota_state import SqliteProviderQuotaReader
 from omnimarket.local_deployment import tenant_identity
 from omnimarket.models.delegation.local_credential_refusal import (
@@ -102,7 +103,6 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering
 )
 from omnimarket.projection import sqlite_database, sqlite_metering_summary
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 

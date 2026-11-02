@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.model_escalation_decision_request import (
+    ModelEscalationDecisionRequest,
+)
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
-)
-from omnimarket.routing.model_escalation_decision_request import (
-    ModelEscalationDecisionRequest,
 )
 
 pytestmark = pytest.mark.unit

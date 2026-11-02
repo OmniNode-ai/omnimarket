@@ -19,6 +19,9 @@ from omnimarket.delegation.reasoning_preamble import (
     strip_leading_inline_reasoning,
 )
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.provider_finish_reason import TRUNCATION_CHECK_NAME
 from omnimarket.inference.task_class_authority import (
     ModelReasoningPreamblePolicy,
@@ -35,9 +38,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 
 pytestmark = pytest.mark.unit

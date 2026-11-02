@@ -35,6 +35,8 @@ from uuid import uuid4
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers import delegation_backend_resolution as resolution_mod
+from omnimarket.handlers.customer_key_terminus import CustomerKeyRefusedError
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -46,8 +48,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallResult,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing import delegation_backend_resolution as resolution_mod
-from omnimarket.routing.customer_key_terminus import CustomerKeyRefusedError
 
 pytestmark = pytest.mark.unit
 

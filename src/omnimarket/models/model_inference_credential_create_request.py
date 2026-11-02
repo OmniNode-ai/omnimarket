@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.byok_provider_backends import (
     ANTHROPIC_WORKSPACE_ID_PATTERN,
     ByokCatalogError,
     byok_provider_plans,

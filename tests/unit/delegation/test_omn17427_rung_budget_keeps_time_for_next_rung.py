@@ -30,6 +30,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassExecutionBudget,
     resolve_task_class_execution_budget,
@@ -43,9 +46,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 
 pytestmark = pytest.mark.unit

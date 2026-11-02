@@ -17,12 +17,12 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelDelegationBackendConfig,
-)
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.delegation_backend_resolution import (
     resolve_delegation_backend,
     resolve_timeout_seconds,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelDelegationBackendConfig,
 )
 
 _BIFROST_CONFIG_PATH = (

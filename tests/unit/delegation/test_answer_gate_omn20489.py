@@ -554,6 +554,9 @@ def _dispatch_summary(
     import asyncio
     from decimal import Decimal
 
+    from omnimarket.handlers.delegation_backend_resolution import (
+        ModelResolvedDelegationBackend,
+    )
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
         port_local_delegation_dispatch as port_mod,
     )
@@ -563,9 +566,6 @@ def _dispatch_summary(
     from omnimarket.nodes.node_llm_delegation_call_effect import (
         ModelLlmDelegationCallRequest,
         ModelLlmDelegationCallResult,
-    )
-    from omnimarket.routing.delegation_backend_resolution import (
-        ModelResolvedDelegationBackend,
     )
 
     local_backend = ModelResolvedDelegationBackend(

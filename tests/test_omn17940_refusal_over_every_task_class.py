@@ -67,6 +67,12 @@ import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import ValidationError
 
+from omnimarket.handlers.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+)
 from omnimarket.inference.task_class_authority import (
     load_task_class_authority,
     withheld_delegation_refusal,
@@ -80,12 +86,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     delta,
     house_credential_refs,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
 )
 from omnimarket.routing.tenant_overlay_resolver import (
     ModelTenantRoutingOverlayBackend,

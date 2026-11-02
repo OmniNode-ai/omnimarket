@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.routing.byok_provider_backends import load_byok_plan_catalog
+from omnimarket.handlers.byok_provider_backends import load_byok_plan_catalog
 
 MIGRATION_PATH = (
     Path(__file__).resolve().parents[3]

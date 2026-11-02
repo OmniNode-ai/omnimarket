@@ -37,27 +37,27 @@ scan_scope:
 sources:
   - id: routing_tiers_ladder
     selects: the tier ladder, which backend serves each tier and each task class's use_for
-    resolver: omnimarket.routing.routing_tiers_path:resolve_routing_tiers_path
+    resolver: omnimarket.handlers.routing_tiers_path:resolve_routing_tiers_path
     packaged_defaults:
       - src/omnimarket/configs/routing_tiers.yaml
     overlay: DELEGATION_ROUTING_TIERS_PATH pin, then the node_delegation_routing_reducer node overlay
     resolution_sites:
-      - "src/omnimarket/routing/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
-      - "src/omnimarket/routing/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
+      - "src/omnimarket/handlers/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
+      - "src/omnimarket/handlers/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
     precedence:
       probe: routing_tiers_ladder
   - id: harness_routing_overlay
     selects: harness backends, harness tiers and per-class escalation chains
-    resolver: omnimarket.routing.routing_tiers_path:load_delegation_routing_overlay
+    resolver: omnimarket.handlers.routing_tiers_path:load_delegation_routing_overlay
     packaged_defaults: []
     overlay: DELEGATION_ROUTING_OVERLAY_PATH; unbound resolves to the empty overlay, with no packaged file
     resolution_sites:
-      - "src/omnimarket/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
+      - "src/omnimarket/handlers/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
     precedence:
       probe: harness_routing_overlay
   - id: bifrost_backend_contract
     selects: backends, endpoints, model names and routing rules per task class
-    resolver: omnimarket.routing.delegation_backend_resolution:_resolve_effective_bifrost_paths
+    resolver: omnimarket.handlers.delegation_backend_resolution:_resolve_effective_bifrost_paths
     packaged_defaults:
       - src/omnimarket/configs/bifrost_delegation.yaml
       - src/omnimarket/configs/provider_surfaces.v1.yaml

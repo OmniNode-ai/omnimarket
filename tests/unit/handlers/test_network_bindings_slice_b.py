@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
 
+from omnimarket.handlers import customer_key_terminus
 from omnimarket.nodes.node_captured_secret_store_effect.handlers import (
     handler_captured_secret_store,
 )
@@ -18,13 +19,12 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
 from omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text import (
     linear_url_ok,
 )
-from omnimarket.routing import customer_key_terminus
 
 SLICE = (
     "nodes/node_captured_secret_store_effect/handlers/handler_captured_secret_store.py",
     "nodes/node_local_dashboard_serve_effect/models/model_local_dashboard.py",
     "nodes/node_ticket_text_effect/handlers/handler_ticket_text.py",
-    "routing/customer_key_terminus.py",
+    "handlers/customer_key_terminus.py",
 )
 
 

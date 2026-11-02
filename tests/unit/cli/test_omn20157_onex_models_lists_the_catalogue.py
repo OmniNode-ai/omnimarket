@@ -36,6 +36,12 @@ from click.testing import CliRunner
 from omnimarket.cli import cli_secret
 from omnimarket.cli.cli_secret import models_group
 from omnimarket.handlers import handler_model_keys
+from omnimarket.handlers.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.handlers.byok_provider_backends import (
+    byok_routable_plans,
+    customer_provider_catalogue,
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -45,12 +51,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setu
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     PROVIDERS,
     HandlerModelSetup,
-)
-from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
-from omnimarket.routing.byok_provider_backends import (
-    byok_routable_plans,
-    customer_provider_catalogue,
-    resolve_byok_provider_backend,
 )
 
 pytestmark = pytest.mark.unit

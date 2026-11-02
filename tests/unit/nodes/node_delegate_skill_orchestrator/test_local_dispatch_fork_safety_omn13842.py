@@ -35,6 +35,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_module,
 )
@@ -46,7 +47,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 
 class SuccessfulEffectHandler:

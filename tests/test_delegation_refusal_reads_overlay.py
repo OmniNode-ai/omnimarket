@@ -33,6 +33,11 @@ from omnibase_core.models.delegation.wire import ModelRoutingIntent
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.config.settings import get_settings
+from omnimarket.handlers.customer_key_terminus import (
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -41,11 +46,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
 )
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")

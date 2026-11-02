@@ -13,6 +13,7 @@ from __future__ import annotations
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.enums.enum_harness_rung_refusal import EnumHarnessRungRefusal
+from omnimarket.handlers.routing_tiers_path import load_delegation_routing_overlay
 from omnimarket.models.delegation.model_delegation_routing_overlay import (
     ModelDelegationRoutingOverlay,
 )
@@ -30,7 +31,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     _get_config,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.routing_tiers_path import load_delegation_routing_overlay
 
 
 def resolve_class_escalation_chain(

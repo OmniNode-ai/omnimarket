@@ -40,12 +40,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from omnimarket.handlers.delegation_backend_resolution import (
+    load_bifrost_backends_with_provenance,
+)
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     AUTHORITATIVE_BACKEND_FIELDS,
     ModelBifrostOverlayProvenance,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    load_bifrost_backends_with_provenance,
 )
 
 

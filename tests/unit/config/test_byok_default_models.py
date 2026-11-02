@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.byok_provider_backends import (
     CATALOG_PATH,
     ByokCatalogError,
     _read_plan_catalog,

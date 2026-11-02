@@ -18,12 +18,12 @@ import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.utils.util_error_sanitization import sanitize_error_message
 
-from omnimarket.inference.local_byok_credential_adapter import (
-    register_local_byok_credential,
-)
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
+)
+from omnimarket.inference.local_byok_credential_adapter import (
+    register_local_byok_credential,
 )
 
 pytestmark = pytest.mark.unit

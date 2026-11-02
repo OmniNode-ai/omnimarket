@@ -53,7 +53,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     OverlayBackendIncompleteError,
     load_bifrost_delegation_config,
 )
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
 )

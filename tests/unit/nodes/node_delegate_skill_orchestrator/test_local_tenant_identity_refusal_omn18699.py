@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.local_deployment import tenant_identity
 from omnimarket.local_deployment.tenant_identity import (
     mint_local_tenant_identity,
@@ -39,7 +40,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     transport,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, HOUSE_TENANT_UUID
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 

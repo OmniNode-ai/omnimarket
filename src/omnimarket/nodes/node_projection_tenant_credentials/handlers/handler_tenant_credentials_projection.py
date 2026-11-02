@@ -68,15 +68,15 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 

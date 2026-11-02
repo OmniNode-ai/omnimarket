@@ -13,6 +13,7 @@ from omnimarket.delegation.reasoning_preamble import (
     LEADING_REASONING_TRACE_CHECK_NAME,
     RESIDUAL_REASONING_TAG_CHECK_NAME,
 )
+from omnimarket.handlers.delegation_backend_resolution import resolve_delegation_backend
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -20,7 +21,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     HandlerLlmDelegationCall,
 )
-from omnimarket.routing.delegation_backend_resolution import resolve_delegation_backend
 
 pytestmark = pytest.mark.unit
 

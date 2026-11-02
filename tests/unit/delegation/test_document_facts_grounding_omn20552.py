@@ -229,10 +229,10 @@ async def _dispatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: dict[str, str]
 ) -> dict[str, object]:
     """One document case through the in-process port onex delegate uses."""
+    from omnimarket.handlers import delegation_backend_resolution
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
         port_local_delegation_dispatch as local_module,
     )
-    from omnimarket.routing import delegation_backend_resolution
     from tests.unit.delegation.test_local_port_response_contract_evidence_omn19201 import (
         _backends,
         _RecordingEffect,

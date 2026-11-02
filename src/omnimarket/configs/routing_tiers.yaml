@@ -342,7 +342,7 @@ tiers:
     # ``placement`` in bifrost_delegation.yaml (no ``fallback_for``), with the
     # whole use_for written out there, because the deployment-fact gate admits no
     # new vendor value in this packaged file. The routing authority appends it
-    # when it loads the ladder (omnimarket.routing.backend_placement).
+    # when it loads the ladder (omnimarket.handlers.backend_placement).
     models: []
     eval_before_accept: true
     eval_model: null

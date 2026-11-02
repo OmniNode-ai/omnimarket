@@ -124,6 +124,26 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
+from omnimarket.handlers.byok_provider_backends import (
+    byok_backend_max_retries,
+    resolve_byok_backend_by_id,
+)
+from omnimarket.handlers.customer_key_terminus import (
+    EnumDelegationSurface,
+    enforce_customer_key_terminus,
+    is_customer_attributed,
+)
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    load_bifrost_backends,
+    refuse_undeclared_local_model,
+    resolve_declared_local_model,
+    resolve_effective_max_tokens,
+    resolve_timeout_seconds,
+)
+from omnimarket.handlers.delegation_backend_resolution import (
+    resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
+)
 from omnimarket.handlers.delegation_first_choice import first_choice_route
 from omnimarket.handlers.delegation_model_scope import (
     model_scope_refusal,
@@ -131,6 +151,16 @@ from omnimarket.handlers.delegation_model_scope import (
     read_model_scope,
 )
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.handlers.local_byok_route import (
+    next_chosen_model_byok_route,
+    next_registered_byok_route,
+    registered_byok_routes,
+    registered_byok_tier_name,
+    registered_local_model_routes,
+    resolve_pinned_byok_route,
+    substitute_any_registered_byok_route,
+    substitute_local_byok_route,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -347,36 +377,6 @@ from omnimarket.projection.sqlite_metering_summary import (
 )
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
-)
-from omnimarket.routing.byok_provider_backends import (
-    byok_backend_max_retries,
-    resolve_byok_backend_by_id,
-)
-from omnimarket.routing.customer_key_terminus import (
-    EnumDelegationSurface,
-    enforce_customer_key_terminus,
-    is_customer_attributed,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    load_bifrost_backends,
-    refuse_undeclared_local_model,
-    resolve_declared_local_model,
-    resolve_effective_max_tokens,
-    resolve_timeout_seconds,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
-)
-from omnimarket.routing.local_byok_route import (
-    next_chosen_model_byok_route,
-    next_registered_byok_route,
-    registered_byok_routes,
-    registered_byok_tier_name,
-    registered_local_model_routes,
-    resolve_pinned_byok_route,
-    substitute_any_registered_byok_route,
-    substitute_local_byok_route,
 )
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,

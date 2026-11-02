@@ -28,6 +28,10 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_backend_placements,
     load_bifrost_delegation_config,
 )
+from omnimarket.handlers.backend_placement import (
+    apply_backend_placements,
+    placement_digest,
+)
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelDelegationBackendPlacement,
     ModelPlacedDelegationBackend,
@@ -35,10 +39,6 @@ from omnimarket.models.delegation.model_delegation_backend_placement import (
 from omnimarket.models.delegation.wire import parse_delegation_config_yaml
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
-)
-from omnimarket.routing.backend_placement import (
-    apply_backend_placements,
-    placement_digest,
 )
 
 pytestmark = pytest.mark.unit

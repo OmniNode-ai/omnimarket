@@ -53,6 +53,9 @@ from omnimarket.events.delegation_judge_verdict import (
     EnumDelegationJudgeVerdict,
     ModelDelegationJudgeVerdictEvent,
 )
+from omnimarket.handlers.delegation_backend_resolution import (
+    resolve_delegation_backend,
+)
 from omnimarket.inference.secret_store_resolver import (
     clear_secret_store_resolver_cache,
 )
@@ -92,9 +95,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend,
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 

@@ -779,6 +779,12 @@ class TestRealPostgresRoutingOverlayWritePath:
         """
         import contextlib as _contextlib
 
+        from omnimarket.handlers.customer_key_terminus import (
+            CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+            CustomerKeyRefusedError,
+            EnumCustomerKeyRefusalReason,
+            EnumDelegationSurface,
+        )
         from omnimarket.nodes.node_delegation_orchestrator.models import (
             ModelDelegationRequest,
         )
@@ -787,12 +793,6 @@ class TestRealPostgresRoutingOverlayWritePath:
         )
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
-        )
-        from omnimarket.routing.customer_key_terminus import (
-            CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-            CustomerKeyRefusedError,
-            EnumCustomerKeyRefusalReason,
-            EnumDelegationSurface,
         )
         from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
 

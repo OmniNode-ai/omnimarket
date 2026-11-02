@@ -18,6 +18,9 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     load_inference_protocol_config,
@@ -31,9 +34,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_call_budget import (
     load_inference_call_budget,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 
 # The slowest capped call measured 2026-10-10 on a GPU rung under load:

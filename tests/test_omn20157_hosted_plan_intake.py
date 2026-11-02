@@ -16,6 +16,12 @@ import pytest
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from pydantic import ValidationError
 
+from omnimarket.handlers.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.handlers.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ByokPlanNotPermittedError,
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
     HandlerTenantCredentialsProjectionRunner,
 )
@@ -26,12 +32,6 @@ from omnimarket.projection.credential_publisher import (
     register_inference_credential,
 )
 from omnimarket.projection.runner import MessageMeta
-from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    ByokPlanNotPermittedError,
-    resolve_byok_backend_by_id,
-)
 
 # OMN-21059: every shipped row has the customer choose the model; this file
 # exercises the catalogue-pick path, which a row reaches with that flag off.

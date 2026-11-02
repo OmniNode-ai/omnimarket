@@ -129,7 +129,7 @@ def _isolate_bifrost_file_overlay(
     passthrough, so patching the module attribute alone does not reach it — patch
     the module attribute AND both functions' ``__kwdefaults__``.
     """
-    from omnimarket.routing import delegation_backend_resolution as d
+    from omnimarket.handlers import delegation_backend_resolution as d
 
     # Never created, so ``overlay_path.is_file()`` is False and resolution falls
     # through to the committed bifrost contract on any machine.

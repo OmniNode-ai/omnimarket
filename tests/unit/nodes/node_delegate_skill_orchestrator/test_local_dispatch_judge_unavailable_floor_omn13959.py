@@ -11,6 +11,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_SOURCE_COMBINED,
@@ -27,9 +30,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 
 # A good-but-mechanically-incomplete code answer: clears the code_generation

@@ -16,9 +16,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.handlers.byok_provider_backends import ANTHROPIC_WORKSPACE_ID_PATTERN
 from omnimarket.handlers.network_bindings import network_host
 from omnimarket.projection.credential_publisher import LAB_HOST_NAME_PATTERN
-from omnimarket.routing.byok_provider_backends import ANTHROPIC_WORKSPACE_ID_PATTERN
 
 
 class ModelReviewGatewayKey(BaseModel):

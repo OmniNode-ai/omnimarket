@@ -49,6 +49,16 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+    model_not_chosen_message,
+)
+from omnimarket.handlers.byok_provider_backends import (
+    ByokPlanNotPermittedError,
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.local_byok_route import house_provider_slug
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
@@ -108,16 +118,6 @@ from omnimarket.projection.credential_publisher import (
     register_inference_credential,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.routing.byok_model_discovery import (
-    describe_discovery_refusal,
-    discover_byok_model_sync,
-    model_not_chosen_message,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ByokPlanNotPermittedError,
-    resolve_byok_provider_backend,
-)
-from omnimarket.routing.local_byok_route import house_provider_slug
 
 __all__ = ["delete_secret_value", "models_group", "secret_group", "store_secret_value"]
 

@@ -9,6 +9,8 @@ from uuid import uuid4
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.customer_key_terminus import EnumDelegationSurface
+from omnimarket.handlers.delegation_backend_resolution import resolve_delegation_backend
 from omnimarket.inference.task_class_authority import (
     EnumRoutingAvailabilityStatus,
     TaskClassSelectionError,
@@ -23,8 +25,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
-from omnimarket.routing.customer_key_terminus import EnumDelegationSurface
-from omnimarket.routing.delegation_backend_resolution import resolve_delegation_backend
 from omnimarket.routing.tenant_overlay_resolver import ModelTenantRoutingOverlayBackend
 from tests.unit.delegation.test_tier_endpoint_completeness_omn16811 import (
     _TASK_CONTRACT_PATH,

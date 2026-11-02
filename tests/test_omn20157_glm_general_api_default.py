@@ -29,11 +29,8 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.inference.local_byok_credential_adapter import (
-    register_local_byok_credential,
-)
-from omnimarket.routing import byok_provider_backends as mod
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers import byok_provider_backends as mod
+from omnimarket.handlers.byok_provider_backends import (
     CATALOG_PATH,
     ByokCatalogError,
     ByokPlanNotPermittedError,
@@ -45,6 +42,9 @@ from omnimarket.routing.byok_provider_backends import (
     require_byok_plan_permitted,
     resolve_byok_declared_plan,
     resolve_byok_provider_backend,
+)
+from omnimarket.inference.local_byok_credential_adapter import (
+    register_local_byok_credential,
 )
 
 pytestmark = pytest.mark.unit

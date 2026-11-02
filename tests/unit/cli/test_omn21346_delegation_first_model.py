@@ -23,7 +23,12 @@ from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers import byok_model_discovery
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.handlers.delegation_first_choice import first_choice_route
+from omnimarket.handlers.local_byok_route import registered_local_model_routes
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
 )
@@ -34,11 +39,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import registered_local_model_routes
 from tests.unit.cli.test_model_setup_local_url_omn21162 import server
 
 pytestmark = pytest.mark.unit

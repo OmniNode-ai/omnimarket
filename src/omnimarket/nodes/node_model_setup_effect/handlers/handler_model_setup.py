@@ -38,6 +38,8 @@ from urllib.parse import urlparse
 
 import yaml
 
+from omnimarket.handlers.byok_model_discovery import get_models_json
+from omnimarket.handlers.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.handlers.delegation_first_choice import (
     clear_first_choice,
     read_first_choice,
@@ -47,6 +49,11 @@ from omnimarket.handlers.delegation_model_scope import (
     clear_model_scope,
     read_model_scope,
     write_model_scope,
+)
+from omnimarket.handlers.local_byok_route import (
+    LOCAL_URL_BACKEND,
+    is_local_url_backend,
+    local_url_backend_id,
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
@@ -71,13 +78,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
     ModelModelTestResult,
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
-from omnimarket.routing.byok_model_discovery import get_models_json
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
-from omnimarket.routing.local_byok_route import (
-    LOCAL_URL_BACKEND,
-    is_local_url_backend,
-    local_url_backend_id,
-)
 
 PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
 

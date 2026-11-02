@@ -25,6 +25,9 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     MODEL_WIRE_KEY,
     ModelDelegateSkillRequest,
@@ -41,9 +44,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 
 pytestmark = pytest.mark.unit
