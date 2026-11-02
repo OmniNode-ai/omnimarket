@@ -11,6 +11,9 @@ from pathlib import Path
 import pytest
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
+from omnibase_core.enums.enum_context_source_error_code import (
+    EnumContextSourceErrorCode,
+)
 from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus
 from omnibase_core.models.context.model_context_caller_scope import (
     ModelContextCallerScope,
@@ -162,7 +165,6 @@ def test_generated_at_is_the_newest_source_timestamp() -> None:
         EnumContextSourceStatus.UNAVAILABLE,
         EnumContextSourceStatus.STALE,
         EnumContextSourceStatus.DENIED,
-        EnumContextSourceStatus.UNRESOLVED,
     ],
 )
 def test_required_tier_not_resolved_fails_required_factor_missing(
@@ -176,6 +178,79 @@ def test_required_tier_not_resolved_fails_required_factor_missing(
     tier = {t.factor: t for t in built.tier_statuses}[EnumContextFactor.OPEN_WORK]
     assert tier.required
     assert tier.status is status
+    assert not tier.included
+
+
+def test_empty_allowed_required_tier_builds_when_the_source_reports_nothing_open() -> (
+    None
+):
+    bound = sources(
+        open_work=FixtureSource(
+            EnumContextFactor.OPEN_WORK, EnumContextSourceStatus.UNRESOLVED
+        )
+    )
+    built = orchestrator(bound).handle(command())
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    tier = {t.factor: t for t in built.tier_statuses}[EnumContextFactor.OPEN_WORK]
+    assert tier.required
+    assert tier.status is EnumContextSourceStatus.UNRESOLVED
+    assert not tier.included
+    assert tier.entry_count == 0
+    assert EnumContextFactor.OPEN_WORK not in built.factor_token_estimates
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        EnumContextSourceStatus.UNAVAILABLE,
+        EnumContextSourceStatus.STALE,
+        EnumContextSourceStatus.DENIED,
+        EnumContextSourceStatus.AMBIGUOUS,
+    ],
+)
+def test_empty_allowed_tier_still_fails_on_any_other_status(
+    status: EnumContextSourceStatus,
+) -> None:
+    bound = sources(open_work=FixtureSource(EnumContextFactor.OPEN_WORK, status))
+    built = orchestrator(bound).handle(command())
+    assert built.failure_class is EnumContextPackFailure.REQUIRED_FACTOR_MISSING
+
+
+def test_empty_allowed_tier_does_not_excuse_an_unresolved_answer_with_an_error() -> (
+    None
+):
+    class Erroring(FixtureSource):
+        def handle(
+            self, request: ModelContextSourceRequest
+        ) -> ModelContextSourceResult:
+            return ModelContextSourceResult(
+                status=EnumContextSourceStatus.UNRESOLVED,
+                error_code=EnumContextSourceErrorCode.INVALID_REQUEST,
+                error_message="no lane",
+            )
+
+    bound = sources(open_work=Erroring(EnumContextFactor.OPEN_WORK))
+    built = orchestrator(bound).handle(command())
+    assert built.failure_class is EnumContextPackFailure.REQUIRED_FACTOR_MISSING
+
+
+def test_a_required_tier_the_profile_does_not_allow_empty_still_fails_unresolved() -> (
+    None
+):
+    bound = sources(
+        orchestration_state=FixtureSource(
+            EnumContextFactor.ORCHESTRATION_STATE, EnumContextSourceStatus.UNRESOLVED
+        )
+    )
+    built = orchestrator(bound).handle(command())
+    assert built.status is EnumContextPackOrchestratorStatus.FAILED
+    assert built.failure_class is EnumContextPackFailure.REQUIRED_FACTOR_MISSING
+    assert not built.messages
+    tier = {t.factor: t for t in built.tier_statuses}[
+        EnumContextFactor.ORCHESTRATION_STATE
+    ]
+    assert tier.required
+    assert tier.status is EnumContextSourceStatus.UNRESOLVED
     assert not tier.included
 
 
