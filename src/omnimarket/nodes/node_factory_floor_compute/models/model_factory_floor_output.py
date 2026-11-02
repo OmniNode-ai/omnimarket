@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
 )
@@ -317,6 +318,7 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    phoenix_traces: ModelFloorPhoenixTraces
     # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
     merged_running: ModelMergedRunningCountResult | None = None
 

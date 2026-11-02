@@ -14,7 +14,7 @@ from typing import Any, Final
 
 import yaml
 
-from omnimarket.routing.routing_tiers_path import (
+from omnimarket.handlers.routing.routing_tiers_path import (
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
 )
 

@@ -17,6 +17,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorPlanInput,
     ModelFloorTableTask,
 )
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_containers import (
     with_application_containers,
 )
@@ -813,6 +814,10 @@ def _floor(
         shipped=shipped,
         waiting=waiting,
         stoppages=stoppages,
+        phoenix_traces=request.phoenix_traces
+        or ModelFloorPhoenixTraces(
+            state="unread", detail="no Phoenix reading was supplied"
+        ),
     )
 
 

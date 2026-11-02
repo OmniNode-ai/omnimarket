@@ -20,6 +20,7 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -52,7 +53,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _PROMPT = (
     "Review this change to `retry_delay` in src/pkg/retry.py. You must cite the "
