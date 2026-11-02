@@ -3646,6 +3646,15 @@ jobs:
           echo "RESIDUAL: this harness is SCRAM; staging/prod are AWS_MSK_IAM."
           echo "================================================================"
           uv run --no-sync pytest tests/integration/customer_path/ -v --tb=short -p no:randomly
+      - name: Verify webhook HTTP boundary and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+      - name: Verify webhook HTTP Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_WEBHOOK_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
 
   # ============================================================================
   # JS TOOLCHAIN HERMETIC (OMN-18012 gate 5)

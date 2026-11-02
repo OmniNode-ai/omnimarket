@@ -15,6 +15,13 @@
 repos:
   - repo: local
     hooks:
+      - id: github-webhook-http
+        name: GitHub webhook runtime HTTP boundary
+        entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: retired-model-references
         name: Retired model references (including dated history)
         entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect

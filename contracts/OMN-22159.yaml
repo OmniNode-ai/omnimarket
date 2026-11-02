@@ -1,0 +1,108 @@
+schema_version: 1.0.0
+ticket_id: OMN-22159
+title: Port the first public API route group into the runtime
+summary: >
+  Partial implementation. The first public group in inventory order is
+  POST /v1/github/webhook. The existing GitHub webhook ingress node gains a
+  contract-declared HTTP mount and a typed handler with injected configuration
+  and publisher protocols. The other thirteen public routes remain for later
+  groups. Recorded public replay and a deployed-container cutover have not run.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api, protocols]
+requirements:
+  - id: public-api-runtime-nodes
+    statement: Port public routes by mounted prefix, one group at a time.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the T18b fixture subset for the public routes replays against the runtime with no unmasked difference -- falsifier: a pytest replay of the public subset of the T18b recorded set against the runtime that fails on any unmasked difference'
+      - id: AC2
+        statement: 'AC2: each ported public route is served by a node with a contract and passes under both the in-memory and the Redpanda profile -- falsifier: uv run pytest over the new node tests in both profiles, run on a lab host through lab-run'
+      - id: AC3
+        statement: 'AC3: no route of the public set is still answered by the onex-api container once its node is deployed -- falsifier: a request replay of the public subset through the runtime ingress with the onex-api container stopped on a slot, read through the deploy agent'
+evidence_requirements:
+  - kind: tests
+    description: HTTP parity cases and the real runtime mount in both transport profiles.
+    command: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: recorded-public-replay-pending
+    description: >
+      AC1 is OPEN. The recorded public request/response set is not available
+      in this implementation. This local Done check deliberately refuses until
+      the recorded replay is implemented and its actual evidence replaces it.
+      It is outside the hosted runner's authority to exercise the lab runtime.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
+      - check_type: command
+        check_value: >-
+          python -c "raise SystemExit('AC1 OPEN: recorded public-subset runtime replay has not run')"
+        cwd: .
+  - id: webhook-http-in-memory
+    description: >
+      The ported route's refusal order, signed raw bytes, bounded streaming,
+      ping, duplicate delivery correlation and acknowledged publication are
+      exercised, then the actual runtime HTTP mount and dispatch adapter fold
+      a signed request through the existing consumer on the in-memory bus.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
+  - id: webhook-http-redpanda
+    description: >
+      The production no-argument HTTP factory publishes through the canonical
+      Kafka event bus to an isolated auth-required Redpanda broker. The existing
+      consumer dispatch adapter folds the command into PR observations.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: env ONEX_WEBHOOK_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
+  - id: public-cutover-pending
+    description: >
+      AC3 is OPEN. No running API container was stopped and no deploy-agent slot
+      readback was taken. This local Done check deliberately refuses until the
+      recorded public replay and the deploy-agent cutover evidence replace it.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
+      - check_type: command
+        check_value: >-
+          python -c "raise SystemExit('AC3 OPEN: deploy-agent slot replay with the API container stopped has not run')"
+        cwd: .
+  - id: deploy-probe
+    description: >
+      Hosted smoke check: the real runtime listener discovers and serves the
+      contract mount, publishes a signed delivery and the wired node folds it.
+      This process-local smoke is not a deployed-dev or cutover claim.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
+  - id: lab-head-proof
+    description: >
+      Pushed-head lab-run evidence is still required for AC2. Local worktree
+      results alone do not settle the lab-run-at-head requirement.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          python -c "raise SystemExit('AC2 OPEN: pushed-head lab-run receipts for both profiles have not been recorded')"
+        cwd: .
