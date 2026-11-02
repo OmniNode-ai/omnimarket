@@ -152,6 +152,13 @@ CHECKED_REDUCERS: tuple[CheckedReducer, ...] = (
         "node_wip_gate_reducer",
         shared=("handlers/rules_wip_gate.py", "models/wip_gate.py"),
     ),
+    CheckedReducer(
+        "node_andon_stop_reducer",
+        shared=(
+            "handlers/rules_stop_gate.py",
+            "models/stop_gate/model_stop_gate.py",
+        ),
+    ),
 )
 
 

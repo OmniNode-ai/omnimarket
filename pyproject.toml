@@ -314,6 +314,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
+node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
 node_codex_gitlink_compute = "omnimarket.nodes.node_codex_gitlink_compute"
 node_codex_landing_compute = "omnimarket.nodes.node_codex_landing_compute"
@@ -338,6 +339,7 @@ node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_e
 node_patch_apply_dispatch_effect = "omnimarket.nodes.node_patch_apply_dispatch_effect"
 node_internal_release_path_guard_compute = "omnimarket.nodes.node_internal_release_path_guard_compute"
 node_release_pin_guard_compute = "omnimarket.nodes.node_release_pin_guard_compute"
+node_wire_consumer_pin_compute = "omnimarket.nodes.node_wire_consumer_pin_compute"
 node_lab_claude_token_effect = "omnimarket.nodes.node_lab_claude_token_effect"
 node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"
@@ -372,6 +374,7 @@ node_factory_floor_compute = "omnimarket.nodes.node_factory_floor_compute"
 node_factory_floor_effect = "omnimarket.nodes.node_factory_floor_effect"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_lane_queue_start_decision_compute = "omnimarket.nodes.node_lane_queue_start_decision_compute"
+node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owed_compute"
 node_skill_exec_decision_compute = "omnimarket.nodes.node_skill_exec_decision_compute"
 node_onex_ledger_admission_compute = "omnimarket.nodes.node_onex_ledger_admission_compute"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
@@ -480,6 +483,7 @@ node_claude_review_budget_admission_effect = "omnimarket.nodes.node_claude_revie
 node_review_defect_catalog_compute = "omnimarket.nodes.node_review_defect_catalog_compute"
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_wip_gate_reducer = "omnimarket.nodes.node_wip_gate_reducer"
+node_andon_stop_reducer = "omnimarket.nodes.node_andon_stop_reducer"
 node_wip_admission_compute = "omnimarket.nodes.node_wip_admission_compute"
 node_binding_parity_orchestrator = "omnimarket.nodes.node_binding_parity_orchestrator"
 node_bus_binding_reducer = "omnimarket.nodes.node_bus_binding_reducer"
@@ -1067,6 +1071,8 @@ node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gat
 node_process_health_compute = "omnimarket.nodes.node_process_health_compute"
 node_process_health_effect = "omnimarket.nodes.node_process_health_effect"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
+node_host_drift_fleet = "omnimarket.nodes.node_host_drift_fleet"
+node_lane_container_budget_compute = "omnimarket.nodes.node_lane_container_budget_compute"
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
 node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_compute"
@@ -1267,7 +1273,8 @@ omnimarket = "omnimarket.nodes"
 # declares the runtime SELECT/INSERT/UPDATE grants needed by this projection.
 # OMN-17427: infra#5483 pins omnibase-core at the core tag below; the two tags
 # move together (tests/ci/test_sibling_core_pin_pair_omn17427.py).
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261031054837-4284f5bf5587" }
+# OMN-17427: infra#5536 pins omnibase-core at the core tag below.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261101125736-3f93a2cc6f6c" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
@@ -1634,6 +1641,7 @@ ignore = [
 # channel to the Claude Code client.
 "src/omnimarket/nodes/node_operator_access_mode_effect/runtime_operator_hook_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_secret_store_override_effect/runtime_lab_secret_store_override_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]

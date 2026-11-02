@@ -302,6 +302,9 @@ def append_command(
         raise click.ClickException(str(exc)) from exc
 
     state_dir = default_state_dir()
+    # OMN-20275: a retry of a row whose first attempt got no answer keeps that attempt's request id and rows,
+    # so the serve answers duplicate and the acknowledgement does not repeat.
+    request = outbox.first_attempt(state_dir, request)
 
     async def main() -> int:
         # OMN-20275: the lane overlay orders the bindings. A durable bus that fails its health read puts this
@@ -320,16 +323,7 @@ def append_command(
                 queued = outbox.queue_request(state_dir, request)
                 click.echo(
                     json.dumps(
-                        {
-                            "request_id": str(request_id),
-                            "status": "queued",
-                            "exit_code": 0,
-                            "binding": bound.decision.binding.value,
-                            "bus_state": bound.decision.state.value,
-                            "outbox": queued.name,
-                            "message": "durable bus unavailable; queued for replay under this request id",
-                        },
-                        sort_keys=True,
+                        outbox.queued_receipt(queued, bound.decision), sort_keys=True
                     )
                 )
                 return 0
@@ -352,10 +346,14 @@ def append_command(
                             f"refused={replay.refused} remaining={replay.remaining}",
                             err=True,
                         )
-                receipt = await caller.append(request, timeout_s=timeout_s)
+                receipt = await outbox.send_once(
+                    state_dir, request, caller.append, timeout_s
+                )
             except TimeoutError:
                 click.echo(
-                    json.dumps({"status": "pending", "request_id": str(request_id)})
+                    json.dumps(
+                        {"status": "pending", "request_id": str(request.request_id)}
+                    )
                 )
                 return 75
             finally:

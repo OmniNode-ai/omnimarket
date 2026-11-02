@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: 9a0f5d8906949960da600e7daf9cbf41f54b8b07fff597b477f0a5eb9463cade
+      sha256: f0fdcbc595c55fee531cf0542e7bf12e07629736233cba85d95dea7fffd6c009
     expected_exit: 0
     target: src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py
     patch:
