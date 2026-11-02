@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -158,6 +161,18 @@ class ModelFloorRunnersOut(BaseModel):
     note: str
 
 
+AdmissionState = Literal["open", "refused", "unread"]
+
+
+class ModelFloorAdmission(BaseModel):
+    """Whether the tick's admission takes new work on a machine, and the reading's own words when it does not."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: AdmissionState
+    reason: str
+
+
 class ModelFloorMachine(BaseModel):
     """One machine bay: what the pool read saw, the lanes placed on it against its cap, its units and CI runners."""
 
@@ -179,6 +194,8 @@ class ModelFloorMachine(BaseModel):
     swap_used_pct: float | None
     cap: int | None
     refusal: str
+    free_slots: int
+    admission: ModelFloorAdmission
     lanes_placed: int
     lanes: tuple[str, ...]
     units_placed: int | None
@@ -300,6 +317,8 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
+    merged_running: ModelMergedRunningCountResult | None = None
 
 
 class ModelFloorSources(BaseModel):
@@ -321,6 +340,8 @@ class ModelFloorSources(BaseModel):
     runner_fleet_read: bool
     # Why the runner fleet is unread, in the reader's words; empty when it was read.
     runner_fleet_cause: str = ""
+    # Why the merged-and-running count is unread, in the reader's words; empty when it was read.
+    merged_running_cause: str = ""
 
 
 class ModelFactoryFloorResult(BaseModel):

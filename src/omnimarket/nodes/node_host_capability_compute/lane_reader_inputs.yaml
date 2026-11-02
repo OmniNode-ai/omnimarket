@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Declared lane hosts and the two reader inputs each must provision (host installer). Paths are relative to the lane's home;
+# a row holds paths only, never a credential value. `catalog_json` is exported to lanes as ONEX_CAPABILITY_CATALOG_JSON and
+# `wl_env_file` as WL_ENV_FILE (the key POSTGRES_PASSWORD inside it is supplied by the host owner).
+hosts:
+  h051:
+    catalog_json: .onex_state/capability/catalog.json
+    wl_env_file: .omnibase/.env
+  h053:
+    catalog_json: .onex_state/capability/catalog.json
+    wl_env_file: .omnibase/.env
+  h101:
+    catalog_json: .onex_state/capability/catalog.json
+    wl_env_file: .omnibase/.env
+  h105:
+    catalog_json: .onex_state/capability/catalog.json
+    wl_env_file: .omnibase/.env
+  h200:
+    catalog_json: .onex_state/capability/catalog.json
+    wl_env_file: .omnibase/.env
+  h201:
+    catalog_json: .onex_state/capability/catalog.json
+    wl_env_file: .omnibase/.env

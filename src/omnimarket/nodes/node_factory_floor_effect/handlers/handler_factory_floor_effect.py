@@ -17,8 +17,14 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
 )
+from omnimarket.models.model_merged_running_count import (
+    ModelMergedRunningCountResult,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     HandlerFactoryFloor,
+)
+from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import (
+    draft_plan_refs,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
@@ -52,6 +58,9 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     runner_fleet_cause,
     write_result,
 )
+from omnimarket.protocols.protocol_merged_running_count_reader import (
+    ProtocolMergedRunningCountReader,
+)
 
 NODE_NAME = "node_factory_floor_effect"
 OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -62,6 +71,22 @@ COMPUTE_CONTRACT = (
 
 class HandlerFactoryFloorEffect:
     """Boundary of the factory floor: every read and the one write happen here, none in the compute node."""
+
+    def __init__(
+        self, merged_running: ProtocolMergedRunningCountReader | None = None
+    ) -> None:
+        self._merged_running = merged_running
+
+    def _read_merged_running(
+        self, now: datetime
+    ) -> tuple[ModelMergedRunningCountResult | None, str]:
+        """The count and an empty cause, or None and why it was not read: a count that fails never stops the floor."""
+        if self._merged_running is None:
+            return None, "no merged-running count reader is bound"
+        try:
+            return self._merged_running.read(now), ""
+        except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
+            return None, f"{type(exc).__name__}: {exc}"
 
     def handle(
         self, request: ModelFactoryFloorRunRequest
@@ -120,6 +145,7 @@ class HandlerFactoryFloorEffect:
         )
         fleet_path = home / src.runner_fleet_relpath
         runner_fleet = load_runner_fleet(fleet_path)
+        watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -133,12 +159,17 @@ class HandlerFactoryFloorEffect:
                 header_keys=rt.plan_header_keys,
                 contains=contains,
                 plans_today=plans_today,
-                plan_refs=overlay.plan_refs if overlay is not None else (),
+                # A plan not on the default branch is read from its open pull request's head when no declared ref names it.
+                plan_refs=draft_plan_refs(
+                    kb=Path(kb_value),
+                    plans_relpath=rt.plans_relpath,
+                    contains=contains,
+                    watcher=watcher,
+                    declared=overlay.plan_refs if overlay is not None else (),
+                ),
                 task_links=overlay.plan_task_links if overlay is not None else (),
             ),
-            watcher=load_watcher(
-                home / src.watcher_relpath, now, rt.watcher_max_age_min
-            ),
+            watcher=watcher,
             ledger=read_ledger_rows(
                 window_days=rt.ledger_window_days,
                 cut_chars=rt.ledger_cut_chars,
@@ -184,6 +215,17 @@ class HandlerFactoryFloorEffect:
             ),
         )
         result = HandlerFactoryFloor().handle(compute_request)
+        merged_running, merged_running_cause = self._read_merged_running(now)
+        result = result.model_copy(
+            update={
+                "floor": result.floor.model_copy(
+                    update={"merged_running": merged_running}
+                ),
+                "sources": result.sources.model_copy(
+                    update={"merged_running_cause": merged_running_cause}
+                ),
+            }
+        )
         target = home / rt.output.relpath
         write_result(target, result.model_dump(mode="json"))
         return ModelFactoryFloorRunResult(
