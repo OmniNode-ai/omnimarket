@@ -27,10 +27,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
 from collections.abc import Awaitable, Callable
 from importlib import resources
-from pathlib import Path
 from typing import Protocol
 
 import yaml
@@ -51,17 +49,6 @@ from omnimarket.models.operator_capture import (
     ModelOperatorCaptureReceipt,
     ModelOperatorCaptureTopics,
     ModelOperatorPromptRecord,
-)
-from omnimarket.nodes.node_operator_capture_effect.handlers import capture_store
-from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import (
-    onex_delegate_runner,
-    runner_ledger_appender,
-)
-from omnimarket.nodes.node_operator_capture_effect.handlers.handler_operator_capture_effect import (
-    HandlerOperatorCaptureEffect,
-)
-from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
-    ProtocolLedgerAppendRunner,
 )
 from omnimarket.projection.envelope import unwrap_envelope
 
@@ -249,33 +236,6 @@ class OperatorCaptureHost:
         )
 
 
-def ledger_host_capture(
-    bus: ProtocolLabRunBus,
-    *,
-    ledger: Path,
-    append_runner: ProtocolLedgerAppendRunner,
-    host_name: str,
-    bus_lane: str | None,
-    retry_seconds: float = DEFAULT_RETRY_SECONDS,
-    promotion_lane: str | None = None,
-) -> OperatorCaptureHost:
-    """The capture host the work-ledger serve process runs beside its own.
-
-    It classifies through ``onex delegate`` on the serve process's own bus lane and appends
-    through the serve process's own append runner, so every row passes the ledger's lock and
-    guards and is never re-published to the bus.
-    """
-    handler = HandlerOperatorCaptureEffect(
-        store_dir=capture_store.store_dir(),
-        ledger_path=ledger,
-        host_name=host_name,
-        delegate=onex_delegate_runner(bus_lane),
-        append=runner_ledger_appender(append_runner),
-        promotion_lane=promotion_lane or os.environ.get(PROMOTION_LANE_ENV) or None,
-    )
-    return OperatorCaptureHost(bus, handler, retry_seconds=retry_seconds)
-
-
 __all__ = [
     "DEFAULT_RETRY_SECONDS",
     "PROMOTION_LANE_ENV",
@@ -283,7 +243,6 @@ __all__ = [
     "ProtocolOperatorCaptureHandler",
     "assistant_reply_of",
     "capture_group_id",
-    "ledger_host_capture",
     "load_operator_capture_topics",
     "operator_prompt_of",
 ]
