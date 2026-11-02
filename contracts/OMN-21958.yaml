@@ -106,3 +106,13 @@ dod_evidence:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21958 -- uv run --frozen pytest -k stop_gate -q tests/nodes/node_landing_worker_engine_compute tests/nodes/node_remote_lane_compute tests/nodes/node_idle_slot_fill_effect
     cwd: .
+- id: dod-omn21958-worker-engine-typed-facts
+  description: The worker-engine choice uses supplied typed availability and contract/overlay configuration, refuses stopped engines under enforce, and admits them under observe.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q --no-cov tests/nodes/node_landing_worker_engine_compute/test_typed_facts_worker_engine.py
+    cwd: .
+  binds_ac:
+  - AC1
+  - AC3
