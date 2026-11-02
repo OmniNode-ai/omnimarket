@@ -124,12 +124,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing.byok_model_discovery import (
+from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
     model_not_chosen_message,
 )
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
     byok_backend_provider,

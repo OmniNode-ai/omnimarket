@@ -17,6 +17,21 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ByokCatalogError,
+    ModelByokRecommendedOrder,
+    _read_recommended_order,
+    load_byok_local_recommendation,
+    load_byok_recommended_order,
+    recommended_local_models,
+    recommended_models,
+    resolve_byok_backend_by_id,
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import next_chosen_model_byok_route
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -28,21 +43,6 @@ from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secr
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
     ModelLocalSecretRequest,
 )
-from omnimarket.routing.byok_provider_backends import (
-    ByokCatalogError,
-    ModelByokRecommendedOrder,
-    _read_recommended_order,
-    load_byok_local_recommendation,
-    load_byok_recommended_order,
-    recommended_local_models,
-    recommended_models,
-    resolve_byok_backend_by_id,
-    resolve_byok_provider_backend,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import next_chosen_model_byok_route
 from tests.chains.local.harness import use_local_store
 
 pytestmark = pytest.mark.unit

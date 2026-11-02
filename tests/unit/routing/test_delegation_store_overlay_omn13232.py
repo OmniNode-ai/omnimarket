@@ -27,7 +27,7 @@ import yaml
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     OverlayBackendIncompleteError,
 )
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.routing.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
     resolve_delegation_backend,
@@ -409,7 +409,8 @@ def test_store_key_absent_falls_back_to_file_overlay(
     empty_store = _MockStore({})
 
     with caplog.at_level(
-        logging.WARNING, logger="omnimarket.routing.delegation_backend_resolution"
+        logging.WARNING,
+        logger="omnimarket.handlers.routing.delegation_backend_resolution",
     ):
         backends = load_bifrost_backends(
             config_path=_BIFROST_CONFIG_PATH,
@@ -460,7 +461,7 @@ def test_no_store_no_file_overlay_returns_base_backends(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_bifrost_overlay_store_key_is_exported() -> None:
     """BIFROST_OVERLAY_STORE_KEY is exported from the module."""
-    from omnimarket.routing import delegation_backend_resolution
+    from omnimarket.handlers.routing import delegation_backend_resolution
 
     assert hasattr(delegation_backend_resolution, "BIFROST_OVERLAY_STORE_KEY")
     assert isinstance(BIFROST_OVERLAY_STORE_KEY, str)

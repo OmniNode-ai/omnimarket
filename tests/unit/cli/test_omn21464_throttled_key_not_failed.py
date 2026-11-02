@@ -18,13 +18,13 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group
+from omnimarket.handlers.routing import byok_model_discovery
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     _was_throttled,
 )
-from omnimarket.routing import byok_model_discovery
 
 pytestmark = pytest.mark.unit
 

@@ -55,6 +55,13 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -64,13 +71,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.routing.customer_key_terminus import (
-    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
-)
 from omnimarket.routing.tenant_overlay_resolver import (
     TENANT_OVERLAY_TABLE,
     resolve_tenant_overlay,

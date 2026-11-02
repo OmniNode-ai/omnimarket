@@ -51,6 +51,9 @@ import pytest
 import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    resolve_delegation_backend as _real_resolve_delegation_backend,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
@@ -63,9 +66,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend as _real_resolve_delegation_backend,
 )
 from tests.fixtures.task_class_transitions import with_declared_transitions
 
@@ -206,7 +206,7 @@ def _fixture_env(
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
     monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(contract_path))
 
-    # ``omnimarket.routing.delegation_backend_resolution.resolve_delegation_backend``
+    # ``omnimarket.handlers.routing.delegation_backend_resolution.resolve_delegation_backend``
     # (the backend_id-targeted re-resolution every escalation hop uses) is a
     # SEPARATE loader from ``handler_delegation_routing._load_bifrost_endpoints``
     # — its ``config_path``/``overlay_path`` are keyword defaults bound at
