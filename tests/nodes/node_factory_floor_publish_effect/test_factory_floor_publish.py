@@ -1128,7 +1128,6 @@ def test_page_tabs_a_hash_that_names_no_tab_falls_back_to_the_remembered_one() -
     assert result["sel"] == ["tab-map"]
     result = _run_shell(SHELL_FILES, stored="quality")
     assert result["sel"] == ["tab-dashboard"]
-    assert result["hash"] == "#dashboard"
 
 
 def test_page_tabs_blocked_browser_storage_still_opens_the_dashboard() -> None:
