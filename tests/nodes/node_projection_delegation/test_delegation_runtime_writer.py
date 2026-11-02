@@ -83,13 +83,9 @@ class TestTheContractRoutesTheInProcessWriter:
             "DelegationProjectionWriter"
         }
         assert {route["topic"] for route in routes} == subscribed
-        # The top-level handler is the routed writer too: the compliance sweep
-        # refuses a canonical handler that no route reaches, and the pure fold
-        # is still called by the runner the writer composes.
-        assert contract["handler"] == {
-            "module": "omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer",
-            "class": "DelegationProjectionWriter",
-        }
+        # The top-level handler stays the pure fold the writer's helpers come
+        # from; it is not routed, so it is never dispatched beside the writer.
+        assert contract["handler"]["class"] == "HandlerProjectionDelegation"
         assert subscribed == set(DelegationProjectionRunner().subscribe_topics)
 
 

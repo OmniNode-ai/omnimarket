@@ -122,13 +122,11 @@ class TestDelegationProjection:
         contract_path = "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
         with open(contract_path) as f:
             contract = yaml.safe_load(f)
-        # The top-level handler is the routed in-process writer; a canonical
-        # handler no route reaches is refused by the compliance sweep.
         assert (
             contract["handler"]["module"]
-            == "omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer"
+            == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
         )
-        assert contract["handler"]["class"] == "DelegationProjectionWriter"
+        assert contract["handler"]["class"] == "HandlerProjectionDelegation"
         # OMN-18159 AC3, correcting Phase 2, which this assertion used to pin.
         #
         # Phase 2 moved this contract to the consolidated tenant-projection

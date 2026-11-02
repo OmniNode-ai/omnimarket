@@ -13,11 +13,16 @@ description: >
   converted internally.)
 
 handler:
-  module: omnimarket.nodes.node_projection_delegation.handlers.handler_runtime_writer
-  class: DelegationProjectionWriter
+  module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
+  class: HandlerProjectionDelegation
 
 handler_routing:
   routing_strategy: operation_match
+  # The pure fold is the canonical handler. Every subscribed topic has a routed
+  # writer entry below, so the default is never selected for a delivery; it
+  # keeps the fold bound to this contract (file-shape ratchet, compliance
+  # sweep) without giving it a route beside the writer.
+  default_handler: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation:HandlerProjectionDelegation
   handlers:
     # OMN-21288. The in-process writer is the only routed handler. It declares
     # onex_runtime_inprocess_dispatch and composes DelegationProjectionRunner
