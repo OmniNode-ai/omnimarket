@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-22179
+title: A local model URL that setup stored and tested is refused by onex delegate as a missing customer key, route UNATTRIBUTED
+summary: When the local model a customer declared through onex models add local fails its call or its answer is rejected, the local delegation port used to fall through to the ladder's entry rung, a platform-owned key the customer holds none for, and the customer-key terminus raised ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT over the local model's own failure, with no attempt on the receipt. The fall-through now offers that rung only where the customer may run it, so the run ends on the declared model's failure. The refusal still stands when nothing is declared.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22179-declared-local-model-counts
+  statement: A local model declared through onex models add local is the customer's own model on surface customer_local for each task class the router auto-classes, and a failure of that model is not reported as a missing customer key.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: after `onex models add local --url <base> --model <name>` (the call setup makes for the Local URL choice) and a passing `onex models test local`, `onex delegate --json "Reply with exactly one word: hello"` with no pin exits 0, the receipt reads status success with the local model as the backend, and the route is attributed to the declared local model and not UNATTRIBUTED -- falsifier: `uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q` with a case that declares the local model through the store the add command writes, fails today with ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT'
+  - id: AC2
+    statement: 'AC2: the enforcement counts a local model declared by setup as the customer''s own model for surface customer_local for each task type the router auto-classes (document, code, test, plan) -- falsifier: the same pytest module, parametrized over those task types, with one case per type'
+  - id: AC3
+    statement: 'AC3: the refusal still stands when the developer has declared neither a local model nor a key, and its text names what is missing by reading the stores -- falsifier: a pytest case with an empty store that expects ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT and a route that reaches no platform-owned key'
+  - id: AC4
+    statement: 'AC4: a regression test built from the incident''s recorded data (the refusal text above, saved as a fixture under `tests/fixtures/onboarding_walk_2026_11_02/`) fails on the broken code and passes on the fix -- falsifier: `uv run pytest tests/handlers/routing -q -k walk_2026_11_02`'
+evidence_requirements:
+- kind: tests
+  description: The declared local model serves each auto-classed task class, a failing declared model ends the run on its own failure, and an empty store is still refused.
+  command: uv run pytest tests/handlers/routing -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22179-ac1
+  description: AC1 a model declared through models add local, with no key anywhere, answers an unpinned delegation and is the attempted backend.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line -k customers_own
+    cwd: .
+- id: dod-omn22179-ac2
+  description: AC2 one case per auto-classed task class (document, code_generation, test, planning) for both the serving and the failing declared model.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22179-ac3
+  description: AC3 an empty store, per task class, still ends in the missing-key refusal and no backend is called.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line -k nothing_declared
+    cwd: .
+- id: dod-omn22179-ac4
+  description: AC4 the walk's recorded refusal, kept as a fixture, does not recur for a declared local model that fails.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/routing -q --no-cov --tb=line -k walk_2026_11_02
+    cwd: .
+- id: dod-omn22179-deploy-probe
+  description: 'Deploy probe: the helper GitHub serves at the checked-out commit defines customer_may_run_backend, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/routing/delegation_backend_resolution.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def customer_may_run_backend" > /dev/null'
+    cwd: .
