@@ -8,7 +8,7 @@ import copy
 import shutil
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -358,7 +358,7 @@ def test_three_part_proof_runtime_close_must_cover_this_seam_side_and_window(
     clean = _request(sender_close=True, receiver_close=True, sender_crossings=("c-1",))
     held = getattr(clean, f"{side}_close")
     assert held is not None
-    updates: dict[str, Any] = {
+    updates: Any = {
         "seam": {"seam_id": "VS-01"},
         "side": {
             "side": EnumSeamSide.RECEIVER if side == "sender" else EnumSeamSide.SENDER
@@ -406,6 +406,9 @@ async def test_three_part_proof_node_roundtrip_profile(
     from omnimarket.nodes.node_binding_parity_orchestrator.models.model_run_local import (
         ModelRunLocalConfig,
     )
+    from omnimarket.nodes.node_binding_parity_orchestrator.protocols.protocol_local_bus import (
+        ProtocolLocalBus,
+    )
 
     contract = yaml.safe_load(
         (NODES / "node_seam_conservation_compute" / "contract.yaml").read_text()
@@ -413,11 +416,16 @@ async def test_three_part_proof_node_roundtrip_profile(
     proof = contract["config"]["proof"]
     profile = os.environ.get(proof["profile_env"], proof["default_profile"])
     transport = proof["profiles"][profile]
-    bus = None
+    bus: ProtocolLocalBus | None = None
     if transport == "kafka":
         overlay = yaml.safe_load(Path(os.environ[proof["overlay_env"]]).read_text())
-        bus = EventBusKafka(
-            config=ModelKafkaEventBusConfig.model_validate(overlay["kafka"])
+        # The Redpanda leg drives the same publish/subscribe slice the in-process
+        # entry uses; the lab-run of this test is what proves that fit.
+        bus = cast(
+            "ProtocolLocalBus",
+            EventBusKafka(
+                config=ModelKafkaEventBusConfig.model_validate(overlay["kafka"])
+            ),
         )
     else:
         assert transport == "inmemory"
@@ -454,7 +462,7 @@ def test_three_part_proof_runtime_refuses_malformed_measure_then_restores(
     if fault == "side":
         row = row.model_copy(update={"side": EnumSeamSide.SENDER})
     else:
-        updates: dict[str, Any] = {
+        updates: Any = {
             "unit": {"unit": EnumSeamUnit.SOURCES},
             "kind": {"kind": EnumSeamMeasureKind.COVERAGE},
             "duplicate-id": {"ids": (*measure.ids, measure.ids[0])},
@@ -539,9 +547,7 @@ def test_three_part_proof_runtime_requires_each_declared_measure_once(
     clean = _request(sender_close=True, receiver_close=True, sender_crossings=("c-1",))
     row = clean.receiver_counts[0]
     measures = () if fault == "missing" else (*row.measures, row.measures[0])
-    updates: dict[str, Any] = {
-        "receiver_counts": (row.model_copy(update={"measures": measures}),)
-    }
+    updates: Any = {"receiver_counts": (row.model_copy(update={"measures": measures}),)}
     if fault == "missing":
         updates["sender_counts"] = (
             clean.sender_counts[0].model_copy(update={"measures": ()}),
