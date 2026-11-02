@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-22100
+title: A lane on a proof lab host can run onex-capability-catalog find and the work-ledger parity check because the host installer provisions their inputs
+summary: The host capability node holds the requirement and the committed per-host declaration for the two reader inputs (catalog.json path, lab env file with the parity password key) and judges a declared lane host that lacks one; the provisioning itself is the frozen host installer's and is reported as an exact change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22100-lane-reader-inputs
+  statement: A lane on a lab host cannot run onex-capability-catalog find (no catalog.json given) or the work-ledger parity check (no lab env file password) unless the host provisions both inputs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: from a lane shell on the proof lab host, the catalog find reader exits 0 and prints a hit with no hand-set variable -- falsifier: a lab-run receipt of the catalog find reader on the proof host, exit code in the PR body'
+  - id: AC2
+    statement: 'AC2: from a lane shell on the proof lab host the ledger parity check exits 0 or 1 and not 2 with no hand-set variable -- falsifier: a lab-run receipt of the projection parity module with the ledger-ask arguments on the proof host, exit code in the PR body'
+  - id: AC3
+    statement: 'AC3: a test fails when a declared lane host lacks the catalog path or the lab env file that these two readers need, and passes on the committed host table -- falsifier: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q'
+evidence_requirements:
+- kind: tests
+  description: The lane reader inputs suite and the host capability node suites.
+  command: uv run pytest tests/nodes/test_host_installer_lane_readers.py tests/nodes/node_host_capability_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22100-ac1
+  description: AC1 the catalog find reader exits 0 on the proof host with no hand-set variable. Open until the host installer exports ONEX_CAPABILITY_CATALOG_JSON and provisions catalog.json on the host; the lab-run receipt of the measurement is in the PR.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane g0-fix-h051-readers-1102 -- onex-capability-catalog find lane
+    cwd: .
+- id: dod-omn22100-ac2
+  description: AC2 the ledger parity check exits 0 or 1 on the proof host with no hand-set variable. Open until the host owner supplies POSTGRES_PASSWORD in the lab env file and the installer names it for lanes.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane g0-fix-h051-readers-1102 -- uv run --frozen python -m omnimarket.nodes.node_projection_work_ledger.parity --ledger "$ONEX_LEDGER_PATH" --archive-dir "$(dirname "$ONEX_LEDGER_PATH")/archive" --since 2026-11-02T00:00:00Z --dsn-env WL_DSN
+    cwd: .
+- id: dod-omn22100-ac3
+  description: AC3 a declared lane host without the catalog path or the lab env file fails, a measured env file without the password key fails by name, and the committed host table passes.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line
+    cwd: .
