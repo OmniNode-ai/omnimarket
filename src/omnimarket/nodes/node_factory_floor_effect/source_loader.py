@@ -461,6 +461,85 @@ def heading_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
     return compiled
 
 
+SECTION_RE = re.compile(r"^## (.*)$", re.MULTILINE)
+REVIEW_SECTION_RE = re.compile(r"adversarial|review|checklist", re.IGNORECASE)
+TASK_SECTION_RE = re.compile(r"\btasks?\b", re.IGNORECASE)
+SUBHEADING_TASK_RE = re.compile(
+    r"^#{3,4}\s+([A-Z]{1,4}\.\d+(?:\.\d+)*[a-z]?)[.:]?\s+(.+?)\s*$", re.MULTILINE
+)
+
+
+def _sections(text: str) -> tuple[tuple[str, int, int], ...]:
+    """Each ``## `` section of a plan as (heading, start, end)."""
+    marks = list(SECTION_RE.finditer(text))
+    return tuple(
+        (
+            mark.group(1),
+            mark.start(),
+            marks[i + 1].start() if i + 1 < len(marks) else len(text),
+        )
+        for i, mark in enumerate(marks)
+    )
+
+
+def _in_review_section(text: str, offset: int) -> bool:
+    """True when ``offset`` falls in an adversarial-review or checklist section: its R1 to R8 are checks on the plan, not its tasks."""
+    return any(
+        start <= offset < end and REVIEW_SECTION_RE.search(heading) is not None
+        for heading, start, end in _sections(text)
+    )
+
+
+def _only_in_review(label: str, text: str) -> bool:
+    """True when every place the plan leads a line with the label (bold or a table cell) is in a review section."""
+    leads = [
+        match.start()
+        for match in re.finditer(
+            rf"^(?:\d+\.\s+|[-*]\s+)?(?:\*\*|\|\s*){re.escape(label)}(?![\w.])",
+            text,
+            re.MULTILINE,
+        )
+    ]
+    return bool(leads) and all(_in_review_section(text, at) for at in leads)
+
+
+def _heading_tasks(
+    text: str, links: dict[str, tuple[str, ...]], epic: str
+) -> tuple[ModelFloorManifestTask, ...]:
+    """The tasks a plan writes as ``### CM.1 Title`` headings inside its own ``## Tasks`` section, which win over any bold list."""
+    tasks: dict[str, ModelFloorManifestTask] = {}
+    for heading, start, end in _sections(text):
+        if (
+            TASK_SECTION_RE.search(heading) is None
+            or REVIEW_SECTION_RE.search(heading) is not None
+        ):
+            continue
+        for match in SUBHEADING_TASK_RE.finditer(text, start, end):
+            task_id = match.group(1)
+            if task_id in tasks:
+                continue
+            title = match.group(2).strip(" .:")
+            tasks[task_id] = ModelFloorManifestTask(
+                id=task_id,
+                title=f"{task_id} {title}"[:200],
+                tickets=tuple(
+                    dict.fromkeys(
+                        (
+                            *(
+                                t
+                                for t in sorted(set(TICKET_RE.findall(title)))
+                                if t != epic
+                            ),
+                            *links.get(task_id, ()),
+                        )
+                    )
+                ),
+                prs=tuple(sorted(set(PR_RE.findall(title)))),
+                scoped=True,
+            )
+    return tuple(tasks.values())
+
+
 def parse_heading_tasks(
     text: str,
     links: dict[str, tuple[str, ...]],
@@ -476,8 +555,21 @@ def parse_heading_tasks(
     (``**D3.**``) are not drawn as tasks, and a repeated id keeps its first paragraph. The tasks are ``scoped``: a bare
     ``T1`` names a different task in every plan.
     """
+    sectioned = _heading_tasks(text, links, epic)
+    if sectioned:
+        return sectioned
     found = next(
-        (matches for pattern in patterns if (matches := list(pattern.finditer(text)))),
+        (
+            matches
+            for pattern in patterns
+            if (
+                matches := [
+                    match
+                    for match in pattern.finditer(text)
+                    if not _in_review_section(text, match.start())
+                ]
+            )
+        ),
         [],
     )
     if not found:
@@ -571,6 +663,8 @@ def _plan_input(
         if entry is not None
         else tuple(sorted(set(TICKET_RE.findall(header))))
     )
+    # A review checklist is not a part: its R1 to R8 are checks on the plan, whatever table the plans-today writer found.
+    table = tuple(row for row in table if not _only_in_review(row.label, text))
     # A section heading is not a part: the plans-today table lists a plan's ``### A.1`` headings beside its tasks.
     sections = {row.label for row in table if is_section_heading(row.label, text)}
     parts = tuple(row for row in table if row.label not in sections)

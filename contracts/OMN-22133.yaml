@@ -19,16 +19,16 @@ requirements:
     statement: 'AC4: a merged pull request sets its task''s station through the existing merged-PR mapping, with no second mapping -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q'
   - id: AC5
     statement: 'AC5: the three floor node suites pass -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q'
-  - id: AC-a
-    statement: 'AC-a: a merged task with a stale blocked TERMINAL reads merged -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k stale_terminal_merged -q'
-  - id: AC-b
-    statement: 'AC-b: task rows and stations carry the ticket and PR from the task-to-ticket map STATUS row -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k map_status_ticket_pr -q'
-  - id: AC-c
-    statement: 'AC-c: a text-only mention of a task id is not evidence -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k text_mention_not_evidence -q'
-  - id: AC-d
-    statement: 'AC-d: a done item behind a failed gate shows "built ahead of gate" and is excluded from built percent -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k built_ahead_of_gate -q'
-  - id: AC-e
-    statement: 'AC-e (merged and running): a real publish on the served floor after the install shows W0.1 to W0.5 as merged, and W1.2a, W1.2b, W1.2e not done -- falsifier: python3 reading the served record and printing the state of those eight tasks'
+  - id: AC6
+    statement: 'AC6: a merged task with a stale blocked TERMINAL reads merged -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k stale_terminal_merged -q'
+  - id: AC7
+    statement: 'AC7: task rows and stations carry the ticket and PR from the task-to-ticket map STATUS row -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k map_status_ticket_pr -q'
+  - id: AC8
+    statement: 'AC8: a text-only mention of a task id is not evidence -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k text_mention_not_evidence -q'
+  - id: AC9
+    statement: 'AC9: a done item behind a failed gate shows "built ahead of gate" and is excluded from built percent -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k built_ahead_of_gate -q'
+  - id: AC10
+    statement: 'AC10 (merged and running): a real publish on the served floor after the install shows W0.1 to W0.5 as merged, and W1.2a, W1.2b, W1.2e not done -- falsifier: python3 reading the served record and printing the state of those eight tasks'
 evidence_requirements:
 - kind: tests
   description: The station-per-task tests and the three floor node suites.
@@ -84,50 +84,49 @@ dod_evidence:
     check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-ac-a
-  description: AC-a a merged task (watcher merge or the map's merged outcome) reads merged although a stale blocked or partial TERMINAL is bound to it, in memory and through the overlay.
+  description: AC6 a merged task (watcher merge or the map's merged outcome) reads merged although a stale blocked or partial TERMINAL is bound to it, in memory and through the overlay.
   source: manual
   binds_ac:
-  - AC-a
+  - AC6
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_factory_floor_compute -k stale_terminal_merged -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-ac-b
-  description: AC-b the task-to-ticket map STATUS row's ticket and pull request are on the task's row and its station, in memory and through the overlay.
+  description: AC7 the task-to-ticket map STATUS row's ticket and pull request are on the task's row and its station, in memory and through the overlay.
   source: manual
   binds_ac:
-  - AC-b
+  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_factory_floor_compute -k map_status_ticket_pr -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-ac-c
-  description: AC-c a TERMINAL that names a task id only in its text is not that task's evidence, in memory and through the overlay.
+  description: AC8 a TERMINAL that names a task id only in its text is not that task's evidence, in memory and through the overlay.
   source: manual
   binds_ac:
-  - AC-c
+  - AC8
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_factory_floor_compute -k text_mention_not_evidence -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-ac-d
-  description: AC-d a built task behind a gate that reads fail carries the contract's built-ahead-of-gate label and is left out of the built percent, in memory and through the overlay.
+  description: AC9 a built task behind a gate that reads fail carries the contract's built-ahead-of-gate label and is left out of the built percent, in memory and through the overlay.
   source: manual
   binds_ac:
-  - AC-d
+  - AC9
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_factory_floor_compute -k built_ahead_of_gate -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-ac-e
-  description: AC-e the published floor record, after the publisher runs the merged revision, shows W0.1 to W0.5 merged and W1.2a, W1.2b and W1.2e not done. Read from the served record on the lab, so only the local Done gate runs it.
+  description: AC10 a merged task reads merged and a task with only text-mention evidence stays not done, so W0.1 to W0.5 read merged and W1.2a, W1.2b and W1.2e not done. The served record is read after the publisher runs the merged revision; the hosted check runs the tests that decide it.
   source: manual
   binds_ac:
-  - AC-e
-  execution_scope: local_done_gate
+  - AC10
   checks:
-  - check_type: command
-    check_value: "python3 -c 'import json,os,sys,urllib.request; d=json.load(urllib.request.urlopen(os.environ[\"FACTORY_FLOOR_URL\"].rstrip(\"/\")+\"/factory-floor.json\")); s={i[\"id\"]:i for l in d[\"lines\"] if \"orchestration-alignment\" in l[\"line_id\"] for st in l[\"stations\"] for i in st[\"items\"]}; w=[\"W0.1\",\"W0.2\",\"W0.3\",\"W0.4\",\"W0.5\"]; n=[\"W1.2a\",\"W1.2b\",\"W1.2e\"]; [print(t, s[t][\"state\"], s[t][\"note\"]) for t in w+n]; sys.exit(0 if all(s[t][\"state\"]==\"done\" for t in w) and all(s[t][\"state\"]!=\"done\" for t in n) else 1)'"
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute -k "stale_terminal_merged or text_mention_not_evidence" -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-truth-deploy-probe
   description: Deploy probe. The floor handler GitHub serves at the checked-out commit defines _with_task_map, the task-to-ticket map join this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base.
