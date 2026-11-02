@@ -84,3 +84,17 @@ class ModelBusBindingResolution(BaseModel):
     resolved: bool
     how: str
     emitted: str
+
+
+class ModelBusBindingSettlementPolicy(BaseModel):
+    """How the bus binding settles its exception rows, as node_bus_binding_reducer/contract.yaml declares it.
+
+    ``alarm_scope`` ``episode``: a degraded command emits one row per outage episode, and no other while that
+    episode is open, whoever closed the row. ``settle_on_healthy_read``: the classes whose open rows the
+    exception actor settles on a healthy durable command with an empty outbox (OMN-21959).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    alarm_scope: str = Field(pattern="^(episode|command)$")
+    settle_on_healthy_read: tuple[str, ...] = ()

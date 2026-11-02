@@ -1,0 +1,25 @@
+{
+  "accounts": {
+    "h200": {
+      "cap": 17,
+      "credit": {
+        "read_at": "2026-11-02T10:47:21Z",
+        "remaining": 244.0,
+        "source": "operator reading 2026-11-02: cloud sessions draw on the cloud credit, not regular subscription usage"
+      },
+      "limited_until": "2026-11-04T22:00:00Z",
+      "limited_why": "seven_day limit rejected",
+      "login": "ok",
+      "probed_at": "2026-11-02T10:47:21Z",
+      "rate": {
+        "read_at": "2026-11-02T10:47:21Z",
+        "resets_at": "2026-11-04T22:00:00Z",
+        "status": "rejected",
+        "type": "seven_day"
+      },
+      "rate_refused_until": "2026-11-04T22:00:00Z",
+      "rate_refused_why": "seven_day limit rejected"
+    }
+  },
+  "last": "h201"
+}

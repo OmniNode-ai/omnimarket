@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -219,6 +220,7 @@ class ModelFloorPoolReading(BaseModel):
     swap_used_pct: float | None = None
     cap: int | None = None
     slots: int | None = None
+    lane_slots: int | None = None
     refusal: str = ""
 
     _utc = field_validator("read_at")(_aware)
@@ -391,5 +393,7 @@ class ModelFactoryFloorRequest(BaseModel):
     runner_fleet_cause: str = ""
     # One verdict per host read by node_lane_container_budget_compute; None when no host was read.
     lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
+    # One Phoenix trace reading; None when the Phoenix URL is not configured (the floor draws it unread).
+    phoenix_traces: ModelFloorPhoenixTraces | None = None
 
     _utc = field_validator("generated_at")(_aware)

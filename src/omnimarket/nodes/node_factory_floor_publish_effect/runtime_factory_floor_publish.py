@@ -12,11 +12,15 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     HandlerFactoryFloorPublish,
     PublishRefusedError,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_operator_access import (
+    HandlerOperatorAccess,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports_publish import (
     HandlerReportsPublish,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishRequest,
+    ModelOperatorAccessRequest,
     ModelReportsPublishRequest,
 )
 
@@ -47,6 +51,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     a = parse_args(argv)
+    # The operator-only gate comes first: no file is published to a server that does not carry it. A refusal there
+    # withdraws the operator-only reports, is reported, and does not hold the shared pages back (the exit code stays 2).
+    gate_refused = False
+    try:
+        access = HandlerOperatorAccess().handle(
+            ModelOperatorAccessRequest(
+                home=a.registry_home, skip_reports=a.skip_reports
+            )
+        )
+    except NodeOverlayError as exc:
+        sys.stderr.write(f"REFUSED factory-floor-publish: {exc}\n")
+        return 2
+    except PublishRefusedError as exc:
+        sys.stderr.write(f"REFUSED operator-access: {exc}\n")
+        gate_refused = True
+    else:
+        sys.stdout.write(
+            f"operator-access: admitted_devices={access.admitted_devices} "
+            f"include={access.include_sha256[:12]} changed={access.include_changed} "
+            f"published={len(access.published)} files unread={','.join(access.unread) or 'none'}\n"
+        )
     request = ModelFactoryFloorPublishRequest(
         home=a.registry_home, state_dir=a.state_dir, skip_refresh=a.skip_refresh
     )
@@ -66,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
     )
     if a.skip_reports:
-        return 0
+        return 2 if gate_refused else 0
     try:
         reports = HandlerReportsPublish().handle(
             ModelReportsPublishRequest(home=a.registry_home)
@@ -79,4 +104,4 @@ def main(argv: list[str] | None = None) -> int:
         f"unread={','.join(reports.unread) or 'none'} manifest={reports.manifest_sha256[:12]} "
         f"index={reports.index_url}\n"
     )
-    return 0
+    return 2 if gate_refused else 0

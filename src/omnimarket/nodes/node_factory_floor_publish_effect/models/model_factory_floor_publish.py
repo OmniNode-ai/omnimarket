@@ -21,6 +21,10 @@ class ModelFactoryFloorPublishOverlay(BaseModel):
     serve_url: str = Field(min_length=1)
     bus_lane: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     history_root: str = Field(min_length=1)
+    # The tailnet login that owns the operator's own devices, exactly as ``tailscale status --json`` lists it in its
+    # user table. The operator-only reports are served to the devices that login owns and to nobody else; without
+    # this key the publish refuses (there is no packaged value and no default).
+    owner_login: str = Field(min_length=3, pattern=r"^[^\s@]+@[^\s@]+$")
 
     @field_validator("remote_dir", "history_root")
     @classmethod
@@ -250,6 +254,46 @@ class ModelReportsRuntime(BaseModel):
         return _checked_remote_name(value)
 
 
+class ModelOperatorAccessRuntime(BaseModel):
+    """How the operator-only gate is built on the serving host and checked before a private report is published.
+
+    The owner's device addresses are read from ``tailscale_argv`` (``tailscale status --json``) on the publishing
+    host at every publish; nothing here names an address. ``operator_os`` is the platform classes of the operator's own
+    devices as the status lists them: the owner login also owns lab hosts, and a server is not the operator's hand.
+    The include file is written to ``<remote_dir's parent>/<access_dirname>/<include_name>`` on the serving host, a
+    directory the web container mounts read-only and that is never inside the served directory. ``gate_marker`` is a
+    text the web server's own configuration dump must carry: a server that does not carry the gate withdraws the private
+    reports instead of serving them to everyone.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tailscale_argv: tuple[str, ...] = Field(min_length=1)
+    operator_os: tuple[str, ...] = Field(min_length=1)
+    access_dirname: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    include_name: str = Field(
+        min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*\.conf$"
+    )
+    container_name: str = Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    gate_marker: str = Field(min_length=1)
+
+
+class ModelOperatorReportsRuntime(BaseModel):
+    """The reports only the operator's own devices may read: published beside the site, never listed in its manifest."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    access: ModelOperatorAccessRuntime
+    # The manifest of these reports alone, under the gated path, so the shared manifest never names them.
+    manifest: str
+    entries: tuple[ModelReportEntry, ...] = Field(min_length=1)
+
+    @field_validator("manifest")
+    @classmethod
+    def _manifest(cls, value: str) -> str:
+        return _checked_remote_name(value)
+
+
 class ModelFactoryFloorPublishRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -274,6 +318,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     transport: ModelPublishTransport
     history: ModelPublishHistory
     reports: ModelReportsRuntime
+    operator_reports: ModelOperatorReportsRuntime
 
 
 class ModelFactoryFloorPublishContract(BaseModel):
@@ -331,3 +376,27 @@ class ModelReportsPublishResult(BaseModel):
     unread: tuple[str, ...]
     manifest_sha256: str
     index_url: str
+
+
+class ModelOperatorAccessRequest(BaseModel):
+    """One operator-only publish. ``None`` takes the contract's environment names and the overlay."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    home: str | None = None
+    overlay: ModelFactoryFloorPublishOverlay | None = None
+    now: datetime | None = None
+    # The gate is still built and checked; only the operator-only files are left unwritten.
+    skip_reports: bool = False
+
+
+class ModelOperatorAccessResult(BaseModel):
+    """What one operator-only publish did: how many device addresses the gate admits, and what it published."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    admitted_devices: int
+    include_sha256: str
+    include_changed: bool
+    published: tuple[str, ...]
+    unread: tuple[str, ...]

@@ -1,0 +1,23 @@
+name: node_lab_receipt_check_effect
+version: "1.0.0"
+description: "Gathers the facts of one pull request head and makes the one call to the omnibase_core lab_receipt validator in the present and verify phases (OMN-21826)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_receipt_check_effect: "omnimarket.nodes.node_lab_receipt_check_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["lab-receipt", "pre-merge", "effect", "OMN-21826"]
+pack: "pr-landing"
+display_name: "Lab Receipt Check Effect"
+node_role: "effect"
