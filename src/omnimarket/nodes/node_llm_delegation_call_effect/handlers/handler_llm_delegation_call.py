@@ -50,6 +50,15 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    byok_backend_provider,
+    byok_declared_price_per_1m,
+    byok_model_price_per_1m,
+    resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
@@ -119,15 +128,6 @@ from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
     model_not_chosen_message,
-)
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    ModelByokProviderBackend,
-    byok_backend_provider,
-    byok_declared_price_per_1m,
-    byok_model_price_per_1m,
-    resolve_byok_backend_by_endpoint,
-    token_limit_field_for_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 

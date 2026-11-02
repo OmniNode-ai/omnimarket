@@ -15,6 +15,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.byok_provider_backends import (
+    CATALOG_PATH,
+    resolve_byok_provider_backend,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_inference_intent as bus_effect,
 )
@@ -22,10 +26,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing.byok_provider_backends import (
-    CATALOG_PATH,
-    resolve_byok_provider_backend,
-)
 
 pytestmark = [pytest.mark.unit]
 KEY = "test-key-omn21257"

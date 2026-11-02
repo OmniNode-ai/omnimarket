@@ -59,6 +59,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -68,7 +69,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("OMN_ALLOW_LIVE_LADDER") != "1",

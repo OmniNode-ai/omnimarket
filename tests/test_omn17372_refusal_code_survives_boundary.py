@@ -69,6 +69,13 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
 )
 from omnibase_infra.utils.util_error_sanitization import sanitize_error_message
 
+from omnimarket.handlers.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+    ModelCustomerKeyRefusal,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
@@ -77,13 +84,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationResult,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
-    ModelCustomerKeyRefusal,
 )
 
 # The wire alias. Pinned as a literal on purpose: it is the machine-readable

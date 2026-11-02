@@ -21,6 +21,7 @@ from pathlib import Path
 from omnibase_core.models.delegation.wire import ModelRoutingIntent
 
 from omnimarket.config.settings import get_settings
+from omnimarket.handlers.customer_key_terminus import routing_surface_for_runtime
 from omnimarket.handlers.handler_capability_start import (
     ModelCapabilityMapRead,
     ProtocolCapabilityCellReader,
@@ -39,7 +40,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
-from omnimarket.routing.customer_key_terminus import routing_surface_for_runtime
 from omnimarket.routing.dod_overlay import (
     ProtocolDodOutcomeReader,
     ProtocolEvalLineReader,

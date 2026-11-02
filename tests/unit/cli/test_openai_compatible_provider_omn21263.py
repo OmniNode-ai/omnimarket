@@ -35,6 +35,10 @@ from omnimarket.enums.enum_delegation_failure_class import (
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.byok_provider_backends import BYOK_MODEL_UNRESOLVED
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.handlers.openai_compatible_endpoint import stored_base_url
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
@@ -45,10 +49,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing.byok_model_discovery import BYOK_MODEL_NOT_CHOSEN
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 from omnimarket.routing.local_byok_route import (
     next_chosen_model_byok_route,
     resolve_pinned_byok_route,

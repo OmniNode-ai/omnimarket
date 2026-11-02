@@ -68,11 +68,36 @@ from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
 from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
+from omnimarket.handlers.backend_placement import (
+    apply_backend_placements,
+    load_bound_bifrost_placements,
+    spread_groups,
+    spread_pick,
+    spread_weights,
+)
+from omnimarket.handlers.customer_key_terminus import (
+    EnumDelegationSurface,
+    enforce_customer_key_terminus,
+    house_credential_refs,
+    is_customer_attributed,
+    lab_backend_hosts,
+    refuse_keyless_customer_on_cloud,
+)
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.handlers.handler_capability_start import (
     ModelCapabilityMapRead,
     resolve_capability_start,
 )
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
+from omnimarket.handlers.routing_tiers_path import (
+    load_delegation_routing_overlay,
+    resolve_routing_tiers_path,
+)
+from omnimarket.handlers.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
     resolve_path_config,
@@ -139,32 +164,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
     ModelTierModel,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.backend_placement import (
-    apply_backend_placements,
-    load_bound_bifrost_placements,
-    spread_groups,
-    spread_pick,
-    spread_weights,
-)
-from omnimarket.routing.customer_key_terminus import (
-    EnumDelegationSurface,
-    enforce_customer_key_terminus,
-    house_credential_refs,
-    is_customer_attributed,
-    lab_backend_hosts,
-    refuse_keyless_customer_on_cloud,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
-from omnimarket.routing.routing_tiers_path import (
-    load_delegation_routing_overlay,
-    resolve_routing_tiers_path,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
-)
 from omnimarket.routing.tenant_overlay_resolver import (
     HOUSE_OVERLAY_COST_TIER,
     ModelTenantRoutingOverlayBackend,
@@ -508,7 +508,7 @@ def _select_model_for_task(
     OMN-19215 AC4: when ``spread_key`` is given and ``spread_peers`` names
     spread-mode placed backends for the chosen rung, the choice becomes one
     member of the group ``[rung, *eligible peers]``, picked by
-    :func:`~omnimarket.routing.backend_placement.spread_pick` over the key, each
+    :func:`~omnimarket.handlers.backend_placement.spread_pick` over the key, each
     member taking the share its placement ``weight`` declares (the rung's is 1.0).
     A peer is eligible under the same rules the first choice met: not
     excluded, declares ``task_type``, fits ``estimated_tokens`` and its backend
@@ -708,14 +708,14 @@ def _select_primary_model_for_task(
 
 # OMN-15628: the canonical routing_tiers.yaml location and its env-pinned
 # resolver live in the SHARED, non-node module
-# ``omnimarket.routing.routing_tiers_path`` (imported above), not here. Both
+# ``omnimarket.handlers.routing_tiers_path`` (imported above), not here. Both
 # this routing authority and the delegation orchestrator's replay-provenance
 # hash read that one derivation, so neither node imports the other's handler
 # package and the two cannot drift apart again — an orchestrator copy that
 # walked one ``.parent`` too far is the defect round 3 fixed.
 
 # OMN-17802: repointed at the shared derivation in
-# ``omnimarket.routing.task_class_contract_path`` so the orchestrator's
+# ``omnimarket.handlers.task_class_contract_path`` so the orchestrator's
 # escalation-config provenance hash and this authority cannot name different
 # files -- the same single-derivation rule OMN-15628 applied to routing_tiers.
 _DEFAULT_TASK_CLASS_CONTRACT_PATH = TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH
@@ -3013,7 +3013,7 @@ def delta(
             and the only routable answer would authenticate the customer's work
             with an OmniNode platform credential — or, on the cloud surface,
             with OmniNode's own compute. See
-            :mod:`omnimarket.routing.customer_key_terminus`.
+            :mod:`omnimarket.handlers.customer_key_terminus`.
     """
     task_type = request.task_type
     # OMN-17427: a withheld class is refused before every backend or overlay override.

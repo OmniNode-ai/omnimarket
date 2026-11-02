@@ -26,6 +26,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
     UNVERIFIED_NO_EXECUTED_CHECK,
@@ -37,9 +40,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
-)
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
 _CHECK = "passes_existing_tests"

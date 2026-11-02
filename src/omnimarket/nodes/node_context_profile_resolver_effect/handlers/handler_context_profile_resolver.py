@@ -11,6 +11,10 @@ import yaml
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 from pydantic import ValidationError
 
+from omnimarket.handlers.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
+)
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.task_class_authority import load_task_class_authority
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
@@ -21,10 +25,6 @@ from omnimarket.models.context_profile_resolve.model_context_profile_resolve_res
     ModelContextProfileResolveResult,
 )
 from omnimarket.pack.model_context_profile import ModelContextProfile
-from omnimarket.routing.task_class_contract_path import (
-    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
-    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
-)
 
 _PROFILES_DIR = Path(__file__).resolve().parents[3] / "pack" / "profiles"
 _PROFILE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")

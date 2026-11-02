@@ -26,12 +26,12 @@ from typing import Any
 import httpx
 import pytest
 
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
-    ModelTransportResponse,
-)
-from omnimarket.routing.byok_plan_detection import (
+from omnimarket.handlers.byok_plan_detection import (
     ModelByokPlanDetection,
     detect_byok_plan,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    ModelTransportResponse,
 )
 
 pytestmark = pytest.mark.unit

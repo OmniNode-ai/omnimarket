@@ -47,6 +47,7 @@ from omnimarket.delegation.response_contract_conformance_runner import (
     FAILURE_CLASSES,
     run_live_manifest,
 )
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -68,7 +69,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     HandlerLlmDelegationCall,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _MANIFEST_PATH = (
     Path(__file__).resolve().parents[3]

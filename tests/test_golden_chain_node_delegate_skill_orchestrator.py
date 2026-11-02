@@ -27,6 +27,7 @@ from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envel
 from omnimarket.delegation.response_contract_instruction import (
     render_extraction_marker_instruction,
 )
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -47,7 +48,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.routing import delegation_backend_resolution
 
 
 def _passing_named_test_runner(

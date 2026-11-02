@@ -33,6 +33,15 @@ from typing import Any, Literal, cast
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.byok_plan_detection import detect_byok_plan
+from omnimarket.handlers.byok_provider_backends import (
+    ByokPlanNotPermittedError,
+    byok_automatic_plans,
+    byok_provider_plans,
+    byok_routable_plans,
+    require_byok_plan_permitted,
+    resolve_byok_provider_backend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_plan,
@@ -75,15 +84,6 @@ from omnimarket.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
     model_not_chosen_message,
-)
-from omnimarket.routing.byok_plan_detection import detect_byok_plan
-from omnimarket.routing.byok_provider_backends import (
-    ByokPlanNotPermittedError,
-    byok_automatic_plans,
-    byok_provider_plans,
-    byok_routable_plans,
-    require_byok_plan_permitted,
-    resolve_byok_provider_backend,
 )
 
 #: A progress line for whoever is watching: the terminal prints it, a script drops it.

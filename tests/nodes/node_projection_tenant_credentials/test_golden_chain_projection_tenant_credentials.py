@@ -22,11 +22,11 @@ from unittest.mock import AsyncMock
 import pytest
 import yaml
 
+from omnimarket.handlers.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
     HandlerTenantCredentialsProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 
 _CONTRACT = (

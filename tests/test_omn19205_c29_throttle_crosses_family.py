@@ -26,14 +26,14 @@ from typing import Any
 import httpx
 import pytest
 
+from omnimarket.handlers.byok_provider_backends import (
+    resolve_byok_provider_backend,
+    select_byok_model,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
-from omnimarket.routing.byok_provider_backends import (
-    resolve_byok_provider_backend,
-    select_byok_model,
-)
 from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     KEY,
     SUCCESSOR_URL,

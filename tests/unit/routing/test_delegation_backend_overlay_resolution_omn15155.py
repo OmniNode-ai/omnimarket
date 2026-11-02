@@ -50,13 +50,13 @@ import yaml
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     OverlayBackendIncompleteError,
 )
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelDelegationBackendConfig,
-)
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
     resolve_delegation_backend,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelDelegationBackendConfig,
 )
 
 _BIFROST_CONFIG_PATH = (

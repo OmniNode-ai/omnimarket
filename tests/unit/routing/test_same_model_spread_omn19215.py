@@ -33,6 +33,7 @@ from uuid import NAMESPACE_DNS, UUID, uuid5
 import pytest
 
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
+from omnimarket.handlers.backend_placement import spread_groups, spread_index
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelDelegationBackendPlacement,
     ModelPlacedDelegationBackend,
@@ -43,7 +44,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
-from omnimarket.routing.backend_placement import spread_groups, spread_index
 
 pytestmark = pytest.mark.unit
 

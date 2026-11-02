@@ -20,6 +20,7 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group, secret_group
+from omnimarket.handlers.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_model,
@@ -33,7 +34,6 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
     ModelLocalSecretRequest,
 )
 from omnimarket.routing import byok_model_discovery
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.routing.local_byok_route import resolve_pinned_byok_route
 
 pytestmark = pytest.mark.unit

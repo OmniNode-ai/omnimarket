@@ -279,11 +279,11 @@ class TestJudgeSkipsAQuotaDeadProvider:
         """
         import httpx
 
+        from omnimarket.handlers.delegation_backend_resolution import (
+            ModelResolvedDelegationBackend,
+        )
         from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.adapter_routing_resolved_judge import (
             RoutingResolvedJudgeInferenceAdapter,
-        )
-        from omnimarket.routing.delegation_backend_resolution import (
-            ModelResolvedDelegationBackend,
         )
 
         emitted: list[ModelProviderQuotaObserved] = []
@@ -335,11 +335,11 @@ class TestJudgeSkipsAQuotaDeadProvider:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A block the projection holds keeps the judge from calling at all."""
+        from omnimarket.handlers.delegation_backend_resolution import (
+            ModelResolvedDelegationBackend,
+        )
         from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
             adapter_routing_resolved_judge as judge_mod,
-        )
-        from omnimarket.routing.delegation_backend_resolution import (
-            ModelResolvedDelegationBackend,
         )
 
         backend = ModelResolvedDelegationBackend(

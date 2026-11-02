@@ -21,6 +21,7 @@ from omnibase_core.models.delegation.wire import EnumDelegationTerminalFailureCa
 
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceReason
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.handlers import byok_provider_backends
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -29,7 +30,6 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
 )
-from omnimarket.routing import byok_provider_backends
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,
     PROVIDER_SLUG,

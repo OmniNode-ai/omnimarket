@@ -26,6 +26,7 @@ from pydantic import SecretStr, ValidationError
 
 from omnimarket.cli import cli_secret
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     select_host_keys,
@@ -43,7 +44,6 @@ from omnimarket.routing.byok_model_discovery import (
     discover_byok_model_sync,
     models_request_headers,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
 pytestmark = pytest.mark.unit
 

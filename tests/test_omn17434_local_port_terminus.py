@@ -38,6 +38,15 @@ from uuid import UUID, uuid4
 import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+)
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.local_deployment import tenant_identity
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
@@ -52,15 +61,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     HOUSE_TENANT_UUID,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 from tests.test_omn17082_customer_key_terminus import (  # noqa: F401 — fixtures
     house_keys_planted,

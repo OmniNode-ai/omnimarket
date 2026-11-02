@@ -9,6 +9,7 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import ValidationError
 
 from omnimarket.enums import EnumHarnessRungRefusal
+from omnimarket.handlers.routing_tiers_path import load_harness_tiers
 from omnimarket.models.delegation.model_class_escalation_chain import (
     ModelClassEscalationChain,
 )
@@ -24,7 +25,6 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_harness_escalation_chain import (
     resolve_class_escalation_chain,
 )
-from omnimarket.routing.routing_tiers_path import load_harness_tiers
 
 pytestmark = pytest.mark.unit
 

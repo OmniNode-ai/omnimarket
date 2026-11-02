@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from omnimarket.routing import byok_provider_backends
+from omnimarket.handlers import byok_provider_backends
 from tests.chains.local.harness import provider_stub
 
 __all__ = ["provider_stub"]

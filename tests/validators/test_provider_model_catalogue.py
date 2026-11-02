@@ -151,7 +151,7 @@ def test_cli_returns_nonzero_for_an_unlisted_rung(
 
 
 def test_the_parked_rung_cannot_be_pinned() -> None:
-    from omnimarket.routing.delegation_backend_resolution import (
+    from omnimarket.handlers.delegation_backend_resolution import (
         resolve_delegation_backend,
     )
 

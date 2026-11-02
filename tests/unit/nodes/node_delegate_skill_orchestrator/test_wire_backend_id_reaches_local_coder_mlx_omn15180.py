@@ -33,6 +33,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_output_contract,
 )
@@ -49,7 +50,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 # OMN-7942: the request this chain constructs now CONVEYS the task class's
 # declared response contract to the model -- for a markdown class that is an

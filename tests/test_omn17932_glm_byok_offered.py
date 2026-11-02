@@ -29,13 +29,13 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr
 
-from omnimarket.projection.credential_publisher import (
-    ModelInferenceCredentialCreateRequest,
-)
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.byok_provider_backends import (
     customer_provider_catalogue,
     load_byok_not_offered_providers,
     load_byok_provider_catalog,
+)
+from omnimarket.projection.credential_publisher import (
+    ModelInferenceCredentialCreateRequest,
 )
 
 pytestmark = pytest.mark.unit

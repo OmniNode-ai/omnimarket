@@ -38,6 +38,7 @@ from urllib.parse import urlparse
 
 import yaml
 
+from omnimarket.handlers.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.handlers.delegation_first_choice import (
     clear_first_choice,
     read_first_choice,
@@ -72,7 +73,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 from omnimarket.routing.byok_model_discovery import get_models_json
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.routing.local_byok_route import (
     LOCAL_URL_BACKEND,
     is_local_url_backend,

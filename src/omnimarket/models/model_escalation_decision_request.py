@@ -3,7 +3,7 @@
 
 """Shared request model for the delegation escalation-decision COMPUTE (OMN-13476).
 
-Lives in the shared ``omnimarket.routing`` package — not inside either node — so
+Lives in the shared ``omnimarket.models`` package — not inside either node — so
 both ``node_delegation_escalation_decision_compute`` (the COMPUTE that owns the
 decision) and ``node_delegation_orchestrator`` (the caller that delegates it) can
 import it without a cross-node model reach-in (guarded by

@@ -66,6 +66,10 @@ from uuid import UUID
 import pytest
 import yaml
 
+from omnimarket.handlers import (
+    byok_provider_backends,
+    delegation_backend_resolution,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -84,7 +88,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     BifrostBackendRef,
 )
-from omnimarket.routing import byok_provider_backends, delegation_backend_resolution
 
 #: The provider slug both the shipped catalogue and the house rung declare.
 PROVIDER_SLUG = "openrouter"

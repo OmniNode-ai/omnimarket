@@ -44,10 +44,10 @@ from omnimarket.models.delegation.model_transition_decision import (
     ModelTransitionDecision,
     ModelTransitionDecisionRequest,
 )
-from omnimarket.routing.model_escalation_decision_request import (
+from omnimarket.models.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
-from omnimarket.routing.model_escalation_decision_result import (
+from omnimarket.models.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
 

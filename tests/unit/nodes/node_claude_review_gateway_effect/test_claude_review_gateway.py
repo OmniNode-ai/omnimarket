@@ -427,7 +427,7 @@ def test_a_review_with_no_user_message_is_a_400_before_any_key_is_read() -> None
 
 
 def test_the_gateway_resolves_the_native_plan_and_not_the_default_row() -> None:
-    from omnimarket.routing.byok_provider_backends import (
+    from omnimarket.handlers.byok_provider_backends import (
         resolve_byok_provider_backend,
     )
 

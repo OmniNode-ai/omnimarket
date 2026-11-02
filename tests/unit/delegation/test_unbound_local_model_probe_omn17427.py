@@ -24,11 +24,11 @@ import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.cli.cli_explain_routing import main
+from omnimarket.handlers.delegation_backend_resolution import (
+    load_bifrost_backends_with_provenance,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    load_bifrost_backends_with_provenance,
 )
 
 pytestmark = pytest.mark.unit

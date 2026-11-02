@@ -29,14 +29,14 @@ from uuid import uuid4
 import pytest
 from omnibase_infra.utils.util_error_sanitization import sanitize_error_message
 
-from omnimarket.routing.customer_key_terminus import (
+from omnimarket.handlers.customer_key_terminus import (
     CUSTOMER_KEY_REMEDIATION,
     CustomerKeyRefusedError,
     EnumCustomerKeyRefusalReason,
     EnumDelegationSurface,
     ModelCustomerKeyRefusal,
 )
-from omnimarket.routing.delegation_backend_resolution import (
+from omnimarket.handlers.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
 )

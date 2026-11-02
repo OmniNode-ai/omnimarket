@@ -29,6 +29,10 @@ from pydantic import SecretStr
 from omnimarket.enums.enum_delegation_failure_class import (
     EnumDelegationFailureClass,
 )
+from omnimarket.handlers.byok_provider_backends import (
+    ModelByokProviderBackend,
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -41,10 +45,6 @@ from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secr
 )
 from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_request import (
     ModelLocalSecretRequest,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ModelByokProviderBackend,
-    resolve_byok_backend_by_id,
 )
 from tests.chains.local.harness import use_local_store
 

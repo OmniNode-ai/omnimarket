@@ -35,6 +35,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -47,7 +48,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _BROKEN_VENV_MESSAGE = (
     "cannot import name 'ProtocolDispatchEngine' from 'omnibase_spi.protocols.runtime'"

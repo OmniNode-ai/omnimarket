@@ -18,11 +18,11 @@ import yaml
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_backend_placements,
 )
+from omnimarket.handlers.backend_placement import apply_backend_placements
 from omnimarket.models.delegation.wire import (
     ModelDelegationConfig,
     parse_delegation_config_yaml,
 )
-from omnimarket.routing.backend_placement import apply_backend_placements
 
 _CONFIGS = Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "configs"
 

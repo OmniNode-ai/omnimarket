@@ -17,15 +17,15 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import secret_group
+from omnimarket.handlers.byok_plan_detection import ModelByokPlanDetection
+from omnimarket.handlers.byok_provider_backends import BYOK_MODEL_UNRESOLVED
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
-)
-from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
 )
 from omnimarket.routing.local_byok_route import substitute_local_byok_route
 

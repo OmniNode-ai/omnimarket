@@ -57,7 +57,7 @@ ROUTING_TIERS_OVERLAY_NODE = "node_delegation_routing_reducer"
 # it runs. The fallback is logged with provenance (source=bootstrap_default),
 # never silent, exactly as the sibling TASK_CLASS_CONTRACT_PATH read already is.
 #
-# ``.parent`` x2 from ``src/omnimarket/routing/routing_tiers_path.py`` lands on
+# ``.parent`` x2 from ``src/omnimarket/handlers/routing_tiers_path.py`` lands on
 # ``src/omnimarket`` → ``src/omnimarket/configs/routing_tiers.yaml``, the single
 # committed tiers file in this repo.
 ROUTING_TIERS_PACKAGED_DEFAULT_PATH = (

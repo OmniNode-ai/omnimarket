@@ -201,7 +201,7 @@ def test_keys_follow_registration_order_with_bounded_existing_retries(
         call.provider for call in responders.calls if call.provider.startswith("byok-")
     ]
     assert list(dict.fromkeys(byok)) == ["byok-openrouter", "byok-gemini"]
-    from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
+    from omnimarket.handlers.byok_provider_backends import byok_backend_max_retries
 
     for backend_id in set(byok):
         assert byok.count(backend_id) == 1 + (byok_backend_max_retries(backend_id) or 0)
@@ -211,13 +211,13 @@ def test_planning_uses_the_registered_key_over_real_http_unpinned(
     profile, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     """Lab profile: real skill handler, resolver, secret boundary and HTTP effect."""
+    from omnimarket.handlers import byok_provider_backends
     from omnimarket.models.delegation.wire.model_delegate_skill_request import (
         ModelDelegateSkillRequest,
     )
     from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
         HandlerDelegateSkill,
     )
-    from omnimarket.routing import byok_provider_backends
     from tests.chains.local.harness import LocalProviderStub, local_byok_catalogue
 
     provider = LocalProviderStub(model_id="openrouter-tested-model", content=ANSWER)

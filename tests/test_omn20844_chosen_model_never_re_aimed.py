@@ -29,6 +29,7 @@ from uuid import uuid4
 import pytest
 from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
+from omnimarket.handlers.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_inference_intent as bus_effect,
 )
@@ -36,7 +37,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.routing import byok_model_discovery as discovery
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from tests.chains.local.harness import store_model_credential
 from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     GEMMA,

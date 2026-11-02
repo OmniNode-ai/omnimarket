@@ -124,6 +124,26 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
+from omnimarket.handlers.byok_provider_backends import (
+    byok_backend_max_retries,
+    resolve_byok_backend_by_id,
+)
+from omnimarket.handlers.customer_key_terminus import (
+    EnumDelegationSurface,
+    enforce_customer_key_terminus,
+    is_customer_attributed,
+)
+from omnimarket.handlers.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    load_bifrost_backends,
+    refuse_undeclared_local_model,
+    resolve_declared_local_model,
+    resolve_effective_max_tokens,
+    resolve_timeout_seconds,
+)
+from omnimarket.handlers.delegation_backend_resolution import (
+    resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
+)
 from omnimarket.handlers.delegation_first_choice import first_choice_route
 from omnimarket.handlers.delegation_model_scope import (
     model_scope_refusal,
@@ -347,26 +367,6 @@ from omnimarket.projection.sqlite_metering_summary import (
 )
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
-)
-from omnimarket.routing.byok_provider_backends import (
-    byok_backend_max_retries,
-    resolve_byok_backend_by_id,
-)
-from omnimarket.routing.customer_key_terminus import (
-    EnumDelegationSurface,
-    enforce_customer_key_terminus,
-    is_customer_attributed,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    load_bifrost_backends,
-    refuse_undeclared_local_model,
-    resolve_declared_local_model,
-    resolve_effective_max_tokens,
-    resolve_timeout_seconds,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.routing.local_byok_route import (
     next_chosen_model_byok_route,

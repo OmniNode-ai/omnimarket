@@ -38,15 +38,15 @@ import os
 
 import pytest
 
+from omnimarket.handlers.delegation_backend_resolution import (
+    resolve_delegation_backend,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     backend_id_for_tier,
     first_eligible_tier,
 )
 from omnimarket.nodes.node_pr_delegated_fix_effect.handlers.adapter_document_delegation import (
     DOCUMENT_TASK_TYPE,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend,
 )
 
 _LIVE = os.environ.get("OMN_ALLOW_LIVE_LADDER") == "1"

@@ -30,6 +30,11 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from pydantic import ValidationError
 
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
+from omnimarket.handlers.backend_placement import (
+    apply_backend_placements,
+    spread_pick,
+    spread_weights,
+)
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelDelegationBackendPlacement,
     ModelPlacedDelegationBackend,
@@ -40,11 +45,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
-)
-from omnimarket.routing.backend_placement import (
-    apply_backend_placements,
-    spread_pick,
-    spread_weights,
 )
 
 pytestmark = pytest.mark.unit

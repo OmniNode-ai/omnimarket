@@ -45,6 +45,11 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
+    EnumDelegationSurface,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -53,11 +58,6 @@ from omnimarket.models.delegation.wire.model_named_test_run_request import (
     EnumNamedTestRunStatus,
     ModelNamedTestRunRequest,
     ModelNamedTestRunResult,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
-    CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
-    EnumDelegationSurface,
 )
 from tests.chains.local import harness as local_chain_harness
 from tests.chains.local.harness import (

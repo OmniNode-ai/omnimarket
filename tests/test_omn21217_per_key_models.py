@@ -22,6 +22,10 @@ import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    resolve_byok_provider_backend,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
@@ -34,10 +38,6 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.routing.byok_model_discovery import BYOK_MODEL_NOT_CHOSEN
-from omnimarket.routing.byok_provider_backends import (
-    BYOK_MODEL_UNRESOLVED,
-    resolve_byok_provider_backend,
-)
 from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
 
 pytestmark = pytest.mark.integration

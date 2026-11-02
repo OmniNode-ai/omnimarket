@@ -27,13 +27,13 @@ from contextvars import ContextVar
 from pathlib import Path
 from urllib.parse import urlparse
 
+from omnimarket.handlers.byok_provider_backends import (
+    ModelByokProviderBackend,
+    resolve_byok_provider_backend,
+)
 from omnimarket.handlers.openai_compatible_endpoint_adapter import (
     read_base_url,
     record_base_url,
-)
-from omnimarket.routing.byok_provider_backends import (
-    ModelByokProviderBackend,
-    resolve_byok_provider_backend,
 )
 
 #: The generic row's provider id.

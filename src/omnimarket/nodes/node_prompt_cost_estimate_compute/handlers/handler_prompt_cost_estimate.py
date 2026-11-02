@@ -26,6 +26,7 @@ from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config_payload,
 )
+from omnimarket.handlers.routing_tiers_path import ROUTING_TIERS_PACKAGED_DEFAULT_PATH
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassAuthority,
     TaskClassSelectionError,
@@ -54,7 +55,6 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
     ModelTaskTypeSavings,
     ModelUnpricedModel,
 )
-from omnimarket.routing.routing_tiers_path import ROUTING_TIERS_PACKAGED_DEFAULT_PATH
 
 # The tier that runs on the operator's own GPUs. A visitor has none, so the
 # ladder is read from the first tier past it.

@@ -31,6 +31,7 @@ from click.testing import CliRunner
 
 from omnimarket import pricing
 from omnimarket.cli.cli_metering import metering_command
+from omnimarket.handlers import delegation_backend_resolution
 from omnimarket.local_deployment import tenant_identity
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -52,7 +53,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     transport,
 )
 from omnimarket.projection import sqlite_database
-from omnimarket.routing import delegation_backend_resolution
 
 pytestmark = pytest.mark.unit
 
