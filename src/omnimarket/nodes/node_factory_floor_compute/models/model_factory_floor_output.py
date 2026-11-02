@@ -16,7 +16,12 @@ from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
 )
 
-StatusPill = Literal["stopped", "done", "building", "queued"]
+Condition = Literal["queued", "building", "stopped", "complete", "needs_review"]
+ProgressState = Literal["known", "unknown", "no_tasks"]
+GateOutcome = Literal["passed", "failed", "waiting"]
+# What backs a done task: a merged pull request, a done lane TERMINAL, a closed Linear issue, or only a recorded state.
+# None of these is deployment proof; "" is a task with no done evidence.
+EvidenceKind = Literal["merged", "terminal", "linear_done", "recorded", ""]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
 LineSource = Literal["manifest", "plan-task-table", "undrawn"]
 
@@ -33,6 +38,8 @@ class ModelFloorItem(BaseModel):
     note: str
     tickets: tuple[str, ...]
     prs: tuple[str, ...]
+    # What backs the item's state, so a reader can say what a "done" rests on without implying it is deployed.
+    evidence_kind: EvidenceKind = ""
 
 
 class ModelFloorStation(BaseModel):
@@ -90,6 +97,68 @@ class ModelFloorApplicationContainers(BaseModel):
     lanes: tuple[ModelFloorLaneContainers, ...]
 
 
+class ModelFloorBlocker(BaseModel):
+    """Why a line is not moving: the first cause as a sentence and the refs that show it (task ids, PR keys, ledger rows)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reason: str
+    evidence: tuple[str, ...]
+
+
+class ModelFloorProgress(BaseModel):
+    """Work tasks complete over valid work tasks. Gates are never in it; unknown is never 0."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: ProgressState
+    completed: int | None
+    total: int | None
+    # completed / total x 100, rounded half-up to one decimal; None unless state is known.
+    percent: float | None
+    note: str
+
+
+class ModelFloorGateRef(BaseModel):
+    """One gate of the line and where it stands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    state: GateOutcome
+
+
+class ModelFloorGates(BaseModel):
+    """The line's gates, counted apart from its work tasks."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    passed: int
+    failed: int
+    waiting: int
+    items: tuple[ModelFloorGateRef, ...]
+
+
+class ModelFloorLineEvidence(BaseModel):
+    """Counts over the work tasks, one per kind of evidence; None means that source was not read, never 0."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    merged: int
+    running_on_dev: int | None
+    verified: int | None
+    of: int
+
+
+class ModelFloorDataAge(BaseModel):
+    """The oldest source read the line depends on, and its age against the record's own time."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    read_at: str
+    age_min: int | None
+
+
 class ModelFloorLine(BaseModel):
     """One car on the line: a selected plan, or a declared line no plan could be read for.
 
@@ -103,9 +172,15 @@ class ModelFloorLine(BaseModel):
     name: str
     plan_path: str
     source: LineSource
-    status_pill: StatusPill
-    percent_built: int
+    # The one condition of the line, read by every surface. A blocker never recolours or erases earned progress.
+    condition: Condition
+    blocker: ModelFloorBlocker | None
+    progress: ModelFloorProgress
+    gates: ModelFloorGates
+    line_evidence: ModelFloorLineEvidence
+    data_age: ModelFloorDataAge
     stations: tuple[ModelFloorStation, ...]
+    # The stop facts behind the blocker; it no longer drives the condition.
     andon: ModelFloorAndon
     # Set on the line the selection names for the container read; every other line carries None.
     application_containers: ModelFloorApplicationContainers | None = None

@@ -29,6 +29,7 @@ PrState = Literal["OPEN", "MERGED", "CLOSED"]
 CiState = Literal["green", "red", "pending", "none", "unread"]
 StationGrouping = Literal["task", "wave"]
 EvidenceCell = Literal["task", "ticket", "pr"]
+ScopeStatus = Literal["valid", "needs_review"]
 
 
 def _aware(value: datetime) -> datetime:
@@ -66,6 +67,10 @@ class ModelFloorManifest(BaseModel):
     title: str = ""
     epic: str = ""
     tasks: tuple[ModelFloorManifestTask, ...]
+    # A plan whose task catalogue is under review says so here: the line then reads its progress as unknown and its
+    # condition as needs_review until the catalogue is reconciled. No task is dropped.
+    scope_status: ScopeStatus = "valid"
+    scope_note: str = ""
 
 
 class ModelFloorTableTask(BaseModel):
@@ -344,6 +349,16 @@ class ModelFactoryFloorConfig(BaseModel):
     integration_state: str = Field(min_length=1)
     integration_pass_verdicts: tuple[str, ...] = Field(min_length=1)
     integration_fail_verdicts: tuple[str, ...] = Field(min_length=1)
+    # Decimal places of the progress percent (rounded half-up).
+    percent_decimals: int = Field(ge=0, le=3)
+    # The progress sentences. {completed} {total} fill the known one; {note} the plan's own scope note.
+    progress_note_known: str = Field(min_length=1)
+    progress_note_no_tasks: str = Field(min_length=1)
+    progress_note_unscoped: str = Field(min_length=1)
+    progress_note_duplicate_ids: str = Field(min_length=1)
+    progress_note_under_review: str = Field(min_length=1)
+    # The blocker of a line whose work tasks are all done while a gate has not passed; {gates} are the waiting ids.
+    pending_gate_blocker: str = Field(min_length=1)
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
     station_grouping: StationGrouping
@@ -386,6 +401,23 @@ class ModelFactoryFloorConfig(BaseModel):
     built_ahead_of_gate_label: str = Field(min_length=1)
 
 
+class ModelFloorSourceReads(BaseModel):
+    """When the caller read each source, so the record can say how old the oldest source a line depends on is.
+
+    A source with no read time is None: its age is then not guessed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger: datetime | None = None
+    linear: datetime | None = None
+    running_evidence: datetime | None = None
+
+    _utc = field_validator("ledger", "linear", "running_evidence")(
+        lambda value: None if value is None else _aware(value)
+    )
+
+
 class ModelFactoryFloorRequest(BaseModel):
     """Everything one run reads. The node has no clock: ``generated_at`` is a fact the caller supplies."""
 
@@ -401,6 +433,7 @@ class ModelFactoryFloorRequest(BaseModel):
     # Records that a merge runs on dev (a deploy receipt, an adoption row), each naming the merged pull request. None
     # when no reader could read them: an unread source never shows a merge as running.
     running_evidence: tuple[ModelMrcEvidence, ...] | None = None
+    source_reads: ModelFloorSourceReads = Field(default_factory=ModelFloorSourceReads)
     placement: tuple[ModelHostCapacityAdvertisement, ...] = ()
     stoppages: tuple[ModelFloorStoppage, ...] = ()
     machines: tuple[ModelFloorMachineDecl, ...] = ()
