@@ -35,11 +35,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 4284f5bf5587: omnibase_infra#5483, which moves infra to core fc6159b98026.
 # 3f93a2cc6f6c: omnibase_infra#5536, which moves infra to core 5bb91ae7e720.
 # 858c2c689461: omnibase_infra dev at the core 2080333acfaf pin (OMN-21826).
+# beb08a83c93e: omnibase_infra#5602 (OMN-19986, OMN-19991), same core pin.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
     ("3f93a2cc6f6c", "dev-20261031202655-5bb91ae7e720"),
     ("858c2c689461", "dev-20261101203942-2080333acfaf"),
+    ("beb08a83c93e", "dev-20261101203942-2080333acfaf"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -109,8 +111,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra 858c2c689461 and core 2080333acfaf."""
+    """The lock moves with the newest recorded row: infra beb08a83c93e and core 2080333acfaf."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261102125940-858c2c689461"
+    assert infra_tag == "dev-20261102181416-beb08a83c93e"
