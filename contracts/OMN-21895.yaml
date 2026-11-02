@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-21895
+title: The nightly sibling-pin train resolves its candidate pin set before it opens a bump PR and opens none when the siblings cannot co-resolve
+summary: node_dev_tag_pin_mover_compute gains the pure co-resolving tag-set selection and a train handler that locks the candidate in a scratch copy before publishing; sibling-pin-train.yml runs it nightly for omnimarket on one fixed branch.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21895
+  statement: The nightly sibling-pin train chooses a co-resolving tag set and resolves it before any branch is pushed or PR opened.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test replaying the recorded omnibase_infra/omnibase-core conflict makes the train refuse the core-only candidate, open no PR and print the conflicting URLs -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k replay_conflicting_core_urls'
+  - id: AC2
+    statement: 'AC2: the train selects the tag set whose pins co-resolve, moving the omnibase_infra tag and the omnibase-core tag its commit names together, and renders one PR body listing every moved pin -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k sibling_pins_move_together'
+  - id: AC3
+    statement: 'AC3: the train locks the candidate in a scratch copy before it publishes, and a failed lock never reaches the publish call -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k resolve_before_open'
+  - id: AC4
+    statement: 'AC4: three new dev tags roll into one move and a second run in the same night updates the open PR in place -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k one_pr_per_night'
+  - id: AC5
+    statement: 'AC5: no required context, ratchet baseline, allowlist or gate condition is widened or removed: the new workflow mints no pull_request context and the changed file list holds none -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k gates_unchanged'
+evidence_requirements:
+- kind: tests
+  description: The cited tests pass at the PR head.
+  command: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21895-ac1
+  description: AC1 test passes at the PR head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k replay_conflicting_core_urls
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn21895-ac2
+  description: AC2 test passes at the PR head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k sibling_pins_move_together
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn21895-ac3
+  description: AC3 test passes at the PR head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k resolve_before_open
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn21895-ac4
+  description: AC4 test passes at the PR head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k one_pr_per_night
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn21895-ac5
+  description: AC5 test passes at the PR head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k gates_unchanged
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
