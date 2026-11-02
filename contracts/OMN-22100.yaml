@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22100
 title: A lane on a proof lab host can run onex-capability-catalog find and the work-ledger parity check because the host installer provisions their inputs
-summary: The host capability node holds the requirement and the committed per-host declaration for the two reader inputs (catalog.json path, lab env file with the parity password key) and judges a declared lane host that lacks one; the provisioning itself is the frozen host installer's and is reported as an exact change.
+summary: The host capability node holds the requirement and the committed per-host declaration for the two reader inputs (catalog.json path, lab env file with the parity password key) and judges a declared lane host that lacks one; the new node_lane_reader_provision_effect provisions them on a host from the node overlay and that table (catalog.json, the catalog CLI link on the lane PATH, ONEX_CAPABILITY_CATALOG_JSON and WL_ENV_FILE in the lab-work serve environment file) and names the one key only the host owner supplies.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,20 +25,20 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22100-ac1-lab
-  description: AC1 lab run, unbound because hosted CI cannot reach the lab. The catalog find reader exits 0 on the proof host with no hand-set variable. Open until the host installer exports ONEX_CAPABILITY_CATALOG_JSON and provisions catalog.json on the host; the lab-run receipt of the measurement is in the PR.
+  description: AC1 lab run, unbound because hosted CI cannot reach the lab. The catalog find reader exits 0 on the proof host with no hand-set variable. Open until the merged node_lane_reader_provision_effect has run on the host and the serve unit has restarted; the lab-run receipt of the measurement is in the PR.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane g0-fix-h051-readers-1102 -- onex-capability-catalog find lane
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane readers-node-1102 -- onex-capability-catalog find lane
     cwd: .
 - id: dod-omn22100-ac2-lab
-  description: AC2 lab run, unbound because hosted CI cannot reach the lab. The ledger parity check exits 0 or 1 on the proof host with no hand-set variable. Open until the host owner supplies POSTGRES_PASSWORD in the lab env file and the installer names it for lanes.
+  description: AC2 lab run, unbound because hosted CI cannot reach the lab. The ledger parity check exits 0 or 1 on the proof host with no hand-set variable. Open until the merged node_lane_reader_provision_effect has named WL_ENV_FILE for lanes and the host owner has supplied the database password key in the lab env file.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane g0-fix-h051-readers-1102 -- uv run --frozen python -m omnimarket.nodes.node_projection_work_ledger.parity --ledger "$ONEX_LEDGER_PATH" --archive-dir "$(dirname "$ONEX_LEDGER_PATH")/archive" --since 2026-11-02T00:00:00Z --dsn-env WL_DSN
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host "$ONEX_PROOF_HOST" --lane readers-node-1102 -- uv run --frozen python -m omnimarket.nodes.node_projection_work_ledger.parity --ledger "$ONEX_LEDGER_PATH" --archive-dir "$(dirname "$ONEX_LEDGER_PATH")/archive" --since 2026-11-02T00:00:00Z --dsn-env WL_DSN
     cwd: .
 - id: dod-omn22100-ac1
   description: AC1 hosted part. A declared lane host with no catalog.json path fails for the catalog find reader by the ONEX_CAPABILITY_CATALOG_JSON item, and a measured host whose catalog.json is absent fails by its path. The lab run on the proof host is the unbound dod-omn22100-ac1-lab item.
@@ -50,13 +50,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line -k "catalog_json or missing_both_inputs"
     cwd: .
 - id: dod-omn22100-ac2
-  description: AC2 hosted part. A declared lane host with no lab env file fails for the ledger parity reader by the WL_ENV_FILE item, and the measured h051 key names without the database password key fail by that key name. The lab run on the proof host is the unbound dod-omn22100-ac2-lab item.
+  description: AC2 hosted provisioning part. The new handler sets WL_ENV_FILE in the serve environment file, preserves unrelated lines, and reports an absent lab env file or database password key as a host-owner step without returning secret values. These tests fail at the merge base, which has no provisioning node. The live parity reader run remains the unbound dod-omn22100-ac2-lab item.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/test_host_installer_lane_readers.py -q --no-cov --tb=line -k "wl_env_file or missing_password_key"
+    check_value: uv run pytest tests/nodes/node_lane_reader_provision_effect/test_lane_reader_provision.py -q --no-cov --tb=line -k "provisions_the_catalog_the_link_and_the_two_variables or only_the_two_variable_lines or missing_password_key or absent_lab_env_file"
     cwd: .
 - id: dod-omn22100-ac3
   description: AC3 a declared lane host without the catalog path or the lab env file fails, a measured env file without the password key fails by name, and the committed host table passes.
@@ -73,7 +73,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane g0-fix-h051-readers-1102 -- uv run --frozen pytest tests/nodes/test_host_installer_lane_readers.py tests/nodes/node_host_capability_compute -q --no-cov
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane readers-node-1102 -- uv run --frozen pytest tests/nodes/test_host_installer_lane_readers.py tests/nodes/node_host_capability_compute -q --no-cov
     cwd: .
 - id: dod-omn22100-deploy-probe
   description: 'Deploy probe: the lane reader inputs handler GitHub serves at the checked-out commit defines HandlerLaneReaderInputs, which the merge base does not carry.'
@@ -81,4 +81,21 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_capability_compute/handlers/handler_lane_reader_inputs.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLaneReaderInputs" > /dev/null'
+    cwd: .
+- id: dod-omn22100-node-ac1
+  description: AC1 and AC2 node part. The provisioning node produces catalog.json, links the catalog CLI onto the lane PATH directory and sets the two variables in the serve environment file from the overlay and the committed table, changes nothing on a second run, rewrites only those two lines, and names the password key without a value. The in-memory bus scenario runs here; the separate kafka-marked Redpanda profile is required as lab evidence.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_reader_provision_effect -q --no-cov --tb=line -m "not kafka"
+    cwd: .
+- id: dod-omn22100-node-deploy-probe
+  description: 'Deploy probe: the provisioning handler GitHub serves at the checked-out commit defines HandlerLaneReaderProvision, which the merge base does not carry.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_reader_provision_effect/handlers/handler_lane_reader_provision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLaneReaderProvision" > /dev/null'
     cwd: .

@@ -44,6 +44,7 @@ from omnimarket.delegated_test_loop.lane_bus import (
     open_lab_run_bus,
 )
 from omnimarket.handlers.bus_binding import exception_actor, outbox, recovery
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.handlers.bus_binding.recovery import ALARM_CLASS, raise_alarm
 from omnimarket.handlers.bus_binding.reducer import (
     reduce_binding_state,
@@ -179,15 +180,26 @@ def read_state(state_dir: Path, lane: str) -> EnumBusBindingState:
 
 
 async def replay_outbox(
-    bound: BoundBus, state_dir: Path, send: outbox.Sender, *, limit: int = 50
+    bound: BoundBus,
+    state_dir: Path,
+    send: outbox.Sender,
+    *,
+    limit: int = 50,
+    guard: GuardPorts | None = None,
 ) -> outbox.DrainResult:
-    """Replay under a healthy binding and close its episode only on complete recovery."""
+    """Replay under a healthy binding and close its episode only on complete recovery.
+
+    ``guard`` binds the ledger-guard refusal actor (OMN-21959): a refusal whose cause is gone is settled in
+    code instead of reported, and the open cases of that class whose cause has gone since are resolved.
+    """
     if bound.decision.binding is not EnumBusBinding.DURABLE or bound.decision.degraded:
         raise LabRunBusError("outbox replay requires a healthy durable binding")
     result = await outbox.drain(state_dir, send, limit=limit)
     # OMN-20275: a refusal is reported to its writer by the replay that found it, whether or not an
     # outage episode is open; record_replay below only closes the episode.
-    recovery.report_refused_to_writers(state_dir, bound.decision.observed_at)
+    recovery.report_refused_to_writers(
+        state_dir, bound.decision.observed_at, guard=guard
+    )
     recovery.record_replay(state_dir, bound.decision, result)
     return result
 
