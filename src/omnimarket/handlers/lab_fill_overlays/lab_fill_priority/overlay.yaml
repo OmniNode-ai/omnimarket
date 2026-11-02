@@ -1,0 +1,14 @@
+# lab_fill_priority/overlay.yaml
+# Operator-owned. Every value below is a placeholder weight proposed by the lane that built the
+# seed (OMN-21922); the operator owns this file from approval on and no agent edits it afterward.
+# Decimals are quoted strings: the overlay reader parses YAML with safe_load, which turns an
+# unquoted 0.30 into a float, and the loader refuses a float. Nothing computed lives here.
+version: 1
+weights:
+  unblock: "0.30"
+  beta_gate: "0.25"
+  throughput: "0.20"
+  priority_age: "0.15"
+  rework: "0.20"
+boost: []
+exclude: []
