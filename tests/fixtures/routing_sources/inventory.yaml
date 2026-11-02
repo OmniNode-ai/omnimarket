@@ -124,10 +124,14 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: the rule data and bus transport of a guard that refuses a question a ruling in force answers; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_branch_prune_effect/handlers/handler_branch_prune.py:find_node_overlay(NODE_NAME)"
     reason: the keep policy of a remote-branch prune (repositories in scope, protected names, age floor); it decides which branches are kept and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/handlers/handler_contract_policy_source.py:find_node_overlay(NODE_NAME)"
     reason: adds protected compose projects, container names and verbs to a guard that refuses a dev runtime container mutation; it chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_landing_worker_engine_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: tells whether the landing_worker_engine overlay is present before it turns the Codex worker routes of a PR-landing worker off; it picks no backend, model or tier for delegated work
   - site: "src/omnimarket/handlers/execution_budget_overlay.py:find_node_overlay(EXECUTION_BUDGET_OVERLAY_ID)"
     reason: a site's per-class execution time limit; it bounds how long a delegation may run and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py:find_node_overlay('node_review_voters_overlay_compute')"
@@ -171,6 +175,8 @@ not_routing_resolution_sites:
   - site: "src/omnimarket/nodes/node_standup_retrospective_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the retrospective weekday, role vocabulary, draft state, credit grammar, wording and bus transport of the Friday stand-up section; it shapes a text sheet and chooses no backend, model or tier
 not_routing_configs:
+  - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
+    reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes
   - path: src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml
