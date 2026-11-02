@@ -33,6 +33,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.replay_bundle import ManifestRefusalError as ManifestRefusalError
 from omnimarket.nodes.node_context_compaction_manifest_compute.models import (
     EnumBoundaryHook,
     EnumRepeatClass,
@@ -92,10 +93,6 @@ __all__ = [
     "HandlerReplayManifestBuilder",
     "ManifestRefusalError",
 ]
-
-
-class ManifestRefusalError(ValueError):
-    """The manifest cannot be built or the bundle cannot be read as asked."""
 
 
 def _iso(moment: datetime) -> str:
