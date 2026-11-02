@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-22103
+title: "Compaction reply topics are per principal: the hook edge awaits a {principal} reply topic and the request names it"
+summary: >-
+  Lane cmod-reply-topic-1102, omnimarket half. The compaction binding of node_claude_code_hook_adapter_effect awaited three shared reply topics, readable by every developer principal. The binding now awaits the three topics templated on the requester's principal (resolved from the dev lane's broker username at call time), the compaction command carries the three resolved topic names, the command model accepts only names of the contract-declared patterns for one principal, and node_context_compaction_orchestrator answers on the topics the request names (activated stays on its shared topic). The omnibase_infra pull request for the same ticket binds the topics for read per principal and lets the dispatch applier publish a declared template with a principal in the slot; this change needs that applier on the runtime that serves it. The shared consume bindings are removed in a follow-up after the live proof on the dev lane. AC1 (the broker audit and the hook edge probe) and AC3 and AC4 (omnibase_infra) are not claimed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22103-per-principal-reply
+    statement: The compaction hook edge awaits reply topics templated on the requester's principal, and its command on the shared command topic carries their names.
+    acceptance:
+      - id: AC2
+        statement: "AC2: the compaction binding awaits a reply topic templated on the principal and a request on the shared command topic carries the reply topic name -- falsifier: uv run pytest tests -k compaction_reply_topic in omnimarket, red before the change"
+evidence_requirements:
+  - kind: tests
+    description: The compaction reply topic tests of the hook adapter and the compaction orchestrator.
+    command: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_reply_topic_omn22103.py tests/nodes/node_context_compaction_orchestrator/test_compaction_reply_topic_omn22103.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22103-ac2-reply-topic
+    description: >-
+      The shipped compaction binding awaits three topics holding the principal slot and its arguments carry their names; with a fake client and a principal resolver the adapter publishes the resolved names and awaits exactly them; the command model refuses a name outside the declared pattern, a mixed principal and a missing name; the orchestrator publishes prepared, fallback and the package reply on the requested topics and activated on its static topic. On the parent commit these tests fail because the binding awaits the shared topics.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_reply_topic_omn22103.py tests/nodes/node_context_compaction_orchestrator/test_compaction_reply_topic_omn22103.py -q --no-cov -k compaction_reply_topic
+        cwd: .
+  - id: dod-omn22103-deploy-probe
+    description: 'Deploy probe: the adapter handler GitHub serves at the checked-out commit substitutes the principal into the awaited events, which the handler at the merge base does not.'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/reply_principal.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "resolve_lane_binding" > /dev/null'
+        cwd: .
+  - id: dod-omn22103-integration-proof
+    description: >-
+      Integration proof on a lab host at the pushed head: the two compaction reply topic test files run through onex lab-work, which loads the shipped adapter and orchestrator contracts from disk. This is a lab test run, not the live round trip on the dev lane, which needs the omnibase_infra applier change merged and the runtime redeployed through the deploy agent and is recorded in the pull request. The hosted verifier cannot dispatch lab work, so this item runs in the local done gate.
+    source: manual
+    binds_ac:
+      - AC2
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22103 --kind test -- uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_reply_topic_omn22103.py tests/nodes/node_context_compaction_orchestrator/test_compaction_reply_topic_omn22103.py -q --no-cov -k compaction_reply_topic
+        cwd: .
