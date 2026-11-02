@@ -218,6 +218,7 @@ def test_facts_equal_the_live_controllers_on_the_same_rows() -> None:
     assert _facts() == {
         "rows_read": 18,
         "fixer_hold": ["omnibase_core", "omnimarket"],
+        "fixer_hold_released_prs": [],
         "cause_owners": [
             {
                 "lane": "cause-a",
