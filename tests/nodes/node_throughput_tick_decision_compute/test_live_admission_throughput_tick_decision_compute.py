@@ -282,3 +282,43 @@ def test_the_unavailable_host_note_and_placement_error_still_report_with_live_ad
         )
     )
     assert "NOTE lab-headroom: cannot read placement state (no pool)" in errored.lines
+
+
+@pytest.mark.parametrize(
+    ("name", "hop", "error"),
+    [
+        (
+            "h053",
+            "hp-gen9",
+            "rc=255 via=hp-gen9 rbs@hp-gen9: Permission denied (publickey).",
+        ),
+        (
+            "h101",
+            "stickybeatz-2",
+            "rc=255 via=stickybeatz-2 rbs@stickybeatz-2: Permission denied "
+            "(publickey,password,keyboard-interactive).",
+        ),
+    ],
+)
+def test_a_publickey_refusal_names_the_hop_owner_not_a_rerun(
+    name: str, hop: str, error: str
+) -> None:
+    adm = admission(0, claude_slots=0, codex_slots=0, probe_error=error)
+    [line] = lab_lines(run(host(name, adm=adm)))
+    fix = line.split("FIX: ", 1)[1]
+    assert f"add the launching host's public key to {hop}'s authorized_keys" in fix
+    assert "host owner" in fix
+    assert not fix.startswith("rerun the tick")
+    assert "--hosts --lane" not in fix
+    assert "never free and never full" in fix
+
+
+def test_a_transient_probe_failure_keeps_the_rerun_advice() -> None:
+    adm = admission(
+        0, claude_slots=0, codex_slots=0, probe_error="rc=255 via=hp-gen9 timed out"
+    )
+    [line] = lab_lines(run(host("h053", adm=adm)))
+    fix = line.split("FIX: ", 1)[1]
+    assert fix.startswith("rerun the tick; if the probe stays unreadable")
+    assert "onex_lab_run.py --hosts" in fix
+    assert "authorized_keys" not in fix

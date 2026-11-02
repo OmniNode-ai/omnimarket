@@ -911,6 +911,24 @@ LIVE_UNREAD_FIX = (
     "`python3 <omni plugin>/scripts/onex_lab_run.py --hosts --lane <lane>` (/omni:lab-run; it runs nothing); a host that "
     "cannot be read is a lab fault to name to the operator, never free and never full"
 )
+LIVE_AUTH_REFUSED_FIX = (
+    "the host owner must add the launching host's public key to {hop}'s authorized_keys; rerunning the tick "
+    "or `onex_lab_run.py --hosts` reads the same refused hop and clears nothing; a host that cannot be read is "
+    "a lab fault to name to the operator, never free and never full"
+)
+_SSH_KEY_REFUSAL = re.compile(r"Permission denied \(publickey")
+_SSH_HOP = re.compile(r"\bvia=(\S+)")
+
+
+def _live_unread_fix(host: str, why: str) -> str:
+    """An SSH public-key refusal is cleared only by the hop owner adding the launching host's key; any other
+    unreadable probe (timeout, dropped connection) is transient and keeps the rerun advice."""
+    if _SSH_KEY_REFUSAL.search(why):
+        hop = _SSH_HOP.search(why)
+        return LIVE_AUTH_REFUSED_FIX.format(hop=hop.group(1) if hop else host)
+    return LIVE_UNREAD_FIX.format(host=host)
+
+
 PR_LAND_FIX = "; with no session work, land these through the lab-fill effect as pr-land lanes: {prs}"
 HOLD_SOURCE_FIX = (
     "read the hold source again and rerun the tick; the pr-land fallback names no lane while its holds "
@@ -1069,7 +1087,7 @@ def _check_live_admission(
             rep.unk(
                 label,
                 f"live admission probe unreadable ({why}): its capacity is unread",
-                LIVE_UNREAD_FIX.format(host=host.name),
+                _live_unread_fix(host.name, why),
             )
             continue
         try:
