@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from omnibase_infra.handlers.handler_infisical import HandlerInfisical
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.handlers import host_provider_secret_store as hps
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     is_local_store_only_ref,
@@ -285,13 +286,6 @@ class _ConventionFallbackSecretStore:
 # surface. A machine identity is the sanctioned bootstrap exception to
 # "config comes from contracts": it is the credential that unlocks the store
 # the contracts are resolved from, and a keyring cannot unlock itself.
-_INFISICAL_BOOTSTRAP_VARS: tuple[str, ...] = (
-    "INFISICAL_ADDR",
-    "INFISICAL_CLIENT_ID",
-    "INFISICAL_CLIENT_SECRET",
-    "INFISICAL_PROJECT_ID",
-    "INFISICAL_ENVIRONMENT_SLUG",
-)
 
 _TRUTHY = frozenset({"true", "1", "yes"})
 
@@ -332,17 +326,14 @@ def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalHandlerConfig
         SecretStoreConfigurationError: naming every missing/blank variable at
             once. Variable NAMES only; no value is ever interpolated.
     """
-    values = {
-        name: os.environ.get(name, "").strip()  # ONEX_EXCLUDE: secret_resolver
-        for name in _INFISICAL_BOOTSTRAP_VARS
-    }
+    values = hps.bootstrap_values(os.environ)
     missing = sorted(name for name, value in values.items() if not value)
     if missing:
         raise SecretStoreConfigurationError(
             "Lane declares an Infisical-backed secret source but the Infisical "
             "machine identity is not fully configured. Missing or blank: "
             f"{missing}. Declared bootstrap variables: "
-            f"{list(_INFISICAL_BOOTSTRAP_VARS)}."
+            f"{list(hps.INFISICAL_BOOTSTRAP_VARS)}."
         )
     try:
         return ModelInfisicalHandlerConfig(
@@ -357,7 +348,7 @@ def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalHandlerConfig
         raise SecretStoreConfigurationError(
             "Infisical machine-identity bootstrap failed validation "
             f"(secret_path={secret_path!r}); check "
-            f"{list(_INFISICAL_BOOTSTRAP_VARS)}. Underlying error type: "
+            f"{list(hps.INFISICAL_BOOTSTRAP_VARS)}. Underlying error type: "
             f"{type(exc).__name__}"
         ) from exc
 
@@ -884,7 +875,10 @@ def _select_resolver(
     2. a lane-CONFIGURED store (``ONEX_SECRET_RESOLVER_CONFIG_PATH``) wins next,
        for the same reason -- the lane declared its own mapping;
     3. otherwise this is the LOCAL path, and a provider or tenant ref
-       (OMN-18695) is answered by this machine's own store and nothing else;
+       (OMN-18695) is answered by this machine's own store and nothing else,
+       except a declared provider ref the packaged host secret sources map
+       holds, on a host with its machine identity (OMN-19998): the secret
+       store answers it first and the local entry is only its cache;
     4. any other ref keeps the pre-existing convention/env behaviour unchanged.
     """
     if store is not None:
@@ -896,6 +890,8 @@ def _select_resolver(
     if configured is not None:
         return configured, EnumSecretSource.LANE_SECRET_STORE, False
     if is_local_store_only_ref(api_key_ref):
+        if (hosted := hps.host_store_for(api_key_ref, os.environ)) is not None:
+            return hosted, EnumSecretSource.LANE_SECRET_STORE, True
         return LocalByokCredentialStore(), EnumSecretSource.LOCAL_STORE, True
     # Everything else keeps the pre-existing default. Routed through
     # :func:`_default_secret_store` rather than constructing the store inline

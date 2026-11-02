@@ -165,6 +165,8 @@ not_routing_resolution_sites:
   - site: "src/omnimarket/nodes/node_umbrella_ticket_compute/handlers/handler_umbrella_ticket.py:resolve_setting('node_umbrella_ticket_compute')"
     reason: the umbrella ticket set a PR-opening lane is refused on; a ticket list, not a route for delegated work
 not_routing_configs:
+  - path: src/omnimarket/configs/host_secret_sources.v1.yaml
+    reason: maps declared provider refs to the secret store path that holds each, a credential location and not a route choice
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes
   - path: src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml
