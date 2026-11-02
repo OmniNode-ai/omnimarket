@@ -47,7 +47,16 @@ to a cloud session.
 
 from __future__ import annotations
 
+from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
+    ModelFSMSubcontract,
+)
+
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
+from omnimarket.handlers.rules_stop_gate import (
+    engine_stop_scopes,
+    gate_dispatch,
+    load_andon_stop_contract,
+)
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
     CODEX_UNGRANTABLE_CAPABILITIES,
@@ -60,6 +69,7 @@ from omnimarket.models.model_engine_experiment import (
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+from omnimarket.models.stop_gate import EnumStopGateOutcome
 from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
@@ -324,8 +334,13 @@ class HandlerRemoteLanePlacement:
     composition (OMN-21475); a caller may inject a validated ladder.
     """
 
-    def __init__(self, engines: ModelEngineLadder | None = None) -> None:
+    def __init__(
+        self,
+        engines: ModelEngineLadder | None = None,
+        stop_fsm: ModelFSMSubcontract | None = None,
+    ) -> None:
         self._engines = load_engine_ladder() if engines is None else engines
+        self._stop_fsm = stop_fsm
 
     def handle(
         self, request: ModelRemoteLanePlacementRequest
@@ -373,7 +388,12 @@ class HandlerRemoteLanePlacement:
                 )
             rungs.append(
                 ModelRemoteLaneRungVerdict(
-                    engine=rung, reason=f"no-capacity: {result.outcome.value}"
+                    engine=rung,
+                    reason=(
+                        f"stopped: {result.refusal}"
+                        if result.outcome == EnumRemoteLaneOutcome.STOPPED
+                        else f"no-capacity: {result.outcome.value}"
+                    ),
                 )
             )
             last_result = result
@@ -401,6 +421,27 @@ class HandlerRemoteLanePlacement:
                     for reading in request.readings
                 ),
             )
+        gate = None
+        if request.stop_gate is not None:
+            if self._stop_fsm is None:
+                self._stop_fsm = load_andon_stop_contract()[0]
+            gate = gate_dispatch(
+                request.stop_gate,
+                engine_stop_scopes(request.engine, self._engines),
+                self._stop_fsm,
+            )
+            if gate.outcome is EnumStopGateOutcome.REFUSE:
+                return ModelRemoteLanePlacementResult(
+                    host=None,
+                    engine=request.engine,
+                    verdicts=tuple(
+                        ModelRemoteLaneHostVerdict(host=r.name, reason=gate.line)
+                        for r in request.readings
+                    ),
+                    outcome=EnumRemoteLaneOutcome.STOPPED,
+                    refusal=gate.line,
+                    stop_gate=gate,
+                )
         pick, reasons = _select(request, {})
         blocked: dict[str, str] = {}
         if _drift_judged(request):
@@ -460,4 +501,5 @@ class HandlerRemoteLanePlacement:
             outcome=outcome,
             venv_drift=venv_drift,
             reconcile=reconcile,
+            stop_gate=gate,
         )
