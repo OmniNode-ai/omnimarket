@@ -49,13 +49,13 @@ dod_evidence:
         check_value: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q --no-cov --tb=line -k "rejected or plan_names or other_controls or has_a_control"
         cwd: .
   - id: dod-omn21949-ac3
-    description: AC3 reads the review note beside the model, written by lane ledger-l9c-1102, which names the reviewer lane, the Codex run, the commit reviewed and the verdict approved. The lane's own CLAIM and TERMINAL rows are in the rolling ledger.
+    description: AC3 checks that the review note records approval by a lane independent of the modelling lanes and the 2026-10-04 reviewer, and that the reviewed model hash matches the committed model bytes. The lane's own CLAIM and TERMINAL rows are in the rolling ledger.
     source: manual
     binds_ac:
       - AC3
     checks:
-      - check_type: command
-        check_value: "grep -q '^VERDICT: approved' formal/ledger_reducer_judge/REVIEW.txt"
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ledger_reducer_judge_review.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn21949-integration-proof
     description: The pushed head ran the model-results suite on a lab host against the checked-in TLC outputs and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
