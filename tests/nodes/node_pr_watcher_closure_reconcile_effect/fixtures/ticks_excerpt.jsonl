@@ -1,0 +1,4 @@
+{"_provenance": "Scrubbed excerpt of the watcher ticks.jsonl as quoted in the dispatch brief; reconstructed from the brief's numbers, not copied from the file."}
+{"ts": "2026-11-01T21:31:23Z", "full_resync": false}
+{"ts": "2026-11-01T21:43:31Z", "full_resync": false}
+{"ts": "2026-11-02T14:53:56Z", "full_resync": true, "search_hits": 452, "open_prs": 476, "changes": {"closed": 0, "merged": 0}}

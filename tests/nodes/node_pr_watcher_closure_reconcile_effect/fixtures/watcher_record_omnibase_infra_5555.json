@@ -1,0 +1,22 @@
+{
+  "_provenance": "Reconstructed watcher record of omnibase_infra#5555. The lane that built this fixture could not read the live state file (cloud sandbox, no lab access); the fields below are the ones the dispatch brief recorded from pr_state_local.py at 2026-11-02T15:27:59Z (state=OPEN, class=green-unarmed) and the merge time recorded in the brief (2026-11-01T21:36:43Z). node_id is a placeholder of the GraphQL PullRequest id shape. No secret is held.",
+  "key": "omnibase_infra#5555",
+  "record": {
+    "facts": {
+      "number": 5555,
+      "node_id": "PR_kwDOfixture5555",
+      "state": "OPEN",
+      "draft": false,
+      "armed": false,
+      "base": "dev",
+      "merged_at": null
+    },
+    "cls": "green-unarmed",
+    "read_at": "2026-11-02T15:27:59Z"
+  },
+  "github": {
+    "state": "MERGED",
+    "merged_at": "2026-11-01T21:36:43Z",
+    "closed_at": "2026-11-01T21:36:43Z"
+  }
+}

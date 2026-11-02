@@ -1,0 +1,70 @@
+schema_version: 1.0.0
+ticket_id: OMN-22142
+title: A pull request GitHub reports merged or closed leaves the PR watcher's open set within a bounded number of ticks
+summary: node_pr_watcher_closure_reconcile_effect reads the watcher state file's OPEN records that are not in the REST open-pulls lists, oldest read first, through one GraphQL nodes(ids:) call per batch, with a persisted cursor and a contract-declared call budget, and writes the flip under the watcher's state.lock. The watcher calling it once per tick is a hook in the frozen watcher, requested in the pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22142-closure-bounded
+  statement: A watcher record of a pull request GitHub reports merged or closed stays OPEN indefinitely when the search index still lists it, when it sorts after the closure read cap, or when its merge falls in a tick gap longer than the search overlap.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a merged record that the search index still lists as open leaves the open set on the next reconcile tick -- falsifier: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov -k ac1'
+  - id: AC2
+    statement: 'AC2: whatever the number of stale OPEN records and their key order, each is read within ceil(N / per-tick budget) ticks -- falsifier: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov -k ac2'
+  - id: AC3
+    statement: 'AC3: the read position carries across a tick gap and a process restart, and a merge inside the gap flips within the bound -- falsifier: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov -k ac3'
+  - id: AC4
+    statement: 'AC4: after the node is deployed on dev and called by the watcher, no watcher record with a squash on its base branch reads OPEN for more than the full-pass bound -- falsifier: the watcher state read against the canonical clones on dev'
+evidence_requirements:
+- kind: tests
+  description: The closure reconcile node suite and the boot-resolvable handler routing guard.
+  command: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect tests/test_handler_routing_boot_resolvable.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22142-ac1
+  description: AC1 the fixture record of omnibase_infra#5555, listed by the search index and merged at GitHub, reads MERGED after one tick; the strict-xfail legacy case fails on the current closure rule.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov --tb=line -k ac1
+    cwd: .
+- id: dod-omn22142-ac2
+  description: AC2 with 470 other stale OPEN records sorting before it, omnibase_infra#5555 reads MERGED within ceil(471 / 100) ticks; the strict-xfail legacy case fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov --tb=line -k "ac2 or call_budget"
+    cwd: .
+- id: dod-omn22142-ac3
+  description: AC3 a twelve-minute tick gap across the merge, with a fresh node per tick, and omnibase_infra#5555 reads MERGED within the bound; the strict-xfail legacy case fails.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov --tb=line -k ac3
+    cwd: .
+- id: dod-omn22142-ac4-dev
+  description: AC4 is read after the node is deployed on dev and the watcher calls it once per tick; unbound because hosted CI cannot read the dev watcher state.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: python3 "${OMNI_PLUGIN_ROOT:?}"/skills/merge-drain/scripts/pr_state_local.py --pr OmniNode-ai/omnibase_infra#5555
+    cwd: .
+- id: dod-omn22142-deploy-probe
+  description: 'Deploy probe: the closure reconcile handler GitHub serves at the checked-out commit defines HandlerPrWatcherClosureReconcile, which the merge base does not carry.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_watcher_closure_reconcile_effect/handlers/handler_pr_watcher_closure_reconcile.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerPrWatcherClosureReconcile" > /dev/null'
+    cwd: .

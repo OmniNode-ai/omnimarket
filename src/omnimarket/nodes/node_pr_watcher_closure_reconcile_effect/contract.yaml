@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_watcher_closure_reconcile_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Moves pull requests GitHub reports MERGED or CLOSED out of the PR watcher's open set within a bounded
+  number of ticks. Each tick it reads the watcher state file's OPEN records that are not in the REST
+  open-pulls lists (the search index is not consulted), oldest read first, through
+  ProtocolPrNodeStateReader (one GraphQL nodes(ids:) call per batch), and writes the flip under the
+  watcher's state.lock. Its read position is kept in a cursor file beside the state file, so it carries
+  across ticks, tick gaps and restarts.
+input_model:
+  name: ModelPrWatcherClosureReconcileRequest
+  module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile
+  description: The state file path, the REST open keys of this tick and the tick clock.
+output_model:
+  name: ModelPrWatcherClosureReconcileResult
+  module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile
+  description: Records read, calls spent, flips applied and the full-pass bound in ticks.
+handler:
+  module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile
+  class: HandlerPrWatcherClosureReconcile
+  input_model: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile.ModelPrWatcherClosureReconcileRequest
+  output_model: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile.ModelPrWatcherClosureReconcileResult
+dependencies:
+  - name: ProtocolPrNodeStateReader
+    dependency_type: protocol
+    description: "batch PR state read by node id, one call per batch; the GraphQL adapter takes the watcher's token from its caller."
+    required: true
+# The call budget. Per tick: at most max_batches_per_tick GraphQL calls and batch_size * max_batches_per_tick
+# records (100 here). A full pass over N candidates takes at most ceil(N / 100) ticks: 5 ticks for 471 OPEN
+# records. batch_size is capped at 100, the nodes(ids:) limit.
+policy:
+  batch_size: 50
+  max_batches_per_tick: 2
+  lock_name: state.lock
+  cursor_name: closure_reconcile_cursor.json
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile:HandlerPrWatcherClosureReconcile
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerPrWatcherClosureReconcile
+        module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: called once per tick by the PR watcher after its REST open-pulls reads (the watcher hook named in the pull request).
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 60000
+metadata:
+  transport_type: local
+  description: Reconcile the PR watcher's open set against GitHub's PR state.
+  author: OmniNode Team
+  created: '2026-11-02'
