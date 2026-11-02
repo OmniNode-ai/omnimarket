@@ -1,0 +1,97 @@
+schema_version: 1.0.0
+ticket_id: OMN-22167
+title: OmniDash hosted on a lab host, follows omnidash updates
+summary: An effect node installs omnidash on a lab host as a systemd user service started by the omnidash repository's own dev script, bound to one interface address of the host on a port beside the factory floor, configured for the lab dev-lane projection API. A second user unit and timer poll the omnidash origin at an interval read from the node contract or the host overlay row, pick the remote branch with the newest committer date, build it in a directory named by its commit, health-check a candidate instance on a scratch port, switch the service only when both pass, keep the last good build otherwise, and write a status file. Every host fact comes from the node overlay and the lab host table; the package names no host or address.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22167-host
+    statement: The operator can open a dashboard on the lab host that follows the newest omnidash branch the way the factory floor page follows its source, without editing omnidash.
+    acceptance:
+      - id: AC1
+        statement: "AC1: omnidash runs on the lab host as a systemd unit (no container), started by the omnidash repo's own dev script, bound to the host tailnet address only on a free port beside the floor, with the lab dev-lane bus configured and not the pinned bundle -- falsifier: curl -s -o /dev/null -w '%{http_code}' on the overlay serve_url prints 200 from the launching host, the same curl against the host LAN address is refused, and systemctl --user is-active of the unit prints active"
+      - id: AC2
+        statement: "AC2: the four usage tiles (spend, savings, agent calls, tokens) show numbers read from the lab bus -- falsifier: the projection requests the dashboard page makes return rows for the four tiles, and uv run pytest tests -q -k omnidash_host in omnimarket passes"
+      - id: AC3
+        statement: "AC3: an updater polls the omnidash origin at an interval read from a contract or overlay value, picks the newest branch by committer date, builds it in a separate directory, switches the service only when the build and a health check pass, keeps the last good build otherwise, and writes the served branch, sha and switch time to a status file -- falsifier: uv run pytest tests -q -k omnidash_host in omnimarket covers newest-branch choice, a failed build keeping the old build serving, and the status file fields, plus a grep of the package for the interval literal that returns no match"
+      - id: AC5
+        statement: "AC5: one installer command installs everything (unit, updater timer, overlay row) and a second run changes nothing -- falsifier: the installer verb run twice on the host exits 0 both times and the second run reports no change; uv run pytest tests -q -k omnidash_host in omnimarket passes"
+      - id: AC6
+        statement: "AC6: the factory floor page links to the hosted dashboard if the page has a links area -- falsifier: curl -s on the floor page contains the dashboard URL after the next floor publish, or the lane TERMINAL states the floor has no links area"
+      - id: AC7
+        statement: "AC7: one observed automatic update: a newer omnidash commit is picked up and served with no manual action -- falsifier: the status file sha before and after differ and the later sha equals the omnidash origin tip of that branch read through the canonical clone sync, with the switch time later than the commit time"
+evidence_requirements:
+  - kind: tests
+    description: The omnidash host node suite at the pushed head.
+    command: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov -k omnidash_host
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22167-ac2-tests
+    description: The node suite passes in memory, with the real-git branch listing and the install idempotence fakes.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov --tb=line -k omnidash_host
+        cwd: .
+  - id: dod-omn22167-ac3
+    description: AC3 covers the newest-branch choice by committer date, a failed build and a failed health check keeping the old build serving, the status file fields, and a grep of the package returning no host, address, port or interval literal (with a planted-literal positive control).
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov --tb=line -k "omnidash_host and (newest or failed or status or package_names_no_host or literal_scan or pinned)"
+        cwd: .
+  - id: dod-omn22167-ac5
+    description: AC5 installs twice against a fake systemd and expects the second run to report no change, write no unit and run no enable.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov --tb=line -k omnidash_host_install
+        cwd: .
+  - id: dod-omn22167-ac1-integration-proof-live
+    description: 'Integration proof on the lab host, read live: the status verb of the node prints the served sha, and the serve URL from the overlay row answers 200. OMNIDASH_HOST names the overlay row and OMNIDASH_SERVE_URL its serve_url.'
+    source: manual
+    binds_ac:
+      - AC1
+      - AC7
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'uv run python -m omnimarket.nodes.node_omnidash_host_effect status --host "$OMNIDASH_HOST" && test "$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$OMNIDASH_SERVE_URL")" = 200'
+        cwd: .
+  - id: dod-omn22167-ac6-no-links-area
+    description: The factory floor page source has no links area (no nav element, no element or class named links), so there is nothing to add the dashboard link to; its anchors are drill-down links built in page script.
+    source: manual
+    binds_ac:
+      - AC6
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c '! grep -n -i -E "<nav|class=\"[^\"]*links|id=\"[^\"]*links" src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html && echo "floor page has no links area"'
+        cwd: .
+  - id: dod-omn22167-deploy-probe-contract
+    description: 'Hosted deploy artifact readback: fetch the handler at the checked-out commit and require that it chooses the newest branch, builds before it health-checks and health-checks before it switches. Missing published content fails. This reads published source and does not claim a host rollout.'
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_omnidash_host_effect/handlers/handler_omnidash_host_effect.py" | python3 -c '\''import sys
+          source = sys.stdin.read()
+          required = ["def newest_branch", "self._ports.build", "self._ports.check_health", "self._ports.switch"]
+          assert all(call in source for call in required), "Published omnidash host handler is incomplete"
+          order = [source.index("self._ports.build"), source.index("self._ports.check_health"), source.index("self._ports.switch")]
+          assert order == sorted(order), "build, health check and switch are out of order"
+          print("Published omnidash host handler builds, health-checks, then switches")'\'''
+        cwd: .

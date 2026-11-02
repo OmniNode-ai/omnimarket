@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-timer effect, like node_lane_census_effect: no subscription, invoked by `python -m` on the host
+# it installs units on. `experimental` is the drift gate's marker for an intentionally unregistered
+# node; the topic graph sees it as an externally triggered ingress root.
+name: omnidash_host_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Hosts the omnidash dashboard on a lab host from the dashboard repository's own dev script, bound to
+  one interface address, and keeps it on the newest remote branch: an updater polls the origin, builds
+  the branch with the newest committer date in a directory named by its commit, health-checks a
+  candidate on a scratch port, switches only when both pass, keeps the last good build otherwise and
+  writes a status file.
+input_model: omnimarket.models.model_omnidash_host.ModelOmnidashHostUpdateCommand
+output_model: omnimarket.models.model_omnidash_host.ModelOmnidashHostUpdateResult
+handler:
+  # Invoked by __main__.py from the updater unit. No handler_routing: this handler is not
+  # boot-resolvable or dispatched by the runtime.
+  module: omnimarket.nodes.node_omnidash_host_effect.handlers.handler_omnidash_host_effect
+  class: HandlerOmnidashHostEffect
+  input_model: omnimarket.models.model_omnidash_host.ModelOmnidashHostUpdateCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles:
+  - effects
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: true
+# The node owns its schedule defaults. Which hosts serve omnidash, and on which address, port, node
+# version, node distribution mirror, build root, status path and bus lane, is the node overlay
+# (<root>/node_omnidash_host_effect/overlay.yaml, hosts:); the package names no host. The overlay
+# row may override poll_interval_seconds for its host.
+schedule:
+  service_unit: omnidash-host
+  updater_unit: omnidash-host-update
+  poll_interval_seconds: 120
+  first_run_delay_seconds: 5
+  build_timeout_seconds: 1800
+  health_timeout_seconds: 90
+  health_path: /
+  keep_builds: 2
+  mirror_directory: mirror
+  current_link: current
+  schedulers:
+    systemd-user: installed by this node (install) as a systemd user service, updater service and timer
+metadata:
+  transport_type: none
+  execution_locus: host-local
+inputs:
+  host:
+    type: str
+    required: true
+    description: The host's name in the node overlay.
+outputs:
+  outcome:
+    type: str
+    description: switched, unchanged, refused-build, refused-health, refused-already, no-branches or poll-failed.
+  status:
+    type: object
+    description: The status record the tick wrote to the overlay row's status path (served branch, sha, switch time, last poll, last result, refusal reason).
