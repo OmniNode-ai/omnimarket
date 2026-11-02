@@ -36,7 +36,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_overlay_tree_install_effect -q --no-cov"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22171-registry-units"
     description: "The registry unit tests include the rendered unit naming the branch checkout and no argument naming the canonical clone, and the install record of the revision."
     source: "manual"
@@ -44,7 +44,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_host_installer_registry_units -q --no-cov"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22171-node-shape"
     description: "Each new node directory carries a contract.yaml, and the contract names a handler and entrypoint that import."
     source: "manual"
@@ -52,7 +52,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -q '^name: node_overlay_tree_install_effect' src/omnimarket/nodes/node_overlay_tree_install_effect/contract.yaml && grep -q '^name: node_host_installer_registry_units' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn22171-host-install-record"
     description: "On the host that runs the launchd job, the unit's install record names a revision and a project that is not the canonical clone. Read where the Done gate runs; it fails when the unit was never installed from a branch. The two consecutive publishes are recorded as a Lab comment on the pull request."
     source: "manual"
