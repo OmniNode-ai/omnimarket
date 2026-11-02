@@ -1867,6 +1867,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21949: the ledger reducer judge model (formal/ledger_reducer_judge) passes
+      # both adopted configs, each control is rejected on its named invariant, and the
+      # TLC results match the committed model, configs and outputs. The reviewer
+      # verdict is the review lane's and is not read. Check-only. SYNC with the ci.yml
+      # lint step "Ledger reducer judge model (OMN-21949)".
+      - id: ledger-reducer-judge-model
+        name: Ledger reducer judge model (OMN-21949)
+        language: system
+        entry: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/ledger_reducer_judge/|tests/formal/(test_ledger_reducer_judge_model|ledger_reducer_judge_tlc)\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20601: routing decisions come from overlays, never from omnimarket code.
       # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
       # precedence and routing-in-code ratchet (OMN-20601)".

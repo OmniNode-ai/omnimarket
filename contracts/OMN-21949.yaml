@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-21949
+title: 'Model before build for the work ledger reducer as the single writer: a TLA+ model with six invariants, three negative controls and a reviewer verdict'
+summary: formal/ledger_reducer_judge is a TLA+ model of the reducer as the single writer of the work ledger (plan task L9, model before build for L10 to L13). A command passes the guard decision, one transaction, the event and receipt through a transactional outbox, and the offset commit, with a worker crash in every gap, a writer redelivery and a relay crash between publish and mark. Two adopted configs pass the six invariants (and a seventh, GuardEffective) and two liveness properties; three controls the plan names (receipt before the commit, ledger_seq outside the transaction, a guard reading a lagging projection) are each rejected by TLC on their named invariant, with five more controls and five reachability witnesses. The results are checked in under formal/ledger_reducer_judge/results. The reviewer verdict of AC3 is the review lane's and is not part of this change, so this contract binds AC1 and AC2 only.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21949-adopted-passes
+    statement: TLC passes the adopted configurations of the reducer model.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: TLC passes the adopted configuration with NoDuplicateRow, SeqGapless, SeqMatchesEventOrder, PrincipalInterleavingSerial, ReceiptTruth and GuardSeesAllPriorRows and the liveness EveryRequestAnswered -- falsifier: bash formal/ledger_reducer_judge/run_all.sh with the results checked in under formal/ledger_reducer_judge/results'
+  - id: req-omn21949-controls-rejected
+    statement: Each named control is rejected by TLC on its named invariant.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: each control is rejected by TLC on its named invariant: receipt before the commit violates ReceiptTruth, ledger_seq assigned outside the transaction violates SeqGapless, a guard reading a lagging projection violates GuardSeesAllPriorRows -- falsifier: run_all.sh output listing one counterexample per control naming that invariant'
+evidence_requirements:
+  - kind: tests
+    description: The model-results suite reads the checked-in TLC results and runs on a lab host at the pushed head.
+    command: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21949-ac1
+    description: AC1 reads results/SUMMARY.txt for the committed model, configs and outputs, and checks that both adopted configs list every invariant and both liveness properties, ran to "No error has been found" and exited 0, and that the witnesses reach the paths the invariants guard.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q --no-cov --tb=line -k "committed_model or adopted or reach"
+        cwd: .
+  - id: dod-omn21949-ac2
+    description: AC2 checks, from each control's own TLC output, that C1 violates ReceiptTruth, C2 violates SeqGapless and C3 violates GuardSeesAllPriorRows, each from a config that differs from its adopted base only in the control's knob, and the five further controls on their property.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ledger_reducer_judge_model.py -q --no-cov --tb=line -k "rejected or plan_names or other_controls or has_a_control"
+        cwd: .
