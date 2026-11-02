@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_state_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Measure a declared host through the shared shell port without applying any installer action.
+input_model:
+  name: ModelHostStateRequest
+  module: omnimarket.models.model_host_profile
+output_model:
+  name: ModelHostMeasurement
+  module: omnimarket.models.model_host_profile
+handler:
+  module: omnimarket.handlers.handler_host_shell
+  class: HandlerHostShell
+  input_model: omnimarket.models.model_host_profile.ModelHostStateRequest
+  output_model: omnimarket.models.model_host_profile.ModelHostMeasurement
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostShell
+      module: omnimarket.handlers.handler_host_shell
+    event_model:
+      name: ModelHostStateRequest
+      module: omnimarket.models.model_host_profile
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-state-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-state-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-state-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: kafka
+  description: Measure a declared host through the shared shell port without applying any installer action.
+  created: '2026-11-01'
+  tags:
+  - host-declaration
+terminal_event: onex.evt.omnimarket.host-state-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-state-completed.v1
+  event_type: ModelHostMeasurement
+externally_consumed_topics:
+- onex.evt.omnimarket.host-state-completed.v1

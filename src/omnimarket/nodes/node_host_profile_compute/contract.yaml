@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_profile_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Derive a lab host's clones, per-clone venvs, prepush rows, prepush workroot and automation-liveness
+  rows from its one profile.
+input_model:
+  name: ModelHostProfileDeriveRequest
+  module: omnimarket.models.model_host_profile
+output_model:
+  name: ModelHostProfileDerived
+  module: omnimarket.models.model_host_profile
+handler:
+  module: omnimarket.handlers.handler_host_profile
+  class: HandlerHostProfileCompute
+  input_model: omnimarket.models.model_host_profile.ModelHostProfileDeriveRequest
+  output_model: omnimarket.models.model_host_profile.ModelHostProfileDerived
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-profile-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-profile-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-profile-requested.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: kafka
+  description: Derive a lab host's clones, per-clone venvs, prepush rows, prepush workroot and automation-liveness
+    rows from its one profile.
+  created: '2026-11-01'
+  tags:
+  - host-declaration
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostProfileCompute
+      module: omnimarket.handlers.handler_host_profile
+    event_model:
+      name: ModelHostProfileDeriveRequest
+      module: omnimarket.models.model_host_profile
+terminal_event: onex.evt.omnimarket.host-profile-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-profile-completed.v1
+  event_type: ModelHostProfileDerived
+externally_consumed_topics:
+- onex.evt.omnimarket.host-profile-completed.v1
