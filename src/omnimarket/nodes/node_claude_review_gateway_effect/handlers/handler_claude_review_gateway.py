@@ -103,6 +103,7 @@ from omnimarket.models.delegation.prompt_text_block import (
 )
 from omnimarket.models.review_cost import ModelReviewCallProvenance
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+    EnumReviewGatewayReason,
     ModelClaudeReviewGatewayRequest,
     ModelReviewGatewayEventTopics,
     ModelReviewGatewayKey,
@@ -575,8 +576,22 @@ def signature_is_valid(
     return hmac.compare_digest(expected, signature)
 
 
-def _error(status: int, kind: str, message: str) -> tuple[int, dict[str, Any]]:
-    return status, {"error": {"type": kind, "message": message}}
+def _error(
+    status: int,
+    kind: str,
+    message: str,
+    reason: EnumReviewGatewayReason | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """An error reply. ``reason`` follows ``type`` and precedes ``message``.
+
+    The voter's transport keeps only a leading snippet of the reply body, so the
+    typed reason sits ahead of the free-text message and survives truncation.
+    """
+    body: dict[str, Any] = {"type": kind}
+    if reason is not None:
+        body["reason"] = reason.value
+    body["message"] = message
+    return status, {"error": body}
 
 
 def _completion(model: str, outcome: ProtocolCallOutcome) -> dict[str, Any]:
@@ -625,6 +640,32 @@ def _key_failure_cause(outcome: ProtocolCallOutcome) -> EnumDelegationFailureCla
     ):
         return EnumDelegationFailureClass.PROVIDER_BILLING
     return outcome.failure_class or EnumDelegationFailureClass.UNKNOWN
+
+
+def _host_keys(
+    catalog: ProtocolKeyCatalog,
+    request: ModelClaudeReviewGatewayRequest,
+    now: datetime | None = None,
+) -> list[ModelReviewGatewayKey]:
+    """Every catalogued key bound to the request's tenant and host, set aside or not."""
+    # OMN-21819: the tenant's keys may be stamped with its name or its
+    # registry UUID; read both forms and let the filter accept both.
+    forms = sync_tenant_identity_forms(catalog, request.tenant_id)
+    rows = [
+        row
+        for tenant_form in forms
+        for row in catalog.query(
+            TENANT_CREDENTIALS_TABLE,
+            {"tenant_id": tenant_form, "provider": GATEWAY_PROVIDER},
+        )
+    ]
+    return select_host_keys(
+        rows,
+        tenant_id=request.tenant_id,
+        tenant_forms=forms,
+        host=request.host,
+        now=now if now is not None else datetime.now(UTC),
+    )
 
 
 class ClaudeReviewGateway:
@@ -736,28 +777,10 @@ class ClaudeReviewGateway:
     def candidate_keys(
         self, now: datetime | None = None
     ) -> list[ModelReviewGatewayKey]:
-        # OMN-21819: the tenant's keys may be stamped with its name or its
-        # registry UUID; read both forms and let the filter accept both.
-        forms = sync_tenant_identity_forms(self._catalog, self._request.tenant_id)
-        rows = [
-            row
-            for tenant_form in forms
-            for row in self._catalog.query(
-                TENANT_CREDENTIALS_TABLE,
-                {"tenant_id": tenant_form, "provider": GATEWAY_PROVIDER},
-            )
-        ]
-        keys = select_host_keys(
-            rows,
-            tenant_id=self._request.tenant_id,
-            tenant_forms=forms,
-            host=self._request.host,
-            now=now if now is not None else self._clock(),
-        )
         current_time = now if now is not None else self._clock()
         return [
             key
-            for key in keys
+            for key in _host_keys(self._catalog, self._request, current_time)
             if key.api_key_ref not in self._retrying
             and (
                 (record := self._set_aside.get(key.api_key_ref)) is None
@@ -880,10 +903,17 @@ class ClaudeReviewGateway:
         await self._flush_key_events()
         keys = self.candidate_keys()
         if not keys:
+            # Keys bound here that this process already set aside are the same
+            # exhausted-credit state the first refused call reported.
+            exhausted = any(
+                key.api_key_ref in self._set_aside
+                for key in _host_keys(self._catalog, self._request)
+            )
             return _error(
                 503,
                 "gateway_no_key",
                 f"no live {GATEWAY_PROVIDER} key is bound to host {self._request.host}",
+                EnumReviewGatewayReason.CREDIT_EXHAUSTED if exhausted else None,
             )
         for key in keys:
             # Recheck after each await: another request may have refused this key
@@ -944,11 +974,13 @@ class ClaudeReviewGateway:
                 503,
                 "gateway_upstream_failed",
                 f"the review call failed ({failure}); overflow to the next voter",
+                EnumReviewGatewayReason.GATEWAY_UPSTREAM_FAILED,
             )
         return _error(
             503,
             "gateway_keys_set_aside",
             f"every key bound to host {self._request.host} was refused or is out of credit",
+            EnumReviewGatewayReason.CREDIT_EXHAUSTED,
         )
 
 

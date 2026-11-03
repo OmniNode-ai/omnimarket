@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-22152
+title: The lane census host registry is overlay data of the census node; omnimarket carries the schema, the example and the read path
+summary: The census node's overlay gains a registry key (host name, aliases, lanes) as typed models with the registry invariants. schedule install renders the resolved overlay file's absolute path into the unit as LANE_CENSUS_REGISTRY, and a registry path verb prints it. The package ships placeholder values only; the real values are held in a private overlay package. The consumer-side read and the install on a host are separate work.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-census-registry-overlay
+    statement: The host registry of the lane census is declared and validated by the census node and read from its overlay, with no host, alias or lane named in the package.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the registry overlay key rejects a duplicate alias, an alias that identifies no single host, an empty name and a host listed twice, and the shipped example validates -- falsifier: uv run pytest tests/test_lane_census_registry_omn22152.py -q passes, and each refusal test goes red when its invariant is removed from the model'
+      - id: AC2
+        statement: 'AC2: schedule install renders the absolute path of the resolved overlay into the unit and refuses naming ONEX_SKILL_OVERLAY_ROOTS when no root supplies one, registry path prints that path and exits non-zero without one, and schedule check fails for an invalid registry -- falsifier: uv run pytest tests/test_lane_census_registry_omn22152.py tests/test_lane_census_effect_omn21946.py -q passes'
+evidence_requirements:
+  - kind: tests
+    description: The registry and schedule tests run at the evaluated revision.
+    command: uv run pytest tests/test_lane_census_registry_omn22152.py tests/test_lane_census_effect_omn21946.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-census-registry-ac1
+    description: The registry invariant tests and the example overlay validation run.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_lane_census_registry_omn22152.py -q
+        cwd: .
+  - id: dod-census-registry-ac2
+    description: The install, registry path and schedule check tests run beside the existing schedule tests.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_lane_census_registry_omn22152.py tests/test_lane_census_effect_omn21946.py -q
+        cwd: .
+  - id: dod-census-registry-integration-proof
+    description: The local Done gate places the registry and schedule tests on a lab host at the pushed sha.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22152 -- uv run --frozen pytest tests/test_lane_census_registry_omn22152.py tests/test_lane_census_effect_omn21946.py -q --no-cov'
+        cwd: .
+  - id: dod-census-registry-deploy-source-readback
+    description: Hosted-runner source readback compares the registry model, schedule adapter and registry CLI served at the evaluated commit with this checkout. It requires the registry model, overlay resolver, unit environment binding and CLI entry point. This checks the published source artifact, not an installed host timer.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          for path in \
+            src/omnimarket/models/model_lane_census.py \
+            src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py \
+            src/omnimarket/nodes/node_lane_census_effect/runtime_lane_census_schedule.py; do
+            target="$readback_dir/$(basename "$path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$target";
+            cmp "$path" "$target";
+          done;
+          grep -F 'class ModelLaneCensusRegistryRow' "$readback_dir/model_lane_census.py";
+          grep -F 'registry: Annotated[tuple[ModelLaneCensusRegistryRow, ...], Field(min_length=1)]' "$readback_dir/model_lane_census.py";
+          grep -F 'registry_path=resolve_registry_path(self.environ)' "$readback_dir/adapter_lane_census_schedule.py";
+          grep -F 'REGISTRY_ENV: _safe(registry_path, "host registry overlay")' "$readback_dir/adapter_lane_census_schedule.py";
+          grep -F 'def registry_main(' "$readback_dir/runtime_lane_census_schedule.py";
+          printf 'census registry source readback matched %s\n' "$revision"
+        cwd: .

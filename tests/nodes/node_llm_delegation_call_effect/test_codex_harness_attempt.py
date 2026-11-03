@@ -8,13 +8,16 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.container.container_overlay_dependencies import bind_overlay
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     HandlerCodexHarnessAttempt,
     ModelCodexHarnessPolicy,
     ModelCodexHarnessRequest,
 )
+from tests.overlay_bound_support import durable_overlay
 
 
 def engine(tmp_path: Path, body: str) -> Path:
@@ -169,7 +172,7 @@ def test_packaged_contract_policy_and_overlay(
     overlay.write_text(
         "codex_harness:\n  max_timeout_seconds: 10\n  reasoning_effort: low\n"
     )
-    monkeypatch.setenv("CODEX_HARNESS_OVERLAY_PATH", str(overlay))
+    bind_overlay(durable_overlay(document_paths={"codex_harness": str(overlay)}))
     handler = HandlerCodexHarnessAttempt()
     assert handler.policy.max_timeout_seconds == 10
     assert handler.policy.reasoning_effort == "low"
@@ -208,7 +211,15 @@ print(json.dumps({"type":"turn.completed","usage":{"input_tokens":2,"output_toke
     import json
     import os
 
-    environment = dict(os.environ) | {"CODEX_HARNESS_OVERLAY_PATH": str(overlay)}
+    lane_overlay = tmp_path / "lane_overlay.yaml"
+    lane_overlay.write_text(
+        yaml.safe_dump(
+            durable_overlay(document_paths={"codex_harness": str(overlay)}).model_dump(
+                mode="json"
+            )
+        )
+    )
+    environment = dict(os.environ)
     result = subprocess.run(
         [
             sys.executable,
@@ -219,6 +230,8 @@ print(json.dumps({"type":"turn.completed","usage":{"input_tokens":2,"output_toke
             "fixture-model",
             "--timeout",
             "3",
+            "--overlay",
+            str(lane_overlay),
         ],
         input="fixture input",
         capture_output=True,

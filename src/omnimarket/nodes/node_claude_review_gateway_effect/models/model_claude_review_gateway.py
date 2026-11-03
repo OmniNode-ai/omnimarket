@@ -12,6 +12,7 @@ host (operator ruling 2026-10-11T17:58:45Z). Nothing here holds a key value.
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -72,6 +73,18 @@ class ModelReviewGatewayEventTopics(BaseModel):
                 "set-aside and retry topics must be non-empty and distinct"
             )
         return value
+
+
+class EnumReviewGatewayReason(StrEnum):
+    """The typed ``reason`` of a gateway 503 that names why the review was refused.
+
+    A voter's transport renders the reply body after its own anchored error text, so
+    a reader of the voter result can tell exhausted credit from any other upstream
+    failure by this field alone.
+    """
+
+    CREDIT_EXHAUSTED = "credit_exhausted"
+    GATEWAY_UPSTREAM_FAILED = "gateway_upstream_failed"
 
 
 class ModelReviewGatewayKey(BaseModel):

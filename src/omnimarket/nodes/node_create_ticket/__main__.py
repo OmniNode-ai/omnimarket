@@ -13,6 +13,8 @@ Usage:
     python -m omnimarket.nodes.node_create_ticket --operation read --ticket-id OMN-1800
     python -m omnimarket.nodes.node_create_ticket --operation comment --ticket-id OMN-1800 --body "text"
     python -m omnimarket.nodes.node_create_ticket --operation transition --ticket-id OMN-1800 --state Canceled
+    python -m omnimarket.nodes.node_create_ticket --operation clear_project --ticket-id OMN-1800
+    python -m omnimarket.nodes.node_create_ticket --operation repair_project --day 2026-11-02 --from-project Ready [--dry-run]
     python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --parent OMN-1800 --description-file body.md
     python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting" --parent OMN-1800 --description-file body.md --dry-run
 
@@ -36,6 +38,35 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 
 _log = logging.getLogger(__name__)
 
+# Every option that takes a string and defaults to empty: (flag, help).
+_TEXT_ARGS = (
+    ("--title", "Ticket title (create)."),
+    ("--description", "Ticket description body (create)."),
+    (
+        "--description-file",
+        "Read the description (create) from this file, byte for byte.",
+    ),
+    (
+        "--ticket-id",
+        "Ticket id, e.g. OMN-1234 (read, comment, transition, clear_project).",
+    ),
+    ("--body", "Comment body (comment)."),
+    ("--body-file", "Read the comment body from this file."),
+    ("--state", "Target workflow state, e.g. Canceled (transition)."),
+    ("--day", "One UTC day, YYYY-MM-DD (repair_project)."),
+    (
+        "--from-project",
+        "The project to clear from the day's lane-created tickets (repair_project).",
+    ),
+    ("--repo", "Primary repository label (e.g. omniclaude, omnibase_core)."),
+    ("--parent", "Parent ticket ID for epic relationship (OMN-XXXX)."),
+    ("--blocked-by", "Comma-separated blocking ticket IDs (OMN-XXXX,...)."),
+    (
+        "--pillar",
+        "Ticket pillar (dashboard, onboarding); sets the assignee from the shared owner map.",
+    ),
+)
+
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
@@ -47,48 +78,10 @@ def main() -> None:
         "--operation",
         default=EnumTicketOperation.CREATE.value,
         choices=[op.value for op in EnumTicketOperation],
-        help="create (default), read, comment or transition.",
+        help="create (default), read, comment, transition, clear_project or repair_project.",
     )
-    parser.add_argument("--title", default="", help="Ticket title (create).")
-    parser.add_argument(
-        "--description", default="", help="Ticket description body (create)."
-    )
-    parser.add_argument(
-        "--description-file",
-        default="",
-        help="Read the description (create) from this file, byte for byte.",
-    )
-    parser.add_argument(
-        "--ticket-id", default="", help="Ticket id, e.g. OMN-1234 (read, comment)."
-    )
-    parser.add_argument("--body", default="", help="Comment body (comment).")
-    parser.add_argument(
-        "--body-file", default="", help="Read the comment body from this file."
-    )
-    parser.add_argument(
-        "--state", default="", help="Target workflow state, e.g. Canceled (transition)."
-    )
-    parser.add_argument(
-        "--repo",
-        default="",
-        help="Primary repository label (e.g. omniclaude, omnibase_core).",
-    )
-    parser.add_argument(
-        "--parent",
-        default="",
-        help="Parent ticket ID for epic relationship (OMN-XXXX).",
-    )
-    parser.add_argument(
-        "--blocked-by",
-        default="",
-        dest="blocked_by",
-        help="Comma-separated blocking ticket IDs (OMN-XXXX,...).",
-    )
-    parser.add_argument(
-        "--pillar",
-        default="",
-        help="Ticket pillar (dashboard, onboarding); sets the assignee from the shared owner map.",
-    )
+    for flag, help_text in _TEXT_ARGS:
+        parser.add_argument(flag, default="", help=help_text)
     parser.add_argument(
         "--team",
         default="Omninode",
@@ -128,6 +121,8 @@ def main() -> None:
             ticket_id=args.ticket_id or None,
             body=body,
             state=args.state,
+            day=args.day,
+            from_project=args.from_project,
             repo=args.repo or None,
             parent=args.parent or None,
             blocked_by=blocked_by,
