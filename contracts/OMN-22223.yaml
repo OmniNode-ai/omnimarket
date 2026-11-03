@@ -1,0 +1,47 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22223
+title: The delegate caller wait and the runtime dispatch timeout are one budget on two clocks
+summary: The delegate-skill handler timed its execution budget from pickup while the caller timed the same sum from publish, so a run that queued still got its full budget and outlived the caller. The handler now deducts queue wait, ends a run whose queue wait spent its execution window with a queue_budget_exhausted terminal, and never waits longer than the caller does.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-one-budget-one-clock
+    statement: The runtime dispatch timeout is measured from publish and never exceeds the caller wait.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the runtime dispatch timeout is measured from publish, so queue wait is deducted from the execution budget, and a run that spent its budget in the queue ends with a typed queue-budget terminal before the caller''s wait ends -- falsifier: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q -k queue_wait_deducted, a stub run with 120 s of queue wait and a 300 s total budget, which runs the full 300 s from pickup today'
+      - id: AC2
+        statement: 'AC2: the caller wait is never shorter than the runtime timeout it waits on, so a terminal that the runtime records is always seen -- falsifier: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q -k caller_wait_covers_runtime'
+evidence_requirements:
+  - kind: tests
+    description: Queue-wait deduction, exhausted-budget terminal and caller-wait coverage cases.
+    command: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22223-queue-wait
+    description: A stub run with 120 s of queue wait and a 300 s total budget waits 180 s, and a run whose queue wait spent the execution window ends with a queue_budget_exhausted terminal and dispatches no rung; both failed on the merge base.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -k queue_wait_deducted
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn22223-caller-wait
+    description: Across queue waits, requested timeouts and grace values the handler's wait never exceeds the caller's _terminal_wait_seconds for the same request.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -k caller_wait_covers_runtime
+        cwd: .
+    binds_ac: [AC2]
+  - id: dod-omn22223-deploy-probe
+    description: 'Deploy probe: the delegate-skill handler GitHub serves at the checked-out commit names the queue_budget_exhausted terminal, which the merge base does not.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "queue_budget_exhausted" > /dev/null'
+        cwd: .
