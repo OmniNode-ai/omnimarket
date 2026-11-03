@@ -100,7 +100,6 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     EnumEvidenceUnverifiableCause,
-    EnumOccRefRefreshOutcome,
     EnumProductCloneFreshness,
     ModelCommandCheckFailure,
     ModelEvidenceCheckResult,
@@ -181,9 +180,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${CONTRACT_REPO_DIR}/contracts",
 ]
-
-# OCC governance ref supplied to the durable evidence gate.
-_DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 
 # OMN-15443: ModelContractDodItem is the authoritative owner of item-level DoD
 # contract fields.  The local Done-gate consumer additionally supports explicit
@@ -385,10 +381,6 @@ def _check_timeout_s() -> float:
         return float(_DEFAULT_CHECK_TIMEOUT_S)
     return value
 
-
-# Referenced by the handler's recorded OCC-refusal diagnostics. collect()
-# no longer reads this override or auto-resolves contracts from OCC.
-_ALLOW_STALE_OCC_REF_ENV = "DOD_VERIFY_ALLOW_STALE_OCC_REF"
 
 # OMN-16846 D2: fail closed on the product clone a check's declared
 # ``cwd`` names. Named and logged; a run under it records every affected
@@ -2263,10 +2255,6 @@ class EvidenceCollector:
         # check in the same project reports the same typed non-result
         # instead of paying the whole install budget again to fail again.
         self._hermetic_node_envs: dict[Path, tuple[Path | None, str | None]] = {}
-        self._occ_governance_ref = (
-            os.environ.get("OCC_GOVERNANCE_REF", _DEFAULT_OCC_GOVERNANCE_REF).strip()
-            or _DEFAULT_OCC_GOVERNANCE_REF
-        )
         # OMN-15382: the dod_evidence item id currently being checked, set by
         # ``_check_evidence_item`` before it runs that item's checks. Read by
         # ``_lookup_pr_for_ticket`` / ``_lookup_repo_for_ticket`` to recover an
@@ -2292,17 +2280,6 @@ class EvidenceCollector:
         # earliest failure is the one that determines what could not be looked
         # at; later ones are usually its consequence.
         self._sticky_lookup_failure_code: str | None = None
-        # OMN-17796: the GOVERNANCE-REF counterpart of the sticky code above,
-        # kept as its own field rather than folded into it because the two
-        # carry different scopes and therefore earn different handler policies.
-        # A PR/repo lookup failure is discovered PER ITEM, while checks are
-        # already running, so its arm is guarded by ``verified == 0`` to avoid
-        # stealing a real red that ran beside it. This one is resolved BEFORE
-        # the contract is loaded: if it is set, no evidence item was read at
-        # all and nothing in the run is attributable to the ref the run
-        # reports, so its arm fires unconditionally. Merging the two fields
-        # would force one guard onto both scopes and lose that distinction.
-        self._occ_ref_failure_code: str | None = None
         # OMN-15382 (F2): set by ``_resolve_pr_bindings`` when it found NO
         # trustworthy binding but SOME evidence the item is PR-related (a PASS
         # receipt recording a pr_number that could not be consistently paired
@@ -2324,10 +2301,6 @@ class EvidenceCollector:
         # attribute leaves it None and therefore keeps its pre-OMN-16788
         # semantics exactly. Mirrors ``_last_binding_note`` above.
         self._last_checks_unreachable_cause: EnumEvidenceUnverifiableCause | None = None
-        # Read by handler_dod_verify when stamping state. collect() no longer
-        # resolves an OCC snapshot, so it leaves these provenance fields unset.
-        self.occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
-        self.occ_resolved_sha: str | None = None
         # OMN-16846 D2: product-clone freshness, memoised per repository root
         # for the lifetime of this collector. One ``git fetch`` per repo per
         # run, not one per check — a contract with a dozen ``test_passes``
@@ -2360,11 +2333,6 @@ class EvidenceCollector:
         self._last_contract: dict[str, Any] | None = None
         self._repo_merged_prs: tuple[ModelTicketMergedPr, ...] = ()
         self._durable_gate_inputs: ModelDurableEvidenceGateRunCommand | None = None
-
-    @property
-    def occ_governance_ref(self) -> str:
-        """The OCC governance ref supplied to the durable evidence gate."""
-        return self._occ_governance_ref
 
     @staticmethod
     def _github_lookup_result(
@@ -2564,8 +2532,6 @@ class EvidenceCollector:
             ticket_id=ticket_id,
             contract=dict(governing[0].contract),
             merged_prs=self._repo_merged_prs,
-            occ_repo_path=str(self._resolve_occ_root() or ""),
-            occ_governance_ref=self._occ_governance_ref,
         )
         return results
 
@@ -2582,18 +2548,6 @@ class EvidenceCollector:
             ),
         )
 
-    def _record_durable_gate_inputs(self, ticket_id: str) -> None:
-        """OMN-20886: the gate inputs of an onex_change_control-resolved run."""
-        if self._last_contract is None:
-            return
-        self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
-            ticket_id=ticket_id,
-            contract=dict(self._last_contract),
-            merged_prs=self._repo_merged_prs,
-            occ_repo_path=str(self._resolve_occ_root() or ""),
-            occ_governance_ref=self._occ_governance_ref,
-        )
-
     @staticmethod
     def _make_durable_gate_effect() -> HandlerDurableEvidenceGateEffect:
         """The gate's EFFECT handler. Override in tests to inject probes."""
@@ -2608,13 +2562,6 @@ class EvidenceCollector:
         if self._durable_gate_inputs is None:
             return None
         return self._make_durable_gate_effect().handle(self._durable_gate_inputs)
-
-    def _resolve_occ_root(self) -> Path | None:
-        """Return the OCC repo root from ``ONEX_CC_REPO_PATH``, or None."""
-        cc_repo_path = os.environ.get("CONTRACT_REPO_DIR", "").strip()
-        if cc_repo_path and Path(cc_repo_path).is_dir():
-            return Path(cc_repo_path)
-        return None
 
     def _collect_impl(
         self,
@@ -4617,31 +4564,12 @@ class EvidenceCollector:
     def lookup_failure_code(self) -> str | None:
         """The first PR/repo lookup failure code observed this run, verbatim.
 
-        Exposed the same way ``occ_refresh_outcome`` is: provenance the handler
-        reads AFTER ``collect()`` returns, so the classification is made from a
+        Provenance the handler reads AFTER ``collect()`` returns, so the
+        classification is made from a
         typed code the effect handler already emitted rather than by parsing a
         rendered message string.
         """
         return self._sticky_lookup_failure_code
-
-    @property
-    def occ_ref_failure_code(self) -> str | None:
-        """The governance-ref refusal code this run hit, verbatim (OMN-17796).
-
-        ``None`` unless ``collect()`` refused on the OCC ref itself. Read by
-        the handler AFTER ``collect()`` returns, exactly as
-        ``lookup_failure_code`` and ``occ_refresh_outcome`` are — typed
-        provenance the collector already holds, never a rendered message
-        parsed back out.
-        """
-        return self._occ_ref_failure_code
-
-    @property
-    def occ_ref_failure_cause(self) -> EnumDodVerifyUnresolvedCause | None:
-        """``occ_ref_failure_code`` mapped onto the OMN-17022 taxonomy."""
-        if self._occ_ref_failure_code is None:
-            return None
-        return EnumDodVerifyUnresolvedCause.from_error_code(self._occ_ref_failure_code)
 
     @property
     def lookup_failure_cause(self) -> EnumDodVerifyUnresolvedCause | None:
@@ -5343,9 +5271,8 @@ class EvidenceCollector:
 
         Returns ``(run_cwd, error, declared)``. ``declared`` is True only when
         the check itself carried a ``cwd`` key — the OMN-10476 auto-injected
-        OCC root does not count, because that repository's freshness is
-        already pinned by ``occ_refresh_outcome``/``occ_resolved_sha`` and
-        re-asserting it here would fetch the same clone twice per run.
+        contract repository root does not count, because re-asserting its
+        freshness here would fetch the same clone twice per run.
 
         Extracted from ``_run_command_check`` (OMN-16846) so the product-clone
         freshness gate resolves the SAME directory the command will run in,
