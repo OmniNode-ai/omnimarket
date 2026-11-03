@@ -16,10 +16,14 @@ class ModelClassRubric(BaseModel):
     rubric_version: str = Field(min_length=1)
     task_class: str = Field(min_length=1)
     criteria: tuple[ModelRubricCriterion, ...]
+    # Criteria that must be determined for the class verdict to be PASS.
+    pass_requires_determined: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def unique_criteria(self) -> Self:
         names = [row.criterion_id for row in self.criteria]
         if len(names) != len(set(names)):
             raise ValueError("duplicate criterion ids")
+        if not set(self.pass_requires_determined) <= set(names):
+            raise ValueError("pass_requires_determined names an unknown criterion")
         return self

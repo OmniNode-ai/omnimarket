@@ -4,10 +4,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.nodes.node_compaction_verdict_compute.models.model_preregistration import (
+    ModelBuildCandidate,
+    ModelDataPrRecord,
+    ModelPreregistration,
+)
 
 __all__ = [
     "CompactionThresholdsError",
@@ -163,6 +170,28 @@ class ModelCompactionThresholds(BaseModel):
     power_session_sd: float = Field(ge=0.0, lt=1.0)
     primaries: tuple[ModelPrimarySpec, ...] = Field(min_length=1)
     safeguards: tuple[ModelSafeguardSpec, ...] = Field(min_length=1)
+    #: The CM.14 block. Absent in a tests-only or pilot file; a confirmatory run needs it.
+    preregistration: ModelPreregistration | None = None
+
+    @model_validator(mode="after")
+    def _feasibility_matches_safeguards(self) -> ModelCompactionThresholds:
+        if self.preregistration is None:
+            return self
+        margins = {s.name: s.margin for s in self.safeguards}
+        recorded = {
+            e.name: e.margin for e in self.preregistration.safeguard_feasibility
+        }
+        if set(margins) != set(recorded):
+            raise ValueError(
+                "preregistration.safeguard_feasibility names "
+                f"{sorted(recorded)} but safeguards are {sorted(margins)}"
+            )
+        for name, margin in margins.items():
+            if abs(recorded[name] - margin) > 1e-9:
+                raise ValueError(
+                    f"preregistration margin for {name!r} differs from the safeguard margin"
+                )
+        return self
 
 
 class ModelCompactionVerdictRequest(BaseModel):
@@ -175,6 +204,16 @@ class ModelCompactionVerdictRequest(BaseModel):
     thresholds_text: str = Field(min_length=1)
     confirmatory: bool
     boundaries: tuple[ModelPairedBoundary, ...] = Field(min_length=1)
+    #: The merged data PR that fixed the data file (the runner reads it); a confirmatory
+    #: run needs it, and its merge must be older than ``run_started_at``.
+    registration: ModelDataPrRecord | None = None
+    run_started_at: datetime | None = None
+    #: The one build this run judges, and the builds with their calibration-split scores
+    #: from which the data file's selection rule picks it.
+    build: str | None = None
+    build_candidates: tuple[ModelBuildCandidate, ...] = ()
+    #: Builds that already have a confirmatory verdict: a build is judged once.
+    prior_confirmatory_builds: tuple[str, ...] = ()
 
 
 class ModelRemovalCount(BaseModel):
@@ -264,6 +303,11 @@ class ModelCompactionVerdictReport(BaseModel):
     safeguards: tuple[ModelSafeguardResult, ...]
     arm_display: tuple[ModelArmDisplay, ...]
     power: ModelJointPower
+    #: Set on a confirmatory run: the one build judged, the split it read and the data PR.
+    judged_build: str | None = None
+    split_sha256: str | None = None
+    data_pr: str | None = None
+    infeasible_safeguards: tuple[str, ...] = ()
 
 
 class ModelLiveSession(BaseModel):

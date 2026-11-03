@@ -33,6 +33,9 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_named_sy
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_no_phantom_paths_params import (
     ModelNoPhantomPathsParams,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_reference_tests_params import (
+    ModelReferenceTestsParams,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_task_answer_traceable_params import (
     ModelTaskAnswerTraceableParams,
 )
@@ -67,6 +70,7 @@ class ModelRubricCriterion(BaseModel):
         | ModelNoPhantomPathsParams
         | ModelEditsApplyParams
         | ModelWithinBudgetParams
+        | ModelReferenceTestsParams
     )
 
     @model_validator(mode="after")
@@ -87,6 +91,7 @@ class ModelRubricCriterion(BaseModel):
             "id_coverage": ModelIdCoverageParams,
             "code_parses": ModelCodeParsesParams,
             "ids_traceable": ModelIdsTraceableParams,
+            "generated_tests_pass_reference": ModelReferenceTestsParams,
         }
         schema = schemas.get(self.criterion_id)
         if schema is None or not isinstance(self.params, schema):
