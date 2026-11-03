@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 
 from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
@@ -47,16 +48,56 @@ def _is_release_cut(sha: str, base: str) -> bool:
     return "CHANGELOG.md" in paths and paths <= _RELEASE_CUT_PATHS
 
 
+# GitHub alone commits a squash merge to dev, as this committer, and names the
+# pull request at the end of the subject.
+_GITHUB_COMMITTER = "noreply@github.com"
+_SQUASH_MERGED_SUBJECT = re.compile(r" \(#[0-9]+\)$")
+
+
+def _own_revisions(sha: str, base_sha: str) -> tuple[str, ...]:
+    """Revision arguments that select the commits this push owns.
+
+    A clone's ``origin/dev`` can sit hours behind the branch it pushes, and then
+    every pull request that landed in between lies in ``base..sha``. Those are
+    the squash merges GitHub made on dev; they, and everything beneath them, are
+    dev's and are hidden. A commit a lane wrote carries the lane's own committer,
+    so a subject that merely ends ``(#N)`` hides nothing.
+    """
+    listing = _git(
+        "log", "--no-merges", "--format=%H%x09%ce%x09%s", f"{base_sha}..{sha}"
+    )
+    merged: list[str] = []
+    for line in listing.splitlines():
+        commit, _, rest = line.partition("\t")
+        committer, _, subject = rest.partition("\t")
+        if committer == _GITHUB_COMMITTER and _SQUASH_MERGED_SUBJECT.search(subject):
+            merged.append(commit)
+    return (sha, "--not", base_sha, *merged)
+
+
 def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
-    """The paths the commit changes against the merge base; unreadable fails closed."""
+    """The paths this push's own commits change; unreadable fails closed.
+
+    A merge commit contributes only what its resolution added beyond both
+    parents (``--cc``), so a clean merge of dev adds nothing and a conflict
+    resolved into new code still counts.
+    """
     try:
-        merge_base = _git("merge-base", base, sha)
-        listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
+        base_sha = _git("rev-parse", "--verify", f"{base}^{{commit}}")
+        listing = _git(
+            "log",
+            "--cc",
+            "--no-renames",
+            "--format=",
+            "--name-only",
+            "-z",
+            *_own_revisions(sha, base_sha),
+        )
     except (OSError, subprocess.SubprocessError):
         # An unreadable diff cannot show that nothing runs, so it counts as a
         # change that runs (unknown fails closed as runtime).
         return ("src/<unreadable diff>",)
-    return tuple(path for path in listing.split("\0") if path)
+    return tuple(dict.fromkeys(path for path in listing.split("\0") if path))
 
 
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
@@ -65,7 +106,11 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     if title is None:
         base_sha = _git("rev-parse", "--verify", f"{base}^{{commit}}")
         subjects = _git(
-            "log", "--first-parent", "--no-merges", "--format=%s", f"{base_sha}..{sha}"
+            "log",
+            "--first-parent",
+            "--no-merges",
+            "--format=%s",
+            *_own_revisions(sha, base_sha),
         )
         branch = os.environ.get("PRE_COMMIT_LOCAL_BRANCH") or _git(
             "rev-parse", "--abbrev-ref", "HEAD"
