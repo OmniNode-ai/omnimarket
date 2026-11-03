@@ -17,6 +17,10 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, Field
 
+from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.receipt_redaction import (
+    redact,
+    sanitize_receipt,
+)
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner import (
     HandlerSshTart,
 )
@@ -55,6 +59,8 @@ _OPERATION_ERRORS = (
     subprocess.SubprocessError,
     yaml.YAMLError,
 )
+# What Tart says when a VM of that name is not on the host.
+_VM_ABSENT = re.compile(r"(?i)does not exist|not found|no such")
 
 
 class _TartDefaults(BaseModel):
@@ -207,12 +213,6 @@ class DocumentedStepGuard:
         return self._runner.run(step.argv, timeout_seconds=step.timeout_seconds)
 
 
-def redact(text: str) -> str:
-    """Strip URL queries everywhere and redact token assignments in free text."""
-    text = re.sub(r"(https?://[^\s\"'<>?]+)\?[^\s\"'<>]*", r"\1?REDACTED", text)
-    return re.sub(r"(?i)(token=)[^\s&\"'<>;]+", r"\1REDACTED", text)
-
-
 def _base_url(value: str) -> str | None:
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -254,7 +254,9 @@ class HandlerOnboardingCleanVmWalk:
         refused: list[str] = []
         failures: list[str] = []
         log = ""
-        created = False
+        # Set before TART_CLONE is issued: a clone whose reply is lost may still exist.
+        clone_attempted = False
+        clone_confirmed = False
         deleted = False
         dashboard_started = False
         dashboard = ModelDashboardResult(
@@ -286,7 +288,7 @@ class HandlerOnboardingCleanVmWalk:
                 steps.append(
                     ModelWalkStepRecord(
                         kind=kind,
-                        argv=tuple(redact(a) for a in step.argv),
+                        argv=step.argv,
                         exit_code=125,
                         seconds=self._clock() - before,
                     )
@@ -295,7 +297,7 @@ class HandlerOnboardingCleanVmWalk:
             steps.append(
                 ModelWalkStepRecord(
                     kind=kind,
-                    argv=tuple(redact(a) for a in step.argv),
+                    argv=step.argv,
                     exit_code=result.exit_code,
                     seconds=self._clock() - before,
                 )
@@ -328,8 +330,9 @@ class HandlerOnboardingCleanVmWalk:
                 raise RuntimeError(
                     f"tart not found at {request.tart_path} on {request.tart_host}"
                 )
+            clone_attempted = True
             run(EnumWalkStepKind.TART_CLONE)
-            created = True
+            clone_confirmed = True
             run(EnumWalkStepKind.TART_SET_SPEC)
             run(EnumWalkStepKind.TART_RUN)
             run(EnumWalkStepKind.TART_IP)
@@ -397,19 +400,33 @@ class HandlerOnboardingCleanVmWalk:
             cleanup = []
             if dashboard_started:
                 cleanup.append(EnumWalkStepKind.GUEST_DASHBOARD_STOP)
-            if created:
+            if clone_attempted:
                 cleanup.extend(
                     (EnumWalkStepKind.TART_STOP, EnumWalkStepKind.TART_DELETE)
                 )
             for kind in cleanup:
                 try:
-                    result = run(kind)
+                    result = issue(kind)
+                    # An unconfirmed clone that left no VM behind is clean, not a failure.
+                    absent = (
+                        result.exit_code != 0
+                        and not clone_confirmed
+                        and kind != EnumWalkStepKind.GUEST_DASHBOARD_STOP
+                        and _VM_ABSENT.search(result.stderr + result.stdout) is not None
+                    )
+                    if not absent:
+                        _require_success(result, kind)
                     if kind == EnumWalkStepKind.TART_DELETE:
-                        deleted = result.exit_code == 0
+                        deleted = True
                 except _OPERATION_ERRORS as exc:
                     failures.append(str(exc))
+            if clone_attempted and not deleted:
+                failures.append(
+                    f"VM {request.vm_name} left undeleted on {request.tart_host}"
+                )
 
-        # Sanitize before parsing so failure diagnostics, pins and run metadata are safe too.
+        # Redact the whole log before parsing and before the tail is cut, so a secret
+        # straddling the cut cannot survive as an unrecognisable fragment.
         log = redact(log)
         parsed_phases: tuple[ModelPhaseRecord, ...] = ()
         pins: tuple[ModelInstalledPin, ...] = ()
@@ -424,36 +441,32 @@ class HandlerOnboardingCleanVmWalk:
             macos_version = parse_macos_version(log)
         except _OPERATION_ERRORS as exc:
             failures.append(f"could not parse onboarding log: {exc}")
-        dashboard = dashboard.model_copy(
-            update={
-                "failure_text": redact(dashboard.failure_text)
-                if dashboard.failure_text
-                else None
-            }
-        )
-        return ModelWalkReceipt(
-            outcome=EnumWalkOutcome.FAILED if failures else EnumWalkOutcome.PASSED,
-            script_sha=request.script_sha,
-            checksum_line=request.checksum_line,
-            providers=request.providers,
-            local_url=redact(request.local_url) if request.local_url else None,
-            vm_spec=vm_spec.model_copy(update={"macos_version": macos_version}),
-            phases=parsed_phases,
-            steps=tuple(steps),
-            total_seconds=self._clock() - started,
-            seconds_to_first_delegated_run=first_delegated_seconds,
-            delegated_run=delegated,
-            dashboard=dashboard,
-            pins_installed=pins,
-            omnibase_spi_version=next(
-                (p.version for p in pins if p.name == "omnibase_spi"), None
-            ),
-            branches_installed=tuple(redact(b) for b in request.branches_installed),
-            vm_deleted=deleted,
-            failure_text=redact("\n".join(failures)) if failures else None,
-            terminal_failure_cause=redact("\n".join(failures)) if failures else None,
-            log_tail=log[-4000:],
-            hand_fix_steps=tuple(refused),
-            started_at=started_at,
-            finished_at=datetime.now(UTC).isoformat(),
+        # The receipt is published: one sanitiser over every string field of it.
+        return sanitize_receipt(
+            ModelWalkReceipt(
+                outcome=EnumWalkOutcome.FAILED if failures else EnumWalkOutcome.PASSED,
+                script_sha=request.script_sha,
+                checksum_line=request.checksum_line,
+                providers=request.providers,
+                local_url=request.local_url,
+                vm_spec=vm_spec.model_copy(update={"macos_version": macos_version}),
+                phases=parsed_phases,
+                steps=tuple(steps),
+                total_seconds=self._clock() - started,
+                seconds_to_first_delegated_run=first_delegated_seconds,
+                delegated_run=delegated,
+                dashboard=dashboard,
+                pins_installed=pins,
+                omnibase_spi_version=next(
+                    (p.version for p in pins if p.name == "omnibase_spi"), None
+                ),
+                branches_installed=request.branches_installed,
+                vm_deleted=deleted,
+                failure_text="\n".join(failures) if failures else None,
+                terminal_failure_cause="\n".join(failures) if failures else None,
+                log_tail=log[-4000:],
+                hand_fix_steps=tuple(refused),
+                started_at=started_at,
+                finished_at=datetime.now(UTC).isoformat(),
+            )
         )
