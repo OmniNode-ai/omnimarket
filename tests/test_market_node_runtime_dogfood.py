@@ -401,7 +401,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_overlay_tree_install_effect and node_host_installer_registry_units are
     # called in process by the host installer and declare no handler_routing, so
     # they are experimental: 31 -> 33.
-    assert summary["skipped"] == 33
+    # node_omnidash_host_effect is run by `python -m` on the dashboard host, not
+    # by a runtime, so it is experimental with no handler_routing: 33 -> 34.
+    assert summary["skipped"] == 34
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

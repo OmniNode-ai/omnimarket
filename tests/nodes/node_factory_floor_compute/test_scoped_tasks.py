@@ -18,7 +18,14 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
     _task_ids,
     compute_factory_floor,
 )
-from tests.nodes.node_factory_floor_compute.support import merge, pr, request, row
+from tests.nodes.node_factory_floor_compute.support import (
+    merge,
+    pr,
+    proven,
+    request,
+    row,
+    running_on_dev,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -51,7 +58,9 @@ def state_of(*, scoped: bool, tickets: tuple[str, ...] = ()) -> tuple[str, str]:
                 row(
                     "TERMINAL", 60, outcome="done", reason="finished T5 of another plan"
                 ),
+                *proven("repo#9"),
             ),
+            running_evidence=running_on_dev("repo#9"),
         )
     )
     item = result.lines[0].stations[0].items[0]
@@ -84,6 +93,8 @@ def test_a_scoped_task_is_finished_by_the_merge_of_its_ticket() -> None:
             merges=(
                 merge("repo#4", 30, title="feat(OMN-7): the work", tickets=("OMN-7",)),
             ),
+            ledger=proven("repo#4"),
+            running_evidence=running_on_dev("repo#4"),
         )
     )
     line = result.lines[0]

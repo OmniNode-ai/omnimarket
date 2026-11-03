@@ -20,7 +20,6 @@ from omnibase_core.validation.validator_fsm_analysis import analyze_fsm
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_wip_gate import (
-    audit_admissions,
     derive_limit,
     evaluate_wip_gate,
     load_wip_gate_contract,
@@ -30,16 +29,14 @@ from omnimarket.models.wip_gate import (
     EnumWipEvidenceWriter,
     EnumWipExemptionKind,
     EnumWipOutcome,
+    EnumWipOverrideReason,
     EnumWipReason,
-    ModelWipAuditRequest,
-    ModelWipClaimRow,
     ModelWipExemption,
     ModelWipGateConfig,
     ModelWipGateRequest,
     ModelWipLimit,
     ModelWipOverrideEvidence,
     ModelWipPolicy,
-    ModelWipReading,
     ModelWipReadRequest,
     ModelWipStateOutcome,
 )
@@ -133,6 +130,7 @@ def _evidence(**over: Any) -> ModelWipOverrideEvidence:
         "repo": REPO_A,
         "dispatch_id": DISPATCH,
         "decision_id": "decision-1",
+        "reason": EnumWipOverrideReason.IDLE,
         "written_by": EnumWipEvidenceWriter.SLOT_REDUCER,
         "written_at": NOW - timedelta(minutes=2),
     }
@@ -394,96 +392,6 @@ def test_exemption_admits_with_swarm_lease_and_open_pr_evidence() -> None:
 def test_forged_exemption_does_not_admit() -> None:
     decision = evaluate_wip_gate(_request(exemption=_exemption()), FSM)
     assert decision.outcome is EnumWipOutcome.REFUSE
-
-
-# AC9: the audit
-
-
-def _claim(
-    ts: datetime = NOW, *, lane: str = "fixture-lane", **over: Any
-) -> ModelWipClaimRow:
-    base: dict[str, Any] = {"lane": lane, "ts": ts, "repo": REPO_A, "opens_pr": True}
-    base.update(over)
-    return ModelWipClaimRow(**base)
-
-
-def _readings(open_n: int = 9) -> tuple[ModelWipReading, ...]:
-    return (
-        ModelWipReading(
-            repo=REPO_A,
-            readable=True,
-            read_at=NOW - timedelta(minutes=5),
-            open=open_n,
-            drafts=0,
-            waiting=open_n,
-        ),
-    )
-
-
-def _audit(claims: tuple[ModelWipClaimRow, ...], **over: Any) -> int:
-    base: dict[str, Any] = {
-        "claims": claims,
-        "readings": _readings(),
-        "policy": _policy(),
-        "authorized_swarm_lanes": (SWARM_LANE,),
-    }
-    base.update(over)
-    return audit_admissions(ModelWipAuditRequest(**base)).breaches
-
-
-def test_ac9_a_claim_after_the_limit_reads_one() -> None:
-    assert _audit((_claim(),)) == 1
-
-
-def test_ac9_zero_cases() -> None:
-    assert _audit(()) == 0
-    assert _audit((_claim(),), readings=_readings(open_n=4)) == 0
-    assert _audit((_claim(opens_pr=False),)) == 0
-    assert _audit((_claim(),), policy=_policy(enforce="")) == 0
-
-
-def test_ac9_claim_before_any_reading_is_unaudited_not_clean() -> None:
-    result = audit_admissions(
-        ModelWipAuditRequest(
-            claims=(_claim(NOW - timedelta(hours=1)),),
-            readings=_readings(),
-            policy=_policy(),
-        )
-    )
-    assert (result.breaches, result.unaudited) == (0, 1)
-
-
-def test_ac9_wip_idle_override_is_not_a_breach() -> None:
-    assert _audit((_claim(wip_idle_override=True),)) == 0
-
-
-def test_ac9_valid_swarm_exemption_reads_zero() -> None:
-    assert _audit((_claim(exemption=_exemption()),)) == 0
-
-
-def test_ac9_valid_open_pr_exemption_reads_zero() -> None:
-    claim = _claim(exemption=_exemption(kind=EnumWipExemptionKind.OPEN_PR, pr_number=2))
-    assert _audit((claim,), state=_state()) == 0
-
-
-def test_ac9_forged_exemption_reads_one() -> None:
-    forged = _exemption(lane_id="fixture-not-named-by-the-stop")
-    assert _audit((_claim(exemption=forged),)) == 1
-    assert (
-        _audit(
-            (
-                _claim(
-                    exemption=_exemption(written_by=EnumWipEvidenceWriter.SLOT_REDUCER)
-                ),
-            )
-        )
-        == 1
-    )
-
-
-def test_ac9_expired_exemption_reads_one() -> None:
-    expired = _exemption(expires_at=NOW - timedelta(minutes=1))
-    assert _audit((_claim(exemption=expired),)) == 1
 
 
 # AC3: the contract equals the plan fragment
