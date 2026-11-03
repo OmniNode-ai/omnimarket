@@ -229,7 +229,7 @@ def _violation_item_id(violation: str) -> str:
 def binds_diagnosis(contract: dict[str, Any], violation: str) -> str:
     """What the binding checker read in the item a violation names.
 
-    OMN-22348: a red `test_every_repo_contract_binds_every_criterion` named the
+    OMN-22399: a red `test_every_repo_contract_binds_every_criterion` named the
     item and nothing else, so each reader re-derived whether the test file, the
     selector or the check type was the fault. This prints, per check, its type,
     its command, the path targets read from it and whether each exists in the
@@ -579,7 +579,7 @@ def _omn21733_floor_contract_item() -> dict[str, Any]:
     }
 
 
-def test_omn22348_a_k_selector_with_a_foreign_cwd_binds_an_existing_test_file() -> None:
+def test_omn22399_a_k_selector_with_a_foreign_cwd_binds_an_existing_test_file() -> None:
     """The recorded OMN-21733 AC66 form binds: the file and the `-k` selector exist.
 
     Evidence (2026-11-03): 21 PRs failed Tests (Split 2/20) with "OMN-21733.yaml:
@@ -600,7 +600,7 @@ def test_omn22348_a_k_selector_with_a_foreign_cwd_binds_an_existing_test_file() 
     assert _pytest_targets(_pytest_argv(item["checks"][0]["check_value"])) == [target]
 
 
-def test_omn22348_a_grep_command_binding_fails_and_the_message_names_the_cause() -> (
+def test_omn22399_a_grep_command_binding_fails_and_the_message_names_the_cause() -> (
     None
 ):
     """The form that reddened dev (a bound `command` grep) still fails, with its cause named."""
@@ -620,7 +620,7 @@ def test_omn22348_a_grep_command_binding_fails_and_the_message_names_the_cause()
     assert "grep -q 'Memory used'" in diagnosis
 
 
-def test_omn22348_the_diagnosis_marks_a_missing_target() -> None:
+def test_omn22399_the_diagnosis_marks_a_missing_target() -> None:
     contract = _omn21733_floor_contract_item()
     contract["dod_evidence"][0]["checks"][0]["check_value"] = (
         "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_gone.py -k x"
