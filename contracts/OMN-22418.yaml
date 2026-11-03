@@ -47,9 +47,15 @@ dod_evidence:
     description: "The lab receipt on a lab host with LINEAR_API_KEY unset in the process environment is the Lab: line of the pull request."
     source: "manual"
     binds_ac: ["AC2"]
-    checks: []
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_query -q --no-cov -k 'no_environment_key or no_lab_fill_code_path'"
+        cwd: "."
   - id: "dod-omn22418-handoff"
     description: "The ledger MSG to landing-controller carrying pr= and head= for the pull request."
     source: "manual"
     binds_ac: ["AC3"]
-    checks: []
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_query -q --no-cov -k 'missing_store_entry or unconfigured_store'"
+        cwd: "."
