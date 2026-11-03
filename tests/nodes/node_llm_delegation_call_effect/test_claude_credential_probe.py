@@ -29,6 +29,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_cr
     ModelClaudeCredentialProbePolicy,
     load_claude_credential_probe_policy,
 )
+from tests.overlay_bound_support import durable_overlay
 
 pytestmark = pytest.mark.unit
 
@@ -147,11 +148,14 @@ def test_the_runtime_reads_one_request_and_prints_one_receipt(
         "HandlerClaudeCredentialProbe",
         lambda: HandlerClaudeCredentialProbe(policy(binary)),
     )
+    lane_overlay = tmp_path / "lane_overlay.json"
+    lane_overlay.write_text(json.dumps(durable_overlay().model_dump(mode="json")))
+    argv = ["--overlay", str(lane_overlay)]
     monkeypatch.setattr(sys, "stdin", io.StringIO(request().model_dump_json()))
-    assert runtime.main() == 0
+    assert runtime.main(argv) == 0
     receipt = ModelClaudeCredentialProbeReceipt.model_validate_json(
         capsys.readouterr().out
     )
     assert receipt.output == "ok"
     monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
-    assert runtime.main() == runtime.EXIT_INVALID
+    assert runtime.main(argv) == runtime.EXIT_INVALID

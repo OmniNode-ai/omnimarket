@@ -59,7 +59,13 @@ SHAPES: dict[
     "tasks-yaml": (
         "2026-10-31-account-limit-monitoring-plan",
         (
-            ("ALM.1", "done", "PRs merged", ("OMN-30001",), ""),
+            (
+                "ALM.1",
+                "integrating",
+                "PRs merged: running-on-dev records unread",
+                ("OMN-30001",),
+                "",
+            ),
             ("ALM.2", "active", "recorded active", ("OMN-30002",), ""),
             ("ALM.3", "wait", "waits for ALM.2", ("OMN-30003",), ""),
         ),
@@ -67,7 +73,13 @@ SHAPES: dict[
     "headings": (
         "2026-10-30-context-plan",
         (
-            ("T1", "done", "PRs merged", ("OMN-31001",), ""),
+            (
+                "T1",
+                "integrating",
+                "PRs merged: running-on-dev records unread",
+                ("OMN-31001",),
+                "",
+            ),
             ("T2", "prep", "ready", ("OMN-31002",), ""),
             ("T3", "prep", "ready", ("OMN-31003",), ""),
         ),
@@ -75,9 +87,15 @@ SHAPES: dict[
     "wave-manifest": (
         "2026-10-29-orchestration-alignment-plan",
         (
-            ("W0.1", "done", "PRs merged", ("OMN-32001",), "Wave 0"),
+            (
+                "W0.1",
+                "integrating",
+                "PRs merged: running-on-dev records unread",
+                ("OMN-32001",),
+                "Wave 0",
+            ),
             ("W0.2", "prep", "ready", ("OMN-32002",), "Wave 0"),
-            ("G0", "wait", "waits for W0.2", (), "Wave 0"),
+            ("G0", "wait", "waits for W0.1,W0.2", (), "Wave 0"),
             ("W1.1", "wait", "waits for G0", ("OMN-32003",), "Wave 1"),
         ),
     ),

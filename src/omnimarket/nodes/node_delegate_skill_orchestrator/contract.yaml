@@ -459,6 +459,31 @@ consume_concurrency:
 prompt_size_bound:
   max_prompt_bytes: 262144
 
+# OMN-22212: a request that asks for secrets or asks to move data out, refused
+# by the rung and vetoed by the gate's refusal-phrase rule, ends there with
+# terminal_failure_reason secret_request_refused. It is never re-drafted or sent
+# to another rung, so the request never leaves the rung that refused it. Markers
+# match the prompt case-insensitively as substrings; an ordinary refusal still
+# climbs.
+secret_request_refusal:
+  refusal_verdict_prefix: "REFUSAL"
+  terminal_failure_reason: secret_request_refused
+  request_markers:
+    - "api key"
+    - "api_key"
+    - "apikey"
+    - "secret key"
+    - "private key"
+    - "access key"
+    - "ssh key"
+    - "password"
+    - "credential"
+    - "bearer token"
+    - "access token"
+    - "auth token"
+    - "deploy token"
+    - "exfiltrat"
+
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH
     required: false

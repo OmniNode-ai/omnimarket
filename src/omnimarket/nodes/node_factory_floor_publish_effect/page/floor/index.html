@@ -79,25 +79,20 @@ header{display:grid;gap:14px}
 .line{background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
 .line-head{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;padding:20px 22px;align-items:center}
 @media (max-width:760px){.line-head{grid-template-columns:1fr}}
-.car-svg{width:100%;max-width:340px;height:auto;display:block}
 .sign{display:inline-block;font:800 .875rem/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
 .line-head .meta{display:grid;gap:10px;min-width:0}
 .pill{display:inline-flex;align-items:center;gap:6px;font:600 .875rem/1.1 var(--f-body);padding:5px 9px;border-radius:3px;border:1px solid currentColor}
-.pill.active{color:var(--warn-text)} .pill.stop{color:var(--stop-text)} .pill.done{color:var(--ok-text)} .pill.prep{color:var(--steel)} .pill.wait{color:var(--muted)}
-.meter{height:8px;background:var(--rule);border-radius:4px;overflow:hidden;max-width:420px}
-.meter b{display:block;height:100%;background:var(--car);width:var(--w)}
+.pill.warn{color:var(--warn-text)} .pill.idle{color:var(--muted)} .pill.active{color:var(--warn-text)} .pill.stop{color:var(--stop-text)} .pill.done{color:var(--ok-text)} .pill.prep{color:var(--steel)} .pill.wait{color:var(--muted)}
 
+.progress{display:grid;gap:4px;min-width:0}
+.pbar{height:10px;background:var(--rule);border-radius:5px;overflow:hidden;max-width:420px}
+.pbar b{display:block;height:100%;background:var(--car);width:var(--w)}
+.pbar.unknown{background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);border:1px dashed var(--idle)}
+.alldone{font-weight:600}
+.refuse{color:var(--stop);font-size:.875rem}
+.caricon{width:34px;height:15px;fill:var(--idle);stroke:none;flex:none}
 .floor-scroll{overflow-x:auto;border-top:1px solid var(--rule)}
 .track{position:relative;min-width:calc(var(--n)*168px);padding:0 0 18px}
-.belt{position:relative;height:46px;margin:0 0 0;background:var(--belt)}
-.belt::before{content:"";position:absolute;left:0;right:0;bottom:6px;height:10px;
-  background:repeating-linear-gradient(90deg,var(--roller) 0 14px,transparent 14px 22px);animation:roll 1.4s linear infinite}
-@keyframes roll{to{background-position:22px 0}}
-.belt .mark{position:absolute;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--safety) 40%,transparent)}
-.mini{position:absolute;bottom:14px;width:64px;height:28px;left:calc(var(--pos)*100%);transform:translateX(-50%);animation:rollin 2.4s cubic-bezier(.2,.7,.2,1) both}
-@keyframes rollin{from{left:0;opacity:.2}}
-.mini.stopped{animation:rollin 2.4s cubic-bezier(.2,.7,.2,1) both, shake .5s 2.6s 3}
-@keyframes shake{25%{transform:translateX(calc(-50% - 2px))}75%{transform:translateX(calc(-50% + 2px))}}
 .stations{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:0}
 .st{padding:14px 12px 4px;border-left:1px dashed var(--rule);display:grid;gap:8px;align-content:start;min-width:0}
 .st:first-child{border-left:0}
@@ -119,17 +114,6 @@ header{display:grid;gap:14px}
 .feed .eyebrow{font-size:.75rem}
 .feed div{font-size:.875rem;line-height:1.35;background:color-mix(in srgb,var(--safety) 10%,transparent);border-left:3px solid var(--safety);padding:5px 7px;border-radius:0 3px 3px 0}
 .feed div small{display:block;color:var(--muted)}
-
-/* car parts */
-.p{transition:fill .3s}
-.p.s-done{fill:var(--car);stroke:var(--car-edge)}
-.p.s-active{fill:var(--safety-soft);stroke:var(--safety);stroke-dasharray:6 4;animation:dash 1.2s linear infinite}
-.p.s-prep{stroke:var(--steel)}
-.p.s-wait{fill:none;stroke:var(--idle);stroke-dasharray:3 4}
-.p.s-stop{fill:var(--stop-soft);stroke:var(--stop);animation:blink 1.1s steps(2,jump-none) infinite}
-.p.stroke-only{fill:none!important}
-@keyframes dash{to{stroke-dashoffset:-20}}
-.wheel{transform-box:fill-box;transform-origin:center}
 
 /* machine bays */
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;align-items:start}
@@ -239,8 +223,6 @@ details.ghosts ul{margin:8px 0 0;padding-left:20px;display:grid;gap:4px;color:va
 
 .plan{font:400 .75rem/1.3 var(--f-body);color:var(--muted);overflow-wrap:anywhere}
 .line.ghost{border-style:dashed}
-.line.ghost .car-svg{opacity:.8}
-.line.ghost .meter b{width:0}
 .ghost-note{border:1px dashed var(--idle);border-radius:4px;padding:10px 12px;font-size:.9375rem;color:var(--muted);background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
 .hint{font:500 .8125rem/1.3 var(--f-body);color:var(--muted);padding:8px 22px 0}
 .floor-scroll{scroll-behavior:smooth}
@@ -293,7 +275,7 @@ html.embed .wrap{padding-block:14px 48px}
         <div class="eyebrow" id="stamp">Reading the factory record</div>
         <h1>Lean Factory Floor</h1>
       </div>
-      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage, and the car is built part by part as stations finish. Machines are where the workers run. Everything below is read from the factory record, which is refreshed every minute; anything that could not be read is shown as unread.</p>
+      <p class="lede">Every plan is an assembly line. Each station is a stage, and the progress bar counts merged work tasks. Machines are where the workers run. Everything below is read from the factory record, which is refreshed every minute; anything that could not be read is shown as unread.</p>
     </div>
     <div class="banner" id="banner" role="alert" hidden></div>
     <p class="verdict c-warn" id="verdict">Reading the record.</p>
@@ -365,12 +347,7 @@ const POLL_MS = 60000;
 const STALE_MIN = 90;
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const PART_NAMES = {frame:"Frame",engine:"Engine",wiring:"Wiring",body:"Body",glass:"Glass",lights:"Lights",wheels:"Wheels"};
-const PART_ORDER = ["frame","wiring","engine","body","glass","lights","wheels"];
 const STATE_LABEL = {done:"Done",active:"Being built",prep:"Parts staged",wait:"Waiting",stop:"Stopped"};
-const STATE_WORD = {done:"finished",active:"being built",prep:"parts staged",wait:"not started",stop:"stopped"};
-const PILL_CLASS = {stopped:"stop",done:"done",building:"active",queued:"wait"};
-const PILL_LABEL = {stopped:"Stopped",done:"Done",building:"Building",queued:"Queued"};
 const TONE = {ok:"var(--ok)",warn:"var(--warn)",stop:"var(--stop)",idle:"var(--idle)"};
 
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -398,58 +375,6 @@ function whenSpan(iso){
   return e == null ? `<span class="unread">${esc(iso || "unread")}</span>` : `<span title="${esc(new Date(Date.parse(iso)).toISOString().slice(0, 16).replace("T", " "))} UTC">${esc(whenText(iso))}</span>`;
 }
 
-// Which part of the car a station builds. With seven or more stations the stations are grouped over the seven
-// parts in order; with fewer, each part is built by the station whose share of the line it falls in.
-function partStations(n){
-  return PART_ORDER.map((_, p) => {
-    if (n <= 0) return [];
-    if (n >= PART_ORDER.length){
-      const out = [];
-      for (let i = 0; i < n; i++) if (Math.floor(i * PART_ORDER.length / n) === p) out.push(i);
-      return out;
-    }
-    return [Math.min(n - 1, Math.floor(p * n / PART_ORDER.length))];
-  });
-}
-
-function aggregate(states){
-  if (!states.length) return "wait";
-  if (states.includes("stop")) return "stop";
-  if (states.every(s => s === "done")) return "done";
-  if (states.includes("active") || states.includes("done")) return "active";
-  if (states.includes("prep")) return "prep";
-  return "wait";
-}
-
-function partStates(stations){
-  const map = partStations(stations.length), parts = {};
-  PART_ORDER.forEach((k, p) => { parts[k] = aggregate(map[p].map(i => stations[i].state)); });
-  return parts;
-}
-
-function carSVG(id, parts){
-  const c = (k, extra = "") => `p s-${parts[k] || "wait"} ${extra}`;
-  const wheel = x => `<g class="wheel"><circle class="${c("wheels")}" cx="${x}" cy="96" r="18" stroke-width="2"/><circle class="${c("wheels")}" cx="${x}" cy="96" r="6" stroke-width="2"/><path class="${c("wheels","stroke-only")}" d="M${x-12} 96H${x+12}M${x} 84V108" stroke-width="2"/></g>`;
-  const label = PART_ORDER.map(k => PART_NAMES[k] + " " + STATE_WORD[parts[k] || "wait"]).join(", ");
-  return `<svg class="car-svg" viewBox="0 0 300 122" role="img" aria-label="Car for ${esc(id)}: ${esc(label)}">
-   <defs><pattern id="hatch-${esc(id)}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="transparent"/><path d="M0 0V6" style="stroke:var(--steel)" stroke-width="1.6"/></pattern></defs>
-   <style>#line-${esc(id)} .p.s-prep{fill:url(#hatch-${esc(id)})}</style>
-   <line x1="6" y1="116" x2="294" y2="116" style="stroke:var(--rule)" stroke-width="2"/>
-   <path class="${c("body")}" stroke-width="2" d="M22 86 L22 66 Q24 58 36 56 L92 54 L122 32 Q130 26 142 26 L206 26 Q218 26 228 36 L250 56 L272 60 Q280 62 280 72 L280 86 Z"/>
-   <path class="${c("glass")}" stroke-width="2" d="M100 54 L126 34 L168 34 L168 54 Z M174 34 L204 34 Q212 34 220 42 L232 54 L174 54 Z"/>
-   <rect class="${c("engine")}" stroke-width="2" x="222" y="62" width="44" height="20" rx="3"/>
-   <path class="${c("wiring","stroke-only")}" stroke-width="3" stroke-linecap="round" d="M34 76 H70 L78 70 H150 L158 76 H218"/>
-   <ellipse class="${c("lights")}" stroke-width="2" cx="275" cy="67" rx="4" ry="5"/>
-   <rect class="${c("lights")}" stroke-width="2" x="20" y="61" width="6" height="9" rx="1"/>
-   <rect class="${c("frame")}" stroke-width="2" x="20" y="86" width="262" height="9" rx="3"/>
-   ${wheel(78)}${wheel(226)}
-  </svg>`;
-}
-
-function miniCar(stopped){
-  return `<svg class="mini${stopped?" stopped":""}" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:${stopped?"var(--stop)":"var(--safety)"};stroke:var(--belt)" stroke-width="1.5"/><circle cx="16" cy="21" r="5" style="fill:var(--belt);stroke:var(--roller)" stroke-width="2"/><circle cx="49" cy="21" r="5" style="fill:var(--belt);stroke:var(--roller)" stroke-width="2"/></svg>`;
-}
-
 // The lines in the order the deployment overlay declares them, with a slot for a declared line that no plan matched.
 function buildSlots(lines, status){
   const decl = status && status.lines_declared;
@@ -466,6 +391,94 @@ function buildSlots(lines, status){
   return {declared: true, reason: "", slots};
 }
 
+// ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
+// (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
+const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+function lineCondition(L){
+  const c = COND[L.condition];
+  return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
+}
+function conditionPill(L){
+  const c = lineCondition(L);
+  return `<span class="pill ${c.cls}" data-condition="${esc(c.key)}"><span aria-hidden="true">${c.icon}</span> ${esc(c.label)}</span>`;
+}
+// The decorative car: one neutral icon that encodes no data. Hidden from assistive technology, no title, no data attribute.
+function carIcon(){
+  return `<svg class="caricon" viewBox="0 0 64 28" aria-hidden="true" focusable="false"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z"/><circle cx="17" cy="22" r="5"/><circle cx="48" cy="22" r="5"/></svg>`;
+}
+function blockerBlock(L){
+  const b = L.blocker;
+  const stopped = L.condition === "stopped";
+  if (!b || !b.reason) return stopped ? `<div class="cause nocause"><b>Why it is stopped</b><span>The record gives this line no blocker.</span></div>` : "";
+  const ev = Array.isArray(b.evidence) ? b.evidence.filter(Boolean) : [];
+  return `<div class="cause"><b>${stopped ? "Why it is stopped" : "Blocker"}</b><span>${esc(String(b.reason).replace(/[:\s]+$/, ""))}</span>${ev.length ? `<small>Evidence: ${ev.map(esc).join(", ")}</small>` : ""}</div>`;
+}
+function gatesText(L){
+  const g = L.gates;
+  if (!g) return "Gates unread";
+  const p = num(g.passed), f = num(g.failed), w = num(g.waiting), n = p + f + w;
+  return `${n} ${n === 1 ? "gate" : "gates"}: ${p} passed, ${f} failed, ${w} waiting`;
+}
+function pendingGates(L){
+  const items = L.gates && Array.isArray(L.gates.items) ? L.gates.items : [];
+  return items.filter(x => x && x.state !== "passed" && x.state !== "pass");
+}
+// Built percent counts merged work tasks only; unknown is not zero.
+function progressBlock(L){
+  const p = L.progress;
+  const gates = `<span class="gates">${esc(gatesText(L))}</span>`;
+  const name = "Work tasks merged";
+  const known = p && p.state === "known" && p.completed != null && Number.isFinite(Number(p.total)) && Number(p.total) > 0;
+  if (known){
+    const c = num(p.completed), t = num(p.total);
+    const pct = p.percent == null ? "" : `, ${Number(p.percent).toFixed(1)}%`;
+    const text = `${c} / ${t} work tasks${pct}`;
+    const valuetext = `${c} of ${t} work tasks complete${pct}; ${gatesText(L)}`;
+    const w = Math.max(0, Math.min(100, t ? c / t * 100 : 0));
+    const done = c >= t && L.condition !== "complete"
+      ? `<p class="alldone">All tasks recorded done; ${pendingGates(L).length ? pendingGates(L).map(g => `gate ${esc(g.id)} ${g.state === "failed" ? "failed" : "pending"}`).join("; ") : L.blocker && L.blocker.reason ? esc(String(L.blocker.reason).replace(/[:\s]+$/, "")) : "the line is not Complete"}</p>` : "";
+    return `<div class="progress"><div class="pbar" role="progressbar" aria-label="${name}" aria-valuemin="0" aria-valuemax="${t}" aria-valuenow="${c}" aria-valuetext="${esc(valuetext)}"><b style="--w:${w}%"></b></div>
+      <span class="ptext"><span class="mono">${text}</span> · ${gates}</span>${done}</div>`;
+  }
+  const noTasks = p && p.state === "no_tasks";
+  const text = noTasks ? "No work tasks declared" : p ? "Progress unknown" : "Progress unread";
+  const note = p && p.note ? ` (${esc(p.note)})` : "";
+  return `<div class="progress"><div class="pbar unknown" role="progressbar" aria-label="${name}" aria-valuetext="${esc(text + (p && p.note ? ": " + p.note : ""))}"></div>
+      <span class="ptext">${text}${note} · ${gates}</span></div>`;
+}
+// What backs a "done" item; none of these is deployment proof.
+const EVIDENCE_LABEL = {merged: "merged PR", terminal: "terminal outcome, not deployment proof", linear_done: "ticket closed, not deployment proof", recorded: "recorded done"};
+function itemEvidence(it){
+  return it.state === "done" ? (EVIDENCE_LABEL[it.evidence_kind] || "done, backing not recorded") : "";
+}
+function evidenceRow(L){
+  const e = L.line_evidence;
+  if (!e) return `<span class="eyebrow evidence">Evidence <span class="unread">not read</span></span>`;
+  const of = e.of == null ? "" : ` of ${num(e.of)}`;
+  const v = x => x == null ? `<span class="unread">not read</span>` : `<span class="mono">${num(x)}${of}</span>`;
+  return `<span class="eyebrow evidence">Merged ${v(e.merged)} · Running on dev ${v(e.running_on_dev)} · Verified ${v(e.verified)}</span>`;
+}
+// Machines: memory is drawn as used over total, load as a number against its reference, a refusal above the capacity row.
+function memoryGauge(m){
+  if (m.mem_free_gb == null) return gauge("Memory used", null, null);
+  const free = num(m.mem_free_gb), total = m.mem_total_gb ? num(m.mem_total_gb) : 0;
+  if (!total) return gauge("Memory free", `${fmt(free)} GB free (total unread)`, null);
+  const used = total - free;
+  return gauge("Memory used", `${fmt(used)} of ${fmt(total)} GB used`, used / total);
+}
+function loadGauge(m){
+  if (m.load_per_core == null) return gauge("Load per core", null, null);
+  return gauge("Load per core", `${Number(m.load_per_core).toFixed(2)} (1.0 = one runnable task per core)`, null);
+}
+function refusalReason(m){
+  if (m.admission && m.admission.state === "refused") return m.admission.reason || m.refusal || "no reason recorded";
+  return m.refusal ? String(m.refusal) : null;
+}
+function refusalNote(m){
+  const r = refusalReason(m);
+  return r == null ? "" : `<p class="refuse"><b>Not taking new work:</b> ${esc(r)}</p>`;
+}
+
 function lineFacts(L){
   const stations = L.stations || [];
   const n = stations.length;
@@ -474,7 +487,7 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.status_pill === "stopped" || !!(L.andon && L.andon.flag)};
+    stopped: L.condition === "stopped"};
 }
 
 function stationName(stations, id){
@@ -500,39 +513,28 @@ function renderLine(slot, i){
   if (!L) return "";
   const f = lineFacts(L);
   const sid = safeId(L.line_id);
-  const parts = partStates(f.stations);
-  const map = partStations(f.n);
-  const pos = (f.cur + 0.5) / Math.max(f.n, 1);
-  const pct = Math.max(0, Math.min(100, num(L.percent_built)));
-  const reason = L.andon && L.andon.reason ? L.andon.reason : "";
-  const causes = (L.andon && L.andon.causes || []).filter(x => x !== reason && x.trim()).map(esc).join("; ");
   const source = L.source === "manifest" ? "task manifest" : "plan task table";
   return `<section class="line" id="line-${sid}" aria-labelledby="h-${sid}">
       <div class="line-head">
-        ${carSVG(sid, parts)}
         <div class="meta">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill ${PILL_CLASS[L.status_pill] || "wait"}">${esc(PILL_LABEL[L.status_pill] || L.status_pill)}</span></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">${carIcon()}<span class="sign">${esc(letter)}</span>${conditionPill(L)}</div>
           <h2 id="h-${sid}">${esc(L.name)}</h2>
           <button type="button" class="drill" data-drill="line-${sid}">Show this line's detail</button>
           <span class="plan">Plan file ${esc(L.plan_path)} · read from its ${esc(source)}</span>
-          ${L.andon && L.andon.flag ? `<p class="cause"><b>Stopped:</b> ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
-          <div class="meter" role="img" aria-label="About ${pct} percent built"><b style="--w:${pct}%"></b></div>
-          <span class="eyebrow">About <span class="mono">${pct}%</span> of the car built · station <span class="mono">${Math.min(f.cur + 1, Math.max(f.n, 1))}</span> of <span class="mono">${f.n}</span> · <span class="mono">${f.done}</span> of <span class="mono">${f.items.length}</span> parts done</span>
+          ${blockerBlock(L)}
+          ${progressBlock(L)}
+          ${evidenceRow(L)}
           ${containersRow(L)}
         </div>
       </div>
-      ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways along the belt</div>` : ""}
-      <div class="floor-scroll" data-line="${esc(sid)}" data-cur="${f.cur}"><div class="track" style="--n:${Math.max(f.n, 1)}">
-        <div class="belt">${f.stations.map((_, k) => k ? `<span class="mark" style="left:${k / f.n * 100}%"></span>` : "").join("")}
-          <div style="--pos:${pos}" class="mini-wrap">${miniCar(f.stopped)}</div></div>
+      ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways</div>` : ""}
+      <div class="floor-scroll" data-line="${esc(sid)}"><div class="track" style="--n:${Math.max(f.n, 1)}">
         <div class="stations">${f.stations.map((s, k) => {
-          const builds = PART_ORDER.filter((_, p) => map[p].includes(k)).map(x => PART_NAMES[x].toLowerCase()).join(" and ");
           return `
           <div class="st ${esc(s.state)}${f.n === 1 ? " solo" : ""}" id="st-${sid}-${safeId(s.id)}">
             <div class="st-top"><span class="st-num mono">${k}</span><span class="pill ${esc(s.state)}">${esc(STATE_LABEL[s.state] || s.state)}</span></div>
             <h3>${esc(s.name)}</h3>
-            ${builds ? `<span class="part">Builds the ${esc(builds)}</span>` : ""}
-            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${esc(it.title)}<small>${esc([STATE_LABEL[it.state] || it.state, it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Worker: <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
+            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${esc(it.title)}<small>${esc([STATE_LABEL[it.state] || it.state, itemEvidence(it), it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Worker: <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
             ${(s.feeders || []).length ? `<div class="feed"><span class="eyebrow">Feeder lines (work that supplies this station)</span>${s.feeders.map(x => `<div>${esc(stationName(f.stations, x))}<small>supplies this station</small></div>`).join("")}</div>` : ""}
           </div>`;
         }).join("")}
@@ -549,10 +551,8 @@ function renderLines(slots, declared, reason){
   const ghosts = slots.map((slot, i) => ({slot, i})).filter(x => !x.slot.line);
   const ghostNote = ghosts.length ? `<details class="ghosts"><summary>${ghosts.length} more line${ghosts.length === 1 ? " is" : "s are"} planned but ${ghosts.length === 1 ? "has" : "have"} no plan file yet (show)</summary><ul>${ghosts.map(x => `<li><b>${esc("Line " + (LETTERS[x.i] || x.i + 1))}</b>: no plan file matches <span class="mono">${esc(x.slot.fragment)}</span> yet, so there is nothing to draw.</li>`).join("")}</ul></details>` : "";
   host.innerHTML = (declared ? "" : `<p class="ghost-note">Which lines are planned is unread (${esc(reason)}), so a planned line with no plan file cannot be shown.</p>`) + slots.map(renderLine).join("") + ghostNote;
-  host.querySelectorAll(".mini-wrap").forEach(w => { const s = w.firstElementChild; s.style.setProperty("--pos", w.style.getPropertyValue("--pos")); w.replaceWith(s); });
   host.querySelectorAll(".floor-scroll").forEach(s => {
-    const track = s.firstElementChild, n = num(getComputedStyle(track).getPropertyValue("--n"), 1);
-    s.scrollLeft = s.dataset.line in keep ? keep[s.dataset.line] : Math.max(0, (num(s.dataset.cur) - 0.5) * track.scrollWidth / n);
+    s.scrollLeft = s.dataset.line in keep ? keep[s.dataset.line] : 0;
   });
 }
 
@@ -561,7 +561,7 @@ function renderVerdict(slots, floor, bayState, health){
   const real = slots.filter(x => x.line).map(x => lineFacts(x.line));
   const stopped = real.filter(x => x.stopped).length;
   const parts = [];
-  parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : `${real.length} line${real.length === 1 ? " is" : "s are"} running`) : "No line has a plan file yet");
+  parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : `No line is stopped (${real.length} read)`) : "No line has a plan file yet");
   if (bayState.declared) parts.push(bayState.stalled ? `${bayState.stalled} of ${bayState.lanes} workers stalled` : `${bayState.lanes} workers, none stalled`);
   parts.push(`${floor.shipped.length} changes shipped, ${floor.waiting.length} waiting`);
   const sm = health && health.summary;
@@ -654,7 +654,7 @@ function laneHTML(l){
 
 function gauge(label, value, frac, unreadWhy){
   if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${unreadWhy ? ` (${esc(unreadWhy)})` : ""}</span></div>`;
-  const bar = frac == null ? "" : `<div class="gbar" role="img" aria-label="${esc(label)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
+  const bar = frac == null ? "" : `<div class="gbar" role="img" aria-label="${esc(label + ": " + value)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
   return `<div class="gauge"><span>${esc(label)}</span><span class="v">${esc(value)}</span>${bar}</div>`;
 }
 
@@ -663,7 +663,7 @@ function slotCount(running, stalled, free){
 }
 
 function isRefused(m){
-  return !!(m.admission && m.admission.state === "refused");
+  return refusalReason(m) !== null;
 }
 
 function machineHTML(m, byId){
@@ -673,30 +673,29 @@ function machineHTML(m, byId){
   const cap = m.cap == null ? null : num(m.cap);
   let slots;
   if (m.state === "read" && cap != null){
-    const used = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}" title="${esc(l.lane + (l.title ? ": " + l.title : ""))}"></i>`);
-    const over = Math.max(0, lanes.length - cap);
+    const used = lanes.map((l, k) => `<i class="${l.stalled ? "stall" : l.engine || "none"}${k >= cap ? " over" : ""}" title="${esc(l.lane + (l.title ? ": " + l.title : ""))}"></i>`);
+    // Placed lanes beyond the cap are real: they are counted, drawn outlined and named, never clamped into a full bar.
+    const over = lanes.length > cap ? lanes.length - cap : 0;
     // The free figure is the record's own: the tick's reading (its lane slots, else cap less placed units), and none at all
-    // where the tick's admission refuses the machine, which is drawn as refused with the reading's reason.
+    // where the machine refuses new work, which is stated above the capacity row with its reason.
     const refused = isRefused(m);
     const free = refused || m.free_slots == null ? 0 : Math.max(0, num(m.free_slots));
     const stalledN = lanes.filter(l => l.stalled).length;
     const running = lanes.length - stalledN;
-    const refusedText = `refused: ${(m.admission && m.admission.reason) || m.refusal || "no reason recorded"}`;
-    const counts = refused ? `${running} running, ${stalledN} stalled, refused` : m.free_slots == null ? `${running} running, ${stalledN} stalled, free slots unread` : slotCount(running, stalledN, free);
-    slots = `<div class="cap" role="img" aria-label="${esc(refused ? counts + ": " + refusedText : counts)}">${used.join("")}${refused ? `<span class="refused">${esc(refusedText)}</span>` : "<i></i>".repeat(free)}</div>
-      <div class="capline"><b>${counts}</b> · <span class="mono">${lanes.length}</span> of <span class="mono">${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over the limit</b>` : ""}</div>`;
+    const counts = refused ? `${running} running, ${stalledN} stalled, not taking new work` : m.free_slots == null ? `${running} running, ${stalledN} stalled, free slots unread` : slotCount(running, stalledN, free);
+    slots = `${refusalNote(m)}<div class="cap" role="img" aria-label="${esc(counts)}${over ? esc(`, ${over} over capacity`) : ""}">${used.join("")}${"<i></i>".repeat(free)}</div>
+      <div class="capline"><b>${counts}</b> · <span class="mono">${lanes.length}/${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over capacity</b>` : ""}</div>`;
   } else if (m.state === "read"){
-    slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><b>${lanes.length} running</b> · slot limit ${unreadSpan("no limit in the host table or the pool read")}</div>`;
+    slots = `${refusalNote(m)}<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><b>${lanes.length} running</b> · slot limit ${unreadSpan("no limit in the host table or the pool read")}</div>`;
   } else {
     slots = `<div class="cap unread" role="img" aria-label="Nothing is drawn: ${esc(m.state === "repair" ? "the machine is in repair" : m.state === "out" ? "the machine is out of selection" : "the machine was not read")}"></div>
       <div class="capline">${esc(m.note || "no reading")}${lanes.length ? ` · the log still places ${lanes.length} worker${lanes.length === 1 ? "" : "s"} here` : ""}</div>`;
   }
   const rd = m.state === "read";
-  const memFrac = rd && m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
   const runners = m.runners || {};
   const gauges = rd ? [
-    gauge("load per core", m.load_per_core == null ? null : String(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core)),
-    gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac),
+    loadGauge(m),
+    memoryGauge(m),
     gauge("swap used", m.swap_used_pct == null ? null : `${fmt(m.swap_used_pct)}%`, m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported on this host"),
     gauge("check runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
     gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the workers`, null, "placement markers not read")

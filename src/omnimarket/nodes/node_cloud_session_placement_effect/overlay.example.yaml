@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_cloud_session_placement_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that root.
+# All values here are synthetic; supply your deployment's facts. Never write an email or an organization id:
+# org_hash and email_hash (quote them: YAML reads 1234567890 as a number) are the first 10 hex of the sha256 of each, and both must match a login.
+accounts:
+  - label: account-a
+    org_hash: "0123456789"
+    email_hash: "abcdef0123"
+    consent: "2026-01-01T00:00:00Z"        # ledger row stamp of the operator consent
+    consent_expires: "2026-01-08T00:00:00Z"  # optional; the consent holds strictly before it
+    credit_expires: "2026-02-01"           # optional; the credit holds through this date, inclusive
+    legacy_hosts: [host-a, host-b]         # old state entries of these hosts merge into this account once
+    transport_exclude: [host-x]            # hosts that never make a start call
+  - label: account-b
+    org_hash: "9876543210"
+    email_hash: "fedcba9876"
+    consent: "2026-01-02T00:00:00Z"
+    legacy_hosts: []
+    transport_exclude: []
+login_fresh_s: 1800
+probe_timeout_s: 120
