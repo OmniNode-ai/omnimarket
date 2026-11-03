@@ -185,7 +185,7 @@ class _ReadOnlySecretStore:
     async def health_check(self) -> bool:
         return True
 
-    async def close(self, timeout_seconds: float = 30.0) -> None:
+    async def close(self, timeout_seconds: float | None = None) -> None:
         del timeout_seconds
 
 
@@ -239,7 +239,7 @@ class _ConventionFallbackSecretStore(_ReadOnlySecretStore):
     _label = "Convention-fallback"
 
     def __init__(self) -> None:
-        self._literal: ProtocolSecretStore = AdapterEnvSecretStore()
+        self._literal: AdapterEnvSecretStore = AdapterEnvSecretStore()
         self._convention: ProtocolSecretStore = _MappedSecretStore(
             SecretResolver(
                 config=ModelSecretResolverConfig(enable_convention_fallback=True)

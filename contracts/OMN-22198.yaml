@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-22198
+title: 'Remote lane start nodes, slice 1: omnibase-spi is pinned to a tag that carries the lane host protocols and the secret stores implement its close signature'
+summary: 'The nodes of OMN-22198 take ProtocolLaneHostTransport, ProtocolLaneHostPool and ProtocolWorkLedgerStore from omnibase_spi. This slice moves the omnibase-spi dev tag to one that contains them and adapts the secret stores to the ProtocolSecretStore.close signature that tag carries, so the strict type check stays clean. The nodes themselves follow in a later pull request.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22198-spi-pin
+    statement: 'pyproject [tool.uv.sources] pins omnibase-spi at a dev merge tag that contains omnibase_spi#437 (the lane host protocols), uv.lock resolves that tag, and every ProtocolSecretStore implementation in this repository accepts close(timeout_seconds=None)'
+    acceptance:
+      - id: AC10
+        statement: 'AC10: omnibase_spi.protocols.lane exports ProtocolLaneHostTransport (five operations), ProtocolLaneHostPool and ProtocolWorkLedgerStore, and ProtocolSecretStore.close defaults timeout_seconds to None -- falsifier: uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q fails at the merge base'
+      - id: AC11
+        statement: 'AC11: the strict type check of the package is clean at the new pin -- falsifier: uv run mypy src/omnimarket/ --strict reports 12 errors in 5 files at the new pin with the secret-store edits removed'
+evidence_requirements:
+  - kind: "tests"
+    description: "The pinned spi tag exports the lane host protocols and the optional close timeout"
+    command: "uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: 'AC10: the pinned spi tag exports the lane host protocols and the optional close timeout (the test fails at the previous pin and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC10]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q --no-cov --tb=line'
+        cwd: "."
+  - id: "dod-002"
+    description: 'AC11: the strict type check of the package is clean at the new pin'
+    source: "manual"
+    binds_ac: [AC11]
+    checks:
+      - check_type: "command"
+        check_value: 'uv run mypy src/omnimarket/ --strict'
+        cwd: "."
+  - id: "dod-omn22198-integration-proof"
+    description: "The pushed head ran the pin test and the secret-store node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22198 -- uv run --frozen pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py tests/nodes/node_local_secret_store_effect -q --no-cov -m "not kafka"
+        cwd: "."
