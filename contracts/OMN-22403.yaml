@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22403"
+title: "A contract that binds an acceptance criterion to a local_done_gate item is refused by the Tests gate, before a full hosted dod-verify run"
+summary: "The hosted receipt gate runs a local_done_gate item neither at the head nor at the merge base, so it refuses a bound one as a control that did not run. contract_binds_violations now names that shape, so test_every_repo_contract_binds_every_criterion refuses it in the Tests gate."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-bound-scoped-item-refused-early"
+    statement: |-
+      A contract that binds a criterion to a local_done_gate item must be refused by the repository's own contract checker.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a regression test built from the recorded annotation text and the omnimarket#4918 contract shape fails on the previous contract_binds_violations and passes once a local_done_gate item with a non-empty binds_ac is a violation -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k local_done_gate
+      - id: "AC2"
+        statement: |-
+          AC2: every contract on dev still passes the checker, so the new rule refuses no merged contract -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k every_repo_contract_binds
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract checker refuses a bound local_done_gate item and accepts every contract on the tree."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k local_done_gate"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22403-ac1-ac2-bound-scoped-item-refused"
+    description: "The checker refuses a bound local_done_gate item and no contract on the tree carries one; the tests are absent at the merge base, so they fail there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k local_done_gate"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
