@@ -10,7 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, cast
 
-from omnimarket.models.savings_estimate import ModelClaudeCodePromptRecord
+from omnimarket.models.savings_estimate import (
+    ModelClaudeCodeAssistantTurn,
+    ModelClaudeCodePromptRecord,
+)
 from omnimarket.nodes.node_claude_code_history_read_effect.models.model_history_read import (
     EnumHistoryReadStatus,
     ModelClaudeCodeHistoryReadRequest,
@@ -161,8 +164,15 @@ def _fold_session(
             usage = message.get("usage")
             if not isinstance(usage, dict):
                 usage = {}
+            turn = ModelClaudeCodeAssistantTurn(
+                message_id=message_id,
+                model=_nonempty_string(message.get("model")),
+                tokens_in=_tokens(usage.get("input_tokens")),
+                tokens_out=_tokens(usage.get("output_tokens")),
+            )
             current = current.model_copy(
                 update={
+                    "turns": (*current.turns, turn),
                     "model": current.model or _nonempty_string(message.get("model")),
                     "assistant_messages": current.assistant_messages + 1,
                     "tokens_in": current.tokens_in + _tokens(usage.get("input_tokens")),

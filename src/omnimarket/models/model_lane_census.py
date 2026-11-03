@@ -4,13 +4,21 @@
 
 The census reads the Docker inventory of the host it runs on, so it runs from a host timer on a
 host that carries a Docker Engine and nowhere else. The node's ``contract.yaml`` owns the cadence
-(``schedule``). Which hosts run the census is a deployment fact: the node overlay
-(``<root>/node_lane_census_effect/overlay.yaml``) supplies it and the package ships no host.
+(``schedule``). Which hosts run the census, and which hosts exist for it with the aliases they
+report and the lanes they may host, are deployment facts: the node overlay
+(``<root>/node_lane_census_effect/overlay.yaml``, keys ``hosts`` and ``registry``) supplies them
+and the package ships no host.
 """
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -102,10 +110,66 @@ class ModelLaneCensusHostRow(_Frozen):
     docker: Literal["engine"]
 
 
+# An alias that names no single host: every Docker Desktop daemon reports it.
+AMBIGUOUS_ALIASES = frozenset({"docker-desktop"})
+
+
+def alias_key(alias: str) -> str:
+    """How the collector matches an alias: the lowercased first DNS label."""
+    return alias.strip().lower().split(".", 1)[0]
+
+
+class ModelLaneCensusRegistryRow(_Frozen):
+    """One host that exists for the census, the names it reports and the lanes it may host."""
+
+    # The host id the census plan, findings and snapshot carry as ``host``.
+    name: NonEmptyStr
+    # Hostname or daemon names this host reports, matched by lowercased first DNS label.
+    aliases: tuple[NonEmptyStr, ...]
+    # Manifest lane names this host may host; a lane running on a host that does not list it
+    # is ``lane_on_undeclared_host``.
+    lanes: tuple[NonEmptyStr, ...]
+
+    @field_validator("aliases")
+    @classmethod
+    def _aliases_name_one_host(cls, aliases: tuple[str, ...]) -> tuple[str, ...]:
+        keys = [alias_key(alias) for alias in aliases]
+        if any(not key for key in keys):
+            raise ValueError("an alias has no host label")
+        if len(set(keys)) != len(keys):
+            raise ValueError("an alias is listed twice on one host")
+        if AMBIGUOUS_ALIASES & set(keys):
+            raise ValueError("an alias identifies no single host")
+        return aliases
+
+
 class ModelLaneCensusScheduleOverlay(_Frozen):
-    """The node overlay: every host that runs the census."""
+    """The node overlay: the hosts that run the census and the host registry.
+
+    ``hosts`` says which hosts INSTALL the schedule; ``registry`` says which hosts EXIST for the
+    census and what they may host. The two keys are independent: a Docker Desktop host belongs in
+    ``registry`` and never in ``hosts``. Neither has a default.
+    """
 
     hosts: Annotated[tuple[ModelLaneCensusHostRow, ...], Field(min_length=1)]
+    registry: Annotated[tuple[ModelLaneCensusRegistryRow, ...], Field(min_length=1)]
+
+    @field_validator("registry")
+    @classmethod
+    def _registry_names_each_host_and_alias_once(
+        cls, registry: tuple[ModelLaneCensusRegistryRow, ...]
+    ) -> tuple[ModelLaneCensusRegistryRow, ...]:
+        names = [row.name.strip().lower() for row in registry]
+        if len(set(names)) != len(names):
+            raise ValueError("registry lists a host more than once")
+        claimed: set[str] = set()
+        for row in registry:
+            for alias in row.aliases:
+                key = alias_key(alias)
+                if key in claimed:
+                    raise ValueError("an alias is claimed by more than one host")
+                claimed.add(key)
+        return registry
 
 
 class ModelLaneCensusScheduleResult(_Frozen):

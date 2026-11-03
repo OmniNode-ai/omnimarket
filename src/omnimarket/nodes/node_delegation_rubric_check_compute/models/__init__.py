@@ -47,6 +47,9 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_named_sy
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_no_phantom_paths_params import (
     ModelNoPhantomPathsParams,
 )
+from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_reference_tests_params import (
+    ModelReferenceTestsParams,
+)
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_rubric_check_request import (
     ModelRubricCheckRequest,
 )
@@ -106,6 +109,7 @@ __all__ = [
     "ModelIdsTraceableParams",
     "ModelNamedSymbolsParams",
     "ModelNoPhantomPathsParams",
+    "ModelReferenceTestsParams",
     "ModelRubricCheckRequest",
     "ModelRubricCriterion",
     "ModelRubricCriterionResult",

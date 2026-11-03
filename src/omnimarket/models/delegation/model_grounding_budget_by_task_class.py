@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Per-task-class grounded input budgets for delegation backends (OMN-20486)."""
+"""Per-task-class grounded input budgets and measured ceilings (OMN-20486, OMN-22220)."""
 
 from __future__ import annotations
 
@@ -30,9 +30,30 @@ class ModelGroundingBudgetByTaskClass(BaseModel):
         ),
     )
 
+    measured_correct_ceilings: dict[str, dict[str, int]] = Field(
+        default_factory=dict,
+        description=(
+            "Backend id to (task class to the largest input, in grounding "
+            "tokens, the backend was measured to answer correctly). Each value "
+            "must cite its measured run in the comment above it (OMN-22220)."
+        ),
+    )
+
+    def ceiling_for(self, backend_id: str, task_type: str) -> int | None:
+        """Return the measured correct ceiling, or ``None`` when not measured."""
+        return self.measured_correct_ceilings.get(backend_id, {}).get(task_type)
+
     def budget_for(self, backend_id: str, task_type: str) -> int | None:
-        """Return the class budget for ``backend_id``, or ``None`` when unset."""
-        return self.backends.get(backend_id, {}).get(task_type)
+        """Return the class budget for ``backend_id``, or ``None`` when unset.
+
+        OMN-22220: a measured correct ceiling bounds the budget, so a budget is
+        never larger than the input the backend was measured to answer correctly.
+        """
+        declared = self.backends.get(backend_id, {}).get(task_type)
+        ceiling = self.ceiling_for(backend_id, task_type)
+        if ceiling is None:
+            return declared
+        return ceiling if declared is None else min(declared, ceiling)
 
 
 __all__ = ["ModelGroundingBudgetByTaskClass"]
