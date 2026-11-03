@@ -83,3 +83,10 @@ def test_receipt_9ed1a43c_and_5b5b01e6_pass(answer: str) -> None:
 )
 def test_no_citation_refused(answer: str) -> None:
     assert handler_quality_gate._check_cites_specific_lines(answer) == _REFUSAL
+    # Paired with the new form: the same text, once it also carries a numbered
+    # ``Line: new 5`` citation, is accepted. The veto above held before the fix too,
+    # so this half is what lets the bound check fail at the merge base.
+    assert (
+        handler_quality_gate._check_cites_specific_lines(f"{answer}\nLine: new 5")
+        is None
+    )
