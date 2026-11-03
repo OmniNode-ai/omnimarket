@@ -124,3 +124,19 @@ def test_vertex_list_is_sorted_by_key_whatever_the_input_order() -> None:
         "repo_b/node_b",
     ]
     assert forward == backward
+
+
+def test_vertex_quoted_name_keeps_a_hash_inside_the_quotes() -> None:
+    (vertex,) = _vertices(
+        contract(
+            "repo_a", "n/q/contract.yaml", 'name: "a # b"  # note\nnode_type: compute\n'
+        )
+    )
+    assert vertex.name == "a # b"
+
+
+def test_vertex_a_contract_the_loader_raises_on_is_unreadable_not_fatal() -> None:
+    text = "name: node_bad\nnode_type: compute\nupdated: 2026-99-99\n"
+    (vertex,) = _vertices(contract("repo_a", "n/bad/contract.yaml", text))
+    assert vertex.key == "repo_a/node_bad"
+    assert vertex.cause is EnumVertexCause.CONTRACT_UNREADABLE

@@ -23,6 +23,7 @@ from omnimarket.nodes.node_network_graph_compute.handlers.dialect_table import (
     ITEM_TOPIC_KEYS,
 )
 
+_QUOTES = "\"'"
 _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
@@ -40,17 +41,20 @@ def find_top_level_scalar(text: str, key: str) -> str | None:
     found = _top_level_line(key).search(text)
     if found is None:
         return None
-    value = re.sub(r"[ \t]+#.*$", "", found.group("value")).strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        value = value[1:-1].strip()
-    return value or None
+    raw = found.group("value").strip()
+    if raw[:1] in _QUOTES:
+        closing = raw.find(raw[0], 1)
+        value = raw[1:closing] if closing > 0 else raw[1:]
+    else:
+        value = re.sub(r"[ \t]+#.*$", "", raw)
+    return value.strip() or None
 
 
 def parse_contract(text: str) -> Mapping[str, object] | None:
     """The contract as a mapping, or None when it does not parse as one."""
     try:
         loaded = yaml.load(text, Loader=_LOADER)
-    except yaml.YAMLError:
+    except (yaml.YAMLError, ValueError, OverflowError):
         return None
     return loaded if isinstance(loaded, Mapping) else None
 

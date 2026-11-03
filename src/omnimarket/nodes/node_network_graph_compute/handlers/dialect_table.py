@@ -38,6 +38,8 @@ DIALECT_TABLE: tuple[ModelDialect, ...] = (
     ),
     ModelDialect(direction=_SUBSCRIBE, path=("subscribe_topics",), shape=_LIST),
     ModelDialect(direction=_SUBSCRIBE, path=("consumed_events",), shape=_LIST),
+    ModelDialect(direction=_SUBSCRIBE, path=("subscribed_events",), shape=_LIST),
+    ModelDialect(direction=_SUBSCRIBE, path=("subscriptions", "topics"), shape=_LIST),
     ModelDialect(direction=_SUBSCRIBE, path=("input_subscriptions",), shape=_LIST),
     ModelDialect(
         direction=_SUBSCRIBE, path=("externally_consumed_topics",), shape=_LIST

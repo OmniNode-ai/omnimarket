@@ -46,6 +46,10 @@ FIXTURES: dict[str, str] = {
     "event_bus.subscribe_topic_metadata": (
         f"event_bus:\n  subscribe_topic_metadata:\n    {TOPIC}:\n      kind: cmd\n"
     ),
+    "subscribed_events": (
+        f"subscribed_events:\n  - event_type: ModelX\n    full_topic_pattern: {TOPIC}\n"
+    ),
+    "subscriptions.topics": f"subscriptions:\n  topics:\n    - {TOPIC}\n",
     "published_events.event_pattern": (
         f"published_events:\n  - event_pattern: {TOPIC}\n"
     ),
