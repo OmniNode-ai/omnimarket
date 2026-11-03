@@ -4,74 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.models.model_andon_ledger_holds import (
-    ModelAndonLedgerHoldsRequest,
-    ModelAndonLedgerHoldsResult,
-)
-
-from .models import (
-    ModelExceptionEmitRequest,
-    ModelExceptionEmitResult,
-    ModelExceptionQueueRead,
-    ModelExceptionQueueReadRequest,
-    ModelExceptionQueueRequest,
-    ModelExceptionQueueResult,
-    ModelExceptionResolveRequest,
-    ModelExceptionResolveResult,
-    ModelOpenStopsRequest,
-    ModelOpenStopsResult,
-    ModelStopEventRequest,
-    ModelStopEventResult,
-)
+from .handler import HandlerExceptionQueueDispatch
 
 CONTRACT = Path(__file__).with_name("contract.yaml")
 
 
-class NodeExceptionQueueEffect:
+class NodeExceptionQueueEffect(HandlerExceptionQueueDispatch):
+    """Expose the exception queue handler through its node contract."""
+
     contract_path = CONTRACT
-
-    def handle(
-        self,
-        request: ModelExceptionEmitRequest
-        | ModelExceptionQueueRequest
-        | ModelExceptionResolveRequest
-        | ModelExceptionQueueReadRequest
-        | ModelStopEventRequest
-        | ModelOpenStopsRequest
-        | ModelAndonLedgerHoldsRequest,
-    ) -> (
-        ModelExceptionEmitResult
-        | ModelExceptionQueueResult
-        | ModelExceptionResolveResult
-        | ModelExceptionQueueRead
-        | ModelStopEventResult
-        | ModelOpenStopsResult
-        | ModelAndonLedgerHoldsResult
-    ):
-        from .container.container_exception_queue_effect import (
-            create_handler_andon_ledger_holds,
-            create_handler_exception_emit,
-            create_handler_exception_queue,
-            create_handler_exception_queue_read,
-            create_handler_exception_resolve,
-            create_handler_open_stops,
-            create_handler_stop_event,
-        )
-
-        if isinstance(request, ModelExceptionEmitRequest):
-            return create_handler_exception_emit().handle(request)
-        if isinstance(request, ModelExceptionQueueRequest):
-            return create_handler_exception_queue().handle(request)
-        if isinstance(request, ModelExceptionQueueReadRequest):
-            return create_handler_exception_queue_read().handle(request)
-        if isinstance(request, ModelExceptionResolveRequest):
-            return create_handler_exception_resolve().handle(request)
-        if isinstance(request, ModelStopEventRequest):
-            return create_handler_stop_event().handle(request)
-        if isinstance(request, ModelOpenStopsRequest):
-            return create_handler_open_stops().handle(request)
-        if isinstance(request, ModelAndonLedgerHoldsRequest):
-            return create_handler_andon_ledger_holds().handle(request)
-        raise TypeError(
-            f"Unsupported exception queue request: {type(request).__name__}"
-        )
