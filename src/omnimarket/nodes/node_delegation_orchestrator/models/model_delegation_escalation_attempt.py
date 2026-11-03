@@ -189,6 +189,18 @@ class ModelDelegationEscalationAttempt(BaseModel):
             "it. None when no gate judged this rung."
         ),
     )
+    # OMN-19996: the deployed delegation terminal carries no secret_ref, so the
+    # key a customer-key rung used travels on its own row. Omitted from the
+    # dump when absent, so a row with no customer key serialises as before.
+    secret_ref: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The minted tenant key REFERENCE this rung's call was authenticated "
+            "with, set only when the effect answered for this exact attempt "
+            "with credential_source=customer_key. A name, never a value."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
