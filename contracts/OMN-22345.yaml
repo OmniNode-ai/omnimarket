@@ -1,97 +1,179 @@
-schema_version: 1.0.0
-ticket_id: OMN-22345
-title: 'The agent review dispatch signer binds to the secret store by name: the receipt signing key is read from the store at bind time and is never a file, a setting or an argument on a host'
-summary: The dispatch also gives its kafka source-control bus the registry root so the lane declaration is found, and the event-emit spool tolerates a file a peer emitter already took, so a delegation event of a harness voter is no longer lost to the race. build_production_ports reads the receipt signing key through the overlay's signing_key_store reference (one secret:// reference naming provider, environment, path and secret name) with the host's own store identity, and hands it to the signer child's environment only. The process-environment and host-env-file paths for the key are removed. The store identity names (address, client id, client secret, project) are read from the environment or the host env file, never reach a voter's child process, and an absent or unreadable store ends the request before any port is called, with the name on stderr and no value.
+schema_version: "1.0.0"
+ticket_id: "OMN-22345"
+title: "The agent review roster approves one Codex and one Sonnet voter beside the lab rung, and a review-only cloud lane returns its review to the dispatch node"
+summary: "This omnimarket slice builds the code side: the cloud placement node gains the review-only lane kind (route, a cloud prompt that asks for no push and no pull request, a session read that takes the ended session's final message and review file from the sessions API events, a strict parse into the typed unsigned review in the v2 compact verdict format, and the close decision under which a review-only lane with a parsed review ends done with no PR and one with none ends cloud-review-unparsed, outcome failed, never blocked); a new node node_agent_review_cloud_rung_effect renders the review-only brief for one voter of rung cloud, runs it through the remote-lane runner with every secret-shaped name dropped from the child environment, emits one delegation event and returns the vote unsigned. AC1 to AC4 (the roster and verifier overlay data of the sibling data pull request) and AC7 (the lab proof) are not this pull request's criteria; each is a disposition entry at the local Done gate."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn22345-ac1
-  statement: 'AC1: The signing key is read by the overlay signing_key_store reference, and no path reads it from the process environment or the host env file'
-  acceptance:
-  - id: AC1
-    statement: 'AC1: The signing key is read by the overlay signing_key_store reference, and no path reads it from the process environment or the host env file -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -k "key" -q` shows a build that succeeds with LOCAL_LLM_SHARED_SECRET in the environment and no store reference read, or the store is asked for a reference other than the overlay block'
-- id: req-omn22345-ac2
-  statement: 'AC2: An absent store identity or an unreadable store ends the request before any port is called and names the missing setting, never a value'
-  acceptance:
-  - id: AC2
-    statement: 'AC2: An absent store identity or an unreadable store ends the request before any port is called and names the missing setting, never a value -- falsifier: the same test file finds a bind that returns ports after the store refused, or an error text holding the key or the client secret'
-- id: req-omn22345-ac3
-  statement: 'AC3: The store identity names never reach a voter child process'
-  acceptance:
-  - id: AC3
-    statement: 'AC3: The store identity names never reach a voter child process -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q` finds INFISICAL_ADDR, INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET or INFISICAL_PROJECT_ID in a harness child environment or request'
-- id: req-omn22345-ac4
-  statement: 'AC4: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters'
-  acceptance:
-  - id: AC4
-    statement: 'AC4: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters -- falsifier: the entry exits 1 with a not-bound line, or the stored receipt lists fewer than two counted non-lab voters'
-- id: req-omn22345-ac5
-  statement: 'AC5: The source-control bus of the dispatch reads the lane declaration under the registry root, and a spool file a peer emitter already took is not an error'
-  acceptance:
-  - id: AC5
-    statement: 'AC5: The source-control bus of the dispatch reads the lane declaration under the registry root, and a spool file a peer emitter already took is not an error -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -k "lane_declaration or in_memory_bus" -q` or `uv run pytest tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py -k "peer" -q` fails'
+  - id: "req-omn22345-cloud-rung"
+    statement: "A cloud session never holds the shared signing secret; the cloud rung returns the review unsigned and the dispatch node signs it."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: A cloud session never holds the shared signing secret and the dispatch node signs its unsigned review -- falsifier: `uv run pytest` of the cloud rung port test finds the secret name or value in the rendered session prompt or environment, or a review carrying a signature from the session"
+  - id: "req-omn22345-return-channel"
+    statement: "A review-only cloud lane reads the ended session's final message or review file back, parses the typed review and ends done with no PR."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: A review-only cloud lane reads the session final message or its review file back into the dispatch node and ends done with no PR -- falsifier: `uv run pytest` of the remote-lane runner tests for a review-only cloud lane with a final message and no PR closes it cloud-no-pr or outcome blocked, or the dispatch node receives no review"
+  - id: req-omn22345-ac8
+    statement: 'AC8: The signing key is read by the overlay signing_key_store reference, and no path reads it from the process environment or the host env file'
+    acceptance:
+    - id: AC8
+      statement: 'AC8: The signing key is read by the overlay signing_key_store reference, and no path reads it from the process environment or the host env file -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -k "key" -q` shows a build that succeeds with LOCAL_LLM_SHARED_SECRET in the environment and no store reference read, or the store is asked for a reference other than the overlay block'
+  - id: req-omn22345-ac9
+    statement: 'AC9: An absent store identity or an unreadable store ends the request before any port is called and names the missing setting, never a value'
+    acceptance:
+    - id: AC9
+      statement: 'AC9: An absent store identity or an unreadable store ends the request before any port is called and names the missing setting, never a value -- falsifier: the same test file finds a bind that returns ports after the store refused, or an error text holding the key or the client secret'
+  - id: req-omn22345-ac10
+    statement: 'AC10: The store identity names never reach a voter child process'
+    acceptance:
+    - id: AC10
+      statement: 'AC10: The store identity names never reach a voter child process -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q` finds INFISICAL_ADDR, INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET or INFISICAL_PROJECT_ID in a harness child environment or request'
+  - id: req-omn22345-ac11
+    statement: 'AC11: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters'
+    acceptance:
+    - id: AC11
+      statement: 'AC11: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters -- falsifier: the entry exits 1 with a not-bound line, or the stored receipt lists fewer than two counted non-lab voters'
+  - id: req-omn22345-ac12
+    statement: 'AC12: The source-control bus of the dispatch reads the lane declaration under the registry root, and a spool file a peer emitter already took is not an error'
+    acceptance:
+    - id: AC12
+      statement: 'AC12: The source-control bus of the dispatch reads the lane declaration under the registry root, and a spool file a peer emitter already took is not an error -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -k "lane_declaration or in_memory_bus" -q` or `uv run pytest tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py -k "peer" -q` fails'
 evidence_requirements:
-- kind: tests
-  description: The dispatch node suite under both profiles and the literal scan.
-  command: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
+  - kind: "tests"
+    description: "The cloud rung's tests on the in-memory overlay (the Redpanda overlay case runs under the kafka marker): the brief and the runner's child environment hold no secret name or value, a vote has no signature, a review of another head is refused, a foreign model or endpoint is returned as written, no delegation event means no vote. None exists at the merge base."
+    command: "uv run pytest tests/unit/nodes/node_agent_review_cloud_rung_effect/test_cloud_rung.py -q -m 'not kafka' --no-cov"
+  - kind: "tests"
+    description: "The review-only return channel of the cloud placement node: route, prompt, the session events read run end to end over a stubbed sessions API, the strict parse with its typed refusals, and the close (done with no PR; cloud-review-unparsed and failed, never blocked). Twelve of its cases fail at the merge base."
+    command: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_review_only.py -q --no-cov"
+  - kind: tests
+    description: The dispatch node suite under both profiles and the literal scan.
+    command: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
 emergency_bypass:
   enabled: false
-  justification: ''
-  follow_up_ticket_id: ''
+  justification: ""
+  follow_up_ticket_id: ""
 dod_evidence:
-- id: dod-omn22345-ac1
-  description: 'AC1: the key tests read the key through the overlay reference with a fake store and find no environment path.'
-  source: manual
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'key or store'
-    cwd: .
-- id: dod-omn22345-ac2
-  description: 'AC2: an absent store identity and a refusing store end the bind with the name and no value.'
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'identity or cannot_be_read'
-    cwd: .
-- id: dod-omn22345-ac3
-  description: 'AC3: the harness child holds none of the store identity names.'
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line
-    cwd: .
-- id: dod-omn22345-ac4
-  description: 'AC4: lab step, recorded as a ledger receipt by the proof lane (review-proof-1525). Not met by this change alone.'
-  source: manual
-  binds_ac:
-  - AC4
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: bash -o pipefail -c 'onex run-node node_agent_review_dispatch_orchestrator --help > /dev/null'
-    cwd: .
-- id: dod-omn22345-ac5
-  description: 'AC5: the kafka bus opener receives the registry root, and the spool measures past or quarantines around a file a peer took without raising.'
-  source: manual
-  binds_ac:
-  - AC5
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'lane_declaration or in_memory_bus or peer'
-    cwd: .
-- id: dod-omn22345-integration-proof
-  description: The pushed head ran the dispatch node suite on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
-  source: manual
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: |-
-      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ticket-omn-22345-1103-r -- uv run --frozen pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
-    cwd: .
+  - id: "dod-omn22345-ac1"
+    description: "AC1 is overlay data of the sibling roster data pull request (lane roster-data-1240), outside this repository. Pending: this pull request changes no roster or policy value. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac1"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac2"
+    description: "AC2 is the forbidden endpoint classes of the roster and verifier overlays, set by the sibling roster data pull request. Pending: this pull request changes no policy value. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac2"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac3"
+    description: "AC3 is the quorum of the dispatch node (omnimarket#4946) over the sibling roster data. Pending: this pull request changes no quorum code or value. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac3"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac4"
+    description: "AC4 is the verifier deployment overlay of the sibling roster data pull request. Pending: this pull request changes no overlay. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac4"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac5"
+    description: "AC5: the cloud rung's tests pass: the rendered brief holds neither the signing secret's name nor any host environment value, the remote-lane runner binding run as a real child process receives no secret-shaped name or value, a vote carrying a signature is refused by its model, and the rung returns its vote unsigned for the dispatch node to sign."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_agent_review_cloud_rung_effect/test_cloud_rung.py -q -m 'not kafka' --no-cov"
+        cwd: "."
+    binds_ac: ["AC5"]
+  - id: "dod-omn22345-ac6"
+    description: "AC6, the node side: a review-only lane whose ended session's final message or review file holds the review closes done with no PR and the typed review on the result, and one with no parseable review closes cloud-review-unparsed with outcome failed, never cloud-no-pr or blocked. The runner's caller patch that closes on this answer is a sibling pull request in the plugin repository."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_review_only.py -q --no-cov"
+        cwd: "."
+    binds_ac: ["AC6"]
+  - id: "dod-omn22345-ac7"
+    description: "AC7 is the lab proof on one real pull request head after the roster data and the dispatch bindings run on a lab host. Pending: recorded in a PR comment starting `Lab: head=` when it runs. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac7"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-deploy-probe"
+    description: "Deploy probe. GitHub serves the cloud rung handler and the review-only close of the cloud placement node at the checked-out HEAD. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_agent_review_cloud_rung_effect/handlers/handler_cloud_rung.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerAgentReviewCloudRung", "secret_leaks", "runner_environment", "CloudRungRefusedError")); print("cloud rung deploy probe: PASS")' &&
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("cloud_review_result", "CLOUD_REVIEW_UNPARSED", "CLOUD_SESSION_REVIEW_TAIL")); print("review-only close deploy probe: PASS")'
+  - id: "dod-omn22345-integration-proof"
+    description: "The pushed head ran the cloud placement node tests and the cloud rung node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22345 -- uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect tests/unit/nodes/node_agent_review_cloud_rung_effect -q --no-cov -m "not kafka"
+        cwd: "."
+  - id: dod-omn22345-ac8
+    description: 'AC8: the key tests read the key through the overlay reference with a fake store and find no environment path.'
+    source: manual
+    binds_ac:
+    - AC8
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'key or store'
+      cwd: .
+  - id: dod-omn22345-ac9
+    description: 'AC9: an absent store identity and a refusing store end the bind with the name and no value.'
+    source: manual
+    binds_ac:
+    - AC9
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'identity or cannot_be_read'
+      cwd: .
+  - id: dod-omn22345-ac10
+    description: 'AC10: the harness child holds none of the store identity names.'
+    source: manual
+    binds_ac:
+    - AC10
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line
+      cwd: .
+  - id: dod-omn22345-ac11
+    description: 'AC11: lab step, recorded as a ledger receipt by the proof lane (review-proof-1525). Not met by this change alone.'
+    source: manual
+    binds_ac:
+    - AC11
+    execution_scope: local_done_gate
+    checks:
+    - check_type: command
+      check_value: bash -o pipefail -c 'onex run-node node_agent_review_dispatch_orchestrator --help > /dev/null'
+      cwd: .
+  - id: dod-omn22345-ac12
+    description: 'AC12: the kafka bus opener receives the registry root, and the spool measures past or quarantines around a file a peer took without raising.'
+    source: manual
+    binds_ac:
+    - AC12
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'lane_declaration or in_memory_bus or peer'
+      cwd: .
+  - id: dod-omn22345-signer-integration-proof
+    description: The pushed head ran the dispatch node suite on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+    - check_type: command
+      check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ticket-omn-22345-1103-r -- uv run --frozen pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
+      cwd: .
