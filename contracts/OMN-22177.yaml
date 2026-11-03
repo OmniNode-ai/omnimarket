@@ -150,11 +150,27 @@ dod_evidence:
   - check_type: command
     check_value: bash -o pipefail -c 'uv run pytest tests/unit/nodes/node_agent_review_harness_rung_effect tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -v -rs -n 0 -p no:randomly --no-cov > /tmp/omn22177-harness-profiles.txt; ! grep -q SKIPPED /tmp/omn22177-harness-profiles.txt; a=$(grep -c "\[inmemory[]-].* PASSED" /tmp/omn22177-harness-profiles.txt); b=$(grep -c "\[redpanda_overlay[]-].* PASSED" /tmp/omn22177-harness-profiles.txt); test "$a" -gt 0 && test "$a" = "$b"'
     cwd: .
-- id: dod-omn22177-ac8
-  description: 'AC8: lab step, run after the deploy by the local Done gate: the same head dispatched twice on the lab dev lane yields one receipt id. Not met by this change alone.'
+- id: dod-omn22177-ac8-in-process
+  description: 'AC8, in process: the production file store, terminal log and review poster over a recorded source-control bus answer two requests for the same head with one receipt id and one review post. The lab dev lane run is dod-omn22177-ac8, in the local Done gate.'
   source: manual
   binds_ac:
   - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k second_request_for_a_posted_head
+    cwd: .
+- id: dod-omn22177-dod1-registered
+  description: 'DOD1, in process: the node is an onex.nodes entry point, the runtime builds its handler with no arguments, and a request on a host without the overlay ends failed not_bound. The lab dev lane answer is dod-omn22177-dod1, in the local Done gate.'
+  source: manual
+  binds_ac:
+  - DOD1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_agent_review_dispatch_orchestrator tests/unit/nodes/node_agent_review_dispatch_orchestrator -q -n 0 -p no:randomly --no-cov --tb=line -k 'registered_as_an_entry_point or constructs_as_the_runtime_builds_it or builds_the_handler_with_no_arguments or without_the_overlay_fails_not_bound'
+    cwd: .
+- id: dod-omn22177-ac8
+  description: 'AC8: lab step, run after the deploy by the local Done gate: the same head dispatched twice on the lab dev lane yields one receipt id. Not met by this change alone.'
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -163,8 +179,6 @@ dod_evidence:
 - id: dod-omn22177-dod1
   description: 'DOD1: after merge and the release train, the node is registered and answers on the lab dev lane. Not met by this change alone.'
   source: manual
-  binds_ac:
-  - DOD1
   execution_scope: local_done_gate
   checks:
   - check_type: command
