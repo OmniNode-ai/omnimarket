@@ -928,6 +928,33 @@ def refuse_undeclared_local_model(
     raise ProtocolConfigurationError(msg)
 
 
+def customer_may_run_backend(
+    *,
+    tenant_id: str | None,
+    backend: ModelResolvedDelegationBackend,
+    house_refs: frozenset[str],
+) -> bool:
+    """Whether ``tenant_id``'s work may be handed to ``backend`` (OMN-22179).
+
+    ``False`` exactly where the customer-key terminus would refuse the route as
+    a platform-owned key: customer-attributed work, and a backend carrying a
+    credential reference the platform owns. House and untenanted work may run
+    anywhere, and a keyless or customer-keyed backend is the customer's own.
+
+    The local dispatch walks a customer's declared local models first and then
+    falls through to the ladder's entry rung. Offering that rung to a customer
+    who holds no key for it made the terminus raise on a machine that HAD
+    declared a local model, and the raise discarded the declared model's own
+    failure: the receipt read "no backend was reached" and the refusal told the
+    customer to declare a local model. A rung they may not run is not a rung
+    they can fall through to.
+    """
+    if not is_customer_attributed(tenant_id):
+        return True
+    refs = {ref for ref in (backend.secret_ref, backend.api_key_env) if ref}
+    return not refs & house_refs
+
+
 def resolve_declared_local_model(
     task_type: str,
     *,
@@ -1032,6 +1059,7 @@ def resolve_timeout_seconds(*, backend_timeout_ms: int) -> float:
 __all__ = [
     "BIFROST_OVERLAY_STORE_KEY",
     "ModelResolvedDelegationBackend",
+    "customer_may_run_backend",
     "describe_model_name_source",
     "load_bifrost_backends",
     "refuse_undeclared_local_model",
