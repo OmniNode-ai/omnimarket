@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22315"
+title: "A relative cwd in a dod_verify check names the contract's own tree and stays contained"
+summary: >-
+  EvidenceCollector._resolve_cwd anchors a declared relative cwd at the contract's own repository tree instead of the verifier process cwd, and counts that tree as contained for a relative cwd only. A check declaring cwd "." no longer reads "cwd escapes OMNI_HOME containment" when the verifier is started outside OMNI_HOME (a lane clone, the autoclose sweep's contract-roots clone). An absolute path outside OMNI_HOME, a dot-dot traversal and a symlink that leaves both roots stay refused, and a failing command still reads FAILED.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22315-relative-cwd"
+    statement: "A relative cwd in a dod_verify check resolves in the contract's own tree and the containment refusals that protect OMNI_HOME survive."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a command check declaring cwd \".\" verifies when the verifier process cwd is outside OMNI_HOME and the contract sits in a repository tree -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k relative_cwd_outside_omni_home, red on the current tree with the containment message"
+      - id: "AC2"
+        statement: "AC2: an absolute cwd outside OMNI_HOME, a dot-dot traversal and a symlink under the contract tree that leaves both roots stay refused -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k relative_cwd_still_contained, where any of the three resolving fails the test"
+      - id: "AC3"
+        statement: "AC3: a command that fails under a relative cwd still reads FAILED, never verified -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k relative_cwd_failing_command_fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "Relative cwd containment tests for OMN-22315."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22315-ac1-relative-cwd-outside-omni-home"
+    description: "A cwd \".\" and a relative subdirectory verify from a process cwd outside OMNI_HOME and run in the contract's own tree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov -k 'relative_cwd_outside_omni_home or relative_subdirectory_cwd or runs_in_contract_tree'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22315-ac2-still-contained"
+    description: "An absolute cwd outside OMNI_HOME or inside the own tree, a dot-dot traversal and a symlink leaving both roots stay refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov -k relative_cwd_still_contained"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn22315-ac3-failing-command-fails"
+    description: "A failing command and an absent marker file under a relative cwd read FAILED."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov -k 'relative_cwd_failing_command_fails or relative_cwd_missing_file_check_fails'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
