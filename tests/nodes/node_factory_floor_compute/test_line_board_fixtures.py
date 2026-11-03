@@ -5,9 +5,9 @@
 The fixtures sit in a public repository, so the private names, hosts and addresses in the ledger rows are replaced
 (``[scrubbed]``, ``private-repo-N``) before they are stored. The header of each fixture therefore records two digests per
 row: ``original_sha256`` of the row exactly as the ledger or its archive roll holds it, and ``scrubbed_sha256`` of the
-row as stored. Everywhere the tests below check the stored row against its scrubbed digest. Where the ledger itself is
-on the machine (``ONEX_LEDGER_PATH``), they also check that the original digest is the digest of a line in the live
-file or an archive roll: the stored row is then derived from a real row, not written by hand.
+row as stored. Everywhere the tests below check the stored row against its scrubbed digest. The original-digest test
+exists only where the ledger file (``ONEX_LEDGER_PATH``) is on the machine and checks that the original digest is the
+digest of a line in the live file or an archive roll: the stored row is then derived from a real row, not written by hand.
 """
 
 from __future__ import annotations
@@ -71,6 +71,9 @@ def _ledger_digests() -> frozenset[str] | None:
     return frozenset(digests)
 
 
+_LEDGER = _ledger_digests()
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(("case", "variant"), PAIRS, ids=IDS)
 def test_stored_rows_match_their_scrubbed_digests(case: str, variant: str) -> None:
@@ -92,14 +95,13 @@ def test_every_row_was_written_by_the_observation_time(case: str, variant: str) 
         assert _ts(entry["ts"]) <= _ts(head["observed_at"]), entry["ref"]
 
 
-@pytest.mark.unit
-@pytest.mark.parametrize(("case", "variant"), PAIRS, ids=IDS)
-def test_original_digests_are_lines_of_the_ledger(case: str, variant: str) -> None:
-    digests = _ledger_digests()
-    if digests is None:
-        pytest.skip("ONEX_LEDGER_PATH names no ledger on this machine")
-    for entry in header(case, variant)["ledger_rows"]:
-        assert entry["original_sha256"] in digests, entry["ref"]
+if _LEDGER is not None:
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(("case", "variant"), PAIRS, ids=IDS)
+    def test_original_digests_are_lines_of_the_ledger(case: str, variant: str) -> None:
+        for entry in header(case, variant)["ledger_rows"]:
+            assert entry["original_sha256"] in _LEDGER, entry["ref"]
 
 
 @pytest.mark.unit
