@@ -134,6 +134,20 @@ requirements:
         statement: "AC45: consecutive steps the contract marks concurrent run in threads and report in contract order, hosts, pool, friction and process_health are marked and factory_floor is not, and a step naming fresh_relpath and fresh_seconds is skipped while its output is younger and runs when it is older -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
       - id: "AC46"
         statement: "AC46: a transfer whose ssh connection did not open (exit 255) is retried twice before the publish is refused, and a command that ran is never retried -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k transfer_retries"
+  - id: "req-omn21733-data-health"
+    statement: |-
+      The floor record carries one data-health fact and the site draws one strip from it on the Dashboard and the Floor: a state per source (Available, Partial, Overdue, Unavailable, Snapshot) judged against thresholds named once in the compute contract, generated and published time kept apart from each source's read time, an unread source shown as unread and never as 0, and a stale or failed update never drawn as live.
+    acceptance:
+      - id: "AC81"
+        statement: "AC81: the projection carries data_health with a state per source from the five states, thresholds read from the node contract, and an unread source projects unavailable with age None and is counted in unread, never as 0 -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov -k data_health_states_and_unread"
+      - id: "AC82"
+        statement: "AC82: generated_at and published_at are separate fields and the strip labels publish time apart from each source's read time -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov -k strip_separates_publish_and_read_time"
+      - id: "AC83"
+        statement: "AC83: each of the five states renders its word and an icon without relying on colour, and the strip leads with the unavailable count before the overdue count -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov -k strip_states_readable_without_colour"
+      - id: "AC84"
+        statement: "AC84: a record older than the overdue threshold shows Overdue and older than the stale threshold shows Stale, not live, and a failed fetch keeps the last values with their age and Update unavailable -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov -k stale_page_never_looks_live"
+      - id: "AC85"
+        statement: "AC85: the publish stamps published_at into the served record apart from generated_at, and the change is proven on the real site after a publish (the served factory-floor.json carries data_health with generated_at and published_at and the served page contains the strip), recorded as installed=<host>:<revision> with observed=<what ran> -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov -k published_at_is_stamped_apart_from_generated_at"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -487,6 +501,46 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k transfer_retries"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac81"
+    description: "AC81 data_health states per source, thresholds from the contract, an unread source unavailable with age None and counted in unread."
+    source: "manual"
+    binds_ac: ["AC81"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k data_health_states_and_unread"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac82"
+    description: "AC82 the strip draws generated, published and fetched time apart from each source's read time."
+    source: "manual"
+    binds_ac: ["AC82"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k strip_separates_publish_and_read_time"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac83"
+    description: "AC83 each of the five states draws its word and a different icon; the unavailable count leads the overdue count."
+    source: "manual"
+    binds_ac: ["AC83"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k strip_states_readable_without_colour"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac84"
+    description: "AC84 overdue, stale and failed-fetch states are drawn from the browser clock and never as live."
+    source: "manual"
+    binds_ac: ["AC84"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k stale_page_never_looks_live"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac85"
+    description: "AC85 the publish stamps published_at apart from generated_at; the live readback is in the PR."
+    source: "manual"
+    binds_ac: ["AC85"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k published_at_is_stamped_apart_from_generated_at"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-floor-suites"
     description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."
