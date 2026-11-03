@@ -86,7 +86,7 @@ def test_integrating_merged_but_not_running_is_not_done_and_not_built() -> None:
     assert item.state == "integrating"
     assert "not running on dev" in item.note
     assert "omnimarket#9001" in item.note
-    assert line.percent_built == 0
+    assert line.progress.percent == 0.0
 
 
 def test_integrating_running_evidence_for_another_merge_does_not_count() -> None:
@@ -99,7 +99,7 @@ def test_integrating_merged_and_running_without_a_proof_says_so() -> None:
     item, line = a1(running_evidence=(running(),))
     assert item.state == "integrating"
     assert "integration proof" in item.note
-    assert line.percent_built == 0
+    assert line.progress.percent == 0.0
 
 
 def test_integrating_a_failed_proof_is_unproven() -> None:
@@ -132,7 +132,7 @@ def test_integrating_counts_as_building_not_done_and_does_not_open_dependents() 
     )
     item, line = a1(plans=(dependent,), running_evidence=())
     assert item.state == "integrating"
-    assert line.status_pill == "building"
+    assert line.condition == "building"
     waiting = next(i for s in line.stations for i in s.items if i.id == "A2")
     assert waiting.state == "wait"
 
@@ -141,7 +141,7 @@ def test_merged_and_running_with_a_passed_proof_is_done_and_built() -> None:
     item, line = a1(running_evidence=(running(),), ledger=(proof(),))
     assert item.state == "done"
     assert "running on dev" in item.note
-    assert line.percent_built == 50
+    assert line.progress.percent == 50.0
 
 
 def test_merged_and_running_proof_may_name_the_ticket_instead_of_the_pr() -> None:
@@ -183,7 +183,7 @@ def test_integrating_linear_done_alone_never_yields_done() -> None:
     item = result.lines[0].stations[0].items[0]
     assert item.state == "integrating"
     assert item.note.startswith("Linear done")
-    assert result.lines[0].percent_built == 0
+    assert result.lines[0].progress.percent == 0.0
 
 
 def test_integrating_a_done_terminal_alone_never_yields_done() -> None:
@@ -197,7 +197,7 @@ def test_integrating_a_done_terminal_alone_never_yields_done() -> None:
     item = result.lines[0].stations[0].items[0]
     assert item.state == "integrating"
     assert item.note.startswith("terminal done")
-    assert result.lines[0].percent_built == 0
+    assert result.lines[0].progress.percent == 0.0
 
 
 def test_integrating_a_handed_off_terminal_whose_prs_merged_is_not_yet_done() -> None:
@@ -255,7 +255,7 @@ def test_integrating_the_plans_today_table_follows_the_same_rule() -> None:
         )
     )
     assert unproven.lines[0].stations[0].items[0].state == "integrating"
-    assert unproven.lines[0].percent_built == 0
+    assert unproven.lines[0].progress.percent == 0.0
     proven = compute_factory_floor(
         request(
             plans=(table,),
@@ -265,7 +265,7 @@ def test_integrating_the_plans_today_table_follows_the_same_rule() -> None:
         )
     )
     assert proven.lines[0].stations[0].items[0].state == "done"
-    assert proven.lines[0].percent_built == 100
+    assert proven.lines[0].progress.percent == 100.0
 
 
 def test_integrating_sources_record_whether_running_evidence_was_read() -> None:
