@@ -258,6 +258,15 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     # why the earlier one was abandoned. ``None`` means this attempt never
     # reached an accept/climb decision (a transport skip on the bus-less path),
     # which is a different fact from "it was rejected" and is typed as such.
+    # OMN-22224: how long this rung took, so a run with two or more attempts can
+    # split its time per rung. 0 for a rung that was never sent (skipped before
+    # inference). None only for a producer that predates the field or a bus
+    # chain that reported no latency for the rung; never a guess.
+    duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        description="Milliseconds this rung took; 0 when the rung was never sent.",
+    )
     acceptance_decision: EnumDelegationAcceptanceDecision | None = Field(
         default=None,
         description="Whether this rung's response was accepted or the ladder climbed past it.",

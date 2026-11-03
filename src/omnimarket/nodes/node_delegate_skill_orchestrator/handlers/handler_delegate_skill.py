@@ -739,6 +739,15 @@ def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
     return fields
 
 
+def _as_duration_ms(raw: dict[str, Any]) -> int | None:
+    """OMN-22224: the rung's measured time, from ``duration_ms`` or the bus's ``latency_ms``."""
+    for key in ("duration_ms", "latency_ms"):
+        value = raw.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
 def _attempt_record_with_lineage(**values: Any) -> ModelDelegateSkillAttemptRecord:
     """OMN-20168: malformed lineage must never lose a terminal."""
     try:
@@ -837,6 +846,7 @@ def _attempt_records(
                         if raw.get("quality_score") is not None
                         else None
                     ),
+                    duration_ms=_as_duration_ms(raw),
                     cost_usd=_as_float(raw.get("cost_usd")),
                     usage_source=_as_usage_source(raw.get("usage_source")),
                     failure_class=(
@@ -874,6 +884,7 @@ def _attempt_records(
                     if raw.get("quality_score") is not None
                     else None
                 ),
+                duration_ms=_as_duration_ms(raw),
                 cost_usd=_as_float(raw.get("cost_usd")),
                 usage_source=_as_usage_source(raw.get("usage_source")),
                 failure_class=(
