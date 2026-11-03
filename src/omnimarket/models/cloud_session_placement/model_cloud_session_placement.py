@@ -177,3 +177,5 @@ class ModelCloudSessionPlacementResult(BaseModel):
     title: str | None = None
     parsed: dict[str, Any] | None = None
     branches: list[str] = Field(default_factory=list)
+    status: str | None = None
+    outcome: str | None = None

@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-22348
+title: The swe discriminator smoke test forbids sleeping in the model client without breaking subprocess waits
+summary: The autouse sleep guard in the smoke test no longer patches the shared time module, so a grading
+  subprocess that outlives its first poll does not fail the test.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22348-sleep-guard
+  statement: The smoke test forbids sleeping in the model client and leaves every other caller of time.sleep alone.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a subprocess that is still running at its first poll finishes under the smoke test''s
+      sleep guard -- falsifier: pytest test that runs a child sleeping 0.4 s through subprocess.run with a timeout
+      and fails with sleep forbidden when the guard patches the shared time module'
+  - id: AC2
+    statement: 'AC2: the guard still forbids sleeping inside the model client -- falsifier: pytest test that
+      calls model_client.time.sleep and fails if no AssertionError is raised'
+evidence_requirements:
+- kind: tests
+  description: The smoke test file, offline.
+  command: uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q --no-cov -n 0
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22348-ac1-subprocess-wait
+  description: 'AC1: a subprocess still running at its first poll finishes under the smoke test''s sleep guard'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q --no-cov
+      -n 0 -k test_the_sleep_guard_leaves_a_subprocess_wait_alone
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn22348-ac2-model-client-guard
+  description: 'AC2: the guard still forbids sleeping inside the model client'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_swe_discriminator_model_client_smoke.py -q --no-cov
+      -n 0 -k test_the_sleep_guard_still_forbids_sleeping_in_the_model_client
+    cwd: .
+  binds_ac:
+  - AC2
