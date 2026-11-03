@@ -41,7 +41,7 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_inference_credential_create tests/nodes/node_inference_credential_list tests/nodes/node_inference_credential_revoke -q --no-cov -p no:randomly
         cwd: .
-  - id: credential-routes-redpanda
+  - id: credential-routes-redpanda-integration-proof
     description: >
       The production no-argument mount factory publishes and consumes through
       the canonical Kafka event bus against an isolated auth-required Redpanda
