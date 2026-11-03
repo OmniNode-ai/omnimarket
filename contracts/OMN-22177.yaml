@@ -147,6 +147,9 @@ dod_evidence:
   binds_ac:
   - AC7
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_harness_rung_effect tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
   - check_type: command
     check_value: bash -o pipefail -c 'uv run pytest tests/unit/nodes/node_agent_review_harness_rung_effect tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -v -rs -n 0 -p no:randomly --no-cov > /tmp/omn22177-harness-profiles.txt; ! grep -q SKIPPED /tmp/omn22177-harness-profiles.txt; a=$(grep -c "\[inmemory[]-].* PASSED" /tmp/omn22177-harness-profiles.txt); b=$(grep -c "\[redpanda_overlay[]-].* PASSED" /tmp/omn22177-harness-profiles.txt); test "$a" -gt 0 && test "$a" = "$b"'
     cwd: .

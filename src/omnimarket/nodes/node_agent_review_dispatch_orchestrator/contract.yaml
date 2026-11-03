@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_agent_review_dispatch_orchestrator
 node_type: orchestrator
-runtime_profiles: [main]
+runtime_profiles: [effects]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
@@ -39,6 +39,8 @@ handler_routing:
 descriptor:
   node_archetype: orchestrator
   purity: effectful
+  runtime_profiles:
+  - effects
   idempotent: true
   timeout_ms: 1500000
 terminal_event: onex.evt.omnimarket.agent-review-completed.v1
