@@ -25,6 +25,10 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.handler_lane_intake import (
+    ModelLaneIntakePolicy,
+    read_lane_intake_policy,
+)
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
@@ -174,13 +178,24 @@ def _require_explicit_null(
 
 
 class HandlerTicketProject:
-    """clear_project and repair_project over one project gateway (``label`` is the lane-intake label)."""
+    """clear_project and repair_project over one project gateway.
+
+    This is the handler ``contract.yaml`` routes both operations to, so it is the one place every
+    path passes: a ``dry_run`` request writes nothing here, and ``repair_project`` takes the
+    lane-intake label from the policy beside the installed ticket guard unless a ``label`` or a
+    ``lane_intake_policy`` was given.
+    """
 
     def __init__(
-        self, gateway: TicketProjectGatewayProtocol | None = None, label: str = ""
+        self,
+        gateway: TicketProjectGatewayProtocol | None = None,
+        label: str = "",
+        *,
+        lane_intake_policy: ModelLaneIntakePolicy | None = None,
     ) -> None:
         self._injectable_gateway = gateway
         self._label = label
+        self._injectable_policy = lane_intake_policy
 
     @property
     def _gateway(self) -> TicketProjectGatewayProtocol:
@@ -194,23 +209,49 @@ class HandlerTicketProject:
             self._injectable_gateway = build_project_gateway()
         return self._injectable_gateway
 
+    def _lane_intake_label(self) -> str:
+        """The lane-intake label: the one given, else the policy's, else the installed guard's."""
+        if self._label:
+            return self._label
+        policy = self._injectable_policy
+        if policy is None:
+            # Local import: handler_create_ticket imports this module.
+            from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
+                locate_ticket_guard,
+            )
+
+            policy = read_lane_intake_policy(locate_ticket_guard())
+        if not policy.label:
+            raise RuntimeError("repair_project needs the lane-intake label")
+        return policy.label
+
     def handle(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
         """Run the request's clear_project or repair_project operation."""
         if request.operation is EnumTicketOperation.CLEAR_PROJECT:
-            return self.clear(str(request.ticket_id))
+            return self.clear(str(request.ticket_id), dry_run=request.dry_run)
         if request.operation is EnumTicketOperation.REPAIR_PROJECT:
-            if not self._label:
-                raise RuntimeError("repair_project needs the lane-intake label")
             return self.repair(
                 day=request.day,
                 from_project=request.from_project.strip(),
-                label=self._label,
+                label=self._lane_intake_label(),
                 dry_run=request.dry_run,
             )
         raise ValueError(f"not a project operation: {request.operation.value}")
 
-    def clear(self, ticket_id: str) -> ModelCreateTicketResult:
-        """Clear one ticket's project and report success only on an explicit null readback."""
+    def clear(
+        self, ticket_id: str, *, dry_run: bool = False
+    ) -> ModelCreateTicketResult:
+        """Clear one ticket's project and report success only on an explicit null readback.
+
+        A dry run returns before the gateway is touched: no read, no update.
+        """
+        if dry_run:
+            return ModelCreateTicketResult(
+                status="dry_run",
+                operation=EnumTicketOperation.CLEAR_PROJECT,
+                ticket_id=ticket_id,
+                dry_run=True,
+            )
         was = self._gateway.read(ticket_id).project
         self._gateway.clear(ticket_id)
         _require_explicit_null(self._gateway.read(ticket_id), ticket_id, was)
