@@ -37,20 +37,6 @@ handler:
   module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect"
   class: "HandlerCanonicalCloneRefreshEffect"
   input_model: "omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh.ModelCanonicalCloneRefreshRequest"
-# Both handlers are bound here so the canonical-file-shape ratchet reads them as this node's. The
-# contract still declares no event_bus block, so runtime auto-wiring attaches neither (see the header).
-handler_routing:
-  routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect:HandlerCanonicalCloneRefreshEffect"
-  handlers:
-    - operation: "refresh_repo_clones"
-      handler:
-        name: "HandlerCanonicalCloneRefreshEffect"
-        module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect"
-    - operation: "refresh_declared_clones"
-      handler:
-        name: "HandlerDeclaredCloneRefresh"
-        module: "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh"
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -103,7 +89,9 @@ declared_clone_refresh:
   hosts_overlay_key: lab_hosts.hosts
   request_topic: onex.cmd.omnimarket.declared-clone-refresh-requested.v1
   receipt_topic: onex.evt.omnimarket.declared-clone-refreshed.v1
-  handler: omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh.HandlerDeclaredCloneRefresh
+  handler:
+    module: omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh
+    class: HandlerDeclaredCloneRefresh
   input_model: omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh.ModelDeclaredCloneRefreshRequest
   output_model: omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh.ModelDeclaredCloneRefreshReceipt
 
