@@ -75,6 +75,9 @@ def run_board(
             shutil.copytree(source / name, target, ignore=keep)
         else:
             target.mkdir()
+    # The directory is stored without its leading dot: the repository ignores .claude_scratch.
+    if (home / "claude_scratch").is_dir():
+        (home / "claude_scratch").rename(home / ".claude_scratch")
     (kb / "beta" / "plans").mkdir(parents=True, exist_ok=True)
     root = tmp_path / "overlays" / "node_factory_floor_effect"
     root.mkdir(parents=True)

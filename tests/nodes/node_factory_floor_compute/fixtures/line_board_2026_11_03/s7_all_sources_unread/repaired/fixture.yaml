@@ -18,8 +18,23 @@ sources:
   linear_snapshot: present
   required_contexts: present
   running_evidence: 'present: empty list'
-  ledger_window: absent
-ledger_rows: []
+  ledger_window: 'present: 3 rows'
+ledger_rows:
+- ref: ROLLING_WORK_LEDGER.md:L903
+  ts: '2026-11-03T13:00:04Z'
+  kind: CLAIM
+  original_sha256: 93e2fb6a0cd05e7871a8b59a90681ff79d1bdb0848a65a1e28d1597d7c8a1826
+  scrubbed_sha256: 5b39d324876a7265f3b927ce564b4d50a25ff05a733bcad5bb7d9c66dd8f66e3
+- ref: ROLLING_WORK_LEDGER.md:L904
+  ts: '2026-11-03T13:00:17Z'
+  kind: CLAIM
+  original_sha256: 2f3f94dbeed929d463a4fe601078e8f0ee55479fb01db5ddbaebc8c32eab423a
+  scrubbed_sha256: 1a0bfeea2da6daa99cd92ec35e678d24e792bccc90b40dfd16c5a1ba8c20348f
+- ref: ROLLING_WORK_LEDGER.md:L905
+  ts: '2026-11-03T13:00:28Z'
+  kind: CLAIM
+  original_sha256: 4723c0469475b0826ef641432a970309cd03261394da37885fe557f5811b8e1f
+  scrubbed_sha256: 7565d552cda9b2eed7b5119e1b54ce7a0ef0237ec66946afd54de3d034db6c02
 expected:
   health:
     plans_clone: read

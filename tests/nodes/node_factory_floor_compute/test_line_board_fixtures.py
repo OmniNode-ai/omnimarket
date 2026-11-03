@@ -113,7 +113,7 @@ def test_absent_sources_are_marked_and_present_ones_exist(
     for source, state in head["sources"].items():
         assert state.startswith(("present", "absent")), source
     assert head["sources"]["pr_watcher"].startswith("present") == (
-        (directory / "home/.claude_scratch/pr-watcher/state.json").exists()
+        (directory / "home/claude_scratch/pr-watcher/state.json").exists()
     )
     assert head["sources"]["ledger_window"].startswith("present") == (
         (directory / "ledger-rows.txt").exists()
