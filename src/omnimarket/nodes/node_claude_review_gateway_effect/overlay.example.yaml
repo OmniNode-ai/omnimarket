@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment-owned example, never loaded as a default. Supply a positive finite
+# interval in ONEX_REVIEW_GATEWAY_OVERLAY, or at
+# <root>/claude_review_gateway/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+# The live handler also requires KAFKA_BOOTSTRAP_SERVERS and the bus transport's
+# declared KAFKA_SECURITY_PROTOCOL / KAFKA_SASL_* settings when applicable.
+key_set_aside_ttl_seconds: 900
