@@ -1057,6 +1057,11 @@ requirements:
     acceptance:
       - id: "AC1742730"
         statement: "AC1742730: uv.lock pins omnibase-core dev-20261031202655-5bb91ae7e720 at 5bb91ae7e72094a62a1198dbc92803448a05ec67 and omnibase-infra dev-20261101125736-3f93a2cc6f6c at 3f93a2cc6f6c18c7ad4fa6e74738908692c21449, that pair is the newest INFRA_CORE_TAGS row, and core 5bb91ae7e720 beside the previous infra 4284f5bf5587 is still named as the conflict -- falsifier: tests/ci/test_core_pin_pair_5bb91ae7e720_omn17427.py fails at the merge base, whose lock pins infra 4284f5bf5587 and core fc6159b98026"
+  - id: "req-live-unread-publickey-fix"
+    statement: "A lab-headroom UNKNOWN line whose live admission probe was refused by SSH public-key authentication names the hop owner adding the launching host's key as its FIX, since rerunning the tick reads the same refused hop; any other unreadable probe keeps the rerun advice."
+    acceptance:
+      - id: "AC1742731"
+        statement: "AC1742731: a probe_error carrying 'Permission denied (publickey' yields a FIX telling the host owner to add the launching host's public key to the via= hop's authorized_keys, without the rerun or --hosts --lane advice, and a timed-out probe still yields the rerun advice -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k publickey_refusal fails at the merge base, where every unreadable probe gets the rerun advice"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4451,6 +4456,7 @@ dod_evidence:
   - id: "dod-omn17427-publickey-refusal-names-host-owner"
     description: "An SSH publickey refusal on an unreadable host makes the tick FIX name the host owner and the hop's authorized_keys instead of a rerun, and a transient failure keeps the rerun advice. The publickey test fails at the merge base."
     source: "manual"
+    binds_ac: ["AC1742731"]
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'publickey_refusal or transient_probe_failure'"
