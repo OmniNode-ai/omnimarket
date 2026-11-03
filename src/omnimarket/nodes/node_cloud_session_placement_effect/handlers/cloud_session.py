@@ -12,6 +12,14 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.models.agent_review_cloud import (
+    FINAL_TEXT_MAX,
+    REVIEW_FILE,
+    REVIEW_ONLY_KIND,
+    ModelCloudReview,
+    read_session_review,
+    review_head,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     cloud_start_script as cloud_start_script,
 )
@@ -50,9 +58,42 @@ def lane_kind(brief: str) -> str | None:
     return sweep or None
 
 
+# OMN-22345: the final message and the review file of an ended review-only session, read from the session's events.
+# Kept apart so a test can run it over recorded events; the program below embeds it unchanged.
+CLOUD_REVIEW_TEXTS_PROGRAM = r"""
+def review_texts(events, review_file, limit):
+    final, written = "", ""
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        kind = e.get("type")
+        if kind == "result" and isinstance(e.get("result"), str) and e["result"].strip():
+            final = e["result"]
+            continue
+        if kind != "assistant":
+            continue
+        msg = e.get("message") if isinstance(e.get("message"), dict) else {}
+        content = msg.get("content")
+        if isinstance(content, str):
+            final = content
+            continue
+        if not isinstance(content, list):
+            continue
+        texts = [b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+        if any(t.strip() for t in texts):
+            final = "\n".join(texts)
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "tool_use" and isinstance(b.get("input"), dict):
+                i = b["input"]
+                if i.get("file_path") == review_file and isinstance(i.get("content"), str):
+                    written = i["content"]
+    return {"final": final[: limit + 1], "file": written[: limit + 1]}
+"""
+
 CLOUD_SESSION_PROGRAM = r"""
-import json, os, subprocess, sys, urllib.error, urllib.request
+import json, os, subprocess, sys, urllib.error, urllib.parse, urllib.request
 sid = sys.argv[1]
+review = len(sys.argv) > 3 and sys.argv[3] == "review"
 def token():
     try:
         with open(os.path.expanduser("~/.claude/.credentials.json"), encoding="utf-8") as f:
@@ -65,11 +106,12 @@ def token():
 try:
     with open(os.path.expanduser("~/.claude.json"), encoding="utf-8") as f:
         org = json.load(f)["oauthAccount"]["organizationUuid"]
-    req = urllib.request.Request(sys.argv[2] + sid, headers={
-        "Authorization": "Bearer " + token(), "anthropic-version": "2023-06-01",
-        "anthropic-beta": "ccr-byoc-2025-07-29", "x-organization-uuid": org})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        d = json.load(r)
+    headers = {"Authorization": "Bearer " + token(), "anthropic-version": "2023-06-01",
+               "anthropic-beta": "ccr-byoc-2025-07-29", "x-organization-uuid": org}
+    def get(url):
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as r:
+            return json.load(r)
+    d = get(sys.argv[2] + sid)
 except Exception as exc:
     print("CLOUD-SESSION-UNREAD " + type(exc).__name__ + ": " + str(exc)[:200])
     sys.exit(0)
@@ -79,17 +121,53 @@ print("CLOUD-SESSION " + json.dumps({
     "status": d.get("session_status"), "bucket": d.get("status_bucket"), "updated_at": d.get("updated_at"),
     "detail": summary.get("status_detail") or summary.get("recent_action") or "",
     "needs_action": summary.get("needs_action") or "", "rate": meta.get("rate_limit_info"),
-    "branches": meta.get("current_branches")}, sort_keys=True))
+    "branches": meta.get("current_branches"),
+    "model": (d.get("session_context") or {}).get("model") or d.get("model") or "",
+    **({"review_only": True} if review else {})}, sort_keys=True))
+"""
+CLOUD_SESSION_REVIEW_TAIL = r"""
+if d.get("session_status") in ENDED:
+    try:
+        events, after = [], None
+        for _ in range(40):
+            page = get(sys.argv[2] + sid + "/events" + ("?after_id=" + urllib.parse.quote(after) if after else ""))
+            data = page.get("data") if isinstance(page, dict) else page
+            events.extend(data if isinstance(data, list) else [])
+            after = page.get("last_id") if isinstance(page, dict) and page.get("has_more") else None
+            if not after:
+                break
+        print("CLOUD-SESSION-REVIEW " + json.dumps(review_texts(events, REVIEW_FILE, LIMIT)))
+    except Exception as exc:
+        print("CLOUD-SESSION-REVIEW-UNREAD " + type(exc).__name__ + ": " + str(exc)[:200])
 """
 CLOUD_SESSION_ENDED = frozenset({"idle", "requires_action", "archived"})
 CLOUD_ENDED_GRACE_S = 300.0
 
 
+def cloud_session_program(review_only: bool) -> str:
+    """The session read; a review-only lane's also reads the ended session's final message and review file."""
+    if not review_only:
+        return CLOUD_SESSION_PROGRAM.strip()
+    head = "\n".join(
+        [
+            CLOUD_REVIEW_TEXTS_PROGRAM.strip(),
+            f"ENDED = {sorted(CLOUD_SESSION_ENDED)!r}",
+            f"REVIEW_FILE = {REVIEW_FILE!r}",
+            f"LIMIT = {FINAL_TEXT_MAX!r}",
+        ]
+    )
+    return "\n".join(
+        [head, CLOUD_SESSION_PROGRAM.strip(), CLOUD_SESSION_REVIEW_TAIL.strip()]
+    )
+
+
 def cloud_session_script(
-    path_export: str, session_id: str, sessions_api_url: str
+    path_export: str, session_id: str, sessions_api_url: str, brief: str = ""
 ) -> str:
     """Read one cloud session's state with the account's own login; prints one CLOUD-SESSION line. The sessions API
-    URL (the session id is appended to it) comes from the caller's overlay."""
+    URL (the session id is appended to it) comes from the caller's overlay. For a review-only lane (the brief's
+    ``Lane kind: review-only``) an ended session's final message and review file follow on one CLOUD-SESSION-REVIEW
+    line, read from the session's events through the same login (OMN-22345); nothing is read from a pushed branch."""
     if not re.fullmatch(r"(?:session|cse)_[A-Za-z0-9]{8,}", session_id):
         raise ValueError(f"not a cloud session id: {session_id!r}")
     api_url = urlsplit(sessions_api_url)
@@ -101,26 +179,50 @@ def cloud_session_script(
         or not re.fullmatch(r"[A-Za-z0-9./_-]+/", f"{api_url.netloc}{api_url.path}")
     ):
         raise ValueError(f"not a sessions API URL: {sessions_api_url!r}")
+    review_only = lane_kind(brief) == REVIEW_ONLY_KIND
     return "\n".join(
         [
             path_export,
             'cd "$HOME"',
-            f"python3 - {session_id} {sessions_api_url} <<'ONEX_CLOUD_SESSION'",
-            CLOUD_SESSION_PROGRAM.strip(),
+            f"python3 - {session_id} {sessions_api_url}{' review' if review_only else ''} <<'ONEX_CLOUD_SESSION'",
+            cloud_session_program(review_only),
             "ONEX_CLOUD_SESSION",
         ]
     )
 
 
+def _review_texts(stdout: str) -> dict[str, str]:
+    """The final message and review file a review-only read printed, or why it could not read them."""
+    for line in stdout.splitlines():
+        if line.startswith("CLOUD-SESSION-REVIEW "):
+            try:
+                found = json.loads(line[len("CLOUD-SESSION-REVIEW ") :])
+            except ValueError as exc:
+                return {"review_unread": f"unparsed review answer: {exc}"}
+            if not isinstance(found, dict):
+                return {"review_unread": "unparsed review answer"}
+            return {
+                "review_text": str(found.get("final") or ""),
+                "review_file_text": str(found.get("file") or ""),
+            }
+        if line.startswith("CLOUD-SESSION-REVIEW-UNREAD "):
+            return {"review_unread": line[len("CLOUD-SESSION-REVIEW-UNREAD ") :]}
+    return {}
+
+
 def parse_cloud_session(stdout: str) -> dict[str, Any] | str:
-    """The session state the read printed, or why it could not be read."""
+    """The session state the read printed, or why it could not be read. A review-only read's texts ride on it."""
     for line in stdout.splitlines():
         if line.startswith("CLOUD-SESSION "):
             try:
                 found = json.loads(line[len("CLOUD-SESSION ") :])
             except ValueError as exc:
                 return f"unparsed answer: {exc}"
-            return found if isinstance(found, dict) else "unparsed answer"
+            return (
+                {**found, **_review_texts(stdout)}
+                if isinstance(found, dict)
+                else "unparsed answer"
+            )
         if line.startswith("CLOUD-SESSION-UNREAD "):
             return line[len("CLOUD-SESSION-UNREAD ") :]
     return "no answer: " + " ".join(stdout.split())[-200:]
@@ -164,8 +266,16 @@ def cloud_prompt(
     run_id: str,
     timeout_min: int,
 ) -> str:
-    """The brief, after the cloud session's own rules: what the sandbox lacks and the PR it must leave."""
-    if pr_heads:
+    """The brief, after the cloud session's own rules: what the sandbox lacks and the PR it must leave. A review-only
+    lane (OMN-22345) leaves no PR and pushes nothing: its review is its final message, read back by this node."""
+    review_only = lane_kind(brief) == REVIEW_ONLY_KIND
+    if review_only:
+        work = (
+            "- This is a review-only lane: push nothing, create no branch, commit nothing, open, comment on or review "
+            "no pull request and write nothing to GitHub. Your review returns through your final message, which the "
+            f"launching host reads back, and the copy you write to {REVIEW_FILE} (outside the checkout)."
+        )
+    elif pr_heads:
         work = (
             f"- You work the existing pull request(s) {', '.join(h['pr'] for h in pr_heads)}: check out "
             + ", ".join(f"{h['head_ref']} (head {h['head_sha']})" for h in pr_heads)
@@ -195,15 +305,24 @@ def cloud_prompt(
                 "GitHub from this session). Never merge, arm, enable auto-merge, close or retarget a pull request."
             ),
             work,
-            (
-                "- Run the focused tests of your change in this sandbox and name the command and what it printed in the pull "
-                "request body (a line starting `Cloud:`) and in your final message."
-            ),
-            f"- Stop at {max(10, timeout_min - 15)} minutes: push what you have and report it as partial.",
-            (
-                "- End your final message with these lines, each on its own line: "
-                f"`PR: {service_endpoint_url('github.web_url')}/{owner}/{repo}/pull/<n> head=<full head sha>` (one per pull request you pushed), "
-                "`LANE_RESULT outcome=<handed-off|partial|blocked>`."
+            *(
+                [
+                    f"- Stop at {max(10, timeout_min - 15)} minutes and end with the review as the brief below says.",
+                    "- End your final message with the review exactly as the brief below says, and nothing after it.",
+                ]
+                if review_only
+                else [
+                    (
+                        "- Run the focused tests of your change in this sandbox and name the command and what it printed in the pull "
+                        "request body (a line starting `Cloud:`) and in your final message."
+                    ),
+                    f"- Stop at {max(10, timeout_min - 15)} minutes: push what you have and report it as partial.",
+                    (
+                        "- End your final message with these lines, each on its own line: "
+                        f"`PR: {service_endpoint_url('github.web_url')}/{owner}/{repo}/pull/<n> head=<full head sha>` (one per pull request you pushed), "
+                        "`LANE_RESULT outcome=<handed-off|partial|blocked>`."
+                    ),
+                ]
             ),
             "",
             "The brief follows.",
@@ -313,6 +432,109 @@ def cloud_result_text(
         f"DELEGATION delegated=0 reason=route-unavailable:cloud-session-{run_id}"
     )
     return "\n".join(lines)
+
+
+CLOUD_REVIEW_UNPARSED = "cloud-review-unparsed"
+"""The status of a review-only lane that returned no review it may use: a typed failure, never ``blocked``."""
+
+
+def cloud_review_result(
+    account: str,
+    session: Mapping[str, str],
+    run_id: str,
+    ended: Mapping[str, Any] | None,
+    brief: str,
+) -> dict[str, Any]:
+    """How a review-only lane closes (OMN-22345). A parsed review: ``done``, no PR, the review on the run receipt.
+    No parseable review: status ``cloud-review-unparsed``, outcome ``failed``, with the typed reason. The result text
+    names the head and the finding count only; the findings stay on the receipt and never reach the ledger."""
+    lines = [
+        f"Cloud session {session.get('url')} on account {account} (run {run_id}), review-only lane."
+    ]
+    expected = review_head(brief)
+    if ended is None:
+        why, detail = "unended", "the session did not end before the lane deadline"
+    elif ended.get("review_unread"):
+        why, detail = (
+            "unread",
+            f"the session's events were not read: {ended['review_unread']}"[:300],
+        )
+    elif expected is None:
+        why, detail = "no_head", "the brief names no `Review head:` line"
+    else:
+        found = read_session_review(
+            str(ended.get("review_text") or ""),
+            str(ended.get("review_file_text") or ""),
+            expected,
+        )
+        if isinstance(found, ModelCloudReview):
+            review = {
+                **found.model_dump(mode="json"),
+                "model": str(ended.get("model") or ""),
+                "session_id": session.get("session_id") or "",
+                "session_url": session.get("url") or "",
+                "run_id": run_id,
+            }
+            lines += [
+                f"Review: head={found.head_sha} findings={len(found.findings)} source={found.source} "
+                f"model={review['model'] or '-'}",
+                "LANE_RESULT outcome=done",
+                f"DELEGATION delegated=0 reason=route-unavailable:cloud-session-{run_id}",
+            ]
+            return {
+                "text": "\n".join(lines),
+                "status": "done",
+                "outcome": "done",
+                "parsed": review,
+            }
+        why, detail = found.reason.value, found.detail
+    lines += [
+        f"REVIEW-REFUSED reason={why}: {detail}",
+        "LANE_RESULT outcome=failed",
+        f"DELEGATION delegated=0 reason=route-unavailable:cloud-session-{run_id}",
+    ]
+    return {
+        "text": "\n".join(lines),
+        "status": CLOUD_REVIEW_UNPARSED,
+        "outcome": "failed",
+        "parsed": {"refused": why, "detail": detail},
+    }
+
+
+def cloud_close(
+    owner: str,
+    account: str,
+    session: Mapping[str, str],
+    prs: Sequence[Mapping[str, str]],
+    run_id: str,
+    ended: Mapping[str, Any] | None,
+    brief: str,
+    *,
+    session_branches: Sequence[str] = (),
+    opened: str | None = None,
+) -> dict[str, Any]:
+    """The lane's result text and the close the runner makes on it: a review-only lane closes on its review, any
+    other lane ``done`` with a PR and ``cloud-no-pr``/``blocked`` without one."""
+    if lane_kind(brief) == REVIEW_ONLY_KIND:
+        return cloud_review_result(account, session, run_id, ended, brief)
+    text = cloud_result_text(
+        owner,
+        account,
+        session,
+        prs,
+        run_id,
+        ended,
+        session_branches=session_branches,
+        opened=opened,
+    )
+    return {
+        "text": text,
+        **(
+            {"status": "done", "outcome": "done"}
+            if prs
+            else {"status": "cloud-no-pr", "outcome": "blocked"}
+        ),
+    }
 
 
 def cloud_bot_pr_text(

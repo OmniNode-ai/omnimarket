@@ -386,6 +386,8 @@ node_merged_running_count_compute = "omnimarket.nodes.node_merged_running_count_
 node_merged_running_count_effect = "omnimarket.nodes.node_merged_running_count_effect"
 node_lane_queue_start_decision_compute = "omnimarket.nodes.node_lane_queue_start_decision_compute"
 node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owed_compute"
+node_agent_review_harness_rung_effect = "omnimarket.nodes.node_agent_review_harness_rung_effect"
+node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
 node_question_guard_compute = "omnimarket.nodes.node_question_guard_compute"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
 node_skill_exec_decision_compute = "omnimarket.nodes.node_skill_exec_decision_compute"
@@ -1184,6 +1186,7 @@ node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_co
 node_retrospective_run_reducer = "omnimarket.nodes.node_retrospective_run_reducer"
 node_retrospective_run_projection_effect = "omnimarket.nodes.node_retrospective_run_projection_effect"
 node_retrospective_digest_render_compute = "omnimarket.nodes.node_retrospective_digest_render_compute"
+node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"

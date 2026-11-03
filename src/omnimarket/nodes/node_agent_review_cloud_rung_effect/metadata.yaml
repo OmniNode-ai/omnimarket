@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_cloud_rung_effect
+version: "0.1.0"
+description: "Effect: one agent review voter's unsigned review of one pull request head, cast by a review-only Claude cloud session."
+pack: operator_tooling
+node_role: effect
+display_name: "Agent Review Cloud Rung Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_agent_review_cloud_rung_effect: "omnimarket.nodes.node_agent_review_cloud_rung_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+- omnibase-infra>=0.32.0
+- omnimarket.nodes.node_cloud_session_placement_effect
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "agent-review", "cloud-session"]
