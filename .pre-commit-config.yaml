@@ -736,6 +736,21 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-18883: two projection writer shapes write nothing while lag and
+      # watermarks read healthy. A node_projection_* contract with db_io.db_tables
+      # that routes a typed-request class which is not a BaseProjectionRunner
+      # subclass is handed the injected dict and returns without a write; a runner
+      # subclass with neither in-process dispatch nor a frozen dedicated-deployment
+      # entry is skipped silently by the shared runtime. The frozen runner set only
+      # shrinks. SYNC with the ci.yml step 'Projection runner shape gate'.
+      - id: projection-runner-shape
+        name: Projection writers are neither typed folds on the write path nor ownerless runners (OMN-18883)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_writer_shape_check_effect.runtime_writer_shape_check
+        files: ^(src/omnimarket/nodes/.*\.py|src/omnimarket/nodes/.*/contract\.yaml|src/omnimarket/projection/runner\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
       # assertion — no scan, no derivation, nothing to soften.

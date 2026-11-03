@@ -440,6 +440,11 @@ jobs:
       # SYNC with pre-commit hook 'projection-cursor-declared'.
       - name: Projection cursor-declared gate
         run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule cursor
+      # OMN-18883: a projection writer is neither a typed fold on the write path nor a
+      # runner with no dispatch owner; the runner subclass set is frozen and only
+      # shrinks. SYNC with pre-commit hook 'projection-runner-shape'.
+      - name: Projection runner shape gate
+        run: uv run python -m omnimarket.nodes.node_writer_shape_check_effect.runtime_writer_shape_check
       # OMN-21289: no harness is invoked outside the delegation effect node's handlers (shrink-only baseline). SYNC with pre-commit hook 'harness-invocation-check'.
       - name: Harness invocation gate
         run: uv run python -m omnimarket.nodes.node_harness_invocation_check_effect

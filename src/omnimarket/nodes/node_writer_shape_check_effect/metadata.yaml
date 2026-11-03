@@ -1,0 +1,21 @@
+name: node_writer_shape_check_effect
+version: "1.0.0"
+description: "Refuses a typed fold on the projection writer path and a runner with no dispatch owner."
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_writer_shape_check_effect: "omnimarket.nodes.node_writer_shape_check_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  side_effect_class: filesystem_read
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "validation", "projection"]
+pack: "core"
+display_name: "Projection Runner Shape Check Effect"
+node_role: "effect"

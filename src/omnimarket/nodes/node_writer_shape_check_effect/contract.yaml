@@ -1,0 +1,66 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_writer_shape_check_effect
+contract_name: node_writer_shape_check_effect
+node_name: node_writer_shape_check_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Refuses the two silent-failure shapes of a projection writer (OMN-18883). A
+  node_projection_* contract that declares db_io.db_tables must not route a class
+  whose handle takes a typed request while it is not a BaseProjectionRunner
+  subclass, because the projection wiring path hands it the injected dict and it
+  returns without writing. A BaseProjectionRunner subclass must declare
+  onex_runtime_inprocess_dispatch or be in the frozen dedicated-deployment set,
+  because the shared runtime skips it silently otherwise. It also holds the frozen,
+  shrink-only set of runner subclasses. Reads node contracts and handler modules;
+  its runtime module is the hook and CI entrypoint and exits 0 only when clean.
+
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - effects
+runtime_profiles:
+- effects
+handler:
+  module: omnimarket.nodes.node_writer_shape_check_effect.handlers.handler_projection_runner_shape_check
+  class: HandlerProjectionRunnerShapeCheck
+  input_model: omnimarket.nodes.node_writer_shape_check_effect.models.ModelProjectionRunnerShapeRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_runner_shape_check
+      handler:
+        name: HandlerProjectionRunnerShapeCheck
+        module: omnimarket.nodes.node_writer_shape_check_effect.handlers.handler_projection_runner_shape_check
+      handler_module: omnimarket.nodes.node_writer_shape_check_effect.handlers.handler_projection_runner_shape_check
+      event_model: omnimarket.nodes.node_writer_shape_check_effect.models.ModelProjectionRunnerShapeRequest
+
+input_model:
+  name: ModelProjectionRunnerShapeRequest
+  module: omnimarket.nodes.node_writer_shape_check_effect.models
+  description: Nodes root, package root and the two frozen runner sets.
+
+output_model:
+  name: ModelProjectionRunnerShapeResult
+  module: omnimarket.nodes.node_writer_shape_check_effect.models
+  description: The runners seen and every finding.
+terminal_event: onex.evt.omnimarket.projection-runner-shape-checked.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.projection-runner-shape-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.projection-runner-shape-checked.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.projection-runner-shape-check-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.projection-runner-shape-checked.v1

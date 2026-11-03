@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-18883
+title: Retire the per-projection writer classes - slice 1, the shape checks and the frozen runner set
+summary: A new effect node, node_writer_shape_check_effect, refuses a typed fold on the projection write path and a BaseProjectionRunner subclass with no dispatch owner, and holds the frozen, shrink-only set of runner subclasses. It is wired as a CI step and a pre-commit hook. This slice does not add the generic write effect node and converts no projection.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn18883-frozen-runner-set
+  statement: Every BaseProjectionRunner subclass is listed in a frozen set that only shrinks.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a subclass outside the frozen set, or an entry whose class is gone, fails the check -- falsifier: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov -k "unlisted or stale or red_control_one_unlisted"'
+- id: req-omn18883-typed-fold-check
+  statement: A node_projection contract with db_io.db_tables that routes a typed-request class on the projection write path fails the check.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the check exits non-zero over a typed fold on the writer path and over the pre-fix lab lane health shape, and is wired in CI and pre-commit -- falsifier: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov -k "typed or pre_fix or wired"'
+- id: req-omn18883-undeclared-dispatch-check
+  statement: A runner subclass with neither in-process dispatch nor a frozen dedicated-deployment entry fails the check.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the check exits non-zero over a runner with no dispatch owner, and is wired in CI and pre-commit -- falsifier: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov -k "dispatch_owner or undeclared or wired"'
+evidence_requirements:
+- kind: tests
+  description: The shape check refuses each synthetic bad shape, passes the real tree, and is wired in CI and pre-commit.
+  command: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn18883-ac3
+  description: AC3 an unlisted runner subclass and a stale entry are refused, and dropping one frozen entry from the real tree fails the check.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov --tb=line -k "unlisted or stale or red_control_one_unlisted"
+    cwd: .
+- id: dod-omn18883-ac4
+  description: AC4 a typed fold on the writer path and the pre-fix lab lane health shape are refused, and the check is wired in CI and pre-commit.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov --tb=line -k "typed or pre_fix or wired"
+    cwd: .
+- id: dod-omn18883-ac5
+  description: AC5 a runner with no dispatch owner is refused and the check is wired in CI and pre-commit.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_writer_shape_check_effect -q --no-cov --tb=line -k "dispatch_owner or undeclared or wired"
+    cwd: .
