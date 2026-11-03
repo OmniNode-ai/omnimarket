@@ -93,11 +93,17 @@ from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptTextBlock,
 )
 from omnimarket.models.review_cost import ModelReviewCallProvenance
+from omnimarket.nodes.node_claude_review_gateway_effect.handlers.review_prompt_cache import (
+    load_prompt_cache,
+)
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     EnumReviewGatewayReason,
     ModelClaudeReviewGatewayRequest,
     ModelReviewGatewayKey,
     ModelReviewGatewayPlan,
+)
+from omnimarket.nodes.node_claude_review_gateway_effect.models.model_review_prompt_cache import (
+    ModelReviewPromptCache,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,8 +129,6 @@ _DISABLED_THINKING = {"type": "disabled"}
 BLOCK_BOUNDARY_MARKER = "<<onex-cache-boundary>>"
 #: The provider's backend plan this gateway names: Anthropic's native Messages API.
 GATEWAY_PLAN = "api_native"
-_SYSTEM_CACHE_TTL = "1h"
-_DIFF_CACHE_TTL = "5m"
 _DEFAULT_TOOL_NAME = "submit_verdict"
 _TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 #: Failures that are about the key, not the request: set it aside and try the next.
@@ -415,6 +419,7 @@ def translate_chat_request(
     timeout_seconds: float,
     workspace_id: str | None = None,
     thinking_mode: Literal["disabled", "adaptive"] = "disabled",
+    prompt_cache: ModelReviewPromptCache | None = None,
 ) -> ModelLlmDelegationCallRequest:
     """The voter's chat call as one native Messages call on this host's key.
 
@@ -440,17 +445,27 @@ def translate_chat_request(
             system_parts.append(text)
         else:
             prompt_parts.append(text)
-    system = _merge_tail(_parts("\n\n".join(system_parts)), 2)
+    cache = prompt_cache if prompt_cache is not None else load_prompt_cache()
+    # The diff is cached only when a boundary separates it from the persona text.
+    prompt = _merge_tail(_parts("\n\n".join(part for part in prompt_parts if part)), 2)
+    diff_cached = cache.diff_ttl is not None and len(prompt) > 1
+    # At most ``max_breakpoints`` breakpoints: the diff takes one and the system
+    # blocks the rest (two at most, instructions and standing rules).
+    system_keep = max(1, min(2, cache.max_breakpoints - (1 if diff_cached else 0)))
+    system = _merge_tail(_parts("\n\n".join(system_parts)), system_keep)
+    system_marked = len(system) if cache.system_ttl is not None else 0
+    diff_cached = diff_cached and system_marked + 1 <= cache.max_breakpoints
     system_blocks = tuple(
-        ModelPromptTextBlock(text=part, cache_ttl=_SYSTEM_CACHE_TTL) for part in system
+        ModelPromptTextBlock(text=part, cache_ttl=cache.system_ttl) for part in system
     )
     # Only the part before the last boundary is cached: it is what the next
-    # persona of the same review rereads. The last part is the persona's own.
-    prompt = _merge_tail(_parts("\n\n".join(part for part in prompt_parts if part)), 2)
+    # pass of the same review rereads. The last part is the persona's own.
     user_blocks = tuple(
         ModelPromptTextBlock(
             text=part,
-            cache_ttl=_DIFF_CACHE_TTL if index < len(prompt) - 1 else None,
+            cache_ttl=cache.diff_ttl
+            if diff_cached and index < len(prompt) - 1
+            else None,
         )
         for index, part in enumerate(prompt)
     )
