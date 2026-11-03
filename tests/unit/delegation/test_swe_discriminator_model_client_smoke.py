@@ -51,8 +51,16 @@ def _offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         urllib.request, "urlopen", Mock(side_effect=AssertionError("network forbidden"))
     )
+    # Forbid sleeping in the code under test only. Patching `time.sleep` on the
+    # shared module also reached subprocess's poll loop in grade_floor, which
+    # sleeps whenever the child has not exited by its first poll (OMN-22348).
     monkeypatch.setattr(
-        time, "sleep", Mock(side_effect=AssertionError("sleep forbidden"))
+        model_client,
+        "time",
+        SimpleNamespace(
+            monotonic=time.monotonic,
+            sleep=Mock(side_effect=AssertionError("sleep forbidden")),
+        ),
     )
     monkeypatch.setattr(
         run_smoke,
