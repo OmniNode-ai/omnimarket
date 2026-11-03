@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import time
 from datetime import UTC, datetime, timedelta
 from functools import cache
@@ -1087,9 +1088,15 @@ def _lines(text: str | None) -> int:
 
 
 def canonical_clone_health(ctx: ModelMorningToolContext, _: BaseModel) -> Result:
-    """Per canonical clone directly under the workspace: unmerged, staged, unstaged, behind."""
+    """Per canonical clone directly under the workspace: unmerged, staged, unstaged, behind.
+
+    A clone on a detached HEAD is DETACHED and a red row: landing text and delegation refuse on the
+    host while a clone stays that way, so the row names the host and the clone (OMN-20344).
+    """
     root = ctx.place("clones_root")
+    host = socket.gethostname()
     rows: list[dict[str, Any]] = []
+    red_rows: list[str] = []
     for clone in sorted(root.iterdir()):
         if not (clone / ".git").is_dir():
             continue
@@ -1098,12 +1105,28 @@ def canonical_clone_health(ctx: ModelMorningToolContext, _: BaseModel) -> Result
         unstaged = _git_out(clone, "diff", "--name-only")
         behind = _git_out(clone, "rev-list", "--count", "HEAD..@{u}")
         branch = _git_out(clone, "branch", "--show-current")
-        state = "WEDGED" if unmerged else ("DIRTY" if (staged or unstaged) else "CLEAN")
+        head = _git_out(clone, "rev-parse", "--short=12", "--verify", "HEAD")
+        detached = unmerged is not None and not branch and bool(head)
+        if unmerged:
+            state = "WEDGED"
+        elif detached:
+            state = "DETACHED"
+        elif staged or unstaged:
+            state = "DIRTY"
+        else:
+            state = "CLEAN"
+        if unmerged is None:
+            state = "UNKNOWN"
+        if state == "DETACHED":
+            red_rows.append(
+                f"RED detached HEAD: host={host} clone={clone.name} at {head}"
+            )
         rows.append(
             {
                 "clone": clone.name,
+                "host": host,
                 "branch": branch,
-                "state": state if unmerged is not None else "UNKNOWN",
+                "state": state,
                 "unmerged_paths": _lines(unmerged),
                 "staged": _lines(staged),
                 "unstaged": _lines(unstaged),
@@ -1111,7 +1134,13 @@ def canonical_clone_health(ctx: ModelMorningToolContext, _: BaseModel) -> Result
             }
         )
     rows.sort(
-        key=lambda r: {"WEDGED": 0, "DIRTY": 1, "UNKNOWN": 2, "CLEAN": 3}[r["state"]]
+        key=lambda r: {
+            "WEDGED": 0,
+            "DETACHED": 1,
+            "DIRTY": 2,
+            "UNKNOWN": 3,
+            "CLEAN": 4,
+        }[r["state"]]
     )
     control = (
         root
@@ -1120,9 +1149,12 @@ def canonical_clone_health(ctx: ModelMorningToolContext, _: BaseModel) -> Result
         / "omnibase_infra-20260921T103703Z"
     )
     return {
+        "host": host,
         "clones": cast(JsonValue, rows),
         "wedged": sum(r["state"] == "WEDGED" for r in rows),
+        "detached": sum(r["state"] == "DETACHED" for r in rows),
         "dirty": sum(r["state"] == "DIRTY" for r in rows),
+        "red_rows": cast(JsonValue, red_rows),
         "standing_control_manifest_present": control.is_dir(),
         "standing_control_manifest": ".onex_state/canonical-clone-converge/omnibase_infra-20260921T103703Z",
     }

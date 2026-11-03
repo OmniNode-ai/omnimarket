@@ -1,0 +1,50 @@
+schema_version: '1.0.0'
+ticket_id: OMN-20344
+title: a canonical clone left on a detached HEAD is reattached by the host timer within one hour and the morning ground-state run reports it as a red row
+summary: The canonical clone dirty-converge tick reattaches a clone on a detached HEAD to its tracking branch once the engine has refused it for the detached bound, and fails loud when it cannot; the morning canonical_clone_health read marks a detached clone DETACHED and returns one red row naming the host and the clone. The unowned-checkout refusal (AC1) is shipped by the repository of the lab host clone guard, not this one.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-detached-clone-reconcile
+    statement: A canonical clone on a detached HEAD is returned to its tracking branch within the bound and the tick fails when it cannot.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a scheduled reconcile returns every lab host canonical clone that is detached to its tracking branch within one hour, and the run fails loud when it cannot -- falsifier: uv run pytest tests -k lab_clone_detached_reconciled_within_bound'
+  - id: req-detached-clone-ground-state
+    statement: The morning ground-state read reports a detached canonical clone as a red row naming the host and the clone.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the morning ground-state run reports any lab host canonical clone on a detached HEAD as a red row naming the host and clone -- falsifier: uv run pytest tests -k ground_state_reports_detached_lab_clone'
+evidence_requirements:
+  - kind: tests
+    description: Focused tests of the dirty-converge tick and the morning canonical_clone_health read.
+    command: uv run pytest tests/unit/clone_dirty_converge tests/nodes/node_morning_ground_state_orchestrator -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn20344-reconcile
+    description: A clean clone detached and refused past the bound is reattached to dev at the upstream tip; a converge script that cannot reattach gives a FAILED outcome naming the clone as still detached; a clone an open CLAIM names is left alone; a dirty clone refused only for the detached bound is left alone.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/clone_dirty_converge -q --no-cov -k 'lab_clone_detached_reconciled_within_bound or lab_clone_detached_reconcile or detached_clone_an_open_claim or dirty_clone_refused_only_for_the_detached_bound or detached_age_is_the_contracts'
+        cwd: .
+    binds_ac: [AC2]
+  - id: dod-omn20344-ground-state
+    description: A detached canonical clone reads DETACHED and gives one red row naming the host and the clone; an attached clone gives none.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_detached_lab_clone.py -q --no-cov -k ground_state_reports
+        cwd: .
+    binds_ac: [AC3]
+  - id: dod-omn20344-deploy-probe
+    description: 'Deploy probe: the contract GitHub serves at the checked-out commit declares detached_reattach_after_seconds, which the merge base does not.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "detached_reattach_after_seconds" > /dev/null'
+        cwd: .
