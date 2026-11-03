@@ -754,6 +754,36 @@ class _ReconcilePass:
             )
         return sp
 
+    @staticmethod
+    def replace_dangling_shadow(shadow: Path, wrapper: Path) -> tuple[str, str]:
+        """Move a dangling ``onex`` symlink aside and link the wrapper in its place (OMN-22146).
+
+        bash skips a symlink whose target is gone, so a dangling ``~/.local/bin/onex`` makes the
+        bare name fall through to the next PATH entry; on h101 that was a brew python@3.12
+        console script that cannot import ``omnibase_core``. Returns ``(moved path, error)``;
+        the error names a rename or link that failed, or a wrapper that is not a file (nothing
+        is moved then, so the shadow stays visible instead of leaving an empty slot).
+        """
+        if not wrapper.is_file():
+            return "", f"{wrapper} is not a file, so there is nothing to link"
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        moved = shadow.with_name(f"{shadow.name}.shadowed-{stamp}")
+        serial = 1
+        while moved.exists() or moved.is_symlink():
+            serial += 1
+            moved = shadow.with_name(f"{shadow.name}.shadowed-{stamp}-{serial}")
+        try:
+            shadow.rename(moved)
+        except OSError as exc:
+            return "", str(exc)
+        try:
+            shadow.symlink_to(wrapper)
+        except OSError as exc:
+            return str(moved), str(exc)
+        if shadow.resolve() != wrapper.resolve():
+            return str(moved), f"{shadow} does not resolve to {wrapper} after linking"
+        return str(moved), ""
+
     def guards(self) -> None:
         home = self.env.get("HOME")
         if home:
@@ -764,6 +794,17 @@ class _ReconcilePass:
                 # shadow must still be reported even if the wrapper cannot resolve.
                 resolved = shadow.resolve() if is_symlink else shadow
                 wrapper_resolved = wrapper.resolve() if is_symlink else wrapper
+                is_dangling = is_symlink and not shadow.exists()
+                moved_to = link_error = ""
+                if self.request.mode == "repair" and is_dangling:
+                    moved_to, link_error = self.replace_dangling_shadow(shadow, wrapper)
+                    if moved_to and not link_error:
+                        wrapper_resolved = wrapper.resolve()
+                        points_to_wrapper = shadow.resolve() == wrapper_resolved
+                    else:
+                        points_to_wrapper = False
+                else:
+                    points_to_wrapper = is_symlink and resolved == wrapper_resolved
                 self.facts.append(
                     ModelPathShadowFact(
                         shadow=str(shadow),
@@ -771,7 +812,10 @@ class _ReconcilePass:
                         wrapper_resolved=str(wrapper_resolved),
                         is_symlink=is_symlink,
                         resolved=str(resolved),
-                        points_to_wrapper=is_symlink and resolved == wrapper_resolved,
+                        points_to_wrapper=points_to_wrapper,
+                        is_dangling=is_dangling,
+                        moved_to=moved_to,
+                        link_error=link_error,
                     )
                 )
         if not self.request.guard_delegate:
