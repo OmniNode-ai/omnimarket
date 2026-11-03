@@ -275,7 +275,7 @@ observations:
 required_rules:
   omnimarket:
     read_at: '2026-11-03T06:33:40Z'
-    read_via: the source-control node read (`onex scm branch-protection OmniNode-ai/omnimarket`, outcome completed at 2026-11-03T06:39:51Z,
+    read_via: the source-control node read (`onex scm branch-protection OmniNode-ai/omnimarket`, outcome completed at 2026-11-03T06:39:31Z,
       required_approving_review_count null) and the repository settings read of the pull request watcher (`pr_state_local.py
       --settings OmniNode-ai/omnimarket`), which supplies the contexts
     required_reviews: 0
@@ -319,7 +319,7 @@ required_rules:
     - Hostile Reviewer (adversarial gate)
   omniclaude:
     read_at: '2026-11-03T06:10:00Z'
-    read_via: the source-control node read (`onex scm branch-protection OmniNode-ai/omniclaude`, outcome completed at 2026-11-03T06:39:51Z,
+    read_via: the source-control node read (`onex scm branch-protection OmniNode-ai/omniclaude`, outcome completed at 2026-11-03T06:39:35Z,
       required_approving_review_count null) and the repository settings read of the pull request watcher (`pr_state_local.py
       --settings OmniNode-ai/omniclaude`), which supplies the contexts
     required_reviews: 0
