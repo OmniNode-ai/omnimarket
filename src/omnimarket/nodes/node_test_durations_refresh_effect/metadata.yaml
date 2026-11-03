@@ -1,0 +1,22 @@
+name: node_test_durations_refresh_effect
+version: "1.0.0"
+description: "Counts the test files the durations record does not hold and adds them from one measured run (OMN-22389)."
+pack: ci
+node_role: effect
+display_name: "Test Durations Refresh Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_test_durations_refresh_effect: "omnimarket.nodes.node_test_durations_refresh_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "ci", "test-durations", "OMN-22389"]
