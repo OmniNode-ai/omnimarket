@@ -55,3 +55,11 @@ dod_evidence:
       - check_type: command
         check_value: grep -F '(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}' src/omnimarket/nodes/node_delegation_quality_gate_reducer/contract.yaml
         cwd: .
+  - id: dod-omn22210-integration-proof
+    description: Run the identifier grounding decimal test file on a lab host at the pushed head. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22210 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q --no-cov
+        cwd: .

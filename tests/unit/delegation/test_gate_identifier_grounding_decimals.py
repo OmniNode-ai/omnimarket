@@ -131,6 +131,14 @@ def test_hex_sha_still_refused_by_the_gate() -> None:
     )
 
     assert any(r.startswith("UNGROUNDED") for r in result.failure_reasons)
+    # Paired with the decimal case: through the same gate and source, a pure decimal
+    # answer is not refused. The hex refusal above held before the fix too, so this
+    # half is what lets the bound check fail at the merge base.
+    decimal = delta(
+        _gate_input("The product is 5736396."),
+        grounding_source="Summarise the fix; no commit is named here.",
+    )
+    assert not any(r.startswith("UNGROUNDED") for r in decimal.failure_reasons)
 
 
 def test_hex_sha_still_refused_control_grounded_sha_passes() -> None:
