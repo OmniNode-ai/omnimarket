@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: HandlerInferenceCredentialList
+#
+# List the caller tenant credential references from the tenant_inference_credentials projection. A missing relation degrades to an empty list; an unset source answers 503. Refuses every request with no resolved tenant before any projection read.
+name: "node_inference_credential_list"
+contract_name: "node_inference_credential_list"
+node_name: "node_inference_credential_list"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  List the caller tenant credential references from the tenant_inference_credentials projection. A missing relation degrades to an empty list; an unset source answers 503. Refuses every request with no resolved tenant before any projection read.
+input_model:
+  name: "ModelInferenceCredentialHttpCall"
+  module: "omnimarket.models.model_inference_credential_http"
+  description: "The authenticated request: caller tenant only."
+output_model:
+  name: "ModelInferenceCredentialListItem"
+  module: "omnimarket.models.model_inference_credential_http"
+  description: "Reference and metadata of one credential."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics: []
+  publish_topics: []
+# The route this node serves through the group's one HTTP mount. The mounted app
+# holds no path of its own; it reads this block and builds the route from it.
+http_route:
+  method: GET
+  path: "/v1/tenants/me/inference-credentials"
+  success_status: 200
+  handler:
+    name: HandlerInferenceCredentialList
+    module: omnimarket.nodes.node_inference_credential_list.handlers.handler_inference_credential_list
+  input_schema: {type: object, properties: {}, additionalProperties: true}
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves secrets by logical name. The projection source is reached through a DI-bound read model; its connection string is a secret by logical name."
+    required: false
+capabilities:
+  - name: "node_inference_credential_list_http"
+    description: "List the caller tenant credentials, degrading a missing projection relation to an empty list."
+metadata:
+  description: "List the caller tenant credential references from the tenant_inference_credentials projection. A missing relation degrades to an empty list; an unset source answers 503. Refuses every request with no resolved tenant before any projection read."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22340"
+  # Experimental until the cutover: the route is served over HTTP only, so the
+  # contract declares no consumed topic, and the identity resolver the hosted
+  # edge binds does not exist yet.
+  lifecycle: experimental
+  tags:
+    - "effect"
+    - "http"
+    - "byok"

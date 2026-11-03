@@ -3642,6 +3642,15 @@ jobs:
               )
           print(f"omnibase_infra overlay import path: {package_path}")
           PY
+      - name: Verify inference-credential HTTP routes and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_inference_credential_create tests/nodes/node_inference_credential_list tests/nodes/node_inference_credential_revoke -q --no-cov -p no:randomly
+      - name: Verify inference-credential HTTP Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_INFERENCE_CREDENTIAL_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_inference_credential_create/test_http_runtime_profiles.py -q --no-cov -p no:randomly
       - name: Run customer-path boundary tests
         env:
           # A missing docker daemon must be RED here, never a green skip.

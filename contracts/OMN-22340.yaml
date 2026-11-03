@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-22340
+title: Serve the three BYOK inference-credential routes from runtime nodes
+summary: >
+  POST, GET and DELETE /v1/tenants/me/inference-credentials are answered by the
+  runtime through one contract-declared HTTP mount, one node contract per route.
+  The caller tenant comes from an injected identity resolver; with no resolver
+  bound every request is refused before any secret write, bus publish or
+  projection read. The recorded-fixture replay (AC3) is written and waits for
+  the T18b corpus; no cutover and no caller switch happens here.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api, protocols]
+requirements:
+  - id: byok-credential-routes-in-runtime
+    statement: Serve the three inference-credential routes from runtime nodes.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the three inference-credential routes are each answered by the runtime through the group''s contract-declared http_mount, one node contract per route, and the moved onex-api tests for the three routes pass under the in-memory and the Redpanda profile -- falsifier: uv run pytest over the new node test directories in both profiles, run on a lab host through lab-run'
+      - id: AC2
+        statement: 'AC2: all three routes refuse a caller with no resolved tenant, and also when no identity resolver is bound, before any secret write, bus publish or projection read, and DELETE refuses a credential owned by another tenant -- falsifier: a pytest case with two seeded tenants that fails unless the unauthenticated, unbound and cross-tenant requests are refused with no adapter call'
+      - id: AC3
+        statement: 'AC3: the T18b fixture subset for these three method-and-path identities replays against the mounted app with no unmasked difference -- falsifier: a pytest replay test that reads the T18b corpus (OMN-22158) for the three identities and fails on any unmasked difference'
+evidence_requirements:
+  - kind: tests
+    description: Route behaviour, refusals and the real runtime mount in the in-memory profile.
+    command: uv run --frozen pytest tests/nodes/node_inference_credential_create tests/nodes/node_inference_credential_list tests/nodes/node_inference_credential_revoke -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: credential-routes-in-memory
+    description: >
+      The ported route tests (create, list, revoke, secret-safe 422, degrade to
+      empty, projection read scoping) and the real runtime mount round trip run
+      in the in-memory profile.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_inference_credential_create tests/nodes/node_inference_credential_list tests/nodes/node_inference_credential_revoke -q --no-cov -p no:randomly
+        cwd: .
+  - id: credential-routes-redpanda
+    description: >
+      The production no-argument mount factory publishes and consumes through
+      the canonical Kafka event bus against an isolated auth-required Redpanda
+      broker. The hosted runner has no lab, so only the local Done gate runs
+      this check, through lab-work.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane t18c-g6-inference-creds-1220 -- env ONEX_INFERENCE_CREDENTIAL_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_inference_credential_create/test_http_runtime_profiles.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: credential-routes-fail-closed
+    description: >
+      Unauthenticated, unbound-resolver and cross-tenant requests, with two
+      seeded tenants, are refused with no secret-store call, bus publish or
+      projection read.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_inference_credential_create/test_fail_closed.py tests/nodes/node_inference_credential_list/test_fail_closed.py tests/nodes/node_inference_credential_revoke/test_fail_closed.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: fixture-replay-pending
+    description: >
+      AC3 is OPEN. The replay test is written and its machinery is proven
+      against a synthetic corpus, but the T18b corpus (OMN-22158) is not
+      recorded yet, so no recorded pair has been replayed. This local Done check
+      refuses until the corpus lands and the replay runs with no skip.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: >-
+          python -c "raise SystemExit('AC3 OPEN: the T18b corpus (OMN-22158) has not landed; the replay has not run on recorded pairs')"
+        cwd: .
+  - id: deploy-probe
+    description: >
+      Hosted smoke check: the real runtime listener discovers the three
+      contracts, serves the one mount and answers the routes with the in-memory
+      bus. A process-local smoke, not a deployed-dev or cutover claim.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_inference_credential_create/test_http_runtime_profiles.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: credential-routes-published-source-probe
+    description: >
+      Hosted deploy check of the published source artifact at this checkout's
+      exact commit: the served create contract declares the mount and each of
+      the three served contracts declares its route. It checks the published
+      artifact and does not attest a running deployment.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: |-
+          set -euo pipefail;
+          probe_dir=$(mktemp -d);
+          trap 'rm -rf "$probe_dir"' EXIT;
+          base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes";
+          for n in create list revoke; do
+            curl --fail --silent --show-error --location --max-time 30 "$base/node_inference_credential_$n/contract.yaml" --output "$probe_dir/$n.yaml";
+            grep -q '^http_route:' "$probe_dir/$n.yaml";
+          done;
+          grep -q '^http_mount:' "$probe_dir/create.yaml";
+          grep -q 'path_prefix: "/v1/tenants/me/inference-credentials"' "$probe_dir/create.yaml"
+        cwd: .
