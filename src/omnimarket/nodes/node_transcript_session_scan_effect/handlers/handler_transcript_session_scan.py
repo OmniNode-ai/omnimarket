@@ -13,11 +13,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-
-from omnibase_spi.protocols.storage import (
-    ProtocolTranscriptObjectRecord,
-    ProtocolTranscriptSource,
-)
+from typing import TYPE_CHECKING
 
 from omnimarket.models.work_classification import EnumStreamKind, ModelSourceRevision
 from omnimarket.nodes.node_transcript_session_scan_effect.models import (
@@ -35,6 +31,14 @@ from omnimarket.nodes.node_transcript_session_scan_effect.models import (
 from omnimarket.nodes.node_transcript_session_scan_effect.overlay import (
     load_scan_overlay,
 )
+
+# The injected store is structural; these ports are needed only for annotations.
+if TYPE_CHECKING:
+    from omnibase_spi.protocols.storage import (
+        ProtocolTranscriptObjectRecord,
+        ProtocolTranscriptSource,
+    )
+
 
 _TRANSCRIPT_SUFFIX = ".jsonl"
 _SUBAGENT_DIRECTORY = "subagents"
