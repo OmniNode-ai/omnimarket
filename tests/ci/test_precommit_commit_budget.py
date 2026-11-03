@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """OMN-22364: the commit stage stays inside its time budget, and no check is lost.
 
-A commit that touched a few files ran 186 hook entries here and took
-985 s (16 minutes) on an idle lab host, longer on a loaded one. One-runtime lanes ended
+A commit that touched five files evaluated 186 hook entries here, ran 80 of
+them and took 986 s (16 minutes) on an idle lab host, longer on a loaded one. One-runtime lanes ended
 at their runtime limit with nothing pushed. The cost was whole-repo scans and
 suites, each its own ``uv run`` process, that already run as required CI jobs.
 
@@ -234,6 +234,52 @@ MOVED: Mapping[str, Home] = {
         "fsm-handler-drift",
         ("omnibase_core.validators.fsm_handler_drift src/",),
     ),
+    "dep-health-gate": Home(
+        "ci.yml",
+        "dep-health",
+        (
+            "scripts/ci/run_dep_health_sweep.py",
+            "--severity-threshold CRITICAL",
+            "--delta-mode",
+        ),
+    ),
+    "canonical-file-shape": Home(
+        "ci.yml", "canonical-file-shape", ("--rules file-shape",)
+    ),
+    "check-url-authority": Home(
+        "url-authority-gate.yml",
+        "url-authority-gate",
+        (
+            "omnibase_core.validation.validator_url_authority",
+            "--all --repo omnimarket --repo-root .",
+        ),
+    ),
+    "check-canonical-inference": Home(
+        "canonical-inference-gate.yml",
+        "canonical-inference-gate",
+        (
+            "omnibase_core.validation.validator_canonical_inference",
+            "--all --repo omnimarket --repo-root .",
+        ),
+    ),
+    "validate-validator-requirements": Home(
+        "validate-validator-requirements.yml",
+        "validate-validator-requirements",
+        (
+            "omnibase_core.validation.validator_requirements_consumer",
+            "--repo omnimarket",
+        ),
+    ),
+}
+
+# Hooks whose CI twin is report-only by design: they print findings and exit 0
+# whatever they find, so they never blocked a commit and no enforcement moves.
+REPORT_ONLY: Mapping[str, Home] = {
+    "report-contract-walk": Home(
+        "contract-walker.yml",
+        "contract-walker",
+        ("omnibase_core.validation.validator_contract_walker",),
+    ),
 }
 
 
@@ -261,14 +307,14 @@ def test_every_manual_hook_is_registered_with_a_ci_home() -> None:
     manual = {
         hook["id"] for hook in _hook_entries() if "manual" in (hook.get("stages") or [])
     }
-    registered = set(MOVED) | PREEXISTING_MANUAL
+    registered = set(MOVED) | set(REPORT_ONLY) | PREEXISTING_MANUAL
     assert manual == registered, (
         "a hook left the commit stage without a registered CI home, "
         f"or a registered hook is back at commit: {sorted(manual ^ registered)}"
     )
 
 
-@pytest.mark.parametrize("hook_id", sorted(MOVED))
+@pytest.mark.parametrize("hook_id", sorted(set(MOVED) | set(REPORT_ONLY)))
 def test_moved_hook_is_manual_only(hook_id: str) -> None:
     entries = [hook for hook in _hook_entries() if hook["id"] == hook_id]
     assert entries, f"{hook_id} is not declared"
@@ -295,6 +341,19 @@ def test_moved_hook_has_a_gated_ci_job_that_runs_its_command(hook_id: str) -> No
         assert needle in text, (
             f"{home.workflow}:{home.job} no longer runs {needle!r} for {hook_id}"
         )
+
+
+@pytest.mark.parametrize("hook_id", sorted(REPORT_ONLY))
+def test_report_only_hook_has_its_report_only_ci_twin(hook_id: str) -> None:
+    home = REPORT_ONLY[hook_id]
+    job = _job(home.workflow, home.job)
+    assert "report-only" in str(job.get("name")), (
+        f"{home.workflow}:{home.job} is no longer report-only, so {hook_id} must be "
+        "registered in MOVED with a CI Summary gated job"
+    )
+    text = _run_text(job)
+    for needle in home.needles:
+        assert needle in text
 
 
 def test_commit_stage_keeps_a_ceiling_on_unscoped_whole_repo_hooks() -> None:
