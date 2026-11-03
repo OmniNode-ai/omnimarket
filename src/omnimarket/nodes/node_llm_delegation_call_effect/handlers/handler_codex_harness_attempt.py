@@ -18,36 +18,18 @@ import signal
 import subprocess
 import tempfile
 import time
-from importlib import resources
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import yaml
+from omnimarket.handlers.container import container_overlay_dependencies as container
 
+from ..codex_harness_policy import PACKAGE, load_codex_harness_policy
 from ..models.model_codex_harness_attempt import (
     ModelCodexHarnessPolicy,
     ModelCodexHarnessReceipt,
     ModelCodexHarnessRequest,
 )
-
-
-def load_codex_harness_policy() -> ModelCodexHarnessPolicy:
-    """Load packaged contract defaults and an optional host-owned policy overlay."""
-    contract = yaml.safe_load(
-        resources.files("omnimarket.nodes.node_llm_delegation_call_effect")
-        .joinpath("contract.yaml")
-        .read_text()
-    )
-    policy = contract["codex_harness"]
-    overlay_path = os.environ.get("CODEX_HARNESS_OVERLAY_PATH")
-    if overlay_path:
-        overlay = yaml.safe_load(Path(overlay_path).read_text())
-        if not isinstance(overlay, dict) or set(overlay) != {"codex_harness"}:
-            raise ValueError("expected a codex_harness policy overlay")
-        if not isinstance(overlay["codex_harness"], dict):
-            raise ValueError("codex_harness policy must be a mapping")
-        policy = policy | overlay["codex_harness"]
-    return ModelCodexHarnessPolicy.model_validate(policy)
 
 
 def _terminate(process: subprocess.Popen[str], grace: float) -> tuple[str, str]:
@@ -125,8 +107,24 @@ def _receipt(
 class HandlerCodexHarnessAttempt:
     """Execute one bounded local attempt through the existing delegation effect."""
 
-    def __init__(self, policy: ModelCodexHarnessPolicy | None = None) -> None:
-        self.policy = policy if policy is not None else load_codex_harness_policy()
+    def __init__(
+        self,
+        policy: ModelCodexHarnessPolicy | None = None,
+        dependencies: Mapping[str, object] | None = None,
+    ) -> None:
+        bound = (
+            dependencies
+            if dependencies is not None
+            else container.require_dependencies(
+                container.declared_handler_dependencies(PACKAGE)
+            )
+        )
+        self._environment = container.process_environment(bound)
+        self.policy = (
+            policy
+            if policy is not None
+            else load_codex_harness_policy(container.overlay_documents(bound))
+        )
 
     def handle(self, request: ModelCodexHarnessRequest) -> ModelCodexHarnessReceipt:
         if request.timeout_seconds > self.policy.max_timeout_seconds:
@@ -163,7 +161,7 @@ class HandlerCodexHarnessAttempt:
                 process = subprocess.Popen(
                     argv,
                     cwd=self.policy.workdir,
-                    env=dict(os.environ),
+                    env=self._environment.environment(),
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,

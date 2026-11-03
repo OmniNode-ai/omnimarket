@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_cloud_session_placement_effect
 version: "0.1.0"
-description: "Effect: local cloud account placement state and cloud session text; caller supplied overlay and probe verdicts."
+description: "Effect: per-login cloud account registry, login map and placement state, and cloud session text; caller supplied overlay and raw probe texts."
 pack: operator_tooling
 node_role: effect
 display_name: "Cloud Session Placement Effect"

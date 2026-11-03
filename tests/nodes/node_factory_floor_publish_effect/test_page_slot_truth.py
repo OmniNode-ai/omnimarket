@@ -29,7 +29,8 @@ const [pagePath, floorJson] = process.argv.slice(1);
 const script = /<script>([\\s\\S]*?)<\\/script>/.exec(fs.readFileSync(pagePath, "utf8"))[1];
 const grab = name => new RegExp("function " + name + "\\\\([^)]*\\\\)\\\\{[\\\\s\\\\S]*?\\\\n\\\\}\\\\n").exec(script)[0];
 const num = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
-const isRefused = new Function(grab("isRefused") + "; return isRefused;")();
+const esc = s => String(s == null ? "" : s);
+const isRefused = new Function("esc", grab("refusalReason") + grab("isRefused") + "; return isRefused;")(esc);
 const facts = new Function("num", "isRefused", grab("machineFacts") + "; return machineFacts;")(num, isRefused);
 console.log(JSON.stringify(facts(JSON.parse(floorJson))));
 """
@@ -71,9 +72,9 @@ def test_page_draws_refused_and_the_reason_in_place_of_free_squares() -> None:
         admission={"state": "refused", "reason": REASON},
     )
     html = bay_html(bays(refused), "bay-x")
-    assert "refused: " + REASON.split(";")[0].replace("<", "&lt;") in html
+    assert "Not taking new work:</b> " + REASON.replace("<", "&lt;") in html
+    assert html.index("Not taking new work") < html.index('class="cap"')
     assert "<i></i>" not in html
-    assert "not taking new work" not in html
     assert "free" not in re.sub(r"<[^>]+>", " ", html.split("capline")[1]).split("·")[0]
 
 

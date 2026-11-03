@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _TICKET_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class EnumTicketOperation(StrEnum):
@@ -19,6 +21,18 @@ class EnumTicketOperation(StrEnum):
     READ = "read"
     COMMENT = "comment"
     TRANSITION = "transition"
+    CLEAR_PROJECT = "clear_project"
+    REPAIR_PROJECT = "repair_project"
+
+
+def _is_utc_day(value: str) -> bool:
+    if not _DAY_RE.match(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 class ModelCreateTicketRequest(BaseModel):
@@ -65,6 +79,14 @@ class ModelCreateTicketRequest(BaseModel):
             "pillar owner map; none means the creator."
         ),
     )
+    day: str = Field(
+        default="",
+        description="One UTC day, YYYY-MM-DD, whose lane-created tickets repair_project lists.",
+    )
+    from_project: str = Field(
+        default="",
+        description="The project repair_project clears from the tickets it lists (e.g. Ready).",
+    )
     project: str = Field(
         default="",
         description=(
@@ -78,6 +100,18 @@ class ModelCreateTicketRequest(BaseModel):
         op = self.operation
         if self.state.strip() and op is not EnumTicketOperation.TRANSITION:
             raise ValueError("state is only valid with operation=transition")
+        if op is EnumTicketOperation.REPAIR_PROJECT:
+            if not _is_utc_day(self.day):
+                raise ValueError(
+                    f"operation=repair_project requires day as one UTC date YYYY-MM-DD, got {self.day!r}"
+                )
+            if not self.from_project.strip():
+                raise ValueError("operation=repair_project requires from_project")
+            return self
+        if self.day or self.from_project:
+            raise ValueError(
+                "day and from_project are only valid with operation=repair_project"
+            )
         if op is EnumTicketOperation.CREATE:
             if not self.title.strip():
                 raise ValueError("operation=create requires a title")
@@ -123,3 +157,19 @@ class ModelCreateTicketResult(BaseModel):
         description="The description sent to Linear (create) or read from it (read).",
     )
     dry_run: bool = Field(default=False)
+    project_cleared: bool = Field(
+        default=False,
+        description="clear_project: the independent readback showed an explicit null project.",
+    )
+    cleared_ids: list[str] = Field(
+        default_factory=list,
+        description="repair_project: the tickets whose project was cleared and read back as null.",
+    )
+    candidate_ids: list[str] = Field(
+        default_factory=list,
+        description="repair_project: the tickets the listing found for the day, label and project.",
+    )
+    skipped: list[str] = Field(
+        default_factory=list,
+        description="repair_project: '<id>: <reason>' for each listed ticket the recheck refused.",
+    )
