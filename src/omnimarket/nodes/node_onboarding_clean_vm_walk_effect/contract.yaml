@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_onboarding_clean_vm_walk_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: 0.1.0
+description: Run pinned participant onboarding on a clean stock macOS VM and return a typed receipt, including
+  failure and deletion evidence.
+input_model:
+  name: ModelWalkRequest
+  module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk
+  description: Pinned script, checksum, providers and Tart host.
+output_model:
+  name: ModelWalkReceipt
+  module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk
+  description: Typed phases, delegated run, dashboard probes and VM cleanup receipt.
+handler:
+  module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.handler_onboarding_clean_vm_walk
+  class: HandlerOnboardingCleanVmWalk
+  input_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk.ModelWalkRequest
+  output_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk.ModelWalkReceipt
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.handler_onboarding_clean_vm_walk:HandlerOnboardingCleanVmWalk
+  handlers:
+  - operation: walk_onboarding_in_clean_vm
+    handler:
+      name: HandlerOnboardingCleanVmWalk
+      module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.handler_onboarding_clean_vm_walk
+    input_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk.ModelWalkRequest
+    output_model: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk.ModelWalkReceipt
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+terminal_event: onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.onboarding-clean-vm-walk-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
+    failure: onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.onboarding-clean-vm-walk-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
+  - onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1
+published_events:
+- event_type: ModelWalkReceipt
+  topic: onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
+  description: Onboarding and dashboard probes completed; cleanup recorded.
+- event_type: ModelWalkReceipt
+  topic: onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1
+  description: Walk failed; failure text and cleanup recorded.
+externally_consumed_topics:
+- onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
+- onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1
+metadata:
+  transport_type: kafka
+  description: Clean VM participant onboarding walk with typed receipt.
+  author: OmniNode Team
+  tags:
+  - effect
+  - onboarding
+  - operator_tooling
+documented_steps:
+- kind: tart_clone
+  description: Clone the stock image into a fresh walk VM.
+- kind: tart_set_spec
+  description: Set CPU and memory from the resolved request.
+- kind: tart_run
+  description: Start tart run --no-graphics detached through the transport.
+- kind: tart_ip
+  description: Wait up to 120 seconds for the VM IP.
+- kind: guest_fetch_script
+  description: Fetch the pinned participant script into $HOME/walk; retry agent/connect readiness failures.
+- kind: guest_verify_checksum
+  description: Verify the documented SHA-256 checksum before running the script.
+- kind: guest_run_script
+  description: Run bash lab-onboarding.sh with participant provider flags, capturing stdout in $HOME/walk-run.log.
+- kind: guest_read_log
+  description: Read the captured participant log, including after a failed script.
+- kind: guest_dashboard_start
+  description: Start onex dashboard separately, saving its PID and URL log.
+- kind: guest_dashboard_probe_root
+  description: Wait for the dashboard URL and probe its authenticated root without printing the token.
+- kind: guest_dashboard_probe_projections
+  description: Probe /projections with the dashboard token query without printing the token.
+- kind: guest_dashboard_stop
+  description: Stop only the dashboard PID recorded at startup.
+- kind: tart_stop
+  description: Stop the cloned VM during cleanup.
+- kind: tart_delete
+  description: Delete the cloned VM during cleanup.
+tart:
+  stock_image: ghcr.io/cirruslabs/macos-tahoe-vanilla:latest
+  cpu: 4
+  memory_gb: 8
+  tart_path: ~/.local/bin/tart
+# The Tart transport this node owns beside its walk handler. A descriptive
+# binding only; handler_routing above is what routes.
+transport_bindings:
+  tart_ssh:
+    handler:
+      name: HandlerSshTart
+      module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner
