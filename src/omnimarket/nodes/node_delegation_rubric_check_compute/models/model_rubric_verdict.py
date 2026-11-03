@@ -21,6 +21,8 @@ class ModelRubricVerdict(BaseModel):
     criteria: tuple[ModelRubricCriterionResult, ...]
     outcome: EnumRubricOutcome
     failed_criteria: tuple[str, ...]
+    # Required criteria left undetermined; any one keeps the verdict off PASS.
+    undetermined_required: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def consistent_aggregate(self) -> Self:
@@ -29,9 +31,18 @@ class ModelRubricVerdict(BaseModel):
             for row in self.criteria
             if row.outcome == EnumRubricOutcome.FAIL
         )
+        undetermined = {
+            row.criterion_id
+            for row in self.criteria
+            if row.outcome == EnumRubricOutcome.UNDETERMINED
+        }
+        if not set(self.undetermined_required) <= undetermined:
+            raise ValueError("undetermined_required must name undetermined criteria")
         expected = (
             EnumRubricOutcome.FAIL
             if failed
+            else EnumRubricOutcome.UNDETERMINED
+            if self.undetermined_required
             else EnumRubricOutcome.PASS
             if any(row.outcome == EnumRubricOutcome.PASS for row in self.criteria)
             else EnumRubricOutcome.UNDETERMINED

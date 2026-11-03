@@ -25,6 +25,17 @@ class ModelDelegationClassRubrics(BaseModel):
     false_refusal_lines: dict[str, ModelRangeAcceptanceLine] = Field(
         default_factory=dict
     )
+    pass_requires_determined: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _pass_requirements_known(self) -> Self:
+        for task_class, criterion_ids in self.pass_requires_determined.items():
+            names = {row.criterion_id for row in self.classes.get(task_class, ())}
+            if task_class not in self.classes or not set(criterion_ids) <= names:
+                raise ValueError(
+                    "pass_requires_determined must name criteria of a rubric class"
+                )
+        return self
 
     @model_validator(mode="after")
     def _calibration_classes(self) -> Self:
@@ -44,4 +55,5 @@ class ModelDelegationClassRubrics(BaseModel):
             rubric_version=self.rubric_version,
             task_class=task_class,
             criteria=self.classes.get(task_class, ()),
+            pass_requires_determined=self.pass_requires_determined.get(task_class, ()),
         )

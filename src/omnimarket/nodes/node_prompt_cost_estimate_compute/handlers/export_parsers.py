@@ -4,9 +4,9 @@
 
 Four shapes are read: the ChatGPT ``conversations.json``, the Claude data
 export's ``conversations.json``, Claude Code session JSONL, and a CSV with a
-``prompt`` column. Claude Code usage is folded by the history reader the
+``prompt`` column. Claude Code usage is read by the history reader the
 savings estimate already uses, so a transcript is counted the same way here as
-there. Where the export carries no token counts they are estimated from text
+there; each assistant message is one record, priced on the model its line names. Where the export carries no token counts they are estimated from text
 length and the record says so; where it names no model the record's model is
 empty and the caller decides what that means.
 """
@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
+from omnimarket.models.savings_estimate import ModelClaudeCodeAssistantTurn
 from omnimarket.nodes.node_claude_code_history_read_effect import (
     EnumHistoryReadStatus,
     HandlerClaudeCodeHistoryRead,
@@ -251,18 +252,32 @@ def _parse_claude_code(content: str) -> list[ParsedPrompt]:
     if not result.records and result.lines_skipped:
         raise ExportParseError("the upload is not Claude Code session JSONL")
     texts = _claude_code_prompt_texts(lines)
-    return [
-        ParsedPrompt(
-            conversation_id=record.session_id,
-            occurred_at=record.occurred_at,
-            prompt_text=texts.get(record.prompt_id, ""),
-            model=record.model,
-            tokens_in=record.tokens_in,
-            tokens_out=record.tokens_out,
-            tokens_estimated=False,
+    prompts: list[ParsedPrompt] = []
+    for record in result.records:
+        prompt_text = texts.get(record.prompt_id, "")
+        # One row per assistant message, each on the model its line names: a
+        # prompt answered by more than one model is not priced on the first.
+        # A record without turns keeps its folded usage as one row.
+        turns = record.turns or (
+            ModelClaudeCodeAssistantTurn(
+                model=record.model,
+                tokens_in=record.tokens_in,
+                tokens_out=record.tokens_out,
+            ),
         )
-        for record in result.records
-    ]
+        prompts.extend(
+            ParsedPrompt(
+                conversation_id=record.session_id,
+                occurred_at=record.occurred_at,
+                prompt_text=prompt_text,
+                model=turn.model,
+                tokens_in=turn.tokens_in,
+                tokens_out=turn.tokens_out,
+                tokens_estimated=False,
+            )
+            for turn in turns
+        )
+    return prompts
 
 
 _CSV_TOKENS_IN = ("tokens_in", "input_tokens", "prompt_tokens")
