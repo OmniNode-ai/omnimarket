@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Registry module tick, rendered by node_host_installer_registry_units from its contract.
-     Placeholders: __LABEL__ __UNIT__ __UV__ __PROJECT__ __MODULE__ __OMNI_HOME__ __EVIDENCE_DIR__
+     Placeholders: __LABEL__ __UNIT__ __UV__ __PYTHON__ __PROJECT__ __MODULE__ __OMNI_HOME__ __EVIDENCE_DIR__
                    __HOME__ __USER__ __STATE_DIR__ __START_INTERVAL__ __RUN_AT_LOAD__ __ENVIRONMENT__
      __PROJECT__ is the canonical registry clone, or the project path override the install named. The agent
-     runs the unit's module with the interpreter of that project's own environment, so nothing is copied.
+     runs the unit's module with the project's own environment, built on __PYTHON__ (the brew interpreter, which holds the
+     macOS Local Network grant a uv-managed CPython never gets), so nothing is copied.
      `uv` is a literal path because launchd has a restricted PATH. The frozen flag keeps the run from rewriting
      the project's lock. No PYTHONPATH: the module must import from the project's environment.
      Not KeepAlive: this is a periodic job, and a restart the instant it exits would rerun it. -->
@@ -18,6 +19,8 @@
     <string>__UV__</string>
     <string>run</string>
     <string>--frozen</string>
+    <string>--python</string>
+    <string>__PYTHON__</string>
     <string>--project</string>
     <string>__PROJECT__</string>
     <string>python</string>

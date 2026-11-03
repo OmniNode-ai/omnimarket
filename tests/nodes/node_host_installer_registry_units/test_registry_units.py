@@ -103,6 +103,18 @@ def canonical(tmp_path: Path) -> Path:
     return path
 
 
+BREW_PYTHON = "/opt/homebrew/bin/python3.13"
+
+
+@pytest.fixture(autouse=True)
+def brew_python_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The host under test has the brew interpreter (CI is not a Mac); the refusal test removes it."""
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
+        lambda path: path == BREW_PYTHON,
+    )
+
+
 def plist_of(text: str) -> dict[str, Any]:
     loaded: dict[str, Any] = plistlib.loads(text.encode("utf-8"))
     return loaded
@@ -239,6 +251,47 @@ def test_install_writes_the_plist_loads_it_and_records_the_revision_it_runs(
     proofs = [c for c in run.calls if c[0] == "/usr/bin/uv"]
     assert proofs
     assert str(branch) in proofs[0]
+
+
+def test_the_rendered_unit_and_its_proof_run_on_the_brew_interpreter(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A uv-managed CPython never gets the macOS Local Network grant: under launchd its LAN connections fail with EHOSTUNREACH."""
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    run = Recorder()
+    result = HandlerRegistryUnits(run).handle(
+        request(
+            tmp_path,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    args = plist_of(result.rendered)["ProgramArguments"]
+    assert args[args.index("--python") + 1] == BREW_PYTHON
+    assert args.index("--python") < args.index("--project")
+    proof = next(c for c in run.calls if c[0] == "/usr/bin/uv")
+    assert proof[proof.index("--python") + 1] == BREW_PYTHON
+
+
+def test_a_host_without_a_declared_interpreter_is_refused(
+    tmp_path: Path, canonical: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
+        lambda _path: False,
+    )
+    result = HandlerRegistryUnits(real_run).handle(request(tmp_path))
+    assert result.status == "failure"
+    assert "Local Network grant" in result.stderr
 
 
 def test_an_unknown_unit_is_refused(tmp_path: Path) -> None:

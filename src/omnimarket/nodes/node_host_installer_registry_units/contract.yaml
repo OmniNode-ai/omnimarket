@@ -43,6 +43,13 @@ units:
       run_at_load: true
       description: every 300 s and at load
     registry_project: omnimarket
+    # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
+    # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
+    # otherwise build the project's venv on never gets the grant: under launchd its LAN connections fail with
+    # EHOSTUNREACH (measured 2026-11-02, OMN-22171; Operating Rule 11 of the registry CLAUDE.md).
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_factory_floor_publish_effect
     entry_file: src/omnimarket/nodes/node_factory_floor_publish_effect/__main__.py
     project_path_override:

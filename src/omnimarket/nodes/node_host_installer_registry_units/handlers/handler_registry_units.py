@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Render and install launchd registry_module_tick units, with a project path override.
 
-A registry_module_tick unit runs ``uv run --frozen --project <project> python -m <module>`` on a timer. The project is the
+A registry_module_tick unit runs ``uv run --frozen --python <brew python> --project <project> python -m <module>`` on a timer. The project is the
 canonical registry clone unless the unit contract declares ``project_path_override`` and the request names a checkout:
 then the rendered unit runs that checkout, so a fix installs from its branch without waiting for a merge. The checkout
 must be clean (the installed code equals its revision) and carry the unit's entry file. The revision the unit runs is
@@ -36,6 +36,11 @@ NODE_DIR = Path(__file__).resolve().parents[1]
 STALE_INTERVALS = 3
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def interpreter_present(path: str) -> bool:
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
 
 Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
@@ -81,6 +86,19 @@ class HandlerRegistryUnits:
             return self.result(request, 1, error=f"{exc}\n")
 
     # ------------------------------------------------------------------ plan
+
+    def interpreter_for(self, unit: dict[str, Any]) -> str:
+        """The first declared interpreter that exists on this host; the unit is refused when none does."""
+        candidates = [str(c) for c in unit.get("interpreter_candidates") or []]
+        if not candidates:
+            raise ValueError(f"{unit['label']} declares no interpreter_candidates")
+        for candidate in candidates:
+            if interpreter_present(candidate):
+                return candidate
+        raise ValueError(
+            f"none of the interpreters {candidates} exists on this host; {unit['label']} needs the brew python "
+            "(a uv-managed one never gets the macOS Local Network grant)"
+        )
 
     def project_for(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
@@ -160,6 +178,7 @@ class HandlerRegistryUnits:
         unit: dict[str, Any],
         project: Path,
         uv: str,
+        python: str,
     ) -> str:
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
         home, root = Path(request.home), Path(request.registry_root)
@@ -174,6 +193,7 @@ class HandlerRegistryUnits:
             "LABEL": str(unit["label"]),
             "UNIT": request.unit,
             "UV": uv,
+            "PYTHON": python,
             "PROJECT": str(project),
             "MODULE": str(unit["module"]),
             "OMNI_HOME": str(root),
@@ -237,7 +257,8 @@ class HandlerRegistryUnits:
         uv = shutil.which("uv")
         if uv is None:
             raise ValueError(f"uv is not on PATH; it runs {unit['module']} for {label}")
-        text = self.render(request, unit, project, uv)
+        python = self.interpreter_for(unit)
+        text = self.render(request, unit, project, uv, python)
         if request.mode == "dry-run":
             return self.result(
                 request,
@@ -253,6 +274,8 @@ class HandlerRegistryUnits:
                 uv,
                 "run",
                 "--frozen",
+                "--python",
+                python,
                 "--project",
                 str(project),
                 "python",
