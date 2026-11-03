@@ -122,3 +122,54 @@ dod_evidence:
     check_value: |-
       uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane omn-22010-0445 -- uv run --frozen pytest tests/unit/test_factory_floor_limits.py tests/unit/test_factory_floor_limits_loaders.py tests/unit/test_factory_floor_page_limits.py tests/nodes/node_factory_floor_compute -q --no-cov
     cwd: .
+- id: dod-omn22010-deploy-runtime-limits
+  description: Hosted deployment-candidate smoke dispatches the checked-out factory floor node through the in-memory ONEX runtime and reads its serialized limits. It asserts API budget arithmetic, stale and unread UNKNOWN rows, and revoked tokens excluded from usable capacity. The merge base lacks these limits. The runner needs only the checkout and locked dependencies; this does not attest a live service deployment.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv run --frozen python -c '
+      import json
+      import sys
+      from pathlib import Path
+      import yaml
+      config = yaml.safe_load(Path("src/omnimarket/nodes/node_factory_floor_compute/contract.yaml").read_text())["config"]
+      request = {
+          "generated_at": "2026-11-03T12:00:00Z",
+          "config": config,
+          "plans": [],
+          "watcher": {"last_tick": "2026-11-03T12:00:00Z"},
+          "limits": {
+              "api_keys": [{"name": "fresh", "month_spend_usd": 61, "read_at": "2026-11-03T11:59:00Z", "source": "probe-meter"}],
+              "codex": {"used_pct": 0.75, "read_at": "2026-11-01T00:00:00Z", "source": "probe-codex"},
+              "token_pools": [{"host": "probe-host", "read_at": "2026-11-03T11:59:00Z", "source": "probe-pool", "tokens": [{"label": "usable"}, {"label": "revoked", "revoked": True}, {"label": "limited", "limited_until": "2026-11-03T13:00:00Z"}]}],
+          },
+      }
+      Path(sys.argv[1]).write_text(json.dumps(request))
+      ' "$probe_dir/input.json";
+      onex node node_factory_floor_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 20 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+      uv run --frozen python -c '
+      import json
+      import sys
+      from pathlib import Path
+      receipt = json.loads(Path(sys.argv[1]).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      rows = {row["row_id"]: row for row in receipt["result"]["limits"]["rows"]}
+      api = rows["api_credit:fresh"]
+      assert api["state"] == "read" and api["source"] == "probe-meter", api
+      assert api["read_at"] == "2026-11-03T11:59:00Z", api
+      assert api["values"]["budget_usd"] == 200 and api["values"]["remaining_usd"] == 139, api
+      for key in ("codex:codex", "glm:glm"):
+          assert rows[key]["state"] == "UNKNOWN" and rows[key]["values"] == {}, rows[key]
+      pool = rows["host_account_pool:probe-host"]
+      assert pool["state"] == "read", pool
+      assert pool["values"] == {"total": 3, "revoked": 1, "limited": 1, "usable": 1, "limited_until": "2026-11-03T13:00:00Z"}, pool
+      print("factory-floor runtime limits: PASS (API remaining 139; stale/unread UNKNOWN; pool usable=1 limited=1 revoked=1)")
+      ' "$probe_dir/receipt.json";
+    cwd: .
