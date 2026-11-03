@@ -56,8 +56,21 @@ def fold_view(
             identity = f"{event.check_id}:{event.key}"
             if identity in host.resolved_ids:
                 continue
+            # A resolution closes the open item it names, unless a newer heartbeat
+            # already reported the host or the item was reopened after it.
+            still_open = host.open
+            if (
+                host.last_heartbeat_at is None
+                or event.resolved_at >= host.last_heartbeat_at
+            ):
+                still_open = tuple(
+                    item
+                    for item in host.open
+                    if item.key != event.key or item.first_seen_at > event.resolved_at
+                )
             hosts[event.host] = host.model_copy(
                 update={
+                    "open": still_open,
                     "resolved_count": host.resolved_count + 1,
                     "last_resolved": (*host.last_resolved, event)[-20:],
                     "resolved_ids": (*host.resolved_ids, identity),
