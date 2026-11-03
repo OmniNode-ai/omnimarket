@@ -140,6 +140,8 @@ def test_provisions_the_wrapper_link_the_node_install_and_clears_the_empty_nodee
         "tool:pyright": "changed",
     }
     assert port.links == {f"{BIN}/onex": WRAPPER}
+    onex_step = next(s for s in result.steps if s.step == "tool:onex")
+    assert f"{BIN}/onex points at {WRAPPER}; then" in onex_step.detail
     assert NODEENV not in port.dirs
     assert result.ok
     assert result.operator_steps == ()

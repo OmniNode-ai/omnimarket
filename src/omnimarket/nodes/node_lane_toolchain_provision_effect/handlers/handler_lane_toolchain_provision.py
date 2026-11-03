@@ -116,7 +116,8 @@ class HandlerLaneToolchainProvision:
             return _step(name, "needs-operator", f"{reading}; {why}; {spec.owner_fix}")
 
         repair = spec.repair
-        action: str
+        would: str
+        done: str
         if repair.kind == "lane-link":
             target = f"{host.registry_root}/{repair.target}"
             link = f"{host.lane_bin_dir}/{name}"
@@ -133,22 +134,26 @@ class HandlerLaneToolchainProvision:
                     "refused",
                     f"{reading}; {link} is not a link and is left as it is",
                 )
-            action = f"{link} would point at {target}"
+            would, done = (
+                f"{link} would point at {target}",
+                f"{link} points at {target}",
+            )
         elif repair.kind == "clear-empty-tree":
             directory = f"{host.home}/{repair.path}"
             held = self._port.file_count(directory)
             if held != 0:
                 why = "is absent" if held is None else f"holds {held} file(s)"
                 return owner(f"{directory} {why}, so there is no empty tree to clear")
-            action = f"{directory} would be removed"
+            would, done = f"{directory} would be removed", f"{directory} removed"
         else:
             argv = host.install.get(name)
             if not argv:
                 return owner("the host overlay declares no installer argv for the tool")
-            action = f"`{' '.join(argv)}` would run"
+            command = f"`{' '.join(argv)}`"
+            would, done = f"{command} would run", f"{command} ran"
 
         if request.check_only:
-            return _step(name, "would-change", f"{reading}; {action}")
+            return _step(name, "would-change", f"{reading}; {would}")
         failure = self._apply(host, name, spec)
         if failure is not None:
             return _step(name, "failed", f"{reading}; {failure}")
@@ -157,7 +162,7 @@ class HandlerLaneToolchainProvision:
             return _step(
                 name, "failed", f"repaired, but the probe still fails: {after}"
             )
-        return _step(name, "changed", f"{action.replace(' would ', ' ')}; then {after}")
+        return _step(name, "changed", f"{done}; then {after}")
 
     def _apply(
         self,
