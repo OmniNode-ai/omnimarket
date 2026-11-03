@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-22223
+title: The delegate caller wait and the runtime dispatch timeout are one budget on two clocks
+summary: The delegate-skill handler now measures its dispatch budget from publish. The queue wait is deducted from the execution window handed to the dispatch port and from the handler's own wait_for bound, and a run whose execution budget was spent in the queue returns a queue_budget_exhausted terminal (cause refused_before_dispatch) without reaching a model. The allowance added to the execution window is clamped to the terminal delivery margin, so the runtime bound never outlasts the caller wait, which is the execution window plus that margin timed from publish.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22223-queue-wait-deducted
+  statement: The runtime dispatch budget is timed from publish, so queue wait is deducted, and a budget spent in the queue ends in a typed terminal.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the runtime dispatch timeout is measured from publish, so queue wait is deducted from the execution budget, and a run that spent its budget in the queue ends with a typed queue-budget terminal before the caller''s wait ends -- falsifier: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q -k queue_wait_deducted, a stub run with 120 s of queue wait and a 300 s total budget, which runs the full 300 s from pickup today'
+- id: req-omn22223-caller-wait-covers-runtime
+  statement: The caller wait is never shorter than the runtime timeout it waits on.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the caller wait is never shorter than the runtime timeout it waits on, so a terminal that the runtime records is always seen -- falsifier: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q -k caller_wait_covers_runtime'
+evidence_requirements:
+- kind: tests
+  description: The handler is run against a recording stub port with a published_at stamp 120 s old and against every task class in the contract.
+  command: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22223-ac1
+  description: AC1 a stub run with 120 s of queue wait is handed a 120 s execution window and a bound 120 s shorter than the 300 s budget; a run whose queue wait exceeds the execution window returns queue_budget_exhausted and reaches no model.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov --tb=line -k queue_wait_deducted
+    cwd: .
+- id: dod-omn22223-ac2
+  description: AC2 for every task class in the contract and for unset, small, half and ceiling requested timeouts, the caller wait is at least the execution window plus the runtime allowance; an over-margin grace is clamped.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov --tb=line -k caller_wait_covers_runtime
+    cwd: .
+- id: dod-omn22223-deploy-probe
+  description: 'Deploy probe: the handler at the checked-out commit carries the allowance clamp, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'git show HEAD:src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py | grep -F "def resolve_wait_allowance_seconds" > /dev/null'
+    cwd: .

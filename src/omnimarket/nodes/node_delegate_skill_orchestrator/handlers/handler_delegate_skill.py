@@ -1001,6 +1001,52 @@ def _queue_wait_ms(
     return max(0, int(delta_ms))
 
 
+def resolve_wait_allowance_seconds(
+    *,
+    requested_timeout_seconds: int | None,
+    requested_grace_seconds: int | None,
+    terminal_delivery_margin_seconds: int,
+) -> int:
+    """Return the allowance added to the execution window, never above the margin.
+
+    OMN-22223 AC2. The caller (``omnibase_infra`` ``_terminal_wait_seconds``)
+    waits the execution window plus the declared delivery margin. The runtime
+    waits the execution window plus this allowance, so an allowance above the
+    margin would let the runtime record a terminal after the caller stopped
+    listening. The grace a caller-named timeout gets is therefore clamped to
+    the margin.
+    """
+    if requested_timeout_seconds is not None and requested_grace_seconds is not None:
+        return min(requested_grace_seconds, terminal_delivery_margin_seconds)
+    return terminal_delivery_margin_seconds
+
+
+def caller_wait_seconds(
+    *,
+    requested_timeout_seconds: int | None,
+    task_class_timeout_ceiling_seconds: int,
+    terminal_delivery_margin_seconds: int,
+) -> int:
+    """Return the caller's terminal wait, timed from publish.
+
+    Mirrors ``omnibase_infra`` ``cli_delegate._terminal_wait_seconds`` so this
+    repository can pin the invariant that the runtime budget never outlasts it.
+    """
+    execution_seconds = (
+        task_class_timeout_ceiling_seconds
+        if requested_timeout_seconds is None
+        else min(requested_timeout_seconds, task_class_timeout_ceiling_seconds)
+    )
+    return execution_seconds + terminal_delivery_margin_seconds
+
+
+def queue_wait_deduction_seconds(queue_wait_ms: int | None) -> int:
+    """Whole seconds of queue wait to deduct from the budget (rounded up)."""
+    if queue_wait_ms is None:
+        return 0
+    return -(-queue_wait_ms // 1000)
+
+
 def _request_ticket_id(request: ModelDelegateSkillRequest) -> str | None:
     """The ticket the caller named in the request metadata, or None.
 
@@ -1643,12 +1689,48 @@ class HandlerDelegateSkill:
         requested_grace_seconds: int | None = getattr(
             execution_budget, "requested_timeout_grace_seconds", None
         )
-        wait_allowance_seconds = (
-            requested_grace_seconds
-            if requested_timeout_seconds is not None
-            and requested_grace_seconds is not None
-            else execution_budget.terminal_delivery_margin_seconds
+        wait_allowance_seconds = resolve_wait_allowance_seconds(
+            requested_timeout_seconds=requested_timeout_seconds,
+            requested_grace_seconds=requested_grace_seconds,
+            terminal_delivery_margin_seconds=(
+                execution_budget.terminal_delivery_margin_seconds
+            ),
         )
+        # OMN-22223 AC1: the caller's wait is timed from PUBLISH, so the budget
+        # the runtime spends from pickup is the same budget less the queue wait.
+        # Without the deduction a run that queued 120 s ran its full 300 s from
+        # pickup and the caller gave up at 300 s from publish with no terminal.
+        queue_deduction_seconds = queue_wait_deduction_seconds(queue_wait_ms)
+        remaining_execution_seconds = (
+            execution_timeout_seconds - queue_deduction_seconds
+        )
+        if remaining_execution_seconds <= 0:
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    "queue_budget_exhausted: "
+                    f"queue_wait_ms={queue_wait_ms}; "
+                    f"execution_timeout_seconds={execution_timeout_seconds}; "
+                    f"task_type={request.task_type}; "
+                    "the run spent its execution budget waiting to be picked up "
+                    "and was not dispatched (OMN-22223)"
+                ),
+                # No dedicated enum member exists in the pinned omnibase_core;
+                # nothing was dispatched, so the pre-dispatch refusal cause is
+                # the truthful one and the message prefix types the reason.
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                attempts_count=0,
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
+                budget_evidence=budget_evidence,
+                budget_source=budget_source,
+            )
         # OMN-20557 / OMN-21752: the session model rides a context variable,
         # not a dispatch() keyword -- see session_model.py.
         session_token = bind_session_model(request, self._dispatch_port)
@@ -1675,7 +1757,7 @@ class HandlerDelegateSkill:
                     source_session_id=request.session_id
                     or request.metadata.get("session_id"),
                     wait=request.wait,
-                    execution_timeout_seconds=execution_timeout_seconds,
+                    execution_timeout_seconds=remaining_execution_seconds,
                     terminal_delivery_margin_seconds=(
                         execution_budget.terminal_delivery_margin_seconds
                     ),
@@ -1721,7 +1803,7 @@ class HandlerDelegateSkill:
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
-                timeout=float(execution_timeout_seconds + wait_allowance_seconds),
+                timeout=float(remaining_execution_seconds + wait_allowance_seconds),
             )
         except asyncio.CancelledError:
             progress.finalize_run_steps(
@@ -1796,7 +1878,7 @@ class HandlerDelegateSkill:
                         progress,
                         cancel_message=(
                             f"delegation exceeded the handler execution budget of "
-                            f"{execution_timeout_seconds}s (plus a "
+                            f"{remaining_execution_seconds}s (plus a "
                             f"{wait_allowance_seconds}s allowance) and was cancelled at "
                             f"stage={cancelled_stage}; "
                             "the consumer commits "
