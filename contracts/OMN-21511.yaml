@@ -1,0 +1,50 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21511"
+title: "T-W1b: admission audit judges what it admitted"
+summary: "The pure admission audit and its models: audit_admissions judges each PR-opening CLAIM by the witness carried on the row, with override and exemption validation. AC3 (the fill writes the witness on the CLAIM row through the ledger store) is not in this change: the ledger store protocol is not on the landing branch."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: "req-omn21511-witness-audit"
+    statement: |-
+      The audit counts a PR-opening CLAIM as a breach or not from the admission witness written at dispatch, never from the current policy or the current open pull requests.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: audit_admissions judges each PR-opening CLAIM against the admission witness written at dispatch; a claim with no witness or an unreadable reading while enforcing is a breach; an override counts only when it matches the slot reducer decision and its one-use claim -- falsifier: tests/nodes/node_wip_gate_reducer/test_admission_audit.py"
+      - id: "AC2"
+        statement: "AC2: Configuration: the contract fields are unchanged -- falsifier: the existing configuration cases of tests/nodes/node_wip_gate_reducer/test_wip_gate.py pass"
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused WIP gate reducer tests pass."
+    command: "uv run pytest tests/nodes/node_wip_gate_reducer -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21511-ac1"
+    description: "AC1: the admission audit cases pass."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_wip_gate_reducer/test_admission_audit.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21511-ac2"
+    description: "AC2: the existing configuration cases of the WIP gate reducer pass and the config fields are pinned."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py tests/nodes/node_wip_gate_reducer/test_admission_audit.py -q --no-cov -k 'test_ac11_ or test_ac4_ or test_the_config_fields_are_unchanged'"
+        cwd: "."
+  - id: "dod-omn21511-deploy-probe-witness-model"
+    description: "Deploy probe: the checked-out commit declares the admission witness model; it is absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'class ModelWipAdmissionWitness' src/omnimarket/models/wip_gate.py"
+        cwd: "."
