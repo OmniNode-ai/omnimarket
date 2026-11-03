@@ -1,0 +1,38 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22364
+title: Commit-time pre-commit hooks take 10 to 25 minutes and outlast one-runtime lane limits
+summary: >-
+  Whole-repo scans and suites that already run as CI Summary gated jobs leave the commit stage (stages manual), so a commit touching a few files finishes pre-commit in under two minutes. A registry test pins, per moved hook, the CI job that still enforces it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22364-commit-budget
+    statement: >-
+      Every hook that leaves the commit stage is registered with a CI Summary gated job that runs the same command, and the commit stage no longer runs the whole-repo scans.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: a commit touching a few files finishes pre-commit in under 2 minutes, measured on a lab host with pre-commit run --verbose over a staged probe change -- falsifier: uv run pytest tests/ci/test_precommit_commit_budget.py -q (per repo) and the lab-run timing receipt in the PR body
+      - id: AC2
+        statement: >-
+          AC2: every hook moved out of the pre-commit stage still runs as a required check (CI job or pre-push) and a test fails when a moved hook has no required home -- falsifier: uv run pytest tests/ci/test_precommit_commit_budget.py -q
+evidence_requirements:
+  - kind: tests
+    description: The registry test that pins every moved hook to a CI Summary gated job running its command.
+    command: uv run pytest tests/ci/test_precommit_commit_budget.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22364-ac1-registry
+    description: Every hook with stages manual is registered with a CI job that is gated by CI Summary, cannot be skipped and runs the hook command; it fails when a hook is moved without a registered home.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_precommit_commit_budget.py -q --no-cov
+        cwd: .
