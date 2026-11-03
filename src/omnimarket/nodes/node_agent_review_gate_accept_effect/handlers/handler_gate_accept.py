@@ -26,9 +26,9 @@ import re
 from typing import Any
 
 from omnimarket.nodes.node_agent_review_gate_accept_effect.adapters.adapter_gate_accept_ports import (
+    GithubReviewReader,
+    HttpReceiptVerifier,
     LocalStepFiles,
-    UnboundReceiptVerifier,
-    UnboundReviewReader,
 )
 from omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept import (
     EnumGateAcceptDecision,
@@ -69,12 +69,13 @@ class HandlerGateAccept:
 
         A runtime builds the handler from its contract with no arguments, so the policy
         (the overlay's publisher identity and verifier endpoint) is read when the first
-        request arrives, and a port left unbound fails closed. A missing overlay refuses
+        request arrives, and a port left unspecified is the production binding, which
+        fails closed when its environment is absent. A missing overlay refuses
         the request, named, rather than guessing an identity.
         """
         self._given_policy = policy
-        self._reviews = reviews if reviews is not None else UnboundReviewReader()
-        self._verifier = verifier if verifier is not None else UnboundReceiptVerifier()
+        self._reviews = reviews if reviews is not None else GithubReviewReader()
+        self._verifier = verifier if verifier is not None else HttpReceiptVerifier()
         self._files = files if files is not None else LocalStepFiles()
         self._bound: (
             tuple[

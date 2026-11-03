@@ -4,6 +4,7 @@
 
 from omnimarket.nodes.node_agent_review_gate_accept_effect.protocols.protocol_gate_accept import (
     ProtocolGateAcceptBus,
+    ProtocolHttpTransport,
     ProtocolReceiptVerifier,
     ProtocolReviewReader,
     ProtocolStepFiles,
@@ -11,6 +12,7 @@ from omnimarket.nodes.node_agent_review_gate_accept_effect.protocols.protocol_ga
 
 __all__ = [
     "ProtocolGateAcceptBus",
+    "ProtocolHttpTransport",
     "ProtocolReceiptVerifier",
     "ProtocolReviewReader",
     "ProtocolStepFiles",

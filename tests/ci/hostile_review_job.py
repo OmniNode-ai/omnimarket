@@ -5,9 +5,10 @@
 The workflow's ``run:`` text for the review step, the gate-accept step and the
 enforcement step is executed as written, in the order the job runs it, with the
 ``${{ }}`` expressions substituted and each step's ``if:`` evaluated over the earlier
-steps' outputs. Only the world is faked: ``uv`` prints a recorded reviewer document, ``git``
-does nothing, and ``onex`` stands in for the gate-accept node and answers a chosen
-decision after checking the input the step sent it. The gate job's script then runs with
+steps' outputs. Only the world is faked: ``uv`` prints a recorded reviewer document and, for the gate-accept node's
+``python -m`` entry, stands in for the node: it checks that the step runs it from the
+base commit's source with the input the step names, and answers a chosen decision.
+``git`` makes the base worktree (with or without the node) and does nothing else. The gate job's script then runs with
 the job's conclusion. The result is the conclusion of every required context.
 
 Steps outside review, accept and enforce (checkout, overlay, install, preflight, the PR
@@ -80,31 +81,60 @@ REVIEWER_DOCUMENTS: dict[str, dict[str, Any]] = {
     },
 }
 
-_UV = """#!/usr/bin/env bash
-case "$*" in
-  *cli_review*) cat "$FAKE_REVIEWER_DOCUMENT"; exit "${FAKE_REVIEWER_EXIT:-0}" ;;
-esac
-exit 0
-"""
-_GIT = "#!/usr/bin/env bash\nexit 0\n"
-_ONEX = """#!/usr/bin/env python3
+_UV = """#!/usr/bin/env python3
 import json, os, sys
+from pathlib import Path
+
 argv = sys.argv[1:]
-log = os.environ["FAKE_ONEX_LOG"]
-with open(log, "a", encoding="utf-8") as handle:
-    handle.write(json.dumps(argv) + "\\n")
-if argv[:2] != ["run-node", "node_agent_review_gate_accept_effect"]:
-    sys.exit("fake onex: unexpected command " + repr(argv))
-payload = json.loads(argv[argv.index("--input") + 1])
-expected = json.loads(os.environ["FAKE_ONEX_EXPECT"])
-if payload != expected:
-    sys.exit("fake onex: input " + repr(payload) + " is not " + repr(expected))
-if not os.path.exists(payload["voter_result_path"]):
-    sys.exit("fake onex: the voter result file the step named does not exist")
-with open(payload["step_output_path"], "a", encoding="utf-8") as handle:
-    handle.write("decision=" + os.environ["FAKE_DECISION"] + "\\n")
-    handle.write("reason=fake\\nreceipt_id=\\n")
+joined = " ".join(argv)
+NODE = "omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept"
+if "cli_review" in joined:
+    sys.stdout.write(Path(os.environ["FAKE_REVIEWER_DOCUMENT"]).read_text())
+    sys.exit(int(os.environ.get("FAKE_REVIEWER_EXIT", "0")))
+if NODE in argv:
+    with open(os.environ["FAKE_NODE_LOG"], "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(argv) + "\\n")
+    if os.environ.get("PYTHONPATH") != os.environ["FAKE_ACCEPT_BASE_SRC"]:
+        sys.exit("fake node: not run from the base commit: " + repr(os.environ.get("PYTHONPATH")))
+    if argv[:3] != ["run", "--no-sync", "python"] and argv[:2] != ["--no-sync", "python"]:
+        sys.exit("fake node: unexpected uv arguments " + repr(argv))
+    flags = argv[argv.index(NODE) + 1:]
+    payload = {flags[i][2:].replace("-", "_"): flags[i + 1] for i in range(0, len(flags), 2)}
+    payload["pull_request"] = int(payload["pull_request"])
+    expected = json.loads(os.environ["FAKE_NODE_EXPECT"])
+    if payload != expected:
+        sys.exit("fake node: input " + repr(payload) + " is not " + repr(expected))
+    if not os.path.exists(payload["voter_result_path"]):
+        sys.exit("fake node: the voter result file the step named does not exist")
+    if os.environ.get("FAKE_NODE_EXIT", "0") != "0":
+        sys.exit(int(os.environ["FAKE_NODE_EXIT"]))
+    with open(payload["step_output_path"], "a", encoding="utf-8") as handle:
+        handle.write("decision=" + os.environ["FAKE_DECISION"] + "\\n")
+        handle.write("reason=fake\\nreceipt_id=\\n")
+sys.exit(0)
 """
+_GIT = """#!/usr/bin/env python3
+import os, shutil, sys
+from pathlib import Path
+
+argv = sys.argv[1:]
+if "worktree" in argv:
+    verb = argv[argv.index("worktree") + 1]
+    if verb == "add":
+        if os.environ.get("FAKE_BASE_CHECKOUT_FAILS") == "1":
+            sys.exit(128)
+        target = Path(argv[-2])
+        target.mkdir(parents=True)
+        if os.environ.get("FAKE_BASE_HAS_NODE") == "1":
+            node = target / "src/omnimarket/nodes/node_agent_review_gate_accept_effect"
+            node.mkdir(parents=True)
+        if argv[-1] != os.environ["FAKE_BASE_SHA"]:
+            sys.exit("fake git: worktree of " + argv[-1] + ", not the base commit")
+    elif verb == "remove":
+        shutil.rmtree(argv[-1], ignore_errors=True)
+sys.exit(0)
+"""
+_SLEEP = "#!/usr/bin/env bash\nexit 0\n"
 
 
 def load_workflow() -> dict[str, Any]:
@@ -223,11 +253,14 @@ def simulate(
     enforce_prefix: str | None = "Enforce hostile-review verdict",
     review_exit: int = 0,
     result_file_name: str = RESULT_FILE_NAME,
+    base_has_node: bool = True,
+    base_checkout_fails: bool = False,
+    node_exit: int = 0,
 ) -> Run:
     """Run the job's review, accept and enforcement steps, then the gate job."""
     bin_dir = work / "bin"
     bin_dir.mkdir()
-    for name, text in (("uv", _UV), ("git", _GIT), ("onex", _ONEX), ("sleep", _GIT)):
+    for name, text in (("uv", _UV), ("git", _GIT), ("sleep", _SLEEP)):
         path = bin_dir / name
         path.write_text(text)
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -237,7 +270,7 @@ def simulate(
     cwd.mkdir()
     document = work / "reviewer-document.json"
     document.write_text(json.dumps(REVIEWER_DOCUMENTS[verdict]))
-    onex_log = work / "onex.log"
+    node_log = work / "node.log"
     base_env = {
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "HOME": str(work),
@@ -246,7 +279,12 @@ def simulate(
         "FAKE_REVIEWER_DOCUMENT": str(document),
         "FAKE_REVIEWER_EXIT": str(review_exit),
         "FAKE_DECISION": decision,
-        "FAKE_ONEX_LOG": str(onex_log),
+        "FAKE_NODE_LOG": str(node_log),
+        "FAKE_BASE_SHA": BASE_SHA,
+        "FAKE_BASE_HAS_NODE": "1" if base_has_node else "0",
+        "FAKE_BASE_CHECKOUT_FAILS": "1" if base_checkout_fails else "0",
+        "FAKE_NODE_EXIT": str(node_exit),
+        "FAKE_ACCEPT_BASE_SRC": str(runner_temp / "agent-review-accept-base" / "src"),
         "PR_NUMBER": str(PULL_REQUEST),
         "REPO": REPOSITORY,
         "HEAD_SHA": HEAD_SHA,
@@ -260,7 +298,11 @@ def simulate(
         "github.repository": REPOSITORY,
         "github.event.pull_request.number": str(PULL_REQUEST),
         "github.event.pull_request.head.sha": HEAD_SHA,
+        "github.event.pull_request.base.sha": BASE_SHA,
+        "github.workspace": str(work / "workspace"),
         "runner.temp": str(runner_temp),
+        "secrets.GITHUB_TOKEN": "unused",
+        "secrets.LOCAL_LLM_SHARED_SECRET": "unused",
     }
     plan: list[tuple[str, dict[str, Any]]] = [
         ("review", step_named(REVIEW_JOB, review_step_prefix)),
@@ -285,7 +327,7 @@ def simulate(
         env = dict(base_env) | {
             "GITHUB_OUTPUT": str(out_path),
             "GITHUB_STEP_SUMMARY": str(summary_path),
-            "FAKE_ONEX_EXPECT": json.dumps(
+            "FAKE_NODE_EXPECT": json.dumps(
                 {
                     "repository": REPOSITORY,
                     "pull_request": PULL_REQUEST,
@@ -296,6 +338,8 @@ def simulate(
                 }
             ),
         }
+        for name, value in (step.get("env") or {}).items():
+            env[str(name)] = render(str(value), outputs, ctx)
         script = render(str(step["run"]), outputs, ctx)
         completed = _bash(script, env, cwd)
         exits[key] = completed.returncode
@@ -314,8 +358,8 @@ def simulate(
         gate_ctx,
     )
     node_calls = (
-        [json.loads(line) for line in onex_log.read_text().splitlines()]
-        if onex_log.exists()
+        [json.loads(line) for line in node_log.read_text().splitlines()]
+        if node_log.exists()
         else []
     )
     gate = _bash(

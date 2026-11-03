@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -162,6 +162,26 @@ class ModelReceiptVerifyOutcome(BaseModel):
     accepted: bool
     receipt_id: str = ""
     reason: str = ""
+
+
+class ModelHttpReply(BaseModel):
+    """One HTTP answer, as the transport port returns it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: int
+    body: bytes
+
+
+class ModelVerifierWireVerdict(BaseModel):
+    """The verifier's JSON verdict: ``accepted`` with a receipt id, or ``refused`` with a reason."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    decision: Literal["accepted", "refused"]
+    reason: str | None = None
+    detail: str = ""
+    receipt_id: str | None = None
 
 
 class ModelGateAcceptTopics(BaseModel):

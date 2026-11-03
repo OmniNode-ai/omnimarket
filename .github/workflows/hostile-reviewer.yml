@@ -156,6 +156,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             config/onex/overlays/node_review_voters_overlay_compute
+            config/onex/overlays/agent_review_gate_accept
           sparse-checkout-cone-mode: false
 
       - name: Place the CI overlay outside the workspace
@@ -721,9 +722,41 @@ jobs:
         # summary. Only `pass_agent` skips the enforcement step below; on any other
         # decision that step runs exactly as before. `if: always()` so a skipped or
         # failed review step cannot hide the decision.
+        #
+        # The node runs from the BASE commit, never the checkout under review (the
+        # same rule as the parse veto above), so a pull request cannot supply the
+        # code that accepts itself; a base that does not carry the node yet, or a
+        # node that does not run, leaves the voters' verdict as it stands.
         id: accept
         if: always()
-        run: onex run-node node_agent_review_gate_accept_effect --timeout 120 --input "{\"repository\":\"${{ github.repository }}\",\"pull_request\":${{ github.event.pull_request.number }},\"head_sha\":\"${{ github.event.pull_request.head.sha }}\",\"voter_result_path\":\"${{ runner.temp }}/hostile-reviewer-result.json\",\"step_output_path\":\"$GITHUB_OUTPUT\",\"step_summary_path\":\"$GITHUB_STEP_SUMMARY\"}"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ONEX_SKILL_OVERLAY_ROOTS: ${{ github.workspace }}/../ci-overlay/config/onex/overlays
+        run: |
+          ACCEPT_BASE="${RUNNER_TEMP:-/tmp}/agent-review-accept-base"
+          rm -rf "$ACCEPT_BASE"
+          if ! git -C "$GITHUB_WORKSPACE" worktree add --detach "$ACCEPT_BASE" "$BASE_SHA" >/dev/null; then
+            echo "::warning::gate accept skipped: the base commit $BASE_SHA could not be checked out; the voters' verdict stands"
+            echo "decision=unchanged" >> "$GITHUB_OUTPUT"
+          elif [ ! -d "$ACCEPT_BASE/src/omnimarket/nodes/node_agent_review_gate_accept_effect" ]; then
+            echo "::notice::the base commit carries no node_agent_review_gate_accept_effect yet; the voters' verdict stands"
+            echo "decision=unchanged" >> "$GITHUB_OUTPUT"
+          else
+            ACCEPT_EXIT=0
+            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
+              --repository "${{ github.repository }}" \
+              --pull-request "${{ github.event.pull_request.number }}" \
+              --head-sha "${{ github.event.pull_request.head.sha }}" \
+              --voter-result-path "${{ runner.temp }}/hostile-reviewer-result.json" \
+              --step-output-path "$GITHUB_OUTPUT" \
+              --step-summary-path "$GITHUB_STEP_SUMMARY" || ACCEPT_EXIT=$?
+            if [ "$ACCEPT_EXIT" -ne 0 ]; then
+              echo "::warning::gate accept did not run (exit $ACCEPT_EXIT); the voters' verdict stands"
+              echo "decision=unchanged" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          git -C "$GITHUB_WORKSPACE" worktree remove --force "$ACCEPT_BASE" || true
 
       - name: Enforce hostile-review verdict (OMN-15110)
         # DEGRADED must not satisfy the gate. Historically this workflow's

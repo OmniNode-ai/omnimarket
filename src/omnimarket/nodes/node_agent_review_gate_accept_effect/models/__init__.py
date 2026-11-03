@@ -12,9 +12,11 @@ from omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_acc
     ModelGateAcceptRequest,
     ModelGateAcceptResult,
     ModelGateAcceptTopics,
+    ModelHttpReply,
     ModelReceiptVerifyOutcome,
     ModelReceiptVerifyRequest,
     ModelReviewView,
+    ModelVerifierWireVerdict,
     ModelVoterStatus,
 )
 
@@ -28,8 +30,10 @@ __all__ = [
     "ModelGateAcceptRequest",
     "ModelGateAcceptResult",
     "ModelGateAcceptTopics",
+    "ModelHttpReply",
     "ModelReceiptVerifyOutcome",
     "ModelReceiptVerifyRequest",
     "ModelReviewView",
+    "ModelVerifierWireVerdict",
     "ModelVoterStatus",
 ]

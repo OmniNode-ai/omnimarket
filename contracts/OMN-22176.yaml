@@ -67,13 +67,13 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_hostile_review_agent_accept.py tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22176-ac3
-  description: The step-shape test pins the added step to one node call and the enforcement step's run text by digest.
+  description: The step-shape test pins the added step to one node call run from the base commit and the enforcement step's run text by digest; the base-commit tests run the step with a base that lacks the node, a base that cannot be checked out and a node that does not run.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_hostile_review_accept_step_shape.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/ci/test_hostile_review_accept_step_shape.py tests/ci/test_hostile_review_accept_base_commit.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22176-ac4
   description: The workflow tests assert every required context after each voter verdict and decision.
@@ -82,7 +82,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_hostile_review_agent_accept.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/ci/test_hostile_review_agent_accept.py tests/ci/test_hostile_review_accept_base_commit.py -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22176-ac5
   description: The gateway test reports the key billed out through a provider-free double and reads reason credit_exhausted in the 503.
@@ -120,5 +120,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22176 -- uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect tests/unit/nodes/node_claude_review_gateway_effect tests/ci/test_hostile_review_agent_accept.py tests/ci/test_hostile_review_accept_step_shape.py -q -p no:randomly --no-cov
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22176 -- uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect tests/unit/nodes/node_claude_review_gateway_effect tests/ci/test_hostile_review_agent_accept.py tests/ci/test_hostile_review_accept_step_shape.py tests/ci/test_hostile_review_accept_base_commit.py -q -p no:randomly --no-cov
     cwd: .

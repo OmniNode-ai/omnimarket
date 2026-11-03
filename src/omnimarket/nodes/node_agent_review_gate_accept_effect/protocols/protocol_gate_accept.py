@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 """The ports the gate-accept node is given: files, reviews, verifier and the bus."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Protocol
 
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept import (
+    ModelHttpReply,
     ModelReceiptVerifyOutcome,
     ModelReceiptVerifyRequest,
     ModelReviewView,
@@ -20,6 +21,20 @@ class ProtocolStepFiles(Protocol):
     def read_text(self, path: str) -> str: ...
 
     def append_text(self, path: str, text: str) -> None: ...
+
+
+class ProtocolHttpTransport(Protocol):
+    """One HTTP call; the source-control and verifier bindings go through it."""
+
+    def send(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        body: bytes | None = None,
+        timeout_seconds: float,
+    ) -> ModelHttpReply: ...
 
 
 class ProtocolReviewReader(Protocol):
