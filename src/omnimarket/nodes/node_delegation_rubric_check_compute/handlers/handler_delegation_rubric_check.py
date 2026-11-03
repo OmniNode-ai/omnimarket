@@ -83,9 +83,20 @@ class HandlerDelegationRubricCheck:
             for row in criteria
             if row.outcome == EnumRubricOutcome.FAIL
         )
+        # A criterion the rubric requires for PASS that stayed undetermined
+        # keeps the verdict UNDETERMINED (OMN-22209).
+        required = set(request.rubric.pass_requires_determined)
+        undetermined_required = tuple(
+            row.criterion_id
+            for row in criteria
+            if row.criterion_id in required
+            and row.outcome == EnumRubricOutcome.UNDETERMINED
+        )
         outcome = (
             EnumRubricOutcome.FAIL
             if failed
+            else EnumRubricOutcome.UNDETERMINED
+            if undetermined_required
             else EnumRubricOutcome.PASS
             if any(row.outcome == EnumRubricOutcome.PASS for row in criteria)
             else EnumRubricOutcome.UNDETERMINED
@@ -96,4 +107,5 @@ class HandlerDelegationRubricCheck:
             criteria=criteria,
             outcome=outcome,
             failed_criteria=failed,
+            undetermined_required=undetermined_required,
         )

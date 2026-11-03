@@ -191,6 +191,15 @@ classes:
   code_generation: *code_criteria
   test: *code_criteria
 
+# OMN-22209: a class verdict is PASS only when each criterion named here is
+# determined; one left undetermined makes the verdict UNDETERMINED, never
+# PASS. Measured on the routing-correctness eval: a code_generation answer
+# whose only determined criterion was code_parses recorded PASS while failing
+# 5188 of 34485 reference cases, so cheapest_first did not climb.
+pass_requires_determined:
+  code_generation:
+  - stated_test_passes
+
 # OMN-20166: no class has a measured MET line on dev. Flip only the measured
 # class and keep its rubric version and declared line with the measurement.
 false_pass_status:

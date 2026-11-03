@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22209
+title: The code_generation quality gate passes an answer with stated_test_passes undetermined, so cheapest_first never climbs on a hard task that fails thousands of reference cases
+summary: The class rubric contract declares, per class, the criteria that must be determined for a PASS verdict, and names stated_test_passes for code_generation. The rubric compute returns UNDETERMINED, naming the required criterion, when one stays undetermined and none failed, so a code_generation answer with no supplied test result is no longer a rubric PASS. On a class whose false-pass line is MET the existing measured-rubric step turns that verdict into a refusal that recommends fallback, so the chain climbs. Other classes are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22209-undetermined-tests-not-pass
+    statement: A code_generation answer whose stated_test_passes criterion is undetermined is not a rubric PASS.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a code_generation answer whose stated_test_passes criterion is undetermined is not a PASS: the gate returns a typed non-pass outcome that lets the chain climb -- falsifier: uv run pytest tests/unit/delegation/test_code_generation_gate_undetermined_tests.py -q -k undetermined_not_pass, a stub answer with stated_test_passes undetermined, which fails today with rubric PASS'
+      - id: AC2
+        statement: 'AC2: a regression test built from the recorded run e7ceb3b5 (rubric PASS 0.733, 5188 of 34485 reference cases failed, scrubbed) fails on the current gate and passes on the fix -- falsifier: uv run pytest tests/unit/delegation/test_code_generation_gate_undetermined_tests.py -q -k receipt_e7ceb3b5'
+evidence_requirements:
+  - kind: tests
+    description: The focused falsifier file runs at the pushed head.
+    command: uv run pytest tests/unit/delegation/test_code_generation_gate_undetermined_tests.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22209-ac1
+    description: AC1 checks a stub code_generation answer with no test result and expects an UNDETERMINED rubric verdict naming stated_test_passes, a wire record carrying it, and, with the class marked MET, a gate pass turned into a refusal that recommends fallback; positive controls expect PASS with a passing result and FAIL with a failing one.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_code_generation_gate_undetermined_tests.py -q --no-cov --tb=line -k undetermined_not_pass
+        cwd: .
+  - id: dod-omn22209-ac2
+    description: AC2 replays the scrubbed prompt and answer of recorded run e7ceb3b5, expects the recorded criterion picture (code_parses PASS; declared_format_met, stated_test_passes and ids_traceable undetermined) and an UNDETERMINED verdict, and expects the 0.733 gate pass refused with fallback when the class is MET.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_code_generation_gate_undetermined_tests.py -q --no-cov --tb=line -k receipt_e7ceb3b5
+        cwd: .
+  - id: dod-omn22209-deploy-probe-packaged-rubric
+    description: 'Deploy probe: the packaged rubric contract the installed package loads names stated_test_passes as required for a code_generation PASS. The key is absent at the merge base, so this test fails there.'
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_code_generation_gate_undetermined_tests.py -q --no-cov --tb=line -k other_classes_unchanged
+        cwd: .
