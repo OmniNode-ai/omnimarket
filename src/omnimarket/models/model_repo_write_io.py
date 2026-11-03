@@ -15,6 +15,8 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
   on a pull request's review-comment thread.
 - pr_thread_resolve replaces ``gh api graphql`` resolveReviewThread with the
   same GraphQL mutation, refused unless the thread has a reply from the fixing lane.
+- pr_review_post replaces ``gh api --method POST /repos/{o}/{r}/pulls/{n}/reviews``
+  with one COMMENT review pinned to the expected head.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -65,6 +67,7 @@ class EnumRepoWriteOperation(StrEnum):
     PR_COMMENT = "pr_comment"
     PR_THREAD_REPLY = "pr_thread_reply"
     PR_THREAD_RESOLVE = "pr_thread_resolve"
+    PR_REVIEW_POST = "pr_review_post"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -118,14 +121,16 @@ _PR_SCOPED = frozenset(
         EnumRepoWriteOperation.PR_COMMENT,
         EnumRepoWriteOperation.PR_THREAD_REPLY,
         EnumRepoWriteOperation.PR_THREAD_RESOLVE,
+        EnumRepoWriteOperation.PR_REVIEW_POST,
     }
 )
-# Operations that change a PR's state name the head they expect to act on.
+# State changes and reviews name the head they expect to act on.
 _HEAD_REQUIRED = frozenset(
     {
         EnumRepoWriteOperation.PR_EDIT,
         EnumRepoWriteOperation.PR_READY,
         EnumRepoWriteOperation.PR_CLOSE,
+        EnumRepoWriteOperation.PR_REVIEW_POST,
     }
 )
 
@@ -227,8 +232,8 @@ class ModelRepoWriteRequest(BaseModel):
         default=None,
         pattern=_SHA,
         description="The head the caller expects; a moved head is refused with "
-        "head_moved before any mutation. Required by pr_edit, pr_ready and "
-        "pr_close; checked against the branch tip for pr_create and "
+        "head_moved before any mutation. Required by pr_edit, pr_ready, "
+        "pr_close and pr_review_post; checked against the branch tip for pr_create and "
         "workflow_dispatch when given.",
     )
     title: str | None = Field(default=None, min_length=1, max_length=256)
@@ -312,6 +317,7 @@ class ModelRepoWriteRequest(BaseModel):
             in (
                 EnumRepoWriteOperation.PR_COMMENT,
                 EnumRepoWriteOperation.PR_THREAD_REPLY,
+                EnumRepoWriteOperation.PR_REVIEW_POST,
             )
             and not self.body
         ):
@@ -412,12 +418,13 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     replayed: bool = Field(
         default=False,
         description="True when the write had already happened: the same "
-        "idempotency key, an open PR for the head, a comment carrying the key, "
+        "idempotency key, an open PR for the head, a comment or review carrying the key, "
         "or a PR already in the asked-for state. Nothing was written again.",
     )
     html_url: str | None = None
     head_sha: str | None = None
     comment_id: int | None = None
+    review_id: int | None = Field(default=None, gt=0)
     check_run_id: int | None = Field(default=None, gt=0)
 
 
