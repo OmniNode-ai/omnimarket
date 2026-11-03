@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21408"
+title: "S4a: landing_placement becomes an omnimarket node that reads its hosts from the overlay"
+summary: >-
+  Slice S4a of the scripts migration moves the landing placement script into
+  omnimarket as the handler module of node_landing_placement_effect (contract,
+  metadata, node, models, handler). The private values of inventory rows 1 to 8
+  (the lab host table, the registry root candidates, the plugin source, the
+  directory names beside the registry root, the hygiene vocabulary paths and the
+  variables that name the private data clone) are read through the overlay keys,
+  and a key that nothing supplies refuses naming the key. The pool read exits 75
+  naming lab_hosts.hosts when no table is configured, and LANDING_POOL_HOSTS=[]
+  stays the explicit local-only switch. The tests that exercise only the handler
+  moved to tests/nodes/node_landing_placement_effect/; the tests that also drive
+  the landing facts and worker scripts stay with those callers (slice S4c).
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21408-hygiene"
+    statement: "The moved handler and tests pass the hygiene gate and name no registry-root variable of the old spelling."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the whole-file hygiene gate over the moved files and tests exits 0 and git grep -n -F OMNI_HOME over them prints nothing -- falsifier: the gate exits 1 or 2, or the grep prints a line"
+  - id: "req-omn21408-unconfigured"
+    statement: "A pool read with nothing configured exits 75 naming lab_hosts.hosts; LANDING_POOL_HOSTS=[] runs local-only."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: with the overlay root empty and ONEX_LAB_RUN_HOSTS, LANDING_POOL_HOSTS and ONEX_REGISTRY_ROOT unset a pool read exits 75 naming lab_hosts.hosts, and with LANDING_POOL_HOSTS=[] it runs local-only -- falsifier: uv run pytest tests -q -k landing_placement_unconfigured fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "S4a: the moved landing placement tests and the unconfigured-pool tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_landing_placement_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21408-ac1-no-old-root-name"
+    description: "The moved handler, node files and tests name no OMNI_HOME. Fails at the merge base, which has no such node directory."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "test -f src/omnimarket/nodes/node_landing_placement_effect/contract.yaml && test -z \"$(git grep -n -F OMNI_HOME -- src/omnimarket/nodes/node_landing_placement_effect tests/nodes/node_landing_placement_effect)\""
+  - id: "dod-omn21408-ac3-unconfigured"
+    description: "The unconfigured pool read exits 75 naming lab_hosts.hosts and the empty-pool switch runs local-only. Fails at the merge base, which has none of these tests."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests -q -k landing_placement_unconfigured"
+  - id: "dod-omn21408-moved-tests"
+    description: "The tests moved with the handler pass against it, with neutral host names and documentation-range addresses."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_landing_placement_effect -q"
