@@ -64,7 +64,9 @@ def _accept() -> dict[str, Any]:
 
 def test_the_accept_step_runs_the_node_from_the_base_commit_under_if_always() -> None:
     step = _accept()
-    assert set(step) == {"name", "id", "if", "env", "run"}, sorted(step)
+    assert set(step) == {"name", "id", "if", "working-directory", "env", "run"}, sorted(
+        step
+    )
     assert step["if"] == "always()"
     run = str(step["run"])
     assert "onex run-node" not in run
@@ -76,13 +78,31 @@ def test_the_accept_step_runs_the_node_from_the_base_commit_under_if_always() ->
     ) in run
     assert "PYTHONPATH" not in run.replace('PYTHONPATH="$ACCEPT_BASE/src"', "")
     assert "$GITHUB_WORKSPACE/src" not in run
-    # The step holds the receipt key and runs in the checkout under review: -P keeps
-    # that checkout off sys.path, so a root-level module the PR adds is never imported.
+    # The step holds the receipt key: -P keeps its working directory off sys.path as
+    # well as running it outside the checkout under review (the test below).
     assert "python -m " not in run, "the node runs with python -P"
     assert "::notice::" in run, "a base without the node must skip with a notice"
     assert run.count("decision=unchanged") == 3, "one fallback per skipped path"
     for decided in ("pass_agent", "decision=refuse", "decision=pass"):
         assert decided not in run, f"the step shell decides: {decided}"
+
+
+def test_the_accept_step_never_runs_in_the_checkout_under_review() -> None:
+    """OMN-22177: the step holds the receipt key, so its working directory is trusted.
+
+    ``python -m`` puts the working directory first on ``sys.path``: run in the pull
+    request's checkout, a root-level ``json.py`` would import with the key in its
+    environment, and ``uv run`` would build an empty environment from the pull
+    request's own ``pyproject.toml``. The step runs in the omniintelligence clone the
+    job synced, as the parse veto and the omnibase_infra accept step do.
+    """
+    step = _accept()
+    assert step["working-directory"] == "../omniintelligence"
+    run = str(step["run"])
+    assert "cd " not in run, "the working directory is the step's, not the shell's"
+    assert "$GITHUB_WORKSPACE/src" not in run
+    assert "--project" not in run
+    assert "--directory" not in run
 
 
 def test_the_accept_step_names_only_the_contexts_it_needs() -> None:
