@@ -5,7 +5,7 @@
 On 2026-10-09 omnimarket 0.4.308 shipped two nodes,
 ``node_delegation_acceptance_judged_replay_compute`` and
 ``node_delegation_acceptance_judged_publish_effect``, whose auto-wired route
-ids were longer than ``ModelDispatchRoute.route_id`` allows. The .201 dev lane
+ids were longer than ``ModelDispatchRoute.route_id`` allows. The dev lane
 runs ``ONEX_WIRING_STRICT_MODE=1``, so the ``ValidationError`` killed boot and
 both runtimes crash-looped. Nothing on the omnimarket side had ever put its
 contracts through the infra runtime's auto-wiring: the CI runtime boots ran
