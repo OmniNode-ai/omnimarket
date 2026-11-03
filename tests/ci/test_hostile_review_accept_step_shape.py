@@ -45,6 +45,7 @@ ACCEPT_CONTEXTS = {
     "github.workspace",
     "runner.temp",
     "secrets.GITHUB_TOKEN",
+    "secrets.LOCAL_LLM_SHARED_SECRET",
 }
 NODE_MODULE = (
     "omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept"
@@ -94,6 +95,10 @@ def test_the_accept_step_names_only_the_contexts_it_needs() -> None:
     )
     assert step["env"]["ACCEPT_BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
     assert step["env"]["GITHUB_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
+    assert (
+        step["env"]["LOCAL_LLM_SHARED_SECRET"]
+        == "${{ secrets.LOCAL_LLM_SHARED_SECRET }}"
+    )
 
 
 def test_the_ci_overlay_that_holds_the_nodes_deployment_facts_is_fetched_and_rooted() -> (
