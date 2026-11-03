@@ -30,12 +30,10 @@ from typing import Any
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.model_scenario_row import ModelScenarioRow
+from omnimarket.models.model_scenario_run import ModelScenarioRun
 from omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_compare_runs import (
     compare_runs,
-)
-from omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity import (
-    ModelScenarioRow,
-    ModelScenarioRun,
 )
 from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
     ModelFactoryBindingsOverlay,

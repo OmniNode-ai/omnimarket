@@ -9,34 +9,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from omnimarket.models.model_scenario_row import ModelScenarioRow as ModelScenarioRow
+from omnimarket.models.model_scenario_run import ModelScenarioRun as ModelScenarioRun
 from omnimarket.nodes.node_binding_parity_orchestrator.overlay import (
     ModelFactoryBindingsOverlay,
 )
-
-
-class ModelScenarioRow(BaseModel):
-    """One written row. ``provenance`` is validated on its own and left out of the comparison."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    key: str
-    content: str
-    provenance: dict[str, str] = Field(default_factory=dict)
-
-
-class ModelScenarioRun(BaseModel):
-    """What one scenario produced under one profile."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    profile_id: str
-    binding: str
-    proof_eligible: bool
-    verdicts: tuple[str, ...] = ()
-    lines: tuple[str, ...] = ()
-    rows: tuple[ModelScenarioRow, ...] = ()
-    counts: dict[str, int] = Field(default_factory=dict)
-    provenance: dict[str, str] = Field(default_factory=dict)
 
 
 class ModelRunComparison(BaseModel):
