@@ -7,6 +7,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from pydantic import ValidationError
+
 from .handlers.handler_lab_host_key_distribution import HandlerLabHostKeyDistribution
 from .models.model_lab_host_key_distribution import ModelLabHostKeyDistributionRequest
 
@@ -19,6 +21,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--table", default=None, help="lab host table YAML path")
     parser.add_argument("--local-host", default=None, help="name of the current host")
     parser.add_argument(
+        "--allow-unavailable",
+        action="append",
+        default=[],
+        help="reach this out-of-placement host anyway (repeatable; must also be a --host)",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true", help="plan appends without writing"
     )
     return parser.parse_args(argv)
@@ -26,14 +34,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    result = HandlerLabHostKeyDistribution().handle(
-        ModelLabHostKeyDistributionRequest(
+    try:
+        request = ModelLabHostKeyDistributionRequest(
             hosts=tuple(args.host),
             table_path=args.table,
             local_host=args.local_host,
             dry_run=args.dry_run,
+            allow_unavailable=tuple(args.allow_unavailable),
         )
-    )
+    except ValidationError as exc:
+        print(
+            f"lab-host-key-distribution refused: {exc.errors()[0]['msg']}",
+            file=sys.stderr,
+        )
+        return 2
+    result = HandlerLabHostKeyDistribution().handle(request)
     for line in result.lines():
         print(line, flush=True)
     if result.refusal:

@@ -17,12 +17,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.topics import (
-    CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
-    CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
-    CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
-    CONTEXT_COMPACTION_REQUESTED_TOPIC_V1,
-)
+from omnimarket.events.topics import CONTEXT_COMPACTION_REQUESTED_TOPIC_V1
 from omnimarket.models.claude_code_binding import EnumClientVerdictAction
 from omnimarket.models.context_compaction import (
     ModelContextCompactionPackageReply,
@@ -31,6 +26,9 @@ from omnimarket.models.context_compaction import (
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers import (
+    reply_principal,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_run import (
     HandlerCompactionLatencyRun,
@@ -61,6 +59,33 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
 pytestmark = pytest.mark.unit
+
+# The replay resolves the requester's principal the way the installed hook does and
+# awaits the per-principal reply topics (OMN-22103).
+PRINCIPAL = "dev-test-principal"
+CONTEXT_COMPACTION_PACKAGE_TOPIC_V1 = (
+    f"onex.cmd.omniintelligence.context-compaction-package-for-{PRINCIPAL}.v1"
+)
+CONTEXT_COMPACTION_PREPARED_TOPIC_V1 = (
+    f"onex.evt.omnimarket.context-compaction-prepared-for-{PRINCIPAL}.v1"
+)
+CONTEXT_COMPACTION_FALLBACK_TOPIC_V1 = (
+    f"onex.evt.omnimarket.context-compaction-fallback-for-{PRINCIPAL}.v1"
+)
+
+
+class _LaneTransport:
+    sasl_username = PRINCIPAL
+
+
+@pytest.fixture(autouse=True)
+def _lane_principal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        reply_principal,
+        "resolve_lane_binding",
+        lambda _lane: (object(), _LaneTransport()),
+    )
+
 
 HOOK_INPUT: dict[str, JsonValue] = {
     "session_id": "recorded-session",
@@ -101,6 +126,9 @@ class FakeClient:
         )
         assert deadline_ms == 12345
         self.payloads.append(payload)
+        assert payload["reply_topic_package"] == CONTEXT_COMPACTION_PACKAGE_TOPIC_V1
+        assert payload["reply_topic_prepared"] == CONTEXT_COMPACTION_PREPARED_TOPIC_V1
+        assert payload["reply_topic_fallback"] == CONTEXT_COMPACTION_FALLBACK_TOPIC_V1
         messages = (
             ModelContextPackRenderMessage(role="user", text="the package body"),
             ModelContextPackRenderMessage(role="user", text="identity trailer"),
@@ -420,8 +448,15 @@ def test_recording_client_clears_receipts_on_failure() -> None:
         "payload": {
             **HOOK_INPUT,
             "invocation_id": "00000000-0000-4000-8000-000000000000",
+            "reply_topic_package": CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
+            "reply_topic_prepared": CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
+            "reply_topic_fallback": CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
         },
-        "awaited_events": binding.awaited_events,
+        "awaited_events": (
+            CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
+            CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
+            CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
+        ),
         "deadline_ms": binding.deadline_ms,
     }
     assert client.publish_and_await(**kwargs)

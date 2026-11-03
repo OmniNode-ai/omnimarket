@@ -39,6 +39,21 @@ class EnumSavingsBasis(StrEnum):
     ESTIMATED = "estimated"
 
 
+class ModelClaudeCodeAssistantTurn(BaseModel):
+    """One distinct assistant message of a Claude Code session, with its usage.
+
+    The model is the one the transcript line names for this message, so a
+    prompt answered by more than one model keeps each message's own model.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    message_id: str = Field(default="", description="The assistant message's id.")
+    model: str = Field(default="", description="The model the line names.")
+    tokens_in: int = Field(default=0, ge=0, description="Uncached input tokens.")
+    tokens_out: int = Field(default=0, ge=0)
+
+
 class ModelClaudeCodePromptRecord(BaseModel):
     """One user prompt from a Claude Code session, with the usage it caused.
 
@@ -78,6 +93,11 @@ class ModelClaudeCodePromptRecord(BaseModel):
     )
     assistant_messages: int = Field(default=0, ge=0)
     prompt_chars: int = Field(default=0, ge=0)
+    turns: tuple[ModelClaudeCodeAssistantTurn, ...] = Field(
+        default=(),
+        description="The distinct assistant messages summed into this record, "
+        "in transcript order, each with its own model and usage.",
+    )
 
     @property
     def has_usage(self) -> bool:

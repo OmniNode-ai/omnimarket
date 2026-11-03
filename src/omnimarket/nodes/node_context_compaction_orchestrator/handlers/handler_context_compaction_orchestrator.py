@@ -218,15 +218,17 @@ class HandlerContextCompactionOrchestrator:
     ) -> ModelHandlerOutput[None]:
         """Runtime entrypoint: the emissions as publishable handler output.
 
-        The runtime publishes ``events`` through the contract's
-        ``published_events`` map, correlated by the command's ``invocation_id``.
+        The runtime publishes ``events`` correlated by the command's ``invocation_id``:
+        ``activated`` through the contract's ``published_events`` map, and prepared,
+        fallback and the package reply to the per-principal topics the command names
+        (each wrapped in an envelope whose ``event_type`` is that topic).
         """
         result = await asyncio.to_thread(self.handle, request)
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
             correlation_id=request.invocation_id,
             handler_id="node_context_compaction_orchestrator.compaction",
-            events=result.emissions(),
+            events=result.emissions(request),
         )
 
     def _barrier_failure(
