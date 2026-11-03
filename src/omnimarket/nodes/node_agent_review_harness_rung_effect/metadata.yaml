@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_harness_rung_effect
+version: "1.0.0"
+description: Casts one unsigned agent review vote through a subscription CLI harness (Codex on ChatGPT, Claude Code on the Claude subscription), with the provenance the receipt verifier checks
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_agent_review_harness_rung_effect: omnimarket.nodes.node_agent_review_harness_rung_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: external_call
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, review, receipt, harness, codex, claude]
+node_role: effect
+pack: "review"
+display_name: "Agent Review Harness Rung Effect"

@@ -4,14 +4,15 @@
 # ONEX Node Contract - GitHub repo write effect (OMN-20912, slice 1 of OMN-20768)
 #
 # The PR authoring writes lanes ran with gh: pr_create, pr_edit, pr_ready,
-# pr_close, pr_comment, pr_thread_reply and workflow_dispatch. A separate node from
+# pr_close, pr_comment, pr_thread_reply, pr_thread_resolve, pr_review_post,
+# workflow_dispatch and check_run_create. A separate node from
 # node_github_repo_gateway_effect because that node declares itself read-only
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 6, patch: 0}
+contract_version: {major: 1, minor: 7, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 5, patch: 0}
+node_version: {major: 1, minor: 6, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -53,6 +54,11 @@ description: >
   carrying the node's idempotency marker, or by a login other than the first
   comment's author) is refused thread_not_replied, and an already resolved
   thread returns replayed. It checks the PR's head when given an expected one.
+  pr_review_post posts one COMMENT review under the node's own write identity,
+  with commit_id set to the required expected_head_sha. A moved PR head is
+  refused head_moved before any mutation. It scans the PR's existing reviews
+  for the body's idempotency marker and returns review_id and html_url replayed
+  when found, including after restart.
   A command carrying lease {kind, resource, fence, expires_at} is refused before
   any GitHub call unless the runtime's fence port answers ok: lease_fence_stale
   for a newer grant, lease_expired for no live grant or a lease expiring inside
@@ -91,6 +97,9 @@ operations:
   - name: pr_thread_resolve
     description: "Request ModelRepoWriteRequest with pr_number and review_thread_id (the thread's GraphQL node id), result ModelRepoWriteCompleted or ModelRepoWriteFailed (thread_not_replied when the thread has no reply from the fixing lane); replaces gh api graphql resolveReviewThread. Read the PR's review threads, GraphQL resolveReviewThread."
     transport: graphql
+  - name: pr_review_post
+    description: "Request ModelRepoWriteRequest with pr_number, body, expected_head_sha and idempotency_key, result ModelRepoWriteCompleted (review_id, html_url) or ModelRepoWriteFailed; replaces gh api --method POST /repos/{o}/{r}/pulls/{n}/reviews. Check the PR head, scan reviews for the idempotency marker, POST one COMMENT review with commit_id set to the expected head."
+    transport: rest
   - name: workflow_dispatch
     description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh workflow run. POST /repos/{o}/{r}/actions/workflows/{w}/dispatches."
     transport: rest
