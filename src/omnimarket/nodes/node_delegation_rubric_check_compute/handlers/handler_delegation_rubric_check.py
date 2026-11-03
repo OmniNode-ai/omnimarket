@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_code_generation import (
     code_parses,
+    generated_tests_pass_reference,
     ids_traceable,
     stated_test_passes,
 )
@@ -52,6 +53,7 @@ _CHECKS: dict[
     "code_parses": code_parses,
     "stated_test_passes": stated_test_passes,
     "ids_traceable": ids_traceable,
+    "generated_tests_pass_reference": generated_tests_pass_reference,
     "tool_calls_wellformed": tool_calls_wellformed,
     "no_phantom_paths": no_phantom_paths,
     "edits_apply": edits_apply,
