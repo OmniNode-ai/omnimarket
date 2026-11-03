@@ -20,7 +20,7 @@ node_version:
   patch: 0
 
 node_type: EFFECT_GENERIC
-runtime_profiles: [main]
+runtime_profiles: [effects]
 
 description: >
   The lab-model fallback for a unit no rule decided. Reachable only for the undetermined id. Sends the unit's first operator prompt through the delegation route port with the policy local_only and a declared lab route, keeps the returned work-type id and the route receipt id and never the text, and stores one result per (intent digest, rubric version, route model version) by one atomic put-if-absent. See formal/fallback_store_once in omnibase_infra.
@@ -54,6 +54,7 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 30000
+  runtime_profiles: [effects]
 
 # Every dependency is an overlay key read by the caller and injected through the request or the
 # constructor; no value below is held in code.
