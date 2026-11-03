@@ -162,6 +162,9 @@ from omnimarket.handlers.routing.local_byok_route import (
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
 )
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    refuse_above_measured_correct_ceiling,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -3177,6 +3180,19 @@ class LocalDelegationDispatchPort:
                 rubric_verdict = rubric_check_error_verdict(task_type)
             gate_result = apply_measured_rubric(
                 gate_result, rubric_verdict, task_class=task_type
+            )
+            # OMN-22220: above the measured correct ceiling only a scorer PASS
+            # keeps the gate's pass.
+            gate_result = refuse_above_measured_correct_ceiling(
+                gate_result,
+                rubric_verdict,
+                backend_ref=backend.backend_id,
+                task_class=task_type,
+                request_text=(
+                    attempt_outcome.request_text
+                    if attempt_outcome.request_text is not None
+                    else prompt
+                ),
             )
             if response_contract_evidence is not None:
                 response_contract_evidence = response_contract_evidence.model_copy(

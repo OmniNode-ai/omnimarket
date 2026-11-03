@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-22220
+title: local-coder is routed code_generation work up to 32000 tokens, above its measured correct ceiling, and the gate accepts the failing answers
+summary: grounding_budget_by_task_class.yaml now declares measured_correct_ceilings, and local-coder's code_generation ceiling is 8169 tokens (R6-23, the largest input it answered correctly on the task-complexity-acceptance eval). The class budget is the smaller of a declared budget and the ceiling, so local-coder's code_generation budget is 8169 and the 32000 value is gone. The routing reducer does not offer a rung a task above its ceiling, so a 24579-token code_generation task (H6-05) is no longer sent to local-coder first. The bus workflow and the local dispatch port refuse an above-ceiling answer the class scorer did not pass. The shared logic is in omnimarket.handlers.routing.measured_correct_ceiling.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22220-ceiling-routing
+  statement: The local-coder code_generation budget comes from a measured correct ceiling declared in data, and routing does not offer local-coder a task above it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the local-coder code_generation budget is derived from a measured correct ceiling declared in data, and a code_generation task above it is not sent to local-coder first -- falsifier: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q -k above_ceiling_not_local, a 24579-token task, which routes to local-coder today'
+- id: req-omn22220-ceiling-gate
+  statement: An above-ceiling local-coder answer whose scorer did not pass is not gate-passed.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a code_generation answer on local-coder for a task above the ceiling with scorer-undetermined criteria is not gate-passed -- falsifier: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q -k undetermined_above_ceiling'
+- id: req-omn22220-receipt-regression
+  statement: A regression test from the scrubbed recorded results of H6-05 and H6-04 fails on the old routing and passes on the fix.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a regression test built from the recorded run results of H6-05 and H6-04 (scrubbed) fails on the current routing and passes on the fix -- falsifier: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q -k receipt_h6_05'
+evidence_requirements:
+- kind: tests
+  description: The ceiling tests build the routing ladder from the packaged contract with fake backends and the gate inputs in memory; no endpoint is called.
+  command: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22220-ac1
+  description: AC1 the ceiling and budget for local-coder code_generation read 8169 from the packaged config, a 24579-token code_generation task's first route is not local-coder, and tasks at or below the ceiling still route to local-coder.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q --no-cov --tb=line -k "above_ceiling_not_local or declared_in_data"
+    cwd: .
+- id: dod-omn22220-ac2
+  description: AC2 a gate-passed local-coder answer above the ceiling with an UNDETERMINED scorer verdict is refused, and answers below the ceiling, with a scorer PASS, on a backend with no ceiling or with no known backend are returned unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q --no-cov --tb=line -k undetermined_above_ceiling
+    cwd: .
+- id: dod-omn22220-ac3
+  description: AC3 the scrubbed H6-05 record (24579 tokens, gate passed at 0.733, scorer 0.0) routes off local-coder and its pass is refused; the H6-04 record (4560 tokens) still routes to local-coder.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_local_coder_code_generation_ceiling.py -q --no-cov --tb=line -k "receipt_h6_05 or receipt_h6_04"
+    cwd: .
+- id: dod-omn22220-deploy-probe
+  description: 'Deploy probe: the config GitHub serves at the checked-out commit declares the local-coder code_generation ceiling, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/grounding_budget_by_task_class.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "measured_correct_ceilings:" > /dev/null'
+    cwd: .

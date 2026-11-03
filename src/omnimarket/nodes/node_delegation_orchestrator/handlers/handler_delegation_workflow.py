@@ -140,6 +140,9 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 from omnimarket.handlers.routing.customer_key_terminus import (
     CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
 )
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    refuse_above_measured_correct_ceiling,
+)
 from omnimarket.handlers.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.handlers.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
@@ -3824,6 +3827,19 @@ class HandlerDelegationWorkflow:
 
         result = apply_measured_rubric(
             result, rubric_verdict, task_class=workflow.request.task_type
+        )
+        # OMN-22220: above the measured correct ceiling only a scorer PASS
+        # keeps the gate's pass.
+        result = refuse_above_measured_correct_ceiling(
+            result,
+            rubric_verdict,
+            backend_ref=(
+                workflow.routing_decision.selected_backend_ref
+                if workflow.routing_decision is not None
+                else None
+            ),
+            task_class=workflow.request.task_type,
+            request_text=workflow.request.prompt,
         )
         self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
         workflow.gate_result = result
