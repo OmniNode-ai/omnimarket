@@ -48,6 +48,12 @@ overlay:
 # needs_probe (stale hosts to observe again). start_outcome: input account, run_id, transport, began (the start call
 # began), text (its raw answer), untried (the transports left); output verdict started | try-next | refused |
 # start-unknown | failed, next_transport, sentence. Usage state lives in cloud-accounts-v2.json keyed by account label.
+# REVIEW-ONLY (OMN-22345): a brief with `Lane kind: review-only` and `Review head: <sha>` runs as a cloud session that pushes
+# nothing. render_prompt asks for no push and no pull request; render_session_script (input brief) also reads an ended
+# session's final message and review file from the sessions API events (state keys review_text, review_file_text or
+# review_unread, model, review_only); render_result (input brief) returns the close: status and outcome, done/done with
+# the typed unsigned review on parsed, or cloud-review-unparsed/failed with parsed {refused, detail}; any other lane
+# closes done/done with a PR and cloud-no-pr/blocked without one.
 dependencies:
   - name: omnimarket.nodes.node_llm_delegation_call_effect
     dependency_type: internal
@@ -103,6 +109,8 @@ metadata:
     - "cloud-session"
     - "OMN-21373"
     - "OMN-22243"
+    - "OMN-22345"
   related_tickets:
     - "OMN-21373"
     - "OMN-22243"
+    - "OMN-22345"
