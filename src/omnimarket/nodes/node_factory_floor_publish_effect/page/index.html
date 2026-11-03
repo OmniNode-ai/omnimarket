@@ -1010,7 +1010,8 @@ function renderDashboard(p){
   if (fresh.stale) parts.push(`${plural(fresh.stale, "source is", "sources are")} out of date`);
   if (fresh.unread) parts.push(`${plural(fresh.unread, "source is", "sources are")} not read`);
   if (unreadM) parts.push(`${plural(unreadM, "machine is", "machines are")} not read`);
-  const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : "ok";
+  // No line read at all is never Running: the verdict is grey, not green.
+  const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : real.length ? "ok" : "idle";
   const needs = [];
   // Needs you holds only what the operator decides. What the workers and the publish machinery handle is listed apart.
   const handled = [];
@@ -1026,9 +1027,14 @@ function renderDashboard(p){
   if (unreadL) handled.push({what: `${plural(unreadL, "line is", "lines are")} not read: the record carries no condition for ${unreadL === 1 ? "it" : "them"}, so ${unreadL === 1 ? "it is" : "they are"} not counted as running.`, href: "#linesH", link: "See the lines"});
   if (notFresh) handled.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}: ${fresh.names}.`, href: "#freshH", link: "See which sources"});
   if (unreadM) handled.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, href: "#baysH", link: "See the machines"});
-  const verdict = !parts.length ? "All lines running. Nothing needs you."
+  // A planned line with no plan file has nothing to run, so it is named and never counted in "running".
+  const planned = missing ? `${plural(missing, "planned line has", "planned lines have")} no plan file yet` : "";
+  const verdict = !parts.length
+    ? (!real.length ? `No line is read${planned ? `: ${planned}` : ""}. Nothing needs you.`
+      : planned ? `${plural(real.length, "line is", "lines are")} running; ${planned}. Nothing needs you.`
+      : "All lines running. Nothing needs you.")
     : `${needs.length ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
-  const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : "Stopped or failing";
+  const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : vcls === "idle" ? "No line read" : "Stopped or failing";
 
   const board = [];
   board.push(slots.length
@@ -1087,7 +1093,7 @@ function renderDashboard(p){
     </section>
     <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as not read, never as zero. Times are in your time zone, named beside each time; hover a time to see it in universal time.</footer>`;
 
-  return {stoppedN, unreadL, readL, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
+  return {stoppedN, unreadL, readL, missing, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
 }
 
 // ---- What the drawer shows, read from the factory record in hand (the same files the dashboard reads).
@@ -1210,7 +1216,8 @@ function renderTabs(p, d){
     d.stoppedN ? "Stopped" : d.redLanes ? "Failing" : needsLook ? "Needs a look" : "Running",
     `${d.stoppedN} of ${d.slots} lines stopped, ${d.unreadL} not read`, `${d.stale} out of date and ${d.unread} not read sources`);
   // A line the record does not carry a condition for is never green: all unread is grey, some unread is amber.
-  setTab("floor", d.stoppedN ? "stop" : d.unreadL ? (d.readL ? "warn" : "idle") : "ok", d.stoppedN ? "Stopped" : d.unreadL ? (d.readL ? "Needs a look" : "Not read") : "Running", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : d.unreadL ? `${d.unreadL} lines not read` : "no line stopped");
+  // No line read at all (only planned lines with no plan file, or none) is grey too, never Running.
+  setTab("floor", d.stoppedN ? "stop" : d.unreadL ? (d.readL ? "warn" : "idle") : d.readL ? "ok" : "idle", d.stoppedN ? "Stopped" : d.unreadL ? (d.readL ? "Needs a look" : "Not read") : d.readL ? "Running" : "No line read", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : d.unreadL ? `${d.unreadL} lines not read` : d.readL ? (d.missing ? `no line stopped; ${d.missing} planned with no plan file` : "no line stopped") : "no line has a plan file yet");
   const h = p.health && p.health.summary;
   tabAge.process = p.health && p.health.generated_at ? {iso: p.health.generated_at, label: "Series computed"} : {text: "Series not published"};
   if (!h) setTab("process", "none", "No data", "series not published", "not read");

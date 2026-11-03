@@ -574,13 +574,17 @@ function renderVerdict(slots, floor, bayState, health){
   const parts = [];
   parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : unreadLines ? `No line is known to be stopped, but ${unreadLines} of ${real.length} line${real.length === 1 ? " is" : "s are"} not read` : `No line is stopped (${real.length} read)`) : "No line has a plan file yet");
   if (stopped && unreadLines) parts.push(`${unreadLines} line${unreadLines === 1 ? " is" : "s are"} not read`);
+  // A planned line with no plan file is named, never counted among the lines read.
+  const planned = slots.length - real.length;
+  if (real.length && planned) parts.push(`${planned} planned line${planned === 1 ? " has" : "s have"} no plan file yet`);
   if (bayState.declared) parts.push(bayState.stalled ? `${bayState.stalled} of ${bayState.lanes} workers stalled` : `${bayState.lanes} workers, none stalled`);
   parts.push(`${floor.shipped.length} changes shipped, ${floor.waiting.length} waiting`);
   const sm = health && health.summary;
   if (sm && sm.measured !== false) parts.push(`process: ${num(sm.improved)} better, ${num(sm.worse)} worse, ${num(sm.flat)} flat, ${num(sm.unmeasured)} not yet measured`);
   const v = el("verdict");
   v.textContent = parts.join(" · ") + ".";
-  v.className = "verdict " + (stopped || bayState.stalled ? "c-stop" : unreadLines ? "c-warn" : "c-ok");
+  // No line read at all is never green.
+  v.className = "verdict " + (stopped || bayState.stalled ? "c-stop" : unreadLines || !real.length ? "c-warn" : "c-ok");
 }
 
 // ---- Machines, lanes and the cloud bay. Every figure comes from floor.machines, floor.lanes and floor.cloud.

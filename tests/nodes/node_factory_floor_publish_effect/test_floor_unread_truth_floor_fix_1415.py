@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
+    FLOOR_RECORD,
     NODE_DIR,
     SHELL_FILES,
     SHELL_RECORD,
@@ -81,7 +82,7 @@ def test_the_floor_page_says_when_lines_are_not_read_and_does_not_draw_the_verdi
     assert "not read" in verdict
     assert "No line is stopped (" not in verdict
     floor_src = (NODE_DIR / "page/floor/index.html").read_text(encoding="utf-8")
-    assert 'unreadLines ? "c-warn" : "c-ok"' in floor_src
+    assert 'unreadLines || !real.length ? "c-warn" : "c-ok"' in floor_src
 
 
 def test_needs_you_holds_only_the_operators_items_and_names_no_internal_worker() -> (
@@ -197,3 +198,28 @@ def test_the_floor_verdict_holds_no_unused_variable_and_no_plain_object_lookup()
     assert not re.search(r"\breadLines\b", floor_src)
     assert "COND[L.condition]" not in floor_src
     assert "COND[L.condition]" not in SHELL_SRC
+
+
+def test_a_floor_with_no_line_read_is_never_running_on_the_floor_tab() -> None:
+    """Declared lines with no plan file and no record line are not lines running: the Floor tab is grey, not green."""
+    out = _shell({**copy.deepcopy(SHELL_RECORD), "lines": []})
+    assert out["word-floor"].endswith("No line read")
+    assert "Running" not in out["word-floor"]
+
+
+def test_a_planned_line_with_no_plan_file_is_named_in_the_floor_verdict() -> None:
+    """A declared line no plan matched is named beside the lines read, never folded into them."""
+    out = _run_floor(
+        {
+            "factory-floor.json": FLOOR_RECORD,
+            "publish-status.json": {
+                "published_at": "2099-01-01T00:00:00Z",
+                "steps": [],
+                "lines_declared": {
+                    "state": "read",
+                    "plan_path_contains": ["first-plan", "two-plan", "third-plan"],
+                },
+            },
+        }
+    )
+    assert "2 planned lines have no plan file yet" in out["verdict"]
