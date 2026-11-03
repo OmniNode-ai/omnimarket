@@ -1,0 +1,128 @@
+schema_version: 1.0.0
+ticket_id: OMN-22341
+title: "T18c group 7: serve the hook-events by-correlation read from a runtime node"
+summary: >
+  GET /v1/projections/hook-events/by-correlation is served from the runtime by
+  the new node_hook_events_by_correlation_read_effect through a contract-declared
+  HTTP mount (prefix equal to the route path). The caller tenant comes from the
+  shared ProtocolHttpTenantIdentity resolver, bound by DI; with none bound, or a
+  resolver that returns no tenant, the route refuses before any projection read.
+  The three data states and the tenant-slug key are kept. The recorded-fixture
+  replay (AC3) is pending on T18b, OMN-22158, and no caller is switched here.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api, protocols]
+requirements:
+  - id: hook-events-by-correlation-runtime-node
+    statement: Serve the hook-events by-correlation projection read from a runtime node.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: GET /v1/projections/hook-events/by-correlation is answered by the runtime through a contract-declared http_mount by a node with its own contract, and the moved onex-api tests for the route pass under the in-memory and the Redpanda profile -- falsifier: uv run pytest over the new node test directory in both profiles, run on a lab host through lab-run'
+      - id: AC2
+        statement: 'AC2: the route refuses a caller with no resolved tenant, and also when no identity resolver is bound, before any projection read, and a resolved tenant reads only rows of its own slug, with the three data states preserved -- falsifier: a pytest case with two seeded tenant slugs that fails unless the unauthenticated and unbound requests are refused with no repository call and each slug sees none of the other slug rows'
+      - id: AC3
+        statement: 'AC3: the T18b fixture subset for this method-and-path identity replays against the mounted app with no unmasked difference -- falsifier: a pytest replay test that reads the T18b corpus ([OMN-22158](https://linear.app/omninode/issue/OMN-22158)) for the identity and fails on any unmasked difference'
+evidence_requirements:
+  - kind: tests
+    description: The moved route tests, the fail-closed tests and the real runtime mount in both profiles.
+    command: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect -q --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: hook-events-route-in-memory
+    description: >
+      The moved route tests (credentialled access, the three data states, tenant
+      scoping, payload containment, the 503 taxonomy, query bounds, the database
+      adapter's tenant predicate) and the real runtime HTTP mount over the
+      contract, in the in-memory profile.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect -q --no-cov -m "not kafka"
+        cwd: .
+  - id: hook-events-route-redpanda
+    description: >
+      The same runtime mount under an isolated auth-required Redpanda broker with
+      the canonical Kafka event-bus adapter started beside it. The route consumes
+      and produces no topic, so the broker proves the mount boots and serves in
+      that profile; it does not carry the read.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: env ONEX_HOOK_EVENTS_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_runtime_mount_profiles.py -q --no-cov
+        cwd: .
+  - id: hook-events-both-profiles-lab-proof
+    description: >
+      Both profile legs of the node test directory ran at the pushed head on a
+      lab host through lab-work. Hosted CI cannot reach the lab, so only the
+      local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane t18c-g7-hook-events-1220 -- env ONEX_HOOK_EVENTS_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect -q --no-cov -m "not kafka"
+        cwd: .
+  - id: hook-events-fail-closed
+    description: >
+      Two seeded tenant slugs: an unauthenticated request, an unresolved
+      credential and an unbound resolver are each refused with no repository
+      call; authentication precedes query validation; each slug reads none of
+      the other slug's rows; the production no-argument factory with nothing
+      bound refuses.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_fail_closed.py -q --no-cov
+        cwd: .
+  - id: t18b-replay-pending
+    description: >
+      AC3 is OPEN, pending on T18b, OMN-22158. The corpus is not recorded, so
+      tests/nodes/node_hook_events_by_correlation_read_effect/test_t18b_replay.py
+      has not run against it; the replay engine is proven only on a synthetic
+      corpus, which is not evidence for AC3. This local Done check refuses until
+      the corpus lands and the replay passes against it.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: >-
+          python -c "raise SystemExit('AC3 OPEN: the T18b corpus replay (OMN-22158) has not run')"
+        cwd: .
+  - id: deploy-probe
+    description: >
+      Hosted smoke check: the real runtime listener discovers and serves the
+      contract mount in-process. This is not a deployed-dev or cutover claim.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_runtime_mount_profiles.py -q --no-cov
+        cwd: .
+  - id: hook-events-published-source-probe
+    description: >
+      Hosted deploy check of the published source artifact at this checkout's
+      exact commit. The served contract must declare the GET
+      /v1/projections/hook-events/by-correlation mount and the served handler
+      must define HandlerHookEventsByCorrelation. It checks the published
+      artifact and does not attest a running deployment.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: |-
+          set -euo pipefail;
+          probe_dir=$(mktemp -d);
+          trap 'rm -rf "$probe_dir"' EXIT;
+          base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_hook_events_by_correlation_read_effect";
+          curl --fail --silent --show-error --location --max-time 30 "$base/contract.yaml" --output "$probe_dir/contract.yaml";
+          curl --fail --silent --show-error --location --max-time 30 "$base/handlers/handler_hook_events_by_correlation.py" --output "$probe_dir/handler.py";
+          grep -q 'path_prefix: "/v1/projections/hook-events/by-correlation"' "$probe_dir/contract.yaml";
+          grep -q '^class HandlerHookEventsByCorrelation' "$probe_dir/handler.py"
+        cwd: .
