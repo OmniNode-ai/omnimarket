@@ -101,6 +101,7 @@ def _unknown(
         budget=declaration.application_container_budget,
         containers=(),
         detail=f"UNKNOWN, which fails: {reason}",
+        target=declaration.application_container_target,
     )
 
 
@@ -126,6 +127,7 @@ def _judge(
         budget=budget,
         containers=names,
         detail=f"{len(names)} application containers running, budget {budget}",
+        target=declaration.application_container_target,
     )
 
 
