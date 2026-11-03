@@ -142,6 +142,7 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 )
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+    customer_may_run_backend,
     load_bifrost_backends,
     refuse_undeclared_local_model,
     resolve_declared_local_model,
@@ -2109,6 +2110,16 @@ class LocalDelegationDispatchPort:
             if later:
                 return later[0]
             if ladder_entry.backend_id in ids:
+                return None
+            # OMN-22179: the ladder's entry rung is the customer's to run only
+            # if it is not a platform-owned key. Falling through to one raised
+            # the customer-key refusal over the declared local model's own
+            # failure; the run ends on that failure instead.
+            if not customer_may_run_backend(
+                tenant_id=resolved_tenant_id,
+                backend=ladder_entry,
+                house_refs=shipped_house_credential_refs(),
+            ):
                 return None
             return ladder_entry
 
