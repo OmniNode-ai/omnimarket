@@ -31,3 +31,13 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: [AC1]
+  - id: dod-omn22191-slice-2-integration-proof
+    description: The four slice 2 node test directories pass on a lab host at the pushed sha. Hosted CI does not run this unbound check; only the local Done gate does.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22191-20261103T1154Z -- uv run --frozen pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
+        cwd: .
+    binds_ac: [AC1]
