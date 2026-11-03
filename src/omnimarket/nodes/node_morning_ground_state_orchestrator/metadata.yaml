@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_morning_ground_state_orchestrator
 version: 0.1.0
-description: "Operator morning process orchestrator - ledger reconciliation, guarded precheck, decisions register, ground state, triage, reconciliation, integration, dropped-work measurement and session goal - with the deployment briefs supplied by an overlay."
+description: "Operator morning process orchestrator - ledger reconciliation, guarded precheck, decisions register, ground state, triage, reconciliation, integration, dropped-work measurement and session goal - with the deployment briefs supplied by an overlay. Tools-only phase sessions record their configured tool set before launch."
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:
