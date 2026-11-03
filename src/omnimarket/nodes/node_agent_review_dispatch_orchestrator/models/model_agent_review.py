@@ -95,6 +95,21 @@ class ModelAgentHarnessRung(BaseModel):
     run_dir_leaf: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+class ModelAgentSigningKeyStore(BaseModel):
+    """Where the receipt signing key lives in the secret store: a reference, never a value.
+
+    The dispatch resolves it at bind time through the host's own store identity, so the
+    key is held in this process's memory and handed to the signer child, and is never a
+    file, an argument or a setting on any host.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    secret_name: str = Field(min_length=1)
+    environment_slug: str = Field(min_length=1)
+    secret_path: str = Field(min_length=1, pattern=r"^/")
+
+
 class ModelAgentReviewConfig(BaseModel):
     """``<root>/node_agent_review_dispatch_orchestrator/overlay.yaml``; every key required."""
 
@@ -110,6 +125,8 @@ class ModelAgentReviewConfig(BaseModel):
     roster: tuple[ModelAgentVoter, ...] = Field(min_length=1)
     policy: ModelAgentReviewPolicy
     quorum: ModelAgentReviewQuorum
+    #: The store reference of the receipt signing key; the signer binds to it.
+    signing_key_store: ModelAgentSigningKeyStore
     #: Rung name -> harness, for every roster rung served by the harness rung node. A
     #: roster rung that is neither the lab rung nor a key here has no binding.
     harness_rungs: dict[str, ModelAgentHarnessRung] = Field(default_factory=dict)

@@ -15,8 +15,10 @@ review ends before any port is called:
   refuses when the key already holds a file, so the first insert wins.
 * ``SubprocessReceiptSigner`` signs through the omniintelligence issue node
   (``node_review_receipt_issue_compute``) in a subprocess of an omniintelligence
-  checkout, with the key from ``LOCAL_LLM_SHARED_SECRET`` (the process environment,
-  else the host env file). The key goes to the child's environment, never its argv.
+  checkout, with the key resolved by name from the secret store at bind time
+  (``signing_key_store`` in the overlay) through the host's own store identity. The key
+  is never a file, a setting or an argument on a host: it lives in this process's memory
+  and goes to the child's environment, never its argv.
 * ``RungVoterCaller`` sends each voter to the rung its roster entry names: the lab rung
   through ``onex delegate``, and every rung the overlay's ``harness_rungs`` map names
   through ``node_agent_review_harness_rung_effect`` with that rung's harness config. A
@@ -44,7 +46,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
@@ -67,6 +69,7 @@ from ..models import (
     ModelAgentReceiptCandidate,
     ModelAgentReviewConfig,
     ModelAgentReviewTerminal,
+    ModelAgentSigningKeyStore,
     ModelAgentVoter,
     ModelAgentVoterReview,
 )
@@ -74,12 +77,24 @@ from ..protocols import ProtocolAgentReviewLab
 
 SECRET_ENV = "LOCAL_LLM_SHARED_SECRET"
 HOST_ENV_FILE_ENV = "ONEX_HOST_ENV_FILE"
+#: The host's own store identity (machine identity), read from the process environment,
+#: else the host env file. These name the host's access to the store, not the key.
+STORE_ADDR_ENV = "INFISICAL_ADDR"
+STORE_CLIENT_ID_ENV = "INFISICAL_CLIENT_ID"
+STORE_CLIENT_SECRET_ENV = "INFISICAL_CLIENT_SECRET"
+STORE_PROJECT_ENV = "INFISICAL_PROJECT_ID"
+STORE_IDENTITY_ENV_NAMES = (
+    STORE_ADDR_ENV,
+    STORE_CLIENT_ID_ENV,
+    STORE_CLIENT_SECRET_ENV,
+    STORE_PROJECT_ENV,
+)
 STATE_DIR_ENV = "ONEX_STATE_DIR"
 REGISTRY_ROOT_ENV = "OMNI_HOME"
 OMNIINTELLIGENCE_ENV = "ONEX_OMNIINTELLIGENCE_CHECKOUT"
 PLUGIN_ROOT_ENV = "OMNI_PLUGIN_ROOT"
 #: Every environment name the signer reads; none reaches a voter's child process.
-SIGNER_ENV_NAMES = (SECRET_ENV, HOST_ENV_FILE_ENV)
+SIGNER_ENV_NAMES = (SECRET_ENV, HOST_ENV_FILE_ENV, *STORE_IDENTITY_ENV_NAMES)
 RUNG_LAB = "lab"
 HARNESS_RUNG_MODULE = "omnimarket.nodes.node_agent_review_harness_rung_effect"
 _STATE_SUBDIR = "agent_review"
@@ -127,18 +142,81 @@ def host_env_value(path: Path, name: str) -> str | None:
     return None
 
 
-def signing_key(environ: Mapping[str, str]) -> str:
-    """The receipt key from the process environment, else the host env file."""
-    value = environ.get(SECRET_ENV, "").strip()
-    if value:
-        return value
+class ProtocolSigningKeyStore(Protocol):
+    """Reads the signing key by store reference; raises ``PortNotBoundError`` if it cannot."""
+
+    def read(self, reference: ModelAgentSigningKeyStore) -> SecretStr: ...
+
+
+def _store_identity(environ: Mapping[str, str]) -> dict[str, str]:
+    """The host's store identity: the process environment, else the host env file."""
     path = host_env_file(environ)
-    value = (host_env_value(path, SECRET_ENV) or "").strip()
-    if value:
-        return value
-    raise PortNotBoundError(
-        f"{SECRET_ENV} is not set in the environment or in {path}; no signer is bound"
-    )
+    identity: dict[str, str] = {}
+    missing: list[str] = []
+    for name in STORE_IDENTITY_ENV_NAMES:
+        value = environ.get(name, "").strip() or (host_env_value(path, name) or "")
+        if value.strip():
+            identity[name] = value.strip()
+        else:
+            missing.append(name)
+    if missing:
+        raise PortNotBoundError(
+            f"{', '.join(missing)} not set in the environment or in {path}; "
+            "no signer is bound (the signing key is read from the secret store)"
+        )
+    return identity
+
+
+class InfisicalSigningKeyStore:
+    """The secret store as the host's own machine identity; read-only, one name per call."""
+
+    def __init__(self, environ: Mapping[str, str]) -> None:
+        self._environ = environ
+
+    def read(self, reference: ModelAgentSigningKeyStore) -> SecretStr:
+        # Imported here: the store client is only needed on a host that signs.
+        from omnibase_infra.adapters._internal.adapter_infisical import (
+            AdapterInfisical,
+        )
+        from omnibase_infra.adapters.models.model_infisical_config import (
+            ModelInfisicalAdapterConfig,
+        )
+
+        identity = _store_identity(self._environ)
+        adapter = AdapterInfisical(
+            ModelInfisicalAdapterConfig(
+                host=identity[STORE_ADDR_ENV],
+                client_id=SecretStr(identity[STORE_CLIENT_ID_ENV]),
+                client_secret=SecretStr(identity[STORE_CLIENT_SECRET_ENV]),
+                project_id=uuid.UUID(identity[STORE_PROJECT_ENV]),
+                environment_slug=reference.environment_slug,
+                secret_path=reference.secret_path,
+            )
+        )
+        where = f"{reference.environment_slug}:{reference.secret_path}"
+        try:
+            adapter.initialize()
+            result = adapter.get_secret(reference.secret_name)
+        except Exception as exc:  # any store failure ends the request: no signer
+            raise PortNotBoundError(
+                f"{reference.secret_name} could not be read from the secret store at "
+                f"{where} ({type(exc).__name__}); no signer is bound"
+            ) from None
+        finally:
+            adapter.shutdown()
+        if not result.value.get_secret_value().strip():
+            raise PortNotBoundError(
+                f"{reference.secret_name} is empty in the secret store at {where}; "
+                "no signer is bound"
+            )
+        return result.value
+
+
+def signing_key(
+    reference: ModelAgentSigningKeyStore, store: ProtocolSigningKeyStore
+) -> str:
+    """The receipt key, read by name from the store. Never logged, never put in argv."""
+    return store.read(reference).get_secret_value().strip()
 
 
 def _child_env(environ: Mapping[str, str], **extra: str) -> dict[str, str]:
@@ -701,13 +779,21 @@ def build_production_ports(
     scm_bus: ScmBusKind,
     scm_lane: str | None,
     environ: Mapping[str, str] | None = None,
+    key_store: ProtocolSigningKeyStore | None = None,
 ) -> ModelAgentReviewPorts:
-    """Bind every port from the environment, or raise ``PortNotBoundError`` naming one."""
+    """Bind every port from the environment, or raise ``PortNotBoundError`` naming one.
+
+    The signing key is read by the overlay's ``signing_key_store`` reference; ``key_store``
+    replaces the host's store identity only in a test.
+    """
     env: Mapping[str, str] = os.environ if environ is None else environ
     state = Path(_required(env, STATE_DIR_ENV, "receipt store")) / _STATE_SUBDIR
     registry = Path(_required(env, REGISTRY_ROOT_ENV, "diff reader"))
     checkout = Path(_required(env, OMNIINTELLIGENCE_ENV, "signer"))
-    key = signing_key(env)
+    key = signing_key(
+        config.signing_key_store,
+        key_store if key_store is not None else InfisicalSigningKeyStore(env),
+    )
     if scm_bus == "kafka" and not scm_lane:
         raise PortNotBoundError("a kafka source-control bus needs a lane")
     bus = ScmBus(
@@ -762,9 +848,11 @@ __all__ = [
     "FileReceiptStore",
     "FileTerminalLog",
     "HarnessRungVoter",
+    "InfisicalSigningKeyStore",
     "ModelAgentReviewPorts",
     "PortNotBoundError",
     "ProtocolScmCall",
+    "ProtocolSigningKeyStore",
     "RungVoterCaller",
     "ScmBus",
     "ScmHeadReader",

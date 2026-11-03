@@ -26,6 +26,7 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.adapters import (
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.adapters.adapter_agent_review_ports import (
     HOST_ENV_FILE_ENV,
     SECRET_ENV,
+    STORE_IDENTITY_ENV_NAMES,
     CloneDiffReader,
     HarnessRungVoter,
     PortNotBoundError,
@@ -48,7 +49,17 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import (
 )
 from tests.node_overlay_support import install_node_overlay
 
-from .support import HEAD, NODE, OVERLAY, PR, REPO, Harness, World, build_harness
+from .support import (
+    HEAD,
+    NODE,
+    OVERLAY,
+    PR,
+    REPO,
+    FakeKeyStore,
+    Harness,
+    World,
+    build_harness,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -112,10 +123,10 @@ def bound_environ(tmp_path: Path) -> dict[str, str]:
         "ONEX_STATE_DIR": str(tmp_path / "state"),
         "OMNI_HOME": str(registry),
         "ONEX_OMNIINTELLIGENCE_CHECKOUT": str(checkout),
-        SECRET_ENV: KEY_VALUE,
         HOST_ENV_FILE_ENV: str(tmp_path / "host.env"),
         "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
         "PATH": "/usr/bin",
+        **dict.fromkeys(STORE_IDENTITY_ENV_NAMES, "store-identity-value"),
     }
 
 
@@ -130,7 +141,11 @@ def test_a_roster_naming_lab_codex_and_claude_loads_and_binds_every_rung(
     assert {voter.rung for voter in config.roster} == {"lab", "codex", "claude"}
     assert config.harness_rungs["claude"].harness == "claude"
     ports = build_production_ports(
-        config, scm_bus="inmemory", scm_lane=None, environ=bound_environ(tmp_path)
+        config,
+        scm_bus="inmemory",
+        scm_lane=None,
+        environ=bound_environ(tmp_path),
+        key_store=FakeKeyStore(KEY_VALUE),
     )
     rungs = ports.lab._rungs
     assert set(rungs) == {"lab", "codex", "claude"}
@@ -149,6 +164,7 @@ def test_a_harness_rung_the_overlay_does_not_name_has_no_binding(
             scm_bus="inmemory",
             scm_lane=None,
             environ=bound_environ(tmp_path),
+            key_store=FakeKeyStore(KEY_VALUE),
         )
     assert "'claude'" in str(caught.value)
 
@@ -162,6 +178,7 @@ def test_a_harness_rung_needs_the_plugin_root(tmp_path: Path) -> None:
             scm_bus="inmemory",
             scm_lane=None,
             environ=environ,
+            key_store=FakeKeyStore(KEY_VALUE),
         )
     assert "OMNI_PLUGIN_ROOT" in str(caught.value)
 
@@ -276,7 +293,7 @@ def test_the_harness_child_gets_the_rung_config_and_no_signer_name_or_value(
     assert call["argv"][-1] == ports_module.HARNESS_RUNG_MODULE
     env: dict[str, str] = call["env"]
     stdin = call["stdin"].decode("utf-8")
-    for name in (SECRET_ENV, HOST_ENV_FILE_ENV):
+    for name in (SECRET_ENV, HOST_ENV_FILE_ENV, *STORE_IDENTITY_ENV_NAMES):
         assert name not in env
         assert name not in stdin
     assert all(KEY_VALUE not in value for value in env.values())

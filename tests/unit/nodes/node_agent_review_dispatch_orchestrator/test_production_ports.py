@@ -31,13 +31,18 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator import (
     runtime_agent_review,
 )
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.adapters.adapter_agent_review_ports import (
-    SECRET_ENV,
+    STORE_ADDR_ENV,
+    STORE_CLIENT_ID_ENV,
+    STORE_CLIENT_SECRET_ENV,
+    STORE_PROJECT_ENV,
     FileReceiptStore,
     FileTerminalLog,
+    InfisicalSigningKeyStore,
     PortNotBoundError,
     RungVoterCaller,
     ScmHeadReader,
     ScmReviewPoster,
+    _store_identity,
     build_production_ports,
     host_env_value,
     parse_findings,
@@ -67,6 +72,7 @@ from .support import (
     REPO,
     FakeClock,
     FakeHead,
+    FakeKeyStore,
     FakeLab,
     FakeSigner,
     World,
@@ -165,30 +171,67 @@ def test_the_terminal_log_keeps_the_first_terminal(tmp_path: Path) -> None:
 # -- the signing key -----------------------------------------------------------------
 
 
-def test_the_key_comes_from_the_environment_first(tmp_path: Path) -> None:
-    env_file = tmp_path / "host.env"
-    env_file.write_text(f"{SECRET_ENV}=from-file\n", encoding="utf-8")
-    environ = {SECRET_ENV: "from-env", "ONEX_HOST_ENV_FILE": str(env_file)}
-    assert signing_key(environ) == "from-env"
+def test_the_key_is_read_by_the_overlays_store_reference() -> None:
+    store = FakeKeyStore("  key-from-the-store \n")
+    reference = config().signing_key_store
+    assert signing_key(reference, store) == "key-from-the-store"
+    assert store.asked == [reference]
 
 
-def test_the_key_falls_back_to_the_host_env_file(tmp_path: Path) -> None:
+def test_the_host_env_file_reads_a_value_by_name(tmp_path: Path) -> None:
     env_file = tmp_path / "host.env"
-    env_file.write_text(
-        f"# comment\nOTHER=x\nexport {SECRET_ENV}='from-file'\n", encoding="utf-8"
-    )
-    assert signing_key({"ONEX_HOST_ENV_FILE": str(env_file)}) == "from-file"
+    env_file.write_text("# comment\nOTHER=x\nexport NAMED='quoted'\n", encoding="utf-8")
     assert host_env_value(env_file, "OTHER") == "x"
+    assert host_env_value(env_file, "NAMED") == "quoted"
     assert host_env_value(env_file, "MISSING") is None
 
 
-def test_an_absent_key_refuses_by_name(tmp_path: Path) -> None:
+def test_the_store_identity_comes_from_the_environment_then_the_host_env_file(
+    tmp_path: Path,
+) -> None:
     env_file = tmp_path / "host.env"
-    env_file.write_text("OTHER=x\n", encoding="utf-8")
+    env_file.write_text(
+        f"{STORE_ADDR_ENV}=http://file-addr\nexport {STORE_CLIENT_ID_ENV}='file-id'\n"
+        f"{STORE_CLIENT_SECRET_ENV}=file-secret\n{STORE_PROJECT_ENV}=file-project\n",
+        encoding="utf-8",
+    )
+    environ = {"ONEX_HOST_ENV_FILE": str(env_file), STORE_ADDR_ENV: "http://env-addr"}
+    identity = _store_identity(environ)
+    assert identity[STORE_ADDR_ENV] == "http://env-addr"
+    assert identity[STORE_CLIENT_ID_ENV] == "file-id"
+    assert identity[STORE_PROJECT_ENV] == "file-project"
+
+
+def test_an_absent_store_identity_refuses_by_name(tmp_path: Path) -> None:
+    env_file = tmp_path / "host.env"
+    env_file.write_text(f"{STORE_ADDR_ENV}=http://a\n", encoding="utf-8")
     with pytest.raises(PortNotBoundError) as caught:
-        signing_key({"ONEX_HOST_ENV_FILE": str(env_file)})
-    assert SECRET_ENV in str(caught.value)
-    assert str(env_file) in str(caught.value)
+        InfisicalSigningKeyStore({"ONEX_HOST_ENV_FILE": str(env_file)}).read(
+            config().signing_key_store
+        )
+    message = str(caught.value)
+    for name in (STORE_CLIENT_ID_ENV, STORE_CLIENT_SECRET_ENV, STORE_PROJECT_ENV):
+        assert name in message
+    assert STORE_ADDR_ENV not in message
+    assert "no signer is bound" in message
+
+
+def test_a_store_that_cannot_be_read_refuses_without_the_cause_text(
+    tmp_path: Path,
+) -> None:
+    class Refusing:
+        def read(self, reference: Any) -> Any:
+            raise PortNotBoundError("TEST_SIGNING_KEY could not be read; no signer")
+
+    with pytest.raises(PortNotBoundError) as caught:
+        build_production_ports(
+            config(),
+            scm_bus="inmemory",
+            scm_lane=None,
+            environ=bound_environ(tmp_path),
+            key_store=Refusing(),
+        )
+    assert "TEST_SIGNING_KEY" in str(caught.value)
 
 
 # -- binding ------------------------------------------------------------------------
@@ -206,7 +249,6 @@ def bound_environ(tmp_path: Path) -> dict[str, str]:
         "ONEX_STATE_DIR": str(tmp_path / "state"),
         "OMNI_HOME": str(registry),
         "ONEX_OMNIINTELLIGENCE_CHECKOUT": str(checkout),
-        SECRET_ENV: "test-key",
         "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
         "ONEX_HOST_ENV_FILE": str(tmp_path / "absent.env"),
     }
@@ -221,7 +263,11 @@ def config(**roster_overrides: str) -> ModelAgentReviewConfig:
 
 def test_every_port_binds_when_its_environment_is_present(tmp_path: Path) -> None:
     ports = build_production_ports(
-        config(), scm_bus="inmemory", scm_lane=None, environ=bound_environ(tmp_path)
+        config(),
+        scm_bus="inmemory",
+        scm_lane=None,
+        environ=bound_environ(tmp_path),
+        key_store=FakeKeyStore(),
     )
     assert isinstance(ports.store, FileReceiptStore)
     assert isinstance(ports.lab, RungVoterCaller)
@@ -229,14 +275,18 @@ def test_every_port_binds_when_its_environment_is_present(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize(
     "absent",
-    ["ONEX_STATE_DIR", "OMNI_HOME", "ONEX_OMNIINTELLIGENCE_CHECKOUT", SECRET_ENV],
+    ["ONEX_STATE_DIR", "OMNI_HOME", "ONEX_OMNIINTELLIGENCE_CHECKOUT"],
 )
 def test_an_absent_environment_refuses_by_name(tmp_path: Path, absent: str) -> None:
     environ = bound_environ(tmp_path)
     del environ[absent]
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(
-            config(), scm_bus="inmemory", scm_lane=None, environ=environ
+            config(),
+            scm_bus="inmemory",
+            scm_lane=None,
+            environ=environ,
+            key_store=FakeKeyStore(),
         )
     assert absent in str(caught.value)
 
@@ -248,6 +298,7 @@ def test_a_rung_no_binding_serves_refuses_at_bind(tmp_path: Path) -> None:
             scm_bus="inmemory",
             scm_lane=None,
             environ=bound_environ(tmp_path),
+            key_store=FakeKeyStore(),
         )
     assert "elsewhere" in str(caught.value)
 
@@ -257,14 +308,22 @@ def test_a_checkout_that_is_not_one_refuses(tmp_path: Path) -> None:
     (Path(environ["ONEX_OMNIINTELLIGENCE_CHECKOUT"]) / "pyproject.toml").unlink()
     with pytest.raises(PortNotBoundError):
         build_production_ports(
-            config(), scm_bus="inmemory", scm_lane=None, environ=environ
+            config(),
+            scm_bus="inmemory",
+            scm_lane=None,
+            environ=environ,
+            key_store=FakeKeyStore(),
         )
 
 
 def test_a_kafka_bus_needs_a_lane(tmp_path: Path) -> None:
     with pytest.raises(PortNotBoundError):
         build_production_ports(
-            config(), scm_bus="kafka", scm_lane=None, environ=bound_environ(tmp_path)
+            config(),
+            scm_bus="kafka",
+            scm_lane=None,
+            environ=bound_environ(tmp_path),
+            key_store=FakeKeyStore(),
         )
 
 

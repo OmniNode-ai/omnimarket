@@ -93,6 +93,11 @@ OVERLAY: dict[str, Any] = {
         "line_proximity_lines": 3,
         "blocking_severities": ["critical", "error"],
     },
+    "signing_key_store": {
+        "secret_name": "TEST_SIGNING_KEY",
+        "environment_slug": "test-env",
+        "secret_path": "/test/path/",
+    },
 }
 
 
@@ -367,3 +372,17 @@ def build_harness(
         clock=FakeClock(world),
     )
     return Harness(profile=profile, config=config, world=world, handler=handler)
+
+
+class FakeKeyStore:
+    """A signing key store holding one value, recording each reference it was asked for."""
+
+    def __init__(self, value: str = "test-signing-key-value-0123456789") -> None:
+        self.value = value
+        self.asked: list[Any] = []
+
+    def read(self, reference: Any) -> Any:
+        from pydantic import SecretStr
+
+        self.asked.append(reference)
+        return SecretStr(self.value)

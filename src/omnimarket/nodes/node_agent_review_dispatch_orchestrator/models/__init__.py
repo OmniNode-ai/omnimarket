@@ -19,6 +19,7 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent
     ModelAgentReviewTerminal,
     ModelAgentReviewTopics,
     ModelAgentRosterSnapshot,
+    ModelAgentSigningKeyStore,
     ModelAgentVoter,
     ModelAgentVoterReview,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "ModelAgentReviewTerminal",
     "ModelAgentReviewTopics",
     "ModelAgentRosterSnapshot",
+    "ModelAgentSigningKeyStore",
     "ModelAgentVoter",
     "ModelAgentVoterReview",
 ]
