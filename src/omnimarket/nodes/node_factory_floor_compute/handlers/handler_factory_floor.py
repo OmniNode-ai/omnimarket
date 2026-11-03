@@ -36,6 +36,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping i
     pr_records,
     task_prs,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.handler_floor_data_health import (
+    data_health,
+)
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFactoryFloorResult,
     ModelFloorAndon,
@@ -900,6 +903,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
         generated_at=_stamp(request.generated_at),
         lines=with_application_containers(request, lines + _undrawn(request)),
         floor=floor,
+        data_health=data_health(request),
         sources=ModelFloorSources(
             watcher_last_tick=_stamp(request.watcher.last_tick),
             ledger_rows=len(request.ledger),

@@ -15,6 +15,9 @@ from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
 )
+from omnimarket.nodes.node_factory_floor_compute.models.model_floor_data_health import (
+    ModelFloorDataHealth,
+)
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -360,3 +363,4 @@ class ModelFactoryFloorResult(BaseModel):
     lines: tuple[ModelFloorLine, ...]
     floor: ModelFloorSection
     sources: ModelFloorSources
+    data_health: ModelFloorDataHealth

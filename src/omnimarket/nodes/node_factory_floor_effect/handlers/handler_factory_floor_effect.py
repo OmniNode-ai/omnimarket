@@ -59,6 +59,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     resolve_dir,
     resolve_home,
     runner_fleet_cause,
+    snapshot_bases,
     write_result,
 )
 from omnimarket.protocols.protocol_merged_running_count_reader import (
@@ -146,6 +147,9 @@ class HandlerFactoryFloorEffect:
         titles = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_titles_glob
         )
+        linear_snapshot = newest_linear_snapshot(
+            home / src.plans_today_dir, src.linear_snapshot_glob
+        )
         fleet_path = home / src.runner_fleet_relpath
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
@@ -185,13 +189,10 @@ class HandlerFactoryFloorEffect:
                 else None,
             ),
             linear=merge_linear_titles(
-                load_linear(
-                    newest_linear_snapshot(
-                        home / src.plans_today_dir, src.linear_snapshot_glob
-                    )
-                ),
+                load_linear(linear_snapshot),
                 load_linear(titles),
             ),
+            snapshot_bases=snapshot_bases("linear", linear_snapshot),
             placement=load_placement(home / src.placement_relpath),
             stoppages=load_stoppages(home / src.friction_report_relpath),
             machines=machines,

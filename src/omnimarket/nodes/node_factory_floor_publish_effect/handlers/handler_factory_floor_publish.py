@@ -24,6 +24,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 import yaml
 
@@ -257,6 +258,7 @@ class HandlerFactoryFloorPublish:
         data = self._read_record(home / rt.source.relpath)
         record = json.loads(data)
         generated_at = str(record["generated_at"])
+        data = self._stamp_published(data, record, now)
         results = self._flag_undrawn(
             results, rt, self._declared_fragments(rt, env), record["lines"]
         )
@@ -484,6 +486,15 @@ class HandlerFactoryFloorPublish:
                 f"the factory floor record {path} lacks generated_at or lines; refusing to publish it"
             )
         return data
+
+    @staticmethod
+    def _stamp_published(data: bytes, record: dict[str, Any], now: datetime) -> bytes:
+        """Write the publish time into the record's data_health, apart from its generated_at; absent health is left."""
+        health = record.get("data_health")
+        if not isinstance(health, dict):
+            return data
+        health["published_at"] = now.astimezone(UTC).isoformat()
+        return (json.dumps(record, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
     @staticmethod
     def _read_process_health(path: Path) -> bytes | None:

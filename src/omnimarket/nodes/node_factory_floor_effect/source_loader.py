@@ -39,6 +39,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorTableTask,
     ModelFloorWatcher,
 )
+from omnimarket.models.model_floor_data_health_config import ModelFloorSnapshotBasis
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -87,6 +88,9 @@ CI_VERDICTS: dict[str, CiState] = {
 
 class SourceRefusedError(ValueError):
     """A source cannot provide trustworthy facts until the caller repairs it."""
+
+
+_DATE_IN_NAME = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 @contextmanager
@@ -392,6 +396,18 @@ def newest_linear_snapshot(directory: Path, glob: str) -> Path | None:
             key=lambda path: path.name,
             default=None,
         )
+
+
+def snapshot_bases(
+    source_id: str, path: Path | None
+) -> tuple[ModelFloorSnapshotBasis, ...]:
+    """The as-of date a snapshot file's name carries, kept as a date; none when the name carries none."""
+    found = _DATE_IN_NAME.search(path.name) if path is not None else None
+    return (
+        (ModelFloorSnapshotBasis(source_id=source_id, basis=found.group(0)),)
+        if found is not None
+        else ()
+    )
 
 
 def newest_dated_file(directory: Path, filename: str) -> Path | None:

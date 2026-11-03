@@ -37,6 +37,10 @@ handler_routing:
     handler:
       name: HandlerFactoryFloor
       module: omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor
+  - operation: data_health
+    handler:
+      name: HandlerFloorDataHealth
+      module: omnimarket.nodes.node_factory_floor_compute.handlers.handler_floor_data_health
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -123,6 +127,13 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # Data health: the two thresholds are named here and nowhere else. The projection judges each source against
+  # overdue_after_min; the page reads both from the record and calls a record older than stale_after_min "Stale, not
+  # live". snapshot_sources are sources declared as dated snapshots that do not refresh.
+  data_health:
+    overdue_after_min: 90
+    stale_after_min: 360
+    snapshot_sources: [linear]
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

@@ -296,6 +296,8 @@ html.embed .wrap{padding-block:14px 48px}
       <p class="lede">Every plan is a car on its own assembly line. Each station is a stage, and the car is built part by part as stations finish. Machines are where the workers run. Everything below is read from the factory record, which is refreshed every minute; anything that could not be read is shown as unread.</p>
     </div>
     <div class="banner" id="banner" role="alert" hidden></div>
+    <section class="hstrip" id="hstrip" aria-label="Data health"></section>
+    <div class="sr" id="hstrip-live" role="status" aria-live="polite"></div>
     <p class="verdict c-warn" id="verdict">Reading the record.</p>
   </header>
 
@@ -433,7 +435,22 @@ function carSVG(id, parts){
   const label = PART_ORDER.map(k => PART_NAMES[k] + " " + STATE_WORD[parts[k] || "wait"]).join(", ");
   return `<svg class="car-svg" viewBox="0 0 300 122" role="img" aria-label="Car for ${esc(id)}: ${esc(label)}">
    <defs><pattern id="hatch-${esc(id)}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="transparent"/><path d="M0 0V6" style="stroke:var(--steel)" stroke-width="1.6"/></pattern></defs>
-   <style>#line-${esc(id)} .p.s-prep{fill:url(#hatch-${esc(id)})}</style>
+   <style>#line-${esc(id)} .p.s-prep{fill:url(#hatch-${esc(id)})}/* BEGIN health-strip-css */
+.hstrip{border:1px solid var(--line,rgba(128,128,128,.55));border-radius:4px;padding:8px 12px;margin:6px 0;font-size:.88rem}
+.hstrip[hidden]{display:none}
+.hs-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.hs-chip{display:inline-flex;gap:6px;align-items:center;border:1px solid currentColor;border-radius:3px;padding:1px 8px}
+.hs-icon{font-family:monospace}
+.hs-overdue,.hs-unavailable,.hs-failed{border-width:2px}
+.hs-fail{margin:6px 0 2px;font-weight:600}
+.hs-asof{margin:4px 0 0;opacity:.75}
+.hs-times{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;margin:6px 0}
+.hs-times dt{opacity:.75}
+.hs-times dd{margin:0}
+.hs-sources{list-style:none;margin:4px 0 0;padding:0;columns:2 22rem}
+.hs-sources li{padding:1px 0;break-inside:avoid}
+/* END health-strip-css */
+</style>
    <line x1="6" y1="116" x2="294" y2="116" style="stroke:var(--rule)" stroke-width="2"/>
    <path class="${c("body")}" stroke-width="2" d="M22 86 L22 66 Q24 58 36 56 L92 54 L122 32 Q130 26 142 26 L206 26 Q218 26 228 36 L250 56 L272 60 Q280 62 280 72 L280 86 Z"/>
    <path class="${c("glass")}" stroke-width="2" d="M100 54 L126 34 L168 34 L168 54 Z M174 34 L204 34 Q212 34 220 42 L232 54 L174 54 Z"/>
@@ -935,6 +952,97 @@ function renderSources(s, status){
   el("sourceList").innerHTML = rows.map(([k, v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("");
 }
 
+// BEGIN health-strip
+// The data-health strip: one block, carried byte for byte by the Dashboard and the Floor page. It draws the record's
+// data_health fact (the projection owns the states and both thresholds) against the browser's clock. Times are UTC.
+const HEALTH_STATE = {
+  available: {word: "Available", icon: "●"},
+  partial: {word: "Partial", icon: "◐"},
+  overdue: {word: "Overdue", icon: "▲"},
+  unavailable: {word: "Unavailable", icon: "✕"},
+  snapshot: {word: "Snapshot", icon: "◆"}
+};
+let healthLastRec = null, healthLastOk = null, healthKey = null;
+function healthUtc(iso){
+  if (iso == null || iso === "") return null;
+  const s = String(iso);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s + " (date only)";
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+}
+function healthAge(ms){
+  const m = Math.max(0, Math.round(ms / 60000));
+  return m < 1 ? "under a minute" : m < 120 ? m + " min" : (m / 60).toFixed(1) + " h";
+}
+function healthModel(rec, now, failure){
+  const h = rec && rec.data_health;
+  const m = {failure: failure ? {error: String(failure.error || "no reason given"), lastOk: healthLastOk} : null};
+  if (!h || !Number.isFinite(Number(h.overdue_after_min)) || !Number.isFinite(Number(h.stale_after_min))){
+    return Object.assign(m, {state: "unavailable", word: "Unavailable", counts: "This record carries no data health", rows: [], key: "none"});
+  }
+  const gen = Date.parse(h.generated_at), pub = h.published_at ? Date.parse(h.published_at) : NaN;
+  const ages = [gen, pub].filter(t => !Number.isNaN(t)).map(t => now - t);
+  const age = ages.length ? Math.max.apply(null, ages) : null;
+  let state = "available", word = "Available";
+  if (age == null){ state = "unavailable"; word = "Unavailable"; }
+  else if (age > Number(h.stale_after_min) * 60000){ state = "overdue"; word = "Stale, not live"; }
+  else if (age > Number(h.overdue_after_min) * 60000){ state = "overdue"; word = "Overdue"; }
+  const s = h.summary || {};
+  const n = k => Number.isFinite(Number(s[k])) ? Number(s[k]) : 0;
+  const counts = `${n("unavailable")} source${n("unavailable") === 1 ? "" : "s"} unavailable, ${n("overdue")} overdue`
+    + (n("partial") ? `, ${n("partial")} partial` : "") + (n("unread") ? `, ${n("unread")} unread` : "");
+  return Object.assign(m, {
+    state, word, counts, age, h, now,
+    unavailable: n("unavailable"), overdue: n("overdue"), partial: n("partial"),
+    rows: Array.isArray(h.sources) ? h.sources : []
+  });
+}
+function healthHtml(m){
+  const chip = (state, word) => `<span class="hs-chip hs-${esc(state)}"><span class="hs-icon" aria-hidden="true">${HEALTH_STATE[state].icon}</span><b>${esc(word)}</b></span>`;
+  let html = `<div class="hs-head">${chip(m.state, m.word)}`;
+  if (m.failure) html += `<span class="hs-chip hs-failed"><span class="hs-icon" aria-hidden="true">${HEALTH_STATE.unavailable.icon}</span><b>Update unavailable</b></span>`;
+  html += `<span class="hs-counts">${esc(m.counts)}</span></div>`;
+  if (!m.h) return html;
+  const h = m.h, none = (v, why) => healthUtc(v) || why;
+  const failed = m.failure;
+  if (failed){
+    const last = failed.lastOk == null ? "no fetch has succeeded yet" : `${healthUtc(new Date(failed.lastOk).toISOString())}, ${healthAge(m.now - failed.lastOk)} ago`;
+    html += `<p class="hs-fail">Update unavailable (${esc(failed.error)}). Last successful fetch: ${esc(last)}. These values are from then; the record is now ${esc(m.age == null ? "of unknown age" : healthAge(m.age) + " old")}.</p>`;
+  }
+  const fetched = failed ? (failed.lastOk == null ? null : new Date(failed.lastOk).toISOString()) : new Date(m.now).toISOString();
+  html += `<dl class="hs-times"><dt>Generated</dt><dd>${esc(none(h.generated_at, "unreadable"))}</dd>`
+    + `<dt>Published</dt><dd>${esc(none(h.published_at, "not stamped by the publisher"))}</dd>`
+    + `<dt>Fetched</dt><dd>${esc(none(fetched, "never"))}</dd>`
+    + `<dt>Day basis</dt><dd>UTC</dd></dl>`;
+  html += `<p class="hs-asof">Source states are as of the record\u2019s generation, ${esc(none(h.generated_at, "an unreadable time"))}; they do not move with this page\u2019s refresh.</p>`;
+  html += `<ul class="hs-sources">` + m.rows.map(r => {
+    const st = HEALTH_STATE[r.state] || HEALTH_STATE.unavailable;
+    const read = r.read_at == null ? "unread" : "read " + none(r.read_at, "time unreadable");
+    const obs = r.observed_at == null ? "" : ` · observed ${none(r.observed_at, "time unreadable")}`;
+    const old = r.age_min == null ? "" : ` · ${healthAge(r.age_min * 60000)} old when generated`;
+    return `<li><span class="hs-icon" aria-hidden="true">${st.icon}</span><b>${esc(st.word)}</b> ${esc(String(r.source_id).replace(/_/g, " "))} · ${esc(read)}${esc(obs)}${esc(old)}${r.note ? ` · ${esc(r.note)}` : ""}</li>`;
+  }).join("") + `</ul>`;
+  return html;
+}
+function drawHealth(rec, failure){
+  const host = el("hstrip");
+  if (!host) return;
+  if (/[?&]embed=1/.test((typeof location !== "undefined" && location.search) || "")){ host.hidden = true; return; }
+  const now = Date.now();
+  if (!failure && rec){ healthLastRec = rec; healthLastOk = now; }
+  const m = healthModel(failure ? healthLastRec : rec, now, failure);
+  host.hidden = false;
+  host.innerHTML = healthHtml(m);
+  // Announced on a change of state only: the timestamps move every minute and are not announced.
+  const key = [m.word, !!m.failure, m.unavailable, m.overdue, m.partial].join("|");
+  const live = el("hstrip-live");
+  if (key !== healthKey){
+    healthKey = key;
+    if (live) live.textContent = `Data health: ${m.failure ? "update unavailable, " : ""}${m.word}. ${m.counts}.`;
+  }
+}
+// END health-strip
+
 let last = "";
 function render(parts){
   const rec = parts.record;
@@ -947,6 +1055,7 @@ function render(parts){
   const banner = el("banner");
   if (age != null && age > STALE_MIN * 60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
   else { banner.hidden = true; }
+  drawHealth(rec, null);
   if (key === last) return;
   last = key;
   const lines = rec.lines || [];
@@ -989,6 +1098,7 @@ async function load(){
     const banner = el("banner");
     banner.hidden = false;
     banner.textContent = "The factory record could not be read (" + e.message + "). Trying again every minute.";
+    drawHealth(null, {error: e.message});
   }
 }
 load();

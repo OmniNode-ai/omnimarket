@@ -6,5 +6,14 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
     HandlerFactoryFloor,
     compute_factory_floor,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.handler_floor_data_health import (
+    HandlerFloorDataHealth,
+    data_health,
+)
 
-__all__ = ["HandlerFactoryFloor", "compute_factory_floor"]
+__all__ = [
+    "HandlerFactoryFloor",
+    "HandlerFloorDataHealth",
+    "compute_factory_floor",
+    "data_health",
+]

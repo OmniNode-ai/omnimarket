@@ -14,6 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.model_floor_data_health_config import (
+    ModelFloorDataHealthConfig,
+    ModelFloorSnapshotBasis,
+)
 from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -370,6 +374,7 @@ class ModelFactoryFloorConfig(BaseModel):
     stop_outcomes: tuple[str, ...] = Field(min_length=1)
     ask_recipients: tuple[str, ...] = Field(min_length=1)
     ask_answer_kinds: tuple[str, ...] = Field(min_length=1)
+    data_health: ModelFloorDataHealthConfig
 
 
 class ModelFactoryFloorRequest(BaseModel):
@@ -400,5 +405,7 @@ class ModelFactoryFloorRequest(BaseModel):
     lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
     # One Phoenix trace reading; None when the Phoenix URL is not configured (the floor draws it unread).
     phoenix_traces: ModelFloorPhoenixTraces | None = None
+    # The as-of basis of each source the contract declares a dated snapshot; a date-only basis stays a date.
+    snapshot_bases: tuple[ModelFloorSnapshotBasis, ...] = ()
 
     _utc = field_validator("generated_at")(_aware)
