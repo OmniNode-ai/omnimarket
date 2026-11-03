@@ -152,6 +152,16 @@ requirements:
         statement: "AC65: the car is a decorative icon with no data and is `aria-hidden` -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k car_is_decorative"
       - id: "AC66"
         statement: "AC66: the change is proven on the real site after a publish: the served page and factory-floor.json read from the tailnet site show the new bar text, the \"Memory used\" label and the refusing-machine line, recorded as installed=<host>:<revision> with observed=<what ran> -- falsifier: curl -s \"$FACTORY_FLOOR_URL\" | grep -c \"Memory used\" prints 1 or more after the publish, where the variable holds the served site address from the deployment overlay"
+  - id: "req-omn21733-floor-truth-1415"
+    statement: |-
+      A line the record carries no condition for is never counted as running on the Dashboard or the Floor, Needs you holds only what the operator decides, and a lane at its container budget is drawn against its target.
+    acceptance:
+      - id: "AC67"
+        statement: "AC67: a line with no condition is drawn not read: the lines lamp, the Floor tab and the verdict never read Running for it, and the Floor verdict is amber -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q -k unread_line_is_not_counted_as_running"
+      - id: "AC68"
+        statement: "AC68: Needs you holds only the operator's items (a stopped line) and names no internal worker; quiet workers, failing changes, unread lines and unread sources are listed apart in plain words, with the unread sources named -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q -k needs_you_holds_only_the_operators_items"
+      - id: "AC69"
+        statement: "AC69: a lane's application containers are drawn against its declared target beside its budget, so a lane at its budget with a lower target reads as work still to do -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q -k at_its_budget_is_drawn_against_its_target"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -585,4 +595,28 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "test \"$(curl -s \"$FACTORY_FLOOR_URL\" | grep -c 'Memory used')\" -ge 1"
+        cwd: "."
+  - id: "dod-omn21733-ac67"
+    description: "AC67 a line with no condition is drawn not read and never counted as running."
+    source: "manual"
+    binds_ac: ["AC67"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q --no-cov --tb=line -k unread_line_is_not_counted_as_running"
+        cwd: "."
+  - id: "dod-omn21733-ac68"
+    description: "AC68 Needs you holds only the operator's items and names no internal worker; the unread sources are named."
+    source: "manual"
+    binds_ac: ["AC68"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q --no-cov --tb=line -k needs_you_holds_only_the_operators_items"
+        cwd: "."
+  - id: "dod-omn21733-ac69"
+    description: "AC69 a lane's containers are drawn against its declared target."
+    source: "manual"
+    binds_ac: ["AC69"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line -k at_its_budget_is_drawn_against_its_target"
         cwd: "."

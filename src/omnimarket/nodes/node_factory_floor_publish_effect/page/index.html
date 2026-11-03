@@ -79,7 +79,9 @@ h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
 .tab:hover{color:var(--ink);background:color-mix(in srgb,var(--safety) 10%,transparent)}
 .tab[aria-selected="true"]{background:var(--floor);border-color:var(--rule);color:var(--ink);box-shadow:inset 0 4px 0 var(--safety);padding-top:11px;margin-bottom:-1px}
 .tab i{grid-row:span 3;width:12px;height:12px;border-radius:50%;background:var(--c,var(--idle));box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--idle)) 25%,transparent)}
-.tab i.c-none{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
+.tab i.c-none,.tab i.c-idle{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
+.tab i.c-snap{background:var(--muted);box-shadow:none}
+.c-snap{--c:var(--muted);--ct:var(--muted)}
 .tab b{font:600 1.05rem/1.1 var(--f-display);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tab em{font:700 .875rem/1.3 var(--f-body);font-style:normal;color:var(--ct,var(--muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tab small{font-size:.78rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -241,7 +243,7 @@ footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
   .tab[aria-selected="true"]{padding-top:10px}
   .tab i{display:block;width:9px;height:9px;margin:0 auto 3px;box-shadow:none}
   .tab b{font-size:.85rem;letter-spacing:0;text-overflow:clip}
-  .tab em{display:block;font-size:.875rem}
+  .tab em{display:block;font-size:.875rem;white-space:normal;line-height:1.15}
   .tab small{display:none}
   .tab .long{display:none}
   .tab .short{display:inline}
@@ -614,7 +616,9 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.condition === "stopped"};
+    stopped: L.condition === "stopped",
+    // A line whose condition the record does not carry is unread. It is never counted as running.
+    unread: !COND[L.condition]};
 }
 
 // ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
@@ -706,6 +710,12 @@ function refusalNote(m){
 }
 
 // ---- Application containers per lane class, running of declared, from the line's own record; no record, no row.
+// The target is where the lane is going; a count at its budget is not a finished lane, so the distance is drawn beside it.
+function targetText(r){
+  if (r.target == null) return "";
+  const over = num(r.observed) - num(r.target);
+  return ` allowed, target ${fmt(num(r.target))}${over > 0 ? `, ${fmt(over)} still to remove` : ""}`;
+}
 function containersText(L){
   const c = L.application_containers;
   if (!c || typeof c !== "object") return "";
@@ -713,7 +723,7 @@ function containersText(L){
   if (!rows.length) return `<span class="unread">unread: no host could be read</span>`;
   return rows.map(r => {
     const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
-    return `<span title="${esc(plain([r.host, r.detail].filter(Boolean).join(" · ")))}">${esc(plain(r.lane))} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+    return `<span title="${esc(plain([r.host, r.detail].filter(Boolean).join(" · ")))}">${esc(plain(r.lane))} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}${targetText(r)}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
   }).join(" · ");
 }
 const lineLetter = i => "Line " + (LETTERS[i] || i + 1);
@@ -888,6 +898,7 @@ function freshRows(rec, status, health, manifest, delegation){
   flag("Factory record", "Worker receipts", s.receipts_read);
   flag("Factory record", "Cloud accounts", s.cloud_accounts_read);
   flag("Factory record", "CI runner fleet observation", s.runner_fleet_read, s.runner_fleet_cause || "no observation read");
+  flag("Factory record", "Running-on-dev evidence for merged work", s.running_evidence_read, s.merged_running_cause || "no running-on-dev evidence read");
   flag("Factory record", "Friction report", s.stoppage_report);
   flag("Factory record", "Linear issues", num(s.linear_issues) > 0, num(s.linear_issues) > 0 ? `${fmt(num(s.linear_issues))} issues read` : "");
   if (status && Array.isArray(status.steps)){
@@ -943,7 +954,7 @@ function freshnessCard(rows){
   }).join("");
   const problems = withState.filter(r => r.st !== "ok");
   const stale = withState.filter(r => r.st === "stop").length, unread = withState.filter(r => r.st === "idle").length;
-  return {stale, unread, total: withState.length, html, problems: problems.map(r => tile(r, "")).join("")};
+  return {stale, unread, total: withState.length, html, problems: problems.map(r => tile(r, "")).join(""), names: listWords(problems.map(r => plain(r.name).replace(/^([A-Z])(?=[a-z])/, c => c.toLowerCase())))};
 }
 
 // ---- Dashboard
@@ -967,6 +978,8 @@ function renderDashboard(p){
   const absent = slots.map((s, i) => ({slot: s, i})).filter(x => !x.slot.line);
   const facts = real.map(x => lineFacts(x.slot.line));
   const stoppedN = facts.filter(f => f.stopped).length;
+  const unreadL = facts.filter(f => f.unread).length;
+  const readL = facts.length - unreadL;
   const missing = absent.length;
 
   const ms = floor.machines || [], lanes = floor.lanes || [];
@@ -989,6 +1002,7 @@ function renderDashboard(p){
   // The verdict: one sentence, then what needs a person.
   const parts = [];
   if (stoppedN) parts.push(`${plural(stoppedN, "line is", "lines are")} stopped`);
+  if (unreadL) parts.push(`${plural(unreadL, "line is", "lines are")} not read`);
   if (stalled) parts.push(`${plural(stalled, "worker has", "workers have")} gone quiet`);
   if (redLanes) parts.push(`${plural(redLanes, "change is", "changes are")} failing checks`);
   if (fresh.stale) parts.push(`${plural(fresh.stale, "source is", "sources are")} out of date`);
@@ -997,24 +1011,29 @@ function renderDashboard(p){
   const needsPerson = stoppedN || stalled || redLanes;
   const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : "ok";
   const needs = [];
+  // Needs you holds only what the operator decides. What the workers and the publish machinery handle is listed apart.
+  const handled = [];
   real.forEach(x => {
     const f = lineFacts(x.slot.line);
     if (!f.stopped) return;
     const L = x.slot.line;
     const why = L.blocker && L.blocker.reason ? String(L.blocker.reason).replace(/[:\s]+$/, "") : "";
-    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: whoever owns this line's plan; clear the stop or fix its cause.", href: drillHref("line", safeId(L.line_id)), link: "Open this line"});
+    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: you; clear the stop or let the factory fix its cause.", href: drillHref("line", safeId(L.line_id)), link: "Open this line"});
   });
-  if (stalled) needs.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more.`, who: `Who acts: the owner of each worker, starting with ${stalledL[0].lane} (quiet for ${ageText(liveMs(stalledL[0].silent_minutes))}).`, href: drillHref("lane", safeId(stalledL[0].lane)), link: "Open the quietest worker"});
-  if (redLanes) needs.push({what: `${plural(redLanes, "change is", "changes are")} failing checks.`, who: `Who acts: the worker that wrote each change, starting with ${redL[0].lane}.`, href: drillHref("lane", safeId(redL[0].lane)), link: "Open the first failing change"});
-  if (notFresh) needs.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}.`, who: "Who acts: whoever runs the publish tick.", href: "#freshH", link: "See which sources"});
-  if (unreadM) needs.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, who: "Who acts: whoever runs the machine pool read.", href: "#baysH", link: "See the machines"});
+  if (stalled) handled.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more, the longest ${ageText(liveMs(stalledL[0].silent_minutes))}.`, href: drillHref("lane", safeId(stalledL[0].lane)), link: "Open the quietest worker"});
+  if (redLanes) handled.push({what: `${plural(redLanes, "change is", "changes are")} failing checks; the worker that wrote each one fixes it.`, href: drillHref("lane", safeId(redL[0].lane)), link: "Open the first failing change"});
+  if (unreadL) handled.push({what: `${plural(unreadL, "line is", "lines are")} not read: the record carries no condition for ${unreadL === 1 ? "it" : "them"}, so ${unreadL === 1 ? "it is" : "they are"} not counted as running.`, href: "#linesH", link: "See the lines"});
+  if (notFresh) handled.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}: ${fresh.names}.`, href: "#freshH", link: "See which sources"});
+  if (unreadM) handled.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, href: "#baysH", link: "See the machines"});
   const verdict = !parts.length ? "All lines running. Nothing needs you."
     : `${needsPerson ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
   const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : "Stopped or failing";
 
   const board = [];
   board.push(slots.length
-    ? lamp("lines", stoppedN ? "stop" : real.length ? "ok" : "idle", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", stoppedN ? "Stopped" : real.length ? "Running" : "No data", missing ? `${plural(missing, "declared line has", "declared lines have")} no plan file yet` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`)
+    ? (unreadL
+      ? lamp("lines", stoppedN ? "stop" : readL ? "warn" : "idle", `${readL} of ${slots.length}`, "lines read", stoppedN ? "Stopped" : readL ? "Needs a look" : "Not read", `${plural(unreadL, "line is", "lines are")} not read and not counted as running${stoppedN ? `; ${stoppedN} of the ${readL} read ${stoppedN === 1 ? "is" : "are"} stopped` : ""}`)
+      : lamp("lines", stoppedN ? "stop" : real.length ? "ok" : "idle", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", stoppedN ? "Stopped" : real.length ? "Running" : "No data", missing ? `${plural(missing, "declared line has", "declared lines have")} no plan file yet` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`))
     : lamp("lines", "idle", "Lines", "not read", "No data", "The record holds no lines"));
   board.push(lamp("workers", stalled ? "warn" : lanes.length ? "ok" : "idle", `${stalled} of ${lanes.length}`, "workers gone quiet", stalled ? "Needs a look" : lanes.length ? "Running" : "No data", stalled ? `Nothing logged for ${floor.stall_minutes || "the stall"} minutes or more` : lanes.length ? "All are logging" : "No worker is live in the record"));
   board.push(lamp("changes", redLanes ? "stop" : lanes.length ? "ok" : "idle", `${redLanes}`, redLanes === 1 ? "change failing checks" : "changes failing checks", redLanes ? "Failing" : lanes.length ? "Passing" : "No data", "Changes written by live workers"));
@@ -1039,7 +1058,8 @@ function renderDashboard(p){
     <section class="verdict c-${vcls}" aria-labelledby="verdictH">
       <h2 class="sr" id="verdictH">Is anything wrong</h2>
       <p class="vs" role="status"><span class="st">${esc(verdictWord)}.</span> ${esc(verdict)}</p>
-      ${needs.length ? `<div><p class="sub">Needs you</p><ol class="needs">${needs.slice(0, 5).map(n => `<li><span>${esc(plain(n.what))}</span><span class="who">${esc(plain(n.who))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : ""}
+      ${needs.length ? `<div><p class="sub">Needs you</p><ol class="needs">${needs.slice(0, 5).map(n => `<li><span>${esc(plain(n.what))}</span><span class="who">${esc(plain(n.who))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : `<p class="sub">Needs you: nothing</p>`}
+      ${handled.length ? `<div><p class="sub">The factory is handling these, no action from you</p><ol class="needs">${handled.slice(0, 6).map(n => `<li><span>${esc(plain(n.what))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : ""}
     </section>
     <div class="board" role="list" aria-label="Right now">${board.join("")}</div>
     <div class="key" aria-label="What the lamp colours mean"><span><i style="--c:var(--ok)"></i>green: running as expected</span><span><i style="--c:var(--warn)"></i>amber: needs a look</span><span><i style="--c:var(--stop)"></i>red: stopped or failing</span><span><i class="dash-dot"></i>grey dashed: no data</span></div>
@@ -1066,7 +1086,7 @@ function renderDashboard(p){
     </section>
     <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as not read, never as zero. Times are in your time zone, named beside each time; hover a time to see it in universal time.</footer>`;
 
-  return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
+  return {stoppedN, unreadL, readL, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
 }
 
 // ---- What the drawer shows, read from the factory record in hand (the same files the dashboard reads).
@@ -1183,10 +1203,13 @@ function renderTabs(p, d){
   const rec = p.record;
   const recAge = Date.parse(rec.generated_at);
   tabAge.dashboard = tabAge.floor = Number.isNaN(recAge) ? {text: "Record time unreadable"} : {iso: rec.generated_at, label: "Record computed"};
-  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : d.stale || d.stalled || d.unread || d.unreadM ? "warn" : "ok",
-    d.stoppedN || d.redLanes ? "Stopped or failing" : d.stale || d.stalled || d.unread || d.unreadM ? "Needs a look" : "Running",
-    `${d.stoppedN} of ${d.slots} lines stopped`, `${d.stale} out of date and ${d.unread} not read sources`);
-  setTab("floor", d.stoppedN ? "stop" : "ok", d.stoppedN ? "Stopped" : "Running", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : "no line stopped");
+  // The tab words are short so a phone shows them whole: Stopped, Failing, Needs a look, Not read, Running.
+  const needsLook = d.stale || d.stalled || d.unread || d.unreadM || d.unreadL;
+  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : needsLook ? "warn" : "ok",
+    d.stoppedN ? "Stopped" : d.redLanes ? "Failing" : needsLook ? "Needs a look" : "Running",
+    `${d.stoppedN} of ${d.slots} lines stopped, ${d.unreadL} not read`, `${d.stale} out of date and ${d.unread} not read sources`);
+  // A line the record does not carry a condition for is never green: all unread is grey, some unread is amber.
+  setTab("floor", d.stoppedN ? "stop" : d.unreadL ? (d.readL ? "warn" : "idle") : "ok", d.stoppedN ? "Stopped" : d.unreadL ? (d.readL ? "Needs a look" : "Not read") : "Running", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : d.unreadL ? `${d.unreadL} lines not read` : "no line stopped");
   const h = p.health && p.health.summary;
   tabAge.process = p.health && p.health.generated_at ? {iso: p.health.generated_at, label: "Series computed"} : {text: "Series not published"};
   if (!h) setTab("process", "none", "No data", "series not published", "not read");
@@ -1200,7 +1223,7 @@ function renderTabs(p, d){
     tabAge[tab] = x ? {iso: x.as_of, label: snap ? "Snapshot from" : "Data from"} : {text: "Data not read"};
     if (!m) setTab(tab, "none", "No data", "manifest not read", "not read");
     else if (!x) setTab(tab, "idle", "No data", "data not read", r ? ((r.data || [])[0] || {}).reason || "" : "not in the manifest");
-    else setTab(tab, "none", snap ? "Snapshot" : "Data", `${sinceText(x.as_of)} old`, `data from ${utcText(x.as_of)}`);
+    else setTab(tab, "snap", snap ? "Snapshot" : "Data", `${sinceText(x.as_of)} old`, `data from ${utcText(x.as_of)}`);
   });
 }
 

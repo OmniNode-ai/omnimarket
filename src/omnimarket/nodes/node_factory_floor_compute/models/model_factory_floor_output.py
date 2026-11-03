@@ -75,6 +75,8 @@ class ModelFloorLaneContainers(BaseModel):
     observed: int | None
     budget: int | None
     alarm_key: str
+    # Where the lane is going (the declared target); None when the deployment declares none.
+    target: int | None = None
     # The read's own sentence: the count against the budget, or why the host could not be read (UNKNOWN).
     detail: str = ""
 
