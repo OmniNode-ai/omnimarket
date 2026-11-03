@@ -7,11 +7,12 @@
 * ``unchanged`` -- the voters' verdict stands: the quorum passed, a CI ``blocked`` stands,
   a succeeded voter raised a blocking finding, an unsuccessful voter has no typed cause,
   or the attempt shows no receipt by the publisher;
-* ``pass_agent`` -- the attempt is eligible (a degraded verdict, no blocking finding from
-  a succeeded voter, a typed cause for every unsuccessful voter) and at least one receipt
-  by the publisher verifies as accepted for the exact head;
-* ``refuse`` -- anything that cannot be read or verified, or a receipt the verifier
-  refused: the result file, the reviews, the verifier, a malformed receipt.
+* ``pass_agent`` -- the attempt is eligible (a degraded-class verdict from the policy,
+  no blocking finding from a succeeded voter, a typed cause for every unsuccessful voter)
+  and at least one receipt by the publisher verifies as accepted for the exact head;
+* ``refuse`` -- an unrecognised or unread verdict, anything that cannot be read or
+  verified, or a receipt the verifier refused: the result file, the reviews, the verifier,
+  a malformed receipt.
 
 The rules are data (``ModelGateAcceptPolicy``) and the world is injected: the voter
 result and the step files through ``files``, the reviews through ``reviews``, the
@@ -52,6 +53,7 @@ from omnimarket.nodes.node_agent_review_gate_accept_effect.protocols.protocol_ga
 _PASSED = "passed"
 _BLOCKED = "blocked"
 _UNTYPED = "untyped"
+_VERDICT_TEXT_LIMIT = 80
 
 
 class HandlerGateAccept:
@@ -137,7 +139,7 @@ class HandlerGateAccept:
 
     def _decide(self, request: ModelGateAcceptRequest) -> ModelGateAcceptResult:
         try:
-            self._bind()
+            policy = self._bind()[0]
         except (
             Exception
         ):  # no overlay or an invalid one: the verdict stands as produced
@@ -151,6 +153,12 @@ class HandlerGateAccept:
                 EnumGateAcceptReason.VOTER_RESULT_UNREADABLE,
             )
         verdict, voters = read
+        if verdict is None:
+            return self._result(
+                EnumGateAcceptDecision.REFUSE,
+                EnumGateAcceptReason.VERDICT_UNREAD,
+                voters=voters,
+            )
         if verdict == _PASSED:
             return self._result(
                 EnumGateAcceptDecision.UNCHANGED,
@@ -163,6 +171,13 @@ class HandlerGateAccept:
                 EnumGateAcceptReason.CI_BLOCKED,
                 voters=voters,
             )
+        if verdict not in policy.degraded_verdicts:
+            return self._result(
+                EnumGateAcceptDecision.REFUSE,
+                EnumGateAcceptReason.VERDICT_UNRECOGNISED,
+                voters=voters,
+                detail=verdict,
+            )
         ineligible = self._ineligible(voters)
         if ineligible is not None:
             return self._result(
@@ -170,7 +185,9 @@ class HandlerGateAccept:
             )
         return self._receipts(request, voters)
 
-    def _read_attempt(self, path: str) -> tuple[str, list[ModelVoterStatus]] | None:
+    def _read_attempt(
+        self, path: str
+    ) -> tuple[str | None, list[ModelVoterStatus]] | None:
         try:
             document: Any = json.loads(self._files.read_text(path))
         except (OSError, ValueError):
@@ -184,12 +201,8 @@ class HandlerGateAccept:
             return None
         voters = [self._voter(entry) for entry in entries]
         quorum = document.get("quorum")
-        verdict = ""
-        if isinstance(quorum, dict):
-            verdict = str(quorum.get("verdict", ""))
-        if not verdict:
-            succeeded = document.get("models_succeeded")
-            verdict = _PASSED if succeeded else "degraded"
+        value = quorum.get("verdict") if isinstance(quorum, dict) else None
+        verdict = value if isinstance(value, str) and value else None
         return verdict, voters
 
     def _voter(self, entry: dict[str, Any]) -> ModelVoterStatus:
@@ -312,6 +325,7 @@ class HandlerGateAccept:
         receipt_id: str = "",
         voters: list[ModelVoterStatus] | None = None,
         refusals: list[str] | None = None,
+        detail: str = "",
     ) -> ModelGateAcceptResult:
         line = f"Hostile review gate accept: decision={decision.value} reason={reason.value}"
         if decision is EnumGateAcceptDecision.PASS_AGENT:
@@ -325,6 +339,11 @@ class HandlerGateAccept:
                 for voter in lost
             )
             line += f"; unsuccessful voters: {causes}"
+        if detail:
+            shown = re.sub(r"[\s\x00-\x1f\x7f-\x9f]", " ", detail)
+            if len(shown) > _VERDICT_TEXT_LIMIT:
+                shown = shown[:_VERDICT_TEXT_LIMIT] + "..."
+            line += f" verdict={json.dumps(shown, ensure_ascii=True)}"
         return ModelGateAcceptResult(
             decision=decision,
             reason=reason,

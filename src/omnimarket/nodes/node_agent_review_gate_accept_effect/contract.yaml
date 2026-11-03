@@ -13,11 +13,13 @@ description: >-
   about each receipt a review by the publisher carries, and returns one declared decision:
   unchanged, pass_agent or refuse, with a typed reason, the receipt id and a summary line
   that names each unsuccessful voter's cause. It writes the step output and the step
-  summary through its file port. A receipt replaces the voters only when the attempt shows
-  no passing quorum, no blocking finding from a succeeded voter and a typed cause for every
-  unsuccessful voter; an agent pass never overrides a CI blocked verdict. Anything it
-  cannot read or verify refuses. The publisher identity and the verifier endpoint are
-  deployment facts of the agent_review_gate_accept overlay.
+  summary through its file port. A receipt replaces the voters only when the attempt's
+  quorum verdict is one of the policy's degraded-class verdicts, with no blocking finding
+  from a succeeded voter and a typed cause for every unsuccessful voter; an agent pass
+  never overrides a CI blocked verdict. An unrecognised or missing quorum verdict refuses
+  before any review is read. Anything it cannot read or verify refuses. The publisher
+  identity and the verifier endpoint are deployment facts of the agent_review_gate_accept
+  overlay.
 input_model:
   name: ModelGateAcceptRequest
   module: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept

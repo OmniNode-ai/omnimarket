@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-22329
+title: The gate-accept node treats any unrecognised quorum verdict as eligible for an agent receipt instead of refusing it
+summary: HandlerGateAccept read the quorum verdict with a fallback (a missing verdict was inferred from models_succeeded) and sent every verdict other than passed and blocked to the receipt path. The verdict is now read once, never invented, and checked against a closed set - passed, blocked and the policy's degraded-class verdicts (degraded, degraded_quorum, no_models). A verdict outside the set refuses with verdict_unrecognised, a missing or non-string verdict refuses with verdict_unread, and the review reader and the verifier are never called on either.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22329-verdict-closed-set
+  statement: A quorum verdict outside the closed set, or one that is missing or malformed, refuses with a typed reason before the review reader is called.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A voter result whose verdict is neither passed, blocked nor degraded is refused with a typed reason and never reaches the review reader -- falsifier: uv run pytest tests/nodes/node_agent_review_gate_accept_effect -v -rs -k unknown_verdict'
+evidence_requirements:
+- kind: tests
+  description: The gate-accept node's unit tests, including the unknown, missing and malformed verdict cases, run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect tests/unit/nodes/test_golden_chain_agent_review_gate_accept_effect.py -v -rs --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22329-ac1
+  description: AC1 a voter result whose verdict is outside passed, blocked and the policy's degraded-class set (approved, PASSED, degraded_quorum_typo, unknown, a 5000-character string, a string with a newline) refuses with verdict_unrecognised; the review reader and the verifier are never called. The directory the ticket's own falsifier names (tests/nodes/...) does not exist; the node's tests are under tests/unit/nodes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect -v -rs --no-cov --tb=line -k unknown_verdict
+    cwd: .
+- id: dod-omn22329-missing-verdict
+  description: A result file with no quorum object, a quorum with no verdict key or an empty verdict (including one with models_succeeded non-empty, which the removed inference turned into passed) refuses with verdict_unread; the review reader and the verifier are never called.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect -v -rs --no-cov --tb=line -k missing_verdict
+    cwd: .
+- id: dod-omn22329-malformed-verdict
+  description: A non-string verdict (number, boolean, null, list, object) or a quorum that is not an object refuses with verdict_unread; the review reader and the verifier are never called.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect -v -rs --no-cov --tb=line -k malformed_verdict
+    cwd: .
+- id: dod-omn22329-deploy-probe
+  description: 'Deploy probe: the gate-accept model GitHub serves at the checked-out commit declares the verdict_unrecognised reason, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_agent_review_gate_accept_effect/models/model_gate_accept.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "verdict_unrecognised" > /dev/null'
+    cwd: .
+- id: dod-omn22329-integration-proof
+  description: The pushed head ran the gate-accept node's tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22329 --kind test -- uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect tests/unit/nodes/test_golden_chain_agent_review_gate_accept_effect.py -q --no-cov
+    cwd: .
