@@ -759,8 +759,8 @@ class _ReconcilePass:
         """Move a dangling ``onex`` symlink aside and link the wrapper in its place (OMN-22146).
 
         bash skips a symlink whose target is gone, so a dangling ``~/.local/bin/onex`` makes the
-        bare name fall through to the next PATH entry; on h101 that was a brew python@3.12
-        console script that cannot import ``omnibase_core``. Returns ``(moved path, error)``;
+        bare name fall through to the next PATH entry, which may be a stale console script
+        that cannot import ``omnibase_core``. Returns ``(moved path, error)``;
         the error names a rename or link that failed, or a wrapper that is not a file (nothing
         is moved then, so the shadow stays visible instead of leaving an empty slot).
         """
