@@ -134,6 +134,24 @@ requirements:
         statement: "AC45: consecutive steps the contract marks concurrent run in threads and report in contract order, hosts, pool, friction and process_health are marked and factory_floor is not, and a step naming fresh_relpath and fresh_seconds is skipped while its output is younger and runs when it is older -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
       - id: "AC46"
         statement: "AC46: a transfer whose ssh connection did not open (exit 255) is retried twice before the publish is refused, and a command that ran is never retried -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k transfer_retries"
+  - id: "req-omn21733-floor-p0-projection"
+    statement: |-
+      The factory floor compute node projects one condition, blocker, progress, gates, line evidence and data age for every line, so every surface reads the same facts: built percent counts merged work tasks only with gates counted apart, unknown is never zero, and a line is complete only when its work is done and every gate has passed.
+    acceptance:
+      - id: "AC47"
+        statement: "AC47: Line B projects progress completed=6, total=48, percent=12.5 with gates passed/failed/waiting counted apart and never in the total -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k line_b_work_tasks_and_gates"
+      - id: "AC48"
+        statement: "AC48: a line stopped only by soft causes while a live non-stalled lane works it projects condition building with its blocker kept, and no field reads stopped -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k one_condition_building_keeps_blocker"
+      - id: "AC49"
+        statement: "AC49: a missing total projects progress.state unknown with percent None, zero declared tasks projects no_tasks, and a known 0 of 6 projects known with percent 0.0 -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k unknown_is_not_zero"
+      - id: "AC50"
+        statement: "AC50: every work task done with a gate failed or waiting never projects condition complete -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k all_tasks_done_gate_pending_not_complete"
+      - id: "AC51"
+        statement: "AC51: a task done only by a terminal outcome or a closed ticket counts toward condition and not toward progress.completed, and line_evidence carries merged, running_on_dev and verified apart with None for an unread source -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k merged_only_percent_and_separate_evidence"
+      - id: "AC52"
+        statement: "AC52: every line, undrawn lines included, carries data_age -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -q -k data_age_on_every_line"
+      - id: "AC53"
+        statement: "AC53: the change is proven by a real publish: the served factory-floor.json carries progress, gates, condition and data_age on its lines after the publish -- falsifier: grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"
   - id: "req-omn21733-p0-page"
     statement: |-
       The Dashboard and the Floor draw one projected condition, blocker and progress for each line, a neutral progress bar of merged work tasks with gates counted apart, memory as used over total, load per core as a number against its reference, a machine that refuses work above its capacity, and a decorative car that encodes no data.
@@ -162,6 +180,12 @@ requirements:
         statement: "AC68: Needs you holds only the operator's items (a stopped line) and names no internal worker; quiet workers, failing changes, unread lines and unread sources are listed apart in plain words, with the unread sources named -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_unread_truth_floor_fix_1415.py -q -k needs_you_holds_only_the_operators_items"
       - id: "AC69"
         statement: "AC69: a lane's application containers are drawn against its declared target beside its budget, so a lane at its budget with a lower target reads as work still to do -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q -k at_its_budget_is_drawn_against_its_target"
+  - id: "req-omn21733-single-integration-state"
+    statement: |-
+      The floor has one definition of integration state, built and done: the integrating state dev already carries (OMN-22106), with this change's projection fields reading it and declaring no second one.
+    acceptance:
+      - id: "AC70"
+        statement: "AC70: the input model and the compute contract declare exactly one integration_state with its pass and fail verdicts and one running_evidence input, the handler maps a merged item without running evidence to the integrating state and a proven running merge to done, and while the running-on-dev records are unread a line with merged work reads its progress as unknown with its merged count named, never as a known 0 -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q -k unread_running_progress_is_unknown"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -532,6 +556,64 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane floor-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py tests/nodes/node_factory_floor_compute/test_scoped_tasks.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn21733-ac47"
+    description: "AC47 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC47"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k line_b_work_tasks_and_gates"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac48"
+    description: "AC48 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC48"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k one_condition_building_keeps_blocker"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac49"
+    description: "AC49 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC49"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k unknown_is_not_zero"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac50"
+    description: "AC50 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC50"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k all_tasks_done_gate_pending_not_complete"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac51"
+    description: "AC51 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC51"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k merged_only_percent_and_separate_evidence"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac52"
+    description: "AC52 the focused projection test passes."
+    source: "manual"
+    binds_ac: ["AC52"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k data_age_on_every_line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac53"
+    description: "AC53 hosted-runner deploy probe computes a projection, publishes it to a temporary site using a local shell in place of SSH, and reads the JSON over real HTTP. It checks progress, gates, condition and data_age on manifest and undrawn lines. This is local publish evidence; the deployed site's publish readback remains outstanding."
+    source: "manual"
+    binds_ac: ["AC53"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_publish_effect/test_projection_publish.py -q --no-cov --tb=line"
+        cwd: "."
+      - check_type: "command"
+        check_value: "grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"
   - id: "dod-omn21733-ac60"
     description: "AC60 both pages derive the pill, row and stoppage text from `L.condition` and `L.blocker` only; one fixture renders the same condition on the Dashboard and the Floor, and a stop with a live lane never shows Building beside Stopped."
     source: "manual"
@@ -588,6 +670,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py -q --no-cov --tb=line -k memory_gauge_matches_label"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac70"
+    description: "AC70 the floor keeps dev's one integration state, and while the running-on-dev records are unread a line with merged work reads its progress as unknown with the merged count named, never a known 0."
+    source: "manual"
+    binds_ac: ["AC70"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q --no-cov --tb=line -k unread_running_progress_is_unknown"
+        cwd: "."
   - id: "dod-omn21733-ac66-served-site"
     description: "AC66 served-site probe, unbound: after a real publish the served page carries the Memory used label. Hosted CI cannot reach the tailnet, so only the local Done gate runs this check."
     source: "manual"
