@@ -40,6 +40,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 3600000
+  runtime_profiles:
+  - effects
 terminal_event: onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.onboarding-clean-vm-walk-requested.v1
