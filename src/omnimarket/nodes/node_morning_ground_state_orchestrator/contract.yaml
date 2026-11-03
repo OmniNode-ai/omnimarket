@@ -34,6 +34,12 @@ handler_routing:
         module: omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_ground_state
       input_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state.ModelMorningGroundStateRequest
       output_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_ground_state.ModelMorningGroundStateResult
+    - operation: morning_phase_session_files
+      handler:
+        name: HandlerMorningPhaseSessionFiles
+        module: omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_phase_session_files
+      input_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_phase_session_files.ModelMorningPhaseSessionFilesRequest
+      output_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_phase_session_files.ModelMorningPhaseSessionFiles
 terminal_event: onex.evt.omnimarket.morning-ground-state-completed.v1
 terminal_events:
   success: onex.evt.omnimarket.morning-ground-state-completed.v1
