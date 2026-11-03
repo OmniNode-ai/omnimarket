@@ -40,6 +40,20 @@ handler_routing:
       handler:
         name: "HandlerTicketQuery"
         module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_query"
+    # OMN-22418: a ticket's workflow state type and assignee id, for a launch decision.
+    - operation: "read_ticket_facts"
+      handler:
+        name: "HandlerTicketFacts"
+        module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_facts"
+secrets:
+  # OMN-22418: the tracker key is resolved in process from the secret store by
+  # node_secret_store_effect (reference built from folder + key), never from the
+  # environment and never from a key file.
+  tracker_api_key:
+    description: "Project tracker API key, resolved from the secret store at the effect boundary."
+    required: true
+    store_folder: "/shared/env"
+    key: "LINEAR_API_KEY"
 dependencies:
   - name: "ProtocolProjectTracker"
     type: "protocol"
