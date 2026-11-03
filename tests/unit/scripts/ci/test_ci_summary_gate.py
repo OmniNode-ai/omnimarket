@@ -971,6 +971,13 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "path-filter->always-fire conversion + one observed proving PR "
         "cycle; not in this wave's scope."
     ),
+    ("prompt-cost-estimate-contract.yml", "prompt-cost-estimate-contract"): (
+        "path-filtered validator (OMN-22126) that posts a check-run only when "
+        "the prompt cost estimate node, its tests or this workflow change, so "
+        "it is legitimately absent on most PRs and asserting it would wedge "
+        "CI Summary; promotion deferred pending the path-filter->always-fire "
+        "conversion + one observed proving PR cycle."
+    ),
     # --- security-scan.yml: pull_request trigger newly added by this PR.
     # Unproven PR-event reporters — never posted a check-run on a
     # pull_request event before. Promoting an unproven reporter straight to
