@@ -148,6 +148,8 @@ not_routing_resolution_sites:
     reason: the runtime host a sweep probes; a probe target, not a route for delegated work
   - site: "src/omnimarket/nodes/node_database_sweep/handlers/handler_database_sweep.py:resolve_setting(_NODE_NAME)"
     reason: the runtime host a sweep probes; a probe target, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_pr_state_read_effect/cli.py:resolve_setting(_NODE_NAME)"
+    reason: the projection API address the pr-state command reads from; a read target, not a route for delegated work
   - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:resolve_setting(DEFAULT_MODEL_NODE)"
     reason: the model onboarding offers to register on a customer's own key; it is checked against the key's list and stored as the customer's choice, and the stored model, not this value, selects the delegation route
   - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:load_node_overlay(DEFAULT_MODEL_NODE)"

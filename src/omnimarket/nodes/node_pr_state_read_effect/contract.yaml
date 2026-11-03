@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: pr_state_read_effect
+contract_name: node_pr_state_read_effect
+node_name: node_pr_state_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Reads a pull request's state from the pr_state projection exposure and refuses
+  a row older than the declared limit. HandlerPrStateRead judges one row and
+  returns a typed result (fresh, stale, absent); HandlerPrStateWait polls the
+  exposure for rows observed after the last page until a fresh row reaches a
+  terminal verdict, or returns a typed timeout. Neither makes a GitHub request.
+node_type: effect
+# Run from the `onex pr-state` command, not subscribed to a topic.
+lifecycle: experimental
+input_model:
+  name: ModelPrStateReadRequest
+  module: omnimarket.models.pr_state.model_pr_state_read_request
+output_model:
+  name: ModelPrStateReadResult
+  module: omnimarket.models.pr_state.model_pr_state_read_result
+
+handler:
+  name: HandlerPrStateRead
+  module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read
+  class: HandlerPrStateRead
+  input_model: omnimarket.models.pr_state.model_pr_state_read_request.ModelPrStateReadRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: pr_state_read
+      handler:
+        name: HandlerPrStateRead
+        module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read
+      handler_module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read
+    - operation: pr_state_wait
+      handler:
+        name: HandlerPrStateWait
+        module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_wait
+      handler_module: omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_wait
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 30000
+
+# The values the read surface judges by. projection_topic names the exposure
+# that node_projection_pr_state declares; a test holds the two equal.
+pr_state_read:
+  projection_topic: onex.snapshot.projection.pr-state.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  max_row_age_seconds: 300
+  wait_poll_seconds: 5
+  terminal_verdicts:
+    - GREEN
+    - RED
+  terminal_states:
+    - closed
+    - merged
