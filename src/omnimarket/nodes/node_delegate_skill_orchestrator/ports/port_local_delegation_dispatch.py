@@ -261,6 +261,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
+    load_secret_request_refusal,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
 )
@@ -3238,6 +3241,21 @@ class LocalDelegationDispatchPort:
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
+            # OMN-22212: a refused secret or exfiltration request is terminal.
+            # The refusal is the right answer and no other rung improves it, so
+            # the ladder stops here and the request never leaves this rung.
+            secret_request_refused = (
+                not quality_passed
+                and load_secret_request_refusal().refuses(
+                    prompt, gate_result.failure_reasons
+                )
+            )
+            if secret_request_refused:
+                acceptance_decision = EnumDelegationAcceptanceDecision.TERMINATE
+                acceptance_detail = (
+                    f"{acceptance_detail} secret_request_refusal=true (a refused "
+                    "secret request is terminal and is not sent to another rung)"
+                )
             if not bar_decides:
                 # OMN-21077: the score comparison above is reported, not applied.
                 acceptance_detail = f"{acceptance_detail} acceptance=executed_tests"
@@ -3539,7 +3557,9 @@ class LocalDelegationDispatchPort:
             # floor is the same quality veto the bus stops on.
             quality_cause = local_quality_cause(
                 no_rung_can_satisfy=(
-                    gate_result.no_rung_can_satisfy or repeated_deterministic_floor
+                    gate_result.no_rung_can_satisfy
+                    or repeated_deterministic_floor
+                    or secret_request_refused
                 ),
                 fail_category=gate_result.fail_category,
             )
@@ -3722,7 +3742,11 @@ class LocalDelegationDispatchPort:
                 escalation_count=escalation_count,
                 max_escalations=max_escalations,
             )
-            if ladder_stopped_by_veto:
+            if ladder_stopped_by_veto and secret_request_refused:
+                ladder_stop_reasons.append(
+                    load_secret_request_refusal().terminal_failure_reason
+                )
+            elif ladder_stopped_by_veto:
                 ladder_stop_reasons.append(
                     "repeated_deterministic_floor"
                     if repeated_deterministic_floor
