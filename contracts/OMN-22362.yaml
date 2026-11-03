@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-22362
+title: the architecture-discovery bus callers dial the broker their node's contract overlay declares and no longer import core's private security helper
+summary: The architecture-discovery CLI and its coding-agent bus adapter read KAFKA_BOOTSTRAP_SERVERS for the broker and imported omnibase_core's private _resolve_client_security_config for the client security, which read KAFKA_SECURITY_PROTOCOL and KAFKA_SASL_*. omnibase_core deletes that helper when onex run-node takes its broker from the node's contract overlay, so omnimarket would fail at import once its core pin carries that change. Both callers now resolve the broker and the client security of each node they dial from the event_bus the node's overlay declares, through the registered node broker resolver when one is installed and through the same overlay declaration read here when the pinned omnibase_infra predates it. No environment variable, flag or default selects the broker, a node with no declaration is refused naming its overlay path, and an in-memory declaration is refused because these callers publish to nodes that run in the lane's runtime.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22362-callers-overlay-broker
+  statement: The architecture-discovery callers select each node's broker and client security from the node's contract overlay and from nothing else.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a Redpanda overlay (event_bus type kafka, lane dev) is dialed with the lane''s broker and client security for the orchestrator, the workspace-validation node and the invoke node while KAFKA_BOOTSTRAP_SERVERS and KAFKA_SECURITY_PROTOCOL name something else; a registered resolver answers through the same path and two registered resolvers are refused -- falsifier: uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_broker_overlay_omn22362.py -q --no-cov -k "redpanda or default_adapter or cli_dials or sasl or registered"'
+  - id: AC2
+    statement: 'AC2: a node with no overlay, an overlay with no event_bus, an undeclared lane or an in-memory declaration is refused naming the overlay path before anything is published, also with the old environment variable set, and neither caller references the deleted core helper -- falsifier: uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_broker_overlay_omn22362.py -q --no-cov -k "inmemory or missing_overlay or without_event_bus or refuses or undeclared_lane or private"'
+evidence_requirements:
+- kind: tests
+  description: The overlay falsifiers run the real callers over real overlay and lane-declaration files in a scratch workspace config root; at the merge base the broker is the environment variable and these fail.
+  command: uv run pytest tests/nodes/node_architecture_discovery_orchestrator -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22362-ac1
+  description: AC1 the Redpanda overlay selects the lane broker and client security for every node the callers dial with the ambient variables set to other values. At the merge base the broker is KAFKA_BOOTSTRAP_SERVERS, so these fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_broker_overlay_omn22362.py -q --no-cov --tb=line -k "redpanda or default_adapter or cli_dials or sasl or registered"
+    cwd: .
+- id: dod-omn22362-ac2
+  description: AC2 a missing declaration, an undeclared lane and an in-memory declaration are refused naming the overlay path, and the deleted core helper is not referenced.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_broker_overlay_omn22362.py -q --no-cov --tb=line -k "inmemory or missing_overlay or without_event_bus or refuses or undeclared_lane or private"
+    cwd: .
+- id: dod-omn22362-deploy-probe
+  description: 'Deploy probe: the module GitHub serves at the checked-out commit carries the overlay resolver, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/bus_binding/node_broker.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def resolve_dialable_broker" > /dev/null'
+    cwd: .
