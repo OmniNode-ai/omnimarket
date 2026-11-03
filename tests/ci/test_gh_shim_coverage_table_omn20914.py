@@ -305,7 +305,9 @@ def test_api_write_replacement_drift_is_refused(old: str, new: str) -> None:
     )
 
 
-@pytest.mark.parametrize("operation", ["check_run_create", "pr_thread_reply"])
+@pytest.mark.parametrize(
+    "operation", ["check_run_create", "pr_thread_reply", "pr_review_post"]
+)
 def test_api_write_requires_exactly_one_served_operation(operation: str) -> None:
     contract_text, dispatch_text = _real()
     removed = [spec for spec in SCM_VERBS if spec.operation != operation]
