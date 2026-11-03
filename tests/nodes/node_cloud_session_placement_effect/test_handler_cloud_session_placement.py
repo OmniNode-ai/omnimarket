@@ -19,19 +19,34 @@ from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     cloud_accounts as acc,
 )
 from omnimarket.nodes.node_cloud_session_placement_effect.models import (
-    ModelCloudHost,
+    ModelCloudAccount,
     ModelCloudSessionPlacementRequest,
     ModelCloudSessionPlacementResult,
 )
 
 NAME = "node_cloud_session_placement_effect"
 NOW = datetime(2026, 1, 2, tzinfo=UTC)
-HOSTS = tuple(
-    ModelCloudHost(
-        name=name, engines=("claude_sonnet",), cloud_consent="2026-01-01T00:00:00Z"
+ACCOUNTS = tuple(
+    ModelCloudAccount(
+        label=label,
+        org_hash=f"{i:010x}",
+        email_hash=f"{i + 16:010x}",
+        consent="2026-01-01T00:00:00Z",
     )
-    for name in ("host_a", "host_b")
+    for i, label in enumerate(("host_a", "host_b"), start=1)
 )
+TRANSPORTS = tuple(
+    {"name": f"on_{a.label}", "target": f"{a.label}.example.test"} for a in ACCOUNTS
+)
+FRESH = 1800
+
+
+def _logins(tmp_path: Path, *labels: str, ok: bool = True) -> None:
+    with acc._cloud_state(tmp_path, ACCOUNTS, NOW) as state:
+        for label in labels:
+            state["logins"][label] = {
+                f"on_{label}": {"seen_at": f"{NOW:%Y-%m-%dT%H:%M:%SZ}", "cloud_ok": ok}
+            }
 
 
 def _contract() -> dict[str, Any]:
@@ -125,64 +140,68 @@ def test_route_names_the_placement_order_from_the_contract(tmp_path: Path) -> No
         assert result.order == declared[placement]
 
 
-def test_pick_protocol_and_slot_hold(tmp_path: Path) -> None:
-    first = call(tmp_path, "pick", hosts=HOSTS, run_id="run_a")
-    assert first.needs_probe == "host_a"
-    assert first.account is None
-    assert first.tried == []
-    second = call(
-        tmp_path, "pick", hosts=HOSTS, run_id="run_a", probes={"host_a": "ok"}
+def test_pick_takes_a_slot_and_slots_reports_it(tmp_path: Path) -> None:
+    _logins(tmp_path, "host_a")
+    first = call(
+        tmp_path,
+        "pick",
+        accounts=ACCOUNTS,
+        transports=TRANSPORTS,
+        login_fresh_s=FRESH,
+        run_id="run_a",
     )
-    assert second.account == "host_a"
-    assert second.needs_probe is None
-    assert second.tried == [{"account": "host_a", "login": "ok"}]
-    slots = call(tmp_path, "slots", hosts=HOSTS)
+    assert first.account == "host_a"
+    assert first.transport == "on_host_a"
+    assert first.needs_probe is None
+    assert first.tried[-1] == {"account": "host_a", "transport": "on_host_a"}
+    slots = call(
+        tmp_path, "slots", accounts=ACCOUNTS, transports=TRANSPORTS, login_fresh_s=FRESH
+    )
     assert slots.accounts == {"host_a": 3}
     assert slots.free == 3
     assert slots.caps == {"host_a": {"running": 1, "cap": 4, "held": None}}
-    assert call(tmp_path, "slots").free == 0
+    assert call(tmp_path, "slots", accounts=(), login_fresh_s=FRESH).free == 0
 
 
-def test_not_ok_probe_moves_on_and_prior_candidate_write_survives(
-    tmp_path: Path,
-) -> None:
+def test_a_probe_that_fails_moves_on_to_the_account_that_passes(tmp_path: Path) -> None:
+    _logins(tmp_path, "host_a", ok=False)
+    _logins(tmp_path, "host_b")
     result = call(
         tmp_path,
         "pick",
-        hosts=HOSTS,
+        accounts=ACCOUNTS,
+        transports=TRANSPORTS,
+        login_fresh_s=FRESH,
         run_id="run_a",
-        probes={"host_a": acc.CLOUD_LOGIN_NONE},
-    )
-    assert result.needs_probe == "host_b"
-    assert result.account is None
-    state = json.loads((tmp_path / acc.CLOUD_STATE_FILE).read_text())
-    assert state["accounts"]["host_a"]["login"] == acc.CLOUD_LOGIN_NONE
-    result = call(
-        tmp_path,
-        "pick",
-        hosts=HOSTS,
-        run_id="run_a",
-        probes={"host_a": acc.CLOUD_LOGIN_NONE, "host_b": "ok"},
     )
     assert result.account == "host_b"
-    assert result.tried[-1] == {"account": "host_b", "login": "ok"}
+    assert "failed the cloud probe" in result.sentences[0]
 
 
 def test_start_refusal_and_release(tmp_path: Path) -> None:
+    _logins(tmp_path, "host_a")
+    one = ACCOUNTS[:1]
     for i in range(4):
-        assert (
-            call(
-                tmp_path,
-                "pick",
-                hosts=HOSTS[:1],
-                run_id=f"run_{i}",
-                probes={"host_a": "ok"},
-            ).account
-            == "host_a"
+        picked = call(
+            tmp_path,
+            "pick",
+            accounts=one,
+            transports=TRANSPORTS,
+            login_fresh_s=FRESH,
+            run_id=f"run_{i}",
         )
+        assert picked.account == "host_a"
         result = call(tmp_path, "note_start", account="host_a")
     assert result.cap == 5
-    assert call(tmp_path, "pick", hosts=HOSTS[:1], run_id="refused").account == "host_a"
+    refused = call(
+        tmp_path,
+        "pick",
+        accounts=one,
+        transports=TRANSPORTS,
+        login_fresh_s=FRESH,
+        run_id="refused",
+    )
+    assert refused.account == "host_a"
     assert (
         call(
             tmp_path, "note_refusal", account="host_a", run_id="refused", why="capacity"
@@ -190,10 +209,11 @@ def test_start_refusal_and_release(tmp_path: Path) -> None:
         == 4
     )
     assert call(tmp_path, "release", account="host_a", run_id="run_0").error is None
-    assert call(tmp_path, "slots", hosts=HOSTS).free == 1
+    assert call(tmp_path, "slots", accounts=one, login_fresh_s=FRESH).free == 1
 
 
 def test_credit_zero_retires_account(tmp_path: Path) -> None:
+    _logins(tmp_path, "host_a")
     result = call(
         tmp_path,
         "record_credit",
@@ -204,7 +224,13 @@ def test_credit_zero_retires_account(tmp_path: Path) -> None:
     assert result.entry["credit"]["remaining"] == 0
     assert result.entry["exhausted_at"] == "2026-01-02T00:00:00Z"
     assert call(tmp_path, "credit", account="host_a").credit["remaining"] == 0
-    pick = call(tmp_path, "pick", hosts=HOSTS[:1])
+    pick = call(
+        tmp_path,
+        "pick",
+        accounts=ACCOUNTS[:1],
+        transports=TRANSPORTS,
+        login_fresh_s=FRESH,
+    )
     assert pick.account is None
     assert "credit read zero" in pick.tried[0]["skipped"]
 
@@ -318,10 +344,10 @@ def test_models_are_frozen_and_forbid_extra_fields() -> None:
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="Extra inputs"):
-        ModelCloudHost(name="host_a", extra="x")
-    host = ModelCloudHost(name="host_a")
+        ModelCloudAccount(label="host_a", extra="x")
+    account = ModelCloudAccount(label="host_a")
     with pytest.raises(ValidationError, match="frozen"):
-        host.name = "host_b"
+        account.label = "host_b"
 
 
 def test_render_actions_dispatch_to_text_helpers(tmp_path: Path) -> None:

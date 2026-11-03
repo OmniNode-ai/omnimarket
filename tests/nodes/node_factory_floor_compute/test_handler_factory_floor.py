@@ -34,8 +34,10 @@ from tests.nodes.node_factory_floor_compute.support import (
     manifest_of,
     merge,
     pr,
+    proven,
     request,
     row,
+    running_on_dev,
     table_plan,
     task,
     wave_config,
@@ -102,7 +104,8 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
             cfg=wave_config(),
             plans=(plan,),
             prs=(pr("kb#1", "MERGED", title="W0.1 reuse verification"),),
-            ledger=(row("CLAIM", 10, task="W0.2"),),
+            ledger=(row("CLAIM", 10, task="W0.2"), *proven("kb#1")),
+            running_evidence=running_on_dev("kb#1"),
         )
     )
     line = _line(result)
@@ -110,10 +113,10 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert line.name == "Orchestration alignment, the wave plan (tasks)"
     assert line.plan_path == PLAN_PATH
     assert line.source == "manifest"
-    assert line.status_pill == "building"
-    assert (
-        line.percent_built == 20
-    )  # W0.1 done of the plan's five parts, its two gates included
+    assert line.condition == "building"
+    # W0.1 done of the plan's three work tasks; its two gates are counted apart.
+    assert (line.progress.completed, line.progress.total) == (1, 3)
+    assert line.progress.percent == 33.3
     assert _states(line) == {
         "W0.1": "done",
         "W0.2": "active",
@@ -126,8 +129,10 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert (station0.name, station0.feeders) == ("Wave 0", ())
     assert (station1a.name, station1a.feeders) == ("Wave 1a", ("0",))
     notes = {item.id: item.note for item in station0.items}
-    assert notes["W0.1"] == "PRs merged"
-    assert notes["W0.2"] == "claim lane-a"
+    assert notes["W0.1"].startswith(
+        "PRs merged, running on dev, integration proof passed"
+    )
+    assert notes["W0.2"] == "worker lane-a is on it"
     assert notes["G0"] == "waits for W0.2"
     assert line.andon.flag is False
     assert line.andon.reason == ""
@@ -144,7 +149,9 @@ def test_manifest_gate_pass_opens_next_station_to_prep() -> None:
             ledger=(
                 row("STATUS", 5, state="gate", subject="0", verdict="pass"),
                 row("STATUS", 4, state="gate", subject="elsewhere", verdict="fail"),
+                *proven("kb#1", "kb#2"),
             ),
+            running_evidence=running_on_dev("kb#1", "kb#2"),
         )
     )
     line = _line(result)
@@ -156,8 +163,9 @@ def test_manifest_gate_pass_opens_next_station_to_prep() -> None:
         "G1a": "wait",
     }
     assert _station_states(line) == {"0": "done", "1a": "prep"}
-    assert line.status_pill == "building"
-    assert line.percent_built == 60
+    assert line.condition == "building"
+    assert (line.progress.completed, line.progress.total) == (2, 3)
+    assert line.progress.percent == 66.7
 
 
 def test_manifest_all_done_is_a_finished_line() -> None:
@@ -173,11 +181,13 @@ def test_manifest_all_done_is_a_finished_line() -> None:
             ledger=(
                 row("STATUS", 9, state="gate", subject="0", verdict="pass"),
                 row("STATUS", 8, state="gate", subject="1a", verdict="pass"),
+                *proven("kb#1", "kb#2", "kb#3"),
             ),
+            running_evidence=running_on_dev("kb#1", "kb#2", "kb#3"),
         )
     )
     line = _line(result)
-    assert (line.status_pill, line.percent_built) == ("done", 100)
+    assert (line.condition, line.progress.percent) == ("complete", 100.0)
     assert set(_station_states(line).values()) == {"done"}
 
 
@@ -221,16 +231,16 @@ def test_manifest_evidence_from_terminal_linear_open_pr_and_stale_claim() -> Non
     states = _states(_line(result))
     notes = {i.id: i.note for st in _line(result).stations for i in st.items}
     assert states == {
-        "A": "done",
+        "A": "integrating",
         "B": "active",
         "C": "active",
         "D": "prep",
         "E": "wait",
     }
-    assert notes["A"] == "Linear done"
+    assert notes["A"] == "Linear done: no merged pull request to show running"
     assert notes["B"] == "Linear in progress"
     assert notes["C"] == "PR repo#3 open"
-    assert notes["E"] == "lane x ended blocked"
+    assert notes["E"] == "worker x ended blocked"
 
 
 # ------------------------------------------------------------------------- andon or fallback
@@ -262,7 +272,7 @@ def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -
         )
     )
     line = _line(result)
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.flag is True
     assert line.andon.reason == "HOLD hold-andon-1: andon:gate:0:W0.2 (+1 more)"
     assert line.andon.causes == (
@@ -274,7 +284,7 @@ def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -
     assert states["G0"] == "stop"
     assert _station_states(line) == {"0": "stop", "1a": "wait"}
     note = {i.id: i.note for st in line.stations for i in st.items}
-    assert note["W0.2"] == "andon hold hold-andon-1: andon:gate:0:W0.2"
+    assert note["W0.2"] == "stopped by hold hold-andon-1: andon:gate:0:W0.2"
     assert note["G0"].startswith("gate failed ")
 
 
@@ -343,6 +353,8 @@ def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table
             cfg=wave_config(),
             plans=(table_plan(),),
             prs=(pr("repo#1", "MERGED", title="feat(OMN-7): the first task"),),
+            ledger=proven("repo#1"),
+            running_evidence=running_on_dev("repo#1"),
         )
     )
     line = _line(result)
@@ -363,8 +375,8 @@ def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table
     ]
     assert only.items[1].note == "PR open, red: CI Summary red"
     assert only.state == "active"
-    assert line.percent_built == 33
-    assert line.status_pill == "building"
+    assert line.progress.percent == 33.3
+    assert line.condition == "building"
     assert line.andon.flag is False
 
 
@@ -375,7 +387,7 @@ def test_andon_or_fallback_table_plan_row_stops_on_an_andon_hold_of_its_ticket()
     result = compute_factory_floor(request(plans=(table_plan(),), ledger=(hold,)))
     line = _line(result)
     assert _states(line)["T3"] == "stop"
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.reason == "HOLD andon-9: red"
 
 

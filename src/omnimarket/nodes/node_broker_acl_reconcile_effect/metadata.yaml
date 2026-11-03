@@ -1,0 +1,32 @@
+metadata:
+  transport_type: http
+  additional_transports:
+    - kafka
+name: node_broker_acl_reconcile_effect
+version: 1.0.0
+description: Applies the consumer-group DELETE ACL rows this node's contract declares to the dev broker through the existing lab broker ACL reconcile command, dry run first, and reads them back.
+omnibase_core_compat: '>=0.47.44,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_broker_acl_reconcile_effect: omnimarket.nodes.node_broker_acl_reconcile_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: destructive
+dependencies:
+  - pydantic>=2.0
+  - pyyaml>=6.0
+pack: observability
+display_name: Broker ACL Reconcile Effect
+node_role: effect
+authors:
+  - OmniNode Platform Team
+license: MIT
+tags:
+  - effect
+  - acl
+  - consumer-groups

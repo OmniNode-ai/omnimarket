@@ -64,6 +64,21 @@ schedule:
     description: hourly
   schedulers:
     systemd-user: installed by this node (schedule install) as a systemd user timer
+# The node overlay (<root>/node_lane_census_effect/overlay.yaml under a root listed in
+# ONEX_SKILL_OVERLAY_ROOTS) holds two independent keys and the package ships no value for either:
+#   hosts     which hosts INSTALL the schedule (ModelLaneCensusHostRow)
+#   registry  which hosts EXIST for the census: name, aliases, lanes (ModelLaneCensusRegistryRow;
+#             extra=forbid, no defaults; an alias claimed by exactly one host, no alias that
+#             identifies no single host, no empty name, a host listed once)
+# `schedule install` renders the absolute path of the resolved overlay file into the unit as
+# LANE_CENSUS_REGISTRY (registry_env) and the collector reads `registry:` from that file;
+# `registry path` prints the same path.
+overlay:
+  node: node_lane_census_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  registry_env: LANE_CENSUS_REGISTRY
+  model: omnimarket.models.model_lane_census.ModelLaneCensusScheduleOverlay
+  fields: [hosts, registry]
 metadata:
   transport_type: none
   execution_locus: host-local

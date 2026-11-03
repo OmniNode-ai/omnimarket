@@ -27,6 +27,9 @@ class ModelLaneContainerBudgetDeclaration(BaseModel):
     lane: str = Field(min_length=1)
     compose_project: str = Field(min_length=1)
     application_container_budget: int = Field(ge=0)
+    # Where the lane is going, as the plan's ruling states it (one runtime container per lane). The budget is the ratchet
+    # for the count today and only falls; the target is shown beside it so that a count at its budget is not read as done.
+    application_container_target: int | None = Field(default=None, ge=0)
     # A running container of the lane's compose project whose name contains one of these is infrastructure (a bus, a
     # database), not an application container, and is not counted.
     infrastructure_markers: tuple[str, ...] = ()
@@ -75,6 +78,7 @@ class ModelLaneContainerBudgetLane(BaseModel):
     budget: int
     containers: tuple[str, ...]
     detail: str
+    target: int | None = None
 
 
 class ModelLaneContainerBudgetVerdict(BaseModel):

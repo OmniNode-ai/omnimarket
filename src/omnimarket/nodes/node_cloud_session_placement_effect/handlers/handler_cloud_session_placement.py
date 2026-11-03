@@ -6,23 +6,20 @@ from pathlib import Path
 from typing import Any
 
 from ..models import (
-    ModelCloudHost,
     ModelCloudSessionPlacementRequest,
     ModelCloudSessionPlacementResult,
 )
 from . import cloud_accounts as acc
+from . import cloud_registry as reg
 from . import cloud_session as ses
 from .cloud_routing import cloud_refusal, placement_order
-
-
-class _ProbeNeededError(Exception):
-    """Suspend a pick before the caller's network round trip."""
-
 
 _ACCOUNT_ACTIONS = frozenset(
     {
         "slots",
+        "observe_logins",
         "pick",
+        "start_outcome",
         "note_start",
         "note_refusal",
         "release",
@@ -33,7 +30,14 @@ _ACCOUNT_ACTIONS = frozenset(
         "credit",
     }
 )
+_REGISTRY_ACTIONS = frozenset(
+    {"transports", "observe_logins", "slots", "pick", "start_outcome"}
+)
 _REQUIRED: dict[str, tuple[str, ...]] = {
+    "slots": ("login_fresh_s",),
+    "pick": ("login_fresh_s",),
+    "transports": ("probe_timeout_s",),
+    "start_outcome": ("account", "run_id", "transport"),
     "note_start": ("account",),
     "note_refusal": ("account", "run_id", "why"),
     "release": ("account", "run_id"),
@@ -91,6 +95,12 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
 }
 
 
+def _seconds(value: int | None) -> int:
+    """A required scalar, already checked present by the required-field table."""
+    assert value is not None
+    return value
+
+
 class HandlerCloudSessionPlacement:
     """Perform one local effect or render/parse action and always report errors."""
 
@@ -111,12 +121,12 @@ class HandlerCloudSessionPlacement:
             return ModelCloudSessionPlacementResult(
                 action=r.action, error="missing field: session.url"
             )
+        if r.action in _REGISTRY_ACTIONS:
+            refused = reg.load_registry(r.accounts)
+            if refused:
+                return ModelCloudSessionPlacementResult(action=r.action, error=refused)
         try:
             return ModelCloudSessionPlacementResult(action=r.action, **self._handle(r))
-        except _ProbeNeededError as exc:
-            return ModelCloudSessionPlacementResult(
-                action=r.action, needs_probe=str(exc)
-            )
         except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
             return ModelCloudSessionPlacementResult(action=r.action, error=str(exc))
 
@@ -137,30 +147,45 @@ class HandlerCloudSessionPlacement:
                 "lane_kind": ses.lane_kind(r.brief),
                 "order": placement_order(r.placement),
             }
-        if action == "slots":
-            consented = acc.consented_accounts(r.hosts)
-            accounts = acc.cloud_slots(pdir, r.now, consented=consented)
+        if action == "transports":
+            kept, left = reg.transports(r.rows, r.accounts)
             return {
-                "free": sum(accounts.values()),
-                "accounts": accounts,
-                "caps": acc.cloud_caps(pdir, r.now, consented=consented),
+                "transports": kept,
+                "excluded": left,
+                "probe_timeout_s": r.probe_timeout_s,
             }
-        if action == "pick":
-
-            def probe(host: ModelCloudHost) -> str:
-                if host.name not in r.probes:
-                    raise _ProbeNeededError(host.name)
-                return r.probes[host.name]
-
-            pick, tried = acc.cloud_pick(
+        if action == "observe_logins":
+            return acc.cloud_observe_logins(pdir, r.accounts, r.observations, now=r.now)
+        if action == "slots":
+            slots = acc.cloud_slots(
                 pdir,
-                r.hosts,
-                probe,
+                r.accounts,
+                r.transports if r.transports else None,
+                fresh_s=_seconds(r.login_fresh_s),
+                now=r.now,
+            )
+            return {"free": sum(slots["accounts"].values()), **slots}
+        if action == "pick":
+            return acc.cloud_pick(
+                pdir,
+                r.accounts,
+                r.transports,
+                fresh_s=_seconds(r.login_fresh_s),
                 now=r.now,
                 run_id=r.run_id,
-                claude_engines=r.claude_engines,
             )
-            return {"account": pick.name if pick else None, "tried": tried}
+        if action == "start_outcome":
+            return acc.cloud_start_outcome(
+                pdir,
+                r.account,
+                r.run_id,
+                r.transport,
+                r.began,
+                r.text,
+                r.untried,
+                r.session_url_base,
+                now=r.now,
+            )
         if action == "note_start":
             return {"cap": acc.note_cloud_start(pdir, r.account, now=r.now)}
         if action == "note_refusal":
@@ -220,7 +245,7 @@ class HandlerCloudSessionPlacement:
         elif action == "render_session_script":
             return {
                 "text": ses.cloud_session_script(
-                    r.path_export, r.session_id, r.sessions_api_url
+                    r.path_export, r.session_id, r.sessions_api_url, r.brief
                 )
             }
         elif action == "render_pr_open_script":
@@ -252,18 +277,18 @@ class HandlerCloudSessionPlacement:
             )
             return {"title": title, "text": text}
         elif action == "render_result":
-            return {
-                "text": ses.cloud_result_text(
-                    r.owner,
-                    r.account,
-                    r.session,
-                    r.prs,
-                    r.run_id,
-                    r.ended,
-                    session_branches=r.session_branches,
-                    opened=r.opened,
-                )
-            }
+            # OMN-22345: the close (status, outcome) is the node's; a review-only lane's review rides on ``parsed``.
+            return ses.cloud_close(
+                r.owner,
+                r.account,
+                r.session,
+                r.prs,
+                r.run_id,
+                r.ended,
+                r.brief,
+                session_branches=r.session_branches,
+                opened=r.opened,
+            )
         elif action == "parse_start":
             return {
                 "parsed": {

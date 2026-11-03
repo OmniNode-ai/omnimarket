@@ -12,7 +12,7 @@ contract_version:
   patch: 0
 node_version: "0.1.0"
 description: >
-  Decides cloud eligibility and account placement, maintains local account state,
+  Decides cloud eligibility and account placement per claude.ai login, maintains local account state,
   and renders or parses cloud session text. Callers perform network probes.
 # DATA (OMN-21373, operator 2026-10-29T17:47:11Z "use cloud to supplement local capacity"): the order the
 # runner tries places for --placement auto, read by the route action. A lab host that admits the lane comes
@@ -21,6 +21,39 @@ placement_order:
   auto: [lab, cloud]
   lab: [lab]
   cloud: [cloud]
+# OVERLAY KEYS (OMN-22243): a cloud session's capacity is counted per claude.ai login, never per host. The caller reads
+# these from <root>/node_cloud_session_placement_effect/overlay.yaml (overlay.example.yaml shows the shape) and puts
+# them on the request; the node holds none of them. The registry loader refuses a missing key, a duplicate label and
+# a duplicate hash pair, each by name.
+overlay:
+  accounts:
+    description: "One entry per consented claude.ai login."
+    keys:
+      label: "the account's name (the key of its usage state in cloud-accounts-v2.json)"
+      org_hash: "first 10 hex of the sha256 of the login's organization id"
+      email_hash: "first 10 hex of the sha256 of the login's lowercased email; both hashes must match"
+      consent: "the ledger row stamp of the operator consent"
+      consent_expires: "optional full stamp; the consent holds strictly before it"
+      credit_expires: "optional date or stamp; the credit holds through it, inclusive"
+      legacy_hosts: "host names whose entries in the old cloud-accounts.json merge into this account once"
+      transport_exclude: "hosts that never make a start call for any account"
+  login_fresh_s: "seconds a login observation stays usable"
+  probe_timeout_s: "seconds the caller allows each auth and cloud probe; returned by transports"
+# WIRE SHAPES (OMN-22243). transports: input rows [{name, target, local, push, contributor}] (other table fields are
+# ignored, a host's lab availability is never read), output transports [{name, target, local}] and excluded [sentence]
+# plus probe_timeout_s. observe_logins: input observations [{host, reachable, auth_text, probe_text}] (the raw texts of
+# `claude auth status --json` and the cloud probe), output logins, unconsented [{host, org_hash, email_hash, seen_at,
+# sentence}], unreachable and sentences. pick and slots: input accounts, transports (table order) and login_fresh_s;
+# output account, transport, transports (that account's usable hosts in order), sentences, flags, unconsented,
+# needs_probe (stale hosts to observe again). start_outcome: input account, run_id, transport, began (the start call
+# began), text (its raw answer), untried (the transports left); output verdict started | try-next | refused |
+# start-unknown | failed, next_transport, sentence. Usage state lives in cloud-accounts-v2.json keyed by account label.
+# REVIEW-ONLY (OMN-22345): a brief with `Lane kind: review-only` and `Review head: <sha>` runs as a cloud session that pushes
+# nothing. render_prompt asks for no push and no pull request; render_session_script (input brief) also reads an ended
+# session's final message and review file from the sessions API events (state keys review_text, review_file_text or
+# review_unread, model, review_only); render_result (input brief) returns the close: status and outcome, done/done with
+# the typed unsigned review on parsed, or cloud-review-unparsed/failed with parsed {refused, detail}; any other lane
+# closes done/done with a PR and cloud-no-pr/blocked without one.
 dependencies:
   - name: omnimarket.nodes.node_llm_delegation_call_effect
     dependency_type: internal
@@ -75,5 +108,9 @@ metadata:
     - "lab"
     - "cloud-session"
     - "OMN-21373"
+    - "OMN-22243"
+    - "OMN-22345"
   related_tickets:
     - "OMN-21373"
+    - "OMN-22243"
+    - "OMN-22345"

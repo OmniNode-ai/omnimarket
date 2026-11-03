@@ -17,4 +17,6 @@ primaries:
   - {name: H2, metric: acted_share, power_assumed_gain: 0.25}
 safeguards:
   - {name: contradiction, metric: contradiction, harm_direction: higher, margin: 0.15}
+  - {name: false_memory, metric: false_memory, harm_direction: higher, margin: 0.15}
+  - {name: hold_scope_violation, metric: hold_scope_violation, harm_direction: higher, margin: 0.15}
   - {name: planted_recall, metric: planted_recall, harm_direction: lower, margin: 0.15}

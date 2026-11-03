@@ -66,6 +66,22 @@ handler_routing:
         name: TenantCredentialsProjectionWriter
         module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
       handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+    # OMN-19996: a delegation's terminal names the key it ran with in
+    # secret_ref; its envelope time moves that key's last_used_at forward.
+    - topic: onex.evt.omnimarket.delegate-skill-completed.v1
+      message_category: event
+      operation: tenant_credentials_projection_writer
+      handler:
+        name: TenantCredentialsProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      message_category: event
+      operation: tenant_credentials_projection_writer
+      handler:
+        name: TenantCredentialsProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
 
 # OMN-21217: the credential write paths this node owns beside its runtime
 # writer. Descriptive bindings only; handler_routing above is what routes.
@@ -160,6 +176,11 @@ event_bus:
     # path under scripts/ci/check_registry_projection_reconcile.py.
     - onex.evt.omnimarket.tenant-credential-state.v1
     - onex.evt.omnimarket.tenant-routing-overlay-state.v1
+    # OMN-19996: the delegation terminals, for the key each run used (the
+    # Credentials page's last-used time). Produced by
+    # node_delegate_skill_orchestrator.
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.tenant-credential-projection-applied.v1
     # OMN-21217: this node publishes its committed rows to its own two state
@@ -198,6 +219,8 @@ projection_api:
         - "bound_host"
         # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
         - "workspace_id"
+        # 0010 (OMN-19996): the terminal time of the latest run that used the key.
+        - "last_used_at"
       order_by: "created_at DESC"
       freshness_column: "created_at"
       limit: 200
