@@ -73,6 +73,22 @@ dod_evidence:
         check_value: "uv run pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k docs_or_plan_names_declared_proof -q -p no:randomly --no-cov"
         cwd: "."
     binds_ac: ["AC4"]
+  - id: "dod-omn22334-deploy-probe-rule"
+    description: "Deploy probe: the shared proof rule GitHub serves at the checked-out commit defines evaluate_proof_close and the held reason; the module is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/runtime_proof_close_rules.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def evaluate_proof_close\")' | grep -qx true"
+        cwd: "."
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+  - id: "dod-omn22334-deploy-probe-sweep"
+    description: "Deploy probe: the closeout sweep handler GitHub serves at the checked-out commit holds a merged ticket on the runtime-proof block; the block is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_closeout_sweep_compute/handlers/handler_dod_closeout_sweep.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"BLOCK_MERGED_NOT_PROVEN_RUNNING\")' | grep -qx true"
+        cwd: "."
+    binds_ac: ["AC1"]
   - id: "dod-omn22334-integration-proof"
     description: "AC5: the pushed head ran the predicate suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
