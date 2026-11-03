@@ -322,3 +322,55 @@ def test_a_transient_probe_failure_keeps_the_rerun_advice() -> None:
     assert fix.startswith("rerun the tick; if the probe stays unreadable")
     assert "onex_lab_run.py --hosts" in fix
     assert "authorized_keys" not in fix
+
+
+# OMN-17427: recorded 2026-11-03. h101 had read UNREADABLE for 163 consecutive ticks (rbs@stickybeatz-2) and h053 for 113
+# (rbs@hp-gen9), each `cause=AUTH-REFUSED`; no rerun changes a file on the refusing hop, so the FIX names its owner.
+@pytest.mark.parametrize(
+    ("name", "ticks", "error"),
+    [
+        (
+            "h101",
+            163,
+            "rc=255 via=stickybeatz-2 rbs@stickybeatz-2: Permission denied (publickey,password,keyboard-interactive).",
+        ),
+        ("h053", 113, "rc=255 via=hp-gen9 rbs@hp-gen9: Permission denied (publickey)."),
+        ("h201", 1, "rc=255 via=lab-hop rbs@lab-hop: Too many authentication failures"),
+        (
+            "h202",
+            1,
+            "rc=255 via=lab-hop rbs@lab-hop: No supported authentication methods available",
+        ),
+    ],
+)
+def test_an_auth_refused_host_read_for_many_ticks_still_names_the_owner_and_not_a_rerun(
+    name: str, ticks: int, error: str
+) -> None:
+    assert ticks >= 1
+    adm = admission(0, claude_slots=0, codex_slots=0, probe_error=error)
+    [line] = lab_lines(run(host(name, adm=adm)))
+    fix = line.split("FIX: ", 1)[1]
+    assert "host owner must add the launching host's public key" in fix
+    assert "authorized_keys" in fix
+    assert "clears nothing" in fix
+    assert "rerun the tick" not in fix.split(";")[0]
+    assert "--hosts --lane" not in fix
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "rc=255 ssh: Could not resolve hostname h106.local: nodename nor servname provided, or not known",
+        "rc=255 ssh: Could not resolve hostname h053: Name or service not known",
+    ],
+)
+def test_a_name_unresolved_host_names_the_owner_and_says_a_rerun_clears_nothing(
+    error: str,
+) -> None:
+    adm = admission(0, claude_slots=0, codex_slots=0, probe_error=error)
+    [line] = lab_lines(run(host("h106", adm=adm)))
+    fix = line.split("FIX: ", 1)[1]
+    assert fix.startswith("the host owner must make h106's name resolvable")
+    assert "clears nothing" in fix
+    assert "--hosts --lane" not in fix
+    assert "never free and never full" in fix
