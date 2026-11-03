@@ -1834,7 +1834,6 @@ markers = [
     "integration: Integration tests that test multiple components together",
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
-    "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus",
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
     "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
