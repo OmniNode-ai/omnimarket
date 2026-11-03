@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+
 from omnimarket.nodes.node_agent_inbox_spool import HandlerAgentInboxSpool
 from omnimarket.nodes.node_agent_inbox_spool.models import (
     ModelAgentInboxSpoolOverlay,

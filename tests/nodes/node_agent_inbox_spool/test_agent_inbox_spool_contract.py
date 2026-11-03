@@ -10,10 +10,11 @@ from typing import get_type_hints
 
 import pytest
 import yaml
+from pydantic import BaseModel, ValidationError
+
 from omnimarket.nodes.node_agent_inbox_spool import NodeAgentInboxSpool
 from omnimarket.nodes.node_agent_inbox_spool.models import ModelAgentInboxSpoolOverlay
 from omnimarket.nodes.node_agent_inbox_spool.node import load_topics
-from pydantic import BaseModel, ValidationError
 
 pytestmark = pytest.mark.unit
 PACKAGE = NodeAgentInboxSpool.contract_path.parent

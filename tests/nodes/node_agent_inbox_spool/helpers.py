@@ -8,9 +8,9 @@ from pathlib import Path
 
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
-from omnimarket.nodes.node_agent_inbox_spool.models import ModelAgentInboxSpoolOverlay
 
 from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.nodes.node_agent_inbox_spool.models import ModelAgentInboxSpoolOverlay
 
 STAMP = "2026-11-01T22:00:00Z"
 

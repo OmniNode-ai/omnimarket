@@ -26,9 +26,9 @@ from aiokafka.protocol.admin import DeleteGroupsRequest
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeaders
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
 from omnimarket.nodes.node_agent_inbox_spool import HandlerAgentInboxSpool
 from omnimarket.nodes.node_agent_inbox_spool.models import ModelAgentInboxSpoolRequest
-
 from tests import conftest as shared_fixtures
 from tests.bus_lane_guard import assert_broker_in_declared_lane
 
