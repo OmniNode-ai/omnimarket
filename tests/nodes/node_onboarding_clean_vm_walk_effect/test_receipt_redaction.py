@@ -277,3 +277,48 @@ def test_lost_clone_with_refused_delete_names_the_vm_undeleted() -> None:
     assert EnumWalkStepKind.TART_DELETE in runner.calls
     assert receipt.vm_deleted is False
     assert f"{VM_NAME} left undeleted" in (receipt.failure_text or "")
+
+
+def test_refused_clone_of_an_existing_vm_name_leaves_that_vm_alone() -> None:
+    # The caller-supplied name belongs to a VM this walk did not create.
+    req = request()
+    runner = ScriptedRunner(req)
+    runner.scripted[EnumWalkStepKind.TART_CLONE] = [
+        ModelRunnerResult(
+            exit_code=1,
+            stdout="",
+            stderr=f'Error: VM "{VM_NAME}" already exists',
+        )
+    ]
+    receipt = walk_receipt(req, runner)
+    assert receipt.outcome == EnumWalkOutcome.FAILED
+    assert runner.calls == [EnumWalkStepKind.TART_CLONE]
+    assert receipt.vm_deleted is False
+    failure = receipt.failure_text or ""
+    assert f"VM {VM_NAME} was not created by this walk" in failure
+    assert "left undeleted" not in failure
+
+
+def test_clone_refused_before_it_started_leaves_the_vm_alone() -> None:
+    # The step guard refuses the clone before any command reaches Tart.
+    req = request()
+    runner = ScriptedRunner(req)
+    runner.scripted[EnumWalkStepKind.TART_CLONE] = [
+        walk.StepNotDocumentedError("tart_clone: step not documented")
+    ]
+    receipt = walk_receipt(req, runner)
+    assert EnumWalkStepKind.TART_STOP not in runner.calls
+    assert EnumWalkStepKind.TART_DELETE not in runner.calls
+    assert receipt.vm_deleted is False
+
+
+def test_lost_clone_ssh_failure_exit_still_deletes_the_vm() -> None:
+    # SSH exits 255 when the connection drops; the clone may have completed.
+    req = request()
+    runner = ScriptedRunner(req)
+    runner.scripted[EnumWalkStepKind.TART_CLONE] = [
+        ModelRunnerResult(exit_code=255, stdout="", stderr="Connection reset")
+    ]
+    receipt = walk_receipt(req, runner)
+    assert EnumWalkStepKind.TART_DELETE in runner.calls
+    assert receipt.vm_deleted is True

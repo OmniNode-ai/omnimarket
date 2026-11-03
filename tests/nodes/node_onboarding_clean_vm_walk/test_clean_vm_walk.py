@@ -264,22 +264,18 @@ def test_failed_phase_returns_receipt_not_exception() -> None:
     assert receipt.dashboard.failure_text.startswith("not attempted:")
     assert receipt.vm_deleted
     runner = StubTartRunner()
-    absent = ModelRunnerResult(exit_code=1, stdout="", stderr="VM does not exist")
     runner.scripted[EnumWalkStepKind.TART_CLONE] = [
         ModelRunnerResult(exit_code=1, stdout="", stderr="clone refused")
     ]
-    runner.scripted[EnumWalkStepKind.TART_STOP] = [absent]
-    runner.scripted[EnumWalkStepKind.TART_DELETE] = [absent]
     receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
     assert receipt.outcome == EnumWalkOutcome.FAILED
-    assert receipt.failure_text == "tart_clone: exit 1: clone refused"
+    assert (receipt.failure_text or "").startswith("tart_clone: exit 1: clone refused")
     assert receipt.terminal_failure_cause == receipt.failure_text
-    # A refused clone may still have left a VM: cleanup is attempted, and absent is clean.
-    assert receipt.vm_deleted
+    # A refused clone created nothing: the VM under that name is not this walk's.
+    assert not receipt.vm_deleted
+    assert "was not created by this walk" in (receipt.failure_text or "")
     assert [runner.kind(argv) for argv in runner.calls[1:]] == [
         EnumWalkStepKind.TART_CLONE,
-        EnumWalkStepKind.TART_STOP,
-        EnumWalkStepKind.TART_DELETE,
     ]
     runner = StubTartRunner()
     runner.version = ModelRunnerResult(exit_code=127, stdout="", stderr="missing")

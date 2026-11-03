@@ -61,6 +61,18 @@ _OPERATION_ERRORS = (
 )
 # What Tart says when a VM of that name is not on the host.
 _VM_ABSENT = re.compile(r"(?i)does not exist|not found|no such")
+# Exit codes that carry no Tart verdict: a transport timeout (124) or a signal or
+# SSH failure (128 and up). The clone may have completed on the host.
+_LOST_REPLY_FLOOR = 128
+_TRANSPORT_TIMEOUT_EXIT = 124
+
+
+def _clone_reply_lost(result: ModelRunnerResult) -> bool:
+    """A failed clone with no verdict from Tart: the VM may exist, and the walk made it."""
+    return (
+        result.exit_code == _TRANSPORT_TIMEOUT_EXIT
+        or result.exit_code >= _LOST_REPLY_FLOOR
+    )
 
 
 class _TartDefaults(BaseModel):
@@ -254,9 +266,12 @@ class HandlerOnboardingCleanVmWalk:
         refused: list[str] = []
         failures: list[str] = []
         log = ""
-        # Set before TART_CLONE is issued: a clone whose reply is lost may still exist.
-        clone_attempted = False
+        # The walk owns the VM only when its clone succeeded or its reply was lost.
+        # A clone Tart refused (the name already exists) or the step guard refused
+        # before it started created nothing, so cleanup must leave that VM alone.
+        vm_owned = False
         clone_confirmed = False
+        clone_refused = False
         deleted = False
         dashboard_started = False
         dashboard = ModelDashboardResult(
@@ -330,9 +345,21 @@ class HandlerOnboardingCleanVmWalk:
                 raise RuntimeError(
                     f"tart not found at {request.tart_path} on {request.tart_host}"
                 )
-            clone_attempted = True
-            run(EnumWalkStepKind.TART_CLONE)
-            clone_confirmed = True
+            try:
+                clone = issue(EnumWalkStepKind.TART_CLONE)
+            except StepNotDocumentedError:
+                raise
+            except _OPERATION_ERRORS:
+                # The command reached the transport and no reply came back.
+                vm_owned = True
+                raise
+            if clone.exit_code == 0:
+                vm_owned = clone_confirmed = True
+            elif _clone_reply_lost(clone):
+                vm_owned = True
+            else:
+                clone_refused = True
+            _require_success(clone, EnumWalkStepKind.TART_CLONE)
             run(EnumWalkStepKind.TART_SET_SPEC)
             run(EnumWalkStepKind.TART_RUN)
             run(EnumWalkStepKind.TART_IP)
@@ -400,7 +427,7 @@ class HandlerOnboardingCleanVmWalk:
             cleanup = []
             if dashboard_started:
                 cleanup.append(EnumWalkStepKind.GUEST_DASHBOARD_STOP)
-            if clone_attempted:
+            if vm_owned:
                 cleanup.extend(
                     (EnumWalkStepKind.TART_STOP, EnumWalkStepKind.TART_DELETE)
                 )
@@ -420,9 +447,14 @@ class HandlerOnboardingCleanVmWalk:
                         deleted = True
                 except _OPERATION_ERRORS as exc:
                     failures.append(str(exc))
-            if clone_attempted and not deleted:
+            if vm_owned and not deleted:
                 failures.append(
                     f"VM {request.vm_name} left undeleted on {request.tart_host}"
+                )
+            if clone_refused:
+                failures.append(
+                    f"VM {request.vm_name} was not created by this walk and was "
+                    f"left untouched on {request.tart_host}"
                 )
 
         # Redact the whole log before parsing and before the tail is cut, so a secret

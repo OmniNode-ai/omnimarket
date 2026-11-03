@@ -43,6 +43,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk_effect -v -rs -k lost_clone --no-cov --tb=line
     cwd: .
+- id: dod-omn22327-ac2-refused-clone
+  description: AC2 holds without deleting a VM the walk did not create; a clone refused for an existing VM name, or refused before it started, issues no stop and no delete.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk_effect -v -rs -k "refused_clone or refused_before or lost_clone" --no-cov --tb=line
+    cwd: .
 - id: dod-omn22327-existing
   description: The node's existing tests pass with the sanitiser and the cleanup change.
   source: manual
