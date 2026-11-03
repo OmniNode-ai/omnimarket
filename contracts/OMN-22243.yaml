@@ -1,0 +1,113 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-22243
+title: 'Cloud accounts C1: cloud session capacity is counted per claude.ai login in a registry, and the pick ignores a host''s lab availability'
+summary: 'node_cloud_session_placement_effect counts cloud capacity per login identity (accounts registry), observes logins each tick, picks by account then transport and never reads a host''s lab availability'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn22243-ac1
+    statement: 'two hosts that report one hash pair are one account with one cap and summed running counts, and a consented account whose only fresh login is on a lab-unavailable host is picked'
+    acceptance:
+      - id: AC1
+        statement: 'AC1: two hosts that report one hash pair are one account with one cap and summed running counts, and a consented account whose only fresh login is on a lab-unavailable host is picked -- falsifier: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q -k "one_account or unavailable_host"'
+  - id: req-omn22243-ac2
+    statement: 'a login whose hash pair is in no account is never picked and is listed with host and hash; a host that logs out, changes identity or fails its probe leaves its old account at the next observation'
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a login whose hash pair is in no account is never picked and is listed with host and hash; a host that logs out, changes identity or fails its probe leaves its old account at the next observation -- falsifier: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q -k "unconsented or transition"'
+  - id: req-omn22243-ac3
+    statement: 'a recorded hold, a consent_expires reached (a fixture one second before it is picked), a lapsed credit_expires, a zero credit and a full cap each leave the account out with a sentence naming cause and date, none containing "no account"'
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a recorded hold, a consent_expires reached (a fixture one second before it is picked), a lapsed credit_expires, a zero credit and a full cap each leave the account out with a sentence naming cause and date, none containing "no account" -- falsifier: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q -k "skip_sentence"'
+  - id: req-omn22243-ac4
+    statement: 'transports drops transport_exclude, push:false and contributor:true rows before any probe is requested'
+    acceptance:
+      - id: AC4
+        statement: 'AC4: transports drops transport_exclude, push:false and contributor:true rows before any probe is requested -- falsifier: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q -k "transports"'
+  - id: req-omn22243-ac5
+    statement: 'the one-time import keeps the newest credit reading, drops h200''s unsourced hold and refuses a recorded hold on a host outside legacy_hosts by name; the registry refuses a duplicate label and a duplicate pair'
+    acceptance:
+      - id: AC5
+        statement: 'AC5: the one-time import keeps the newest credit reading, drops h200''s unsourced hold and refuses a recorded hold on a host outside legacy_hosts by name; the registry refuses a duplicate label and a duplicate pair -- falsifier: uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q -k "migration or duplicate"'
+  - id: req-omn22243-ac6
+    statement: 'a failure before the start call tries the next transport; a failure after it returns start-unknown, tries no second transport and keeps the slot; observe_logins rerun with the same texts leaves the file unchanged except seen_at'
+    acceptance:
+      - id: AC6
+        statement: 'AC6: a failure before the start call tries the next transport; a failure after it returns start-unknown, tries no second transport and keeps the slot; observe_logins rerun with the same texts leaves the file unchanged except seen_at -- falsifier: uv run pytest tests/nodes/node_cloud_session_placement_effect -q --no-cov'
+evidence_requirements:
+  - kind: "tests"
+    description: "Registry, login map, transports, pick and import tests of the node"
+    command: "uv run pytest tests/nodes/node_cloud_session_placement_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: 'AC1: two hosts that report one hash pair are one account with one cap and summed running counts, and a consented account whose only fresh login is on a lab-unavailable host is picked (the test fails on the host-keyed code and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC1]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q --no-cov -k "one_account or unavailable_host" --tb=line'
+        cwd: "."
+  - id: "dod-002"
+    description: 'AC2: a login whose hash pair is in no account is never picked and is listed with host and hash; a host that logs out, changes identity or fails its probe leaves its old account at the next observation (the test fails on the host-keyed code and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q --no-cov -k "unconsented or transition" --tb=line'
+        cwd: "."
+  - id: "dod-003"
+    description: 'AC3: a recorded hold, a consent_expires reached (a fixture one second before it is picked), a lapsed credit_expires, a zero credit and a full cap each leave the account out with a sentence naming cause and date, none containing "no account" (the test fails on the host-keyed code and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC3]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q --no-cov -k "skip_sentence" --tb=line'
+        cwd: "."
+  - id: "dod-004"
+    description: 'AC4: transports drops transport_exclude, push:false and contributor:true rows before any probe is requested (the test fails on the host-keyed code and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC4]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q --no-cov -k "transports" --tb=line'
+        cwd: "."
+  - id: "dod-005"
+    description: 'AC5: the one-time import keeps the newest credit reading, drops h200''s unsourced hold and refuses a recorded hold on a host outside legacy_hosts by name; the registry refuses a duplicate label and a duplicate pair (the test fails on the host-keyed code and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC5]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_account_registry.py -q --no-cov -k "migration or duplicate" --tb=line'
+        cwd: "."
+  - id: "dod-006"
+    description: 'AC6: a failure before the start call tries the next transport; a failure after it returns start-unknown, tries no second transport and keeps the slot; observe_logins rerun with the same texts leaves the file unchanged except seen_at (the test fails on the host-keyed code and passes on the branch)'
+    source: "manual"
+    binds_ac: [AC6]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_cloud_session_placement_effect -q --no-cov --tb=line'
+        cwd: "."
+  - id: "dod-omn22243-deploy-probe"
+    description: "Deploy probe: the node source GitHub serves at the checked-out commit carries the login observation action, which the merge base does not."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def cloud_observe_logins" > /dev/null'
+        cwd: "."
+  - id: "dod-omn22243-integration-proof"
+    description: "The pushed head ran the cloud session placement node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22243 -- uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect -q --no-cov -m "not kafka"
+        cwd: "."

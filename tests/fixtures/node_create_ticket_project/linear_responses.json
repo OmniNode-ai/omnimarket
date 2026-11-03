@@ -1,0 +1,100 @@
+{
+  "_recorded": "Linear GraphQL responses recorded 2026-11-03 through the host's LINEAR_API_KEY against the live workspace, for the queries in handler_ticket_project.py. read_in_ready and list_* are reads of OMN-22207 and the lane-created listing; clear_on_ticket_with_no_project is the real issueUpdate(projectId: null) response, run on OMN-21723, a ticket with no project.",
+  "mcp_null_text_error": "Could not find project \"null\"",
+  "read_in_ready": {
+    "data": {
+      "issue": {
+        "identifier": "OMN-22207",
+        "createdAt": "2026-11-02T23:32:56.052Z",
+        "labels": {
+          "nodes": [
+            {
+              "name": "lane-created"
+            }
+          ]
+        },
+        "project": {
+          "name": "Ready"
+        }
+      }
+    }
+  },
+  "read_no_project": {
+    "data": {
+      "issue": {
+        "identifier": "OMN-21723",
+        "createdAt": "2026-10-31T12:23:41.209Z",
+        "labels": {
+          "nodes": [
+            {
+              "name": "lane-created"
+            }
+          ]
+        },
+        "project": null
+      }
+    }
+  },
+  "list_ready_2026_11_02": {
+    "data": {
+      "issues": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "b8867ba8-cdbc-4a8b-b7c5-ee19a1f345e2"
+        },
+        "nodes": [
+          {
+            "identifier": "OMN-22207"
+          },
+          {
+            "identifier": "OMN-22174"
+          },
+          {
+            "identifier": "OMN-22163"
+          },
+          {
+            "identifier": "OMN-22156"
+          }
+        ]
+      }
+    }
+  },
+  "list_ready_2026_11_03": {
+    "data": {
+      "issues": {
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        },
+        "nodes": []
+      }
+    }
+  },
+  "clear_on_ticket_with_no_project": {
+    "data": {
+      "issueUpdate": {
+        "success": true,
+        "issue": {
+          "identifier": "OMN-21723",
+          "project": null
+        }
+      }
+    }
+  },
+  "read_after_clear": {
+    "data": {
+      "issue": {
+        "identifier": "OMN-21723",
+        "createdAt": "2026-10-31T12:23:41.209Z",
+        "labels": {
+          "nodes": [
+            {
+              "name": "lane-created"
+            }
+          ]
+        },
+        "project": null
+      }
+    }
+  }
+}

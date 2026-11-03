@@ -114,14 +114,14 @@ main{flex:1 1 auto;min-height:0;position:relative}
 .pill.stop{color:var(--stop)} .pill.done,.pill.ok{color:var(--ok)} .pill.active,.pill.warn{color:var(--warn)} .pill.wait,.pill.idle{color:var(--muted)}
 .pill.right{margin-left:auto}
 .line-name{font-size:.95rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.belt{position:relative;padding-top:20px}
-.cells{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:1px;height:14px;background:var(--belt);padding:2px;border-radius:2px}
-.cells b{display:block;border-radius:1px;background:transparent;box-shadow:inset 0 0 0 1px var(--idle)}
-.cells b.done{background:var(--car);box-shadow:none}
-.cells b.active{background:var(--safety);box-shadow:none}
-.cells b.prep{background:repeating-linear-gradient(45deg,transparent 0 2px,var(--steel) 2px 3px);box-shadow:inset 0 0 0 1px var(--steel)}
-.cells b.stop{background:var(--stop);box-shadow:none}
-.car{position:absolute;top:0;left:var(--pos);width:38px;height:17px;transform:translateX(-50%)}
+.progress{display:grid;gap:4px;min-width:0}
+.pbar{height:10px;background:var(--rule);border-radius:5px;overflow:hidden;max-width:420px}
+.pbar b{display:block;height:100%;background:var(--car);width:var(--w)}
+.pbar.unknown{background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);border:1px dashed var(--idle)}
+.alldone{font-weight:600}
+.refuse{color:var(--stop);font-size:.875rem}
+.slots i.over{outline:2px solid var(--stop);outline-offset:1px}
+.caricon{width:34px;height:15px;fill:var(--idle);stroke:none;flex:none}
 .cause{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.86rem;display:grid;gap:3px;overflow-wrap:anywhere}
 .cause b{font:600 .72rem/1 var(--f-mono);letter-spacing:.06em;color:var(--stop)}
 .cause.nocause{border-left-color:var(--idle);background:transparent;border:1px dashed var(--idle);border-left-width:3px;color:var(--muted)}
@@ -554,10 +554,96 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.status_pill === "stopped" || !!(L.andon && L.andon.flag)};
+    stopped: L.condition === "stopped"};
 }
 
-const CAR = `<svg class="car" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:var(--c);stroke:var(--belt)" stroke-width="2"/><circle cx="17" cy="22" r="5" style="fill:var(--belt)"/><circle cx="48" cy="22" r="5" style="fill:var(--belt)"/></svg>`;
+// ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
+// (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
+const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+function lineCondition(L){
+  const c = COND[L.condition];
+  return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
+}
+function conditionPill(L){
+  const c = lineCondition(L);
+  return `<span class="pill ${c.cls}" data-condition="${esc(c.key)}"><span aria-hidden="true">${c.icon}</span> ${esc(c.label)}</span>`;
+}
+// The decorative car: one neutral icon that encodes no data. Hidden from assistive technology, no title, no data attribute.
+function carIcon(){
+  return `<svg class="caricon" viewBox="0 0 64 28" aria-hidden="true" focusable="false"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z"/><circle cx="17" cy="22" r="5"/><circle cx="48" cy="22" r="5"/></svg>`;
+}
+function blockerBlock(L){
+  const b = L.blocker;
+  const stopped = L.condition === "stopped";
+  if (!b || !b.reason) return stopped ? `<div class="cause nocause"><b>Why it is stopped</b><span>The record gives this line no blocker.</span></div>` : "";
+  const ev = Array.isArray(b.evidence) ? b.evidence.filter(Boolean) : [];
+  return `<div class="cause"><b>${stopped ? "Why it is stopped" : "Blocker"}</b><span>${esc(String(b.reason).replace(/[:\s]+$/, ""))}</span>${ev.length ? `<small>Evidence: ${ev.map(esc).join(", ")}</small>` : ""}</div>`;
+}
+function gatesText(L){
+  const g = L.gates;
+  if (!g) return "Gates unread";
+  const p = num(g.passed), f = num(g.failed), w = num(g.waiting), n = p + f + w;
+  return `${n} ${n === 1 ? "gate" : "gates"}: ${p} passed, ${f} failed, ${w} waiting`;
+}
+function pendingGates(L){
+  const items = L.gates && Array.isArray(L.gates.items) ? L.gates.items : [];
+  return items.filter(x => x && x.state !== "passed" && x.state !== "pass");
+}
+// Built percent counts merged work tasks only; unknown is not zero.
+function progressBlock(L){
+  const p = L.progress;
+  const gates = `<span class="gates">${esc(gatesText(L))}</span>`;
+  const name = "Work tasks merged";
+  const known = p && p.state === "known" && p.completed != null && Number.isFinite(Number(p.total)) && Number(p.total) > 0;
+  if (known){
+    const c = num(p.completed), t = num(p.total);
+    const pct = p.percent == null ? "" : `, ${Number(p.percent).toFixed(1)}%`;
+    const text = `${c} / ${t} work tasks${pct}`;
+    const valuetext = `${c} of ${t} work tasks complete${pct}; ${gatesText(L)}`;
+    const w = Math.max(0, Math.min(100, t ? c / t * 100 : 0));
+    const done = c >= t && L.condition !== "complete"
+      ? `<p class="alldone">All tasks recorded done; ${pendingGates(L).length ? pendingGates(L).map(g => `gate ${esc(g.id)} ${g.state === "failed" ? "failed" : "pending"}`).join("; ") : L.blocker && L.blocker.reason ? esc(String(L.blocker.reason).replace(/[:\s]+$/, "")) : "the line is not Complete"}</p>` : "";
+    return `<div class="progress"><div class="pbar" role="progressbar" aria-label="${name}" aria-valuemin="0" aria-valuemax="${t}" aria-valuenow="${c}" aria-valuetext="${esc(valuetext)}"><b style="--w:${w}%"></b></div>
+      <span class="ptext"><span class="mono">${text}</span> · ${gates}</span>${done}</div>`;
+  }
+  const noTasks = p && p.state === "no_tasks";
+  const text = noTasks ? "No work tasks declared" : p ? "Progress unknown" : "Progress unread";
+  const note = p && p.note ? ` (${esc(p.note)})` : "";
+  return `<div class="progress"><div class="pbar unknown" role="progressbar" aria-label="${name}" aria-valuetext="${esc(text + (p && p.note ? ": " + p.note : ""))}"></div>
+      <span class="ptext">${text}${note} · ${gates}</span></div>`;
+}
+// What backs a "done" item; none of these is deployment proof.
+const EVIDENCE_LABEL = {merged: "merged PR", terminal: "terminal outcome, not deployment proof", linear_done: "ticket closed, not deployment proof", recorded: "recorded done"};
+function itemEvidence(it){
+  return it.state === "done" ? (EVIDENCE_LABEL[it.evidence_kind] || "done, backing not recorded") : "";
+}
+function evidenceRow(L){
+  const e = L.line_evidence;
+  if (!e) return `<span class="eyebrow evidence">Evidence <span class="unread">not read</span></span>`;
+  const of = e.of == null ? "" : ` of ${num(e.of)}`;
+  const v = x => x == null ? `<span class="unread">not read</span>` : `<span class="mono">${num(x)}${of}</span>`;
+  return `<span class="eyebrow evidence">Merged ${v(e.merged)} · Running on dev ${v(e.running_on_dev)} · Verified ${v(e.verified)}</span>`;
+}
+// Machines: memory is drawn as used over total, load as a number against its reference, a refusal above the capacity row.
+function memoryGauge(m){
+  if (m.mem_free_gb == null) return gauge("Memory used", null, null);
+  const free = num(m.mem_free_gb), total = m.mem_total_gb ? num(m.mem_total_gb) : 0;
+  if (!total) return gauge("Memory free", `${fmt(free)} GB free (total unread)`, null);
+  const used = total - free;
+  return gauge("Memory used", `${fmt(used)} of ${fmt(total)} GB used`, used / total);
+}
+function loadGauge(m){
+  if (m.load_per_core == null) return gauge("Load per core", null, null);
+  return gauge("Load per core", `${Number(m.load_per_core).toFixed(2)} (1.0 = one runnable task per core)`, null);
+}
+function refusalReason(m){
+  if (m.admission && m.admission.state === "refused") return m.admission.reason || m.refusal || "no reason recorded";
+  return m.refusal ? String(m.refusal) : null;
+}
+function refusalNote(m){
+  const r = refusalReason(m);
+  return r == null ? "" : `<p class="refuse"><b>Not taking new work:</b> ${esc(r)}</p>`;
+}
 
 // ---- Application containers per lane class, running of declared, from the line's own record; no record, no row.
 function containersText(L){
@@ -581,25 +667,12 @@ function lineCard(slot, i){
     </article>`;
   }
   const L = slot.line, f = lineFacts(L);
-  const pill = f.stopped ? ["stop", "Stopped"] : L.status_pill === "done" ? ["done", "Done"] : L.status_pill === "building" ? ["active", "Building"] : ["wait", "Queued"];
-  const cells = f.items.length ? f.items : f.stations;
-  const pct = Math.max(0, Math.min(100, num(L.percent_built)));
-  const reason = ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "");
-  const causes = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
-  const shown = causes.length ? causes : (reason ? [reason] : []);
-  const cause = f.stopped
-    ? (shown.length
-      ? `<div class="cause"><b>Why it is stopped</b>${shown.slice(0, 3).map(c => `<span>${esc(c)}</span>`).join("")}${shown.length > 3 ? `<span class="muted">and ${shown.length - 3} more on the floor tab</span>` : ""}</div>`
-      : `<div class="cause nocause"><b>Why it is stopped</b><span>The record flags this line stopped and gives no reason.</span></div>`)
-    : "";
-  const cur = f.stations[f.cur];
-  const c = f.stopped ? "var(--stop)" : "var(--safety)";
   return `<article class="card${f.stopped ? " stopped" : ""}" aria-label="${esc(letter)}">
-    <div class="line-top"><span class="sign">${esc(letter)}</span><span class="pill ${pill[0]}">${pill[1]}</span><span class="pill wait right" title="Share of the car built">${fmt(pct)}% built</span></div>
+    <div class="line-top">${carIcon()}<span class="sign">${esc(letter)}</span>${conditionPill(L)}</div>
     <p class="line-name">${esc(L.name)}</p>
-    <div class="belt" style="--pos:${pct}%;--c:${c}" role="img" aria-label="${f.done} of ${cells.length} parts done">${CAR}<div class="cells">${cells.map(x => `<b class="${esc(x.state)}"></b>`).join("")}</div></div>
-    ${cause}
-    <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(cur.name)}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
+    ${progressBlock(L)}
+    ${blockerBlock(L)}
+    ${evidenceRow(L)}
     ${containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : ""}
     <a class="go" href="${drillHref("line", esc(safeId(L.line_id)))}">Show this line's stations and parts</a>
   </article>`;
@@ -638,7 +711,7 @@ function laneRow(l, tab){
 
 function gauge(label, value, frac, why, hot){
   if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${why ? ` (${esc(why)})` : ""}</span></div>`;
-  const bar = frac == null ? "" : `<div class="gbar${hot ? " hot" : ""}" role="img" aria-label="${esc(label)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
+  const bar = frac == null ? "" : `<div class="gbar${hot ? " hot" : ""}" role="img" aria-label="${esc(label + ": " + value)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
   return `<div class="gauge"><span>${esc(label)}</span><span class="v">${esc(value)}</span>${bar}</div>`;
 }
 
@@ -652,17 +725,13 @@ function bayCard(m, byId){
   const age = m.read_age_min == null ? "" : ` · ${m.read_at ? sinceText(m.read_at) : ageText(liveMs(m.read_age_min))} ago`;
   let body;
   if (rd){
-    const cells = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}" title="${esc(l.lane)}"></i>`);
-    const free = cap == null ? 0 : Math.max(0, cap - lanes.length);
-    const over = cap == null ? 0 : Math.max(0, lanes.length - cap);
-    const load = m.load_per_core;
-    const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
-    body = `<div class="slots" role="img" aria-label="${lanes.length} lanes placed${cap == null ? "" : " of " + cap}">${cells.join("")}${"<i></i>".repeat(Math.min(free, 60))}</div>
-      <p class="capline"><span class="mono">${lanes.length}</span> lanes placed${cap == null ? ` · cap <span class="unread">unread</span>` : ` of <span class="mono">${cap}</span>`}${over ? ` · <b class="age-stale">${over} over the cap</b>` : ""}${m.refusal ? ` · refuses new work: ${esc(m.refusal)}` : ""}</p>
-      <div class="gauges">
-        ${gauge("load per core", load == null ? null : fmt(load), load == null ? null : num(load), "", num(load) >= 1)}
-        ${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}
-      </div>`;
+    const refused = refusalReason(m) !== null;
+    const cells = lanes.map((l, k) => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}${cap != null && k >= cap ? " over" : ""}" title="${esc(l.lane)}"></i>`);
+    const free = cap == null || refused ? 0 : m.free_slots != null ? Math.max(0, num(m.free_slots)) : Math.max(0, cap - lanes.length);
+    const over = cap != null && lanes.length > cap ? lanes.length - cap : 0;
+    body = `${refusalNote(m)}<div class="slots" role="img" aria-label="${lanes.length} lanes placed${cap == null ? "" : " of " + cap}${over ? `, ${over} over capacity` : ""}">${cells.join("")}${"<i></i>".repeat(Math.min(free, 60))}</div>
+      <p class="capline"><span class="mono">${lanes.length}${cap == null ? "" : "/" + cap}</span> lanes placed${cap == null ? ` · cap <span class="unread">unread</span>` : ""}${over ? ` · <b class="age-stale">${over} over capacity</b>` : ""}</p>
+      <div class="gauges">${loadGauge(m)}${memoryGauge(m)}</div>`;
   } else {
     body = `<p class="capline">${esc(m.note || "no reading")}${lanes.length ? ` The ledger still places ${plural(lanes.length, "lane", "lanes")} here.` : ""}</p>`;
   }
@@ -833,7 +902,7 @@ function renderDashboard(p){
     ? lamp(stoppedN ? "stop" : missing ? "warn" : "ok", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", missing ? `${plural(missing, "declared line is", "declared lines are")} not in the record` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`)
     : lamp("idle", "Lines", "unread", "The record holds no lines"));
   board.push(ms.length
-    ? lamp(unreadM ? "warn" : "ok", `${read.length} of ${ms.length}`, "machines read", `${placed} lanes placed on ${cap} slots${repair ? `; ${repair} in repair or out of selection` : ""}${unreadM ? `; ${unreadM} unread` : ""}`)
+    ? lamp(unreadM ? "warn" : "ok", `${read.length}/${ms.length}`, "machine readings available", `${read.filter(m => refusalReason(m) === null).length} accepting work, ${read.filter(m => refusalReason(m) !== null).length} refusing work; ${placed} lanes placed on ${cap} slots${repair ? `; ${repair} in repair or out of selection` : ""}${unreadM ? `; ${unreadM} unread` : ""}`)
     : lamp("idle", "Machines", "unread", "The record declares no machine bays"));
   board.push(lamp(stalled ? "stop" : lanes.length ? "ok" : "idle", `${lanes.length}`, "live lanes", stalled ? `${stalled} stalled: nothing written for ${floor.stall_minutes || "the stall"} minutes` : lanes.length ? "none stalled" : "no lane is live in the record"));
   board.push(mt ? lamp("ok", fmt(mt.value), "merges today", `${redLanes} live ${redLanes === 1 ? "lane has" : "lanes have"} a red pull request`) : lamp("idle", "Merges today", "unread", "The process-health series is not published"));
@@ -903,13 +972,10 @@ function drillContent(d){
     const L = lines.find(x => safeId(x.line_id) === d.id);
     if (!L) return miss("line", "assembly line");
     const f = lineFacts(L);
-    const reasons = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).concat(L.andon && L.andon.reason ? [L.andon.reason] : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
-    const uniq = reasons.filter((c, i) => reasons.indexOf(c) === i);
-    return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.status_pill === "done" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.status_pill || "queued")}</span> <span class="pill wait">${fmt(num(L.percent_built))}% built</span></div>`
-      + (f.stopped ? `<div class="cause"><b>Why it is stopped</b>${uniq.length ? uniq.map(c => `<span>${esc(c)}</span>`).join("") : "<span>The record flags this line stopped and gives no reason.</span>"}</div>` : "")
-      + `<p class="facts">${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>`
+    return {kind: "Assembly line", title: L.name, html: `<div>${carIcon()} ${conditionPill(L)}</div>`
+      + progressBlock(L) + blockerBlock(L) + evidenceRow(L)
       + (containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : "")
-      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(s.name)}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(i.title)} · ${esc(stateWord[i.state] || i.state || "")}</li>`).join("")}</ul></li>`).join("")}</ul>`};
+      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(s.name)}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(i.title)} · ${esc([stateWord[i.state] || i.state || "", itemEvidence(i)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></li>`).join("")}</ul>`};
   }
   if (d.kind === "st" || d.kind === "part"){
     let hit = null;
@@ -939,10 +1005,9 @@ function drillContent(d){
     lanes.forEach(l => { byId[l.lane] = l; });
     const placed = (m.lanes || []).map(id => byId[id]).filter(Boolean);
     const rd = m.state === "read";
-    const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
     const rn = m.runners || {};
-    return {kind: "Machine", title: m.label, html: kv([["State", esc(rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread")], ["Read", m.read_age_min == null ? unreadS("") : esc(ageText(num(m.read_age_min) * 60000)) + " ago"], ["Lanes", esc(String(placed.length)) + (m.cap == null ? " (cap unread)" : " of a cap of " + esc(String(num(m.cap))))], m.refusal ? ["Refuses new work", esc(m.refusal)] : null, !rd && m.note ? ["Note", esc(m.note)] : null])
-      + (rd ? `<div class="gauges">${gauge("load per core", m.load_per_core == null ? null : fmt(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core), "", num(m.load_per_core) >= 1)}${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}${gauge("swap used", m.swap_used_pct == null ? null : fmt(m.swap_used_pct) + "%", m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported")}${gauge("CI runners", rn.state === "read" ? `${num(rn.busy)} busy of ${num(rn.total)}` : null, rn.state === "read" && num(rn.total) ? num(rn.busy) / num(rn.total) : null, rn.note)}</div>` : "")
+    return {kind: "Machine", title: m.label, html: kv([["State", esc(rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread")], ["Read", m.read_age_min == null ? unreadS("") : esc(ageText(num(m.read_age_min) * 60000)) + " ago"], ["Lanes", esc(String(placed.length)) + (m.cap == null ? " (cap unread)" : " of a cap of " + esc(String(num(m.cap))))], refusalReason(m) !== null ? ["Not taking new work", esc(refusalReason(m))] : null, !rd && m.note ? ["Note", esc(m.note)] : null])
+      + (rd ? `<div class="gauges">${loadGauge(m)}${memoryGauge(m)}${gauge("swap used", m.swap_used_pct == null ? null : fmt(m.swap_used_pct) + "%", m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported")}${gauge("CI runners", rn.state === "read" ? `${num(rn.busy)} busy of ${num(rn.total)}` : null, rn.state === "read" && num(rn.total) ? num(rn.busy) / num(rn.total) : null, rn.note)}</div>` : "")
       + `<h3>Lanes here</h3>` + (placed.length ? `<div class="lrows">${placed.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No lane is placed here.</p>`)};
   }
   if (d.kind === "stop"){
