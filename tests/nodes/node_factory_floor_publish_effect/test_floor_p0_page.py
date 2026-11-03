@@ -88,8 +88,9 @@ def test_one_condition_both_pages_a_blocked_line_with_a_live_lane_never_shows_bu
     for html in (floor, dash):
         assert "Building" in html
         assert "Stopped" not in html
-        assert "three red PRs" in html
         assert "Evidence: repo#1, repo#2, repo#3" in html
+    assert "three red PRs" in floor
+    assert "three red changes" in dash  # the dashboard says change, never PR
     stopped_floor = floor_sections(_floor(FIXTURE))["line-d"]
     assert "Why it is stopped" in stopped_floor
     assert "Building" not in stopped_floor
@@ -190,7 +191,7 @@ def floor_bay(out: dict[str, str], host: str) -> str:
 
 
 def dash_bay(dash: str, host: str) -> str:
-    for part in re.split(r'(?=<article class="bay)', dash)[1:]:
+    for part in re.split(r'(?=<article class="(?:bay|mrow))', dash)[1:]:
         if f'aria-label="{host}"' in part.split(">", 1)[0]:
             return part.split("</article>", 1)[0]
     raise AssertionError(host)
@@ -241,7 +242,10 @@ def test_refusing_machine_and_overflow() -> None:
     over_floor = floor_bay(out, "m-over")
     over_dash = dash_bay(dash, "m-over")
     assert '<span class="mono">7/6</span>' in over_floor
-    assert '<span class="mono">7/6</span>' in over_dash
+    assert (
+        '<span class="mono">7</span> of <span class="mono">6</span> workers'
+        in over_dash
+    )
     for html in (over_floor, over_dash):
         assert "1 over capacity" in html
         assert len(re.findall(r'<i class="[^"]*\bover\b', html)) == 1
@@ -250,7 +254,7 @@ def test_refusing_machine_and_overflow() -> None:
     for src in (DASH_SRC, FLOOR_SRC):
         assert not re.search(r"Math\.max\(0, (running|lanes\.length)", src)
     # observability is not health: readings available apart from accepting and refusing counts
-    assert "4/5<small>machine readings available</small>" in dash
+    assert "4 of 5<small>machine readings available</small>" in dash
     assert "3 accepting work, 1 refusing work" in dash
     assert "machines read" not in dash
 
