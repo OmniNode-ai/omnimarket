@@ -41,3 +41,11 @@ dod_evidence:
   - check_type: command
     check_value: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect --mode dry_run
     cwd: .
+- id: dod-omn22121-integration-proof
+  description: Run the broker ACL reconcile node suite on a lab host at the pushed head. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov
+    cwd: .
