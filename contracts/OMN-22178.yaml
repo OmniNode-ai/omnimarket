@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-22178
+title: End-to-end lab proof of the agent review path on omnimarket and omniclaude under a simulated credit exhaustion
+summary: A proof record under docs/ and its record-shape test. The record holds six observations of the agent review fallback (dispatch, accept with source=agent, a push voiding the receipt, an altered receipt, a blocked receipt, a receipt for another head), each with its time, head sha, mode and the units run, and the live required rules of omnimarket and omniclaude with their read times. It is evidence and carries no behaviour.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22178-ac1
+  statement: Six observations are recorded, each with its timestamp and the head sha it was observed on
+  acceptance:
+  - id: AC1
+    statement: 'AC1: Six observations are recorded, each with its timestamp and the head sha it was observed on: (1) the orchestrator dispatches one review and the receipt review appears; (2) after a rerun of the head Hostile Reviewer run by the existing path (the record names who reran) the required names turn green with `source=agent`; (3) a push to the head voids it and the new head is red until a new review; (4) an altered receipt is refused; (5) a `blocked` receipt leaves the gate red; (6) a receipt for another head is refused -- falsifier: `uv run pytest tests/unit/test_agent_review_proof_record.py -v -rs` (a record-shape test shipped with the record) fails when any of the six observations is missing, an observation among (4) to (6) carries more than the one defect it tests or lacks the expected typed reason, or a gate among (4) to (6) is not red afterwards'
+- id: req-omn22178-ac2
+  statement: The live required rules of each repository are re-read through the source-control node and recorded in the same record
+  acceptance:
+  - id: AC2
+    statement: 'AC2: The live required rules of each repository are re-read through the source-control node and recorded in the same record -- falsifier: the same record-shape test fails when either repository lacks a live required-rules section with a read time'
+- id: req-omn22178-dod1
+  statement: Merged in omnimarket, with every observation read from the live check-runs and reviews of the deployed units at the tags named in the record
+  acceptance:
+  - id: DOD1
+    statement: 'DOD1: Merged in omnimarket, with every observation read from the live check-runs and reviews of the deployed units at the tags named in the record -- falsifier: the required context `CI Summary` is not green on the merged PR head, or the record names a tag the lab does not run'
+evidence_requirements:
+- kind: tests
+  description: The record-shape test runs over the real record.
+  command: uv run pytest tests/unit/test_agent_review_proof_record.py -v -rs --no-cov
+- kind: manual
+  description: 'deploy: the record and its test are on the checked-out commit and the test passes there.'
+  command: uv run pytest tests/unit/test_agent_review_proof_record.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22178-ac1
+  description: The record-shape test fails over a record with any of the six observations missing, an observation among (4) to (6) with more than one defect or no expected typed reason, a gate among (4) to (6) not red, or an observation without its time or head sha, and passes over the real record.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_agent_review_proof_record.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22178-ac2
+  description: The same test fails when either repository lacks a live required-rules section with a read time.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_agent_review_proof_record.py -q --no-cov --tb=line -k required_rules
+    cwd: .
+- id: dod-omn22178-deploy
+  description: 'Deploy probe: the record file is present at the checked-out commit and the record-shape test passes there.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: test -s docs/audits/agent-review-fallback-proof.yaml
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_agent_review_proof_record.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22178-dod1
+  description: The record names its status; a final record reads every observation live, with the check-run id of each, and names tags and no pending live re-run. The draft phase-1 state is the only other status the test accepts.
+  source: manual
+  binds_ac:
+  - DOD1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_agent_review_proof_record.py -q --no-cov --tb=line -k status
+    cwd: .
