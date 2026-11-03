@@ -41,6 +41,8 @@ handler_routing:
 descriptor:
   node_archetype: effect
   purity: side_effecting
+  runtime_profiles:
+  - effects
   idempotent: true
   timeout_ms: 120000
 inputs:
