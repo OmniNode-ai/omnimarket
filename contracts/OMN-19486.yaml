@@ -64,3 +64,10 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-19486 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/cli/test_pr_state.py -q --no-cov -m 'not kafka'"
         cwd: "."
+  - id: "dod-omn19486-registry-parity"
+    description: "The new exposure and the CLI-run read node are recorded in the repo's registries: the projection topic and cursor counts include pr-state.v1, node_pr_state_read_effect declares no handler_routing so the runtime neither routes it nor quarantines HandlerPrStateWait at boot, and the generated relation inventory lists the node as a pr_state reader. Each test is red at the PR head before this change and green after."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py tests/test_handler_routing_boot_resolvable.py tests/unit/validation/test_omn_18043_cursor_declared_ratchet.py tests/unit/projection/test_projection_discovery.py::TestOmn15800ExposureParity tests/unit/scripts/test_application_relation_inventory.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
