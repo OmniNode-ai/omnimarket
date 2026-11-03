@@ -66,3 +66,32 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_compaction_continuation_replay_effect/test_contract.py -q --no-cov
         cwd: .
+  - id: dod-omn21993-deploy-source-readback
+    description: Hosted-runner source artifact readback compares the published continuation replay and arm producer contracts and handlers at the evaluated revision with this checkout, then exercises their routing and sandbox behavior. Requires GitHub HTTPS access and locked test dependencies, with no lab broker or credentials. This checks the published package sources, not a live deployment.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          for path in \
+            src/omnimarket/nodes/node_compaction_continuation_replay_effect/contract.yaml \
+            src/omnimarket/nodes/node_compaction_continuation_replay_effect/handlers/handler_experiment.py \
+            src/omnimarket/nodes/node_compaction_continuation_replay_effect/handlers/stubs.py \
+            src/omnimarket/nodes/node_compaction_arm_run_effect/contract.yaml \
+            src/omnimarket/nodes/node_compaction_arm_run_effect/handlers/handler_arm_run.py;
+          do
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/source";
+            cmp "$path" "$readback_dir/source";
+          done;
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest \
+            tests/nodes/node_compaction_continuation_replay_effect/test_contract.py \
+            tests/nodes/node_compaction_continuation_replay_effect/test_continuation_replay.py \
+            tests/nodes/node_compaction_arm_run_effect/test_arm_run.py \
+            -k 'contract or stubs_isolate or refused_call_logged or scratch_ledger_only' -q --no-cov;
+          printf 'compaction continuation and arm producer source readback matched %s\n' "$revision"
+        cwd: .
