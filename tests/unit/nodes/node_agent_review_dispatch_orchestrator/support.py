@@ -23,14 +23,10 @@ from typing import Any
 import pytest
 from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeaders
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_dispatch import (
     HandlerAgentReviewDispatch,
 )
-from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import (
-    load_agent_review_config,
-    load_topics,
-)
-
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models import (
     ModelAgentFinding,
     ModelAgentReceipt,
@@ -40,6 +36,10 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models import (
     ModelAgentReviewTerminal,
     ModelAgentVoter,
     ModelAgentVoterReview,
+)
+from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import (
+    load_agent_review_config,
+    load_topics,
 )
 from tests.node_overlay_support import install_node_overlay
 

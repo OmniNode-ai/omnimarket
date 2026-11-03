@@ -15,15 +15,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_quorum import (
     HandlerAgentReviewQuorum,
 )
-from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import (
-    load_agent_review_config,
-)
-
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models import (
     ModelAgentQuorumRequest,
+)
+from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import (
+    load_agent_review_config,
 )
 from tests.node_overlay_support import install_node_overlay
 

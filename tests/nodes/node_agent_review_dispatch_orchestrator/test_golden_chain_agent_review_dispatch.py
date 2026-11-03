@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import load_topics
 
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator import (
     NodeAgentReviewDispatchOrchestrator,
 )
+from omnimarket.nodes.node_agent_review_dispatch_orchestrator.overlay import load_topics
 from tests.unit.nodes.node_agent_review_dispatch_orchestrator.support import (
     NODE,
     World,
