@@ -120,10 +120,17 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_factory_floor_compute -k built_ahead_of_gate -q --no-cov --tb=line
     cwd: .
 - id: dod-omn22133-ac-e
-  description: AC10 the published floor record, after the publisher runs the merged revision, shows W0.1 to W0.5 merged and W1.2a, W1.2b and W1.2e not done. Read from the served record on the lab, so only the local Done gate runs it.
+  description: AC10 a merged task whose lane ended blocked or partial reads merged, and the built-and-proven fixture reads done, in memory and through the overlay. The read of the served record is the separate unbound item dod-omn22133-ac-e-served.
   source: manual
   binds_ac:
   - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_truth.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22133-ac-e-served
+  description: AC10 served-record probe, unbound. The published floor record, after the publisher runs the merged revision, shows W0.1 to W0.5 merged and W1.2a, W1.2b and W1.2e not done. Read from the served record on the lab, so only the local Done gate runs it.
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
