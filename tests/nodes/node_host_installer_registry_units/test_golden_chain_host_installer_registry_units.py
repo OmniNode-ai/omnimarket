@@ -9,6 +9,7 @@ import plistlib
 import subprocess
 from pathlib import Path
 
+import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
@@ -41,7 +42,14 @@ def _git(path: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
-def test_the_dry_run_renders_the_branch_checkout_for_the_unit(tmp_path: Path) -> None:
+def test_the_dry_run_renders_the_branch_checkout_for_the_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the host under test has the brew interpreter (hosted CI is not a Mac)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
+        lambda path: path == "/opt/homebrew/bin/python3.13",
+    )
     branch = tmp_path / "branch"
     (branch / ENTRY).parent.mkdir(parents=True)
     (branch / ENTRY).write_text("print('tick')\n", encoding="utf-8")
