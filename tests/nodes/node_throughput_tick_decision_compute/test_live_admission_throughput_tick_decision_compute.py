@@ -294,8 +294,8 @@ def test_the_unavailable_host_note_and_placement_error_still_report_with_live_ad
         ),
         (
             "h101",
-            "stickybeatz-2",
-            "rc=255 via=stickybeatz-2 rbs@stickybeatz-2: Permission denied "
+            "lab-hop-2",
+            "rc=255 via=lab-hop-2 rbs@lab-hop-2: Permission denied "
             "(publickey,password,keyboard-interactive).",
         ),
     ],

@@ -1083,7 +1083,11 @@ def _check_live_admission(
         label = f"lab-headroom:{host.name}"
         adm = host.admission
         if adm is None or adm.probe_error is not None:
-            why = "no live admission reading" if adm is None else adm.probe_error
+            why = (
+                "no live admission reading"
+                if adm is None or adm.probe_error is None
+                else adm.probe_error
+            )
             rep.unk(
                 label,
                 f"live admission probe unreadable ({why}): its capacity is unread",
