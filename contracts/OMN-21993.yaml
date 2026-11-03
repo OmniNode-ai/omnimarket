@@ -51,6 +51,13 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_compaction_continuation_replay_effect -k "refused_call_logged or scratch_ledger_only" -q --no-cov
         cwd: .
+  - id: dod-omn21993-input-confinement
+    description: Command-payload paths (ledger_source, tolerance_file, scratch_worktree) are confined to the input roots the runtime overlay injects. A path outside them, including /proc/self/environ, a path with a parent-directory component and a symlink that leaves the root, is refused before any read, copy, digest or diff, so no outside file content reaches the completed topic. With no roots configured every path is refused.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_continuation_replay_effect/test_input_confinement.py -q --no-cov
+        cwd: .
   - id: dod-omn21993-integration-proof
     description: The local Done gate requires the pushed head's focused suite, including the same two-boundary fixture on the in-memory and Redpanda profiles, to pass on the permitted lab host. Hosted CI cannot reach the lab; this evidence remains pending until that command passes.
     source: manual

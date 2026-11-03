@@ -59,7 +59,9 @@ async def test_two_profiles_same_two_boundaries(tmp_path: Path, profile: str) ->
         if r.operation == "run_continuation_experiment"
     )
     container = create_replay_container(
-        model=ModelFixture(True), scratch_root=tmp_path / "scratch"
+        model=ModelFixture(True),
+        scratch_root=tmp_path / "scratch",
+        input_roots=(tmp_path,),
     )
     node = node_package.NodeCompactionContinuationReplayEffect(container)
     assert node is not None

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..models import (
@@ -23,6 +23,7 @@ from ..models.model_experiment import (
     ModelTurnFeedback,
 )
 from ..protocols.protocol_replay import ProtocolContinuationModel
+from .confinement import confine_path
 from .diff import collect_diff
 from .guard import EgressBlockedError, deny_egress, file_digest
 from .stubs import ProtocolToolStubs, SandboxTools, call_class_of, item_key_of
@@ -36,13 +37,26 @@ class HandlerContinuationReplay:
         self,
         stubs_factory: StubFactory | None = None,
         model: ProtocolContinuationModel | None = None,
+        allowed_roots: Sequence[Path] = (),
     ) -> None:
         self._factory: StubFactory = stubs_factory or SandboxTools
         self._model = model
+        self._roots = tuple(allowed_roots)
 
     def handle(self, request: ModelReplayRequest) -> ModelReplayResult:
         if self._model is not None and request.scripted_turns:
             raise ValueError("choose model continuation or recorded turns, not both")
+        # Confine every command-supplied path before any read, copy, digest or diff.
+        ledger_source = (
+            confine_path("ledger_source", request.ledger_source, self._roots)
+            if request.ledger_source
+            else None
+        )
+        scratch_worktree = (
+            confine_path("scratch_worktree", request.scratch_worktree, self._roots)
+            if request.scratch_worktree
+            else None
+        )
         scratch_dir = Path(request.scratch_dir)
         scratch_dir.mkdir(parents=True, exist_ok=True)
         scratch_ledger = (
@@ -51,13 +65,13 @@ class HandlerContinuationReplay:
         )
         if request.ledger_content is not None:
             scratch_ledger.write_bytes(request.ledger_content)
-        elif request.ledger_source:
-            shutil.copyfile(request.ledger_source, scratch_ledger)
+        elif ledger_source:
+            shutil.copyfile(ledger_source, scratch_ledger)
         else:
             scratch_ledger.touch()
         protected = [*request.protected_paths]
-        if request.ledger_source:
-            protected.append(request.ledger_source)
+        if ledger_source:
+            protected.append(str(ledger_source))
         before = {p: file_digest(p) for p in protected}
         calls: list[ModelRecordedCall] = []
         attempts: list[str] = []
@@ -134,9 +148,7 @@ class HandlerContinuationReplay:
             scratch_ledger_path=str(scratch_ledger),
             scratch_rows=scratch_ledger.read_text(encoding="utf-8").splitlines(),
             isolation_violations=violations,
-            diff=collect_diff(request.scratch_worktree)
-            if request.scratch_worktree
-            else None,
+            diff=collect_diff(str(scratch_worktree)) if scratch_worktree else None,
             assistant_text=[t.assistant.text for t in history],
             failure_reason=failure,
         )

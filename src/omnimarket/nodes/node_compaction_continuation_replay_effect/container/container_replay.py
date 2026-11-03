@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,7 @@ class ContainerContinuationReplay:
     stubs_factory: StubFactory
     policy: ModelContinuationPolicy
     replay_handler: type[HandlerContinuationReplay]
+    input_roots: tuple[Path, ...]
 
 
 def create_replay_container(
@@ -43,6 +45,7 @@ def create_replay_container(
     scorer: ProtocolActionScorer | None = None,
     stubs_factory: StubFactory = SandboxTools,
     policy: ModelContinuationPolicy | None = None,
+    input_roots: Sequence[Path] = (),
 ) -> ModelONEXContainer:
     bindings = ContainerContinuationReplay(
         model,
@@ -52,6 +55,7 @@ def create_replay_container(
         stubs_factory,
         policy or load_continuation_policy(),
         load_component_handler("replay", HandlerContinuationReplay),
+        tuple(Path(r).resolve() for r in input_roots),
     )
     container = ModelONEXContainer()
     run_coro_sync(

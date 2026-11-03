@@ -69,6 +69,11 @@ dependencies:
   dependency_type: configuration
   required: true
   description: Dedicated replay scratch root from the runtime overlay.
+- name: input_roots
+  dependency_type: configuration
+  required: true
+  description: Roots from the runtime overlay under which ledger_source, tolerance_file and scratch_worktree
+    must resolve. A path outside them is refused before any read, and none configured refuses every path.
 continuation:
   repeats: 3
   default_turns: 25

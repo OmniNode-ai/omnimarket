@@ -67,7 +67,9 @@ def test_refused_call_logged_gh_pr_merge(tmp_path: Path) -> None:
     call = ModelToolCall(
         tool="bash", command="gh pr merge 12 --squash --repo OmniNode-ai/omnimarket"
     )
-    result = HandlerContinuationReplay().handle(_request(tmp_path, [[call]], real))
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
+        _request(tmp_path, [[call]], real)
+    )
     assert result.status == EnumReplayStatus.COMPLETED
     assert [c.call_class for c in result.refusal_log] == ["gh.pr.merge"]
     entry = result.refusal_log[0]
@@ -87,7 +89,9 @@ def test_scratch_ledger_only(tmp_path: Path) -> None:
         ),  # names the real ledger
         ModelToolCall(tool="bash", command=f"onex-ledger {real} --append '{ROW}2'"),
     ]
-    result = HandlerContinuationReplay().handle(_request(tmp_path, [calls], real))
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
+        _request(tmp_path, [calls], real)
+    )
     assert real.read_bytes() == before
     assert result.status == EnumReplayStatus.COMPLETED
     assert result.scratch_rows[-2:] == [ROW, f"{ROW}2"]
@@ -112,7 +116,7 @@ def test_refusals_are_typed(tmp_path: Path) -> None:
         ModelToolCall(tool="network", command="https://x.invalid"),
         ModelToolCall(tool="write_file", path="/tmp/x"),
     ]
-    result = HandlerContinuationReplay().handle(
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
         _request(tmp_path, [calls], real, frozen_files=frozen)
     )
     assert [c.refusal_reason for c in result.calls] == [
@@ -135,7 +139,7 @@ def test_item_key_and_turn_cap(tmp_path: Path) -> None:
         [ModelToolCall(tool="bash", command=f"gh issue view OMN-{i}")] for i in range(9)
     ]
     req = _request(tmp_path, turns, real).model_copy(update={"n_turns": 3})
-    result = HandlerContinuationReplay().handle(req)
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(req)
     assert result.turns_run == 3
     assert result.proposed_call_set == [
         "gh.issue.view|OMN-0",
@@ -166,7 +170,9 @@ def test_stubs_isolate_clean_stubs_reach_nothing(
         ModelToolCall(tool="bash", command="curl http://127.0.0.1:9/"),
         ModelToolCall(tool="bash", command="onex run-node x"),
     ]
-    result = HandlerContinuationReplay().handle(_request(tmp_path, [calls], real))
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
+        _request(tmp_path, [calls], real)
+    )
     assert reached == []
     assert result.status == EnumReplayStatus.COMPLETED
     assert result.isolation_violations == []
@@ -209,9 +215,9 @@ def test_stubs_isolate_catches_egress_mutant(
 ) -> None:
     real = _real_ledger(tmp_path)
     call = ModelToolCall(tool="bash", command="gh pr merge 1")
-    result = HandlerContinuationReplay(stubs_factory=mutant).handle(
-        _request(tmp_path, [[call]], real)
-    )
+    result = HandlerContinuationReplay(
+        stubs_factory=mutant, allowed_roots=(tmp_path,)
+    ).handle(_request(tmp_path, [[call]], real))
     assert result.status == EnumReplayStatus.ISOLATION_BREACH
     assert result.isolation_violations
     assert result.calls[0].refusal_reason == EnumRefusalReason.EGRESS_BLOCKED
@@ -221,9 +227,9 @@ def test_stubs_isolate_catches_real_ledger_mutant(tmp_path: Path) -> None:
     real = _real_ledger(tmp_path)
     before = real.read_bytes()
     call = ModelToolCall(tool="ledger_append", row=ROW, path=str(real))
-    result = HandlerContinuationReplay(stubs_factory=_LedgerMutant).handle(
-        _request(tmp_path, [[call]], real)
-    )
+    result = HandlerContinuationReplay(
+        stubs_factory=_LedgerMutant, allowed_roots=(tmp_path,)
+    ).handle(_request(tmp_path, [[call]], real))
     assert result.status == EnumReplayStatus.ISOLATION_BREACH
     assert real.read_bytes() == before
     assert result.calls[0].refusal_reason == EnumRefusalReason.EGRESS_BLOCKED
@@ -234,7 +240,9 @@ def test_stubs_isolate_guard_restores_sockets(tmp_path: Path) -> None:
     real = _real_ledger(tmp_path)
     connect = socket.socket.connect
     popen_init = subprocess.Popen.__init__
-    HandlerContinuationReplay(stubs_factory=_NetworkMutant).handle(
+    HandlerContinuationReplay(
+        stubs_factory=_NetworkMutant, allowed_roots=(tmp_path,)
+    ).handle(
         _request(
             tmp_path, [[ModelToolCall(tool="bash", command="gh pr merge 1")]], real
         )
@@ -277,7 +285,7 @@ def test_diff_collected_by_git_diff_head(tmp_path: Path) -> None:
     (wt / "b.txt").write_text("new\n")
     git("add", "b.txt")  # staged only: plain `git diff` would miss it
     real = _real_ledger(tmp_path)
-    result = HandlerContinuationReplay().handle(
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
         _request(tmp_path, [], real, scratch_worktree=str(wt))
     )
     assert result.diff is not None
@@ -292,7 +300,9 @@ def test_scratch_ledger_only_canonical_uv_adapter(tmp_path: Path) -> None:
         tool="bash",
         command=f"uv run --project /pinned/project onex-ledger {real} --append '{ROW}'",
     )
-    result = HandlerContinuationReplay().handle(_request(tmp_path, [[call]], real))
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
+        _request(tmp_path, [[call]], real)
+    )
     assert result.calls[0].outcome == EnumToolOutcome.SCRATCH_WRITE
     assert result.scratch_rows[-1] == ROW
     assert real.read_bytes() == before
@@ -304,7 +314,7 @@ def test_frozen_file_read_uses_snapshot_after_live_file_changes(tmp_path: Path) 
     path.write_text("pinned\n")
     frozen = {str(path): path.read_text()}
     path.write_text("changed live\n")
-    result = HandlerContinuationReplay().handle(
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(
         _request(
             tmp_path, [[ModelToolCall(tool="read_file", path=str(path))]], real, frozen
         )
@@ -322,7 +332,7 @@ def test_frozen_bytes_are_returned_and_recorded_without_decoding(
         tmp_path, [[ModelToolCall(tool="read_file", path="/pinned/binary")]], real
     ).model_copy(update={"frozen_bytes": {"/pinned/binary": blob}})
     req = ModelReplayRequest.model_validate_json(req.model_dump_json())
-    result = HandlerContinuationReplay().handle(req)
+    result = HandlerContinuationReplay(allowed_roots=(tmp_path,)).handle(req)
     assert result.calls[0].content == blob
     from omnimarket.nodes.node_compaction_continuation_replay_effect.models import (
         ModelReplayResult,

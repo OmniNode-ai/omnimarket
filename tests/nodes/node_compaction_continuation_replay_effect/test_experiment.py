@@ -135,7 +135,9 @@ def test_model_runs_n_turns_three_repeats_and_cm3_grades_two_boundaries(
     tmp_path: Path,
 ) -> None:
     model = ModelFixture()
-    container = create_replay_container(model=model, scratch_root=tmp_path / "scratch")
+    container = create_replay_container(
+        model=model, scratch_root=tmp_path / "scratch", input_roots=(tmp_path,)
+    )
     result = HandlerReplayExperiment(container).handle(request(tmp_path))
     assert len(model.inputs) == 24
     assert {i.model_id for i in model.inputs} == {"fixed-answerer"}
@@ -155,7 +157,9 @@ def test_experiment_unstable_flagged_matched_removal_from_real_proposals(
 ) -> None:
     result = HandlerReplayExperiment(
         create_replay_container(
-            model=ModelFixture(True), scratch_root=tmp_path / "scratch"
+            model=ModelFixture(True),
+            scratch_root=tmp_path / "scratch",
+            input_roots=(tmp_path,),
         )
     ).handle(request(tmp_path))
     assert result.stability.unstable_rate == 0.25
@@ -178,7 +182,11 @@ def test_unavailable_repeat_is_removed_together_with_its_partner(
             return super().continue_turn(turn)
 
     result = HandlerReplayExperiment(
-        create_replay_container(model=MissingModel(), scratch_root=tmp_path / "scratch")
+        create_replay_container(
+            model=MissingModel(),
+            scratch_root=tmp_path / "scratch",
+            input_roots=(tmp_path,),
+        )
     ).handle(request(tmp_path))
     assert result.retained_cells == [("b2", "mod"), ("b2", "stock_rerun")]
     assert result.stability.cells[1].status.value == "UNAVAILABLE"
@@ -235,7 +243,11 @@ def test_repeat_sets_use_cm2_item_keys_when_model_names_only_the_lane(
         )
     req = req.model_copy(update={"contexts": contexts})
     result = HandlerReplayExperiment(
-        create_replay_container(model=NamedLane(), scratch_root=tmp_path / "scratch")
+        create_replay_container(
+            model=NamedLane(),
+            scratch_root=tmp_path / "scratch",
+            input_roots=(tmp_path,),
+        )
     ).handle(req)
     assert result.repeats[0].replay.proposed_call_set == [
         "onex.lane.relaunch|OPEN_CLAIM|claim:worker"
@@ -260,7 +272,11 @@ def test_cm3_malformed_refusals_and_text_mentions_never_count_as_progress(
         }
     )
     result = HandlerReplayExperiment(
-        create_replay_container(model=Malformed(), scratch_root=tmp_path / "scratch")
+        create_replay_container(
+            model=Malformed(),
+            scratch_root=tmp_path / "scratch",
+            input_roots=(tmp_path,),
+        )
     ).handle(req)
     assert all(
         r.action_score.items[0].outcome_at(2).value == "IDLE" for r in result.repeats
@@ -297,7 +313,11 @@ def test_cm3_future_until_overlay_is_not_due(tmp_path: Path) -> None:
         }
     )
     result = HandlerReplayExperiment(
-        create_replay_container(model=ModelFixture(), scratch_root=tmp_path / "scratch")
+        create_replay_container(
+            model=ModelFixture(),
+            scratch_root=tmp_path / "scratch",
+            input_roots=(tmp_path,),
+        )
     ).handle(req)
     assert all(
         r.action_score.items[0].outcome_at(2).value == "NOT_DUE" for r in result.repeats

@@ -36,6 +36,7 @@ from ..models.model_experiment import (
     ModelExperimentResult,
     ModelGradedRepeat,
 )
+from .confinement import confine_path
 
 
 def _with_item_keys(
@@ -71,20 +72,29 @@ class HandlerReplayExperiment:
 
     def handle(self, request: ModelExperimentRequest) -> ModelExperimentResult:
         container = self._container.get_service(ContainerContinuationReplay)
+        # Confine command-supplied paths before any read, so an outside file is never opened.
+        roots = container.input_roots
+        tolerance_file = confine_path("tolerance_file", request.tolerance_file, roots)
+        ledger_paths = {
+            c.ledger_source: confine_path("ledger_source", c.ledger_source, roots)
+            for c in request.contexts
+            if c.ledger_source is not None
+        }
+        for c in request.contexts:
+            if c.scratch_worktree is not None:
+                confine_path("scratch_worktree", c.scratch_worktree, roots)
         # Validate calibration data before model calls or scratch writes.
-        tolerance_before = Path(request.tolerance_file).read_bytes()
-        container.stability.validate_policy(request.tolerance_file)
+        tolerance_before = tolerance_file.read_bytes()
+        container.stability.validate_policy(str(tolerance_file))
         container.scratch_root.mkdir(parents=True, exist_ok=True)
         run_root = Path(
             tempfile.mkdtemp(prefix="continuation-", dir=container.scratch_root)
         )
         handler = container.replay_handler(
-            container.stubs_factory, model=container.model
+            container.stubs_factory, model=container.model, allowed_roots=roots
         )
         ledger_snapshots = {
-            c.ledger_source: Path(c.ledger_source).read_bytes()
-            for c in request.contexts
-            if c.ledger_source is not None
+            source: path.read_bytes() for source, path in ledger_paths.items()
         }
         repeats: list[ModelGradedRepeat] = []
         cells: list[ModelStabilityCell] = []
@@ -202,13 +212,13 @@ class HandlerReplayExperiment:
                     repeats=call_sets,
                 )
             )
-        if Path(request.tolerance_file).read_bytes() != tolerance_before:
+        if tolerance_file.read_bytes() != tolerance_before:
             raise ValueError("calibration data changed during the experiment")
         stability = container.stability.handle(
             ModelStabilityRequest(
                 correlation_id=request.correlation_id,
                 cells=cells,
-                tolerance_file=request.tolerance_file,
+                tolerance_file=str(tolerance_file),
             )
         )
         return ModelExperimentResult(
