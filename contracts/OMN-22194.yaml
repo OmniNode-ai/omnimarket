@@ -93,13 +93,13 @@ dod_evidence:
         check_value: 'test -z "$(git diff --name-only origin/dev...HEAD -- src/omnimarket/nodes/node_consumer_group_guard_effect/handlers src/omnimarket/nodes/node_consumer_group_guard_effect/models src/omnimarket/nodes/node_consumer_group_guard_effect/runtime_consumer_group_guard.py)"'
         cwd: "."
   - id: "dod-omn22194-cutover"
-    description: "The Mac unload record, the digest reads on both hosts, the two lab runs read from the journal, census.json and LastTriggerUSec, and the rollback read are listed in the pull request or lane result. They need the Mac and h053, so the hosted verifier does not run them; this check reads the lab timer on h053 and fails until the cutover has installed it."
+    description: "The Mac unload record, the digest reads on both hosts, the two lab runs read from the journal, census.json and LastTriggerUSec, and the rollback read are listed in the pull request or lane result. They need the Mac and h053, so the hosted verifier does not run them; this check runs the node's schedule status verb, which reads the lab timer and census.json on h053 and fails until the cutover has installed it."
     source: "manual"
     execution_scope: "local_done_gate"
     binds_ac: ["AC4", "AC7", "AC8"]
     checks:
       - check_type: "command"
-        check_value: 'systemctl --user is-active onex-consumer-group-guard.timer'
+        check_value: 'uv run python -m omnimarket.nodes.node_consumer_group_guard_effect schedule status --host h053'
         cwd: "."
   - id: "dod-omn22194-integration-proof"
     description: "Run the node's focused tests on a lab host at the exact head. The live install, the two timer-started runs and the rollback read are recorded by the cutover and not run by the hosted verifier."
