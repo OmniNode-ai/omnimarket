@@ -1,0 +1,31 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22192
+title: G4 plugin scripts as nodes - lane guard unit start, list and stop, and the landing policy (slice 2, in-process leg of AC2)
+summary: Slice 2 of the G4 script rebuild. node_lane_guard_unit_effect starts a fixture engine inside the unit onexlane-<lane>-<id>, lists its members and stops it with a confirmed-empty answer; node_landing_policy_compute rebuilds landing_policy.py. The bus-delivered profiles of AC2, the other five G4 scripts, the session and lab hooks, the remote-lane overlay propagation and the release are later slices.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-lane-guard-unit-node
+    statement: The lane guard unit is a node that starts a lane engine in the unit, lists its members and stops it with a confirmed-empty answer.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: node_lane_guard_unit_effect starts a fixture engine inside the unit onexlane-<lane>-<id>, lists its members (the engine and the background child it started in its own session) and stops the unit with a confirmed-empty answer, with no background child alive afterwards, called in process -- falsifier: uv run pytest tests/nodes/node_lane_guard_unit_effect fails, or the fixture engine background child survives the stop'
+evidence_requirements:
+  - kind: tests
+    description: Start, list and stop of a fixture engine with a setsid child, the typed refusals, and the landing policy cases.
+    command: uv run pytest tests/nodes/node_lane_guard_unit_effect tests/nodes/node_landing_policy_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-lane-guard-unit-inprocess
+    description: The lane guard unit node directory passes in process - a real engine with a setsid child is started, listed (two members) and stopped, the stop answers confirmed_empty and no member pid is alive afterwards. The bus-delivered profiles are not part of this slice.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lane_guard_unit_effect tests/nodes/node_landing_policy_compute -q --no-cov
+        cwd: .
+    binds_ac: [AC2]
