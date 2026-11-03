@@ -391,10 +391,10 @@ def _evidence(
     matching = tuple(h for h in holds if _hold_matches(h, task, prs, index))
     for hold in matching:
         if _andon(hold, request.config):
-            return "stop", f"andon hold {hold.row_id}: {hold.reason}"
+            return "stop", f"stopped by hold {hold.row_id}: {hold.reason}"
     claim = _live_claim(rows, request, index)
     if claim:
-        return "active", f"claim {claim.lane}"
+        return "active", f"worker {claim.lane} is on it"
     open_prs = {pr.key for pr in request.watcher.prs if pr.state == "OPEN"}
     for pr in prs:
         if pr in open_prs:
@@ -402,7 +402,7 @@ def _evidence(
     if any(linear.get(t) == "started" for t in task.tickets):
         return "active", "Linear in progress"
     if terminal and unclaimed and terminal.outcome in request.config.blocked_outcomes:
-        return "wait", f"lane {terminal.lane} ended {terminal.outcome}"
+        return "wait", f"worker {terminal.lane} ended {terminal.outcome}"
     if matching:
         hold = matching[0]
         return "wait", f"held {hold.row_id}: {hold.reason}"
@@ -548,7 +548,7 @@ def _table_item(
         note = f"{note}: {row.state_basis}"
     for hold in holds:
         if _andon(hold, request.config) and _intersects(hold.tickets, row.tickets):
-            state, note = "stop", f"andon hold {hold.row_id}: {hold.reason}"
+            state, note = "stop", f"stopped by hold {hold.row_id}: {hold.reason}"
             break
     return ModelFloorItem(
         id=row.label,
