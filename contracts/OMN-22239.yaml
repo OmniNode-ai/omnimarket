@@ -1,0 +1,86 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22239
+title: node_work_progress_compute judges each lane against the time budget of its phase and returns one finding per lane over budget
+summary: A pure compute node takes the time now, the overlay budgets and the lanes with the phase each entered, and returns one finding per lane strictly over the budget of its phase, with a key fixed by the lane, phase and entering row. No budget is packaged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-work-progress-compute
+    statement: Each lane over the time budget of its phase yields one finding with a stable key, the budgets come from the node's overlay, and a phase without a budget is refused.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: each over-budget lane returns one finding naming its phase, budget, time spent and the owner it was given, and the under-budget and at-budget lanes none -- falsifier: `uv run pytest tests/nodes/node_work_progress_compute -q` with a node that alerts on every lane failing on the under-budget one, one that uses `>=` failing on the at-budget one, one that never alerts failing on the three, and one that drops or rewrites the supplied owner failing the owner assertion.'
+      - id: AC2
+        statement: 'AC2: the key is fixed by the (lane, phase, entering row) triple -- falsifier: `uv run pytest tests/nodes/node_work_progress_compute -q` where two entries for one lane and phase with the same `entered_at` and different `entering_row_id` give two keys, and two runs over the same facts give the same key.'
+      - id: AC3
+        statement: 'AC3: a phase without a budget is refused and the refusal names it -- falsifier: `uv run pytest tests/nodes/node_work_progress_compute -q` deleting one budget from the fixture overlay; a node that reads it as zero or infinite fails.'
+      - id: AC4
+        statement: 'AC4: the budgets come from the overlay and none is packaged -- falsifier: `uv run pytest tests/nodes/node_work_progress_compute -q` running the fixture with a budget below and above a lane''s time spent and expecting the finding to appear and disappear, and a missing or malformed overlay refused naming the setting.'
+      - id: AC5
+        statement: 'AC5: the node is proven under the in-memory and the Redpanda overlay profile as the standing node rule asks -- falsifier: `uv run pytest tests/nodes/node_work_progress_compute -q` with one budget changed under each profile changing the findings.'
+evidence_requirements:
+  - kind: tests
+    description: Focused tests of the node, its overlay loader and the in-memory profile; the Redpanda profile test is marked kafka and runs on a lab host.
+    command: uv run pytest tests/nodes/node_work_progress_compute -q --no-cov -m 'not kafka'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22239-findings
+    description: Over-budget lanes in each phase give three findings and the under-budget and at-budget lanes none; the supplied owner is carried through; the strict boundary holds one second either side.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_work_progress_compute/test_work_progress.py -q --no-cov -k 'one_over_budget_lane or finding_fields or strict_budget_boundary'
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn22239-key
+    description: Two entering rows for one lane, phase and entered_at give two keys; two runs over the same facts give the same key.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_work_progress_compute/test_work_progress.py -q --no-cov -k 'keys_distinguish or key_separator'
+        cwd: .
+    binds_ac: [AC2]
+  - id: dod-omn22239-budget-refused
+    description: A subject whose phase has no budget is refused naming the phase, an overlay missing a contract phase is refused naming it, and a zero or negative budget is refused.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_work_progress_compute/test_work_progress.py -q --no-cov -k 'missing_request_phase_budget or missing_overlay_phase_budget or nonpositive_budgets'
+        cwd: .
+    binds_ac: [AC3]
+  - id: dod-omn22239-overlay
+    description: A budget below and above a lane's time spent makes the finding appear and disappear; a missing or malformed overlay is refused naming the setting; no budget value is packaged.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_work_progress_compute/test_work_progress.py -q --no-cov -k 'overlay_budget_changes or missing_overlay_refused or malformed_overlay or no_packaged_budget'
+        cwd: .
+    binds_ac: [AC4]
+  - id: dod-omn22239-profile-in-memory
+    description: One budget changed under the in-memory profile changes the findings, over the bus and in process alike.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_work_progress_compute/test_work_progress_profiles.py -q --no-cov -k in_memory_profile
+        cwd: .
+    binds_ac: [AC5]
+  - id: dod-omn22239-deploy-probe
+    description: 'Deploy probe: the contract GitHub serves at the checked-out commit declares the operation judge_work_progress (the grep needs no colon), which the merge base does not.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_progress_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "judge_work_progress" > /dev/null'
+        cwd: .
+  - id: dod-omn22239-integration-proof
+    description: "The pushed head ran the node's tests, the Redpanda overlay profile test included, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane stall-t1-compute-1103 -- uv run --frozen pytest tests/nodes/node_work_progress_compute -q --no-cov
+        cwd: .

@@ -1,0 +1,58 @@
+schema_version: 1.0.0
+ticket_id: OMN-22121
+title: The declared consumer-group-guard DELETE ACLs are applied to the dev broker and a guard run reaps and writes last-run.json OK
+summary: A new effect node declares the guard login's DELETE rows for every reapable consumer-group family and reconciles them to the dev broker through the lab broker ACL reconcile command.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22121-guard-delete-acl
+  statement: The consumer-group guard login held DELETE on only 4 of the guard contract's 10 reapable group families, so the reap stopped on GROUP_AUTHORIZATION_FAILED.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every reapable family of the guard contract has a declared DELETE row and the reconcile node renders them to the reconcile command -- falsifier: uv run pytest tests/test_golden_chain_broker_acl_reconcile_effect.py -q'
+  - id: AC2
+    statement: 'AC2: the applied rows are read back from the dev broker with zero missing -- falsifier: the node apply readback line shows missing=0 (lab proof in the PR body)'
+evidence_requirements:
+- kind: tests
+  description: The broker ACL reconcile node suite.
+  command: uv run pytest tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22121-ac1
+  description: AC1 every reapable family has a declared DELETE row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22121-ac2
+  description: AC2 the apply result carries the readback of the broker listing and reads missing=0, run against a recorded listing through an injected runner.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov --tb=line -k apply_reads_back_zero_missing
+    cwd: .
+- id: dod-omn22121-ac2-live-readback
+  description: AC2 the declared rows are listed by the dev broker after the apply; the dev broker is not reachable from hosted CI, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect --mode dry_run
+    cwd: .
+- id: dod-omn22121-integration-proof
+  description: Run the broker ACL reconcile node suite on a lab host at the pushed head. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov
+    cwd: .
