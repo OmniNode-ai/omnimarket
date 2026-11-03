@@ -172,6 +172,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api graphql resolveReviewThread",
     ),
     ModelScmVerb(
+        verb="pr-review-post",
+        node=_W,
+        operation="pr_review_post",
+        replaces="gh api --method POST /repos/{o}/{r}/pulls/{n}/reviews",
+    ),
+    ModelScmVerb(
         verb="workflow-run",
         node=_W,
         operation="workflow_dispatch",
@@ -389,15 +395,3 @@ class ScmBusCaller:
         finally:
             for unsubscribe in unsubscribes:
                 await unsubscribe()
-
-
-__all__: list[str] = [
-    "LANDING_CONTROLLER",
-    "SCM_LOCAL_VERBS",
-    "SCM_REFUSED_VERBS",
-    "SCM_VERBS",
-    "ScmBusCaller",
-    "contract_operations",
-    "load_topics",
-    "verb",
-]
