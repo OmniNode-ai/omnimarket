@@ -111,12 +111,23 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -m "floor_fill_parity and kafka"
     cwd: .
-- id: dod-omn22200-ac9-integration-proof
-  description: AC9 the focused command exits 0 on a lab host through lab-run; the task's lab step is none for a pure node.
+- id: dod-omn22200-ac9-focused
+  description: >-
+    AC9 by its own second branch, the one this node takes: the task's lab step is
+    none for a pure node, so the focused command is the proof and it runs here.
+    pytest over the node's own tests exits 0 at this head and exits 4 at the merge
+    base, where src/omnimarket/nodes/node_floor_fill_reducer does not exist.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22200-ac9-integration-proof
+  description: AC9 the focused command exits 0 on a lab host through lab-run; the task's lab step is none for a pure node. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate, like dod-omn22200-ac7-redpanda above.
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-focused-22200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov
