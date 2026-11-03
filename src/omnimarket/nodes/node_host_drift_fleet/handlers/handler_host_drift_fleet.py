@@ -191,7 +191,19 @@ class HandlerHostDriftFleet:
             consumer_group=group_id,
             malformed=malformed,
         )
-        self._state_store.save(view)
+        if error and previous is not None:
+            # A failed read must not be saved or served as a fresh fold: keep the
+            # last good projection, with its own folded_at, and say it is stale.
+            view = previous.model_copy(
+                update={
+                    "status_line": (
+                        f"host-drift: STALE read failed ({error}); "
+                        f"showing the fold as of {previous.folded_at.astimezone(UTC).isoformat().replace('+00:00', 'Z')}"
+                    ),
+                }
+            )
+        else:
+            self._state_store.save(view)
         return ModelHostDriftFleetResult(
             view=view,
             consumer_group=group_id,
