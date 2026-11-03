@@ -1,0 +1,89 @@
+{
+  "note": "voter outputs recorded for the three parity fixtures; ci_gate_verdict is the verdict the CI gate's rule gives on the same outputs (quorum 2, a finding blocks when raised by 2 distinct voters)",
+  "fixtures": [
+    {
+      "name": "clean-diff",
+      "voter_outputs": [
+        {
+          "identity": "voter-one",
+          "endpoint": "192.0.2.11:8000",
+          "model": "model-a",
+          "delegation_event_id": "event-voter-one",
+          "findings": []
+        },
+        {
+          "identity": "voter-two",
+          "endpoint": "192.0.2.12:8000",
+          "model": "model-a",
+          "delegation_event_id": "event-voter-two",
+          "findings": []
+        }
+      ],
+      "ci_gate_verdict": "passed",
+      "ci_gate_blocking_count": 0
+    },
+    {
+      "name": "one-voter-finding",
+      "voter_outputs": [
+        {
+          "identity": "voter-one",
+          "endpoint": "192.0.2.11:8000",
+          "model": "model-a",
+          "delegation_event_id": "event-voter-one",
+          "findings": [
+            {
+              "path": "src/a.py",
+              "line": 10,
+              "severity": "critical",
+              "claim": "unchecked input"
+            }
+          ]
+        },
+        {
+          "identity": "voter-two",
+          "endpoint": "192.0.2.12:8000",
+          "model": "model-a",
+          "delegation_event_id": "event-voter-two",
+          "findings": []
+        }
+      ],
+      "ci_gate_verdict": "passed",
+      "ci_gate_blocking_count": 0
+    },
+    {
+      "name": "two-voter-finding",
+      "voter_outputs": [
+        {
+          "identity": "voter-one",
+          "endpoint": "192.0.2.11:8000",
+          "model": "model-a",
+          "delegation_event_id": "event-voter-one",
+          "findings": [
+            {
+              "path": "src/a.py",
+              "line": 10,
+              "severity": "critical",
+              "claim": "unchecked input"
+            }
+          ]
+        },
+        {
+          "identity": "voter-two",
+          "endpoint": "192.0.2.12:8000",
+          "model": "model-a",
+          "delegation_event_id": "event-voter-two",
+          "findings": [
+            {
+              "path": "src/a.py",
+              "line": 12,
+              "severity": "error",
+              "claim": "input is not validated"
+            }
+          ]
+        }
+      ],
+      "ci_gate_verdict": "blocked",
+      "ci_gate_blocking_count": 1
+    }
+  ]
+}
