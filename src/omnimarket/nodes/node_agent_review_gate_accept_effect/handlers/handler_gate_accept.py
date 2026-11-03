@@ -26,8 +26,8 @@ import re
 from typing import Any
 
 from omnimarket.nodes.node_agent_review_gate_accept_effect.adapters.adapter_gate_accept_ports import (
+    EndpointReceiptVerifier,
     GithubReviewReader,
-    HttpReceiptVerifier,
     LocalStepFiles,
 )
 from omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept import (
@@ -75,7 +75,7 @@ class HandlerGateAccept:
         """
         self._given_policy = policy
         self._reviews = reviews if reviews is not None else GithubReviewReader()
-        self._verifier = verifier if verifier is not None else HttpReceiptVerifier()
+        self._verifier = verifier if verifier is not None else EndpointReceiptVerifier()
         self._files = files if files is not None else LocalStepFiles()
         self._bound: (
             tuple[
