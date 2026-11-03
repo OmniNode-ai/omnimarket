@@ -589,10 +589,13 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k data_age_on_every_line"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac53"
-    description: "AC53 the projection models the served record carries exist at the checked-out commit; the real publish readback is recorded in the PR body because hosted runners cannot reach the tailnet."
+    description: "AC53 hosted-runner deploy probe computes a projection, publishes it to a temporary site using a local shell in place of SSH, and reads the JSON over real HTTP. It checks progress, gates, condition and data_age on manifest and undrawn lines. This is local publish evidence; the deployed site's publish readback remains outstanding."
     source: "manual"
     binds_ac: ["AC53"]
     checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_factory_floor_publish_effect/test_projection_publish.py -q --no-cov --tb=line"
+        cwd: "."
       - check_type: "command"
         check_value: "grep -c '^class ModelFloorProgress' src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py"
   - id: "dod-omn21733-ac60"
