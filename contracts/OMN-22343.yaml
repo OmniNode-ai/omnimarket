@@ -64,5 +64,5 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane review-cache-1240 -- uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py -q --no-cov
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane omn22343-bae9 -- uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py -q --no-cov
     cwd: .
