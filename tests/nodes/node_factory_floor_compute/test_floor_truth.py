@@ -290,7 +290,13 @@ def test_built_ahead_of_gate_left_out_of_built_percent(
 def test_merged_task_behind_failed_gate_is_not_built_without_running_records(
     profile: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With no running-on-dev records no merge is built, so the percent is 0.0 and the failed gate is still counted."""
+    """With no running-on-dev records no merge is built: done is unread, so progress is unknown (never a known 0.0),
+    the merged work is named in its note, and the failed gate is still counted."""
     line = _line(PROFILES[profile](tmp_path, monkeypatch))
-    assert line["progress"]["percent"] == 0.0
+    progress = line["progress"]
+    assert progress["state"] == "unknown"
+    assert progress["percent"] is None
+    assert progress["completed"] is None
+    assert progress["note"].endswith("work tasks merged; running on dev not read")
+    assert line["line_evidence"]["running_on_dev"] is None
     assert line["gates"]["failed"] == 1
