@@ -115,6 +115,17 @@ inputs:
     type: str
     required: false
     nullable: true
+  # The per-principal topics the reply is published to (OMN-22103). Each name must be of the
+  # shape its published_events row declares in topic_parts, and all three for one principal.
+  reply_topic_package:
+    type: str
+    required: true
+  reply_topic_prepared:
+    type: str
+    required: true
+  reply_topic_fallback:
+    type: str
+    required: true
 
 outputs:
   reply:
@@ -137,10 +148,7 @@ event_bus:
     - onex.cmd.omniintelligence.context-compaction-requested.v1
   publish_topics:
     - onex.cmd.omniintelligence.context-pack-requested.v1
-    - onex.cmd.omniintelligence.context-compaction-package.v1
-    - onex.evt.omnimarket.context-compaction-prepared.v1
     - onex.evt.omnimarket.context-compaction-activated.v1
-    - onex.evt.omnimarket.context-compaction-fallback.v1
   request_response:
     instances:
       - name: compaction_pack_build
@@ -151,36 +159,58 @@ event_bus:
         correlation: {location: body, field: correlation_id}
         timeout_seconds: 30
 
-# The runtime publishes each event the handler returns on the topic its row
-# names for the class (event_type is the class name minus its Model prefix):
-# prepared then activated then the install reply, or fallback then the native
-# reply. Only the package reply carries content.
+# The runtime publishes each event the handler returns. The activated receipt goes to the
+# static topic its row names for the class (event_type is the class name minus its Model
+# prefix). The prepared, fallback and package reply events go to a reply topic PER
+# PRINCIPAL (OMN-22103), because the shared topics let any developer principal read
+# another machine's compaction package. Those three rows declare the topic in parts
+# (topic_parts), the way node_work_ledger_append_effect declares writer_topics, because a
+# `{principal}` slot inside a full topic string fails the topic-name lint:
+#   onex.<kind>.<producer>.<name_prefix><principal>.v<version>
+# The handler returns each of them as a ModelEventEnvelope whose event_type is the FULL
+# topic the command's reply_topic_* field names; the runtime honors that topic only when
+# it matches one of these rows, so a requester can reach only a topic of the declared
+# pattern. Only the package reply carries content.
 published_events:
   - event_type: ContextCompactionPrepared
-    topic: onex.evt.omnimarket.context-compaction-prepared.v1
-    description: "One deterministic assembly: candidate_id, assembly_hash, version vector and profile identity."
+    topic_parts:
+      kind: "evt"
+      producer: "omnimarket"
+      name_prefix: "context-compaction-prepared-for-"
+      version: 1
+      principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    description: "One deterministic assembly: candidate_id, assembly_hash, version vector and profile identity. Per-principal topic."
   - event_type: ContextCompactionActivated
     topic: onex.evt.omnimarket.context-compaction-activated.v1
     description: "This invocation offered this candidate: activation_id, model and final hashes, installed_messages_hash."
   - event_type: ContextCompactionFallback
-    topic: onex.evt.omnimarket.context-compaction-fallback.v1
-    description: "A failure before activation: invocation_id and the failure class."
+    topic_parts:
+      kind: "evt"
+      producer: "omnimarket"
+      name_prefix: "context-compaction-fallback-for-"
+      version: 1
+      principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    description: "A failure before activation: invocation_id and the failure class. Per-principal topic."
   - event_type: ContextCompactionPackageReply
-    topic: onex.cmd.omniintelligence.context-compaction-package.v1
-    description: "The adapter's reply, correlated by invocation_id: install with the messages, or native."
+    topic_parts:
+      kind: "cmd"
+      producer: "omniintelligence"
+      name_prefix: "context-compaction-package-for-"
+      version: 1
+      principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    description: "The adapter's reply, correlated by invocation_id: install with the messages, or native. Per-principal topic."
 
 externally_consumed_topics:
-  - onex.cmd.omniintelligence.context-compaction-package.v1
-  - onex.evt.omnimarket.context-compaction-prepared.v1
   - onex.evt.omnimarket.context-compaction-activated.v1
-  - onex.evt.omnimarket.context-compaction-fallback.v1
 
 metadata:
   transport_type: kafka
 
+# The package reply no longer has a static topic, so the terminal declaration names the
+# activated receipt, the one static topic the node publishes (on install only).
 runtime_dispatch:
   command_topic: onex.cmd.omniintelligence.context-compaction-requested.v1
   terminal_events:
-    success: onex.cmd.omniintelligence.context-compaction-package.v1
+    success: onex.evt.omnimarket.context-compaction-activated.v1
 
-terminal_event: onex.cmd.omniintelligence.context-compaction-package.v1
+terminal_event: onex.evt.omnimarket.context-compaction-activated.v1

@@ -5,6 +5,10 @@
 ``python -m omnimarket.nodes.node_lane_census_effect schedule <verb>``: ``check`` fails for a host
 row the lab host table says takes no Docker work (with ``--against-lab-table``) or a duplicate row;
 ``install`` and ``run-now`` act on the named host's row of the node overlay.
+
+``python -m omnimarket.nodes.node_lane_census_effect registry path`` prints the absolute path of the
+overlay file that holds the ``registry:`` key (the file the installed unit's ``LANE_CENSUS_REGISTRY``
+names) and exits non-zero when no root in ``ONEX_SKILL_OVERLAY_ROOTS`` supplies one.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from .handlers.adapter_lane_census_schedule import (
     LaneCensusScheduler,
     load_overlay,
     load_schedule,
+    resolve_registry_path,
 )
 
 
@@ -73,3 +78,18 @@ def main(argv: Sequence[str]) -> int:
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     return result.exit_code
+
+
+def registry_main(argv: Sequence[str]) -> int:
+    """The ``registry`` verbs: ``path`` prints the resolved overlay file or fails."""
+    parser = argparse.ArgumentParser(prog="registry", description=__doc__)
+    verbs = parser.add_subparsers(dest="verb", required=True)
+    verbs.add_parser("path")
+    parser.parse_args(list(argv))
+    try:
+        path = resolve_registry_path()
+    except NodeOverlayError as exc:
+        sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
+        return 3
+    sys.stdout.write(f"{path}\n")
+    return 0
