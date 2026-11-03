@@ -46,3 +46,30 @@ dod_evidence:
       - check_type: command
         check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22152 -- uv run --frozen pytest tests/test_lane_census_registry_omn22152.py tests/test_lane_census_effect_omn21946.py -q --no-cov'
         cwd: .
+  - id: dod-census-registry-deploy-source-readback
+    description: Hosted-runner source readback compares the registry model, schedule adapter and registry CLI served at the evaluated commit with this checkout. It requires the registry model, overlay resolver, unit environment binding and CLI entry point. This checks the published source artifact, not an installed host timer.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          for path in \
+            src/omnimarket/models/model_lane_census.py \
+            src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py \
+            src/omnimarket/nodes/node_lane_census_effect/runtime_lane_census_schedule.py; do
+            target="$readback_dir/$(basename "$path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$target";
+            cmp "$path" "$target";
+          done;
+          grep -F 'class ModelLaneCensusRegistryRow' "$readback_dir/model_lane_census.py";
+          grep -F 'registry: Annotated[tuple[ModelLaneCensusRegistryRow, ...], Field(min_length=1)]' "$readback_dir/model_lane_census.py";
+          grep -F 'registry_path=resolve_registry_path(self.environ)' "$readback_dir/adapter_lane_census_schedule.py";
+          grep -F 'REGISTRY_ENV: _safe(registry_path, "host registry overlay")' "$readback_dir/adapter_lane_census_schedule.py";
+          grep -F 'def registry_main(' "$readback_dir/runtime_lane_census_schedule.py";
+          printf 'census registry source readback matched %s\n' "$revision"
+        cwd: .
