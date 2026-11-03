@@ -44,7 +44,7 @@ broker_acl_declaration:
         - {resource_type: GROUP, pattern: PREFIXED, name: receipt-mode-client, operation: DELETE}
         - {resource_type: GROUP, pattern: PREFIXED, name: gateway-canary-probe-, operation: DELETE}
         - {resource_type: GROUP, pattern: PREFIXED, name: "local.${ONEX_ACL_FLEET_PACKAGE}.host_drift_fleet.h", operation: DELETE}
-        - {resource_type: GROUP, pattern: PREFIXED, name: onex.gateway-session., operation: DELETE}
+        - {resource_type: GROUP, pattern: PREFIXED, name: onex.gateway-session., operation: DELETE}  # consumer-group name prefix, not a topic
 input_model:
   name: ModelBrokerAclReconcileRequest
   module: omnimarket.models.broker_acl_reconcile
