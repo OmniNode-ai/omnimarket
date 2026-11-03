@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20090"
+title: "The trajectory evaluation node runs on lanes without the Dharma secrets"
+summary: "node_trajectory_evaluation_effect declared its two Dharma secrets required: true, and the runtime skips any contract whose required secrets its store does not hold (OMN-21423). On the dev lane, which holds no Dharma key and runs the in_memory backend, the node therefore never joined its consumer group: three submit commands published there on 2026-11-03 had no consumer and no outcome. The secrets are read only under dharma_full and the handler refuses that setting backend_misconfigured without them, so they are declared required: false."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-trajectory-node-not-secret-gated"
+    statement: |-
+      A lane that holds no Dharma secret still wires the node, so the off and in_memory settings answer commands on the bus.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the contract declares no required secret, and the runtime's own required-secret gate keeps the node when the secret store holds nothing -- falsifier: test_node_survives_the_required_secret_gate_without_dharma_secrets fails against the contract with required: true
+      - id: "AC2"
+        statement: |-
+          AC2: under dharma_full with unresolvable secrets the command is still refused backend_misconfigured with no secret name in the detail -- falsifier: test_dharma_without_resolvable_secrets_is_misconfigured
+evidence_requirements:
+  - kind: "tests"
+    description: "The secret-gate test and the node's handler tests."
+    command: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20090-not-secret-gated"
+    description: "The runtime's required-secret gate keeps the node with an empty secret store."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_contract_secret_gate.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20090-dharma-still-refused"
+    description: "dharma_full without secrets is still refused before any call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_handler_trajectory_evaluation.py -q -k dharma_without_resolvable_secrets_is_misconfigured"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20090-deploy-probe"
+    description: "Hosted source readback of the contract at the checked-out revision: it fails at the merge base, where both Dharma secrets are required: true."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d' | python3 -c 'import sys,yaml; s=yaml.safe_load(sys.stdin)[\"secrets\"]; sys.exit(0 if s and all(v.get(\"required\") is False for v in s.values()) else 1)'"
+        cwd: "${OMNI_HOME}/omnimarket"
