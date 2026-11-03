@@ -499,6 +499,7 @@ _WRITE_ARGS: dict[str, list[str]] = {
         "--review-thread",
         "PRRT_kwDOExample0001",
     ],
+    "pr-review-post": [f"{REPO}#77", "--body", "hello", "--head-sha", HEAD],
     "workflow-run": [REPO, "--workflow", "ci.yml", "--ref", "dev", "--input", "a=b"],
     "check-run-create": [
         REPO,
@@ -718,7 +719,8 @@ def _contract_1_2_0_request() -> type[BaseModel]:
 @pytest.mark.parametrize(
     "verb_name",
     sorted(
-        set(_WRITE_ARGS) - {"check-run-create", "pr-thread-reply", "pr-thread-resolve"}
+        set(_WRITE_ARGS)
+        - {"check-run-create", "pr-thread-reply", "pr-thread-resolve", "pr-review-post"}
     ),
 )
 def test_older_write_envelopes_validate_against_the_deployed_contract(
