@@ -113,21 +113,23 @@ async def test_queue_wait_and_execution_are_separately_readable() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_a_fast_job_behind_a_long_queue_is_not_failed_for_the_queue() -> None:
+async def test_a_fast_job_behind_a_short_queue_is_not_failed_for_the_queue() -> None:
     """The measured failure, as a test.
 
-    Correlation ``b16b1c53`` waited 106 s in queue before pickup. The handler
-    budget must be measured from PICKUP, so a ten-minute queue in front of
-    50 ms of work still completes.
+    Correlation ``b16b1c53`` waited 106 s in queue before pickup. OMN-22223
+    times the budget from PUBLISH, as the caller's wait is, so the queue wait is
+    deducted: a queue that leaves budget in front of 50 ms of work still
+    completes. A queue that spends the whole budget is
+    ``test_caller_wait_deducts_queue_wait``'s case.
     """
-    published_at = datetime.now(UTC) - timedelta(seconds=600)
+    published_at = datetime.now(UTC) - timedelta(seconds=10)
     handler = HandlerDelegateSkill(dispatch_port=_FastDispatchPort())  # type: ignore[arg-type]
 
     terminal = await handler.handle(_request(published_at, requested_timeout_seconds=2))
 
     assert terminal.status == "completed"
     assert terminal.queue_wait_ms is not None
-    assert terminal.queue_wait_ms >= 600_000
+    assert terminal.queue_wait_ms >= 10_000
     assert terminal.execution_duration_ms is not None
     assert terminal.execution_duration_ms < 2_000
 
@@ -146,15 +148,26 @@ async def test_an_unstamped_request_reports_queue_wait_as_not_measured() -> None
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("_one_second_execution_budget")
-async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
+async def test_the_budget_refusal_reports_the_measured_queue_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A reader must be able to tell a slow job from a queued one.
 
     The pre-fix refusal said only that the 240 s budget was exceeded, which is
     the same sentence for a job that ran 240 s and for one that sat 445 s in a
     queue and then ran 3 s.
     """
-    published_at = datetime.now(UTC) - timedelta(seconds=30)
+    # OMN-22223: the budget is timed from publish (1 s execution plus a 5 s
+    # allowance here), so 3 s of queue leaves 3 s to run and then time out.
+    monkeypatch.setattr(
+        handler_delegate_skill_module,
+        "resolve_task_class_execution_budget",
+        lambda _task_type: ModelTaskClassExecutionBudget(
+            task_class_timeout_ceiling_seconds=1,
+            terminal_delivery_margin_seconds=5,
+        ),
+    )
+    published_at = datetime.now(UTC) - timedelta(seconds=3)
     handler = HandlerDelegateSkill(dispatch_port=_NeverReturningDispatchPort())  # type: ignore[arg-type]
 
     terminal = await asyncio.wait_for(
@@ -164,7 +177,7 @@ async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
     assert isinstance(terminal, ModelDelegateSkillFailed)
     assert terminal.status == "timeout"
     assert terminal.queue_wait_ms is not None
-    assert terminal.queue_wait_ms >= 30_000
+    assert terminal.queue_wait_ms >= 3_000
     assert "queue wait" in terminal.error_message
     assert str(terminal.queue_wait_ms) in terminal.error_message
     # The budget itself is still named -- this adds a fact, it removes none.
