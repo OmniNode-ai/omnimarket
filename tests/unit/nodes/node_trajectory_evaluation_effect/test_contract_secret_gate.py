@@ -19,6 +19,13 @@ import pytest
 import yaml
 
 import omnimarket.nodes.node_trajectory_evaluation_effect as node_pkg
+from omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation import (
+    ModelTrajectoryEvaluationRefused,
+)
+from tests.unit.nodes.node_trajectory_evaluation_effect.fakes import (
+    full_cmd,
+    make_handler,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -34,3 +41,25 @@ def test_contract_marks_no_secret_required() -> None:
         if declaration.get("required") is True
     )
     assert required == []
+
+
+async def test_dharma_full_without_secrets_refused_while_no_secret_is_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Relaxing required must not let dharma_full run unguarded."""
+    secrets = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["secrets"]
+    required = sorted(
+        name
+        for name, declaration in secrets.items()
+        if declaration.get("required") is True
+    )
+    assert required == []
+
+    for name in ("DHARMA_API_KEY", "DHARMA_ORG_ID", "ONEX_SECRET_RESOLVER_CONFIG_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    handler, github, _, _ = make_handler("dharma_full")
+    out = await handler.handle(full_cmd())
+    assert isinstance(out, ModelTrajectoryEvaluationRefused)
+    assert out.reason == "backend_misconfigured"
+    assert "DHARMA" not in out.detail
+    assert github.requests == []

@@ -16,7 +16,7 @@ requirements:
           AC1: the contract marks neither Dharma secret required, which is the field the runtime required-secret gate reads, so the gate keeps the node when the secret store holds nothing -- falsifier: test_contract_marks_no_secret_required fails against the contract with required: true
       - id: "AC2"
         statement: |-
-          AC2: under dharma_full with unresolvable secrets the command is still refused backend_misconfigured with no secret name in the detail -- falsifier: test_dharma_without_resolvable_secrets_is_misconfigured
+          AC2: under dharma_full with unresolvable secrets the command is still refused backend_misconfigured with no secret name in the detail -- falsifier: test_dharma_full_without_secrets_refused_while_no_secret_is_required
 evidence_requirements:
   - kind: "tests"
     description: "The secret-gate test and the node's handler tests."
@@ -35,11 +35,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20090-dharma-still-refused"
-    description: "dharma_full without secrets is still refused before any call."
+    description: "Fails at the merge base (contract required: true) and proves dharma_full without secrets is still refused before any call."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_handler_trajectory_evaluation.py -q -k dharma_without_resolvable_secrets_is_misconfigured"
+        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_contract_secret_gate.py -q -k dharma_full_without_secrets_refused_while_no_secret_is_required"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20090-deploy-probe"
