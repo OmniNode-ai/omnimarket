@@ -1,29 +1,37 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-22259"
-title: "T1 compute half: node_transcript_session_facts_compute and the work_classification models"
-summary: "A pure, definition-B compute node turns one transcript's JSONL text into ModelSessionFacts (record, tool, hook, error, compaction, cost-state and pull-request-link counts, written paths, stream kind with agent id, a source revision of the parsed bytes, and a sha256 digest of the first operator prompt with no prompt text). This pull request carries the compute half only and is proven on fixtures: the scan effect waits on the store port, and the lab step waits on the bucket credential references."
+title: "T1: node_transcript_session_scan_effect, node_transcript_session_facts_compute and the work_classification models"
+summary: "A read-side scan effect lists transcript files under overlay-named roots through the spi transcript store port into one manifest (path, size, sha256, source revision, stream kind, stream id), and a pure compute turns one transcript's JSONL text into ModelSessionFacts with no prompt text. The pull request is proven on fixtures: the omnimarket store handlers, the mirror and the bucket read reference belong to another task, so the lab step over the filled bucket is unproven."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-session-facts"
-    statement: "The facts compute counts each record type of a fixture transcript, reports unknown types, tells a subagent stream, is deterministic, orders revisions by record count then byte length, enforces the revision a close requires, and holds no prompt text."
+    statement: "The scan lists and the facts compute counts each record type of a fixture transcript, reports unknown types, tells a subagent stream, is deterministic, orders revisions by record count then byte length, enforces the revision a close requires, and holds no prompt text."
     acceptance:
       - id: "AC1"
-        statement: "AC1 (compute part): a fixture with one record of each listed type parses to ModelSessionFacts with each count equal to the fixture's, an unknown record type is counted under unknown_record_types, and a subagent file yields stream_kind subagent with its agent id and the parent's session id -- falsifier: the test fails on the base branch and passes on the branch."
+        statement: "AC1: a fixture with one record of each listed type parses to ModelSessionFacts with each count equal to the fixture's, an unknown record type is counted under unknown_record_types, and a subagent file yields stream_kind subagent with its agent id and the parent's session id, and the scan reports the same file as a subagent stream by its path -- falsifier: the test fails on the base branch and passes on the branch."
       - id: "AC4"
         statement: "AC4: two runs on the same text give equal results by value, and a one-byte edit to a tool call changes exactly the matching count -- falsifier: either differs."
       - id: "AC5"
-        statement: "AC5 (compute part): a fixture read at 11 records satisfies a close that requires 10, and a read shorter than required fails the run -- falsifier: either differs."
+        statement: "AC5: a fixture read at 11 records satisfies a close that requires 10, and a read shorter than required fails the run -- falsifier: either differs."
       - id: "AC6"
         statement: "AC6: a longer copy compares greater even when the appended record carries an earlier timestamp -- falsifier: either comparison differs."
       - id: "AC7"
         statement: "AC7: no prompt text appears in any serialized result -- falsifier: the unique prompt token appears."
+      - id: "AC2"
+        statement: "AC2: the manifest count equals the file count of the root measured by find, and a fixture with two top-level and five subagent files reports 2 and 5 -- falsifier: either differs."
+      - id: "AC3"
+        statement: "AC3: an overlay bucket root without a credential reference refuses at load naming the key -- falsifier: the overlay loads."
+      - id: "AC8"
+        statement: "AC8: the pull-request link and compaction totals over a fixture snapshot equal the independent grep counts, as record totals and as containing-file totals -- falsifier: either total differs."
+      - id: "AC9"
+        statement: "AC9: the scan and facts scenario projects the same under the in-memory baseline and a Redpanda profile in the binding parity run, the overlay holds the three keys, and the scan names no literal root, topic or model call -- falsifier: the comparison reports a difference or the contract test fails."
 evidence_requirements:
   - kind: "tests"
-    description: "AC1, AC4, AC5, AC6 and AC7 in the facts compute tests."
-    command: "uv run pytest tests/nodes/node_transcript_session_facts_compute -q -p no:randomly --no-cov"
+    description: "AC1 to AC9 in the facts compute and scan effect tests."
+    command: "uv run pytest tests/nodes/node_transcript_session_facts_compute tests/nodes/node_transcript_session_scan_effect -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -64,6 +72,69 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_transcript_session_facts_compute/test_session_facts.py -q -p no:randomly --no-cov -k 'no_prompt_text'"
     binds_ac: ["AC7"]
+  - id: "dod-omn22259-scan-ac1"
+    description: "AC1 scan part: the scan reports the subagent file as a subagent stream by its path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k subagent_file -q -p no:randomly --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22259-ac2"
+    description: "AC2: manifest count against find, and two top-level against five subagent files."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k 'two_top_level or find or two_roots or equal_revisions' -q -p no:randomly --no-cov"
+    binds_ac: ["AC2"]
+  - id: "dod-omn22259-ac3"
+    description: "AC3: a bucket root without a credential reference refuses at load naming the key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k 'credential_reference or no_overlay' -q -p no:randomly --no-cov"
+    binds_ac: ["AC3"]
+  - id: "dod-omn22259-scan-ac5"
+    description: "AC5 scan part: scanned at 10, read at 11, stored under 11; a shorter read fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k 'appended_between or shorter_than_the_scan or read_max_bytes' -q -p no:randomly --no-cov"
+    binds_ac: ["AC5"]
+  - id: "dod-omn22259-scan-ac6"
+    description: "AC6 scan part: a longer copy scans greater despite an earlier timestamp."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k longer_copy -q -p no:randomly --no-cov"
+    binds_ac: ["AC6"]
+  - id: "dod-omn22259-scan-ac7"
+    description: "AC7 scan part: the prompt token is absent from the manifest and the facts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k no_prompt_text -q -p no:randomly --no-cov"
+    binds_ac: ["AC7"]
+  - id: "dod-omn22259-ac8"
+    description: "AC8: pull-request link and compaction totals against grep counts, records and files."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k 'totals or independent_count' -q -p no:randomly --no-cov"
+    binds_ac: ["AC8"]
+  - id: "dod-omn22259-ac9-parity"
+    description: "AC9 profile falsifier: the scan and facts scenario compares equal under the in-memory baseline and a Redpanda profile."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_binding_parity.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC9"]
+  - id: "dod-omn22259-ac9-contract"
+    description: "AC9 shape: overlay keys, store dependency, topics in the contract, no literal root or model call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_contracts.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC9"]
   - id: "dod-omn22259-contracts"
     description: "The node contract declares its topics, resolves its handler, is an onex.nodes entry point and imports no event envelope."
     source: "manual"
