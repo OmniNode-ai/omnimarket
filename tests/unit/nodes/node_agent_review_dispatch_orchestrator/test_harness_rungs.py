@@ -129,9 +129,7 @@ def test_a_roster_naming_lab_codex_and_claude_loads_and_binds_every_rung(
     config = load_agent_review_config()
     assert {voter.rung for voter in config.roster} == {"lab", "codex", "claude"}
     assert config.harness_rungs["claude"].harness == "claude"
-    ports = build_production_ports(
-        config, scm_bus="inmemory", scm_lane=None, environ=bound_environ(tmp_path)
-    )
+    ports = build_production_ports(config, environ=bound_environ(tmp_path))
     rungs = ports.lab._rungs
     assert set(rungs) == {"lab", "codex", "claude"}
     assert isinstance(rungs["codex"], HarnessRungVoter)
@@ -146,8 +144,6 @@ def test_a_harness_rung_the_overlay_does_not_name_has_no_binding(
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(
             ModelAgentReviewConfig.model_validate(fields),
-            scm_bus="inmemory",
-            scm_lane=None,
             environ=bound_environ(tmp_path),
         )
     assert "'claude'" in str(caught.value)
@@ -159,8 +155,6 @@ def test_a_harness_rung_needs_the_plugin_root(tmp_path: Path) -> None:
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(
             ModelAgentReviewConfig.model_validate(three_rung_overlay()),
-            scm_bus="inmemory",
-            scm_lane=None,
             environ=environ,
         )
     assert "OMNI_PLUGIN_ROOT" in str(caught.value)

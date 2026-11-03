@@ -698,20 +698,22 @@ class ModelAgentReviewPorts:
 def build_production_ports(
     config: ModelAgentReviewConfig,
     *,
-    scm_bus: ScmBusKind,
-    scm_lane: str | None,
     environ: Mapping[str, str] | None = None,
 ) -> ModelAgentReviewPorts:
-    """Bind every port from the environment, or raise ``PortNotBoundError`` naming one."""
+    """Bind every port from the overlay and the environment, or raise ``PortNotBoundError``.
+
+    The source-control bus kind and lane are the overlay's ``scm_bus``; the paths and the
+    signing key come from the environment, named when absent.
+    """
     env: Mapping[str, str] = os.environ if environ is None else environ
     state = Path(_required(env, STATE_DIR_ENV, "receipt store")) / _STATE_SUBDIR
     registry = Path(_required(env, REGISTRY_ROOT_ENV, "diff reader"))
     checkout = Path(_required(env, OMNIINTELLIGENCE_ENV, "signer"))
     key = signing_key(env)
-    if scm_bus == "kafka" and not scm_lane:
-        raise PortNotBoundError("a kafka source-control bus needs a lane")
     bus = ScmBus(
-        kind=scm_bus, lane=scm_lane, timeout_seconds=config.lab_call_timeout_seconds
+        kind=config.scm_bus.kind,
+        lane=config.scm_bus.lane,
+        timeout_seconds=config.lab_call_timeout_seconds,
     )
     diffs = CloneDiffReader(
         registry_root=registry, timeout_seconds=config.lab_call_timeout_seconds

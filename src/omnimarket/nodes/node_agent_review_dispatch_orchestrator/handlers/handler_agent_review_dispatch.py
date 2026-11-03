@@ -1,11 +1,28 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Dispatch concurrent reviews and publish only the receipt held by the store."""
+"""Dispatch concurrent reviews and publish only the receipt held by the store.
+
+A runtime builds the handler from its contract with no arguments. The overlay and the
+production ports are then bound when the first request arrives (``bind``): the overlay
+from ``ONEX_SKILL_OVERLAY_ROOTS``, every port by ``build_production_ports``. A host that
+cannot bind them ends that request ``failed`` with reason ``not_bound`` before any port
+is called, and the next request tries again; nothing is bound at construction, so the
+runtime boots on a host that holds no overlay, key or checkout.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import logging
+from collections.abc import Mapping
+from dataclasses import dataclass
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+
+from ..adapters.adapter_agent_review_ports import (
+    PortNotBoundError,
+    build_production_ports,
+)
 from ..models import (
     EnumAgentReviewOutcome,
     EnumAgentReviewReason,
@@ -20,6 +37,7 @@ from ..models import (
     ModelAgentVoter,
     ModelAgentVoterReview,
 )
+from ..overlay import load_agent_review_config
 from ..protocols import (
     ProtocolAgentReceiptStore,
     ProtocolAgentReviewClock,
@@ -31,30 +49,129 @@ from ..protocols import (
 )
 from .handler_agent_review_quorum import HandlerAgentReviewQuorum
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _Ports:
+    head: ProtocolAgentReviewHead
+    lab: ProtocolAgentReviewLab
+    signer: ProtocolAgentReviewSigner
+    store: ProtocolAgentReceiptStore
+    poster: ProtocolAgentReviewPoster
+    terminal_log: ProtocolAgentReviewTerminalLog
+    clock: ProtocolAgentReviewClock
+
 
 class HandlerAgentReviewDispatch:
-    """Run one review command through injected ports with durable replay."""
+    """Run one review command through its ports with durable replay."""
 
     def __init__(
         self,
         *,
-        config: ModelAgentReviewConfig,
-        head: ProtocolAgentReviewHead,
-        lab: ProtocolAgentReviewLab,
-        signer: ProtocolAgentReviewSigner,
-        store: ProtocolAgentReceiptStore,
-        poster: ProtocolAgentReviewPoster,
-        terminal_log: ProtocolAgentReviewTerminalLog,
-        clock: ProtocolAgentReviewClock,
+        config: ModelAgentReviewConfig | None = None,
+        head: ProtocolAgentReviewHead | None = None,
+        lab: ProtocolAgentReviewLab | None = None,
+        signer: ProtocolAgentReviewSigner | None = None,
+        store: ProtocolAgentReceiptStore | None = None,
+        poster: ProtocolAgentReviewPoster | None = None,
+        terminal_log: ProtocolAgentReviewTerminalLog | None = None,
+        clock: ProtocolAgentReviewClock | None = None,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
-        self.config = config
-        self.head = head
-        self.lab = lab
-        self.signer = signer
-        self.store = store
-        self.poster = poster
-        self.terminal_log = terminal_log
-        self.clock = clock
+        """The overlay and the ports are injected together or bound on first request.
+
+        ``config`` left out is read from the overlay; the seven ports left out are the
+        production bindings of that config. A partial set of ports is refused here: the
+        production bindings are built as one set, never mixed with injected ones.
+        ``environ`` defaults to the process environment and is read only at bind time.
+        """
+        self._given_config = config
+        self._given_ports: _Ports | None = None
+        if (
+            head is None
+            or lab is None
+            or signer is None
+            or store is None
+            or poster is None
+            or terminal_log is None
+            or clock is None
+        ):
+            if any(
+                port is not None
+                for port in (head, lab, signer, store, poster, terminal_log, clock)
+            ):
+                raise TypeError(
+                    "inject all seven ports of the agent review dispatch or none"
+                )
+        else:
+            self._given_ports = _Ports(
+                head=head,
+                lab=lab,
+                signer=signer,
+                store=store,
+                poster=poster,
+                terminal_log=terminal_log,
+                clock=clock,
+            )
+        self._environ = environ
+        self._bound: tuple[ModelAgentReviewConfig, _Ports] | None = None
+
+    def bind(self) -> tuple[ModelAgentReviewConfig, _Ports]:
+        """The overlay and the ports, bound once; raises ``NodeOverlayError`` or
+        ``PortNotBoundError`` naming what this host lacks, and binds nothing then."""
+        if self._bound is None:
+            config = (
+                self._given_config
+                if self._given_config is not None
+                else load_agent_review_config(self._environ)
+            )
+            ports = self._given_ports
+            if ports is None:
+                built = build_production_ports(config, environ=self._environ)
+                ports = _Ports(
+                    head=built.head,
+                    lab=built.lab,
+                    signer=built.signer,
+                    store=built.store,
+                    poster=built.poster,
+                    terminal_log=built.terminal_log,
+                    clock=built.clock,
+                )
+            self._bound = (config, ports)
+        return self._bound
+
+    @property
+    def config(self) -> ModelAgentReviewConfig:
+        return self.bind()[0]
+
+    @property
+    def head(self) -> ProtocolAgentReviewHead:
+        return self.bind()[1].head
+
+    @property
+    def lab(self) -> ProtocolAgentReviewLab:
+        return self.bind()[1].lab
+
+    @property
+    def signer(self) -> ProtocolAgentReviewSigner:
+        return self.bind()[1].signer
+
+    @property
+    def store(self) -> ProtocolAgentReceiptStore:
+        return self.bind()[1].store
+
+    @property
+    def poster(self) -> ProtocolAgentReviewPoster:
+        return self.bind()[1].poster
+
+    @property
+    def terminal_log(self) -> ProtocolAgentReviewTerminalLog:
+        return self.bind()[1].terminal_log
+
+    @property
+    def clock(self) -> ProtocolAgentReviewClock:
+        return self.bind()[1].clock
 
     def _allowed(self, voter: ModelAgentVoter) -> bool:
         policy = self.config.policy
@@ -80,7 +197,16 @@ class HandlerAgentReviewDispatch:
     async def handle(
         self, request: ModelAgentReviewRequest
     ) -> ModelAgentReviewTerminal:
-        """Validate before any port call; record every subsequent terminal."""
+        """Bind, validate before any port call; record every subsequent terminal."""
+        try:
+            self.bind()
+        except (NodeOverlayError, PortNotBoundError) as exc:
+            logger.warning("agent review dispatch is not bound on this host: %s", exc)
+            return ModelAgentReviewTerminal(
+                command_id=request.command_id,
+                outcome=EnumAgentReviewOutcome.FAILED,
+                reason=EnumAgentReviewReason.NOT_BOUND,
+            )
         if not all(self._allowed(voter) for voter in self.config.roster):
             return ModelAgentReviewTerminal(
                 command_id=request.command_id,
