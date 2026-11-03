@@ -162,6 +162,9 @@ from omnimarket.handlers.routing.local_byok_route import (
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
 )
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    refuse_above_measured_correct_ceiling,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -257,6 +260,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_secret_request_refusal import (
+    load_secret_request_refusal,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -356,6 +362,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost import (
     HandlerProjectionLlmCost,
     ModelLlmCallCompletedEvent,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    apply_credential_last_used,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
     HandlerProjectionUsageByModelDay,
@@ -3178,6 +3187,19 @@ class LocalDelegationDispatchPort:
             gate_result = apply_measured_rubric(
                 gate_result, rubric_verdict, task_class=task_type
             )
+            # OMN-22220: above the measured correct ceiling only a scorer PASS
+            # keeps the gate's pass.
+            gate_result = refuse_above_measured_correct_ceiling(
+                gate_result,
+                rubric_verdict,
+                backend_ref=backend.backend_id,
+                task_class=task_type,
+                request_text=(
+                    attempt_outcome.request_text
+                    if attempt_outcome.request_text is not None
+                    else prompt
+                ),
+            )
             if response_contract_evidence is not None:
                 response_contract_evidence = response_contract_evidence.model_copy(
                     update={"validated": gate_result.passed}
@@ -3222,6 +3244,21 @@ class LocalDelegationDispatchPort:
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
+            # OMN-22212: a refused secret or exfiltration request is terminal.
+            # The refusal is the right answer and no other rung improves it, so
+            # the ladder stops here and the request never leaves this rung.
+            secret_request_refused = (
+                not quality_passed
+                and load_secret_request_refusal().refuses(
+                    prompt, gate_result.failure_reasons
+                )
+            )
+            if secret_request_refused:
+                acceptance_decision = EnumDelegationAcceptanceDecision.TERMINATE
+                acceptance_detail = (
+                    f"{acceptance_detail} secret_request_refusal=true (a refused "
+                    "secret request is terminal and is not sent to another rung)"
+                )
             if not bar_decides:
                 # OMN-21077: the score comparison above is reported, not applied.
                 acceptance_detail = f"{acceptance_detail} acceptance=executed_tests"
@@ -3523,7 +3560,9 @@ class LocalDelegationDispatchPort:
             # floor is the same quality veto the bus stops on.
             quality_cause = local_quality_cause(
                 no_rung_can_satisfy=(
-                    gate_result.no_rung_can_satisfy or repeated_deterministic_floor
+                    gate_result.no_rung_can_satisfy
+                    or repeated_deterministic_floor
+                    or secret_request_refused
                 ),
                 fail_category=gate_result.fail_category,
             )
@@ -3706,7 +3745,11 @@ class LocalDelegationDispatchPort:
                 escalation_count=escalation_count,
                 max_escalations=max_escalations,
             )
-            if ladder_stopped_by_veto:
+            if ladder_stopped_by_veto and secret_request_refused:
+                ladder_stop_reasons.append(
+                    load_secret_request_refusal().terminal_failure_reason
+                )
+            elif ladder_stopped_by_veto:
                 ladder_stop_reasons.append(
                     "repeated_deterministic_floor"
                     if repeated_deterministic_floor
@@ -5584,6 +5627,9 @@ class LocalDelegationDispatchPort:
                 tenant_id=tenant_id,
                 terminal_at=terminal_at,
             )
+            self._record_credential_last_used(
+                correlation_id=correlation_id, secret_ref=result.secret_ref
+            )
         # OMN-20154: the SAME terminal the local row was projected from also
         # goes on the bus, on this node's own contract terminal topic, so the
         # platform's delegation_events (which the dashboards, quota tracking
@@ -5592,6 +5638,40 @@ class LocalDelegationDispatchPort:
         # local store. Idempotent downstream: the projection upserts on
         # correlation_id.
         self._publish_terminal(payload, quality_passed=quality_passed)
+
+    def _record_credential_last_used(
+        self, *, correlation_id: UUID, secret_ref: str | None
+    ) -> None:
+        """Stamp the run's key with the run's terminal time (OMN-19996).
+
+        The time is the ``timestamp`` the evidence row was just stored with,
+        read back rather than re-derived, so the Credentials page and the
+        run's own row show one instant. No tenant predicate: this store is one
+        install's own file, and its keys carry the tenant given to
+        ``onex secret`` (for example ``dev``), not the install's minted
+        identity the run is recorded under. A run that resolved no key, and a
+        key with no catalog row, record nothing. Best-effort like the evidence
+        write: a failure is logged and the delegation response is untouched.
+        """
+        if not secret_ref:
+            return
+        try:
+            rows = self._evidence_db.query(
+                "delegation_events", {"correlation_id": str(correlation_id)}
+            )
+            stored = rows[0].get("timestamp") if rows else None
+            if stored is None:
+                return
+            used_at = (
+                stored.isoformat() if isinstance(stored, datetime) else str(stored)
+            )
+            apply_credential_last_used(secret_ref, used_at, self._evidence_db)
+        except Exception:
+            logger.warning(
+                "Failed to record credential last use for correlation_id=%s",
+                correlation_id,
+                exc_info=True,
+            )
 
     def _project_refusal(
         self,

@@ -260,8 +260,9 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert stations["G0"]["group"] == "Wave 0"
     old = lines["2026-10-01-old-plan"]
     assert old["source"] == "plan-task-table"
+    # The merged part is integrating, not done: this runtime supplies no running-on-dev records (OMN-22106).
     assert [(st["id"], st["state"]) for st in old["stations"]] == [
-        ("T1", "done"),
+        ("T1", "integrating"),
         ("T2", "prep"),
     ]
     floor = document["floor"]

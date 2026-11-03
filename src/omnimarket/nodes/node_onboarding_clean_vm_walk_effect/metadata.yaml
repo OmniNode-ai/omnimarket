@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_onboarding_clean_vm_walk_effect
+version: 0.1.0
+description: Run pinned participant onboarding on a clean stock macOS VM and return
+  a typed receipt, including failure and deletion evidence.
+pack: operator_tooling
+node_role: effect
+display_name: Clean VM Onboarding Walk Effect
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_onboarding_clean_vm_walk_effect: omnimarket.nodes.node_onboarding_clean_vm_walk_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- onboarding
+- operator_tooling
