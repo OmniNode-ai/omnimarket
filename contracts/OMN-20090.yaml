@@ -13,7 +13,7 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: the contract declares no required secret, and the runtime's own required-secret gate keeps the node when the secret store holds nothing -- falsifier: test_node_survives_the_required_secret_gate_without_dharma_secrets fails against the contract with required: true
+          AC1: the contract marks neither Dharma secret required, which is the field the runtime required-secret gate reads, so the gate keeps the node when the secret store holds nothing -- falsifier: test_contract_marks_no_secret_required fails against the contract with required: true
       - id: "AC2"
         statement: |-
           AC2: under dharma_full with unresolvable secrets the command is still refused backend_misconfigured with no secret name in the detail -- falsifier: test_dharma_without_resolvable_secrets_is_misconfigured
@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20090-not-secret-gated"
-    description: "The runtime's required-secret gate keeps the node with an empty secret store."
+    description: "The contract marks no secret required, so the runtime gate keeps the node with an empty secret store."
     source: "manual"
     checks:
       - check_type: "test_passes"
