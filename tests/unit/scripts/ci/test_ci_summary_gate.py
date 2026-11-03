@@ -971,13 +971,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "path-filter->always-fire conversion + one observed proving PR "
         "cycle; not in this wave's scope."
     ),
-    ("prompt-cost-estimate-contract.yml", "prompt-cost-estimate-contract"): (
-        "path-filtered validator (OMN-22126) that posts a check-run only when "
-        "the prompt cost estimate node, its tests or this workflow change, so "
-        "it is legitimately absent on most PRs and asserting it would wedge "
-        "CI Summary; promotion deferred pending the path-filter->always-fire "
-        "conversion + one observed proving PR cycle."
-    ),
     # --- security-scan.yml: pull_request trigger newly added by this PR.
     # Unproven PR-event reporters — never posted a check-run on a
     # pull_request event before. Promoting an unproven reporter straight to
@@ -2545,3 +2538,45 @@ def test_ci_summary_restores_every_gate_data_file_from_the_head() -> None:
             f"{filename} must appear in both the head sparse-checkout "
             "list and the restore cp line"
         )
+
+
+# OMN-22126: the prompt cost estimate contract job is asserted at layer 4, so
+# the advisory-job gate finds it enforced and the workflow cannot be absent.
+PROMPT_COST_CONTEXT = "prompt-cost-estimate-contract"
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("missing", EXIT_PENDING),
+        ("failure", EXIT_FAILURE),
+        ("success", EXIT_SUCCESS),
+    ],
+)
+def test_prompt_cost_estimate_contract_context_is_enforced(
+    state: str, expected: int
+) -> None:
+    assert PROMPT_COST_CONTEXT in EXPECTED_EXTERNAL_CONTEXTS
+    producer = gate.EXTERNAL_CONTEXT_PRODUCERS[PROMPT_COST_CONTEXT]
+    assert producer.workflow == "prompt-cost-estimate-contract.yml"
+
+    runs = [run for run in _healthy_check_runs() if run["name"] != PROMPT_COST_CONTEXT]
+    if state != "missing":
+        runs.append(_check_run(PROMPT_COST_CONTEXT, conclusion=state))
+
+    code, report = evaluate_external(runs)
+    assert code == expected, report
+    if state == "missing":
+        assert PROMPT_COST_CONTEXT in report
+
+
+def test_prompt_cost_estimate_contract_workflow_reports_on_every_shape() -> None:
+    doc = yaml.safe_load(
+        (WORKFLOWS_DIR / "prompt-cost-estimate-contract.yml").read_text()
+    )
+    triggers = _yaml_on_block(doc)
+    assert set(triggers) == {"pull_request", "merge_group"}
+    assert not triggers["pull_request"]
+    job = doc["jobs"][PROMPT_COST_CONTEXT]
+    assert job["name"] == PROMPT_COST_CONTEXT
+    assert "if" not in job
