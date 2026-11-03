@@ -52,7 +52,11 @@ def context(boundary: str, arm: str) -> ModelReplayContext:
         prefix_bytes=10,
         prefix_sha256="d" * 64,
         prefix_records=1,
+        prefix_bundle_path="bundle/prefix.jsonl",
+        boundary_bundle_path="bundle/boundary.json",
+        summary_record_bundle_path="bundle/summary.json",
         ledger_cuts=(),
+        checkpoint={"status": "UNAVAILABLE", "reason": "fixture"},
         lane_attribution={"lanes": ["worker"], "rule": "fixture", "evidence": ()},
     )
     truth = ModelGroundTruthResult(
