@@ -3,13 +3,19 @@
 """Cloud session placement models."""
 
 from omnimarket.models.cloud_session_placement import (
-    ModelCloudHost,
+    ModelCloudAccount,
+    ModelCloudLoginObservation,
     ModelCloudSessionPlacementRequest,
     ModelCloudSessionPlacementResult,
+    ModelCloudTransport,
+    ModelCloudTransportRow,
 )
 
 __all__ = [
-    "ModelCloudHost",
+    "ModelCloudAccount",
+    "ModelCloudLoginObservation",
     "ModelCloudSessionPlacementRequest",
     "ModelCloudSessionPlacementResult",
+    "ModelCloudTransport",
+    "ModelCloudTransportRow",
 ]

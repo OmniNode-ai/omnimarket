@@ -49,6 +49,25 @@ class EnumWipExemptionKind(StrEnum):
     OPEN_PR = "open_pr"
 
 
+class EnumWipOverrideReason(StrEnum):
+    """Why the slot reducer assigned a PR-opening item to an at-limit repository."""
+
+    IDLE = "idle"
+    RESERVED_FLOOR = "reserved-floor"
+
+
+class EnumWipBreachReason(StrEnum):
+    """Why the audit counted a PR-opening CLAIM as a breach."""
+
+    NO_WITNESS = "no_witness"
+    WITNESS_MISMATCH = "witness_mismatch"
+    UNREADABLE_READING = "unreadable_reading"
+    STALE_READING = "stale_reading"
+    LIMIT_MISSING = "limit_missing"
+    OVERRIDE_INVALID = "override_invalid"
+    AT_LIMIT = "at_limit"
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -127,6 +146,7 @@ class ModelWipOverrideEvidence(_Frozen):
     repo: str
     dispatch_id: str
     decision_id: str
+    reason: EnumWipOverrideReason
     written_by: EnumWipEvidenceWriter
     written_at: datetime
 
@@ -174,31 +194,84 @@ class ModelWipReadResult(_Frozen):
     lines: tuple[str, ...]
 
 
+class ModelWipSlotDecision(_Frozen):
+    """What the slot reducer decided: one override assignment, as the reducer recorded it."""
+
+    decision_id: str
+    slot_id: str
+    slot_generation: int
+    repo: str
+    dispatch_id: str
+    reason: EnumWipOverrideReason
+
+
+class ModelWipOverrideClaim(_Frozen):
+    """The one-use claim on override evidence, as the ledger holds it under its durable key."""
+
+    evidence_key: str
+    slot_id: str
+    slot_generation: int
+    repo: str
+    dispatch_id: str
+    consumer: str
+    expires_at: datetime
+
+
+class ModelWipAdmissionWitness(_Frozen):
+    """What the dispatch was admitted on, written with the PR-opening CLAIM.
+
+    The audit judges the claim against this and nothing newer: the reading and its
+    source time, the limit, the digest of the policy, the enforcing ruling and the
+    override evidence or exemption the dispatch carried. ``exempt_roles`` is the
+    policy's list at dispatch, kept here so an exemption is judged by the same rule.
+    """
+
+    repo: str
+    dispatch_id: str
+    dispatched_at: datetime
+    reading: ModelWipReading
+    limit: int | None
+    policy_digest: str = Field(min_length=1)
+    enforce_ruling: str
+    exempt_roles: tuple[str, ...] = ()
+    override: ModelWipOverrideEvidence | None = None
+    exemption: ModelWipExemption | None = None
+
+    @property
+    def enforcing(self) -> bool:
+        return bool(self.enforce_ruling.strip())
+
+
 class ModelWipClaimRow(_Frozen):
     """A ledger CLAIM row, reduced to what the audit reads."""
 
     lane: str
     ts: datetime
     repo: str
+    dispatch_id: str
     opens_pr: bool
-    wip_idle_override: bool = False
-    exemption: ModelWipExemption | None = None
+    witness: ModelWipAdmissionWitness | None = None
 
 
 class ModelWipAuditRequest(_Frozen):
-    """Facts for ``audit_admissions``: CLAIM rows, readings over time, the state."""
+    """Facts for ``audit_admissions``: CLAIM rows and the independent records they cite.
+
+    No policy, no watcher state and no readings: each claim carries its own witness.
+    ``slot_decisions`` come from the slot reducer, ``override_claims`` from the ledger's
+    one-use keys and ``authorized_swarm_lanes`` from the stop records.
+    """
 
     claims: tuple[ModelWipClaimRow, ...]
-    readings: tuple[ModelWipReading, ...]
-    policy: ModelWipPolicy
-    state: dict[str, Any] | None = None
+    slot_decisions: tuple[ModelWipSlotDecision, ...]
+    override_claims: tuple[ModelWipOverrideClaim, ...]
+    config: ModelWipGateConfig
     authorized_swarm_lanes: tuple[str, ...] = ()
 
 
 class ModelWipAuditResult(_Frozen):
     breaches: int
     breach_lanes: tuple[str, ...]
+    breach_reasons: tuple[EnumWipBreachReason, ...]
     excluded_override: int
     excluded_exempt: int
-    unaudited: int
     line: str

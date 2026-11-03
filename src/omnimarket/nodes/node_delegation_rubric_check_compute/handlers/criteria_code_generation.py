@@ -18,6 +18,7 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models import (
     EnumRubricOutcome,
     ModelCodeParsesParams,
     ModelIdsTraceableParams,
+    ModelReferenceTestsParams,
     ModelRubricCheckRequest,
     ModelRubricCriterion,
     ModelRubricCriterionResult,
@@ -121,6 +122,38 @@ def stated_test_passes(
     request: ModelRubricCheckRequest, criterion: ModelRubricCriterion
 ) -> ModelRubricCriterionResult:
     return test_passes(request, criterion, include_request=True)
+
+
+def generated_tests_pass_reference(
+    request: ModelRubricCheckRequest, criterion: ModelRubricCriterion
+) -> ModelRubricCriterionResult:
+    """A generated test file fails when any of its tests fails against the reference."""
+    params = criterion.params
+    assert isinstance(params, ModelReferenceTestsParams)
+    run = request.reference_test_run
+    if run is None:
+        return result(criterion, EnumRubricOutcome.UNDETERMINED, "no_reference_run")
+    if run.failed_test_ids or run.exit_code != 0:
+        failed = run.failed_test_ids or run.test_ids
+        return result(
+            criterion,
+            EnumRubricOutcome.FAIL,
+            "test_failed_against_reference",
+            ", ".join(failed),
+            failed,
+        )
+    generated = tuple(test_id for test_id in run.test_ids if "::" in test_id)
+    if len(generated) < params.min_generated_tests:
+        return result(
+            criterion,
+            EnumRubricOutcome.FAIL,
+            "too_few_generated_tests",
+            str(len(generated)),
+            generated,
+        )
+    return result(
+        criterion, EnumRubricOutcome.PASS, "tests_pass_reference", facts=generated
+    )
 
 
 def ids_traceable(

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_omnidash_host_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that root
+# (or ONEX_OMNIDASH_HOST_OVERLAY_FILE to the file). All values here are synthetic; supply your
+# deployment's facts. bind_address is one interface address of the host, never a wildcard.
+hosts:
+  - name: host-a
+    scheduler: systemd-user
+    ssh_target: host-a
+    bind_address: 192.0.2.10
+    port: 18080
+    scratch_port: 18081
+    serve_url: http://host-a.example.test:18080/
+    repo_url: https://example.test/org/dashboard.git
+    build_root: /srv/dashboard-host
+    node_version: 22.13.0
+    tools_root: /srv/dashboard-host/tools
+    node_dist_base: https://example.test/node-dist
+    status_path: /srv/dashboard-host/status.json
+    bus_lane: dev
+    projection_api_url: http://192.0.2.20:3002
+    projection_tenant_id: 00000000-0000-0000-0000-000000000000
+    # poll_interval_seconds: 300   # optional; the contract's schedule carries the default
+    # omnimarket_src: /srv/dashboard-host/omnimarket-src   # optional; defaults to the venv's own
+    python: /srv/dashboard-host/venv/bin/python

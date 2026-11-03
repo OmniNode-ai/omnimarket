@@ -1,0 +1,80 @@
+schema_version: 1.0.0
+ticket_id: OMN-22184
+title: A node runs the pinned onboarding in a fresh Tart VM and returns a receipt with phases, time to first delegated run and the dashboard result
+summary: A new effect node, node_onboarding_clean_vm_walk_effect, clones a fresh VM from the stock Tart image on the host that has Tart, runs only the documented participant onboarding steps in it, deletes the VM and returns a typed receipt. Its contract declares the documented step list; a step outside it is refused and the failure comes back as a receipt, never an exception. This PR is the node, its contract and its stub-runner tests; AC3 (the live run on the Tart host and the receipt on the ticket) is the live proof and is not claimed by this contract.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22184-clean-vm-walk
+  statement: The walk runs only the steps the node contract documents, in a VM cloned from the stock image at 4 vCPU and 8 GB, deletes the VM afterward and returns a typed receipt that carries each phase, the time to the first delegated run, the dashboard result, the VM spec and the pins installed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node is declared by a contract and started with `onex run-node`, takes the pinned onboarding script sha and the provider choices as input, clones a fresh VM from the stock image on the host that has Tart, runs the documented steps only, and deletes the VM afterward -- falsifier: `uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q` drives it against a stub Tart runner and fails when a step outside the documented list is issued'
+  - id: AC2
+    statement: 'AC2: the node returns a typed receipt with each phase''s result and seconds, the seconds to the first delegated run, the delegated run''s backend and status, the dashboard result (HTTP status of the root page and of `/projections`), the VM spec and the pins installed -- falsifier: the same pytest module asserts every field is present and typed, and that a failed phase yields a receipt with the failure text and not an exception'
+  - id: AC4
+    statement: 'AC4: the node adds no script file and passes the canonical-file-shape ratchet -- falsifier: `uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/ci/test_canonical_file_shape_pin_omn20460.py -k canonical_file_shape -q --no-cov` checks the node handler bindings and absence of shell script files alongside the ratchet'
+  - id: AC5
+    statement: 'AC5: the dependency above is stated in this ticket and the receipt records the omnibase-spi version it installed -- falsifier: a receipt with no pin list'
+evidence_requirements:
+- kind: tests
+  description: The node's stub-runner suite and the canonical-file-shape ratchet tests.
+  command: uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22184-ac1
+  description: AC1 a step outside the documented list, and a documented step with altered argv, is refused before the runner sees it; a happy run issues only documented steps and deletes the VM.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22184-ac2
+  description: AC2 the receipt has every field present and typed, and a failed phase yields a receipt carrying the failure text.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov --tb=line -k "receipt or failed"
+    cwd: .
+- id: dod-omn22184-ac4
+  description: AC4 the new node's walk and transport handlers are bound by its contract inside the node's handlers directory, the node contains no shell script files, and the canonical-file-shape ratchet tests pass. The node-specific test cannot collect at the merge base without the new product modules.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/ci/test_canonical_file_shape_pin_omn20460.py -q --no-cov --tb=line -k canonical_file_shape
+    cwd: .
+- id: dod-omn22184-ac5
+  description: AC5 the receipt carries the pin list and the omnibase_spi version parsed from the onboarding log.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov --tb=line -k "receipt or parser"
+    cwd: .
+- id: dod-omn22184-deploy-probe
+  description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines the walk effect, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_onboarding_clean_vm_walk_effect/handlers/handler_onboarding_clean_vm_walk.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerOnboardingCleanVmWalk" > /dev/null'
+    cwd: .
+- id: dod-omn22184-integration-proof
+  description: The pushed head ran the node's stub-runner suite on a lab host and exited 0. This proves AC1, AC2, AC4 and AC5 through the lab-work surface and does not run the live Tart walk, which is AC3. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22184 -- uv run --frozen pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov -m "not kafka"
+    cwd: .
