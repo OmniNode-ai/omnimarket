@@ -20,6 +20,16 @@ description: >
   UNTICKETABLE, AT-CAPACITY (no capacity left while ready usable work remains; none returned) or NO-STARTABLE; every
   ready usable task is returned in record order with no cutoff by capacity. An absent, malformed or old record is one
   global FLOOR-UNREAD. Called in process by the floor-fill orchestrator.
+handler:
+  module: omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates
+  class: HandlerFloorFillCandidates
+  input_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesRequest
+  output_model: omnimarket.nodes.node_floor_fill_candidates_compute.models.model_floor_fill_candidates.ModelFloorFillCandidatesResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the floor-fill orchestrator with the floor record and fill state on the request.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -47,9 +57,10 @@ descriptor:
   purity: pure
   idempotent: true
   side_effects: []
+  runtime_profiles: []
 metadata:
   ticket: OMN-22199
   origin_tickets:
   - OMN-17427
-  transport_type: in_process
+  transport_type: local
 lifecycle: experimental
