@@ -99,6 +99,9 @@ def test_the_accept_step_never_runs_in_the_checkout_under_review() -> None:
     step = _accept()
     assert step["working-directory"] == "../omniintelligence"
     run = str(step["run"])
+    assert f"python -P -m {NODE_MODULE}" in run, (
+        "-P keeps the working directory off sys.path"
+    )
     assert "cd " not in run, "the working directory is the step's, not the shell's"
     assert "$GITHUB_WORKSPACE/src" not in run
     assert "--project" not in run
