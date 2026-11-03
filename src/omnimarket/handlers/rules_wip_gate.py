@@ -13,6 +13,10 @@ calls the same function. Every number comes in as an argument (the contract's
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import hashlib
+import json
 import math
 from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
@@ -27,21 +31,26 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
 from omnibase_core.utils.util_fsm_executor import execute_transition
 
 from omnimarket.models.wip_gate import (
+    EnumWipBreachReason,
     EnumWipEvidenceWriter,
     EnumWipExemptionKind,
     EnumWipOutcome,
     EnumWipReason,
+    ModelWipAdmissionWitness,
     ModelWipAuditRequest,
     ModelWipAuditResult,
+    ModelWipClaimRow,
     ModelWipExemption,
     ModelWipGateConfig,
     ModelWipGateDecision,
     ModelWipGateRequest,
+    ModelWipOverrideClaim,
     ModelWipOverrideEvidence,
     ModelWipPolicy,
     ModelWipReading,
     ModelWipReadRequest,
     ModelWipReadResult,
+    ModelWipSlotDecision,
 )
 
 _REDUCER_PACKAGE = "omnimarket.nodes.node_wip_gate_reducer"
@@ -145,6 +154,29 @@ def reading_problem(
     return None
 
 
+def _exemption_holds(
+    exemption: ModelWipExemption | None,
+    *,
+    repo: str,
+    now: datetime,
+    exempt_roles: tuple[str, ...],
+    authorized_swarm_lanes: tuple[str, ...],
+    open_pr_numbers: tuple[int, ...],
+) -> bool:
+    if exemption is None:
+        return False
+    if (
+        exemption.written_by is not EnumWipEvidenceWriter.DISPATCHER
+        or exemption.repo != repo
+        or exemption.role not in exempt_roles
+        or exemption.expires_at < now
+    ):
+        return False
+    if exemption.kind is EnumWipExemptionKind.SWARM_LEASE:
+        return exemption.lane_id in authorized_swarm_lanes
+    return exemption.pr_number is not None and exemption.pr_number in open_pr_numbers
+
+
 def exemption_valid(
     exemption: ModelWipExemption | None,
     *,
@@ -155,18 +187,14 @@ def exemption_valid(
     open_pr_numbers: tuple[int, ...],
 ) -> bool:
     """An exemption holds when the dispatcher wrote it and its kind's evidence stands."""
-    if exemption is None:
-        return False
-    if (
-        exemption.written_by is not EnumWipEvidenceWriter.DISPATCHER
-        or exemption.repo != repo
-        or exemption.role not in policy.exempt_roles
-        or exemption.expires_at < now
-    ):
-        return False
-    if exemption.kind is EnumWipExemptionKind.SWARM_LEASE:
-        return exemption.lane_id in authorized_swarm_lanes
-    return exemption.pr_number is not None and exemption.pr_number in open_pr_numbers
+    return _exemption_holds(
+        exemption,
+        repo=repo,
+        now=now,
+        exempt_roles=policy.exempt_roles,
+        authorized_swarm_lanes=authorized_swarm_lanes,
+        open_pr_numbers=open_pr_numbers,
+    )
 
 
 def override_valid(
@@ -307,54 +335,174 @@ def read_wip(request: ModelWipReadRequest) -> ModelWipReadResult:
     return ModelWipReadResult(lines=tuple(lines))
 
 
-def audit_admissions(request: ModelWipAuditRequest) -> ModelWipAuditResult:
-    """Count CLAIM rows that opened a PR after the limit while enforcement was on.
+def policy_digest(policy: ModelWipPolicy) -> str:
+    """SHA-256 of the policy's canonical JSON; the witness keeps it so a later policy is told apart."""
+    canonical = json.dumps(
+        policy.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    A row is excluded when it carries a ``wip_idle_override`` or an exemption the
-    audit validates itself (swarm lane named by the stop record, or an open PR
-    from the watcher state). A repository with no reading before the claim, or no
-    limit, is counted as unaudited and never as clean.
+
+def build_admission_witness(request: ModelWipGateRequest) -> ModelWipAdmissionWitness:
+    """What this dispatch is admitted on, from the same facts the gate decided from.
+
+    The fill writes it on the PR-opening CLAIM row; ``audit_admissions`` judges the
+    claim by it and by nothing newer.
+    """
+    limit_entry = request.policy.limits.get(request.repo)
+    return ModelWipAdmissionWitness(
+        repo=request.repo,
+        dispatch_id=request.dispatch_id,
+        dispatched_at=request.now,
+        reading=read_repo(request.state, request.repo),
+        limit=limit_entry.limit if limit_entry is not None else None,
+        policy_digest=policy_digest(request.policy),
+        enforce_ruling=request.policy.enforce_ruling,
+        exempt_roles=request.policy.exempt_roles,
+        override=request.override,
+        exemption=request.exemption,
+    )
+
+
+def encode_witness_cell(witness: ModelWipAdmissionWitness) -> str:
+    """The witness as one ledger-row cell value: URL-safe base64 of its JSON, no space or pipe."""
+    payload = witness.model_dump_json().encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def decode_witness_cell(cell: str) -> ModelWipAdmissionWitness | None:
+    """The witness a cell carries, or ``None`` when the cell is not one."""
+    try:
+        padded = cell + "=" * (-len(cell) % 4)
+        payload = base64.urlsafe_b64decode(padded.encode("ascii"))
+        return ModelWipAdmissionWitness.model_validate_json(payload)
+    except (ValueError, binascii.Error):
+        return None
+
+
+def _witness_reading_problem(
+    witness: ModelWipAdmissionWitness, config: ModelWipGateConfig
+) -> EnumWipBreachReason | None:
+    reading = witness.reading
+    if not reading.readable or reading.read_at is None:
+        return EnumWipBreachReason.UNREADABLE_READING
+    if witness.dispatched_at - reading.read_at > timedelta(
+        minutes=config.reading_max_age_minutes
+    ):
+        return EnumWipBreachReason.STALE_READING
+    if witness.limit is None:
+        return EnumWipBreachReason.LIMIT_MISSING
+    return None
+
+
+def _override_matches_records(
+    claim: ModelWipClaimRow,
+    witness: ModelWipAdmissionWitness,
+    decisions: tuple[ModelWipSlotDecision, ...],
+    claims: tuple[ModelWipOverrideClaim, ...],
+    config: ModelWipGateConfig,
+) -> bool:
+    """The witnessed override equals the slot reducer's decision and the one-use claim it names."""
+    evidence = witness.override
+    if evidence is None:
+        return False
+    if not (
+        evidence.written_by is EnumWipEvidenceWriter.SLOT_REDUCER
+        and evidence.evidence_key
+        == f"override:{evidence.slot_id}:{evidence.slot_generation}"
+        and evidence.repo == claim.repo
+        and evidence.dispatch_id == claim.dispatch_id
+        and timedelta(0)
+        <= witness.dispatched_at - evidence.written_at
+        <= timedelta(minutes=config.override_evidence_minutes)
+    ):
+        return False
+    decided = any(
+        d.decision_id == evidence.decision_id
+        and d.slot_id == evidence.slot_id
+        and d.slot_generation == evidence.slot_generation
+        and d.repo == evidence.repo
+        and d.dispatch_id == evidence.dispatch_id
+        and d.reason is evidence.reason
+        for d in decisions
+    )
+    claimed = any(
+        c.evidence_key == evidence.evidence_key
+        and c.slot_id == evidence.slot_id
+        and c.slot_generation == evidence.slot_generation
+        and c.repo == evidence.repo
+        and c.dispatch_id == evidence.dispatch_id
+        and c.consumer == claim.dispatch_id
+        and c.expires_at >= witness.dispatched_at
+        for c in claims
+    )
+    return decided and claimed
+
+
+def audit_admissions(request: ModelWipAuditRequest) -> ModelWipAuditResult:
+    """Count PR-opening CLAIM rows admitted past their limit, each judged by its own witness.
+
+    The order is the gate's: a valid override on a usable reading, a valid exemption, an
+    unusable reading, a reading under the limit, otherwise a breach. Nothing is read from
+    the current policy or the current open PRs. A claim with no witness, or a witness that
+    names another repository or dispatch, is a breach; a witness written while no ruling
+    enforced the limit is not judged. Callers pass the claims since that ruling.
     """
     breach_lanes: list[str] = []
-    excluded_override = excluded_exempt = unaudited = 0
-    open_by_repo = {
-        repo: read_repo(request.state, repo).open_pr_numbers
-        for repo in {c.repo for c in request.claims}
-    }
-    if request.policy.enforcing:
-        for claim in request.claims:
-            if not claim.opens_pr:
-                continue
-            entry = request.policy.limits.get(claim.repo)
-            before = [
-                r
-                for r in request.readings
-                if r.repo == claim.repo and r.read_at and r.read_at <= claim.ts
-            ]
-            if entry is None or not before:
-                unaudited += 1
-                continue
-            latest = max(before, key=lambda r: r.read_at or claim.ts)
-            if not latest.readable or latest.open < entry.limit:
-                continue
-            if claim.wip_idle_override:
-                excluded_override += 1
-            elif exemption_valid(
-                claim.exemption,
-                repo=claim.repo,
-                now=claim.ts,
-                policy=request.policy,
-                authorized_swarm_lanes=request.authorized_swarm_lanes,
-                open_pr_numbers=open_by_repo[claim.repo],
-            ):
-                excluded_exempt += 1
-            else:
-                breach_lanes.append(claim.lane)
+    breach_reasons: list[EnumWipBreachReason] = []
+    excluded_override = excluded_exempt = 0
+
+    def breach(claim: ModelWipClaimRow, reason: EnumWipBreachReason) -> None:
+        breach_lanes.append(claim.lane)
+        breach_reasons.append(reason)
+
+    for claim in request.claims:
+        if not claim.opens_pr:
+            continue
+        witness = claim.witness
+        if witness is None:
+            breach(claim, EnumWipBreachReason.NO_WITNESS)
+            continue
+        if witness.repo != claim.repo or witness.dispatch_id != claim.dispatch_id:
+            breach(claim, EnumWipBreachReason.WITNESS_MISMATCH)
+            continue
+        if not witness.enforcing:
+            continue
+        problem = _witness_reading_problem(witness, request.config)
+        override_ok = problem is None and _override_matches_records(
+            claim,
+            witness,
+            request.slot_decisions,
+            request.override_claims,
+            request.config,
+        )
+        if override_ok:
+            excluded_override += 1
+            continue
+        if _exemption_holds(
+            witness.exemption,
+            repo=claim.repo,
+            now=witness.dispatched_at,
+            exempt_roles=witness.exempt_roles,
+            authorized_swarm_lanes=request.authorized_swarm_lanes,
+            open_pr_numbers=witness.reading.open_pr_numbers,
+        ):
+            excluded_exempt += 1
+            continue
+        if problem is not None:
+            breach(claim, problem)
+        elif witness.limit is not None and witness.reading.open >= witness.limit:
+            breach(
+                claim,
+                EnumWipBreachReason.OVERRIDE_INVALID
+                if witness.override is not None
+                else EnumWipBreachReason.AT_LIMIT,
+            )
     return ModelWipAuditResult(
         breaches=len(breach_lanes),
         breach_lanes=tuple(breach_lanes),
+        breach_reasons=tuple(breach_reasons),
         excluded_override=excluded_override,
         excluded_exempt=excluded_exempt,
-        unaudited=unaudited,
-        line=f"AUDIT wip breaches={len(breach_lanes)} unaudited={unaudited}",
+        line=f"AUDIT wip breaches={len(breach_lanes)}",
     )
