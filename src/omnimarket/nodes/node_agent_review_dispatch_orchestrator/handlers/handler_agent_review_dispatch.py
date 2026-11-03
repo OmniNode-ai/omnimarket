@@ -202,11 +202,10 @@ class HandlerAgentReviewDispatch:
             self.bind()
         except (NodeOverlayError, PortNotBoundError) as exc:
             logger.warning("agent review dispatch is not bound on this host: %s", exc)
-            return ModelAgentReviewTerminal(
-                command_id=request.command_id,
-                outcome=EnumAgentReviewOutcome.FAILED,
-                reason=EnumAgentReviewReason.NOT_BOUND,
-            )
+            return self._not_bound(request)
+        except Exception:  # any other bind failure also ends before a port call
+            logger.exception("agent review dispatch failed to bind on this host")
+            return self._not_bound(request)
         if not all(self._allowed(voter) for voter in self.config.roster):
             return ModelAgentReviewTerminal(
                 command_id=request.command_id,
@@ -337,6 +336,14 @@ class HandlerAgentReviewDispatch:
             return True
         return await self.poster.find_posted(
             request.repo, request.pr, self.config.policy.publisher_identity, stored.id
+        )
+
+    @staticmethod
+    def _not_bound(request: ModelAgentReviewRequest) -> ModelAgentReviewTerminal:
+        return ModelAgentReviewTerminal(
+            command_id=request.command_id,
+            outcome=EnumAgentReviewOutcome.FAILED,
+            reason=EnumAgentReviewReason.NOT_BOUND,
         )
 
     @staticmethod
