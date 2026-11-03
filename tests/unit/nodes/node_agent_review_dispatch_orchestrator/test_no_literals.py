@@ -32,12 +32,23 @@ _STRING = re.compile(
     re.IGNORECASE,
 )
 _ALLOWED_NUMBERS = {0, 1}
+#: Keyword arguments that bound a model field's value. A bound is part of the schema, not a
+#: deployment value: the deadline, the thresholds and the quorum size are the field's value.
+_SCHEMA_BOUNDS = frozenset({"ge", "gt", "le", "lt", "min_length", "max_length"})
 
 
 def literal_findings(source: str, name: str) -> list[str]:
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.Constant):
+    tree = ast.parse(source)
+    bounds = {
+        id(keyword.value)
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        for keyword in call.keywords
+        if keyword.arg in _SCHEMA_BOUNDS
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or id(node) in bounds:
             continue
         if isinstance(node.value, str) and _STRING.search(node.value):
             found.append(f"{name}:{node.lineno} string {node.value!r}")
@@ -74,7 +85,12 @@ def test_the_node_package_has_no_deployment_literal() -> None:
         'REPO = "OmniNode-ai/example"',
         "DEADLINE = 1500.0",
         "THRESHOLD = 2",
+        "QUORUM = Config(quorum_size=2)",
     ],
 )
 def test_the_scan_finds_each_kind_of_literal(planted: str) -> None:
     assert literal_findings(planted, "planted.py")
+
+
+def test_a_schema_bound_on_a_field_is_not_a_deployment_value() -> None:
+    assert literal_findings("size: int = Field(ge=2, max_length=63)", "model.py") == []

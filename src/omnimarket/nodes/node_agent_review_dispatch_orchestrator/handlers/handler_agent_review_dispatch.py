@@ -1,0 +1,224 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Dispatch concurrent reviews and publish only the receipt held by the store."""
+
+from __future__ import annotations
+
+import asyncio
+
+from ..models import (
+    EnumAgentReviewOutcome,
+    EnumAgentReviewReason,
+    ModelAgentQuorumRequest,
+    ModelAgentReceipt,
+    ModelAgentReceiptCandidate,
+    ModelAgentReceiptVoter,
+    ModelAgentReviewConfig,
+    ModelAgentReviewRequest,
+    ModelAgentReviewTerminal,
+    ModelAgentRosterSnapshot,
+    ModelAgentVoter,
+    ModelAgentVoterReview,
+)
+from ..protocols import (
+    ProtocolAgentReceiptStore,
+    ProtocolAgentReviewClock,
+    ProtocolAgentReviewHead,
+    ProtocolAgentReviewLab,
+    ProtocolAgentReviewPoster,
+    ProtocolAgentReviewSigner,
+    ProtocolAgentReviewTerminalLog,
+)
+from .handler_agent_review_quorum import HandlerAgentReviewQuorum
+
+
+class HandlerAgentReviewDispatch:
+    """Run one review command through injected ports with durable replay."""
+
+    def __init__(
+        self,
+        *,
+        config: ModelAgentReviewConfig,
+        head: ProtocolAgentReviewHead,
+        lab: ProtocolAgentReviewLab,
+        signer: ProtocolAgentReviewSigner,
+        store: ProtocolAgentReceiptStore,
+        poster: ProtocolAgentReviewPoster,
+        terminal_log: ProtocolAgentReviewTerminalLog,
+        clock: ProtocolAgentReviewClock,
+    ) -> None:
+        self.config = config
+        self.head = head
+        self.lab = lab
+        self.signer = signer
+        self.store = store
+        self.poster = poster
+        self.terminal_log = terminal_log
+        self.clock = clock
+
+    def _allowed(self, voter: ModelAgentVoter) -> bool:
+        policy = self.config.policy
+        return (
+            all(
+                (
+                    voter.identity,
+                    voter.provider,
+                    voter.rung,
+                    voter.endpoint_class,
+                    voter.endpoint,
+                    voter.model,
+                )
+            )
+            and voter.identity in policy.approved_identities
+            and voter.rung in policy.approved_rungs
+            and voter.provider not in policy.forbidden_providers
+            and voter.endpoint_class not in policy.forbidden_endpoint_classes
+            and voter.endpoint not in policy.forbidden_endpoints
+            and voter.endpoint.split(":", 1)[0] not in policy.forbidden_hosts
+        )
+
+    async def handle(
+        self, request: ModelAgentReviewRequest
+    ) -> ModelAgentReviewTerminal:
+        """Validate before any port call; record every subsequent terminal."""
+        if not all(self._allowed(voter) for voter in self.config.roster):
+            return ModelAgentReviewTerminal(
+                command_id=request.command_id,
+                outcome=EnumAgentReviewOutcome.REFUSED,
+                reason=EnumAgentReviewReason.ROSTER_FORBIDDEN,
+            )
+        try:
+            historical = await self.terminal_log.get(request.command_id)
+            if historical is not None:
+                return historical.model_copy(update={"historical": True})
+            async with asyncio.timeout(self.config.deadline_seconds):
+                terminal = await self._dispatch(request)
+                await self.terminal_log.record(terminal)
+                return terminal
+        except TimeoutError:
+            reason = EnumAgentReviewReason.DEADLINE_EXCEEDED
+        except Exception:
+            reason = EnumAgentReviewReason.PORT_ERROR
+        terminal = ModelAgentReviewTerminal(
+            command_id=request.command_id,
+            outcome=EnumAgentReviewOutcome.FAILED,
+            reason=reason,
+        )
+        await self.terminal_log.record(terminal)
+        return terminal
+
+    async def _review(
+        self, voter: ModelAgentVoter, request: ModelAgentReviewRequest
+    ) -> ModelAgentVoterReview | None:
+        try:
+            async with asyncio.timeout(self.config.lab_call_timeout_seconds):
+                if not self._allowed(voter):
+                    return None
+                return await self.lab.review(
+                    voter, request.repo, request.pr, request.head_sha
+                )
+        except Exception:
+            return None
+
+    async def _dispatch(
+        self, request: ModelAgentReviewRequest
+    ) -> ModelAgentReviewTerminal:
+        if await self.head.read_head(request.repo, request.pr) != request.head_sha:
+            return self._refused(request, EnumAgentReviewReason.STALE_HEAD)
+        key = f"{request.repo}#{request.pr}#{request.head_sha}"
+        stored = await self.store.get(key)
+        if stored is None:
+            reviews = await asyncio.gather(
+                *(self._review(voter, request) for voter in self.config.roster)
+            )
+            quorum = HandlerAgentReviewQuorum().handle(
+                ModelAgentQuorumRequest(
+                    roster=self.config.roster,
+                    reviews=tuple(review for review in reviews if review is not None),
+                    quorum=self.config.quorum,
+                )
+            )
+            if not quorum.sufficient:
+                return self._refused(
+                    request, EnumAgentReviewReason.LAB_RUNG_INSUFFICIENT
+                )
+            candidate = ModelAgentReceiptCandidate(
+                id=self.clock.new_id(),
+                repo=request.repo,
+                pr=request.pr,
+                head_sha=request.head_sha,
+                reviewer_id=self.config.reviewer_id,
+                voters=tuple(
+                    ModelAgentReceiptVoter(
+                        identity=voter.identity,
+                        provider=voter.provider,
+                        rung=voter.rung,
+                        endpoint_class=voter.endpoint_class,
+                        endpoint=voter.endpoint,
+                        model=voter.model,
+                        delegation_event_id=event_id,
+                    )
+                    for voter, event_id in zip(
+                        quorum.counted, quorum.delegation_event_ids, strict=True
+                    )
+                ),
+                roster_snapshot=ModelAgentRosterSnapshot(
+                    voters=tuple(voter.identity for voter in self.config.roster),
+                    overlay_revision=self.config.overlay_revision,
+                ),
+                quorum_verdict=quorum.verdict,
+                blocking=quorum.blocking,
+                findings_count=quorum.findings_count,
+                issued_at=self.clock.now(),
+            )
+            receipt = await self.signer.sign(candidate)
+            stored = await self.store.insert_if_absent(key, receipt)
+        if await self.head.read_head(request.repo, request.pr) != request.head_sha:
+            return self._refused(request, EnumAgentReviewReason.STALE_HEAD)
+        if not await self._post(request, stored):
+            return ModelAgentReviewTerminal(
+                command_id=request.command_id,
+                outcome=EnumAgentReviewOutcome.FAILED,
+                reason=EnumAgentReviewReason.POST_FAILED,
+            )
+        return ModelAgentReviewTerminal(
+            command_id=request.command_id,
+            outcome=EnumAgentReviewOutcome.COMPLETED,
+            receipt_id=stored.id,
+        )
+
+    async def _post(
+        self, request: ModelAgentReviewRequest, stored: ModelAgentReceipt
+    ) -> bool:
+        for _ in range(self.config.post_attempts):
+            if await self.poster.find_posted(
+                request.repo,
+                request.pr,
+                self.config.policy.publisher_identity,
+                stored.id,
+            ):
+                return True
+            try:
+                await self.poster.post(
+                    request.repo,
+                    request.pr,
+                    request.head_sha,
+                    stored,
+                    self.config.receipt_fence,
+                )
+            except Exception:
+                continue
+            return True
+        return await self.poster.find_posted(
+            request.repo, request.pr, self.config.policy.publisher_identity, stored.id
+        )
+
+    @staticmethod
+    def _refused(
+        request: ModelAgentReviewRequest, reason: EnumAgentReviewReason
+    ) -> ModelAgentReviewTerminal:
+        return ModelAgentReviewTerminal(
+            command_id=request.command_id,
+            outcome=EnumAgentReviewOutcome.REFUSED,
+            reason=reason,
+        )
