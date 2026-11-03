@@ -520,6 +520,7 @@ class TestGatewayServesTheNativeCallEndToEnd:
         )
         from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
             ModelClaudeReviewGatewayRequest,
+            ModelReviewGatewayOverlay,
         )
 
         ref = "cred_house_anthropic_key-a"
@@ -544,6 +545,14 @@ class TestGatewayServesTheNativeCallEndToEnd:
             async def get_secret(self, key: str) -> str | None:
                 return _KEY
 
+        class Events:
+            async def publish(
+                self, topic: str, key: bytes | None, value: bytes
+            ) -> None:
+                raise AssertionError(
+                    "a successful review emitted a key-state transition"
+                )
+
         gateway = ClaudeReviewGateway(
             ModelClaudeReviewGatewayRequest(
                 host="h201",
@@ -555,6 +564,8 @@ class TestGatewayServesTheNativeCallEndToEnd:
             key_values=Values(),
             call=effect.HandlerLlmDelegationCall(),
             endpoint_url=_NATIVE_URL,
+            overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=17),
+            event_bus=Events(),
         )
         marker = BLOCK_BOUNDARY_MARKER
 

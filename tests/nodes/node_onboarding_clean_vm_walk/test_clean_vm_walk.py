@@ -269,10 +269,14 @@ def test_failed_phase_returns_receipt_not_exception() -> None:
     ]
     receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
     assert receipt.outcome == EnumWalkOutcome.FAILED
-    assert "clone refused" in (receipt.failure_text or "")
+    assert (receipt.failure_text or "").startswith("tart_clone: exit 1: clone refused")
     assert receipt.terminal_failure_cause == receipt.failure_text
+    # A refused clone created nothing: the VM under that name is not this walk's.
     assert not receipt.vm_deleted
-    assert len(runner.calls) == 2
+    assert "was not created by this walk" in (receipt.failure_text or "")
+    assert [runner.kind(argv) for argv in runner.calls[1:]] == [
+        EnumWalkStepKind.TART_CLONE,
+    ]
     runner = StubTartRunner()
     runner.version = ModelRunnerResult(exit_code=127, stdout="", stderr="missing")
     receipt = walk.HandlerOnboardingCleanVmWalk(runner).handle(request())
