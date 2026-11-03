@@ -139,3 +139,53 @@ def test_one_runtime_line_with_no_read_says_unread_and_other_lines_carry_none() 
     assert unread.state == "unread"
     assert unread.lanes == ()
     assert line_of(result, "other-plan").application_containers is None
+
+
+def read_with_declared_target(
+    docker_ps: str, target: int
+) -> ModelLaneContainerBudgetVerdict:
+    """Lane alpha declares `target`; lane beta declares none."""
+    return HandlerLaneContainerBudget().handle(
+        ModelLaneContainerBudgetRequest(
+            host=HOST,
+            docker_ps=docker_ps,
+            declarations=(
+                ModelLaneContainerBudgetDeclaration(
+                    host=HOST,
+                    lane="alpha",
+                    compose_project="proj-alpha",
+                    application_container_budget=2,
+                    application_container_target=target,
+                    infrastructure_markers=("redpanda", "postgres"),
+                ),
+                ModelLaneContainerBudgetDeclaration(
+                    host=HOST,
+                    lane="beta",
+                    compose_project="proj-beta",
+                    application_container_budget=1,
+                ),
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize("declared", [1, 0, 7])
+def test_a_declared_target_reaches_the_record_lane_row_and_none_stays_null(
+    declared: int,
+) -> None:
+    """The record the page reads carries the declared target, taken from the declaration and never defaulted."""
+    verdict = read_with_declared_target(FIXTURE.read_text(encoding="utf-8"), declared)
+    result = floor((plan(LINE),), verdicts=(verdict,))
+
+    shown = line_of(result, LINE).application_containers
+    assert shown is not None
+    rows = {(row.host, row.lane): row for row in shown.lanes}
+    assert rows[(HOST, "alpha")].target == declared
+    assert rows[(HOST, "beta")].target is None
+
+    published = ModelFactoryFloorResult.model_validate_json(result.model_dump_json())
+    published_line = line_of(published, LINE).application_containers
+    assert published_line is not None
+    published_rows = {row.lane: row for row in published_line.lanes}
+    assert published_rows["alpha"].target == declared
+    assert published_rows["beta"].target is None
