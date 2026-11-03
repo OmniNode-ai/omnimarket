@@ -60,25 +60,30 @@ dod_evidence:
   - id: dod-omn22167-ac1-integration-proof-live
     description: 'Integration proof on the lab host, read live: the status verb of the node prints the served sha, and the serve URL from the overlay row answers 200. OMNIDASH_HOST names the overlay row and OMNIDASH_SERVE_URL its serve_url.'
     source: manual
-    binds_ac:
-      - AC1
-      - AC7
     execution_scope: local_done_gate
     checks:
       - check_type: command
         check_value: |-
           bash -o pipefail -c 'uv run python -m omnimarket.nodes.node_omnidash_host_effect status --host "$OMNIDASH_HOST" && test "$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$OMNIDASH_SERVE_URL")" = 200'
         cwd: .
+  - id: dod-omn22167-ac1-ac7-hosted-units-and-switch
+    description: AC1 and AC7 hosted binding. The unit test asserts the service binds one declared address and the updater reads the interval, and the switch test asserts a newer commit moves the served sha and the switch time. The live lab readback above remains the local Done probe.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov --tb=line -k "omnidash_host_units_bind_one_address or omnidash_host_newer_commit_after_serving"
+        cwd: .
   - id: dod-omn22167-ac6-no-links-area
-    description: The factory floor page source has no links area (no nav element, no element or class named links), so there is nothing to add the dashboard link to; its anchors are drill-down links built in page script.
+    description: The factory floor page source has no links area (no nav element, no element or class named links), so there is nothing to add the dashboard link to; its anchors are drill-down links built in page script. The test file is new in this change, so the check cannot pass at the merge base.
     source: manual
     binds_ac:
       - AC6
-    execution_scope: hosted_and_local
     checks:
-      - check_type: command
-        check_value: |-
-          bash -o pipefail -c '! grep -n -i -E "<nav|class=\"[^\"]*links|id=\"[^\"]*links" src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html && echo "floor page has no links area"'
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov --tb=line -k omnidash_host_floor_page_has_no_links_area
         cwd: .
   - id: dod-omn22167-deploy-probe-contract
     description: 'Hosted deploy artifact readback: fetch the handler at the checked-out commit and require that it chooses the newest branch, builds before it health-checks and health-checks before it switches. Missing published content fails. This reads published source and does not claim a host rollout.'

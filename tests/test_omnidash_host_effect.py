@@ -633,3 +633,12 @@ def test_omnidash_host_contract_owns_the_interval_default() -> None:
     contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     assert contract["schedule"]["poll_interval_seconds"] > 0
     assert list(contract["schedule"]["schedulers"]) == ["systemd-user"]
+
+
+def test_omnidash_host_floor_page_has_no_links_area() -> None:
+    page = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html"
+    )
+    text = page.read_text(encoding="utf-8")
+    assert not re.search(r"<nav|class=\"[^\"]*links|id=\"[^\"]*links", text, re.I)
