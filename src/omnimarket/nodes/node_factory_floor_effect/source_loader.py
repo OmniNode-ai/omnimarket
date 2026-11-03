@@ -1044,6 +1044,7 @@ def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None
             credit = _mapping(value.get("credit"))
             rate = _mapping(value.get("rate"))
             remaining = credit.get("remaining")
+            utilization = rate.get("utilization")
             cap = value.get("cap")
             out.append(
                 ModelFloorCloudAccount(
@@ -1057,6 +1058,16 @@ def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None
                     credit_read_at=str(credit.get("read_at") or ""),
                     rate_status=str(rate.get("status") or ""),
                     rate_resets_at=str(rate.get("resets_at") or ""),
+                    rate_type=str(rate.get("type") or ""),
+                    rate_utilization=float(utilization)
+                    if isinstance(utilization, (int, float))
+                    else None,
+                    rate_read_at=str(rate.get("read_at") or ""),
+                    limited_until=str(value.get("limited_until") or ""),
+                    credit_expires=str(
+                        credit.get("expires") or value.get("credit_expires") or ""
+                    ),
+                    credit_source=str(credit.get("source") or ""),
                 )
             )
         return tuple(out)

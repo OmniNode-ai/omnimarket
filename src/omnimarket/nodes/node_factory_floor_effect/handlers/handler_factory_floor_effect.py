@@ -17,14 +17,28 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
 )
+from omnimarket.models.model_floor_limits_input import (
+    ModelFloorLimitsConfig,
+    ModelFloorLimitsInput,
+)
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
+)
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_limits import (
+    build_limits,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     HandlerFactoryFloor,
 )
 from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import (
     draft_plan_refs,
+)
+from omnimarket.nodes.node_factory_floor_effect.handlers.limit_sources import (
+    idle_reading,
+    load_api_meter,
+    load_engines,
+    load_idle_carry,
+    load_token_pool,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
@@ -149,6 +163,8 @@ class HandlerFactoryFloorEffect:
         fleet_path = home / src.runner_fleet_relpath
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
+        cloud_accounts_path = placement_dir / ls.cloud_accounts_file
+        cloud_accounts = load_cloud_accounts(cloud_accounts_path)
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -207,7 +223,7 @@ class HandlerFactoryFloorEffect:
                 glob=ls.receipt_glob,
                 result_chars=ls.result_chars,
             ),
-            cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
+            cloud_accounts=cloud_accounts,
             runner_fleet=runner_fleet,
             runner_fleet_cause=""
             if runner_fleet is not None
@@ -225,17 +241,53 @@ class HandlerFactoryFloorEffect:
         merged_running, merged_running_cause = self._read_merged_running(
             now, host_table_path
         )
+        target = home / rt.output.relpath
+        lim = rt.limits
+        token_pool, pool_cause = load_token_pool(home / lim.token_pool_relpath)
+        api_meter, meter_cause = load_api_meter(home / lim.api_meter_relpath)
+        engines, engines_cause = load_engines(home / lim.engines_relpath)
+        limits = build_limits(
+            ModelFloorLimitsInput(
+                now=now,
+                config=ModelFloorLimitsConfig(
+                    publish_cycle_seconds=lim.publish_cycle_seconds,
+                    api_budget_usd=lim.api_budget_usd,
+                    projection_min_elapsed_hours=lim.projection_min_elapsed_hours,
+                ),
+                cloud_accounts=cloud_accounts,
+                cloud_accounts_source=ls.cloud_accounts_file,
+                token_pool=token_pool,
+                token_pool_source=lim.token_pool_relpath,
+                api_meter=api_meter,
+                api_meter_source=lim.api_meter_relpath,
+                api_key_names=overlay.api_key_names if overlay is not None else (),
+                engines=engines,
+                engines_source=lim.engines_relpath,
+                idle=idle_reading(merged_running),
+                idle_carry=load_idle_carry(target),
+                causes={
+                    k: v
+                    for k, v in {
+                        "cloud_accounts": f"{ls.cloud_accounts_file} could not be read",
+                        "token_pool": pool_cause,
+                        "api_meter": meter_cause,
+                        "engines": engines_cause,
+                        "idle": merged_running_cause,
+                    }.items()
+                    if v
+                },
+            )
+        )
         result = result.model_copy(
             update={
                 "floor": result.floor.model_copy(
-                    update={"merged_running": merged_running}
+                    update={"merged_running": merged_running, "limits": limits}
                 ),
                 "sources": result.sources.model_copy(
                     update={"merged_running_cause": merged_running_cause}
                 ),
             }
         )
-        target = home / rt.output.relpath
         write_result(target, result.model_dump(mode="json"))
         return ModelFactoryFloorRunResult(
             output_path=str(target),

@@ -15,6 +15,9 @@ from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
 )
+from omnimarket.nodes.node_factory_floor_compute.models.model_floor_limits import (
+    ModelFloorLimits,
+)
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
@@ -325,6 +328,8 @@ class ModelFloorSection(BaseModel):
     phoenix_traces: ModelFloorPhoenixTraces
     # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
     merged_running: ModelMergedRunningCountResult | None = None
+    # The accounts and engines with their limits (OMN-22010); None on a record written before the section existed.
+    limits: ModelFloorLimits | None = None
 
 
 class ModelFloorSources(BaseModel):

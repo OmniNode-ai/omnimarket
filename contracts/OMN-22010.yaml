@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-22010
+title: The factory floor page shows a Limits panel with one row per account and engine, each with its measured value, source and read time, and UNKNOWN when unread
+summary: node_factory_floor_effect reads the cloud accounts file, a token pool file, an API credit meter file and an engine readings file; build_limits in node_factory_floor_compute turns them into floor.limits (a row per account and engine with source and read time, UNKNOWN and no values when a reading is older than one publish cycle or never read, and the Eastern day's idle slot-hours accrued from the previous record); the floor page renders them in a Limits panel beside the idle slots.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22010-ac1
+  statement: The published floor JSON carries a limits section with a row per Claude subscription account (five_hour and seven_day utilization and reset times, from the rate headers the runner writes to cloud-accounts.json and the token pool limited_until).
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the published floor JSON carries a limits section with a row per Claude subscription account (five_hour and seven_day utilization and reset times, from the rate headers the runner writes to cloud-accounts.json and the token pool limited_until) -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k claude_subscription -q'
+- id: req-omn22010-ac2
+  statement: The limits section carries a row per Claude cloud-session credit account (cloud-accounts.json credit record, expiry 2026-11-05).
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the limits section carries a row per Claude cloud-session credit account (cloud-accounts.json credit record, expiry 2026-11-05) -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k cloud_credit -q'
+- id: req-omn22010-ac3
+  statement: The limits section carries a row per Anthropic API key with month spend, budget (contract value, 200 USD), remaining and projected unspent at month end, read from the meter node.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the limits section carries a row per Anthropic API key with month spend, budget (contract value, 200 USD), remaining and projected unspent at month end, read from the meter node -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k api_credit -q'
+- id: req-omn22010-ac4
+  statement: The limits section carries a Codex (ChatGPT) usage window and reset row, a GLM coding plan row and a row per local lab model rung with availability and last smoke.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the limits section carries a Codex (ChatGPT) usage window and reset row, a GLM coding plan row and a row per local lab model rung with availability and last smoke -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k engines -q'
+- id: req-omn22010-ac5
+  statement: The limits section carries per lab host Claude token pool counts (usable, limited until, revoked), and a revoked token is counted as revoked and never as capacity.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the limits section carries per lab host Claude token pool counts (usable, limited until, revoked), and a revoked token is counted as revoked and never as capacity -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k token_pool_revoked -q'
+- id: req-omn22010-ac6
+  statement: Every row carries source and read time, and a row whose read time is older than one publish cycle or was never read shows UNKNOWN and never zero.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: every row carries source and read time, and a row whose read time is older than one publish cycle or was never read shows UNKNOWN and never zero -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k unknown_never_zero -q'
+- id: req-omn22010-ac7
+  statement: The floor page renders the Limits panel with per-line idle and the day's idle slot-hours beside it.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the floor page renders the Limits panel with per-line idle and the day''s idle slot-hours beside it -- falsifier: uv run pytest tests/unit/test_factory_floor_page_limits.py -q'
+evidence_requirements:
+- kind: tests
+  description: The pure builder, the source readers, the effect end to end and the page render run over recorded readings; no live account is called.
+  command: uv run pytest tests/unit/test_factory_floor_limits.py tests/unit/test_factory_floor_page_limits.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22010-ac1
+  description: AC1 the published floor JSON carries a limits section with a row per Claude subscription account (five_hour and seven_day utilization and reset times, from the rate headers the runner writes to cloud-accounts.json and the token pool limited_until).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k claude_subscription -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22010-ac2
+  description: AC2 the limits section carries a row per Claude cloud-session credit account (cloud-accounts.json credit record, expiry 2026-11-05).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k cloud_credit -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22010-ac3
+  description: AC3 the limits section carries a row per Anthropic API key with month spend, budget (contract value, 200 USD), remaining and projected unspent at month end, read from the meter node.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k api_credit -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22010-ac4
+  description: AC4 the limits section carries a Codex (ChatGPT) usage window and reset row, a GLM coding plan row and a row per local lab model rung with availability and last smoke.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k engines -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22010-ac5
+  description: AC5 the limits section carries per lab host Claude token pool counts (usable, limited until, revoked), and a revoked token is counted as revoked and never as capacity.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k token_pool_revoked -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22010-ac6
+  description: AC6 every row carries source and read time, and a row whose read time is older than one publish cycle or was never read shows UNKNOWN and never zero.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k unknown_never_zero -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22010-ac7
+  description: AC7 the floor page renders the Limits panel with per-line idle and the day's idle slot-hours beside it.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_page_limits.py -q --no-cov --tb=line
+    cwd: .

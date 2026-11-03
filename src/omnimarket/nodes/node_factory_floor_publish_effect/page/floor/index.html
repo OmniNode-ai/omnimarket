@@ -178,6 +178,16 @@ header{display:grid;gap:14px}
 
 /* dock + delegation */
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px}
+.lgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.lgroup{display:grid;gap:8px;align-content:start;min-width:0}
+.lgroup h3{margin:0;font:600 .9375rem/1.3 var(--f-body)}
+.lrows{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.lrow{border:1px solid var(--rule);border-radius:4px;padding:8px 10px;display:grid;gap:4px;min-width:0}
+.lrow.unread{border-style:dashed;background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
+.lrow dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.875rem}
+.lrow dt{color:var(--muted)} .lrow dd{margin:0;overflow-wrap:anywhere}
+.lrow dd.unk{color:var(--warn-text);font-weight:600}
+.lrow small{color:var(--muted);font-size:.75rem;overflow-wrap:anywhere}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:18px 20px;display:grid;gap:14px;align-content:start;min-width:0}
 .big{font:800 3.2rem/0.9 var(--f-display)}
 .list{list-style:none;padding:0;margin:0;display:grid;gap:8px;font-size:.9375rem}
@@ -301,6 +311,8 @@ html.embed .wrap{padding-block:14px 48px}
   </section>
 
   <section class="card" aria-labelledby="mrH" id="mergedRunning" hidden></section>
+
+  <section class="card" aria-labelledby="limH" id="limits" hidden></section>
 
   <section class="two">
     <div class="card" aria-labelledby="dockH" id="dock">
@@ -770,6 +782,72 @@ function renderMergedRunning(floor){
     ${hosts ? `<ul style="margin:0;padding-left:1.2em;display:grid;gap:4px">${hosts}</ul>` : ""}`;
 }
 
+const LIMIT_GROUPS = [
+  ["claude_subscription", "Claude subscription accounts"],
+  ["cloud_credit", "Claude cloud-session credit"],
+  ["api_credit", "Anthropic API keys"],
+  ["codex", "Codex (ChatGPT)"],
+  ["glm", "GLM coding plan"],
+  ["lab_model", "Lab model rungs"],
+  ["account_pool", "Claude login pool, per lab host"]
+];
+
+// One value of a limits row. A value the record carries as null was not read: it draws UNKNOWN, never zero.
+function limitValueText(v){
+  if (v.value === null || v.value === undefined) return "UNKNOWN";
+  if (typeof v.value === "boolean") return v.value ? "yes" : "no";
+  if (v.value === "") return "none";
+  if (v.unit === "USD") return "$" + Number(v.value).toFixed(2);
+  if (v.unit === "ratio") return (Number(v.value) * 100).toFixed(0) + "%";
+  if (v.unit === "%") return Number(v.value).toFixed(0) + "%";
+  return String(v.value);
+}
+
+// How long before the record a reading was taken; the record's own time is the reference so the text does not drift.
+function limitReadText(iso, ref){
+  if (!iso) return "never read";
+  const at = Date.parse(iso), now = Date.parse(ref);
+  if (Number.isNaN(at) || Number.isNaN(now)) return `read time unreadable (${iso})`;
+  const min = Math.max(0, Math.round((now - at) / 60000));
+  return `read ${min < 120 ? min + " min" : (min / 60).toFixed(1) + " h"} before this record`;
+}
+
+function limitRowHTML(r, ref){
+  const unknown = r.status !== "READ";
+  const body = unknown
+    ? `<p class="capline"><b>UNKNOWN</b>: ${esc(r.cause || "not read")}</p>`
+    : `<dl>${(r.values || []).map(v => { const t = limitValueText(v); return `<dt>${esc(v.name.replace(/_/g, " "))}</dt><dd class="mono${t === "UNKNOWN" ? " unk" : ""}">${esc(t)}</dd>`; }).join("")}</dl>`;
+  return `<li class="lrow${unknown ? " unread" : ""}" data-row="${esc(r.row_id)}"><div><b>${esc(r.name)}</b> <span class="pill">${unknown ? "UNKNOWN" : "read"}</span></div>${body}<small>Source: ${esc(r.source || "none")} · ${esc(limitReadText(r.read_at, ref))}</small></li>`;
+}
+
+function limitIdleHTML(idle){
+  const hosts = (idle.hosts || []).map(h => {
+    const text = h.state === "read" ? `${h.idle} idle of ${h.slots}` : h.state === "out" ? "out of service" : "UNKNOWN (not read)";
+    return `<li><b>${esc(h.host)}</b> ${esc(text)}</li>`;
+  }).join("");
+  if (idle.state !== "read") return `<div class="lgroup"><h3>Idle</h3><p class="capline"><b>UNKNOWN</b>: ${esc(idle.basis || "idle slots were not read")}</p></div>`;
+  const hours = idle.idle_slot_hours === null || idle.idle_slot_hours === undefined ? "UNKNOWN" : Number(idle.idle_slot_hours).toFixed(1);
+  const unread = idle.unread_minutes ? `<small>${esc(Math.round(idle.unread_minutes))} min of the day were not read and are not counted.</small>` : "";
+  return `<div class="lgroup"><h3>Idle, ${esc(idle.day)} (Eastern day)</h3>
+    <div><span class="big mono">${esc(hours)}</span><div class="muted">Idle slot-hours today</div></div>
+    <div><span class="big mono">${esc(idle.idle_total === null || idle.idle_total === undefined ? "UNKNOWN" : idle.idle_total)}</span><div class="muted">Idle slots now${idle.idle_unread ? `, ${esc(idle.idle_unread)} machine${idle.idle_unread === 1 ? "" : "s"} unread` : ""}</div></div>
+    <ul class="lrows">${hosts}</ul>${unread}<small>Basis: ${esc(idle.basis)}</small></div>`;
+}
+
+function renderLimits(floor){
+  const card = el("limits");
+  const lim = floor.limits;
+  if (!lim || !lim.rows){ card.hidden = true; card.innerHTML = ""; return; }
+  const groups = LIMIT_GROUPS.map(([kind, title]) => {
+    const rows = lim.rows.filter(r => r.kind === kind);
+    return rows.length ? `<div class="lgroup"><h3>${esc(title)}</h3><ul class="lrows">${rows.map(r => limitRowHTML(r, lim.generated_at)).join("")}</ul></div>` : "";
+  }).join("");
+  card.hidden = false;
+  card.innerHTML = `<div><div class="eyebrow">Limits</div><h2 id="limH">What each account and engine has left</h2>
+    <p class="sub">One row per account and engine with its measured value, where it was read and when. A reading older than one publish cycle (${esc(Math.round(lim.publish_cycle_seconds / 60))} min), or never read, says UNKNOWN and is never drawn as zero. A revoked login is counted as revoked, never as capacity.</p></div>
+    <div class="lgrid">${groups}${limitIdleHTML(lim.idle)}</div>`;
+}
+
 function renderMachines(floor){
   const ms = floor.machines || [];
   const lanes = floor.lanes || [];
@@ -958,6 +1036,7 @@ function render(parts){
   renderLines(built.slots, built.declared, built.reason);
   renderMachines(floor);
   renderMergedRunning(floor);
+  renderLimits(floor);
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);

@@ -572,7 +572,7 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         },
     )
     _write(
-        tmp / "placement" / "cloud-accounts.json",
+        tmp / "placement" / "cloud-accounts-v2.json",
         {"accounts": {"h201": {"login": "ok", "cap": 3}, "h999": {"login": "ok"}}},
     )
     ledger = tmp / "ledger-lanes.txt"
@@ -639,3 +639,71 @@ def test_machine_bays_without_a_host_table_name_leave_caps_to_the_pool_read_and_
     document = json.loads(_output(world).read_text(encoding="utf-8"))
     assert document["sources"]["host_table_read"] is False
     assert document["floor"]["machines"][0]["state"] == "unread"
+
+
+def test_limits_section_is_read_from_the_declared_sources_and_published_with_the_record(
+    world: dict[str, Path],
+) -> None:
+    home, tmp = world["home"], world["tmp"]
+    stamp = "2026-10-31T11:58:00Z"
+    _write(
+        tmp / "placement" / "cloud-accounts-v2.json",
+        {
+            "accounts": {
+                "h200": {
+                    "login": "ok",
+                    "credit": {"read_at": stamp, "remaining": 244.0},
+                    "limited_until": "2026-11-04T22:00:00Z",
+                    "rate": {
+                        "read_at": stamp,
+                        "status": "rejected",
+                        "type": "seven_day",
+                        "utilization": 1.0,
+                        "resets_at": "2026-11-04T22:00:00Z",
+                    },
+                }
+            }
+        },
+    )
+    _write(
+        home / ".onex_state/limits/token-pool.json",
+        {
+            "hosts": {
+                "h200": {
+                    "read_at": stamp,
+                    "tokens": [
+                        {"account": "a", "state": "usable"},
+                        {"account": "b", "state": "revoked"},
+                    ],
+                }
+            }
+        },
+    )
+    _write(
+        home / ".onex_state/limits/api-credit-meter.json",
+        {"read_at": stamp, "keys": {"k": {"month": "2026-10", "month_spend_usd": 62}}},
+    )
+    argv = _argv(world, "--plan", "beta/plans/2026-10-")
+    assert main(argv) == 0
+    limits = json.loads(_output(world).read_text(encoding="utf-8"))["floor"]["limits"]
+    by_id = {r["row_id"]: r for r in limits["rows"]}
+    sub = by_id["claude_subscription:h200"]
+    assert sub["status"] == "READ"
+    assert sub["source"] == "cloud-accounts-v2.json#h200.rate"
+    values = {v["name"]: v["value"] for v in sub["values"]}
+    assert values["seven_day_utilization"] == 1.0
+    assert values["limited_until"] == "2026-11-04T22:00:00Z"
+    assert by_id["cloud_credit:h200"]["values"][0]["value"] == 244.0
+    pool = {v["name"]: v["value"] for v in by_id["account_pool:h200"]["values"]}
+    assert (pool["usable"], pool["revoked"]) == (1, 1)
+    api = {v["name"]: v["value"] for v in by_id["api_credit:k"]["values"]}
+    assert (api["month_spend_usd"], api["budget_usd"], api["remaining_usd"]) == (
+        62.0,
+        200,
+        138.0,
+    )
+    # No engine file was written: those rows read UNKNOWN with the cause, never zero.
+    for row_id in ("codex:codex", "glm:glm", "lab_model:all"):
+        assert by_id[row_id]["status"] == "UNKNOWN"
+        assert by_id[row_id]["values"] == []
+        assert "engine-readings.json does not exist" in by_id[row_id]["cause"]

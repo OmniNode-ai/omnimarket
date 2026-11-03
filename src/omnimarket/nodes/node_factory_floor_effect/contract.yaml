@@ -112,7 +112,9 @@ runtime:
     placement_dir_env: LANDING_PLACEMENT_DIR
     placement_dir_fallback: .local/state/omni/landing/placement
     lane_marker_min_id: 1000000000
-    cloud_accounts_file: cloud-accounts.json
+    # The placement's account state file (version 2): the legacy cloud-accounts.json is renamed .imported on the first
+    # read of the registry, so a floor that names it reads nothing.
+    cloud_accounts_file: cloud-accounts-v2.json
     host_table_env: ONEX_LAB_RUN_HOSTS
   # The lane containers (application container budget): the hosts and budgets are the overlay's; each host is read over ssh with
   # this listing command and judged by node_lane_container_budget_compute. A host that cannot be read draws UNKNOWN with the
@@ -123,6 +125,22 @@ runtime:
       docker ps -a --no-trunc --format
       '{"Names":{{json .Names}},"State":{{json .State}},"Labels":{{json .Labels}}}'
     timeout_seconds: 90
+  # The Limits panel (OMN-22010): one row per account and engine, each with its source and read time. A reading older than
+  # one publish cycle (the 300 s tick that publishes the record), or never read, draws UNKNOWN and never zero. The
+  # subscription and cloud credit rows come from the cloud accounts file above (rate headers, credit reading, hold);
+  # the files below are relative to the registry home and are written by their own readers:
+  #   token_pool_relpath  {"hosts": {<host>: {"read_at", "tokens": [{"account", "state": usable|limited|revoked, "limited_until"}]}}}
+  #   api_meter_relpath   {"read_at", "keys": {<key name>: {"month": "YYYY-MM", "month_spend_usd"}}}
+  #   engines_relpath     {"codex": W, "glm": W, "lab_models": {<rung>: {"read_at", "available", "last_smoke_at"}}} with
+  #                       W = {"read_at", "window", "used_pct", "resets_at"}
+  limits:
+    publish_cycle_seconds: 300
+    # The month budget of one Anthropic API key, in USD (the API credit meter plan's contract value).
+    api_budget_usd: 200
+    projection_min_elapsed_hours: 24
+    token_pool_relpath: .onex_state/limits/token-pool.json
+    api_meter_relpath: .onex_state/limits/api-credit-meter.json
+    engines_relpath: .onex_state/limits/engine-readings.json
   output:
     relpath: .claude_scratch/factory-floor/factory-floor.json
 metadata:

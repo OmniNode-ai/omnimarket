@@ -289,6 +289,15 @@ class ModelFloorCloudAccount(BaseModel):
     credit_read_at: str = ""
     rate_status: str = ""
     rate_resets_at: str = ""
+    # The rate window the reading is of ("five_hour" or "seven_day"), its utilization (0 to 1) when the runner wrote
+    # one, and when the headers were read. The cloud pool file keeps only the newest reading of one window.
+    rate_type: str = ""
+    rate_utilization: float | None = None
+    rate_read_at: str = ""
+    # The hold the placement recorded on the account, and the credit's own expiry and source when the file carries them.
+    limited_until: str = ""
+    credit_expires: str = ""
+    credit_source: str = ""
 
 
 class ModelFloorRunner(BaseModel):

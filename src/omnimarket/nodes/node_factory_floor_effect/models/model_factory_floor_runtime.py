@@ -70,6 +70,19 @@ class ModelFactoryFloorOutput(BaseModel):
     relpath: str = Field(min_length=1)
 
 
+class ModelFactoryFloorLimitSources(BaseModel):
+    """The Limits panel (OMN-22010): the publish cycle a reading is judged against, the API budget and the source files."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    publish_cycle_seconds: int = Field(gt=0)
+    api_budget_usd: float = Field(gt=0)
+    projection_min_elapsed_hours: int = Field(gt=0)
+    token_pool_relpath: str = Field(min_length=1)
+    api_meter_relpath: str = Field(min_length=1)
+    engines_relpath: str = Field(min_length=1)
+
+
 class ModelFactoryFloorRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -91,6 +104,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
     container_source: ModelFactoryFloorContainerSource
+    limits: ModelFactoryFloorLimitSources
     output: ModelFactoryFloorOutput
 
 
@@ -148,3 +162,5 @@ class ModelFactoryFloorOverlay(BaseModel):
     container_read_line: str = ""
     container_hosts: tuple[ModelFactoryFloorContainerHost, ...] = ()
     container_budgets: tuple[ModelLaneContainerBudgetDeclaration, ...] = ()
+    # The Anthropic API keys the Limits panel draws a row for even when the meter does not name them.
+    api_key_names: tuple[str, ...] = ()
