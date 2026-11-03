@@ -113,3 +113,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/test_factory_floor_page_limits.py -q -n 0 -p no:randomly --no-cov
     cwd: .
+- id: dod-omn22010-integration-proof
+  description: The pushed head ran the factory floor limits suites on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane omn-22010-0445 -- uv run --frozen pytest tests/unit/test_factory_floor_limits.py tests/unit/test_factory_floor_limits_loaders.py tests/unit/test_factory_floor_page_limits.py tests/nodes/node_factory_floor_compute -q --no-cov
+    cwd: .
