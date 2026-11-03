@@ -350,6 +350,49 @@ class ModelFloorSources(BaseModel):
     merged_running_cause: str = ""
 
 
+LimitKind = Literal[
+    "claude_subscription",
+    "cloud_credit",
+    "api_credit",
+    "codex",
+    "glm",
+    "lab_model_rung",
+    "host_token_pool",
+]
+
+
+class ModelFloorLimitRow(BaseModel):
+    """One limit: its measured values, where they came from and when. UNKNOWN carries no value at all (OMN-22010)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    row_id: str
+    kind: LimitKind
+    name: str
+    state: Literal["read", "UNKNOWN"]
+    source: str
+    # When the source was read, "" when it never was.
+    read_at: str
+    # Set only on an UNKNOWN row: why no number is drawn.
+    unknown_reason: str = ""
+    # On a read row, the values the source did not give (drawn UNKNOWN, never zero).
+    unknown_fields: tuple[str, ...] = ()
+    values: dict[str, float | int | str | bool]
+
+
+class ModelFloorLimits(BaseModel):
+    """The Limits panel: one row per account, key, engine, rung and host token pool."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    publish_cycle_minutes: int
+    rows: tuple[ModelFloorLimitRow, ...]
+    # The sources that could not be read at all, so a missing row is not mistaken for a missing limit.
+    unread_sources: tuple[str, ...]
+    idle_slot_hours: float | None
+    idle_slot_hours_read_at: str
+
+
 class ModelFactoryFloorResult(BaseModel):
     """The factory floor record."""
 
@@ -360,3 +403,4 @@ class ModelFactoryFloorResult(BaseModel):
     lines: tuple[ModelFloorLine, ...]
     floor: ModelFloorSection
     sources: ModelFloorSources
+    limits: ModelFloorLimits

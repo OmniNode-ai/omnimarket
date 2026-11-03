@@ -30,6 +30,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
     names_task,
     pr_key,
 )
+from omnimarket.nodes.node_factory_floor_compute.handlers.floor_limits import (
+    compute_limits,
+)
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_merged_mapping import (
     PrRecord,
     is_built,
@@ -917,6 +920,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             runner_fleet_read=request.runner_fleet is not None,
             runner_fleet_cause=request.runner_fleet_cause,
         ),
+        limits=compute_limits(request),
     )
 
 

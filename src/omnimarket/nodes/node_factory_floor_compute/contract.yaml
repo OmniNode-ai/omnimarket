@@ -123,6 +123,12 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # The Limits panel (OMN-22010). A reading older than one publish cycle, or never read, is UNKNOWN and carries no number.
+  # The budget applies to every API key whose overlay row names none; the credit expiry is the day the cloud-session credit ends.
+  limits:
+    publish_cycle_minutes: 5
+    api_budget_usd: 200
+    cloud_credit_expiry: "2026-11-05"
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

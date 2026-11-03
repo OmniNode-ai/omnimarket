@@ -195,6 +195,10 @@ header{display:grid;gap:14px}
 /* dock + delegation */
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:18px 20px;display:grid;gap:14px;align-content:start;min-width:0}
+#limits[hidden]{display:none}
+#limits table{width:100%;border-collapse:collapse;font-size:.875rem;text-align:left}
+#limits th,#limits td{padding:8px 12px 8px 0;vertical-align:top;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+#limits tbody+tbody tr:first-child>*{border-top:2px solid var(--rule)}
 .big{font:800 3.2rem/0.9 var(--f-display)}
 .list{list-style:none;padding:0;margin:0;display:grid;gap:8px;font-size:.9375rem}
 .list li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;border-bottom:1px dashed var(--rule);padding-bottom:6px}
@@ -319,6 +323,7 @@ html.embed .wrap{padding-block:14px 48px}
   </section>
 
   <section class="card" aria-labelledby="mrH" id="mergedRunning" hidden></section>
+  <section class="card" aria-labelledby="limitsH" id="limits" hidden></section>
 
   <section class="two">
     <div class="card" aria-labelledby="dockH" id="dock">
@@ -771,6 +776,54 @@ function renderMergedRunning(floor){
     ${hosts ? `<ul style="margin:0;padding-left:1.2em;display:grid;gap:4px">${hosts}</ul>` : ""}`;
 }
 
+function renderLimits(record){
+  const card = el("limits"), limits = record.limits;
+  if (!limits){ card.hidden = true; card.innerHTML = ""; return; }
+  const labels = {claude_subscription: "Claude subscription", cloud_credit: "Cloud credit", api_credit: "API credit", codex: "Codex", glm: "GLM", lab_model_rung: "Lab model rung", host_token_pool: "Host token pool"};
+  const valueText = (key, value) => {
+    if (typeof value === "boolean") return value ? "yes" : "no";
+    if (typeof value === "number") {
+      if (key.includes("utilization") || key === "used_pct") return `${fmt(num(value) * 100)}%`;
+      if (key.endsWith("_usd")) return `$${num(value).toFixed(2)}`;
+    }
+    return String(value);
+  };
+  const groups = new Map();
+  (limits.rows || []).forEach(row => {
+    if (!groups.has(row.kind)) groups.set(row.kind, []);
+    groups.get(row.kind).push(row);
+  });
+  const rows = Array.from(groups, ([kind, entries]) => `<tbody>${entries.map(row => {
+    let values;
+    if (row.state === "UNKNOWN") values = `<span class="muted">UNKNOWN ${esc(row.unknown_reason)}</span>`;
+    else {
+      const unknown = new Set(row.unknown_fields || []);
+      const known = row.values || {};
+      const keys = row.kind === "host_token_pool"
+        ? ["usable", "limited", "limited_until", "revoked", "total"].filter(key => Object.hasOwn(known, key))
+        : Object.keys(known);
+      values = keys.filter(key => !unknown.has(key)).map(key => {
+        const label = row.kind === "host_token_pool" && key === "revoked" ? "revoked (not capacity)" : key;
+        return `<div>${esc(label)}: ${esc(valueText(key, known[key]))}</div>`;
+      }).join("") + Array.from(unknown, key => `<div class="muted">${esc(key)}: UNKNOWN</div>`).join("");
+    }
+    const read = row.read_at ? `read ${sinceText(row.read_at)} ago` : "never read";
+    return `<tr><td>${esc(labels[kind] || kind)}</td><th scope="row">${esc(row.name)}</th><td>${esc(row.source)}<div class="muted">${esc(read)}</div></td><td>${values}</td></tr>`;
+  }).join("")}</tbody>`).join("");
+  const hosts = (record.floor && record.floor.merged_running && record.floor.merged_running.idle_hosts || []).map(host =>
+    `<li><b>${esc(host.host)}</b>: ${esc(host.state === "unread" ? "unread" : host.idle == null ? "UNKNOWN" : `${host.idle} idle`)}</li>`
+  ).join("");
+  const idle = limits.idle_slot_hours == null ? "UNKNOWN" : num(limits.idle_slot_hours).toFixed(1);
+  card.hidden = false;
+  card.innerHTML = `<div><div class="eyebrow">Capacity and usage</div><h2 id="limitsH">Limits</h2>
+    <p class="sub">Usage readings and their sources. Missing or stale readings are UNKNOWN.</p></div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:start">
+      <div style="flex:1;min-width:0;overflow-x:auto"><table><thead><tr><th scope="col">Kind</th><th scope="col">Name</th><th scope="col">Source and read time</th><th scope="col">Values</th></tr></thead>${rows}</table></div>
+      <div><h3>Idle slot-hours today</h3><span class="big mono">${esc(idle)}</span>${hosts ? `<h3>Idle slots by host</h3><ul>${hosts}</ul>` : ""}</div>
+    </div>
+    ${(limits.unread_sources || []).length ? `<p class="muted">Sources not read: ${esc(limits.unread_sources.join(", "))}</p>` : ""}`;
+}
+
 function renderMachines(floor){
   const ms = floor.machines || [];
   const lanes = floor.lanes || [];
@@ -959,6 +1012,7 @@ function render(parts){
   renderLines(built.slots, built.declared, built.reason);
   renderMachines(floor);
   renderMergedRunning(floor);
+  renderLimits(rec);
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);

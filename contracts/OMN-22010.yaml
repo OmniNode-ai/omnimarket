@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-22010
+title: The factory floor page shows a Limits panel with one row per account and engine, each with its measured value, source and read time, and UNKNOWN when unread
+summary: 'The floor record gains a limits section computed by node_factory_floor_compute (floor_limits.py): a row per Claude subscription account, cloud-session credit account, API key, Codex and GLM engine, lab model rung and lab host token pool, each with source and read time, UNKNOWN (never zero) when unread or older than one publish cycle, and a revoked token counted as revoked and never as capacity. The cycle, the default API budget and the credit expiry come from the compute contract''s config block. node_factory_floor_effect reads the three status files and the token pool mirrors (runtime.limit_sources) and the floor page draws the Limits panel. The producers of the API meter file and the engines file are not part of this change; until they write, those rows read UNKNOWN.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22010-ac1
+  statement: The claude_subscription rows carry both windows and the pool limit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the published floor JSON carries a limits section with a row per Claude subscription account (five_hour and seven_day utilization and reset times, from the rate headers the runner writes to cloud-accounts.json and the token pool limited_until) -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k claude_subscription -q'
+- id: req-omn22010-ac2
+  statement: The cloud_credit rows carry remaining, source and the contract expiry.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the limits section carries a row per Claude cloud-session credit account (cloud-accounts.json credit record, expiry 2026-11-05) -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k cloud_credit -q'
+- id: req-omn22010-ac3
+  statement: The api_credit rows carry spend, the contract budget, remaining and the month-end projection.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the limits section carries a row per Anthropic API key with month spend, budget (contract value, 200 USD), remaining and projected unspent at month end, read from the meter node -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k api_credit -q'
+- id: req-omn22010-ac4
+  statement: Codex, GLM and each lab rung have a row.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the limits section carries a Codex (ChatGPT) usage window and reset row, a GLM coding plan row and a row per local lab model rung with availability and last smoke -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k engines -q'
+- id: req-omn22010-ac5
+  statement: A revoked token is counted as revoked and never as capacity.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the limits section carries per lab host Claude token pool counts (usable, limited until, revoked), and a revoked token is counted as revoked and never as capacity -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k token_pool_revoked -q'
+- id: req-omn22010-ac6
+  statement: A row never read or older than one publish cycle is UNKNOWN with no number.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: every row carries source and read time, and a row whose read time is older than one publish cycle or was never read shows UNKNOWN and never zero -- falsifier: uv run pytest tests/unit/test_factory_floor_limits.py -k unknown_never_zero -q'
+- id: req-omn22010-ac7
+  statement: The floor page draws the Limits panel from the record.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the floor page renders the Limits panel with per-line idle and the day''s idle slot-hours beside it -- falsifier: uv run pytest tests/unit/test_factory_floor_page_limits.py -q'
+evidence_requirements:
+- kind: tests
+  description: The limits section, its loaders and the page panel (AC1 to AC7).
+  command: uv run pytest tests/unit/test_factory_floor_limits.py tests/unit/test_factory_floor_limits_loaders.py tests/unit/test_factory_floor_page_limits.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22010-ac1
+  description: The claude_subscription rows carry both windows and the pool limit.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k claude_subscription -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22010-ac2
+  description: The cloud_credit rows carry remaining, source and the contract expiry.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k cloud_credit -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22010-ac3
+  description: The api_credit rows carry spend, the contract budget, remaining and the month-end projection.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k api_credit -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22010-ac4
+  description: Codex, GLM and each lab rung have a row.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k engines -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22010-ac5
+  description: A revoked token is counted as revoked and never as capacity.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k token_pool_revoked -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22010-ac6
+  description: A row never read or older than one publish cycle is UNKNOWN with no number.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_limits.py -k unknown_never_zero -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22010-ac7
+  description: The floor page draws the Limits panel from the record.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_factory_floor_page_limits.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
