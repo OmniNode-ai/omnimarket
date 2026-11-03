@@ -25,9 +25,11 @@ from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import
 from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
     CloseEvidenceRefusedError,
     EnumCloseEvidenceKind,
-    ModelCloseEvidence,
     enforce_close_evidence,
     evaluate_close_evidence,
+)
+from tests.helpers.linear_triage_done_write_gate import (
+    ProvenCloseEvidence as ModelCloseEvidence,
 )
 
 

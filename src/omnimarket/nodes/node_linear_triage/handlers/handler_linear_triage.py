@@ -17,6 +17,7 @@ import re
 import subprocess
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -43,6 +44,9 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key_async,
     secret_store_from_config_path,
 )
+from omnimarket.models.runtime_proof.model_runtime_proof_close import (
+    ModelProofCloseDecision,
+)
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import (
     EnumTriageAction,
@@ -52,8 +56,10 @@ from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import
     ModelTriageAction,
 )
 from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
+    CloseEvidenceRefusedError,
     EnumCloseEvidenceKind,
     ModelCloseEvidence,
+    RuntimeProofProbe,
     enforce_close_evidence,
 )
 from omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate import (
@@ -1307,6 +1313,28 @@ def _held_no_bound_receipt(
     )
 
 
+def _held_merged_not_proven_running(
+    ticket: ModelLinearTicket, refusal: CloseEvidenceRefusedError
+) -> tuple[list[ModelTriageAction], int, str | None]:
+    """The record a merge-only close leaves: the ticket stays open, and the reason says so.
+
+    OMN-22334: a merged PR delivers the change and does not show it runs.
+    """
+    _log.info("%s left open: %s", ticket.identifier, refusal.decision.reason)
+    return (
+        [
+            ModelTriageAction(
+                ticket_id=ticket.identifier,
+                ticket_title=ticket.title,
+                action=EnumTriageAction.HELD_MERGED_NOT_PROVEN_RUNNING,
+                evidence=refusal.decision.reason,
+            )
+        ],
+        0,
+        None,
+    )
+
+
 class HandlerLinearTriage:
     """Handler that scans Linear tickets, checks PR state, and marks done or flags stale."""
 
@@ -1316,7 +1344,9 @@ class HandlerLinearTriage:
         github_client: GitHubClientProtocol | None = None,
         occ_receipt_probe: OccReceiptProbe | None = None,
         dod_verdict_probe: DodVerdictProbe | None = None,
+        runtime_proof_probe: RuntimeProofProbe | None = None,
     ) -> None:
+        self._runtime_proof_probe = runtime_proof_probe
         self._client = client
         self._github_client = github_client
         self._occ_receipt_probe = occ_receipt_probe
@@ -1371,6 +1401,16 @@ class HandlerLinearTriage:
         if self._occ_receipt_probe is None:
             self._occ_receipt_probe = OccReceiptSubprocessProbe()
         return self._occ_receipt_probe
+
+    def _runtime_proof_for(
+        self, ticket: ModelLinearTicket, merged_pr: Mapping[str, str]
+    ) -> ModelProofCloseDecision | None:
+        """The runtime-proof verdict for a merge-delivered close; none without a probe (OMN-22334)."""
+        if self._runtime_proof_probe is None:
+            return None
+        return self._runtime_proof_probe.proof_for(
+            ticket_id=ticket.identifier, merged_pr=merged_pr
+        )
 
     def _get_dod_verdict_probe(self) -> DodVerdictProbe:
         """Return the dod_verify verdict probe, lazily building the real default.
@@ -1800,6 +1840,7 @@ class HandlerLinearTriage:
                     evidence=ModelCloseEvidence(
                         kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
                         detail=evidence,
+                        runtime_proof=self._runtime_proof_for(ticket, merged_pr),
                     ),
                 )
                 return (
@@ -1814,6 +1855,8 @@ class HandlerLinearTriage:
                     1,
                     None,
                 )
+            except CloseEvidenceRefusedError as merge_refusal:
+                return _held_merged_not_proven_running(ticket, merge_refusal)
             except DoneWriteReceiptRefusedError as refusal:
                 return _held_no_bound_receipt(ticket, refusal)
             except Exception as exc:
@@ -2183,6 +2226,7 @@ class HandlerLinearTriage:
                     evidence=ModelCloseEvidence(
                         kind=EnumCloseEvidenceKind.SUPERSEDED_BY_MERGED_PR,
                         detail=evidence,
+                        runtime_proof=self._runtime_proof_for(ticket, sibling),
                     ),
                 )
                 return (
@@ -2197,6 +2241,8 @@ class HandlerLinearTriage:
                     1,
                     None,
                 )
+            except CloseEvidenceRefusedError as merge_refusal:
+                return _held_merged_not_proven_running(ticket, merge_refusal)
             except DoneWriteReceiptRefusedError as refusal:
                 return _held_no_bound_receipt(ticket, refusal)
             except Exception as exc:
