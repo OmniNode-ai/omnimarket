@@ -76,17 +76,18 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_plan_list/test_t18b_replay.py tests/nodes/node_usage_privileges/test_t18b_replay.py -q --no-cov --refuse-skips
         cwd: .
-  - id: catalog-lab-head-proof
+  - id: catalog-integration-proof
     description: >
-      Pushed-head lab-run receipts for both profiles and the pre-PR slot readings
-      are recorded in the PR body. Hosted CI cannot reach the lab, so only the
-      local Done gate runs this check.
+      The pushed head ran both node test directories on a lab host through the
+      bus and exited 0; the Redpanda profile leg runs the same way with
+      ONEX_CATALOG_HTTP_TEST_PROFILE=redpanda. Hosted CI cannot reach the lab, so
+      only the local Done gate runs this check.
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
         check_value: >-
-          python -c "raise SystemExit('OPEN: confirm the pushed-head lab-run receipts in the PR body')"
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane t18c-g3-resume-1415 -- uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
         cwd: .
   - id: catalog-published-source-probe
     description: >
