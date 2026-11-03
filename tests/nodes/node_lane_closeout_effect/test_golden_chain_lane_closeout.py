@@ -98,7 +98,8 @@ def test_a_branch_with_no_upstream_is_never_ok(tmp_path: Path) -> None:
     tree = clone(tmp_path, origin)
     git(tree, "checkout", "-q", "-b", "feature/x")
     commit(tree)
-    assert close(tree, remove=False).verdict is Verdict.WIP
+    got = close(tree, remove=False)
+    assert got.verdict is Verdict.WIP
     assert wip_branches(origin) == ["wip/lane-1"]
 
 
@@ -141,7 +142,8 @@ def test_a_detached_worktree_at_its_base_may_go(tmp_path: Path) -> None:
     base = git(tree, "rev-parse", "HEAD")
     git(tree, "checkout", "-q", "--detach")
     git(tree, "remote", "remove", "origin")
-    assert close(tree, base=base, url=str(origin), remove=False).verdict is Verdict.OK
+    got = close(tree, base=base, url=str(origin), remove=False)
+    assert got.verdict is Verdict.OK
 
 
 def linked(tmp_path: Path, origin: Path) -> Path:
