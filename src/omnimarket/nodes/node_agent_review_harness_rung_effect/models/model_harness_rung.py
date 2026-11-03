@@ -1,27 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models of the codex rung: the vote request, the harness run it reads, the vote.
+"""Models of the harness rung: the rung config, the vote request, the run, the vote.
 
-The vote has the shape of the dispatch orchestrator's voter review (identity, endpoint,
-model, delegation event id, findings); this package keeps its own copy because a node
-never imports another node's models.
+One node serves every harness rung. The rung's config (harness, login, endpoint, task
+class, effort, call budget, harness script and run-directory leaf) is data: the dispatch
+reads it from its overlay and sends it in each vote request, so no harness is named in
+code. The vote has the shape of the dispatch orchestrator's voter review (identity,
+endpoint, model, delegation event id, findings); this package keeps its own copy because
+a node never imports another node's models.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from importlib.resources import files
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-_PACKAGE = "omnimarket.nodes.node_agent_review_codex_rung_effect"
-CONFIG_KEY = "agent_review_codex_rung"
 
-
-class ModelCodexRungConfig(BaseModel):
-    """``config.agent_review_codex_rung`` of the contract."""
+class ModelHarnessRungConfig(BaseModel):
+    """One rung's harness: what to run and what its receipt must show."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -32,26 +30,21 @@ class ModelCodexRungConfig(BaseModel):
     effort: str = Field(min_length=1)
     call_budget_seconds: float = Field(gt=0)
     harness_script: str = Field(min_length=1)
-
-    @classmethod
-    def from_contract(cls) -> ModelCodexRungConfig:
-        contract = yaml.safe_load(
-            files(_PACKAGE).joinpath("contract.yaml").read_text("utf-8")
-        )
-        return cls.model_validate(contract["config"][CONFIG_KEY])
+    run_dir_leaf: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
 
 
-class ModelCodexVoteRequest(BaseModel):
-    """One voter's review: the roster identity and model, and the full review prompt."""
+class ModelHarnessVoteRequest(BaseModel):
+    """One voter's review: the roster identity and model, the rung config, the prompt."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     identity: str = Field(min_length=1)
     model: str = Field(min_length=1)
+    rung: ModelHarnessRungConfig
     prompt: str = Field(min_length=1)
 
 
-class ModelCodexFinding(BaseModel):
+class ModelHarnessFinding(BaseModel):
     """One finding the voter raised."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -62,8 +55,8 @@ class ModelCodexFinding(BaseModel):
     claim: str = ""
 
 
-class ModelCodexVote(BaseModel):
-    """The vote: the provenance of the harness run and the findings it returned."""
+class ModelHarnessVote(BaseModel):
+    """The vote, unsigned: the provenance of the harness run and the findings it returned."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -71,7 +64,7 @@ class ModelCodexVote(BaseModel):
     endpoint: str
     model: str
     delegation_event_id: str = Field(min_length=1)
-    findings: tuple[ModelCodexFinding, ...] = ()
+    findings: tuple[ModelHarnessFinding, ...] = ()
 
 
 class ModelHarnessRun(BaseModel):
@@ -92,10 +85,9 @@ class ModelHarnessRun(BaseModel):
 
 
 __all__ = [
-    "CONFIG_KEY",
-    "ModelCodexFinding",
-    "ModelCodexRungConfig",
-    "ModelCodexVote",
-    "ModelCodexVoteRequest",
+    "ModelHarnessFinding",
     "ModelHarnessRun",
+    "ModelHarnessRungConfig",
+    "ModelHarnessVote",
+    "ModelHarnessVoteRequest",
 ]

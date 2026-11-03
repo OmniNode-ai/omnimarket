@@ -18,7 +18,10 @@ review ends before any port is called:
   checkout, with the key from ``LOCAL_LLM_SHARED_SECRET`` (the process environment,
   else the host env file). The key goes to the child's environment, never its argv.
 * ``RungVoterCaller`` sends each voter to the rung its roster entry names: the lab rung
-  through ``onex delegate``, the codex rung through ``node_agent_review_codex_rung_effect``.
+  through ``onex delegate``, and every rung the overlay's ``harness_rungs`` map names
+  through ``node_agent_review_harness_rung_effect`` with that rung's harness config. A
+  harness child never receives a name the signer reads, and a prompt or vote holding the
+  key is refused: the vote comes back unsigned and only this process signs.
 
 No voter, endpoint, threshold, host or deadline is spelled here: the roster, the
 timeouts and the quorum come from the node overlay; the paths from the environment.
@@ -59,6 +62,7 @@ from omnimarket.models.scm import EnumScmNode
 
 from ..models import (
     ModelAgentFinding,
+    ModelAgentHarnessRung,
     ModelAgentReceipt,
     ModelAgentReceiptCandidate,
     ModelAgentReviewConfig,
@@ -74,9 +78,10 @@ STATE_DIR_ENV = "ONEX_STATE_DIR"
 REGISTRY_ROOT_ENV = "OMNI_HOME"
 OMNIINTELLIGENCE_ENV = "ONEX_OMNIINTELLIGENCE_CHECKOUT"
 PLUGIN_ROOT_ENV = "OMNI_PLUGIN_ROOT"
+#: Every environment name the signer reads; none reaches a voter's child process.
+SIGNER_ENV_NAMES = (SECRET_ENV, HOST_ENV_FILE_ENV)
 RUNG_LAB = "lab"
-RUNG_CODEX = "codex"
-CODEX_RUNG_MODULE = "omnimarket.nodes.node_agent_review_codex_rung_effect"
+HARNESS_RUNG_MODULE = "omnimarket.nodes.node_agent_review_harness_rung_effect"
 _STATE_SUBDIR = "agent_review"
 
 ScmBusKind = Literal["inmemory", "kafka"]
@@ -137,7 +142,11 @@ def signing_key(environ: Mapping[str, str]) -> str:
 
 
 def _child_env(environ: Mapping[str, str], **extra: str) -> dict[str, str]:
-    env = {k: v for k, v in environ.items() if k not in ("VIRTUAL_ENV", SECRET_ENV)}
+    env = {
+        k: v
+        for k, v in environ.items()
+        if k != "VIRTUAL_ENV" and k not in SIGNER_ENV_NAMES
+    }
     env.update(extra)
     return env
 
@@ -601,39 +610,57 @@ class DelegateLabVoter:
         )
 
 
-class CodexRungVoter:
-    """The codex rung: ``node_agent_review_codex_rung_effect`` run as its own process."""
+class HarnessRungVoter:
+    """A harness rung: ``node_agent_review_harness_rung_effect`` run as its own process.
+
+    The rung's config rides in the request; the child's environment holds no name the
+    signer reads; a prompt or a vote that holds the signing key is refused, so the key
+    cannot reach a harness session or come back inside a review.
+    """
 
     def __init__(
         self,
         *,
+        rung: ModelAgentHarnessRung,
         diffs: CloneDiffReader,
         environ: Mapping[str, str],
+        withheld: Sequence[str],
         timeout_seconds: float,
     ) -> None:
-        _required(environ, PLUGIN_ROOT_ENV, "codex rung (harness-delegate)")
+        _required(environ, PLUGIN_ROOT_ENV, "harness rung (harness-delegate)")
+        self._rung = rung
         self._diffs = diffs
         self._environ = environ
+        self._withheld = tuple(value for value in withheld if value)
         self._timeout = timeout_seconds
+
+    def _holds_withheld(self, text: str) -> bool:
+        return any(value in text for value in self._withheld)
 
     async def review(
         self, voter: ModelAgentVoter, repo: str, pr: int, head_sha: str
     ) -> ModelAgentVoterReview:
+        prompt = review_prompt(
+            repo, pr, head_sha, await self._diffs.diff(repo, head_sha)
+        )
+        if self._holds_withheld(prompt):
+            raise RuntimeError("the review prompt holds the signing key; no call made")
         request = {
             "identity": voter.identity,
             "model": voter.model,
-            "prompt": review_prompt(
-                repo, pr, head_sha, await self._diffs.diff(repo, head_sha)
-            ),
+            "rung": self._rung.model_dump(mode="json"),
+            "prompt": prompt,
         }
         rc, out, err = await _run(
-            (sys.executable, "-m", CODEX_RUNG_MODULE),
+            (sys.executable, "-m", HARNESS_RUNG_MODULE),
             stdin=json.dumps(request).encode("utf-8"),
             env=_child_env(self._environ),
             timeout_seconds=self._timeout,
         )
         if rc != 0:
-            raise RuntimeError(f"the codex rung exited {rc}: {_tail(err)}")
+            raise RuntimeError(f"the {voter.rung} rung exited {rc}: {_tail(err)}")
+        if self._holds_withheld(out):
+            raise RuntimeError(f"the {voter.rung} rung's vote holds the signing key")
         return ModelAgentVoterReview.model_validate_json(out)
 
 
@@ -699,10 +726,12 @@ def build_production_ports(
                 environ=env,
                 timeout_seconds=config.lab_call_timeout_seconds,
             )
-        elif rung == RUNG_CODEX:
-            rungs[rung] = CodexRungVoter(
+        elif rung in config.harness_rungs:
+            rungs[rung] = HarnessRungVoter(
+                rung=config.harness_rungs[rung],
                 diffs=diffs,
                 environ=env,
+                withheld=(key,),
                 timeout_seconds=config.lab_call_timeout_seconds,
             )
         else:
@@ -729,10 +758,10 @@ def build_production_ports(
 
 __all__ = [
     "CloneDiffReader",
-    "CodexRungVoter",
     "DelegateLabVoter",
     "FileReceiptStore",
     "FileTerminalLog",
+    "HarnessRungVoter",
     "ModelAgentReviewPorts",
     "PortNotBoundError",
     "ProtocolScmCall",

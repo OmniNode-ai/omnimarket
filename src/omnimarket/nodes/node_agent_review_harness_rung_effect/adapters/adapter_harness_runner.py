@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The harness-delegate path, run where the Codex ChatGPT login is.
+"""The harness-delegate path, run on the host where the rung's login is.
 
-``HarnessDelegateCaller`` runs ``harness_delegate.py run --harness codex`` from the omni
-plugin at ``$OMNI_PLUGIN_ROOT``, into a fresh run directory under
-``$ONEX_STATE_DIR/agent_review/codex``, and reads back the one receipt and answer it
-wrote. The harness refuses a login that is not the ChatGPT one and never falls back to
-an API key. An absent plugin root or state directory raises ``HarnessNotBoundError``.
+``HarnessDelegateCaller`` runs ``harness_delegate.py run --harness <rung harness>`` from
+the omni plugin at ``$OMNI_PLUGIN_ROOT``, into a fresh run directory under
+``$ONEX_STATE_DIR/agent_review/<rung run-directory leaf>``, and reads back the one receipt
+and answer it wrote. Every value of the call comes from the rung config. The harness
+refuses a login that is not a subscription one and never falls back to an API key; it
+gives the harness CLI an allowlisted environment with no key, token or secret name. An
+absent plugin root or state directory raises ``HarnessNotBoundError``.
 """
 
 from __future__ import annotations
@@ -19,10 +21,11 @@ import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
-from ..models import ModelCodexRungConfig, ModelHarnessRun
+from ..models import ModelHarnessRun, ModelHarnessRungConfig
 
 PLUGIN_ROOT_ENV = "OMNI_PLUGIN_ROOT"
 STATE_DIR_ENV = "ONEX_STATE_DIR"
+_STATE_SUBDIR = "agent_review"
 
 
 class HarnessNotBoundError(RuntimeError):
@@ -33,7 +36,7 @@ class HarnessDelegateCaller:
     def __init__(self, environ: Mapping[str, str] | None = None) -> None:
         self._environ = os.environ if environ is None else environ
 
-    def _paths(self, config: ModelCodexRungConfig) -> tuple[Path, Path]:
+    def _paths(self, config: ModelHarnessRungConfig) -> tuple[Path, Path]:
         root = self._environ.get(PLUGIN_ROOT_ENV, "").strip()
         state = self._environ.get(STATE_DIR_ENV, "").strip()
         if not root:
@@ -47,11 +50,11 @@ class HarnessDelegateCaller:
         script = Path(root) / config.harness_script
         if not script.is_file():
             raise HarnessNotBoundError(f"{script} does not exist; no harness is bound")
-        out_dir = Path(state) / "agent_review" / "codex" / str(uuid.uuid4())
+        out_dir = Path(state) / _STATE_SUBDIR / config.run_dir_leaf / str(uuid.uuid4())
         return script, out_dir
 
     async def run(
-        self, prompt: str, model: str, config: ModelCodexRungConfig
+        self, prompt: str, model: str, config: ModelHarnessRungConfig
     ) -> ModelHarnessRun:
         script, out_dir = self._paths(config)
         out_dir.mkdir(parents=True, exist_ok=False)

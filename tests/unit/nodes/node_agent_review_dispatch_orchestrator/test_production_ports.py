@@ -241,16 +241,6 @@ def test_an_absent_environment_refuses_by_name(tmp_path: Path, absent: str) -> N
     assert absent in str(caught.value)
 
 
-def test_a_codex_rung_needs_the_plugin_root(tmp_path: Path) -> None:
-    environ = bound_environ(tmp_path)
-    del environ["OMNI_PLUGIN_ROOT"]
-    with pytest.raises(PortNotBoundError) as caught:
-        build_production_ports(
-            config(rung="codex"), scm_bus="inmemory", scm_lane=None, environ=environ
-        )
-    assert "OMNI_PLUGIN_ROOT" in str(caught.value)
-
-
 def test_a_rung_no_binding_serves_refuses_at_bind(tmp_path: Path) -> None:
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(

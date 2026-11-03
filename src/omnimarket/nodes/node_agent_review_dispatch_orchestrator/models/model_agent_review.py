@@ -79,6 +79,22 @@ class ModelAgentReviewQuorum(BaseModel):
     blocking_severities: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelAgentHarnessRung(BaseModel):
+    """One harness rung: the CLI harness a roster rung runs through, and what its receipt
+    must show. The harness rung node reads every value from here; none is in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    harness: str = Field(min_length=1)
+    login: str = Field(min_length=1)
+    endpoint: str = Field(min_length=1)
+    task_class: str = Field(min_length=1)
+    effort: str = Field(min_length=1)
+    call_budget_seconds: float = Field(gt=0)
+    harness_script: str = Field(min_length=1)
+    run_dir_leaf: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class ModelAgentReviewConfig(BaseModel):
     """``<root>/node_agent_review_dispatch_orchestrator/overlay.yaml``; every key required."""
 
@@ -94,6 +110,9 @@ class ModelAgentReviewConfig(BaseModel):
     roster: tuple[ModelAgentVoter, ...] = Field(min_length=1)
     policy: ModelAgentReviewPolicy
     quorum: ModelAgentReviewQuorum
+    #: Rung name -> harness, for every roster rung served by the harness rung node. A
+    #: roster rung that is neither the lab rung nor a key here has no binding.
+    harness_rungs: dict[str, ModelAgentHarnessRung] = Field(default_factory=dict)
 
 
 class ModelAgentReviewRequest(BaseModel):
