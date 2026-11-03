@@ -27,11 +27,24 @@ import yaml
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
 
-from omnimarket.models.pr_state import ModelPrStateReadPolicy
+from omnimarket.models.pr_state import (
+    ModelPrStatePageRequest,
+    ModelPrStateProjectionRefusal,
+    ModelPrStateReadPolicy,
+    ModelPrStateReadUnavailable,
+    ModelPrStateWaitRequest,
+)
 from omnimarket.nodes.node_pr_state_read_effect import policy as policy_module
 from omnimarket.nodes.node_pr_state_read_effect.cli import (
     PrStateCliRuntime,
     pr_state_group,
+)
+from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_page_source import (
+    UNCONFIGURED,
+    HandlerPrStatePageSource,
+)
+from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_wait import (
+    HandlerPrStateWait,
 )
 from omnimarket.nodes.node_pr_state_read_effect.policy import (
     load_pr_state_read_policy,
@@ -485,6 +498,41 @@ def test_the_policy_is_loaded_from_the_contract() -> None:
     assert isinstance(POLICY, ModelPrStateReadPolicy)
     assert POLICY.max_row_age_seconds == 300
     assert POLICY.wait_poll_seconds < 60
+
+
+def test_every_handler_module_of_the_node_is_bound_by_its_contract() -> None:
+    node_dir = policy_module.CONTRACT_PATH.parent
+    contract = yaml.safe_load(policy_module.CONTRACT_PATH.read_text(encoding="utf-8"))
+    routed = {
+        entry["handler"]["module"].rsplit(".", 1)[-1]
+        for entry in contract["handler_routing"]["handlers"]
+    }
+    on_disk = {path.stem for path in (node_dir / "handlers").glob("handler_*.py")}
+    assert routed == on_disk
+    http = [
+        entry["handler"]["name"]
+        for entry in contract["handler_routing"]["handlers"]
+        if entry["handler"].get("handler_type") == "http"
+    ]
+    assert http == ["HandlerPrStatePageSource"]
+
+
+def test_a_page_source_with_no_client_refuses_instead_of_guessing_an_address() -> None:
+    answer = HandlerPrStatePageSource().handle(ModelPrStatePageRequest(topic=TOPIC))
+    assert answer.result == ModelPrStateProjectionRefusal(
+        status_code=0, error=UNCONFIGURED
+    )
+
+
+def test_a_wait_handler_built_with_no_arguments_returns_unavailable() -> None:
+    result = HandlerPrStateWait().handle(
+        ModelPrStateWaitRequest(
+            repo=REPO, pr_number=1, timeout_seconds=5.0, policy=POLICY
+        )
+    )
+    assert result.result == ModelPrStateReadUnavailable(
+        status_code=0, error=UNCONFIGURED
+    )
 
 
 # ---------------------------------------------------------------------------

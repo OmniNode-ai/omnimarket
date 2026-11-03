@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Wait for the projection row of one pull request to reach a terminal verdict."""
 
+import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
+from omnimarket.models.pr_state.model_pr_state_page_fetch import (
+    ModelPrStatePageRequest,
+)
 from omnimarket.models.pr_state.model_pr_state_projection_page import (
     ModelPrStateProjectionRefusal,
 )
@@ -20,6 +24,9 @@ from omnimarket.models.pr_state.model_pr_state_read_result import (
     ModelPrStateReadUnavailable,
 )
 from omnimarket.models.pr_state.model_pr_state_row import ModelPrStateRow
+from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_page_source import (
+    HandlerPrStatePageSource,
+)
 from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read import (
     HandlerPrStateRead,
 )
@@ -28,20 +35,28 @@ from omnimarket.nodes.node_pr_state_read_effect.ports.protocol_pr_state_page_sou
 )
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 class HandlerPrStateWait:
     """Reads the projection, then re-reads only rows observed after the last page.
 
     A row counts only when it is fresh, matches the requested head when one is
-    given, and has a terminal verdict or a terminal pull request state.
+    given, and has a terminal verdict or a terminal pull request state. The
+    `onex pr-state` command gives it a page source over the projection API; one
+    built with none reads through a source with no client, which refuses.
     """
 
     def __init__(
         self,
-        source: ProtocolPrStatePageSource,
-        clock: Callable[[], datetime],
-        sleep: Callable[[float], None],
+        source: ProtocolPrStatePageSource | None = None,
+        clock: Callable[[], datetime] = _utc_now,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        self._source = source
+        self._source: ProtocolPrStatePageSource = (
+            source if source is not None else HandlerPrStatePageSource()
+        )
         self._clock = clock
         self._sleep = sleep
         self._read = HandlerPrStateRead()
@@ -53,7 +68,9 @@ class HandlerPrStateWait:
         last_fresh: ModelPrStateRow | None = None
         last_stale_at: datetime | None = None
         while True:
-            page = self._source.fetch(cursor)
+            page = self._source.handle(
+                ModelPrStatePageRequest(topic=policy.projection_topic, since=cursor)
+            ).result
             if isinstance(page, ModelPrStateProjectionRefusal):
                 return ModelPrStateReadResult(
                     result=ModelPrStateReadUnavailable(

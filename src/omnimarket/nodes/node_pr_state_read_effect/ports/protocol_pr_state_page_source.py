@@ -4,15 +4,13 @@
 
 from typing import Protocol
 
-from omnimarket.models.pr_state.model_pr_state_projection_page import (
-    ModelPrStateProjectionPage,
-    ModelPrStateProjectionRefusal,
+from omnimarket.models.pr_state.model_pr_state_page_fetch import (
+    ModelPrStatePageRequest,
+    ModelPrStatePageResult,
 )
 
 
 class ProtocolPrStatePageSource(Protocol):
-    def fetch(
-        self, since: str | None
-    ) -> ModelPrStateProjectionPage | ModelPrStateProjectionRefusal:
-        """The newest rows, or only those observed after ``since`` when given."""
+    def handle(self, request: ModelPrStatePageRequest) -> ModelPrStatePageResult:
+        """The newest rows, or only those observed after ``request.since``."""
         ...

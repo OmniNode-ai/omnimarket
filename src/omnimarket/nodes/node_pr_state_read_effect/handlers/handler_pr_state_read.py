@@ -11,7 +11,7 @@ from omnimarket.models.pr_state.model_pr_state_read_result import (
     ModelPrStateReadResult,
     ModelPrStateReadStale,
 )
-from omnimarket.nodes.node_pr_state_read_effect.handlers.freshness_judgement import (
+from omnimarket.nodes.node_pr_state_read_effect.freshness_judgement import (
     judge_row_freshness,
 )
 

@@ -5,6 +5,10 @@
 from omnimarket.models.pr_state.model_pr_state_freshness_judgement import (
     ModelPrStateFreshnessJudgement,
 )
+from omnimarket.models.pr_state.model_pr_state_page_fetch import (
+    ModelPrStatePageRequest,
+    ModelPrStatePageResult,
+)
 from omnimarket.models.pr_state.model_pr_state_projection_page import (
     ModelPrStateProjectionPage,
     ModelPrStateProjectionRefusal,
@@ -31,6 +35,8 @@ from omnimarket.models.pr_state.model_pr_state_row import ModelPrStateRow
 __all__ = [
     "EnumPrStateReadOutcome",
     "ModelPrStateFreshnessJudgement",
+    "ModelPrStatePageRequest",
+    "ModelPrStatePageResult",
     "ModelPrStateProjectionPage",
     "ModelPrStateProjectionRefusal",
     "ModelPrStateReadAbsent",

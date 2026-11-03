@@ -21,6 +21,9 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     resolve_setting,
 )
+from omnimarket.models.pr_state.model_pr_state_page_fetch import (
+    ModelPrStatePageRequest,
+)
 from omnimarket.models.pr_state.model_pr_state_projection_page import (
     ModelPrStateProjectionRefusal,
 )
@@ -33,6 +36,10 @@ from omnimarket.models.pr_state.model_pr_state_read_result import (
     ModelPrStateReadResult,
     ModelPrStateReadUnavailable,
 )
+from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_page_source import (
+    HandlerPrStatePageSource,
+    open_projection_client,
+)
 from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_read import (
     HandlerPrStateRead,
 )
@@ -41,9 +48,6 @@ from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_wait i
 )
 from omnimarket.nodes.node_pr_state_read_effect.policy import (
     load_pr_state_read_policy,
-)
-from omnimarket.nodes.node_pr_state_read_effect.ports.http_page_source import (
-    HttpPrStatePageSource,
 )
 
 _REQUEST_TIMEOUT_SECONDS = 10.0
@@ -95,7 +99,7 @@ def _runtime_for(explicit_url: str | None) -> PrStateCliRuntime:
     except NodeOverlayError as exc:
         raise click.ClickException(str(exc)) from None
     return PrStateCliRuntime(
-        client=httpx.Client(base_url=url.rstrip("/")),
+        client=open_projection_client(url),
         clock=_utc_now,
         sleep=time.sleep,
     )
@@ -147,9 +151,11 @@ def read_command(
         raise click.UsageError("--head applies to exactly one REF")
     runtime = _runtime(ctx)
     policy = load_pr_state_read_policy()
-    page = HttpPrStatePageSource(
-        runtime.client, policy.projection_topic, _REQUEST_TIMEOUT_SECONDS
-    ).fetch(None)
+    page = (
+        HandlerPrStatePageSource(runtime.client, _REQUEST_TIMEOUT_SECONDS)
+        .handle(ModelPrStatePageRequest(topic=policy.projection_topic))
+        .result
+    )
     if isinstance(page, ModelPrStateProjectionRefusal):
         unavailable = ModelPrStateReadResult(
             result=ModelPrStateReadUnavailable(
@@ -196,9 +202,7 @@ def wait_command(
     repo, number = _parse_ref(ref)
     runtime = _runtime(ctx)
     policy = load_pr_state_read_policy()
-    source = HttpPrStatePageSource(
-        runtime.client, policy.projection_topic, _REQUEST_TIMEOUT_SECONDS
-    )
+    source = HandlerPrStatePageSource(runtime.client, _REQUEST_TIMEOUT_SECONDS)
     result = HandlerPrStateWait(source, runtime.clock, runtime.sleep).handle(
         ModelPrStateWaitRequest(
             repo=repo,
