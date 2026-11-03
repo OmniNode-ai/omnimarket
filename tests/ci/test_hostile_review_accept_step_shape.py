@@ -8,19 +8,29 @@ can never supply the code that accepts itself. Its shell holds only that checkou
 node call and the ``decision=unchanged`` fallbacks for a base without the node. The
 "Enforce hostile-review verdict" step keeps its ``run:`` text byte for byte (pinned by
 digest, taken from the default branch) and gains only the condition that skips it on
-``pass_agent``.
+``pass_agent``. A base that does not carry the node, cannot be checked out, or a node
+that does not run leaves the voters' verdict to decide, and the accept step never fails
+the job by itself.
 """
 
 from __future__ import annotations
 
 import hashlib
 import re
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from omnimarket.nodes.node_agent_review_gate_accept_effect.overlay import OVERLAY_ID
-from tests.ci.hostile_review_job import REVIEW_JOB, job, step_named
+from tests.ci.hostile_review_job import (
+    REVIEW_JOB,
+    Run,
+    job,
+    required_context_names,
+    simulate,
+    step_named,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -115,3 +125,93 @@ def test_the_enforcement_step_changes_only_its_condition() -> None:
     assert step["if"] == ENFORCE_IF
     digest = hashlib.sha256(str(step["run"]).encode()).hexdigest()
     assert digest == ENFORCE_RUN_SHA256, "the run: text of the enforcement step moved"
+
+
+# -- the node runs from the base commit and fails closed ------------------------
+
+
+def _run(
+    tmp_path: Path,
+    name: str,
+    *,
+    verdict: str,
+    decision: str,
+    base_has_node: bool = True,
+    base_checkout_fails: bool = False,
+    node_exit: int = 0,
+) -> Run:
+    work = tmp_path / name
+    work.mkdir()
+    return simulate(
+        work,
+        verdict=verdict,
+        decision=decision,
+        base_has_node=base_has_node,
+        base_checkout_fails=base_checkout_fails,
+        node_exit=node_exit,
+    )
+
+
+def _all(run: Run, *, green: bool) -> None:
+    for context in required_context_names():
+        assert run.green(context) is green, (context, run.exits, run.skipped)
+
+
+def test_the_node_is_run_from_the_base_worktree_with_this_attempts_files(
+    tmp_path: Path,
+) -> None:
+    run = _run(tmp_path, "base", verdict="degraded", decision="pass_agent")
+    assert len(run.node_calls) == 1
+    assert run.outputs["accept"]["decision"] == "pass_agent"
+    assert run.exits["accept"] == 0
+    _all(run, green=True)
+
+
+@pytest.mark.parametrize("verdict", ["passed", "degraded", "blocked"])
+def test_a_base_without_the_node_leaves_the_voters_verdict_to_decide(
+    tmp_path: Path, verdict: str
+) -> None:
+    run = _run(
+        tmp_path,
+        verdict,
+        verdict=verdict,
+        decision="pass_agent",
+        base_has_node=False,
+    )
+    assert run.node_calls == [], "the pull request's own node must never run"
+    assert run.exits["accept"] == 0
+    assert run.outputs["accept"] == {"decision": "unchanged"}
+    _all(run, green=verdict == "passed")
+
+
+def test_a_base_that_cannot_be_checked_out_leaves_the_voters_verdict_to_decide(
+    tmp_path: Path,
+) -> None:
+    run = _run(
+        tmp_path,
+        "checkout",
+        verdict="degraded",
+        decision="pass_agent",
+        base_checkout_fails=True,
+    )
+    assert run.node_calls == []
+    assert run.exits["accept"] == 0
+    assert run.outputs["accept"] == {"decision": "unchanged"}
+    _all(run, green=False)
+
+
+@pytest.mark.parametrize("verdict", ["passed", "degraded"])
+def test_a_node_that_does_not_run_never_fails_the_job_by_itself(
+    tmp_path: Path, verdict: str
+) -> None:
+    run = _run(
+        tmp_path,
+        verdict,
+        verdict=verdict,
+        decision="pass_agent",
+        node_exit=2,
+    )
+    assert len(run.node_calls) == 1
+    assert run.exits["accept"] == 0
+    assert run.outputs["accept"] == {"decision": "unchanged"}
+    _all(run, green=verdict == "passed")
