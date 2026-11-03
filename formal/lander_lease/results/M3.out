@@ -1,0 +1,392 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 79 and seed 7532056195077212878 with 2 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LanderLease.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LanderLease
+Starting... (2026-11-02 22:51:36)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 22:51:36.
+Error: Invariant ExactlyOnceChild is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "none"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 2: <GrantLease line 138, col 5 to line 143, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 3: <IssuePermit line 147, col 5 to line 153, col 54 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 4: <SendOffer line 156, col 5 to line 160, col 82 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 5: <OfferNew line 276, col 5 to line 280, col 82 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "offered"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 6: <SendOffer line 156, col 5 to line 160, col 82 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "offered"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 7: <HostStart line 318, col 5 to line 323, col 78 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "P"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "started"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 8: <HostEngine line 343, col 5 to line 347, col 82 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "P"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "engine"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 9: <HostEngineNoChange line 358, col 5 to line 363, col 71 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "done"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "nochange"
+
+State 10: <OfferRespawn line 301, col 5 to line 307, col 60 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "offered"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 11: <HostStart line 318, col 5 to line 323, col 78 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "P"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "started"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 12: <HostEngine line 343, col 5 to line 347, col 82 of module LanderLease>
+/\ offers = 2
+/\ landed = {0}
+/\ lockOwner = "P"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "engine"
+/\ engines = 2
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+42371 states generated, 11157 distinct states found, 5045 states left on queue.
+The depth of the complete state graph search is 13.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 7 and the 95th percentile is 4).
+Finished in 00s at (2026-11-02 22:51:36)
+exit=12
