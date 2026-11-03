@@ -575,9 +575,9 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC66"]
     checks:
-      - check_type: "command"
-        check_value: "grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html && grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html"
-        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py -q --no-cov --tb=line -k memory_gauge_matches_label"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac66-served-site"
     description: "AC66 served-site probe, unbound: after a real publish the served page carries the Memory used label. Hosted CI cannot reach the tailnet, so only the local Done gate runs this check."
     source: "manual"
