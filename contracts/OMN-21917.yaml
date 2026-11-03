@@ -42,6 +42,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k "test_hostile_review_family_is_still_set_aside_beside_the_thread_gate or test_thread_gate_red_is_the_pull_requests_own_red" -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn21917-ac2-classify-ci-red
+    description: AC2 for the controller cause clustering. A head whose reds are CI Summary and the Hostile Review Thread Gate, with armed peers carrying the gate, is classed per pull request (pr_own, one owner key for this head) and never shared_cause, with annotations read and unread. The test fails when the gate is absent from NEVER_CLUSTER.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -k test_thread_gate_red_is_per_pr_even_with_armed_peers_carrying_it -q --no-cov --tb=line
+        cwd: .
   - id: dod-omn21917-ac3
     description: AC3 asserts a head whose only reds are the aggregate and the thread gate is never presented as a reviewer rerun, so the red stays and a worker answers the thread.
     source: manual
