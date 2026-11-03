@@ -110,6 +110,27 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
         cwd: .
+  - id: webhook-http-published-source-probe
+    description: >
+      Hosted deploy check of the published source artifact at this checkout's
+      exact commit. The served contract must declare the POST /v1/github/webhook
+      mount and the served handler must define HandlerGitHubWebhookHttp. It
+      fails if either is absent from the commit GitHub serves. It checks the
+      published artifact and does not attest a running deployment.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: |-
+          set -euo pipefail;
+          probe_dir=$(mktemp -d);
+          trap 'rm -rf "$probe_dir"' EXIT;
+          base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_github_webhook_ingress_effect";
+          curl --fail --silent --show-error --location --max-time 30 "$base/contract.yaml" --output "$probe_dir/contract.yaml";
+          curl --fail --silent --show-error --location --max-time 30 "$base/handlers/handler_github_webhook_http.py" --output "$probe_dir/handler.py";
+          grep -q '/v1/github/webhook' "$probe_dir/contract.yaml";
+          grep -q '^class HandlerGitHubWebhookHttp' "$probe_dir/handler.py"
+        cwd: .
   - id: lab-head-proof
     description: >
       Pushed-head lab-run evidence is still required for AC2. Local worktree
