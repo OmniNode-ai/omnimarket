@@ -44,6 +44,9 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.adapters.adapter_a
     parse_findings,
     signing_key,
 )
+from omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers import (
+    handler_agent_review_dispatch as handler_module,
+)
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.handlers.handler_agent_review_dispatch import (
     HandlerAgentReviewDispatch,
 )
@@ -437,6 +440,25 @@ def test_a_request_on_a_host_without_a_port_fails_not_bound_and_rebinds_later(
     assert config.scm_bus.kind == "inmemory"
     assert isinstance(ports.store, FileReceiptStore)
     assert isinstance(ports.terminal_log, FileTerminalLog)
+
+
+def test_an_unexpected_bind_failure_also_ends_not_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bind error of any type fails closed; it never escapes into the runtime."""
+    install_node_overlay(monkeypatch, tmp_path / "overlays", NODE, OVERLAY)
+    environ = bound_environ(tmp_path)
+    environ["ONEX_SKILL_OVERLAY_ROOTS"] = str(tmp_path / "overlays")
+
+    def broken(*_args: object, **_kwargs: object) -> object:
+        raise ValueError("badly formed store identity")
+
+    monkeypatch.setattr(handler_module, "build_production_ports", broken)
+    handler = HandlerAgentReviewDispatch(environ=environ)
+    request = ModelAgentReviewRequest(command_id="c1", repo=REPO, pr=PR, head_sha=HEAD)
+    terminal = asyncio.run(handler.handle(request))
+    assert terminal.outcome is EnumAgentReviewOutcome.FAILED
+    assert terminal.reason is EnumAgentReviewReason.NOT_BOUND
 
 
 def test_a_partial_set_of_ports_is_refused_at_construction() -> None:
