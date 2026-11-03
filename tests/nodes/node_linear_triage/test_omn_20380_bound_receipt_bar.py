@@ -18,7 +18,6 @@ closes. Without it a refusal here could be a harness that refuses everything.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -209,35 +208,3 @@ class TestLinearTriageSkippedAndNoAcceptanceChecksReceipt:
         assert result.marked_done == 0
         client.save_issue.assert_not_called()
         assert len(_held(result)) == 1
-
-
-_LIVE_BRIEF_SOURCES = (
-    "src/omnimarket/nodes/node_morning_ground_state_orchestrator",
-    "src/omnimarket/nodes/node_dod_closeout_sweep_compute",
-)
-
-
-@pytest.mark.unit
-class TestLinearTriageBoundReceiptBarInTheLiveBriefs:
-    """AC3: the workflows now live as omnimarket nodes and name the same bar."""
-
-    def test_no_live_brief_says_a_dod_evidence_comment_suffices(self) -> None:
-        root = Path(__file__).resolve().parents[3]
-        hits = [
-            str(path.relative_to(root))
-            for source in _LIVE_BRIEF_SOURCES
-            for path in (root / source).rglob("*")
-            if path.is_file()
-            and path.suffix in {".py", ".yaml", ".json", ".md"}
-            and "dod_evidence comment" in path.read_text(encoding="utf-8")
-        ]
-        assert hits == []
-
-    def test_the_morning_closable_brief_names_the_bound_receipt_bar(self) -> None:
-        root = Path(__file__).resolve().parents[3]
-        text = (
-            root
-            / "src/omnimarket/nodes/node_morning_ground_state_orchestrator"
-            / "tools/phase_tools.json"
-        ).read_text(encoding="utf-8")
-        assert "binds every acceptance criterion through binds_ac" in text

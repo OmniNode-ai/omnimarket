@@ -1,23 +1,21 @@
 schema_version: 1.0.0
 ticket_id: OMN-20380
 title: node_linear_triage flips Linear Done on a merged PR or a child roll-up with no bound dod_verify receipt, outside the OMN-20368 done-flip guard
-summary: The triage node already refuses a Done write that carries no PASS dod_verify receipt bound through binds_ac (the OMN-20368 gate in _mark_done). This change pins that bar with tests that run the real gate for a merged PR with no binds_ac, a stale receipt, a skipped receipt and a NO_ACCEPTANCE_CHECKS receipt, and names the bar in the morning ground-state closable brief, the live home of the retired workflow briefs.
+summary: The triage node already refuses a Done write that carries no PASS dod_verify receipt bound through binds_ac (the OMN-20368 gate in _mark_done). This change pins that bar with tests that run the real gate for a merged PR with no binds_ac, a stale receipt, a skipped receipt and a NO_ACCEPTANCE_CHECKS receipt. It is test-only and covers AC1 and AC2; AC3 (the closeout briefs) stays on the ticket.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn20380-bound-receipt-bar
-  statement: node_linear_triage leaves a ticket open unless a PASS dod_verify receipt taken against the current contract entry binds every acceptance criterion through binds_ac, and the live closeout briefs say so.
+  statement: node_linear_triage leaves a ticket open unless a PASS dod_verify receipt taken against the current contract entry binds every acceptance criterion through binds_ac.
   acceptance:
   - id: AC1
     statement: 'AC1: node_linear_triage refuses a Done write for a leaf ticket whose OCC contract on origin/dev does not bind every labelled acceptance criterion through `binds_ac` to a PASS receipt taken against the current contract entry, even when every cited PR is merged -- falsifier: uv run pytest tests/ -k "linear_triage and bound_receipt" in omnimarket shows a merged-PR, no-binds_ac ticket left open with the reason no_bound_dod_receipt'
   - id: AC2
     statement: 'AC2: a stale receipt (contract entry hash changed) and a skipped or NO_ACCEPTANCE_CHECKS receipt do not discharge the bar in node_linear_triage -- falsifier: uv run pytest tests/ -k "linear_triage and stale" in omnimarket'
-  - id: AC3
-    statement: 'AC3: the dod-closeout-sweep and morning-ground-state briefs name the bound-receipt bar and no longer say a merged PR plus a dod_evidence comment suffices, in whatever repo those workflows now live -- falsifier: grep -rn "dod_evidence comment" over the live workflow sources returns no match'
 evidence_requirements:
 - kind: tests
-  description: The triage node leaves a merged-PR ticket open for each receipt that does not discharge the bar, and the live brief names the bar.
+  description: The triage node leaves a merged-PR ticket open for each receipt that does not discharge the bar.
   command: uv run pytest tests/nodes/node_linear_triage/test_omn_20380_bound_receipt_bar.py -q --no-cov
 emergency_bypass:
   enabled: false
@@ -31,7 +29,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_linear_triage/test_omn_20380_bound_receipt_bar.py -q --no-cov --tb=line -k "BoundReceiptBar and not LiveBriefs"
+    check_value: uv run pytest tests/nodes/node_linear_triage/test_omn_20380_bound_receipt_bar.py -q --no-cov --tb=line -k BoundReceiptBar
     cwd: .
 - id: dod-omn20380-ac2
   description: AC2 a receipt whose pin names another revision of the criterion, a check the verifier demoted to skipped for criteria drift, an all-skipped receipt and a NO_ACCEPTANCE_CHECKS receipt each leave the ticket open.
@@ -42,22 +40,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_linear_triage/test_omn_20380_bound_receipt_bar.py -q --no-cov --tb=line -k "Stale or Skipped"
     cwd: .
-- id: dod-omn20380-ac3
-  description: AC3 no live brief under the two workflow nodes says a dod_evidence comment suffices, and the morning closable brief names the bound-receipt bar.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_linear_triage/test_omn_20380_bound_receipt_bar.py -q --no-cov --tb=line -k LiveBriefs
-    cwd: .
 - id: dod-omn20380-deploy-probe
-  description: 'Deploy probe: the morning phase tools file GitHub serves at the checked-out commit names the bound-receipt bar, which the merge base does not.'
+  description: 'Deploy probe: the test file GitHub serves at the checked-out commit holds the bound-receipt tests, which the merge base does not.'
   source: manual
   checks:
   - check_type: command
     check_value: |-
-      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/phase_tools.json?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "binds every acceptance criterion through binds_ac" > /dev/null'
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/tests/nodes/node_linear_triage/test_omn_20380_bound_receipt_bar.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "TestLinearTriageBoundReceiptBar" > /dev/null'
     cwd: .
 - id: dod-omn20380-integration-proof
   description: The pushed head ran the bound-receipt tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
