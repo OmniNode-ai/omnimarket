@@ -1,22 +1,11 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-22345"
 title: "The agent review roster approves one Codex and one Sonnet voter beside the lab rung, and a review-only cloud lane returns its review to the dispatch node"
-summary: "This omnimarket slice builds the code side: the cloud placement node gains the review-only lane kind (route, a cloud prompt that asks for no push and no pull request, a session read that takes the ended session's final message and review file from the sessions API events, a strict parse into the typed unsigned review in the v2 compact verdict format, and the close decision under which a review-only lane with a parsed review ends done with no PR and one with none ends cloud-review-unparsed, outcome failed, never blocked); a new node node_agent_review_cloud_rung_effect renders the review-only brief for one voter of rung cloud, runs it through the remote-lane runner with every secret-shaped name dropped from the child environment, emits one delegation event and returns the vote unsigned. AC1 to AC4 are the roster and verifier overlay data of the sibling data pull request; AC7 is the lab proof; each is a disposition at the local Done gate."
+summary: "This omnimarket slice builds the code side: the cloud placement node gains the review-only lane kind (route, a cloud prompt that asks for no push and no pull request, a session read that takes the ended session's final message and review file from the sessions API events, a strict parse into the typed unsigned review in the v2 compact verdict format, and the close decision under which a review-only lane with a parsed review ends done with no PR and one with none ends cloud-review-unparsed, outcome failed, never blocked); a new node node_agent_review_cloud_rung_effect renders the review-only brief for one voter of rung cloud, runs it through the remote-lane runner with every secret-shaped name dropped from the child environment, emits one delegation event and returns the vote unsigned. AC1 to AC4 (the roster and verifier overlay data of the sibling data pull request) and AC7 (the lab proof) are not this pull request's criteria; each is a disposition entry at the local Done gate."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-omn22345-roster"
-    statement: "The dispatch overlay approves the two lab identities, one Codex identity and one Sonnet cloud identity with quorum unchanged; the Anthropic API stays out of the agent path; no single provider meets the quorum; the verifier overlay carries the same policy."
-    acceptance:
-      - id: "AC1"
-        statement: "AC1: The dispatch overlay approves exactly the two lab identities, one Codex identity and one Sonnet cloud identity, with rungs lab, codex and cloud, and its quorum block is unchanged -- falsifier: `uv run python` calling omnimarket load_agent_review_config with ONEX_SKILL_OVERLAY_ROOTS set to the overlay tree prints any other approved identity set, a second identity on rung codex or cloud, or quorum_size or min_agreeing_voters other than 2"
-      - id: "AC2"
-        statement: "AC2: The Anthropic API stays out of the agent path: a voter of endpoint class review_gateway or anthropic_api is refused by both the dispatch roster check and the verifier -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -k forbidden -v` in omnimarket run with this overlay as fixture, or the omniintelligence verifier suite run with the deployment policy, admits such a voter"
-      - id: "AC3"
-        statement: "AC3: Codex alone or Sonnet alone cannot meet the quorum -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -k quorum -v` with two Codex reviews from two hosts reports sufficient true"
-      - id: "AC4"
-        statement: "AC4: The verifier deployment overlay review_agent_receipt_verify carries the same approved identities and forbidden lists as the dispatch policy -- falsifier: a diff of the two policy blocks loaded with yaml.safe_load is non-empty"
   - id: "req-omn22345-cloud-rung"
     statement: "A cloud session never holds the shared signing secret; the cloud rung returns the review unsigned and the dispatch node signs it."
     acceptance:
@@ -27,11 +16,6 @@ requirements:
     acceptance:
       - id: "AC6"
         statement: "AC6: A review-only cloud lane reads the session final message or its review file back into the dispatch node and ends done with no PR -- falsifier: `uv run pytest` of the remote-lane runner tests for a review-only cloud lane with a final message and no PR closes it cloud-no-pr or outcome blocked, or the dispatch node receives no review"
-  - id: "req-omn22345-lab-proof"
-    statement: "One real pull request head is reviewed by Codex plus Sonnet on the lab and the gate accepts the signed receipt."
-    acceptance:
-      - id: "AC7"
-        statement: "AC7: Lab proof: one real pull request head is reviewed by Codex plus Sonnet, the receipt is signed and the gate accepts it -- falsifier: `onex run-node node_agent_review_gate_accept_effect` on that head returns anything other than pass_agent, or the receipt voters are not exactly the Codex and Sonnet identities"
 evidence_requirements:
   - kind: "tests"
     description: "The cloud rung's tests on the in-memory overlay (the Redpanda overlay case runs under the kafka marker): the brief and the runner's child environment hold no secret name or value, a vote has no signature, a review of another head is refused, a foreign model or endpoint is returned as written, no delegation event means no vote. None exists at the merge base."
