@@ -111,7 +111,7 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov -m "floor_fill_parity and kafka"
     cwd: .
-- id: dod-omn22200-ac9
+- id: dod-omn22200-ac9-integration-proof
   description: AC9 the focused command exits 0 on a lab host through lab-run; the task's lab step is none for a pure node.
   source: manual
   execution_scope: local_done_gate
