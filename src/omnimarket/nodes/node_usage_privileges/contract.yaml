@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeUsagePrivileges
+#
+# GET /v1/usage/privileges, moved from the hosted onex-api into the runtime. A
+# global catalog read with no tenant filter, behind a tenant credential: the
+# caller identity resolver is bound by DI and the mount refuses every request
+# before any catalog read when it resolves no tenant or none is bound.
+name: "node_usage_privileges"
+contract_name: "node_usage_privileges"
+node_name: "node_usage_privileges"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+# Experimental until the T18e cutover: the route is served by the runtime mount only
+# and declares no bus topics, so the node-liveness gate needs the lifecycle stated.
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  Serves GET /v1/usage/privileges from the runtime's HTTP port. Resolves the caller through the bound tenant identity resolver (401 when no tenant resolves, 503 when no resolver is bound) and only then reads every usage privilege ordered by plan tier code and resource code. A failed catalog read answers 500 with detail "failed to list usage privileges". The catalog has no tenant filter.
+input_model:
+  name: "ModelUsagePrivilegesRequest"
+  module: "omnimarket.nodes.node_usage_privileges.models"
+  description: "The request headers the caller identity resolver reads."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "usage_privileges.read"
+      event_model:
+        name: "ModelUsagePrivilegesRequest"
+        module: "omnimarket.nodes.node_usage_privileges.models"
+      handler:
+        name: "HandlerUsagePrivileges"
+        module: "omnimarket.nodes.node_usage_privileges.handlers.handler_usage_privileges"
+      supported_operations:
+        - "usage_privileges.read"
+      description: "Refuse an unresolved caller, then read the usage privilege catalog."
+  execution_mode: "single"
+  max_timeout_seconds: 30
+config:
+  database:
+    # Logical secret name resolved by the runtime secret resolver; the address
+    # itself is never in this file or in the process environment.
+    dsn_secret: "catalog.database.dsn"
+    pool_max_size: 4
+    query_timeout_seconds: 10
+# Runtime-owned HTTP boundary. The narrowest prefix, equal to the route path, so
+# the sibling /v1/usage/events routes can be mounted later without an overlap.
+http_mount:
+  factory: "omnimarket.nodes.node_usage_privileges.handlers.http_app:create_app"
+  path_prefix: "/v1/usage/privileges"
+http_route:
+  method: GET
+  path: "/v1/usage/privileges"
+  contract_id: "node_usage_privileges:1.0.0"
+  authorization: tenant
+  input_schema:
+    type: object
+    properties: {}
+    additionalProperties: true
+  handler:
+    name: HandlerUsagePrivileges
+    module: omnimarket.nodes.node_usage_privileges.handlers.handler_usage_privileges
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves the logical name catalog.database.dsn for the Postgres binding of the usage privilege repository. Absent means every catalog read answers 500."
+    required: false
+capabilities:
+  - name: "usage_privileges_http_read"
+    description: "Serve the tenant-gated usage privilege catalog read on the runtime's port."
+metadata:
+  description: "GET /v1/usage/privileges from the runtime."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22337"
+  tags:
+    - "effect"
+    - "http"
+    - "catalog"
