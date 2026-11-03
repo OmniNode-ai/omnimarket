@@ -730,14 +730,14 @@ jobs:
         id: accept
         if: always()
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ACCEPT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ONEX_SKILL_OVERLAY_ROOTS: ${{ github.workspace }}/../ci-overlay/config/onex/overlays
         run: |
           ACCEPT_BASE="${RUNNER_TEMP:-/tmp}/agent-review-accept-base"
           rm -rf "$ACCEPT_BASE"
-          if ! git -C "$GITHUB_WORKSPACE" worktree add --detach "$ACCEPT_BASE" "$BASE_SHA" >/dev/null; then
-            echo "::warning::gate accept skipped: the base commit $BASE_SHA could not be checked out; the voters' verdict stands"
+          if ! git -C "$GITHUB_WORKSPACE" worktree add --detach "$ACCEPT_BASE" "$ACCEPT_BASE_SHA" >/dev/null; then
+            echo "::warning::gate accept skipped: the base commit $ACCEPT_BASE_SHA could not be checked out; the voters' verdict stands"
             echo "decision=unchanged" >> "$GITHUB_OUTPUT"
           elif [ ! -d "$ACCEPT_BASE/src/omnimarket/nodes/node_agent_review_gate_accept_effect" ]; then
             echo "::notice::the base commit carries no node_agent_review_gate_accept_effect yet; the voters' verdict stands"

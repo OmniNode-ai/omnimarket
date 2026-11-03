@@ -67,7 +67,9 @@ class UrllibHttpTransport:
             url, data=body, headers=dict(headers), method=method
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout_seconds) as reply:
+            with urllib.request.urlopen(  # no-contract-check: port boundary
+                request, timeout=timeout_seconds
+            ) as reply:
                 return ModelHttpReply(status=reply.status, body=reply.read())
         except urllib.error.HTTPError as exc:
             return ModelHttpReply(status=exc.code, body=exc.read())

@@ -57,7 +57,7 @@ def test_the_accept_step_runs_the_node_from_the_base_commit_under_if_always() ->
     assert step["if"] == "always()"
     run = str(step["run"])
     assert "onex run-node" not in run
-    assert 'worktree add --detach "$ACCEPT_BASE" "$BASE_SHA"' in run
+    assert 'worktree add --detach "$ACCEPT_BASE" "$ACCEPT_BASE_SHA"' in run
     calls = re.findall(rf"python -m {re.escape(NODE_MODULE)}\b", run)
     assert len(calls) == 1, calls
     assert (
@@ -82,7 +82,7 @@ def test_the_accept_step_names_only_the_contexts_it_needs() -> None:
     assert run_contexts | env_contexts == ACCEPT_CONTEXTS, sorted(
         run_contexts | env_contexts
     )
-    assert step["env"]["BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
+    assert step["env"]["ACCEPT_BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
     assert step["env"]["GITHUB_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
 
 
