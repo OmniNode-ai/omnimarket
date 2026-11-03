@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
+from referencing.exceptions import Unresolvable
 
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_FILE_NAME,
@@ -61,12 +62,17 @@ class HandlerOverlayResolver:
         schema_path = overlay_path.with_name(SCHEMA_FILE_NAME)
         validator = _validator(schema_path)
         document = _read_overlay(overlay_path)
-        fields = sorted(
-            {
-                ".".join(str(part) for part in error.absolute_path) or "<document>"
-                for error in validator.iter_errors(document)
-            }
-        )
+        try:
+            fields = sorted(
+                {
+                    ".".join(str(part) for part in error.absolute_path) or "<document>"
+                    for error in validator.iter_errors(document)
+                }
+            )
+        except Unresolvable:
+            raise NodeOverlayError(
+                f"schema {schema_path} holds a $ref that does not resolve"
+            ) from None
         if fields:
             raise NodeOverlayError(
                 f"overlay {overlay_path} is invalid against schema {schema_path} "

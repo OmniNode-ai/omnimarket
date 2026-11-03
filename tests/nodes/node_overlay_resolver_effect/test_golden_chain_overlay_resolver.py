@@ -297,3 +297,17 @@ async def test_overlay_resolver_contract_bound_error_chain_over_the_bus(
     (tmp_path / "absent.json").write_text(json.dumps({"skill": "ghost-skill"}))
     assert await absent.run_async() is EnumWorkflowResult.FAILED
     assert absent.handler_result is None
+
+
+@pytest.mark.parametrize(
+    "ref", ["#/$defs/absent", "no-such-schema.json", "https://example.invalid/s.json"]
+)
+def test_overlay_resolver_schema_refusal_when_a_schema_reference_is_unresolvable(
+    tmp_path: Path, ref: str
+) -> None:
+    root = tmp_path / "roots"
+    schema = {"type": "object", "properties": {"label": {"$ref": ref}}}
+    directory = write_overlay(root, "merge_drain", VALID, schema=schema)
+    with pytest.raises(NodeOverlayError) as refused:
+        resolve({ROOTS_ENV: str(root)}, skill="merge_drain")
+    assert str(directory / "overlay.schema.json") in str(refused.value)
