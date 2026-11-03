@@ -78,20 +78,33 @@ dod_evidence:
   binds_ac:
   - AC3
 - id: dod-omn22157-ac3-redpanda
-  description: Redpanda event readback for the signed gateway path; requires the declared test lane and its SASL
-    credentials, and refuses missing credentials.
+  description: Redpanda profile probe, unbound (AC3 binds dod-omn22157-ac3-inmemory for the hosted check). Redpanda
+    event readback for the signed gateway path; requires the declared test lane and its SASL credentials, and
+    refuses missing credentials. Run at the local Done gate only.
   source: manual
   checks:
   - check_type: command
     check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
       -q --no-cov -n 0 -m kafka --refuse-skips
     cwd: .
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
+- id: dod-omn22157-ac4-hosted-gateway-tests
+  description: 'AC4 hosted check: the gateway node tests, including the set-aside expiry and event tests this change
+    adds, pass at the checked-out commit and fail at the merge base, where the gateway has no set-aside expiry. This
+    binds the gateway code that is to be installed; it does not show the install. The merged-and-installed read is
+    the separate unbound check dod-omn22157-ac4-installed, run at the local Done gate.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q
+      --no-cov -n 0 -m "not kafka"
+    cwd: .
+  binds_ac:
+  - AC4
 - id: dod-omn22157-ac4-installed
-  description: 'AC4: the gateway is merged and redeployed on the lab hosts through the installer -- falsifier: gh
-    api repos/OmniNode-ai/omnimarket/commits/main --jq .sha && uv run pytest tests -q -k review_gateway'
+  description: 'AC4 install probe, unbound (AC4 binds dod-omn22157-ac4-hosted-gateway-tests for the hosted check):
+    the gateway is merged and redeployed on the lab hosts through the installer -- falsifier: gh api repos/OmniNode-ai/omnimarket/commits/main
+    --jq .sha && uv run pytest tests -q -k review_gateway. Run at the local Done gate only.'
   source: manual
   checks:
   - check_type: command
@@ -101,12 +114,24 @@ dod_evidence:
       onex-host-install "${ONEX_REVIEW_GATEWAY_INSTALL_UNIT:?}" --status --repo-root "${OMNIBASE_INTERNAL_HOME:?}"
       git -C "${ONEX_REVIEW_GATEWAY_INSTALLED_REPO:?}" merge-base --is-ancestor "${ONEX_REVIEW_GATEWAY_MERGED_REVISION:?}" HEAD
     cwd: .
-  binds_ac:
-  - AC4
   execution_scope: local_done_gate
+- id: dod-omn22157-ac5-hosted-expiry-retry-events
+  description: 'AC5 hosted check: with a fake clock the gateway emits a set_aside event and, after the declared
+    interval, one retry event for the same key, each carrying cause and time and no key material. This binds the
+    event pair the gateway produces; it is not an observed live pair. The live capture read is the separate unbound
+    check dod-omn22157-ac5-live-events, run at the local Done gate.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q --no-cov -n 0 -k key_set_aside_ttl_and_events_inmemory
+    cwd: .
+  binds_ac:
+  - AC5
 - id: dod-omn22157-ac5-live-events
-  description: Verify the live bus export for the selected lab host after the supplied deployment time. The live
-    capture is required; the fake-clock fixture is not a substitute.
+  description: Live capture probe, unbound (AC5 binds dod-omn22157-ac5-hosted-expiry-retry-events for the hosted
+    check). Verify the live bus export for the selected lab host after the supplied deployment time. The live capture
+    is required; the fake-clock fixture is not a substitute. Run at the local Done gate only.
   source: manual
   checks:
   - check_type: command
@@ -133,8 +158,6 @@ dod_evidence:
       print("live set-aside and expiry retry pair read back")
       LIVE
     cwd: .
-  binds_ac:
-  - AC5
   execution_scope: local_done_gate
 - id: dod-omn22157-integration-proof
   description: Run the signed gateway expiry fixture on the declared Redpanda test lane through lab-work; installation
