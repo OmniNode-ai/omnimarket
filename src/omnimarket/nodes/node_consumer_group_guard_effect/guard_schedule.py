@@ -223,6 +223,8 @@ class GuardScheduler:
             )
         except ValueError as exc:
             return ModelGuardScheduleResult(exit_code=1, stderr=f"{exc}\n")
+        if dry_run:
+            return ModelGuardScheduleResult(exit_code=0, stdout=f"{service}\n{timer}")
         if not python.is_file():
             return ModelGuardScheduleResult(
                 exit_code=1, stderr=f"no dispatch venv interpreter at {python}\n"
@@ -237,8 +239,6 @@ class GuardScheduler:
                     f"{started.stderr}"
                 ),
             )
-        if dry_run:
-            return ModelGuardScheduleResult(exit_code=0, stdout=f"{service}\n{timer}")
         output = ""
         state_dir.mkdir(parents=True, exist_ok=True)
         self.unit_dir.mkdir(parents=True, exist_ok=True)

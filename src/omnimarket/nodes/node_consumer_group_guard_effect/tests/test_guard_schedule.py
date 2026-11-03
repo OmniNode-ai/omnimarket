@@ -177,7 +177,7 @@ def test_guard_schedule_render(
     assert "WantedBy=timers.target\n" in out
     assert not (home / ".config").exists()
     assert not state.exists()
-    assert run.calls == [[str(python), "-c", f"import {NODE_MODULE}.__main__"]]
+    assert run.calls == []
 
 
 @pytest.mark.parametrize("duplicate", [False, True])
