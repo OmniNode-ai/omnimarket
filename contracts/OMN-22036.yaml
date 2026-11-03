@@ -63,12 +63,83 @@ dod_evidence:
         cwd: "."
     binds_ac: ["AC3"]
   - id: "dod-omn22036-deploy-contract"
-    description: "Deploy probe: the node's contract.yaml at the checked-out commit carries the effectful descriptor and the six-arm roster."
+    description: "Hosted-runner deploy smoke dispatches the installed node through the local ONEX runtime with an in-memory bus. It reads all six arms, isolated fork files and persisted records, and asserts explicit stock/mod refusals without live adapters. No headless session, model endpoint or broker is required or claimed."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: >-
-          grep -cE '^  node_archetype: effect$' src/omnimarket/nodes/node_compaction_arm_run_effect/contract.yaml | grep -qx 1 && grep -cE '^  - \{arm: ' src/omnimarket/nodes/node_compaction_arm_run_effect/contract.yaml | grep -qx 6
+        check_value: |-
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1]).resolve()
+          replay = root / "replay"
+          replay.mkdir()
+          (replay / "prefix.jsonl").write_text("{\"text\":\"frozen prefix\"}\n")
+          (replay / "ledger.jsonl").write_text("{\"ruling\":\"ship\"}\n")
+          request = {
+              "correlation_id": "deploy-compaction-arm-run",
+              "replay_root": str(replay), "run_root": str(root / "run"),
+              "arms": ["stock_rerun", "mod", "stock_recorded", "oracle", "empty", "inverted"],
+              "cases": [{"case_id": "deploy-case", "prefix_path": str(replay / "prefix.jsonl"),
+                         "ledger_path": str(replay / "ledger.jsonl"),
+                         "recorded_summary": "Recorded native summary.",
+                         "oracle_context": "Oracle context.", "inverted_context": "Inverted context."}],
+          }
+          (root / "request.json").write_text(json.dumps(request))
+          ' "$probe_dir";
+          onex node node_compaction_arm_run_effect --input "$probe_dir/request.json" \
+            --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 \
+            --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --frozen python -c '
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1]).resolve()
+          receipt = json.loads((root / "receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"] == "omnimarket.nodes.node_compaction_arm_run_effect.models.model_arm_run.ModelArmRunResult", receipt
+          result = receipt["result"]
+          assert result["correlation_id"] == "deploy-compaction-arm-run", result
+          assert result["stock_rerun_refused"] is True, result
+          assert "PREMISE_NOT_ESTABLISHED" in result["refusal_statement"], result
+          assert result["stock_branch"] == result["report_label"] == "RECORDED_STOCK", result
+          assert result["planted_stratum_safeguard"] == "NOT_ESTABLISHED", result
+          assert result["removed_cases"] == [], result
+          rows = {row["arm"]: row for row in result["records"]}
+          assert len(rows) == len(result["records"]) == 6, result
+          assert set(rows) == {"stock_rerun", "mod", "stock_recorded", "oracle", "empty", "inverted"}, result
+          assert rows["stock_rerun"]["status"] == rows["mod"]["status"] == "REFUSED", result
+          assert rows["mod"]["reason"] == "MOD_ADAPTER_UNAVAILABLE", result
+          contexts = {"stock_recorded": "Recorded native summary.", "oracle": "Oracle context.", "empty": "", "inverted": "Inverted context."}
+          assert len({row["fork_root"] for row in rows.values()}) == 6, result
+          for field in ("prefix_sha256", "ledger_sha256", "initial_state_hash", "compaction_input_hash"):
+              assert len({row[field] for row in rows.values()}) == 1, result
+          for arm, row in rows.items():
+              fork = Path(row["fork_root"])
+              assert fork.is_relative_to(root / "run" / "forks"), row
+              assert (fork / "config").is_dir(), row
+              for part in ("prefix", "ledger"):
+                  source = (root / "replay" / (part + ".jsonl")).read_bytes()
+                  assert (fork / part / (part + ".jsonl")).read_bytes() == source, row
+                  assert row[part + "_sha256"] == hashlib.sha256(source).hexdigest(), row
+              record_dir = root / "run" / "records" / "deploy-case" / arm / "r0"
+              assert json.loads((record_dir / "attempt-1.json").read_text()) == row, row
+              if arm in contexts:
+                  assert row["status"] == "RECORDED", row
+                  assert (record_dir / "attempt-1.txt").read_text() == contexts[arm], row
+                  assert row["compacted_context_sha256"] == hashlib.sha256(contexts[arm].encode()).hexdigest(), row
+              else:
+                  assert row["compacted_context_sha256"] is None, row
+                  assert not (record_dir / "attempt-1.txt").exists(), row
+          print(json.dumps(receipt, sort_keys=True))
+          ' "$probe_dir"
         cwd: "."
   - id: "dod-omn22036-integration-proof"
     description: "The pushed head ran the node suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
