@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.criteria_code_generation import (
     code_parses,
+    generated_tests_pass_reference,
     ids_traceable,
     stated_test_passes,
 )
@@ -52,6 +53,7 @@ _CHECKS: dict[
     "code_parses": code_parses,
     "stated_test_passes": stated_test_passes,
     "ids_traceable": ids_traceable,
+    "generated_tests_pass_reference": generated_tests_pass_reference,
     "tool_calls_wellformed": tool_calls_wellformed,
     "no_phantom_paths": no_phantom_paths,
     "edits_apply": edits_apply,
@@ -83,9 +85,20 @@ class HandlerDelegationRubricCheck:
             for row in criteria
             if row.outcome == EnumRubricOutcome.FAIL
         )
+        # A criterion the rubric requires for PASS that stayed undetermined
+        # keeps the verdict UNDETERMINED (OMN-22209).
+        required = set(request.rubric.pass_requires_determined)
+        undetermined_required = tuple(
+            row.criterion_id
+            for row in criteria
+            if row.criterion_id in required
+            and row.outcome == EnumRubricOutcome.UNDETERMINED
+        )
         outcome = (
             EnumRubricOutcome.FAIL
             if failed
+            else EnumRubricOutcome.UNDETERMINED
+            if undetermined_required
             else EnumRubricOutcome.PASS
             if any(row.outcome == EnumRubricOutcome.PASS for row in criteria)
             else EnumRubricOutcome.UNDETERMINED
@@ -96,4 +109,5 @@ class HandlerDelegationRubricCheck:
             criteria=criteria,
             outcome=outcome,
             failed_criteria=failed,
+            undetermined_required=undetermined_required,
         )
