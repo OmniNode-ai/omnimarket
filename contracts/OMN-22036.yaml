@@ -1,0 +1,80 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22036"
+title: "Compaction arm producer with forked, isolated runs"
+summary: >-
+  Adds node_compaction_arm_run_effect (plan task CM.10). Every arm of a compaction replay case is a
+  fork of one frozen prefix in its own directory with its own configuration directory; the prefix,
+  ledger, state and compaction-input hashes are checked equal across the arms and a case that fails
+  the check is removed from every arm. The contract's arm_adapters roster names the stock, mod and
+  control adapters. A stock_rerun fork that shows custom-boundary evidence is INVALID and never
+  scorable. When the headless compaction premises are not established, stock_rerun is REFUSED in the
+  result and its refusal statement, and stock_recorded is the stock arm (RECORDED_STOCK). The live
+  headless-session and pinned-pack-build adapters are injected seams; without them the node refuses
+  with a typed reason.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-compaction-arm-run-node"
+    statement: |-
+      Arms are isolated forks of one prefix, a custom-boundary stock fork is invalid, and a failed headless premise is a stated refusal.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the arms differ only at the compaction -- falsifier: unequal prefix or ledger hashes across arms of a case
+      - id: "AC2"
+        statement: |-
+          AC2: a `stock_rerun` that shows any custom-boundary evidence is `INVALID` -- falsifier: such a fork scored
+      - id: "AC3"
+        statement: |-
+          AC3: if the headless compaction premise fails, the stage records `REFUSED` for `stock_rerun` and uses `stock_recorded` -- falsifier: a report that hides the refusal
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the node suite."
+    command: "uv run pytest tests/nodes/node_compaction_arm_run_effect -q -p no:randomly --no-cov -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22036-ac1"
+    description: "AC1: prefix, ledger, state and compaction-input hashes are equal across the arms of a case; a corrupted fork copy or a rewritten prefix removes the case from every arm."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_arm_run_effect/test_arm_run.py -k 'arms_differ_only_at_compaction or corrupt_mod_copy or prefix_mutated' -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn22036-ac2"
+    description: "AC2: a stock_rerun fork with a custom boundary or custom-boundary evidence is INVALID and not scorable; a native fork is recorded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_arm_run_effect/test_arm_run.py -k custom_boundary -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC2"]
+  - id: "dod-omn22036-ac3"
+    description: "AC3: an unestablished headless premise gives a REFUSED stock_rerun with a refusal statement, the RECORDED_STOCK label and stock_recorded as the stock arm."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_compaction_arm_run_effect/test_arm_run.py -k refus -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC3"]
+  - id: "dod-omn22036-deploy-contract"
+    description: "Deploy probe: the node's contract.yaml at the checked-out commit carries the effectful descriptor and the six-arm roster."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          grep -cE '^  node_archetype: effect$' src/omnimarket/nodes/node_compaction_arm_run_effect/contract.yaml | grep -qx 1 && grep -cE '^  - \{arm: ' src/omnimarket/nodes/node_compaction_arm_run_effect/contract.yaml | grep -qx 6
+        cwd: "."
+  - id: "dod-omn22036-integration-proof"
+    description: "The pushed head ran the node suite on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22036 -- uv run --frozen pytest tests/nodes/node_compaction_arm_run_effect -q -p no:randomly --no-cov -m 'not kafka'"
+        cwd: "."
