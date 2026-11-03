@@ -1024,7 +1024,7 @@ SHELL_HARNESS = textwrap.dedent(
       appendChild(c) { this.children.push(c); }, focus() {}});
     const saved = {};
     globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), createElement: () => mk("created"), addEventListener() {}};
-    globalThis.window = {addEventListener() {}, matchMedia: () => ({matches: false})};
+    globalThis.window = {addEventListener() {}, matchMedia: () => ({matches: false}), scrollTo() {}, scrollY: 0};
     globalThis.location = {hash: opts.hash || "", search: "", origin: "null"};
     globalThis.history = {replaceState(_a, _b, h) { globalThis.location.hash = h; }, pushState(_a, _b, h) { globalThis.location.hash = h; }};
     globalThis.localStorage = opts.storeBlocked
@@ -1153,7 +1153,9 @@ SHELL_FILES = {
 }
 
 
-def _run_shell(files: dict[str, object], **opts: object) -> dict[str, object]:
+def _run_shell(
+    files: dict[str, object], tz: str | None = None, **opts: object
+) -> dict[str, object]:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -1169,6 +1171,7 @@ def _run_shell(files: dict[str, object], **opts: object) -> dict[str, object]:
         capture_output=True,
         check=False,
         timeout=60,
+        env=None if tz is None else {**os.environ, "TZ": tz},
     )
     assert done.returncode == 0, done.stderr.decode()
     return cast(
@@ -1252,9 +1255,10 @@ def test_page_dashboard_draws_each_line_with_its_state_and_its_real_stop_reason(
     dash = out["dash"]
     assert "Second plan" in dash
     assert "Stopped" in dash
-    assert "PR repo#9 CI red (2 red of 10)" in dash
+    assert "change repo#9 failing checks (2 red of 10)" in dash
     assert "1 / 2 work tasks, 50.0%" in dash
     assert "never-matched-plan" in dash
+    assert "no plan file yet" in dash
     assert "not in the record" in dash
     assert dash.index("Line A") < dash.index("Line B")
     assert "#dashboard/line-plan-two" in dash
@@ -1264,15 +1268,15 @@ def test_page_dashboard_draws_each_machine_with_its_lanes_load_and_memory() -> N
     dash = _shell_out(_run_shell(SHELL_FILES))["dash"]
     assert "Bay one" in dash
     assert "Rebuilding the widget" in dash
-    assert '<span class="mono">1/4</span> lanes placed' in dash
+    assert '<span class="mono">1</span> of <span class="mono">4</span> workers' in dash
     assert "Load per core" in dash
     assert "19.5 of 32 GB used" in dash
-    assert "repo#9 · CI red" in dash
+    assert "failing checks · change repo#9" in dash
     assert "Bay two" in dash
     assert "in repair" in dash
     assert "down for repair since the move" in dash
-    assert "1 live lane names no machine the floor draws" in dash
-    assert "stalled" in dash
+    assert "1 live worker names no machine the floor draws" in dash
+    assert "gone quiet" in dash
     assert "#dashboard/lane-lane-x" in dash
 
 
@@ -1283,8 +1287,8 @@ def test_page_dashboard_takes_todays_merges_and_reds_from_the_series_and_the_lan
     assert ">232<" in dash
     assert "178 to product code" in dash
     assert "the day before 161" in dash
-    assert "9 dev-branch red episodes opened today" in dash
-    assert "45 repo-hours red" in dash
+    assert "9 stretches of failing checks opened on the main branch today" in dash
+    assert "45 repo-hours failing" in dash
     assert "Shipped seven" in dash
     assert "Series day 2099-01-01, so far" in dash
     for baked in ("232 merges", "251 of 251"):
@@ -1304,7 +1308,7 @@ def test_page_dashboard_shows_the_age_of_every_source_and_marks_an_old_or_unread
 ):
     out = _shell_out(_run_shell(SHELL_FILES))
     dash = out["dash"]
-    assert "Pull request watcher, last tick" in dash
+    assert "Change watcher, last tick" in dash
     assert (
         'class="age-stale"' in dash
     )  # the watcher tick is decades older than the record
@@ -1322,7 +1326,7 @@ def test_page_tabs_carry_a_lamp_and_a_caption_read_from_the_same_files() -> None
     out = _shell_out(_run_shell(SHELL_FILES))
     assert "1 of 2 lines stopped" in out["sub-dashboard"]
     assert "3 better, 1 worse" in out["sub-process"]
-    assert "snapshot" in out["sub-map"]
+    assert "Snapshot" in out["word-map"]
     assert "sub-quality" not in out
 
 
@@ -1330,7 +1334,7 @@ def test_page_dashboard_without_a_record_draws_nothing_and_says_it_is_unread() -
     out = _shell_out(_run_shell({}))
     assert "the factory record is unread" in out["dash"]
     assert "could not be read" in out["banner"]
-    assert "unread" in out["sub-dashboard"]
+    assert "not read" in out["sub-dashboard"]
 
 
 def test_page_tabs_shell_carries_no_secret_no_host_and_no_external_url() -> None:

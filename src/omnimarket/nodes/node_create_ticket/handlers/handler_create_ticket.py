@@ -778,13 +778,7 @@ class HandlerCreateTicket:
     def _project_operation(
         self, request: ModelCreateTicketRequest
     ) -> ModelCreateTicketResult:
-        if request.dry_run and request.operation is EnumTicketOperation.CLEAR_PROJECT:
-            return ModelCreateTicketResult(
-                status="dry_run",
-                operation=request.operation,
-                ticket_id=str(request.ticket_id),
-                dry_run=True,
-            )
+        # The dry-run check lives in HandlerTicketProject, which the contract also routes to.
         if not request.dry_run:
             self._assert_lane_actor(request.operation.value)
         return self._get_project_handler(request).handle(request)

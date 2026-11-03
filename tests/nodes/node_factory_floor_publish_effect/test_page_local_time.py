@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import shutil
 import subprocess
 import textwrap
@@ -39,7 +40,7 @@ CLOCK_HARNESS = textwrap.dedent(
       appendChild(c) { this.children.push(c); }, focus() {}});
     globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {},
       querySelectorAll: () => [], createElement: () => mk("created")};
-    globalThis.window = {addEventListener() {}};
+    globalThis.window = {addEventListener() {}, scrollTo() {}, scrollY: 0};
     globalThis.location = {hash: "", search: ""};
     globalThis.history = {replaceState() {}};
     globalThis.localStorage = {getItem: () => null, setItem() {}};
@@ -106,7 +107,10 @@ def test_page_time_new_york_dashboard_shows_local_time_with_zone_and_no_not_toda
     assert "UTC" not in out["stamp"]
     assert "Series day 2026-10-31, so far (to Oct 31, 10:00 PM EDT)" in out["dash"]
     assert "not today" not in out["dash"]
-    assert "UTC" not in out["dash"]
+    visible = re.sub(
+        r'title="[^"]*"', "", out["dash"]
+    )  # UTC may sit only in a hover title
+    assert "UTC" not in visible
 
 
 def test_page_time_new_york_still_warns_when_the_series_is_a_local_day_behind() -> None:
@@ -145,4 +149,4 @@ def test_page_time_ages_in_the_record_count_from_the_real_clock_not_the_record_t
     machine.pop("read_at")
     out = _run_at("index.html", files, "2026-11-01T06:04:00Z", "UTC")
     assert "4.0 h ago" in out["dash"]
-    assert "stalled 5.0 h" in out["dash"]
+    assert "gone quiet 5.0 h" in out["dash"]
