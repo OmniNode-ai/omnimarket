@@ -10,16 +10,50 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.cloud_session_placement import (
+    ModelCloudAccount,
+    ModelCloudTransport,
+)
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     cloud_accounts as acc,
 )
-from omnimarket.nodes.node_cloud_session_placement_effect.models import ModelCloudHost
 
 FIXTURE = Path(__file__).parent / "fixtures" / "cloud_accounts_h200_2026-11-02.json"
 NOW = datetime(2026, 11, 2, 12, 22, tzinfo=UTC)
-HOST = ModelCloudHost(
-    name="host_a", engines=("claude_sonnet",), cloud_consent="2026-01-01T00:00:00Z"
-)
+FRESH_S = 1800
+
+
+def _registry(
+    *labels: str, legacy: tuple[str, ...] = ()
+) -> tuple[ModelCloudAccount, ...]:
+    return tuple(
+        ModelCloudAccount(
+            label=label,
+            org_hash=f"{i:010x}",
+            email_hash=f"{i + 32:010x}",
+            consent="2026-01-01T00:00:00Z",
+            legacy_hosts=legacy,
+        )
+        for i, label in enumerate(labels, start=1)
+    )
+
+
+def _logged_in(
+    pdir: Path, accounts: tuple[ModelCloudAccount, ...], now: datetime
+) -> None:
+    """Every account has a fresh passing login on a host of its own name."""
+    with acc._cloud_state(pdir, accounts, now) as state:
+        for a in accounts:
+            state["logins"][a.label] = {
+                f"on_{a.label}": {
+                    "seen_at": f"{now:%Y-%m-%dT%H:%M:%SZ}",
+                    "cloud_ok": True,
+                }
+            }
+
+
+def _slots(pdir: Path, accounts: tuple[ModelCloudAccount, ...]) -> dict[str, int]:
+    return acc.cloud_slots(pdir, accounts, None, fresh_s=FRESH_S, now=NOW)["accounts"]
 
 
 def _account(pdir: Path, name: str = "host_a") -> dict[str, Any]:
@@ -30,15 +64,22 @@ def test_cloud_hold_subscription_rate_recorded_h200_offers_slots(
     tmp_path: Path,
 ) -> None:
     """The h200 record of 2026-11-02 (seven_day rejected, hold to 2026-11-04T22:00Z, credit 244) offers slots."""
-    shutil.copy(FIXTURE, tmp_path / acc.CLOUD_STATE_FILE)
-    recorded = _account(tmp_path, "h200")
+    shutil.copy(FIXTURE, tmp_path / acc.CLOUD_LEGACY_STATE_FILE)
+    recorded = json.loads(FIXTURE.read_text())["accounts"]["h200"]
+    registry = _registry("lab-primary", legacy=("h200",))
+    _logged_in(tmp_path, registry, NOW)
     assert recorded["rate"]["type"] == "seven_day"
     assert recorded["rate"]["status"] == "rejected"
     assert recorded["rate_refused_until"] == "2026-11-04T22:00:00Z"
     assert recorded["credit"]["remaining"] == 244.0
-    assert acc.cloud_slots(tmp_path, NOW, consented={"h200"}) == {"h200": 17}
+    assert _slots(tmp_path, registry) == {"lab-primary": 17}
     assert acc.cloud_account_skip(recorded, NOW) is None
-    assert acc.cloud_caps(tmp_path, NOW, consented={"h200"})["h200"]["held"] is None
+    assert (
+        acc.cloud_slots(tmp_path, registry, None, fresh_s=FRESH_S, now=NOW)["caps"][
+            "lab-primary"
+        ]["held"]
+        is None
+    )
 
 
 @pytest.mark.parametrize("status", ["allowed", "allowed_warning", "rejected"])
@@ -48,8 +89,7 @@ def test_cloud_rate_reading_never_holds(tmp_path: Path, kind: str, status: str) 
     acc.record_cloud_credit(
         tmp_path, "host_a", 244.0, "usage reading", now=NOW - timedelta(hours=1)
     )
-    with acc._cloud_state(tmp_path) as state:
-        state["accounts"]["host_a"]["login"] = acc.CLOUD_LOGIN_OK
+    _logged_in(tmp_path, _registry("host_a"), NOW)
     held = acc.record_cloud_rate(
         tmp_path,
         "host_a",
@@ -63,9 +103,7 @@ def test_cloud_rate_reading_never_holds(tmp_path: Path, kind: str, status: str) 
     assert entry["rate"]["status"] == status
     assert not {"limited_until", "limited_why", "rate_refused_until"} & set(entry)
     assert acc.cloud_account_skip(entry, NOW) is None
-    assert acc.cloud_slots(tmp_path, NOW, consented={"host_a"}) == {
-        "host_a": acc.CLOUD_CAP_START
-    }
+    assert _slots(tmp_path, _registry("host_a")) == {"host_a": acc.CLOUD_CAP_START}
 
 
 @pytest.mark.parametrize("status", ["allowed", "allowed_warning", "rejected"])
@@ -105,10 +143,13 @@ def test_cloud_rate_reading_never_holds_an_old_rate_derived_hold_is_not_honored(
 
 def test_cloud_measured_refusal_holds_until_the_named_reset(tmp_path: Path) -> None:
     text = "Error: usage limit reached, resets 2026-11-03T04:30:00Z"
+    registry = _registry("host_a")
+    _logged_in(tmp_path, registry, NOW)
     acc.cloud_pick(
         tmp_path,
-        [HOST],
-        lambda _h: acc.CLOUD_LOGIN_OK,
+        registry,
+        [ModelCloudTransport(name="on_host_a")],
+        fresh_s=FRESH_S,
         now=NOW,
         run_id="r1",
     )
@@ -121,7 +162,7 @@ def test_cloud_measured_refusal_holds_until_the_named_reset(tmp_path: Path) -> N
         acc.cloud_account_skip(entry, NOW)
         == f"limited until 2026-11-03T04:30:00Z ({text})"
     )
-    assert acc.cloud_slots(tmp_path, NOW, consented={"host_a"}) == {"host_a": 0}
+    assert _slots(tmp_path, registry) == {"host_a": 0}
     after = datetime(2026, 11, 3, 4, 31, tzinfo=UTC)
     assert acc.cloud_account_skip(entry, after) is None
 
