@@ -22,6 +22,7 @@ import ast
 import copy
 import hashlib
 import random
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,7 @@ from omnimarket.nodes.node_floor_fill_reducer.models import (
     ModelFloorFillStartFailed,
     ModelFloorFillState,
     ModelFloorFillTicketStored,
+    line_and_task,
 )
 
 pytestmark = pytest.mark.unit
@@ -780,6 +782,53 @@ def test_lane_name_concatenation_pair() -> None:
     assert first != second
     assert first.startswith("floor-a-b-c-")
     assert second.startswith("floor-a-b-c-")
+
+
+_BAD_KEYS = (
+    "floor:L:t\n",
+    "floor:L:t\r\n",
+    "floor:L\n:t",
+    "floor:L:t ",
+    "floor:L:",
+    "floor::t",
+    "floor:L:t:u",
+    "floor:L:t|u",
+    "floor:L=x:t",
+    "floor:L:a/b",
+    "floor:..:t",
+    "floor:L:..",
+    "floor:L:t..x",
+    "floor:L:t.x",
+    "floor:L:t\u2028",
+    "floor:L:t\u00e9",
+    "floor:L:t\x00",
+)
+
+
+@pytest.mark.parametrize("key", _BAD_KEYS)
+def test_lane_name_floor_key_refuses_separators_and_trailing_newline(key: str) -> None:
+    """One task is one key: a key with a newline, ``|``, ``=``, ``/`` or ``..`` is no key."""
+    with pytest.raises(ValidationError):
+        ModelFloorFillTicketStored(key=key, ticket=TICKET)
+    with pytest.raises(ValueError, match="is not a floor key"):
+        lane_name(key, 1)
+    with pytest.raises(ValueError, match="is not a floor key"):
+        line_and_task(key)
+
+
+def test_lane_name_floor_key_with_trailing_newline_cannot_reserve_twice() -> None:
+    rig = Rig().ticketed("floor:L:t")
+    rig.reserved("floor:L:t", now=at(0), capacity=2)
+    with pytest.raises(ValidationError):
+        reserve_requested("floor:L:t\n", now=at(1), capacity=2)
+    assert [e.state for e in rig.state.entries.values()] == [_S.RESERVED]
+
+
+@pytest.mark.parametrize(
+    "key", ["floor:L:t", "floor:line-a:task-1", "floor:a_b:OMN-22200", "floor:A9:9z"]
+)
+def test_lane_name_minted_only_from_a_closed_charset(key: str) -> None:
+    assert re.fullmatch(r"floor-[A-Za-z0-9_-]+-a[1-9][0-9]*", lane_name(key, 1))
 
 
 def test_late_check_after_confirm_dropped() -> None:

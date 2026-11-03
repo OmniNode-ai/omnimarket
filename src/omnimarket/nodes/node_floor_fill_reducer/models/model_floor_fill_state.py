@@ -20,11 +20,14 @@ from omnimarket.nodes.node_floor_fill_reducer.models.enum_floor_fill_entry_state
     EnumFloorFillEntryState,
 )
 
-_FLOOR_KEY = re.compile(r"^floor:([^:\s]+):([^:\s]+)$")
+# ``fullmatch``, not ``match`` with ``$`` (which also accepts one trailing newline), and a closed id
+# charset: an id is ASCII letters, digits, ``_`` and ``-``, so a separator (``|``, ``=``, ``/``, ``.``)
+# cannot reach the lane name minted from the key and one task is exactly one key.
+_FLOOR_KEY = re.compile(r"floor:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)")
 
 
 def _floor_key(value: str) -> str:
-    if _FLOOR_KEY.match(value) is None:
+    if _FLOOR_KEY.fullmatch(value) is None:
         raise ValueError(f"{value!r} is not a floor key, floor:<line_id>:<task_id>")
     return value
 
@@ -34,7 +37,7 @@ FloorKey = Annotated[str, AfterValidator(_floor_key)]
 
 def line_and_task(key: str) -> tuple[str, str]:
     """The ``(line_id, task_id)`` a floor key names."""
-    match = _FLOOR_KEY.match(key)
+    match = _FLOOR_KEY.fullmatch(key)
     if match is None:
         raise ValueError(f"{key!r} is not a floor key, floor:<line_id>:<task_id>")
     return match.group(1), match.group(2)
