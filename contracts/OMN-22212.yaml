@@ -59,3 +59,11 @@ dod_evidence:
     check_value: |-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "terminal_failure_reason: secret_request_refused" > /dev/null'
     cwd: .
+- id: dod-omn22212-integration-proof
+  description: The pushed head ran the focused tests of this change (a refused secret request ends in a typed refusal and is never escalated) on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22212 --kind test -- uv run --frozen pytest tests/unit/delegation/test_secret_request_refusal_terminal.py -q --no-cov
+    cwd: .
