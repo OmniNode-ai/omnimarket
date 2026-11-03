@@ -421,8 +421,8 @@ def _checklist_plans(tmp_path: Path, text: str, rows: list[str]) -> ModelFloorPl
         plans_relpath="beta/plans",
         manifest_suffix=".tasks.yaml",
         header_keys=("ticket", "tickets", "epic"),
-        contains=("checklist-plan",),
         heading_task_patterns=PATTERNS,
+        contains=("checklist-plan",),
         plans_today={
             "plans": [
                 {
