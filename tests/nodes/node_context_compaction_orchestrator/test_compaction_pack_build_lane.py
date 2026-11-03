@@ -31,6 +31,7 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers.session_barr
 )
 
 from .bus_fixture import MetSource
+from .reply_topics import emitted
 from .test_compaction_pack_build import _pack_orchestrator, _request, _sources
 
 pytestmark = [
@@ -67,7 +68,7 @@ async def test_orchestrator_puts_the_probed_lane_in_the_published_command(
     output = await bus.handler(barrier_probe_source=_LaneSource()).handle_async(
         _request()
     )
-    assert output.events[-1].status == "built"
+    assert emitted(output.events[-1]).status == "built"
     (envelope,) = bus.commands
     command = ModelContextPackCommand.model_validate(envelope["payload"])
     assert command.request.caller_scope.lane == "cmod-lane-1"

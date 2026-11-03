@@ -4,9 +4,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import random
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -28,13 +32,17 @@ from omnimarket.nodes.node_compaction_verdict_compute.models import (
     EnumRunLabel,
     EnumSafeguardStatus,
     ModelArmCell,
+    ModelBuildCandidate,
     ModelCompactionThresholds,
+    ModelCompactionVerdictReport,
     ModelCompactionVerdictRequest,
+    ModelDataPrRecord,
     ModelLiveBlock,
     ModelLiveIntervalRequest,
     ModelLiveSession,
     ModelMetricCount,
     ModelPairedBoundary,
+    session_split_sha256,
 )
 
 pytestmark = pytest.mark.unit
@@ -58,6 +66,8 @@ _STOCK = {
     "ledger_recall": 0.40,
     "acted_share": 0.40,
     "contradiction": 0.05,
+    "false_memory": 0.03,
+    "hold_scope_violation": 0.02,
     "planted_recall": 0.60,
 }
 
@@ -111,19 +121,142 @@ def _corpus(
     return cells
 
 
+_MERGED = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
+_STARTED = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
+_CALIBRATION = [f"cal{i:03d}" for i in range(8)]
+_SPLIT_SEED = 20261101
+
+
+def _candidates() -> tuple[ModelBuildCandidate, ...]:
+    def build(name: str, recall: float, day: int, contradiction: float = 0.04):
+        return ModelBuildCandidate(
+            candidate_id=name,
+            commit=f"{name}0000000",
+            commit_time=datetime(2026, 10, day, tzinfo=UTC),
+            calibration_scores={
+                "ledger_recall": recall,
+                "contradiction": contradiction,
+            },
+        )
+
+    return (
+        build("b1", 0.70, 20),
+        build("b2", 0.80, 21),
+        build("b3", 0.80, 22),  # ties b2 on score: the later commit wins
+        build("b4", 0.95, 23, contradiction=0.30),  # best score, fails the floor
+    )
+
+
+def preregistration_block(
+    data: dict[str, Any],
+    held_out: list[str],
+    *,
+    calibration: list[str] | None = None,
+) -> dict[str, Any]:
+    """A complete CM.14 block for ``data``'s safeguards, with a correct split hash."""
+    cal = _CALIBRATION if calibration is None else calibration
+    smallest = 3.0 / len(held_out)
+    safeguards = data["safeguards"]
+    assert isinstance(safeguards, list)
+    return {
+        "split": {
+            "seed": _SPLIT_SEED,
+            "calibration_sessions": cal,
+            "held_out_sessions": held_out,
+            "sha256": session_split_sha256(cal, held_out, _SPLIT_SEED),
+        },
+        "calibration": {
+            "control_boundaries": [
+                {
+                    "session_id": cal[i % len(cal)],
+                    "boundary_id": f"{cal[i % len(cal)]}-b{i}",
+                }
+                for i in range(8)
+            ],
+            "aa_band": 0.08,
+            "noise_floor": 0.03,
+            "judge_oracle_wilson_lower": 0.93,
+            "judge_inverted_wilson_lower": 0.92,
+            "simulated_power": 0.84,
+            "corpus_sessions": len(held_out),
+        },
+        "jaccard_tolerance": 0.8,
+        "progress_call_classes": {
+            "OPEN_CLAIM": ["ledger_terminal", "dispatch", "pr_handoff", "status_row"],
+            "OPEN_ASK": ["ledger_ruling", "ledger_ack", "operator_reask"],
+            "PROMISE_SENT": ["promised_followup"],
+            "DRAFT_UNSENT": ["send", "surface_draft_path"],
+            "UNACKED_MSG": ["ledger_ack", "instructed_action"],
+        },
+        "build_selection": {
+            "rule": "FLOORS_THEN_HIGHEST_CALIBRATION_SCORE_THEN_LATER_COMMIT",
+            "selection_metric": "ledger_recall",
+            "floors": [
+                {"criterion": "ledger_recall", "direction": "higher", "value": 0.6},
+                {"criterion": "contradiction", "direction": "lower", "value": 0.1},
+            ],
+        },
+        "safeguard_feasibility": [
+            {
+                "name": g["name"],
+                "smallest_establishable_margin": smallest,
+                "margin": g["margin"],
+            }
+            for g in safeguards
+        ],
+    }
+
+
+def registered_text(
+    thresholds: Path,
+    boundaries: list[ModelPairedBoundary],
+    *,
+    mutate: Callable[[dict[str, Any]], None] | None = None,
+    held_out: list[str] | None = None,
+) -> str:
+    """The data file as the data PR fixed it: the base numbers plus the CM.14 block."""
+    data = yaml.safe_load(thresholds.read_text(encoding="utf-8"))
+    ids = held_out or sorted({c.session_id for c in boundaries})
+    data["preregistration"] = preregistration_block(data, ids)
+    if mutate is not None:
+        mutate(data)
+    return yaml.safe_dump(data)
+
+
 def _request(
     boundaries: list[ModelPairedBoundary],
     *,
     confirmatory: bool,
     thresholds: Path = _FIXTURE,
+    text: str | None = None,
+    **overrides: object,
 ) -> ModelCompactionVerdictRequest:
-    return ModelCompactionVerdictRequest(
-        run_id="synthetic",
-        thresholds_path=str(thresholds),
-        thresholds_text=thresholds.read_text(encoding="utf-8"),
-        confirmatory=confirmatory,
-        boundaries=tuple(boundaries),
-    )
+    if not confirmatory:
+        return ModelCompactionVerdictRequest(
+            run_id="synthetic",
+            thresholds_path=str(thresholds),
+            thresholds_text=text or thresholds.read_text(encoding="utf-8"),
+            confirmatory=False,
+            boundaries=tuple(boundaries),
+        )
+    body = text or registered_text(thresholds, boundaries)
+    fields: dict[str, Any] = {
+        "run_id": "synthetic",
+        "thresholds_path": str(thresholds),
+        "thresholds_text": body,
+        "confirmatory": True,
+        "boundaries": tuple(boundaries),
+        "registration": ModelDataPrRecord(
+            data_pr="OmniNode-ai/omnimarket#1",
+            data_file_sha256=hashlib.sha256(body.encode("utf-8")).hexdigest(),
+            merged_at=_MERGED,
+        ),
+        "run_started_at": _STARTED,
+        "build": "b3",
+        "build_candidates": _candidates(),
+    }
+    fields.update(overrides)
+    return ModelCompactionVerdictRequest.model_validate(fields)
 
 
 def _helps_corpus() -> list[ModelPairedBoundary]:
@@ -276,6 +409,8 @@ def test_report_carries_joint_power_from_the_data_file() -> None:
     assert power.models_holm
     assert set(power.safeguards_modelled) == {
         "contradiction",
+        "false_memory",
+        "hold_scope_violation",
         "planted_recall",
         "cost_ratio",
     }
@@ -504,3 +639,276 @@ def test_contract_declares_no_topics_and_resolves_handlers() -> None:
     for entry in contract["handler_routing"]["handlers"]:
         module = importlib.import_module(entry["handler"]["module"])
         assert hasattr(module, entry["handler"]["name"])
+
+
+# CM.14: the pre-registration gates. Every test name carries "preregistered".
+
+
+def _confirm(
+    corpus: list[ModelPairedBoundary],
+    *,
+    mutate: Callable[[dict[str, Any]], None] | None = None,
+    **overrides: object,
+) -> ModelCompactionVerdictReport:
+    text = registered_text(_FIXTURE, corpus, mutate=mutate)
+    return HandlerCompactionVerdict().handle(
+        _request(corpus, confirmatory=True, text=text, **overrides)
+    )
+
+
+def _prereg(data: dict[str, Any]) -> dict[str, Any]:
+    block = data["preregistration"]
+    assert isinstance(block, dict)
+    return block
+
+
+def test_preregistered_confirmatory_report_names_build_split_and_data_pr() -> None:
+    report = _confirm(_helps_corpus())
+    assert report.verdict is EnumCompactionVerdict.HELPS
+    assert report.judged_build == "b3"
+    assert report.data_pr == "OmniNode-ai/omnimarket#1"
+    assert len(report.split_sha256) == 64
+    assert report.infeasible_safeguards == ()
+
+
+def test_preregistered_confirmatory_run_without_a_block_is_refused() -> None:
+    corpus = _helps_corpus()
+    with pytest.raises(CompactionVerdictRefusedError, match="no preregistration block"):
+        HandlerCompactionVerdict().handle(
+            _request(
+                corpus,
+                confirmatory=True,
+                text=_FIXTURE.read_text(encoding="utf-8"),
+            )
+        )
+
+
+def test_preregistered_confirmatory_run_without_a_data_pr_is_refused() -> None:
+    corpus = _helps_corpus()
+    with pytest.raises(CompactionVerdictRefusedError, match="no merged data PR"):
+        _confirm(corpus, registration=None)
+
+
+def test_preregistered_data_file_edited_after_the_data_pr_is_refused() -> None:
+    corpus = _helps_corpus()
+    wrong = ModelDataPrRecord(
+        data_pr="OmniNode-ai/omnimarket#1",
+        data_file_sha256="0" * 64,
+        merged_at=_MERGED,
+    )
+    with pytest.raises(CompactionVerdictRefusedError, match="hash is not the one"):
+        _confirm(corpus, registration=wrong)
+
+
+def test_preregistered_data_pr_merged_after_the_run_is_refused() -> None:
+    corpus = _helps_corpus()
+    text = registered_text(_FIXTURE, corpus)
+    late = ModelDataPrRecord(
+        data_pr="OmniNode-ai/omnimarket#1",
+        data_file_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        merged_at=_STARTED,
+    )
+    with pytest.raises(CompactionVerdictRefusedError, match="not merged before"):
+        HandlerCompactionVerdict().handle(
+            _request(corpus, confirmatory=True, text=text, registration=late)
+        )
+
+
+def test_preregistered_confirmatory_run_reading_a_calibration_session_is_refused() -> (
+    None
+):
+    corpus = _helps_corpus()
+    leaked = corpus[0].model_copy(update={"session_id": _CALIBRATION[0]})
+    with pytest.raises(CompactionVerdictRefusedError, match="calibration session"):
+        _confirm_split([leaked, *corpus[1:]], corpus)
+
+
+def _confirm_split(
+    run: list[ModelPairedBoundary], held_out_source: list[ModelPairedBoundary]
+) -> ModelCompactionVerdictReport:
+    held_out = sorted({c.session_id for c in held_out_source})
+    text = registered_text(_FIXTURE, run, held_out=held_out)
+    return HandlerCompactionVerdict().handle(
+        _request(run, confirmatory=True, text=text)
+    )
+
+
+def test_preregistered_session_in_neither_set_is_refused() -> None:
+    corpus = _helps_corpus()
+    stray = corpus[0].model_copy(update={"session_id": "stray"})
+    with pytest.raises(
+        CompactionVerdictRefusedError, match="not in the held-out split"
+    ):
+        _confirm_split([stray, *corpus[1:]], corpus)
+
+
+def test_preregistered_session_in_both_sets_is_refused_at_parse() -> None:
+    corpus = _helps_corpus()
+
+    def overlap(data: dict[str, Any]) -> None:
+        split = _prereg(data)["split"]
+        assert isinstance(split, dict)
+        split["calibration_sessions"] = [*split["calibration_sessions"], "s000"]
+        split["sha256"] = session_split_sha256(
+            split["calibration_sessions"], split["held_out_sessions"], split["seed"]
+        )
+
+    text = registered_text(_FIXTURE, corpus, mutate=overlap)
+    with pytest.raises(CompactionThresholdsError, match="both the calibration"):
+        parse_thresholds(text)
+
+
+def test_preregistered_split_hash_must_match_the_recorded_sets() -> None:
+    corpus = _helps_corpus()
+
+    def tamper(data: dict[str, Any]) -> None:
+        split = _prereg(data)["split"]
+        assert isinstance(split, dict)
+        split["held_out_sessions"] = split["held_out_sessions"][1:]
+
+    with pytest.raises(CompactionThresholdsError, match="sha256"):
+        parse_thresholds(registered_text(_FIXTURE, corpus, mutate=tamper))
+
+
+def test_preregistered_control_boundaries_come_from_the_calibration_split() -> None:
+    corpus = _helps_corpus()
+
+    def from_held_out(data: dict[str, Any]) -> None:
+        calibration = _prereg(data)["calibration"]
+        assert isinstance(calibration, dict)
+        calibration["control_boundaries"][0]["session_id"] = "s000"
+
+    with pytest.raises(CompactionThresholdsError, match="not a calibration session"):
+        parse_thresholds(registered_text(_FIXTURE, corpus, mutate=from_held_out))
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["jaccard_tolerance", "progress_call_classes", "build_selection", "calibration"],
+)
+def test_preregistered_block_missing_a_number_is_refused_by_name(key: str) -> None:
+    corpus = _helps_corpus()
+
+    def drop(data: dict[str, Any]) -> None:
+        _prereg(data).pop(key)
+
+    with pytest.raises(CompactionThresholdsError, match=key):
+        parse_thresholds(registered_text(_FIXTURE, corpus, mutate=drop))
+
+
+def test_preregistered_progress_class_list_per_open_loop_kind_is_required() -> None:
+    corpus = _helps_corpus()
+
+    def drop_kind(data: dict[str, Any]) -> None:
+        classes = _prereg(data)["progress_call_classes"]
+        assert isinstance(classes, dict)
+        classes.pop("DRAFT_UNSENT")
+
+    with pytest.raises(CompactionThresholdsError, match="DRAFT_UNSENT"):
+        parse_thresholds(registered_text(_FIXTURE, corpus, mutate=drop_kind))
+
+
+def test_preregistered_confirmatory_run_needs_every_section_3_8_safeguard() -> None:
+    corpus = _helps_corpus()
+
+    def drop_safeguard(data: dict[str, Any]) -> None:
+        data["safeguards"] = [
+            g for g in data["safeguards"] if g["name"] != "false_memory"
+        ]
+        block = _prereg(data)
+        block["safeguard_feasibility"] = [
+            e for e in block["safeguard_feasibility"] if e["name"] != "false_memory"
+        ]
+
+    with pytest.raises(CompactionVerdictRefusedError, match="false_memory"):
+        _confirm(corpus, mutate=drop_safeguard)
+
+
+def test_preregistered_build_other_than_the_selected_one_is_refused() -> None:
+    corpus = _helps_corpus()
+    for other in ("b1", "b2", "b4"):  # b4 has the best score but fails a floor
+        with pytest.raises(CompactionVerdictRefusedError, match="selection rule picks"):
+            _confirm(corpus, build=other)
+
+
+def test_preregistered_build_selection_breaks_ties_by_the_later_commit() -> None:
+    report = _confirm(_helps_corpus(), build="b3")
+    assert report.judged_build == "b3"
+
+
+def test_preregistered_confirmatory_run_names_a_build() -> None:
+    with pytest.raises(CompactionVerdictRefusedError, match="names no build"):
+        _confirm(_helps_corpus(), build=None)
+
+
+def test_preregistered_build_is_judged_once() -> None:
+    with pytest.raises(CompactionVerdictRefusedError, match="already has"):
+        _confirm(_helps_corpus(), prior_confirmatory_builds=("b3",))
+
+
+def test_preregistered_no_build_meeting_the_floors_is_refused() -> None:
+    poor = tuple(
+        c.model_copy(update={"calibration_scores": {"ledger_recall": 0.1}})
+        for c in _candidates()
+    )
+    with pytest.raises(CompactionVerdictRefusedError, match="no build meets"):
+        _confirm(_helps_corpus(), build_candidates=poor)
+
+
+def test_preregistered_smallest_margin_is_three_over_the_held_out_count() -> None:
+    corpus = _helps_corpus()
+    parsed = parse_thresholds(registered_text(_FIXTURE, corpus))
+    assert parsed.preregistration is not None
+    for entry in parsed.preregistration.safeguard_feasibility:
+        assert entry.smallest_establishable_margin == pytest.approx(3.0 / 40)
+        assert entry.feasible
+
+
+def test_preregistered_wrong_smallest_margin_is_refused() -> None:
+    corpus = _helps_corpus()
+
+    def understate(data: dict[str, Any]) -> None:
+        _prereg(data)["safeguard_feasibility"][0]["smallest_establishable_margin"] = (
+            0.01
+        )
+
+    with pytest.raises(CompactionThresholdsError, match="not 3 / held-out"):
+        parse_thresholds(registered_text(_FIXTURE, corpus, mutate=understate))
+
+
+def test_preregistered_margin_below_the_feasible_minimum_cannot_issue_helps() -> None:
+    corpus = _helps_corpus()
+
+    def tighten(data: dict[str, Any]) -> None:
+        data["safeguards"][0]["margin"] = 0.02
+        _prereg(data)["safeguard_feasibility"][0]["margin"] = 0.02
+
+    report = _confirm(corpus, mutate=tighten)
+    assert report.run_label is EnumRunLabel.EXPLORATORY
+    assert report.verdict not in (
+        EnumCompactionVerdict.HELPS,
+        EnumCompactionVerdict.NO_DIFFERENCE,
+    )
+    assert report.infeasible_safeguards == ("contradiction",)
+
+
+def test_preregistered_margin_below_the_feasible_minimum_can_still_issue_harm() -> None:
+    corpus = _harm_corpus()
+
+    def tighten(data: dict[str, Any]) -> None:
+        data["safeguards"][0]["margin"] = 0.02
+        _prereg(data)["safeguard_feasibility"][0]["margin"] = 0.02
+
+    report = _confirm(corpus, mutate=tighten)
+    assert report.verdict is EnumCompactionVerdict.HARM
+    assert report.run_label is EnumRunLabel.EXPLORATORY
+
+
+def test_preregistered_feasibility_margin_must_match_the_safeguard_margin() -> None:
+    corpus = _helps_corpus()
+
+    def drift(data: dict[str, Any]) -> None:
+        _prereg(data)["safeguard_feasibility"][0]["margin"] = 0.5
+
+    with pytest.raises(CompactionThresholdsError, match="differs from the safeguard"):
+        parse_thresholds(registered_text(_FIXTURE, corpus, mutate=drift))
