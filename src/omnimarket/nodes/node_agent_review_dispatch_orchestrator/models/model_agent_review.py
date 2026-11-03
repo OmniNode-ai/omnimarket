@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _REPO = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 _SHA = r"^[0-9a-f]{40}$"
@@ -38,6 +38,7 @@ class EnumAgentReviewReason(StrEnum):
     DEADLINE_EXCEEDED = "deadline_exceeded"
     PORT_ERROR = "port_error"
     POST_FAILED = "post_failed"
+    NOT_BOUND = "not_bound"
 
 
 class ModelAgentVoter(BaseModel):
@@ -139,6 +140,27 @@ class ModelAgentSigningKeyStore(BaseModel):
         return name
 
 
+class ModelAgentReviewScmBus(BaseModel):
+    """The bus the source-control node calls ride, as ``onex scm`` names it: kind and lane.
+
+    ``kafka`` names the lane whose declaration gives the broker; ``inmemory`` serves the
+    source-control nodes in this process and names no lane.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["inmemory", "kafka"]
+    lane: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _lane_matches_kind(self) -> Self:
+        if self.kind == "kafka" and self.lane is None:
+            raise ValueError("a kafka source-control bus names its lane")
+        if self.kind == "inmemory" and self.lane is not None:
+            raise ValueError("the in-memory source-control bus names no lane")
+        return self
+
+
 class ModelAgentReviewConfig(BaseModel):
     """``<root>/node_agent_review_dispatch_orchestrator/overlay.yaml``; every key required."""
 
@@ -156,6 +178,8 @@ class ModelAgentReviewConfig(BaseModel):
     quorum: ModelAgentReviewQuorum
     #: The store reference of the receipt signing key; the signer binds to it.
     signing_key_store: ModelAgentSigningKeyStore
+    #: The bus the head read and the review post ride.
+    scm_bus: ModelAgentReviewScmBus
     #: Rung name -> harness, for every roster rung served by the harness rung node. A
     #: roster rung that is neither the lab rung nor a key here has no binding.
     harness_rungs: dict[str, ModelAgentHarnessRung] = Field(default_factory=dict)

@@ -791,14 +791,13 @@ class ModelAgentReviewPorts:
 def build_production_ports(
     config: ModelAgentReviewConfig,
     *,
-    scm_bus: ScmBusKind,
-    scm_lane: str | None,
     environ: Mapping[str, str] | None = None,
     key_store: ProtocolSigningKeyStore | None = None,
 ) -> ModelAgentReviewPorts:
-    """Bind every port from the environment, or raise ``PortNotBoundError`` naming one.
+    """Bind every port from the overlay and the environment, or raise ``PortNotBoundError``.
 
-    The signing key is read by the overlay's ``signing_key_store`` reference; ``key_store``
+    The source-control bus kind and lane are the overlay's ``scm_bus``; the paths come from
+    the environment, named when absent. The signing key is read by the overlay's ``signing_key_store`` reference; ``key_store``
     replaces the host's store identity only in a test.
     """
     env: Mapping[str, str] = os.environ if environ is None else environ
@@ -809,11 +808,9 @@ def build_production_ports(
         config.signing_key_store,
         key_store if key_store is not None else InfisicalSigningKeyStore(env),
     )
-    if scm_bus == "kafka" and not scm_lane:
-        raise PortNotBoundError("a kafka source-control bus needs a lane")
     bus = ScmBus(
-        kind=scm_bus,
-        lane=scm_lane,
+        kind=config.scm_bus.kind,
+        lane=config.scm_bus.lane,
         registry_root=registry,
         timeout_seconds=config.lab_call_timeout_seconds,
     )

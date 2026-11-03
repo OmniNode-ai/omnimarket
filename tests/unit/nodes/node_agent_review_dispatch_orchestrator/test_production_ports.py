@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
@@ -43,6 +43,7 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.adapters.adapter_a
     InfisicalSigningKeyStore,
     PortNotBoundError,
     RungVoterCaller,
+    ScmBus,
     ScmHeadReader,
     ScmReviewPoster,
     _store_identity,
@@ -259,8 +260,6 @@ def test_a_store_that_cannot_be_read_refuses_without_the_cause_text(
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(
             config(),
-            scm_bus="inmemory",
-            scm_lane=None,
             environ=bound_environ(tmp_path),
             key_store=Refusing(),
         )
@@ -297,8 +296,6 @@ def config(**roster_overrides: str) -> ModelAgentReviewConfig:
 def test_every_port_binds_when_its_environment_is_present(tmp_path: Path) -> None:
     ports = build_production_ports(
         config(),
-        scm_bus="inmemory",
-        scm_lane=None,
         environ=bound_environ(tmp_path),
         key_store=FakeKeyStore(),
     )
@@ -316,8 +313,6 @@ def test_an_absent_environment_refuses_by_name(tmp_path: Path, absent: str) -> N
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(
             config(),
-            scm_bus="inmemory",
-            scm_lane=None,
             environ=environ,
             key_store=FakeKeyStore(),
         )
@@ -328,8 +323,6 @@ def test_a_rung_no_binding_serves_refuses_at_bind(tmp_path: Path) -> None:
     with pytest.raises(PortNotBoundError) as caught:
         build_production_ports(
             config(rung="elsewhere"),
-            scm_bus="inmemory",
-            scm_lane=None,
             environ=bound_environ(tmp_path),
             key_store=FakeKeyStore(),
         )
@@ -342,22 +335,31 @@ def test_a_checkout_that_is_not_one_refuses(tmp_path: Path) -> None:
     with pytest.raises(PortNotBoundError):
         build_production_ports(
             config(),
-            scm_bus="inmemory",
-            scm_lane=None,
             environ=environ,
             key_store=FakeKeyStore(),
         )
 
 
-def test_a_kafka_bus_needs_a_lane(tmp_path: Path) -> None:
-    with pytest.raises(PortNotBoundError):
-        build_production_ports(
-            config(),
-            scm_bus="kafka",
-            scm_lane=None,
-            environ=bound_environ(tmp_path),
-            key_store=FakeKeyStore(),
-        )
+@pytest.mark.parametrize(
+    "scm_bus", [{"kind": "kafka"}, {"kind": "inmemory", "lane": "dev"}, {}]
+)
+def test_the_overlay_names_a_kafka_lane_and_no_inmemory_lane(
+    scm_bus: dict[str, str],
+) -> None:
+    with pytest.raises(ValidationError):
+        ModelAgentReviewConfig.model_validate({**OVERLAY, "scm_bus": scm_bus})
+
+
+def test_the_overlay_scm_bus_reaches_the_bus(tmp_path: Path) -> None:
+    fields = {**OVERLAY, "scm_bus": {"kind": "kafka", "lane": "lane-x"}}
+    ports = build_production_ports(
+        ModelAgentReviewConfig.model_validate(fields),
+        environ=bound_environ(tmp_path),
+        key_store=FakeKeyStore(),
+    )
+    bus = ports.head._bus
+    assert isinstance(bus, ScmBus)
+    assert (bus._kind, bus._lane) == ("kafka", "lane-x")
 
 
 # -- the source-control bus ----------------------------------------------------------
@@ -542,6 +544,53 @@ def test_the_rung_caller_routes_each_voter_by_rung() -> None:
         )
 
 
+# -- the runtime's construction --------------------------------------------------------
+
+
+def test_the_runtime_builds_the_handler_with_no_arguments_and_binds_nothing() -> None:
+    """The runtime constructs from the contract on a host with no overlay or key."""
+    HandlerAgentReviewDispatch(environ={})
+
+
+def test_a_request_on_a_host_without_the_overlay_fails_not_bound() -> None:
+    handler = HandlerAgentReviewDispatch(environ={})
+    terminal = asyncio.run(
+        handler.handle(
+            ModelAgentReviewRequest(command_id="c1", repo=REPO, pr=PR, head_sha=HEAD)
+        )
+    )
+    assert terminal.outcome is EnumAgentReviewOutcome.FAILED
+    assert terminal.reason is EnumAgentReviewReason.NOT_BOUND
+
+
+def test_a_request_on_a_host_without_a_port_fails_not_bound_and_rebinds_later(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_node_overlay(monkeypatch, tmp_path / "overlays", NODE, OVERLAY)
+    environ = bound_environ(tmp_path)
+    environ["ONEX_SKILL_OVERLAY_ROOTS"] = str(tmp_path / "overlays")
+    state = environ.pop("ONEX_STATE_DIR")
+    monkeypatch.setattr(
+        ports_module, "InfisicalSigningKeyStore", lambda _environ: FakeKeyStore()
+    )
+    handler = HandlerAgentReviewDispatch(environ=environ)
+    request = ModelAgentReviewRequest(command_id="c1", repo=REPO, pr=PR, head_sha=HEAD)
+    assert (
+        asyncio.run(handler.handle(request)).reason is EnumAgentReviewReason.NOT_BOUND
+    )
+    environ["ONEX_STATE_DIR"] = state
+    config, ports = handler.bind()
+    assert config.scm_bus.kind == "inmemory"
+    assert isinstance(ports.store, FileReceiptStore)
+    assert isinstance(ports.terminal_log, FileTerminalLog)
+
+
+def test_a_partial_set_of_ports_is_refused_at_construction() -> None:
+    world = World()
+    with pytest.raises(TypeError, match="seven ports"):
+        HandlerAgentReviewDispatch(head=FakeHead(world), lab=FakeLab(world))
+
+
 # -- the request entry ---------------------------------------------------------------
 
 
@@ -553,7 +602,7 @@ def test_the_entry_names_an_unbound_port_and_calls_nothing(
     del environ["ONEX_STATE_DIR"]
     environ["ONEX_SKILL_OVERLAY_ROOTS"] = str(tmp_path / "overlays")
     code = runtime_agent_review.main(
-        ["--repo", REPO, "--pr", str(PR), "--head-sha", HEAD, "--scm-bus", "inmemory"],
+        ["--repo", REPO, "--pr", str(PR), "--head-sha", HEAD],
         environ=environ,
     )
     assert code == 1
@@ -575,8 +624,6 @@ def test_the_entry_refuses_a_malformed_head(
                 str(PR),
                 "--head-sha",
                 "nope",
-                "--scm-bus",
-                "inmemory",
             ],
             environ=bound_environ(tmp_path),
         )

@@ -93,6 +93,7 @@ OVERLAY: dict[str, Any] = {
         "line_proximity_lines": 3,
         "blocking_severities": ["critical", "error"],
     },
+    "scm_bus": {"kind": "inmemory"},
     "signing_key_store": {
         "reference": "secret://infisical/test-env/test/path/TEST_SIGNING_KEY"
     },

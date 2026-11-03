@@ -67,3 +67,8 @@ async def test_the_node_class_runs_one_review_to_a_completed_terminal(
     )
     terminal = await node.handle(harness.request())
     assert terminal.outcome.value == "completed"
+
+
+def test_the_node_class_constructs_as_the_runtime_builds_it() -> None:
+    """No argument: the overlay and the ports are bound on the first request."""
+    NodeAgentReviewDispatchOrchestrator()

@@ -94,10 +94,6 @@ _CANNOT_WIRE_IN_PROCESS: dict[str, str] = {
     "node_memory_storage_effect": (
         "omnimemory HandlerFileSystemAdapter requires a config constructor argument"
     ),
-    "node_agent_review_dispatch_orchestrator": (
-        "the handler takes its eight ports and the required roster overlay by injection; "
-        "the production port adapters are not built yet, so no honest wiring exists"
-    ),
 }
 
 # The ModelDispatchRoute field each derived identifier is stored in.
