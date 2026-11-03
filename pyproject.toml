@@ -400,6 +400,7 @@ node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_rece
 node_delegation_context_pack_budget_compute = "omnimarket.nodes.node_delegation_context_pack_budget_compute"
 node_ci_state_verdict_compute = "omnimarket.nodes.node_ci_state_verdict_compute"
 node_work_progress_compute = "omnimarket.nodes.node_work_progress_compute"
+node_work_progress_alert_effect = "omnimarket.nodes.node_work_progress_alert_effect"
 node_product_floor_verdict_compute = "omnimarket.nodes.node_product_floor_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_measured_model_selection_compute = "omnimarket.nodes.node_measured_model_selection_compute"
