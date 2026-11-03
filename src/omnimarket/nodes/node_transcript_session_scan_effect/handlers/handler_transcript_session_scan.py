@@ -127,6 +127,8 @@ class HandlerTranscriptSessionScan:
             root_counts[root.name] = 0
             archive_counts[root.name] = 0
             for record in records:
+                if not root.owns(record.key):
+                    continue
                 if not record.key.endswith(_TRANSCRIPT_SUFFIX):
                     archive_counts[root.name] += 1
                     if record.key > newest_archive.get(root.name, ""):

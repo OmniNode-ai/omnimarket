@@ -86,6 +86,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k 'two_top_level or find or two_roots or equal_revisions' -q -p no:randomly --no-cov"
     binds_ac: ["AC2"]
+  - id: "dod-omn22259-ac2-root-boundary"
+    description: "AC2 root boundary: a key belongs to a root only when it equals the prefix or continues it after a slash, so transcripts/mac2/s9.jsonl is not listed under the root with prefix transcripts/mac."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_transcript_session_scan_effect/test_scan.py -k 'sibling_prefix' -q -p no:randomly --no-cov"
+    binds_ac: ["AC2"]
   - id: "dod-omn22259-ac3"
     description: "AC3: a bucket root without a credential reference refuses at load naming the key."
     source: "manual"

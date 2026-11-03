@@ -41,9 +41,27 @@ class ModelTranscriptRoot(BaseModel):
         base = self.prefix.rstrip("/")
         return f"{base}/{relative_path}" if base else relative_path
 
-    def relative_path_of(self, key: str) -> str:
-        """Root-relative path of a store key listed under this root's prefix."""
+    def owns(self, key: str) -> bool:
+        """True when a store key belongs to this root.
+
+        The store port lists by plain string prefix, so the prefix `transcripts/mac` also lists
+        `transcripts/mac2/s9.jsonl`. A key belongs to the root only when it equals the prefix
+        (trailing `/` normalised away) or continues it after a `/`; with no prefix every key does.
+        """
         base = self.prefix.rstrip("/")
-        if base and key.startswith(base):
-            return key[len(base) :].lstrip("/")
-        return key.lstrip("/")
+        if not base:
+            return True
+        return key == base or key.startswith(f"{base}/")
+
+    def relative_path_of(self, key: str) -> str:
+        """Root-relative path of a store key this root owns.
+
+        Raises:
+            ValueError: when the key lies outside the root (check ``owns`` first).
+        """
+        if not self.owns(key):
+            raise ValueError(
+                f"key {key!r} is outside transcript root {self.name!r} (prefix {self.prefix!r})"
+            )
+        base = self.prefix.rstrip("/")
+        return key[len(base) :].lstrip("/")

@@ -194,6 +194,61 @@ async def test_a_file_in_two_roots_has_one_stream_id_and_the_higher_revision_win
     assert result.manifest_count == 2
 
 
+@pytest.mark.parametrize("prefix", ["transcripts/mac", "transcripts/mac/"])
+async def test_a_sibling_prefix_key_is_not_attributed_to_the_root(prefix: str) -> None:
+    """The port lists by string prefix, so `transcripts/mac` also lists `transcripts/mac2/...`.
+
+    A key belongs to a root only when it equals the prefix or continues it after a `/`.
+    """
+    store = InMemoryTranscriptSource(
+        {
+            "transcripts/mac/s1.jsonl": _session(2),
+            "transcripts/mac/archive-20260101.tar": b"x",
+            "transcripts/mac2/s9.jsonl": _session(3),
+            "transcripts/mac2/archive-20260301.tar": b"y",
+        }
+    )
+    # the store really does list the sibling: the boundary is the root's job, not the port's
+    assert "transcripts/mac2/s9.jsonl" in {
+        r.key for r in await store.list_objects("transcripts/mac")
+    }
+    scan = _scan(_overlay(_root("mac", prefix=prefix)), mac=store)
+    result = await scan.handle(ModelTranscriptScanRequest())
+    assert [e.relative_path for e in result.entries] == ["s1.jsonl"]
+    assert result.listed_transcript_count == 1
+    assert result.root_transcript_counts == {"mac": 1}
+    assert result.archive_object_counts == {"mac": 1}
+    assert result.newest_archive_key == {"mac": "transcripts/mac/archive-20260101.tar"}
+
+
+async def test_a_sibling_prefix_stream_is_attributed_only_to_its_own_root() -> None:
+    store = InMemoryTranscriptSource(
+        {
+            "transcripts/mac/s1.jsonl": _session(2),
+            "transcripts/mac2/s9.jsonl": _session(3),
+        }
+    )
+    overlay = _overlay(
+        _root("mac", prefix="transcripts/mac"),
+        _root("mac2", prefix="transcripts/mac2"),
+    )
+    scan = _scan(overlay, mac=store, mac2=store)
+    result = await scan.handle(ModelTranscriptScanRequest())
+    by_path = {e.relative_path: e for e in result.entries}
+    assert set(by_path) == {"s1.jsonl", "s9.jsonl"}
+    assert by_path["s9.jsonl"].root_name == "mac2"
+    assert by_path["s9.jsonl"].present_in == ("mac2",)
+    assert by_path["s9.jsonl"].key == "transcripts/mac2/s9.jsonl"
+    # every manifest entry reads back from the root and key it names, no KeyError
+    for entry in result.entries:
+        read = await scan.read_text(
+            ModelTranscriptReadRequest(
+                root_name=entry.root_name, relative_path=entry.relative_path
+            )
+        )
+        assert read.byte_length > 0
+
+
 async def test_equal_revisions_keep_the_first_root_and_the_archive_objects_record_their_newest_key() -> (
     None
 ):
