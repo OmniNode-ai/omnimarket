@@ -79,6 +79,7 @@ SECRET_ENV = "LOCAL_LLM_SHARED_SECRET"
 HOST_ENV_FILE_ENV = "ONEX_HOST_ENV_FILE"
 #: The host's own store identity (machine identity), read from the process environment,
 #: else the host env file. These name the host's access to the store, not the key.
+STORE_PROVIDER = "infisical"
 STORE_ADDR_ENV = "INFISICAL_ADDR"
 STORE_CLIENT_ID_ENV = "INFISICAL_CLIENT_ID"
 STORE_CLIENT_SECRET_ENV = "INFISICAL_CLIENT_SECRET"
@@ -182,6 +183,11 @@ class InfisicalSigningKeyStore:
             ModelInfisicalAdapterConfig,
         )
 
+        if reference.provider != STORE_PROVIDER:
+            raise PortNotBoundError(
+                f"the signing key store names provider {reference.provider!r}, which "
+                "no binding serves; no signer is bound"
+            )
         identity = _store_identity(self._environ)
         adapter = AdapterInfisical(
             ModelInfisicalAdapterConfig(
@@ -272,10 +278,16 @@ class ScmBus:
     """One source-control node call over the bus, the call ``onex scm`` makes."""
 
     def __init__(
-        self, *, kind: ScmBusKind, lane: str | None, timeout_seconds: float
+        self,
+        *,
+        kind: ScmBusKind,
+        lane: str | None,
+        registry_root: Path | None,
+        timeout_seconds: float,
     ) -> None:
         self._kind: ScmBusKind = kind
         self._lane = lane
+        self._registry_root = registry_root
         self._timeout = timeout_seconds
 
     def _open(
@@ -288,7 +300,10 @@ class ScmBus:
             open_lab_run_bus,
         )
         lane = None if self._kind == "inmemory" else self._lane
-        opened = opener(**dict(zip(names, (self._kind, lane, None, None), strict=True)))
+        # The lane declaration is read under the registry root, as ``onex scm`` does with
+        # its workspace path; the in-memory bus names no broker and reads none.
+        root = None if self._kind == "inmemory" else self._registry_root
+        opened = opener(**dict(zip(names, (self._kind, lane, None, root), strict=True)))
         if self._kind == "inmemory":
             return open_scm_inprocess(opened, node)
         return opened
@@ -797,7 +812,10 @@ def build_production_ports(
     if scm_bus == "kafka" and not scm_lane:
         raise PortNotBoundError("a kafka source-control bus needs a lane")
     bus = ScmBus(
-        kind=scm_bus, lane=scm_lane, timeout_seconds=config.lab_call_timeout_seconds
+        kind=scm_bus,
+        lane=scm_lane,
+        registry_root=registry,
+        timeout_seconds=config.lab_call_timeout_seconds,
     )
     diffs = CloneDiffReader(
         registry_root=registry, timeout_seconds=config.lab_call_timeout_seconds

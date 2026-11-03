@@ -98,16 +98,45 @@ class ModelAgentHarnessRung(BaseModel):
 class ModelAgentSigningKeyStore(BaseModel):
     """Where the receipt signing key lives in the secret store: a reference, never a value.
 
-    The dispatch resolves it at bind time through the host's own store identity, so the
-    key is held in this process's memory and handed to the signer child, and is never a
-    file, an argument or a setting on any host.
+    One ``secret://<provider>/<environment>/<path...>/<name>`` reference, the form the
+    private overlay holds every credential in. The dispatch resolves it at bind time through
+    the host's own store identity, so the key is held in this process's memory and handed to
+    the signer child, and is never a file, an argument or a setting on any host.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    secret_name: str = Field(min_length=1)
-    environment_slug: str = Field(min_length=1)
-    secret_path: str = Field(min_length=1, pattern=r"^/")
+    reference: str = Field(
+        pattern=r"^secret://[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+){2,}$"
+    )
+
+    @property
+    def _parts(self) -> tuple[str, str, list[str], str]:
+        provider, environment, *rest = self.reference.removeprefix("secret://").split(
+            "/"
+        )
+        *path, name = rest
+        return provider, environment, path, name
+
+    @property
+    def provider(self) -> str:
+        provider, *_ = self._parts
+        return provider
+
+    @property
+    def environment_slug(self) -> str:
+        _, environment, *_ = self._parts
+        return environment
+
+    @property
+    def secret_path(self) -> str:
+        _, _, path, _ = self._parts
+        return "/" + "".join(f"{part}/" for part in path)
+
+    @property
+    def secret_name(self) -> str:
+        _, _, _, name = self._parts
+        return name
 
 
 class ModelAgentReviewConfig(BaseModel):

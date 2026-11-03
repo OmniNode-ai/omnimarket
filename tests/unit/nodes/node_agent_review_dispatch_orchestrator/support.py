@@ -94,9 +94,7 @@ OVERLAY: dict[str, Any] = {
         "blocking_severities": ["critical", "error"],
     },
     "signing_key_store": {
-        "secret_name": "TEST_SIGNING_KEY",
-        "environment_slug": "test-env",
-        "secret_path": "/test/path/",
+        "reference": "secret://infisical/test-env/test/path/TEST_SIGNING_KEY"
     },
 }
 

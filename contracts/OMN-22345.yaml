@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22345
 title: 'The agent review dispatch signer binds to the secret store by name: the receipt signing key is read from the store at bind time and is never a file, a setting or an argument on a host'
-summary: build_production_ports reads the receipt signing key through the overlay's signing_key_store reference (secret name, environment slug, secret path) with the host's own store identity, and hands it to the signer child's environment only. The process-environment and host-env-file paths for the key are removed. The store identity names (address, client id, client secret, project) are read from the environment or the host env file, never reach a voter's child process, and an absent or unreadable store ends the request before any port is called, with the name on stderr and no value.
+summary: The dispatch also gives its kafka source-control bus the registry root so the lane declaration is found, and the event-emit spool tolerates a file a peer emitter already took, so a delegation event of a harness voter is no longer lost to the race. build_production_ports reads the receipt signing key through the overlay's signing_key_store reference (one secret:// reference naming provider, environment, path and secret name) with the host's own store identity, and hands it to the signer child's environment only. The process-environment and host-env-file paths for the key are removed. The store identity names (address, client id, client secret, project) are read from the environment or the host env file, never reach a voter's child process, and an absent or unreadable store ends the request before any port is called, with the name on stderr and no value.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -26,6 +26,11 @@ requirements:
   acceptance:
   - id: AC4
     statement: 'AC4: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters -- falsifier: the entry exits 1 with a not-bound line, or the stored receipt lists fewer than two counted non-lab voters'
+- id: req-omn22345-ac5
+  statement: 'AC5: The source-control bus of the dispatch reads the lane declaration under the registry root, and a spool file a peer emitter already took is not an error'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: The source-control bus of the dispatch reads the lane declaration under the registry root, and a spool file a peer emitter already took is not an error -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -k "lane_declaration or in_memory_bus" -q` or `uv run pytest tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py -k "peer" -q` fails'
 evidence_requirements:
 - kind: tests
   description: The dispatch node suite under both profiles and the literal scan.
@@ -71,6 +76,15 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'onex run-node node_agent_review_dispatch_orchestrator --help > /dev/null'
+    cwd: .
+- id: dod-omn22345-ac5
+  description: 'AC5: the kafka bus opener receives the registry root, and the spool measures past or quarantines around a file a peer took without raising.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py tests/unit/nodes/node_event_emit_effect/test_spool_outbox.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'lane_declaration or in_memory_bus or peer'
     cwd: .
 - id: dod-omn22345-integration-proof
   description: The pushed head ran the dispatch node suite on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
