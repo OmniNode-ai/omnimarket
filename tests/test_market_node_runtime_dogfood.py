@@ -398,7 +398,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
     # load_bringup_graph and declares no handler, so it is experimental with no
     # handler_routing: 30 -> 31.
-    assert summary["skipped"] == 31
+    # node_overlay_tree_install_effect and node_host_installer_registry_units are
+    # called in process by the host installer and declare no handler_routing, so
+    # they are experimental: 31 -> 33.
+    assert summary["skipped"] == 33
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
