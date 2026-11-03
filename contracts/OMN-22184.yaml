@@ -71,6 +71,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_guest_over_ssh.py -q --no-cov --tb=line
     cwd: .
+- id: dod-omn22184-ac1-transport-selection
+  description: AC1 the handler alone, with no injected runner, picks the Tart runner from the request's tart_transport, so a request with tart_transport local published to the node runs tart in a local bash and never ssh-es to the Tart host; the CLI runtime reaches the same selection through the handler.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_guest_over_ssh.py -q --no-cov --tb=line -k "bus_path or cli_selects"
+    cwd: .
 - id: dod-omn22184-deploy-probe
   description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines the walk effect, which the merge base does not.'
   source: manual

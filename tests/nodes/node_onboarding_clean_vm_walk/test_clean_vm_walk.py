@@ -687,7 +687,7 @@ def test_cli_prints_receipt(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = StubTartRunner()
-    monkeypatch.setattr(runtime, "HandlerSshTart", lambda _host: runner)
+    monkeypatch.setattr(walk, "HandlerSshTart", lambda _host: runner)
     monkeypatch.setattr("sys.argv", ["walk", "--input", request().model_dump_json()])
     assert runtime.main() == 0
     receipt = ModelWalkReceipt.model_validate_json(capsys.readouterr().out)

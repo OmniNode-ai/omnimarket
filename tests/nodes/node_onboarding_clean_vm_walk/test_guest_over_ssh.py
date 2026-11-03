@@ -197,17 +197,47 @@ def test_local_transport_runs_the_same_commands_in_a_local_bash() -> None:
         assert "nohup" in run.call_args.args[0][2]
 
 
+def _tart_missing_subprocess(calls: list[list[str]]) -> object:
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 127, "", "tart: not found")
+
+    return fake_run
+
+
+def test_bus_path_without_a_runner_runs_tart_locally_for_the_local_transport() -> None:
+    """The handler alone (the bus path) honors tart_transport=local: no ssh to the host."""
+    calls: list[list[str]] = []
+    with patch("subprocess.run", _tart_missing_subprocess(calls)):
+        receipt = walk.HandlerOnboardingCleanVmWalk().handle(
+            request(guest_ip=None, tart_transport="local")
+        )
+    assert receipt.outcome == EnumWalkOutcome.FAILED
+    assert "tart not found" in (receipt.failure_text or "")
+    assert calls, "the tart version probe must have run"
+    assert all(argv[:2] == ["bash", "-c"] for argv in calls)
+    assert not any(argv[0] == "ssh" for argv in calls)
+
+
+def test_bus_path_without_a_runner_ssh_es_to_the_tart_host_for_the_ssh_transport() -> (
+    None
+):
+    """Positive control: the default transport still reaches the Tart host over ssh."""
+    calls: list[list[str]] = []
+    with patch("subprocess.run", _tart_missing_subprocess(calls)):
+        receipt = walk.HandlerOnboardingCleanVmWalk().handle(
+            request(guest_ip=None, tart_transport="ssh")
+        )
+    assert receipt.outcome == EnumWalkOutcome.FAILED
+    assert calls
+    assert all(argv[0] == "ssh" and "192.0.2.1" in argv for argv in calls)
+
+
 def test_cli_selects_the_local_transport(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    chosen: list[object] = []
-
-    class Spy(walk.HandlerOnboardingCleanVmWalk):
-        def __init__(self, runner: object = None) -> None:
-            chosen.append(runner)
-            super().__init__(SshOnlyRunner())
-
-    monkeypatch.setattr(runtime, "HandlerOnboardingCleanVmWalk", Spy)
+    """The CLI and the bus share the handler's one transport selection."""
+    calls: list[list[str]] = []
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -216,5 +246,7 @@ def test_cli_selects_the_local_transport(
             request(guest_ip=None, tart_transport="local").model_dump_json(),
         ],
     )
-    assert runtime.main() == 0
-    assert isinstance(chosen[0], HandlerLocalTart)
+    with patch("subprocess.run", _tart_missing_subprocess(calls)):
+        assert runtime.main() == 0
+    assert calls
+    assert all(argv[:2] == ["bash", "-c"] for argv in calls)

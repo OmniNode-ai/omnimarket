@@ -27,6 +27,7 @@ from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.receipt_reda
     sanitize_receipt,
 )
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner import (
+    HandlerLocalTart,
     HandlerSshTart,
 )
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.walk_log_parser import (
@@ -255,6 +256,13 @@ def _require_success(result: ModelRunnerResult, kind: EnumWalkStepKind) -> None:
         )
 
 
+def select_runner(request: ModelWalkRequest) -> ProtocolTartRunner:
+    """The one place the request's tart_transport picks the Tart runner."""
+    if request.tart_transport == "local":
+        return HandlerLocalTart()
+    return HandlerSshTart(request.tart_host)
+
+
 class HandlerOnboardingCleanVmWalk:
     """Synchronous operator effect; operational failures return a cleanup receipt."""
 
@@ -342,7 +350,7 @@ class HandlerOnboardingCleanVmWalk:
                     "vm_name": request.vm_name,
                 }
             )
-            runner = self._runner or HandlerSshTart(request.tart_host)
+            runner = self._runner or select_runner(request)
             guard = DocumentedStepGuard(request, runner)
             assert request.tart_path is not None
             version = runner.run(
