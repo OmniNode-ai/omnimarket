@@ -356,7 +356,7 @@ def _pool_rows(
         if not _fresh(p.read_at, now, cfg):
             rows.append(
                 _row(
-                    "host_token_pool",
+                    "host_account_pool",
                     p.host,
                     p.source,
                     p.read_at,
@@ -383,7 +383,7 @@ def _pool_rows(
         }
         if limited_stamps:
             values["limited_until"] = max(limited_stamps)
-        rows.append(_row("host_token_pool", p.host, p.source, p.read_at, values))
+        rows.append(_row("host_account_pool", p.host, p.source, p.read_at, values))
     return rows
 
 
@@ -426,7 +426,7 @@ def compute_limits(request: ModelFactoryFloorRequest) -> ModelFloorLimits:
         "codex",
         "glm",
         "lab_model_rung",
-        "host_token_pool",
+        "host_account_pool",
     ]
     rows.sort(key=lambda r: order.index(r.kind))
     return ModelFloorLimits(

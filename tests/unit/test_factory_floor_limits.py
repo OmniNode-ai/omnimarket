@@ -250,7 +250,7 @@ def test_limits_token_pool_revoked_is_counted_as_revoked_and_never_as_capacity()
             ModelLimitToken(label="e", limited_until="2026-10-31T10:00:00Z"),
         ),
     )
-    (row,) = rows_of(limits_of(token_pools=(pool,)), "host_token_pool")
+    (row,) = rows_of(limits_of(token_pools=(pool,)), "host_account_pool")
     assert row.name == "h200"
     assert row.state == "read"
     assert row.values["revoked"] == 2
@@ -271,7 +271,7 @@ def test_limits_token_pool_revoked_every_token_revoked_leaves_no_capacity() -> N
             ModelLimitToken(label="b", revoked=True),
         ),
     )
-    (row,) = rows_of(limits_of(token_pools=(pool,)), "host_token_pool")
+    (row,) = rows_of(limits_of(token_pools=(pool,)), "host_account_pool")
     assert row.values["usable"] == 0
     assert row.values["revoked"] == 2
 
@@ -291,7 +291,7 @@ def test_limits_unknown_never_zero_a_row_never_read_says_unknown_with_no_number(
             ),
         ),
     )
-    for kind in ("api_credit", "host_token_pool"):
+    for kind in ("api_credit", "host_account_pool"):
         (row,) = rows_of(limits, kind)
         assert row.state == "UNKNOWN"
         assert row.values == {}

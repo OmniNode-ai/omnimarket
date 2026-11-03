@@ -779,7 +779,7 @@ function renderMergedRunning(floor){
 function renderLimits(record){
   const card = el("limits"), limits = record.limits;
   if (!limits){ card.hidden = true; card.innerHTML = ""; return; }
-  const labels = {claude_subscription: "Claude subscription", cloud_credit: "Cloud credit", api_credit: "API credit", codex: "Codex", glm: "GLM", lab_model_rung: "Lab model rung", host_token_pool: "Host token pool"};
+  const labels = {claude_subscription: "Claude subscription", cloud_credit: "Cloud credit", api_credit: "API credit", codex: "Codex", glm: "GLM", lab_model_rung: "Lab model rung", host_account_pool: "Host account pool"};
   const valueText = (key, value) => {
     if (typeof value === "boolean") return value ? "yes" : "no";
     if (typeof value === "number") {
@@ -799,11 +799,11 @@ function renderLimits(record){
     else {
       const unknown = new Set(row.unknown_fields || []);
       const known = row.values || {};
-      const keys = row.kind === "host_token_pool"
+      const keys = row.kind === "host_account_pool"
         ? ["usable", "limited", "limited_until", "revoked", "total"].filter(key => Object.hasOwn(known, key))
         : Object.keys(known);
       values = keys.filter(key => !unknown.has(key)).map(key => {
-        const label = row.kind === "host_token_pool" && key === "revoked" ? "revoked (not capacity)" : key;
+        const label = row.kind === "host_account_pool" && key === "revoked" ? "revoked (not capacity)" : key;
         return `<div>${esc(label)}: ${esc(valueText(key, known[key]))}</div>`;
       }).join("") + Array.from(unknown, key => `<div class="muted">${esc(key)}: UNKNOWN</div>`).join("");
     }

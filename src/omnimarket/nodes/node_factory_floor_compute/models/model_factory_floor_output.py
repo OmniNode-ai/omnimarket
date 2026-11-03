@@ -357,7 +357,7 @@ LimitKind = Literal[
     "codex",
     "glm",
     "lab_model_rung",
-    "host_token_pool",
+    "host_account_pool",
 ]
 
 
