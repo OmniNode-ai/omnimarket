@@ -14,6 +14,10 @@ in ``FLOOR_FILL_PARITY_BOOTSTRAP`` (a plaintext lab broker the caller started fo
 proof, never the dev lane's):
 
     FLOOR_FILL_PARITY_BOOTSTRAP=<host:port> uv run pytest -m "floor_fill_parity and kafka" -q
+
+This file lives under ``tests/`` and not beside the node: it uses the parity orchestrator's
+run and row models, and a file under ``src/`` that imports another node's models package
+is a cross-node reach-in (``tests/test_no_cross_node_reach_in.py`` reads ``src/``).
 """
 
 from __future__ import annotations
