@@ -45,6 +45,7 @@ from omnimarket.nodes.node_omnidash_host_effect.handlers.adapter_omnidash_host_i
 )
 from omnimarket.nodes.node_omnidash_host_effect.handlers.adapter_omnidash_host_system import (
     SystemOmnidashHostPorts,
+    node_archive,
 )
 from omnimarket.nodes.node_omnidash_host_effect.handlers.handler_omnidash_host_effect import (
     HandlerOmnidashHostEffect,
@@ -404,7 +405,7 @@ def node_tarball(version: str) -> tuple[bytes, str]:
     import hashlib
     import platform
 
-    arch = {"x86_64": "x64", "aarch64": "arm64"}[platform.machine()]
+    arch = {"x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
     name = f"node-v{version}-linux-{arch}"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:xz") as tar:
@@ -642,3 +643,26 @@ def test_omnidash_host_floor_page_has_no_links_area() -> None:
     )
     text = page.read_text(encoding="utf-8")
     assert not re.search(r"<nav|class=\"[^\"]*links|id=\"[^\"]*links", text, re.I)
+
+
+@pytest.mark.parametrize(
+    ("machine", "arch"),
+    [("x86_64", "x64"), ("aarch64", "arm64"), ("arm64", "arm64")],
+)
+def test_omnidash_host_node_archive_names_the_distribution_for_each_machine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, machine: str, arch: str
+) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    assert node_archive(row(tmp_path)) == f"node-v22.13.0-linux-{arch}"
+
+
+def test_omnidash_host_node_archive_refuses_an_unknown_machine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "machine", lambda: "riscv64")
+    with pytest.raises(ValueError, match="no node distribution"):
+        node_archive(row(tmp_path))

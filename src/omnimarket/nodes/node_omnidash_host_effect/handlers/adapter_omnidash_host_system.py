@@ -50,7 +50,7 @@ def serve_hostname(host: ModelOmnidashHostRow) -> str:
 def node_archive(row: ModelOmnidashHostRow) -> str:
     """The directory name the pinned node distribution unpacks to."""
     machine = platform.machine()
-    arch = {"x86_64": "x64", "aarch64": "arm64"}.get(machine)
+    arch = {"x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
     if arch is None:
         raise ValueError(f"no node distribution for machine {machine!r}")
     return f"node-v{row.node_version}-linux-{arch}"
