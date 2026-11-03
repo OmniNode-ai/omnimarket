@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21483"
+title: "The cost estimator reads a Claude Code session file from the developer's projects folder"
+summary: >-
+  node_prompt_cost_estimate_compute already accepts Claude Code session JSONL. It folded every assistant message under one user prompt into one row and priced it on the first model that answered. It now gives each distinct assistant message its own priced row, on the model that message's line names. The upload page hint (AC2) is on the web page and is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claude-code-session-turns"
+    statement: "A Claude Code session JSONL file is accepted and each assistant turn is priced on the model the file names."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a Claude Code session JSONL file is accepted and each assistant turn is priced on the model the file names -- falsifier: uv run pytest -k claude_code_session_jsonl in the estimator's API repo, with a fixture session file asserting priced rows per assistant turn and the model taken from the file"
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden chain for node_prompt_cost_estimate_compute, including the Claude Code session fixture."
+    command: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k claude_code_session_jsonl"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21483-ac1-priced-row-per-assistant-turn"
+    description: "A fixture Claude Code session with two prompts, three models and a repeated message id gives one priced row per distinct assistant message, each on its own model at the manifest rate; the synthetic reply is not a row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k claude_code_session_jsonl"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21483-deploy-probe"
+    description: "Deploy probe: the export parser read from GitHub at the checked-out commit prices a Claude Code assistant turn on its own model. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prompt_cost_estimate_compute/handlers/export_parsers.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'for turn in turns'"
+        cwd: "${OMNI_HOME}/omnimarket"
