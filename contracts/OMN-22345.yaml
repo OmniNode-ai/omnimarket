@@ -150,11 +150,18 @@ dod_evidence:
     - check_type: test_passes
       check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line
       cwd: .
-  - id: dod-omn22345-ac11
-    description: 'AC11: lab step, recorded as a ledger receipt by the proof lane (review-proof-1525). Not met by this change alone.'
+  - id: dod-omn22345-ac11-in-process
+    description: 'AC11, in process: the production ports bind the signer through the overlay store reference with a fake store and the request ends with one stored receipt. The lab run is dod-omn22345-ac11, in the local Done gate.'
     source: manual
     binds_ac:
     - AC11
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'key or store'
+      cwd: .
+  - id: dod-omn22345-ac11
+    description: 'AC11: lab step, recorded as a ledger receipt by the proof lane (review-proof-1525). Not met by this change alone.'
+    source: manual
     execution_scope: local_done_gate
     checks:
     - check_type: command
