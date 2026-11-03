@@ -17,12 +17,14 @@ variables)`` seam the real gateway uses, so the GraphQL text the node sends is w
 from __future__ import annotations
 
 import copy
+import importlib
 import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.handlers.handler_lane_intake import ModelLaneIntakePolicy
 from omnimarket.models.model_ticket_io import (
@@ -47,6 +49,10 @@ _FIXTURE = (
 )
 _RECORDED: dict[str, Any] = json.loads(_FIXTURE.read_text(encoding="utf-8"))
 _POLICY = ModelLaneIntakePolicy(label="lane-created", stamp_prefix="created-by-lane:")
+_CONTRACT = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_create_ticket/contract.yaml"
+)
 _IN_READY = "OMN-22207"
 _NO_PROJECT = "OMN-21723"
 
@@ -412,3 +418,108 @@ def test_http_gateway_create_without_a_parent_sends_no_clear() -> None:
         title="t", description="d", team="Omninode", parent=None, assignee_id="user-1"
     )
     assert fake.calls == []
+
+
+# --- the contract-routed path: the request reaches HandlerTicketProject without HandlerCreateTicket ----
+
+
+def _routed_handler(
+    operation: EnumTicketOperation, gateway: LinearTicketProjectGateway
+) -> HandlerTicketProject:
+    """The handler contract.yaml names for ``operation``, built the way a router builds it."""
+    entries = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))["handler_routing"][
+        "handlers"
+    ]
+    [entry] = [e for e in entries if e["operation"] == operation.value]
+    module = importlib.import_module(entry["handler"]["module"])
+    handler = getattr(module, entry["handler"]["name"])(gateway)
+    assert isinstance(handler, HandlerTicketProject)
+    return handler
+
+
+@pytest.fixture
+def installed_guard_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> ModelLaneIntakePolicy:
+    """An installed ticket guard with its policy file beside it, as production locates it."""
+    guard = tmp_path / "hooks" / "ticket_creation_guard.py"
+    guard.parent.mkdir()
+    guard.write_text("", encoding="utf-8")
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "ticket_creation_policy.json").write_text(
+        json.dumps(
+            {
+                "lane_intake": {
+                    "label": _POLICY.label,
+                    "stamp_prefix": _POLICY.stamp_prefix,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_TICKET_GUARD_PATH", str(guard))
+    return _POLICY
+
+
+def test_contract_routed_clear_project_dry_run_sends_nothing() -> None:
+    """AC1: a dry run reaches no Linear write when the contract routes it past HandlerCreateTicket."""
+    fake = _FakeLinear()
+    handler = _routed_handler(
+        EnumTicketOperation.CLEAR_PROJECT, LinearTicketProjectGateway(fake.post)
+    )
+    result = handler.handle(
+        ModelCreateTicketRequest(
+            operation=EnumTicketOperation.CLEAR_PROJECT,
+            ticket_id=_IN_READY,
+            dry_run=True,
+        )
+    )
+    mutating = [q for q, _ in fake.calls if q.lstrip().startswith("mutation")]
+    assert mutating == []
+    assert fake.mutations() == []
+    assert result.status == "dry_run"
+    assert result.dry_run is True
+    assert result.project_cleared is False
+    assert result.ticket_id == _IN_READY
+    assert fake.issues[_IN_READY]["data"]["issue"]["project"] is not None
+
+
+def test_contract_routed_clear_project_still_clears_when_not_a_dry_run() -> None:
+    """Positive control: the same routed handler does send the update without dry_run."""
+    fake = _FakeLinear()
+    handler = _routed_handler(
+        EnumTicketOperation.CLEAR_PROJECT, LinearTicketProjectGateway(fake.post)
+    )
+    result = handler.handle(_clear(_IN_READY))
+    assert result.status == "project_cleared"
+    assert len(fake.mutations()) == 1
+
+
+def test_contract_routed_repair_project_routed_uses_the_lane_intake_label(
+    installed_guard_policy: ModelLaneIntakePolicy,
+) -> None:
+    """AC2: the routed repair_project takes its label from the policy, not an empty label."""
+    fake = _FakeLinear()
+    handler = _routed_handler(
+        EnumTicketOperation.REPAIR_PROJECT, LinearTicketProjectGateway(fake.post)
+    )
+    result = handler.handle(_repair("2026-11-02", dry_run=True))
+    assert result.status == "dry_run"
+    assert result.candidate_ids == ["OMN-22207", "OMN-22174", "OMN-22163", "OMN-22156"]
+    [(_query, variables)] = [c for c in fake.calls if "issues(" in c[0]]
+    assert variables["label"] == installed_guard_policy.label
+    assert fake.mutations() == []
+
+
+def test_contract_routed_repair_project_routed_clears_with_the_policy_label(
+    installed_guard_policy: ModelLaneIntakePolicy,
+) -> None:
+    fake = _FakeLinear()
+    handler = _routed_handler(
+        EnumTicketOperation.REPAIR_PROJECT, LinearTicketProjectGateway(fake.post)
+    )
+    result = handler.handle(_repair("2026-11-02"))
+    assert result.status == "project_repaired"
+    assert len(result.cleared_ids) == 4
+    assert installed_guard_policy.label == "lane-created"
