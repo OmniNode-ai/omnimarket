@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22186
 title: 'Lander L1: a TLA+ model of the permit, the fence and the kept tree has a TLC verdict with mutation matrix before any lander node is built'
-summary: formal/lander_lease is a TLA+ model of the lane lander (task L1, model before build for L2 to L4). The controller grants a lease, issues a permit stamped issued_at, reads status, cancels, ends the permit at cutoff_at, releases, falls back to a cold worker and merges; the host job runs offer, START, engine, push and done and may die between any two steps; the cold worker pushes on a lease; the network may lose, delay and reorder a message and the host may pause. The base config checks AtMostOneAuthorizedPublisher, NoLostUpdate, ExactlyOnceChild and SingleOwnerOfTree and the liveness NoStrand; five mutation configs (M1 to M5, with M4b) each end in a TLC violation that names the property. The TLC run was made on h201 and its outputs are checked in under formal/lander_lease/results. Only formal-model files are added; no node, script or test.
+summary: formal/lander_lease is a TLA+ model of the lane lander (task L1, model before build for L2 to L4). The controller grants a lease, issues a permit stamped issued_at, reads status, cancels, ends the permit at cutoff_at, releases, falls back to a cold worker and merges; the host job runs offer, START, engine, push and done and may die between any two steps; the cold worker pushes on a lease; the network may lose, delay and reorder a message and the host may pause. The base config checks AtMostOneAuthorizedPublisher, NoLostUpdate, ExactlyOnceChild and SingleOwnerOfTree and the liveness NoStrand; five mutation configs (M1 to M5, with M4b) each end in a TLC violation that names the property. The TLC run was made on h201 and its outputs are checked in under formal/lander_lease/results. Formal-model files and one test, tests/formal/test_lander_lease_model.py, which reads the checked-in TLC results and asserts the verdict; no node or script.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,6 +25,9 @@ evidence_requirements:
   - kind: manual
     description: The checked-in TLC receipts name the base pass, the five violations and the receipt path.
     command: grep -c 'result=' formal/lander_lease/results/SUMMARY.txt
+  - kind: tests
+    description: The checked-in TLC results, the configs and the verdict agree (AC1 to AC3).
+    command: uv run pytest tests/formal/test_lander_lease_model.py -q -n 0 -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -46,6 +49,9 @@ dod_evidence:
           grep -q '^PROPERTY NoStrand$' base.cfg
           grep -q '^base .*result=PASS' results/SUMMARY.txt
         cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_lander_lease_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
   - id: dod-omn22186-ac2
     description: AC2 reads the checked-in TLC output of each mutation config and requires its violation to name the one property its config checks.
     source: manual
@@ -66,6 +72,9 @@ dod_evidence:
           for m in M1 M2 M3 M4 M4b M5; do grep -q "^$m .*result=VIOLATED" results/SUMMARY.txt; done
           grep -q 'M5 .*result=VIOLATED NoStrand' results/SUMMARY.txt
         cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_lander_lease_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
   - id: dod-omn22186-ac3
     description: AC3 reads the README section Verdict and VERDICT.txt for the TLC receipt path and the five mutation results.
     source: manual
@@ -85,4 +94,7 @@ dod_evidence:
             grep -q 'M4.*SingleOwnerOfTree' "$f"
             grep -q 'M5.*NoStrand' "$f"
           done
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_lander_lease_model.py -q -n 0 -p no:randomly --no-cov
         cwd: .
