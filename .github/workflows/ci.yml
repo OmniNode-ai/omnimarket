@@ -3642,6 +3642,15 @@ jobs:
               )
           print(f"omnibase_infra overlay import path: {package_path}")
           PY
+      - name: Verify workflow contract catalog route and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+      - name: Verify workflow contract catalog Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_WORKFLOW_CONTRACTS_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_workflow_contract_catalog_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
       - name: Run customer-path boundary tests
         env:
           # A missing docker daemon must be RED here, never a green skip.
