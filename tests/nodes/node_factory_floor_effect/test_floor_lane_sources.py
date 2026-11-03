@@ -358,6 +358,30 @@ def test_the_watcher_ci_verdict_becomes_a_state_and_a_note(tmp_path: Path) -> No
     }
 
 
+def test_a_pr_attributes_only_to_the_ticket_of_its_title_and_branch_not_its_body(
+    tmp_path: Path,
+) -> None:
+    path = write(
+        tmp_path / "state.json",
+        {
+            "last_tick": "2026-10-31T17:59:00Z",
+            "prs": {
+                "r#1": {
+                    "facts": {
+                        "state": "OPEN",
+                        "title": "feat(OMN-100): the overlay",
+                        "head_ref": "omn-100-overlay",
+                        "body": "Links OMN-200, OMN-300 and OMN-400",
+                    },
+                    "cls": "pending",
+                },
+            },
+        },
+    )
+    watcher = load_watcher(path, NOW, 90)
+    assert [p.tickets for p in watcher.prs] == [("OMN-100",)]
+
+
 def test_titles_come_from_the_json_snapshot_and_status_types_from_the_text_file(
     tmp_path: Path,
 ) -> None:

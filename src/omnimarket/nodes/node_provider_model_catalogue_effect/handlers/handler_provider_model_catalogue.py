@@ -18,11 +18,11 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.routing.byok_model_discovery import get_models_json
 from omnimarket.nodes.node_provider_model_catalogue_effect.models.model_provider_model_catalogue import (
     ModelProviderModelCatalogueRequest,
     ModelProviderModelCatalogueResult,
 )
-from omnimarket.routing.byok_model_discovery import get_models_json
 from omnimarket.validators.routing_tier_backend_bindability import (
     BIFROST_CONTRACT_PATH,
     declared_backends,

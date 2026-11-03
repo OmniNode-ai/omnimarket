@@ -88,10 +88,10 @@ def _clear_lru_caches_and_use_real_routing_tiers(
     fixture -- ``routing_tiers.yaml`` and ``task_class_contracts.v1.yaml``
     stay the REAL committed files (this ticket's actual routing_tiers.yaml
     edit is what's under test)."""
+    from omnimarket.handlers.routing import routing_tiers_path
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as h,
     )
-    from omnimarket.routing import routing_tiers_path
 
     contract_path = tmp_path / "bifrost_delegation.yaml"
     contract_path.write_text(_BIFROST_LOCAL_TIER_RESOLVABLE)

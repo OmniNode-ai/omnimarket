@@ -32,6 +32,22 @@ class EnumWorkLedgerQueryKind(StrEnum):
     INBOX = "inbox"
     NEWEST_PER_LANE = "newest-per-lane"
     RULINGS = "rulings"
+    OPEN_RULINGS = "open-rulings"
+
+
+#: The queries answered from ``work_ledger_state`` (OMN-21948): a page of the
+#: open set, never a fold of rows.
+POINT_QUERY_KINDS = frozenset(
+    {
+        EnumWorkLedgerQueryKind.HOLDS,
+        EnumWorkLedgerQueryKind.INBOX,
+        EnumWorkLedgerQueryKind.OPEN_CLAIMS,
+        EnumWorkLedgerQueryKind.OPEN_RULINGS,
+    }
+)
+#: A point query page holds this many entities unless the request names a size.
+DEFAULT_POINT_PAGE_SIZE = 500
+MAX_POINT_PAGE_SIZE = 5000
 
 
 class EnumWorkLedgerParityStatus(StrEnum):
@@ -109,9 +125,18 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     run: str | None = Field(default=None, min_length=1)
     history: ModelWorkLedgerHistoryRange | None = None
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+    page_size: int | None = Field(default=None, ge=1, le=MAX_POINT_PAGE_SIZE)
 
     @model_validator(mode="after")
     def _history_boundary(self) -> ModelWorkLedgerQueryRequest:
+        if self.query is EnumWorkLedgerQueryKind.OPEN_RULINGS and self.ticket is None:
+            raise ValueError("open-rulings requires a ticket")
+        if self.query is EnumWorkLedgerQueryKind.INBOX and not (
+            self.lane or self.lanes
+        ):
+            raise ValueError("inbox requires a lane or lanes")
+        if self.page_size is not None and self.query not in POINT_QUERY_KINDS:
+            raise ValueError("page_size applies to the point queries only")
         if self.history is not None:
             if self.query is not EnumWorkLedgerQueryKind.ROWS:
                 raise ValueError("history requires query=rows")
@@ -123,7 +148,9 @@ class ModelWorkLedgerQueryRequest(BaseModel):
                 raise ValueError("history until must carry a UTC offset")
             if self.since is not None:
                 raise ValueError("history uses sequence bounds, not writer timestamps")
-        elif self.cursor is not None or self.run is not None:
+        elif self.run is not None or (
+            self.cursor is not None and self.query not in POINT_QUERY_KINDS
+        ):
             raise ValueError("run and cursor require a history range")
         return self
 
@@ -246,9 +273,20 @@ class ModelWorkLedgerQueryResult(BaseModel):
     error: str | None = None
     completeness: ModelWorkLedgerCompleteness | None = None
     next_cursor: str | None = None
+    # A point query (OMN-21948) answers from work_ledger_state: ``status`` is
+    # ``error`` exactly when ``error`` is set, ``page_size`` is the page it was
+    # cut to, ``watermark`` is the newest ``projected_at`` of the state table
+    # the page was read at, and ``lines`` are the onex-ledger verb's own lines.
+    status: Literal["ok", "error"] = "ok"
+    page_size: int | None = None
+    watermark: AwareDatetime | None = None
+    lines: tuple[str, ...] = ()
 
 
 __all__ = [
+    "DEFAULT_POINT_PAGE_SIZE",
+    "MAX_POINT_PAGE_SIZE",
+    "POINT_QUERY_KINDS",
     "EnumWorkLedgerParityStatus",
     "EnumWorkLedgerQueryKind",
     "ModelWorkLedgerCompleteness",

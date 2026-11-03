@@ -24,6 +24,9 @@ from omnimarket.models.claude_code_binding import (
     ModelBindingRenderResult,
     ModelClientBinding,
 )
+from omnimarket.models.claude_code_binding.model_compaction_client_binding import (
+    compaction_arm,
+)
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers import (
     template_claude_code_binding as tpl,
 )
@@ -151,6 +154,14 @@ class HandlerClaudeCodeBindingRender:
             )
         ]
         for binding in replacing:
+            if binding.hook_event == COMPACT_EVENT:
+                parts.append(
+                    _fill(
+                        tpl.COMPACTION_ARM_CONSTANT,
+                        name=binding.name,
+                        arm=_literal(compaction_arm(binding)),
+                    )
+                )
             argv = f"['{adapter_command}', '--binding', '{binding.name}']"
             parts.append(
                 _fill(
@@ -171,7 +182,10 @@ class HandlerClaudeCodeBindingRender:
             )
             parts.append(
                 _fill(
-                    tpl.BINDING_HOOK,
+                    tpl.NATIVE_COMPACTION_HOOK
+                    if binding.hook_event == COMPACT_EVENT
+                    and compaction_arm(binding) == "off"
+                    else tpl.BINDING_HOOK,
                     name=binding.name,
                     event=_literal(binding.hook_event),
                     matcher=matcher,

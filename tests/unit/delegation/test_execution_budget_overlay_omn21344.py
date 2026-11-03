@@ -213,8 +213,10 @@ def test_a_broken_overlay_is_refused_not_ignored(
 
 
 def test_a_terminal_carrying_budget_source_decodes() -> None:
-    """Consumer first: the key is accepted before any producer stamps it."""
-    assert "budget_source" in model_delegate_skill_response._FORTHCOMING_TERMINAL_KEYS
+    """The key decodes and, now declared (AC2), is kept rather than dropped."""
+    assert (
+        "budget_source" not in model_delegate_skill_response._FORTHCOMING_TERMINAL_KEYS
+    )
     terminal = ModelDelegateSkillCompleted.model_validate(
         {
             "status": "completed",
@@ -223,7 +225,9 @@ def test_a_terminal_carrying_budget_source_decodes() -> None:
             "budget_source": "overlay:/x/delegation_budgets/overlay.yaml",
         }
     )
-    assert "budget_source" not in terminal.model_dump(mode="json")
+    assert terminal.model_dump(mode="json")["budget_source"] == (
+        "overlay:/x/delegation_budgets/overlay.yaml"
+    )
 
 
 def test_the_authority_the_delegate_cli_reads_answers_with_the_overlay(

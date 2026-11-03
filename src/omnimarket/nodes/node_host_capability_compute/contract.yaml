@@ -35,11 +35,15 @@ handler_routing:
     handler:
       name: HandlerPrCreatePlacement
       module: omnimarket.nodes.node_host_capability_compute.handlers.handler_pr_create_placement
+  - operation: check_lane_reader_inputs
+    handler:
+      name: HandlerLaneReaderInputs
+      module: omnimarket.nodes.node_host_capability_compute.handlers.handler_lane_reader_inputs
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create).
+  external_trigger: Direct Python invocation with supplied host readings (handle), or with the candidate hosts' readings to judge which take a pull-request-creating unit (place_pr_create), or with declared lane hosts to judge which lack the catalog path or lab env file the catalog find and ledger parity readers need (check_lane_reader_inputs).
 descriptor:
   node_archetype: compute
   purity: pure

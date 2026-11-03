@@ -25,7 +25,7 @@ description: >
   Writes the rendered module to the Claude Code mods location (never inside a repository), reads it back and compares its sha256 with the render's, and writes additive registrations into the user settings only. Names the installed mod folder in CLAUDE_CODE_PLUGIN_DIRS of the same user settings, because Claude Code reads no mods folder by itself, and renders the adapter command resolved from the installing environment. Installs only rows whose probe rows the capability report marks supported.
 
 input_model:
-  name: ModelBindingInstallRequest
+  name: ModelCompactionBindingInstallRequest
   module: omnimarket.nodes.node_claude_code_binding_install_effect.models
 
 output_model:
@@ -35,7 +35,7 @@ output_model:
 handler:
   module: omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install
   class: HandlerClaudeCodeBindingInstall
-  input_model: omnimarket.nodes.node_claude_code_binding_install_effect.models.ModelBindingInstallRequest
+  input_model: omnimarket.nodes.node_claude_code_binding_install_effect.models.ModelCompactionBindingInstallRequest
 
 handler_routing:
   routing_strategy: payload_type_match
@@ -44,7 +44,7 @@ handler_routing:
         name: HandlerClaudeCodeBindingInstall
         module: omnimarket.nodes.node_claude_code_binding_install_effect.handlers.handler_binding_install
       event_model:
-        name: ModelBindingInstallRequest
+        name: ModelCompactionBindingInstallRequest
         module: omnimarket.nodes.node_claude_code_binding_install_effect.models
 
 descriptor:

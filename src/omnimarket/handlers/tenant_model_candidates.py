@@ -7,8 +7,8 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
+from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 _logger = logging.getLogger("omnimarket.routing.tenant_overlay_resolver")

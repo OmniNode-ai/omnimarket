@@ -262,3 +262,10 @@ def test_a_hand_off_adds_nothing_to_the_percent_built() -> None:
         )
     )
     assert result.lines[0].percent_built == 0
+
+
+def test_a_dotted_task_id_is_the_one_word_a_lane_name_writes() -> None:
+    tokens = name_tokens("comp-cm6-r2-1102")
+    assert names_task("CM.6", tokens)
+    assert not names_task("CM.1", name_tokens("comp-cm12-1102"))
+    assert not names_task("CM.2", tokens)

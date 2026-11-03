@@ -1,0 +1,47 @@
+{
+  "incident": "onboarding walk 2026-11-02, clean macOS VM",
+  "command": "onex models add openai_compatible --url <stub> --model <name>",
+  "exit_code": 1,
+  "exception": {
+    "type": "TypeError",
+    "message": "int() argument must be a string, a bytes-like object or a real number, not 'NoneType'"
+  },
+  "frames": [
+    {
+      "file": "omnimarket/handlers/handler_model_keys.py",
+      "function": "store_key",
+      "code": "fold_credential_events(result, store.db_path)"
+    },
+    {
+      "file": "omnimarket/handlers/handler_model_keys.py",
+      "function": "fold_credential_events",
+      "code": "_apply_events(lines, db_path)"
+    },
+    {
+      "file": "omnimarket/handlers/handler_model_keys.py",
+      "function": "_apply_events",
+      "code": "apply_credential_registered(line[\"payload\"], db)"
+    },
+    {
+      "file": "omnimarket/nodes/node_projection_tenant_credentials/handlers/handler_tenant_credentials_store.py",
+      "function": "apply_credential_registered",
+      "code": "db.write_credential_row(HandlerCredentialRowWrite.registered(row))"
+    },
+    {
+      "file": "omnimarket/nodes/node_projection_tenant_credentials/stores.py",
+      "line": 260,
+      "function": "write_credential_row",
+      "code": "return None if written is None else int(written[0])"
+    }
+  ],
+  "walk_effects": [
+    "the second add crashed the same way",
+    "onex models list showed the endpoint set up and not tested yet",
+    "onex models test openai_compatible failed: the test delegation exited with status 1"
+  ],
+  "aligned_run_finding": {
+    "reproduced_on": "omnimarket dev with the lockfile's omnibase-core 0.47.62, omnibase-spi 0.23.8, omnibase-infra 0.38.77",
+    "trigger": "a delegation.sqlite whose tenant_inference_credentials table predates the version column: the column is added with no default, so an INSERT that omits it stores NULL and RETURNING version yields (None,)",
+    "not_version_skew": true
+  }
+}

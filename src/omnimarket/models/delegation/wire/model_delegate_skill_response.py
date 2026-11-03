@@ -130,10 +130,10 @@ _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
 #
 # Response-source provenance is declared after its consumer-first release.
 #
-# OMN-21344: ``budget_source`` names where a run's execution budget came from
-# (the task-class contract or a site overlay). The consumer accepts it here
-# first; the producer stamps it once omniclaude's pin carries this consumer.
-_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset({"budget_source"})
+# OMN-21344 declared ``budget_source`` as a real terminal field below, after
+# omniclaude's pin carried the consumer that accepted it, so the set is empty
+# until the next consumer-first terminal key.
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset()
 # Accept the next receiver's keys without declaring producer fields. Keep the
 # construction-failure distinction privately: its failed topic can preserve a
 # true gate flag, and its absent score must not become a measured zero.
@@ -831,6 +831,21 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Span id of the command the terminal answers. Absent means the "
             "command carried none."
+        ),
+    )
+
+    # OMN-21344 AC2: where the execution budget this run was held to came from,
+    # the task-class contract entry or a site overlay file. The receipt copies
+    # it beside budget_evidence or budget_refusal. Absent means the producer
+    # resolved no budget for the class.
+    budget_source: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description=(
+            "``contract:<file>#execution_budgets.<class>`` or "
+            "``overlay:<path>#execution_budgets.<class>``. Absent means no "
+            "budget was resolved for the task class."
         ),
     )
 

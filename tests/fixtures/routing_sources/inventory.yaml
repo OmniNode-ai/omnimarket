@@ -37,27 +37,27 @@ scan_scope:
 sources:
   - id: routing_tiers_ladder
     selects: the tier ladder, which backend serves each tier and each task class's use_for
-    resolver: omnimarket.routing.routing_tiers_path:resolve_routing_tiers_path
+    resolver: omnimarket.handlers.routing.routing_tiers_path:resolve_routing_tiers_path
     packaged_defaults:
       - src/omnimarket/configs/routing_tiers.yaml
     overlay: DELEGATION_ROUTING_TIERS_PATH pin, then the node_delegation_routing_reducer node overlay
     resolution_sites:
-      - "src/omnimarket/routing/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
-      - "src/omnimarket/routing/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:resolve_path_config(ROUTING_TIERS_PATH_ENV_KEY)"
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:find_node_overlay(ROUTING_TIERS_OVERLAY_NODE)"
     precedence:
       probe: routing_tiers_ladder
   - id: harness_routing_overlay
     selects: harness backends, harness tiers and per-class escalation chains
-    resolver: omnimarket.routing.routing_tiers_path:load_delegation_routing_overlay
+    resolver: omnimarket.handlers.routing.routing_tiers_path:load_delegation_routing_overlay
     packaged_defaults: []
     overlay: DELEGATION_ROUTING_OVERLAY_PATH; unbound resolves to the empty overlay, with no packaged file
     resolution_sites:
-      - "src/omnimarket/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
+      - "src/omnimarket/handlers/routing/routing_tiers_path.py:resolve_optional_path_config(DELEGATION_ROUTING_OVERLAY_PATH_ENV_KEY)"
     precedence:
       probe: harness_routing_overlay
   - id: bifrost_backend_contract
     selects: backends, endpoints, model names and routing rules per task class
-    resolver: omnimarket.routing.delegation_backend_resolution:_resolve_effective_bifrost_paths
+    resolver: omnimarket.handlers.routing.delegation_backend_resolution:_resolve_effective_bifrost_paths
     packaged_defaults:
       - src/omnimarket/configs/bifrost_delegation.yaml
       - src/omnimarket/configs/provider_surfaces.v1.yaml
@@ -124,10 +124,16 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
+    reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: the rule data and bus transport of a guard that refuses a question a ruling in force answers; it chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_branch_prune_effect/handlers/handler_branch_prune.py:find_node_overlay(NODE_NAME)"
     reason: the keep policy of a remote-branch prune (repositories in scope, protected names, age floor); it decides which branches are kept and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/handlers/handler_contract_policy_source.py:find_node_overlay(NODE_NAME)"
     reason: adds protected compose projects, container names and verbs to a guard that refuses a dev runtime container mutation; it chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_landing_worker_engine_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: tells whether the landing_worker_engine overlay is present before it turns the Codex worker routes of a PR-landing worker off; it picks no backend, model or tier for delegated work
   - site: "src/omnimarket/handlers/execution_budget_overlay.py:find_node_overlay(EXECUTION_BUDGET_OVERLAY_ID)"
     reason: a site's per-class execution time limit; it bounds how long a delegation may run and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py:find_node_overlay('node_review_voters_overlay_compute')"
@@ -168,7 +174,11 @@ not_routing_resolution_sites:
     reason: the umbrella ticket set a PR-opening lane is refused on; a ticket list, not a route for delegated work
   - site: "src/omnimarket/nodes/node_launch_validity_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the mode, bus transport and read-age limit of the launch validity check; it decides whether a lane's target is still valid and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_standup_retrospective_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: the retrospective weekday, role vocabulary, draft state, credit grammar, wording and bus transport of the Friday stand-up section; it shapes a text sheet and chooses no backend, model or tier
 not_routing_configs:
+  - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
+    reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes
   - path: src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml

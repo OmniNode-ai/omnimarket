@@ -3,6 +3,7 @@
 """Models for the dev runtime mutation guard effect node."""
 
 from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models.model_dev_runtime_guard_policy import (
+    ModelComposeDryRunPolicy,
     ModelDevRuntimeGrantPolicy,
     ModelDevRuntimeGuardPolicy,
     ModelProtectedProject,
@@ -15,6 +16,7 @@ from omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models.model_dev_ru
 )
 
 __all__ = [
+    "ModelComposeDryRunPolicy",
     "ModelDevRuntimeGrantPolicy",
     "ModelDevRuntimeGuardPolicy",
     "ModelDevRuntimeMutationDecision",

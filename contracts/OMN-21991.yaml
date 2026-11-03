@@ -1,0 +1,109 @@
+schema_version: 1.0.0
+ticket_id: OMN-21991
+title: 'Compaction scorer: recall, contradiction, mention and precision from recordings'
+summary: node_compaction_score_compute is a pure compute node that scores S1 (decisions dropped, with ABSENT and CONTRADICTED counted apart and UNAVAILABLE kept in the denominator), the mention reading of S2 and the deterministic families of S4 (false and stale memories) from recorded answers, the compacted context and the pinned ledger prefix. The ground-truth item shape is defined in the node's own models. The fold never reads the arm label. It declares no topic and performs no I/O. The lab readback on recorded transcripts is owed; no lab host checked holds them.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21991-controls
+    statement: The oracle, empty and inverted controls are checked against their bounds.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the oracle, empty and inverted arms score as controls 2 to 4 of the plan require -- falsifier: a control outside its bound in `uv run pytest tests/nodes/node_compaction_score_compute -q --no-cov`'
+  - id: req-omn21991-arm-blind
+    statement: The fold does not read the arm label.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: the fold is identical with the arm label removed -- falsifier: `uv run pytest tests/nodes/node_compaction_score_compute -k score_arm_blind -q --no-cov` fails against a mutant that reads the arm label'
+  - id: req-omn21991-verdicts
+    statement: ABSENT and CONTRADICTED are counted apart; invented identifiers and closed lanes stated open are caught.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: `ABSENT` and `CONTRADICTED` are counted apart, a context with an invented ticket id is a false memory and a lane stated open that the ledger closed is a stale memory -- falsifier: `uv run pytest tests/nodes/node_compaction_score_compute -k "absent_contradicted_apart or false_memory or stale_memory" -q --no-cov` fails on a fixture where the two verdicts merge'
+evidence_requirements:
+  - kind: tests
+    description: The focused node suite scores the fixture recordings.
+    command: uv run pytest tests/nodes/node_compaction_score_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21991-ac1
+    description: AC1 passes the oracle control (recall at least 0.95, Wilson lower bound at least 0.90, contradiction 0) on 42 trials and fails it on too few trials or any contradiction, passes the empty control at near-zero recall and mention and fails it when the empty arm answers, and passes the inverted control at 0.90 contradicted and fails it below.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_score_compute -q --no-cov --tb=line -k "control"
+        cwd: .
+  - id: dod-omn21991-ac2
+    description: AC2 folds one request under six arm labels and asserts equal results, and asserts that a mutant which reads the arm label is detected.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_score_compute -k score_arm_blind -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21991-ac3
+    description: AC3 counts one ABSENT and two CONTRADICTED repeats in separate fields, flags an invented ticket id and other unknown identifiers as false memories, and flags a closed lane stated open, a superseded ruling stated in force and an amended ruling quoted as complete as stale memories.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_compaction_score_compute -q --no-cov --tb=line -k "absent_contradicted_apart or false_memory or stale_memory"
+        cwd: .
+  - id: dod-omn21991-deploy-local-runtime
+    description: The hosted runner dispatches the packaged compute node through the ONEX local runtime with the in-memory backend and asserts the contradicted count, the false memory and the mention. No broker or Docker daemon is required.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          export PATH="$(uv run --frozen python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH"
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT;
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          request = {
+              "case_id": "compaction-score-smoke",
+              "manifest_digest": "d1",
+              "boundary_at": "2026-11-02T06:00:00Z",
+              "repeats": 1,
+              "items": [
+                  {"key": "2026-10-15T08:07:56Z", "kind": "RULING", "quote": "count the savings as net saved context"},
+                  {"key": "lane-a", "kind": "OPEN_CLAIM"}],
+              "answers": [{"item_key": "2026-10-15T08:07:56Z", "repeat": 0, "manifest_digest": "d1", "text": "no idea", "judged": "CONTRADICTED"}],
+              "context_text": "Tracked under OMN-99999 and lane-a.",
+              "ledger": {"tickets": ["OMN-21991"]}}
+          Path(sys.argv[1]).write_text(json.dumps(request))
+          ' "$probe_dir/request.json";
+          onex node node_compaction_score_compute --input "$probe_dir/request.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --frozen python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["ledger_recall"]["judged"]["contradicted"] == 1 and result["ledger_recall"]["judged"]["absent"] == 0, result
+          assert result["precision"]["false_memories"] == ["OMN-99999"], result
+          assert result["mention"]["mention"] == 1.0, result
+          print(json.dumps({"run_id": receipt["run_id"], "result": result}, sort_keys=True))
+          ' "$probe_dir/receipt.json"
+        cwd: .
+  - id: dod-omn21991-integration-proof
+    description: The local Done gate places the focused scorer suite on a lab host with the checkout dependencies.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21991 -- uv run --frozen pytest tests/nodes/node_compaction_score_compute -q --no-cov
+        cwd: .

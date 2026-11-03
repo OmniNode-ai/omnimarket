@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Remote Lane Stop Effect (OMN-22098)
+#
+# Stops a running remote lane by name. Whether a lane is open is the lane's receipt and the
+# ledger's to say; this node signals, waits for the process tree to exit, and closes the lane's
+# CLAIM with TERMINAL outcome=stopped through the ledger writer.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that dispatches lanes: it holds the lane
+# receipts and the runner's ssh transport. Shared runtimes must NOT attach it, so the contract
+# declares runtime_dispatch and NO event_bus block, as node_remote_lane_effect does.
+#
+# OVERLAY. No host path, operator or repository owner lives in this node: the receipt directory,
+# the ledger path and command, the hosts' ssh argv and the placement directory arrive on the
+# request, read by the caller from its overlay. The host, pid, run and cloud session come from
+# the lane's receipt and from nowhere else.
+name: "node_remote_lane_stop_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Stops a running remote lane by name: reads the lane's newest receipt, signals the engine
+  process tree (polite signal, bounded wait, forceful signal) over the runner's ssh transport,
+  archives a cloud session, or signals a local pid; waits for the tree to exit; cleans the
+  lane's slot marker; then writes the lane's TERMINAL outcome=stopped through the ledger writer.
+  An ended lane is a no-op and an unknown lane is refused, both with no signal. A survivor is
+  a typed refusal that writes no row. Never runs git or gh and never touches the lane's branch,
+  worktree or PR.
+input_model:
+  name: "ModelRemoteLaneStopRequest"
+  module: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop"
+  description: "Lane name, reason, stopping lane, receipt directory, ledger path and writer, host transports."
+output_model:
+  name: "ModelRemoteLaneStopResult"
+  module: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop"
+  description: "One of stopped, already-ended, unknown-lane, refused, with a one-line message."
+handler:
+  module: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop"
+  class: "HandlerRemoteLaneStopRequest"
+  input_model: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop.ModelRemoteLaneStopRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop:HandlerRemoteLaneStopRequest"
+  handlers:
+    - operation: "stop_remote_lane"
+      handler:
+        name: "HandlerRemoteLaneStopRequest"
+        module: "omnimarket.nodes.node_remote_lane_stop_effect.handlers.handler_remote_lane_stop"
+      input_model: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop.ModelRemoteLaneStopRequest"
+      output_model: "omnimarket.nodes.node_remote_lane_stop_effect.models.model_remote_lane_stop.ModelRemoteLaneStopResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.remote-lane-stop-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.remote-lane-stop-completed.v1"
+    failure: "onex.evt.omnimarket.remote-lane-stop-failed.v1"
+published_events:
+  - event_type: ModelRemoteLaneStopResult
+    topic: onex.evt.omnimarket.remote-lane-stop-completed.v1
+    description: "The typed outcome of one stop, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.remote-lane-stop-completed.v1
+  - onex.evt.omnimarket.remote-lane-stop-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-22098
+  description: "Remote-lane I/O: stop a running lane by name"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "remote-lane"
+    - "OMN-22098"
+  related_tickets:
+    - "OMN-22098"

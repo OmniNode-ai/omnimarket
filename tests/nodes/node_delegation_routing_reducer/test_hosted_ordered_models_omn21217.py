@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.customer_key_terminus import EnumDelegationSurface
 from omnimarket.inference.provider_quota_state import StaticProviderQuotaReader
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
     handler_delegation_workflow as workflow_module,
@@ -25,7 +26,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
-from omnimarket.routing.customer_key_terminus import EnumDelegationSurface
 from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
 
 _TENANT = "acme"

@@ -210,12 +210,15 @@ def test_credit_zero_retires_account(tmp_path: Path) -> None:
 
 
 def test_rate_run_and_limit_effects(tmp_path: Path) -> None:
-    assert call(
-        tmp_path,
-        "record_rate",
-        account="host_a",
-        rate={"rateLimitType": "seven_day", "status": "allowed_warning"},
-    ).held
+    assert (
+        call(
+            tmp_path,
+            "record_rate",
+            account="host_a",
+            rate={"rateLimitType": "seven_day", "status": "rejected"},
+        ).held
+        is None
+    )
     assert (
         call(tmp_path, "record_run", account="host_a", run={"run_id": "run_a"}).error
         is None

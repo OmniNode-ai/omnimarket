@@ -24,13 +24,13 @@ import os
 
 import pytest
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    resolve_delegation_backend,
+    resolve_timeout_seconds,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     HandlerLlmDelegationCall,
     ModelLlmDelegationCallRequest,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend,
-    resolve_timeout_seconds,
 )
 
 pytestmark = pytest.mark.skipif(

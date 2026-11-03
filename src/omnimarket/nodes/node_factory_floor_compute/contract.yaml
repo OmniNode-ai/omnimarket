@@ -65,6 +65,11 @@ config:
   handoff_outcomes: [handed-off]
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
+  # How a line's parts become stations: "task" draws every task of the plan as its own station (its state, tickets and
+  # pull requests are the task's; its feeders are the tasks it depends on); "wave" groups the tasks of one declared
+  # wave into one station, and a plan that declares no wave into the single fallback station.
+  station_grouping: task
+  # The label a station carries for its wave (the group a renderer bands stations by); also a wave station's name.
   station_name_template: "Wave {wave}"
   fallback_station_id: tasks
   fallback_station_name: Task table (no manifest)

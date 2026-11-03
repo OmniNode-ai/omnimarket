@@ -1,0 +1,485 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 21 and seed -3306100976965498087 with 2 workers on 32 cores with 3641MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file LanderLease.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LanderLease
+Starting... (2026-11-02 22:50:17)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 22:50:18.
+Error: Invariant NoLostUpdate is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "none"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 2: <GrantLease line 138, col 5 to line 143, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 0
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "none"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 3: <IssuePermit line 147, col 5 to line 153, col 54 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 0
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 4: <Tick line 129, col 5 to line 134, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 1
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 5: <Tick line 129, col 5 to line 134, col 26 of module LanderLease>
+/\ offers = 0
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 6: <SendOffer line 156, col 5 to line 160, col 82 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "live"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 7: <EndPermit line 191, col 5 to line 196, col 26 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "none"
+/\ decision = "none"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 8: <ColdDispatch line 228, col 5 to line 234, col 54 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "dispatched"
+/\ decision = "cold"
+/\ job = "none"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {"offer"}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "none"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 9: <OfferNew line 276, col 5 to line 280, col 82 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "none"
+/\ cold = "dispatched"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "offered"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 10: <HostStart line 318, col 5 to line 323, col 78 of module LanderLease>
+/\ offers = 1
+/\ landed = {0}
+/\ lockOwner = "P"
+/\ cold = "dispatched"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 0
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "started"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 11: <ColdPushLands line 259, col 5 to line 263, col 79 of module LanderLease>
+/\ offers = 1
+/\ landed = {0, 2}
+/\ lockOwner = "P"
+/\ cold = "pushed"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 2
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "started"
+/\ engines = 0
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 12: <HostEngine line 343, col 5 to line 347, col 82 of module LanderLease>
+/\ offers = 1
+/\ landed = {0, 2}
+/\ lockOwner = "P"
+/\ cold = "pushed"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 2
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "engine"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 13: <HostEngineCommits line 350, col 5 to line 355, col 26 of module LanderLease>
+/\ offers = 1
+/\ landed = {0, 2}
+/\ lockOwner = "P"
+/\ cold = "pushed"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 2
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "committed"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 14: <HostWritePushing line 367, col 5 to line 372, col 26 of module LanderLease>
+/\ offers = 1
+/\ landed = {0, 2}
+/\ lockOwner = "P"
+/\ cold = "pushed"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "none"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = FALSE
+/\ seenHead = 0
+/\ remote = 2
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "pushing"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+State 15: <HostPush line 376, col 5 to line 384, col 66 of module LanderLease>
+/\ offers = 1
+/\ landed = {0, 1, 2}
+/\ lockOwner = "P"
+/\ cold = "pushed"
+/\ decision = "cold"
+/\ job = "alive"
+/\ pres = "ok"
+/\ coldWasLive = FALSE
+/\ now = 2
+/\ tree = "kept"
+/\ cutoff = 2
+/\ obsTerm = FALSE
+/\ tomb = FALSE
+/\ issued = 0
+/\ rec = "ready"
+/\ net = {}
+/\ delRec = FALSE
+/\ lease = "granted"
+/\ merged = FALSE
+/\ pdone = TRUE
+/\ seenHead = 0
+/\ remote = 1
+/\ rst = "idle"
+/\ perm = "ended"
+/\ hp = "pushing"
+/\ engines = 1
+/\ coldBase = 0
+/\ delBy = "none"
+/\ hres = "none"
+
+198266 states generated, 44857 distinct states found, 17111 states left on queue.
+The depth of the complete state graph search is 15.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 4).
+Finished in 02s at (2026-11-02 22:50:19)
+exit=12

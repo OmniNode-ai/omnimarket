@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-22119
+title: The Decision quality report is served only to the operator's own devices and the shared factory floor page no longer carries its tab
+summary: The shared page drops the Decision quality tab, pane and loader and the shared reports manifest no longer lists the report. node_factory_floor_publish_effect gains a handler that, on every publish, reads the tailnet status, takes the addresses of the devices the overlay's owner_login key owns on the operator's own platforms, writes them as an nginx allow include beside the serving directory, reloads the web server and reads its configuration back, and only then publishes the report under /reports/decision-quality/. A server that does not carry the gate has the report withdrawn and the publish refuses; a missing owner_login key refuses the publish naming the key.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22119-operator-only-report
+    statement: The Decision quality report is reachable only from the operator's own devices, the shared page and manifest never name it, and a publish without the owner key refuses.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: tests: a fixture with a non-owner device is refused, a fixture with an owner device is served, and a missing overlay key refuses the publish naming the key -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -k owner_or_non_owner_or_missing_key -q'
+evidence_requirements:
+  - kind: tests
+    description: The factory floor publish node's tests run at the pushed head on a lab host.
+    command: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests tests/nodes/node_factory_floor_publish_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22119-ac2
+    description: AC2 resolves the owner's operator-platform devices from a recorded tailnet status, writes the include the server reads, and asserts the owner's Mac, phone and IPv6 address are served, another login's Mac, an unlisted address and the owner's own server are refused, a server without the gate has the report withdrawn, and an overlay without owner_login refuses naming it before any command runs.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests -q --no-cov --tb=line -k owner_or_non_owner_or_missing_key
+        cwd: .
+  - id: dod-omn22119-deploy-probe
+    description: 'Deploy probe: the shared page GitHub serves at the checked-out commit carries no Decision quality text.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c '! gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "Decision quality"'
+        cwd: .
+  - id: dod-omn22119-integration-proof
+    description: The pushed head ran the factory floor publish node's tests, including the owner and non-owner device fixtures, the withdrawal of the report from a server without the gate and the refusal of a missing owner_login key, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22119 -- uv run --frozen pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests tests/nodes/node_factory_floor_publish_effect -q --no-cov
+        cwd: .

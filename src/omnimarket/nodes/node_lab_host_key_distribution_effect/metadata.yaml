@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_host_key_distribution_effect
+version: 0.1.0
+description: Distribute public user and host SSH keys between every ordered pair of
+  explicitly selected lab hosts.
+pack: operator_tooling
+node_role: effect
+display_name: Lab Host Key Distribution Effect
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lab_host_key_distribution_effect: omnimarket.nodes.node_lab_host_key_distribution_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- ssh
+- public-keys

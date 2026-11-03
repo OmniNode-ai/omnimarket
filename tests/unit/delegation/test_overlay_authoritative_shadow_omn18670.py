@@ -39,6 +39,10 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     warn_overlay_shadowed_authoritative_fields,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    load_bifrost_backends_with_provenance,
+    resolve_delegation_backend,
+)
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     EnumBifrostFieldSource,
 )
@@ -48,10 +52,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    load_bifrost_backends_with_provenance,
-    resolve_delegation_backend,
 )
 
 _HANDLER_MODULE = (

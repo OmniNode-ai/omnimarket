@@ -1,0 +1,24 @@
+name: node_extraction_rung_harness_compute
+version: "1.0.0"
+description: "Deterministic harness that replays recorded extraction rung calls offline and derives chunk size from a measured window"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_extraction_rung_harness_compute: "omnimarket.nodes.node_extraction_rung_harness_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "context-pack", "transcript-extraction", "deterministic"]
+pack: "pipeline"
+display_name: "Extraction Rung Harness Compute"
+node_role: "compute"
+tickets: ["OMN-21140"]
