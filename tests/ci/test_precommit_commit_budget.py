@@ -47,9 +47,11 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 PREEXISTING_MANUAL: frozenset[str] = frozenset()
 
 GATED_CONTEXTS: frozenset[str] = frozenset(
-    *ci_summary_gate.STRICT_GATE_JOBS,
-    *ci_summary_gate.SKIPPABLE_GATE_JOBS,
-    *ci_summary_gate.EXPECTED_EXTERNAL_CONTEXTS,
+    (
+        *ci_summary_gate.STRICT_GATE_JOBS,
+        *ci_summary_gate.SKIPPABLE_GATE_JOBS,
+        *ci_summary_gate.EXPECTED_EXTERNAL_CONTEXTS,
+    )
 )
 
 # Commit-stage hooks that take no filenames and always run. The ceiling is
