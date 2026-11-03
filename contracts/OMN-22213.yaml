@@ -59,3 +59,11 @@ dod_evidence:
     check_value: |-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "(?:(?:new|old)[ \t]+)?" > /dev/null'
     cwd: .
+- id: dod-omn22213-integration-proof
+  description: Run the cites_specific_lines test file on a lab host at the pushed head. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22213 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_cites_specific_lines_forms.py -q --no-cov
+    cwd: .
