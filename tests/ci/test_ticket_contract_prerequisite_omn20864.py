@@ -295,7 +295,7 @@ def test_push_reads_the_outgoing_sha_not_the_working_tree(
             return SHA
         if args[0] == "show":
             return _contract()
-        if args[0] in {"merge-base", "diff", "log"}:
+        if args[0] in {"merge-base", "diff"}:
             return ""
         raise AssertionError(args)
 
