@@ -1,161 +1,166 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Account placement behavior using explicit caller supplied host rows."""
+"""Account placement behavior: usage state per account, picks over observed logins."""
 
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
-import pytest
-
-from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
-    HandlerCloudSessionPlacement,
+from omnimarket.models.cloud_session_placement import (
+    ModelCloudAccount,
+    ModelCloudTransport,
 )
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     cloud_accounts as acc,
 )
-from omnimarket.nodes.node_cloud_session_placement_effect.models import (
-    ModelCloudHost,
-    ModelCloudSessionPlacementRequest,
+
+FRESH_S = 1800
+ACCOUNTS = tuple(
+    ModelCloudAccount(
+        label=label,
+        org_hash=f"{i:010x}",
+        email_hash=f"{i + 16:010x}",
+        consent="2026-01-01T00:00:00Z",
+    )
+    for i, label in enumerate(("acct_a", "acct_b", "acct_c"), start=1)
 )
+HOSTS = tuple(ModelCloudTransport(name=f"host_{c}") for c in "abc")
 
-CONSENT = "2026-01-01T00:00:00Z"
+
+def _login(pdir: Path, now: datetime, ok: dict[str, bool]) -> None:
+    """Record one login per account on the host of the same letter, with the given probe verdicts."""
+    # The raw-text path is covered in test_cloud_account_registry; here the login map is written directly.
+    with acc._cloud_state(pdir, ACCOUNTS, now) as state:
+        for a in ACCOUNTS:
+            state["logins"][a.label] = {
+                f"host_{a.label[-1]}": {
+                    "seen_at": f"{now:%Y-%m-%dT%H:%M:%SZ}",
+                    "cloud_ok": ok[a.label],
+                }
+            }
 
 
-def host_pool() -> list[ModelCloudHost]:
-    return [
-        ModelCloudHost(name=name, engines=("claude_sonnet",), cloud_consent=CONSENT)
-        for name in ("host_a", "host_b", "host_c")
-    ] + [ModelCloudHost(name="host_no_engine")]
+def _pick(
+    pdir: Path,
+    now: datetime,
+    run_id: str = "",
+    accounts: tuple[ModelCloudAccount, ...] = ACCOUNTS,
+) -> dict:
+    return acc.cloud_pick(
+        pdir, accounts, HOSTS, fresh_s=FRESH_S, now=now, run_id=run_id
+    )
+
+
+NOW = datetime(2026, 10, 21, 18, 50, tzinfo=UTC)
+ALL_OK = {a.label: True for a in ACCOUNTS}
 
 
 def test_accounts_are_taken_round_robin_and_a_login_without_cloud_access_is_passed_over(
     tmp_path,
 ) -> None:
     pdir = tmp_path / "placement"
-    answers = {
-        "host_a": acc.CLOUD_LOGIN_OK,
-        "host_b": acc.CLOUD_LOGIN_OK,
-        "host_c": acc.CLOUD_LOGIN_NONE,
-    }
-
-    def probe(host: Any) -> str:
-        return answers[host.name]
-
-    hosts = host_pool()
-    picks = [acc.cloud_pick(pdir, hosts, probe)[0].name for _ in range(3)]
-    assert picks == ["host_a", "host_b", "host_a"]
+    _login(pdir, NOW, {"acct_a": True, "acct_b": True, "acct_c": False})
+    picks = [_pick(pdir, NOW)["account"] for _ in range(3)]
+    assert picks == ["acct_a", "acct_b", "acct_a"]
     state = json.loads((pdir / acc.CLOUD_STATE_FILE).read_text())
-    assert state["accounts"]["host_c"]["login"] == acc.CLOUD_LOGIN_NONE
-    assert state["last"] == "host_a"
-    assert "host_no_engine" not in state["accounts"]
+    assert state["logins"]["acct_c"]["host_c"]["cloud_ok"] is False
+    assert state["last"] == "acct_a"
 
 
-def test_the_least_loaded_account_is_picked_and_a_fresh_login_verdict_is_not_probed_again(
+def test_the_least_loaded_account_is_picked_and_a_login_older_than_the_bound_is_not_used(
     tmp_path,
 ) -> None:
-
-    pdir, now = tmp_path / "placement", datetime(2026, 10, 21, 18, 50, tzinfo=UTC)
-    probes: list[str] = []
-
-    def probe(host: Any) -> str:
-        probes.append(host.name)
-        return acc.CLOUD_LOGIN_NONE if host.name == "host_c" else acc.CLOUD_LOGIN_OK
-
-    hosts = host_pool()
-    picks = [
-        acc.cloud_pick(pdir, hosts, probe, now=now, run_id=f"r{i}")[0].name
-        for i in range(4)
-    ]
-    assert sorted(picks) == ["host_a", "host_a", "host_b", "host_b"]
-    assert sorted(probes) == ["host_a", "host_b", "host_c"]
-    acc.record_cloud_run(
-        pdir, "host_b", {"run_id": f"r{picks.index('host_b')}", "session_id": "s"}
-    )
-    assert acc.cloud_pick(pdir, hosts, probe, now=now, run_id="r9")[0].name == "host_b"
-    later = now + acc.CLOUD_LOGIN_FRESH + timedelta(minutes=1)
-    acc.cloud_pick(pdir, hosts, probe, now=later, run_id="r10")
-    assert probes.count("host_c") == 2
+    pdir = tmp_path / "placement"
+    _login(pdir, NOW, ALL_OK)
+    picks = [_pick(pdir, NOW, f"r{i}")["account"] for i in range(6)]
+    assert sorted(picks) == ["acct_a", "acct_a", "acct_b", "acct_b", "acct_c", "acct_c"]
+    acc.release_cloud_slot(pdir, picks[1], "r1")
+    assert _pick(pdir, NOW, "r9")["account"] == picks[1]
+    later = NOW + timedelta(seconds=FRESH_S + 60)
+    stale = _pick(pdir, later, "r10")
+    assert stale["account"] is None
+    assert stale["needs_probe"] == "host_a,host_b,host_c"
 
 
 def test_an_account_whose_credit_reads_zero_is_never_used_again(tmp_path) -> None:
     pdir = tmp_path / "placement"
-    acc.record_cloud_credit(pdir, "host_a", 0.0, "operator reading")
-    host, tried = acc.cloud_pick(pdir, host_pool(), lambda _h: acc.CLOUD_LOGIN_OK)
-    assert host.name == "host_b"
-    assert {"account": "host_a", "skipped": tried[0]["skipped"]} == tried[0]
-    assert "credit read zero" in tried[0]["skipped"]
-    acc.record_cloud_credit(pdir, "host_b", 0.0, "operator reading")
-    acc.record_cloud_credit(pdir, "host_c", -1.0, "operator reading")
-    assert acc.cloud_pick(pdir, host_pool(), lambda _h: acc.CLOUD_LOGIN_OK)[0] is None
+    _login(pdir, NOW, ALL_OK)
+    acc.record_cloud_credit(pdir, "acct_a", 0.0, "operator reading", now=NOW)
+    got = _pick(pdir, NOW)
+    assert got["account"] == "acct_b"
+    assert "credit read zero" in got["tried"][0]["skipped"]
+    acc.record_cloud_credit(pdir, "acct_b", 0.0, "operator reading", now=NOW)
+    acc.record_cloud_credit(pdir, "acct_c", -1.0, "operator reading", now=NOW)
+    assert _pick(pdir, NOW)["account"] is None
 
 
 def test_the_accounts_file_never_waits_on_the_placement_lock(tmp_path) -> None:
-
     import fcntl
 
     pdir = tmp_path / "placement"
     pdir.mkdir()
     with (pdir / ".lock").open("a+", encoding="utf-8") as held:
         fcntl.flock(held, fcntl.LOCK_EX)
-        acc.record_cloud_credit(pdir, "host_a", 120.0, "operator reading")
-        host, _tried = acc.cloud_pick(pdir, host_pool(), lambda _h: acc.CLOUD_LOGIN_OK)
-        acc.mark_cloud_limited(pdir, "host_a", "2026-10-25T23:00:00Z")
-    assert host is not None
+        acc.record_cloud_credit(pdir, "acct_a", 120.0, "operator reading")
+        _login(pdir, NOW, ALL_OK)
+        got = _pick(pdir, NOW)
+        acc.mark_cloud_limited(pdir, "acct_a", "2026-10-25T23:00:00Z")
+    assert got["account"] is not None
     assert (pdir / acc.CLOUD_LOCK_FILE).exists()
     assert acc.CLOUD_LOCK_FILE != ".lock"
 
 
 def test_an_account_runs_up_to_its_cap_and_has_no_daily_bound(tmp_path) -> None:
-
-    pdir, ok = tmp_path / "placement", (lambda _h: acc.CLOUD_LOGIN_OK)
-    now = datetime(2026, 10, 21, 15, 0, tzinfo=UTC)
-    hosts = [h for h in host_pool() if h.name == "host_a"]
+    pdir = tmp_path / "placement"
+    only = ACCOUNTS[:1]
+    _login(pdir, NOW, ALL_OK)
     picked = [
-        acc.cloud_pick(pdir, hosts, ok, now=now, run_id=f"r{i}")[0]
+        _pick(pdir, NOW, f"r{i}", only)["account"]
         for i in range(acc.CLOUD_CAP_START + 1)
     ]
-    assert [p.name if p else None for p in picked] == [
-        "host_a"
-    ] * acc.CLOUD_CAP_START + [None]
-    assert acc.cloud_slots(pdir, now, consented={"host_a"}) == {"host_a": 0}
-    host, tried = acc.cloud_pick(pdir, hosts, ok, now=now, run_id="r-none")
-    assert host is None
-    assert "at its cap: 4 running (cap 4)" in tried[0]["skipped"]
+    assert picked == ["acct_a"] * acc.CLOUD_CAP_START + [None]
+    slots = acc.cloud_slots(pdir, only, HOSTS, fresh_s=FRESH_S, now=NOW)
+    assert slots["accounts"] == {"acct_a": 0}
+    assert (
+        "at its cap: 4 running (cap 4)"
+        in _pick(pdir, NOW, "r-none", only)["tried"][0]["skipped"]
+    )
 
     for i in range(40):
         acc.record_cloud_run(
             pdir,
-            "host_a",
+            "acct_a",
             {"run_id": f"r{i % acc.CLOUD_CAP_START}", "session_id": f"session_{i}"},
         )
-        assert acc.cloud_pick(
-            pdir,
-            hosts,
-            ok,
-            now=now + timedelta(minutes=i),
-            run_id=f"r{i % acc.CLOUD_CAP_START}",
-        )[0]
+        at = NOW + timedelta(minutes=i)
+        _login(pdir, at, ALL_OK)
+        assert _pick(pdir, at, f"r{i % acc.CLOUD_CAP_START}", only)["account"]
     assert not hasattr(acc, "CLOUD_STARTS_PER_DAY")
 
-    assert acc.cloud_slots(
-        pdir, now + acc.CLOUD_ACTIVE_TTL + timedelta(hours=1), consented={"host_a"}
-    ) == {"host_a": acc.CLOUD_CAP_START}
+    later = NOW + acc.CLOUD_ACTIVE_TTL + timedelta(hours=1)
+    _login(pdir, later, ALL_OK)
+    assert acc.cloud_slots(pdir, only, HOSTS, fresh_s=FRESH_S, now=later)[
+        "accounts"
+    ] == {"acct_a": acc.CLOUD_CAP_START}
 
 
 def test_the_cap_rises_while_starts_succeed_at_it_and_falls_to_the_running_count_on_a_refusal(
     tmp_path,
 ) -> None:
-    pdir, ok = tmp_path / "placement", (lambda _h: acc.CLOUD_LOGIN_OK)
+    pdir = tmp_path / "placement"
+    only = ACCOUNTS[:1]
     now = datetime(2026, 10, 21, 18, 0, tzinfo=UTC)
-    hosts = [h for h in host_pool() if h.name == "host_a"]
+    _login(pdir, now, ALL_OK)
+
+    def free() -> dict[str, int]:
+        return acc.cloud_slots(pdir, only, HOSTS, fresh_s=FRESH_S, now=now)["accounts"]
+
     for i in range(acc.CLOUD_CAP_START):
-        acc.cloud_pick(pdir, hosts, ok, now=now, run_id=f"s{i}")
-        cap = acc.note_cloud_start(pdir, "host_a", now=now)
+        _pick(pdir, now, f"s{i}", only)
+        cap = acc.note_cloud_start(pdir, "acct_a", now=now)
     assert cap == acc.CLOUD_CAP_START + 1
-    assert acc.cloud_slots(pdir, now, consented={"host_a"}) == {"host_a": 1}
-    acc.cloud_pick(pdir, hosts, ok, now=now, run_id="s-refused")
+    assert free() == {"acct_a": 1}
+    _pick(pdir, now, "s-refused", only)
     assert acc.cloud_start_refused(
         "Error: too many concurrent sessions for this account"
     )
@@ -163,19 +168,19 @@ def test_the_cap_rises_while_starts_succeed_at_it_and_falls_to_the_running_count
         "Quick safety check: Is this a project you trust?"
     )
     assert (
-        acc.note_cloud_refusal(pdir, "host_a", "s-refused", "too many", now=now)
+        acc.note_cloud_refusal(pdir, "acct_a", "s-refused", "too many", now=now)
         == acc.CLOUD_CAP_START
     )
-    assert acc.cloud_slots(pdir, now, consented={"host_a"}) == {"host_a": 0}
+    assert free() == {"acct_a": 0}
 
-    acc.record_cloud_run(pdir, "host_a", {"run_id": "s0", "session_id": "session_0"})
-    acc.cloud_pick(pdir, hosts, ok, now=now, run_id="s4")
+    acc.record_cloud_run(pdir, "acct_a", {"run_id": "s0", "session_id": "session_0"})
+    _pick(pdir, now, "s4", only)
     assert (
-        acc.note_cloud_start(pdir, "host_a", now=now + timedelta(minutes=5))
+        acc.note_cloud_start(pdir, "acct_a", now=now + timedelta(minutes=5))
         == acc.CLOUD_CAP_START
     )
     assert acc.note_cloud_start(
-        pdir, "host_a", now=now + acc.CLOUD_REFUSAL_HOLD + timedelta(minutes=1)
+        pdir, "acct_a", now=now + acc.CLOUD_REFUSAL_HOLD + timedelta(minutes=1)
     ) == (acc.CLOUD_CAP_START + 1)
 
 
@@ -189,82 +194,3 @@ def test_cloud_cost_is_the_drop_between_readings_around_the_run_else_unreadable(
     assert unread["credit_used"] is None
     assert unread["credit_read"].startswith("unreadable")
     assert acc.cloud_cost(before, before, "2026-10-17T00:30:00Z")["credit_used"] is None
-
-
-@pytest.mark.parametrize(
-    ("over", "refusal"),
-    [
-        ({"push": False, "cloud_consent": CONSENT}, acc.CLOUD_NO_PUSH),
-        ({"contributor": True}, acc.CLOUD_CONTRIBUTOR),
-        ({}, acc.CLOUD_NO_CONSENT),
-        ({"cloud_consent": "yes please"}, "is not a ledger row stamp"),
-    ],
-)
-def test_consent_refusals(over: dict[str, Any], refusal: str) -> None:
-    host = ModelCloudHost(name="host_a", **over)
-    assert refusal in str(acc.cloud_consent_refusal(host))
-    assert not acc.consented_accounts([host])
-
-
-def test_explicit_consent_admits_a_contributor() -> None:
-    host = ModelCloudHost(name="host_a", contributor=True, cloud_consent=CONSENT)
-    assert acc.cloud_consent_refusal(host) is None
-    assert acc.consented_accounts([host]) == {"host_a"}
-
-
-def test_contributor_is_never_probed_picked_or_counted(tmp_path: Path) -> None:
-    now = datetime(2026, 1, 2, tzinfo=UTC)
-    with acc._cloud_state(tmp_path) as state:
-        state["accounts"]["host_c"] = {
-            "login": "ok",
-            "probed_at": "2026-01-02T00:00:00Z",
-            "cap": 10,
-            "rate": {"type": "ccr_promotional", "status": "allowed"},
-        }
-    hosts = [
-        *host_pool()[:2],
-        ModelCloudHost(name="host_c", engines_live=True, contributor=True),
-    ]
-    probed = []
-
-    def probe(host: ModelCloudHost) -> str:
-        probed.append(host.name)
-        return acc.CLOUD_LOGIN_OK
-
-    for i in range(10):
-        host, tried = acc.cloud_pick(tmp_path, hosts, probe, now=now, run_id=f"r{i}")
-        assert host is None or host.name != "host_c"
-        assert {"account": "host_c", "skipped": acc.CLOUD_CONTRIBUTOR} in tried
-    assert "host_c" not in probed
-    consented = acc.consented_accounts(hosts)
-    assert "host_c" not in acc.cloud_slots(tmp_path, now, consented=consented)
-    assert "host_c" not in acc.cloud_caps(tmp_path, now, consented=consented)
-    handler = HandlerCloudSessionPlacement()
-    assert (
-        handler.handle(
-            ModelCloudSessionPlacementRequest(
-                action="slots", placement_dir=str(tmp_path), now=now
-            )
-        ).free
-        == 0
-    )
-    result = handler.handle(
-        ModelCloudSessionPlacementRequest(
-            action="slots", placement_dir=str(tmp_path), now=now, hosts=tuple(hosts)
-        )
-    )
-    assert "host_c" not in result.accounts
-
-
-def test_engines_and_custom_engine_selection(tmp_path: Path) -> None:
-    hosts = [
-        ModelCloudHost(name="host_a", cloud_consent=CONSENT),
-        ModelCloudHost(name="host_b", engines=("other",), cloud_consent=CONSENT),
-    ]
-    assert acc.cloud_pick(tmp_path, hosts, lambda _: "ok")[0] is None
-    assert (
-        acc.cloud_pick(tmp_path, hosts, lambda _: "ok", claude_engines=("other",))[
-            0
-        ].name
-        == "host_b"
-    )

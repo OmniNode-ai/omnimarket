@@ -5,10 +5,16 @@
 # own budget: a loop turn holds the task, the file views and the check output,
 # so the summary-class bound refused it.
 # Readback taken 2026-10-15 on local-coder (same served endpoint as local-heavy-reasoning).
-backends:
+#
+# OMN-22220 -- measured_correct_ceilings: the largest input a backend was
+# measured to answer a class correctly. It bounds the class budget (the budget
+# is the smaller of the two), routing does not offer the rung a task above it,
+# and the gate refuses an above-ceiling answer the class scorer did not pass.
+measured_correct_ceilings:
   local-coder:
-    # OMN-20486 measured readback: tokens 20079 run_id c5508479-74f7-4812-9417-862489e42f2c, tokens 31705 run_id a7ff4981-58f8-4973-a4a3-f4fa9c50b987, both grounded; tokens 32080 refused by this value.
-    code_generation: 32000
+    # OMN-22220 measured ceiling: task-complexity-acceptance eval, five runs 2026-10-24 (inputs af69bf55df91, a005d21f45e1, 28d5dfca1951, 05c1fb796408, 2d5e63ff9e6e): R6-23 at 8169 tokens scored 1.0, the largest correct; H6-05 at 24579 tokens scored 0.0.
+    code_generation: 8169
+backends:
   local-heavy-reasoning:
     # OMN-20486 measured readback: tokens 20079 run_id c5508479-74f7-4812-9417-862489e42f2c, tokens 31705 run_id a7ff4981-58f8-4973-a4a3-f4fa9c50b987, both grounded; tokens 32080 refused by this value.
     code_generation: 32000
