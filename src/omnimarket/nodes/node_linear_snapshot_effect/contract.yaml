@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_linear_snapshot_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with id, title, status, statusType, assignee, labels, project, updatedAt and description and the top-level operator (the resolved Linear user id), validated by one typed model. The lab fill generator reads it for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket. The result carries counts only.
+input_model:
+  name: ModelLinearSnapshotRequest
+  module: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot
+output_model:
+  name: ModelLinearSnapshotResult
+  module: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot
+handler:
+  module: omnimarket.nodes.node_linear_snapshot_effect.handlers.handler_linear_snapshot
+  class: HandlerLinearSnapshot
+  input_model: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot.ModelLinearSnapshotRequest
+  output_model: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot.ModelLinearSnapshotResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_linear_snapshot_effect.handlers.handler_linear_snapshot:HandlerLinearSnapshot
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLinearSnapshot
+      module: omnimarket.nodes.node_linear_snapshot_effect.handlers.handler_linear_snapshot
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation, or python -m omnimarket.nodes.node_linear_snapshot_effect from the plans-today skill's first step and the session-start hook's note.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 300000
+  side_effects:
+  - reads the signed-in subject's open Linear issues through the GraphQL API with the LINEAR_API_KEY of the environment
+  - writes linear-<UTC date>.json under the output directory, replacing the file atomically
+metadata:
+  transport_type: local
+  description: >-
+    Write linear-<UTC date>.json, the signed-in subject's open Linear issues, validated by one typed model.
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - effect
+  - linear-snapshot-effect
+  - OMN-22361
+  related_tickets:
+  - OMN-22361
