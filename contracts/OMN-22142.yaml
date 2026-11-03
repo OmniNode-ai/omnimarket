@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22142-ac1
-  description: AC1 the fixture record of omnibase_infra#5555, listed by the search index and merged at GitHub, reads MERGED after one tick; the strict-xfail legacy case fails on the current closure rule.
+  description: AC1 the fixture record of omnibase_infra#5555, listed by the search index and merged at GitHub, reads MERGED after one tick; the executed legacy negative control requires the record to remain OPEN under the current closure rule.
   source: manual
   binds_ac:
   - AC1
@@ -36,7 +36,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov --tb=line -k ac1
     cwd: .
 - id: dod-omn22142-ac2
-  description: AC2 with 470 other stale OPEN records sorting before it, omnibase_infra#5555 reads MERGED within ceil(471 / 100) ticks; the strict-xfail legacy case fails.
+  description: AC2 with 470 other stale OPEN records sorting before it, omnibase_infra#5555 reads MERGED within ceil(471 / 100) ticks; the executed legacy negative control requires the record to remain OPEN.
   source: manual
   binds_ac:
   - AC2
@@ -45,7 +45,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_pr_watcher_closure_reconcile_effect -q --no-cov --tb=line -k "ac2 or call_budget"
     cwd: .
 - id: dod-omn22142-ac3
-  description: AC3 a twelve-minute tick gap across the merge, with a fresh node per tick, and omnibase_infra#5555 reads MERGED within the bound; the strict-xfail legacy case fails.
+  description: AC3 a twelve-minute tick gap across the merge, with a fresh node per tick, and omnibase_infra#5555 reads MERGED within the bound; the executed legacy negative control requires the record to remain OPEN.
   source: manual
   binds_ac:
   - AC3

@@ -7,7 +7,7 @@ Each acceptance test runs against two implementations of one closure tick:
 * ``legacy``: the frozen watcher's closure read as it is described for
   ``run_tick``: read only OPEN records that are in neither the search hits nor
   the REST open lists, at most MAX_CLOSE_READS=20 of ``sorted(gone)``, with no
-  carry to the next tick. It is marked strict xfail: the test must fail on it.
+  carry to the next tick. Each negative control asserts it leaves the PR OPEN.
 * ``reconciler``: node_pr_watcher_closure_reconcile_effect.
 """
 
@@ -114,12 +114,8 @@ def reconciler_tick(
 
 
 IMPLS = [
-    pytest.param(
-        legacy_tick,
-        id="legacy",
-        marks=pytest.mark.xfail(strict=True, reason="the current closure logic"),
-    ),
-    pytest.param(reconciler_tick, id="reconciler"),
+    pytest.param(legacy_tick, "OPEN", id="legacy"),
+    pytest.param(reconciler_tick, "MERGED", id="reconciler"),
 ]
 
 
@@ -163,20 +159,20 @@ def _state_of(path: Path, key: str = KEY) -> str:
     return str(json.loads(path.read_text())["prs"][key]["facts"]["state"])
 
 
-@pytest.mark.parametrize("tick", IMPLS)
+@pytest.mark.parametrize(("tick", "expected_state"), IMPLS)
 def test_ac1_merged_record_leaves_open_set_while_search_index_lists_it(
-    tmp_path: Path, tick: TickFn
+    tmp_path: Path, tick: TickFn, expected_state: str
 ) -> None:
     """AC1: the search index still lists #5555 open; the next tick flips it."""
     path = _state(tmp_path, {})
     github = _github_with_5555()
     tick(path, github, {KEY}, set(), "2026-11-02T15:40:00Z")
-    assert _state_of(path) == "MERGED"
+    assert _state_of(path) == expected_state
 
 
-@pytest.mark.parametrize("tick", IMPLS)
+@pytest.mark.parametrize(("tick", "expected_state"), IMPLS)
 def test_ac2_no_record_is_starved_by_count_or_sort_order(
-    tmp_path: Path, tick: TickFn
+    tmp_path: Path, tick: TickFn, expected_state: str
 ) -> None:
     """AC2: 470 other gone records sort before #5555; it flips within the bound."""
     others = {f"aaa_repo#{n}": _open_record(n) for n in range(1, 471)}
@@ -192,12 +188,12 @@ def test_ac2_no_record_is_starved_by_count_or_sort_order(
     bound = -(-471 // per_tick)
     for i in range(bound):
         tick(path, github, set(), set(), f"2026-11-02T15:{40 + i:02d}:00Z")
-    assert _state_of(path) == "MERGED"
+    assert _state_of(path) == expected_state
 
 
-@pytest.mark.parametrize("tick", IMPLS)
+@pytest.mark.parametrize(("tick", "expected_state"), IMPLS)
 def test_ac3_position_carries_across_a_tick_gap_and_restart(
-    tmp_path: Path, tick: TickFn
+    tmp_path: Path, tick: TickFn, expected_state: str
 ) -> None:
     """AC3: ticks stop 21:31:23Z to 21:43:31Z across the 21:36:43Z merge.
 
@@ -221,7 +217,7 @@ def test_ac3_position_carries_across_a_tick_gap_and_restart(
     github.states[node_id] = merged  # merged at 21:36:43Z, during the gap
     tick(path, github, set(), set(), "2026-11-01T21:43:31Z")
     tick(path, github, set(), set(), "2026-11-01T21:45:31Z")
-    assert _state_of(path) == "MERGED"
+    assert _state_of(path) == expected_state
 
 
 def test_call_budget_and_bound_are_the_contract_policy(tmp_path: Path) -> None:
