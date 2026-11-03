@@ -106,6 +106,13 @@ db_io:
       migration: "0000_create_work_ledger.sql"
       access: write
       role: work_ledger_state
+    # Written once per cited line by the history import (OMN-21947); immutable.
+    - name: ledger_line_citation
+      database_ref: application
+      schema: omninode_internal
+      migration: "0007_work_ledger_history_import.sql"
+      access: write
+      role: ledger_line_citation
 
   # work_ledger_rows is keyed on the row's content hash (ON CONFLICT DO NOTHING);
   # work_ledger_state is keyed on the entity, each op guarded on (at, row_id).
