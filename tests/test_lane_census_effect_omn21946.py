@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from omnimarket.models.model_lane_census import (
     ModelLaneCensusCommand,
     ModelLaneCensusHostRow,
+    ModelLaneCensusRegistryRow,
     ModelLaneCensusScheduleOverlay,
 )
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
@@ -52,7 +53,10 @@ def hosts(*names: str) -> ModelLaneCensusScheduleOverlay:
         hosts=tuple(
             ModelLaneCensusHostRow(name=name, scheduler="systemd-user", docker="engine")
             for name in names
-        )
+        ),
+        registry=(
+            ModelLaneCensusRegistryRow(name="host-r", aliases=("node-r",), lanes=()),
+        ),
     )
 
 
@@ -104,6 +108,7 @@ def test_lane_census_node_ships_no_launchd_declaration() -> None:
         omni_root=Path("/srv/omni"),
         venv=Path("/srv/omni/.onex-dispatch-venv"),
         home=Path("/home/u"),
+        registry_path=Path("/srv/overlays/overlay.yaml"),
     )
     assert "launchd" not in (service + timer).lower()
     assert "<plist" not in service
@@ -185,6 +190,7 @@ def test_lane_census_rendered_units_run_the_node_after_docker() -> None:
         omni_root=Path("/srv/omni"),
         venv=Path("/srv/omni/.onex-dispatch-venv"),
         home=Path("/home/u"),
+        registry_path=Path("/srv/overlays/overlay.yaml"),
         config_root=Path("/srv/config"),
     )
     assert "After=docker.service" in service
@@ -209,11 +215,15 @@ def test_lane_census_install_writes_units_and_enables_the_timer(tmp_path: Path) 
         calls.append(list(argv))
         return subprocess.CompletedProcess(list(argv), 0, "", "")
 
+    overlay_file = tmp_path / "overlays" / "node_lane_census_effect" / "overlay.yaml"
+    overlay_file.parent.mkdir(parents=True)
+    overlay_file.write_text("", encoding="utf-8")
     scheduler = LaneCensusScheduler(
         schedule=load_schedule(),
         overlay=hosts("host-a"),
         home=tmp_path / "home",
         run=run,
+        environ={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
     )
     refused = scheduler.install("host-z", omni_root=omni)
     assert refused.exit_code == 1

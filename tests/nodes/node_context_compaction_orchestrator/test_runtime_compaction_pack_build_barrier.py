@@ -35,6 +35,7 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers import (
     handler_context_compaction_orchestrator as handler_module,
 )
 
+from .reply_topics import REPLY_TOPICS, emitted
 from .test_compaction_pack_build import _pack_orchestrator, _sources
 from .test_session_barrier_wait import _probe, _request, _Source
 
@@ -121,7 +122,8 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
         result = await callback(envelope)
     assert result is not None
     assert result.correlation_id == _TRANSPORT_CORRELATION
-    events = result.output_events
+    emissions = result.output_events
+    events = tuple(emitted(event) for event in emissions)
     reply = events[-1]
     assert isinstance(reply, ModelContextCompactionPackageReply)
     assert reply.invocation_id == request.invocation_id
@@ -173,13 +175,22 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
         await applier.apply(result)
         history = await bus.get_event_history()
         declared = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
-        topics = {
+        static = {
             event["event_type"]: event["topic"]
             for event in declared["published_events"]
+            if "topic" in event
         }
+        # Activated goes by class to its static row; the others to the per-principal
+        # topic the command named, carried as the envelope's event_type (OMN-22103).
         assert [message.topic for message in history] == [
-            topics[type(event).__name__.removeprefix("Model")] for event in events
+            event.event_type
+            if isinstance(event, ModelEventEnvelope)
+            else static[type(event).__name__.removeprefix("Model")]
+            for event in emissions
         ]
+        assert [message.topic for message in history][-1] == (
+            REPLY_TOPICS["reply_topic_package"]
+        )
         published = [json.loads(message.value) for message in history]
         assert all(
             record["correlation_id"] == str(_TRANSPORT_CORRELATION)

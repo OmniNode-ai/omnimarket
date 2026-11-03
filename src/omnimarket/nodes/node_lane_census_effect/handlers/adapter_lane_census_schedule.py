@@ -10,6 +10,7 @@ host whose Docker is always running, never on a Docker Desktop host a person mus
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
@@ -17,7 +18,12 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    find_node_overlay,
+    load_structured_overlay,
+    not_configured_message,
+)
 from omnimarket.models.model_lane_census import (
     ModelLaneCensusHostRow,
     ModelLaneCensusSchedule,
@@ -29,6 +35,10 @@ from omnimarket.models.overlay_keys import ModelLabHostsTable
 NODE_NAME = "node_lane_census_effect"
 NODE_MODULE = f"omnimarket.nodes.{NODE_NAME}"
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+# The collector (lane-census-check.sh) reads the host registry from the file this variable
+# names. The unit carries the overlay file's absolute path, resolved at install time.
+REGISTRY_ENV = "LANE_CENSUS_REGISTRY"
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
@@ -57,6 +67,22 @@ def load_overlay(
 ) -> ModelLaneCensusScheduleOverlay:
     """The node overlay: ``<root>/node_lane_census_effect/overlay.yaml``."""
     return load_structured_overlay(NODE_NAME, ModelLaneCensusScheduleOverlay, environ)
+
+
+def resolve_registry_path(environ: Mapping[str, str] | None = None) -> Path:
+    """The absolute path of the overlay file that holds the ``registry:`` key.
+
+    The first ``<root>/node_lane_census_effect/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``;
+    raises :class:`NodeOverlayError` naming the variable when no root supplies one. Symlinks are
+    kept: a root that is a stable link stays a stable link in the rendered unit.
+    """
+    found = find_node_overlay(NODE_NAME, environ)
+    if found is None:
+        raise NodeOverlayError(
+            not_configured_message(NODE_NAME, "registry")
+            + "; the census unit cannot be pointed at a host registry"
+        )
+    return Path(os.path.abspath(found))
 
 
 def schedule_gaps(
@@ -121,6 +147,7 @@ def render_units(
     omni_root: Path,
     venv: Path,
     home: Path,
+    registry_path: Path,
     config_root: Path | None = None,
 ) -> tuple[str, str]:
     """The systemd user service and timer text of the scheduled census."""
@@ -134,6 +161,7 @@ def render_units(
         "OMNI_HOME": root,
         "ONEX_DISPATCH_VENV": _safe(venv, "dispatch venv"),
         "LANE_CENSUS_PYTHON": python,
+        REGISTRY_ENV: _safe(registry_path, "host registry overlay"),
         "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
     }
     if config_root is not None:
@@ -176,12 +204,14 @@ class LaneCensusScheduler:
         home: Path,
         dispatch_venv: Path | None = None,
         run: Runner = run_command,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
         self.schedule = schedule
         self.overlay = overlay
         self.home = home
         self.dispatch_venv = dispatch_venv
         self.run = run
+        self.environ = environ
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
         self.unit_dir = home / ".config/systemd/user"
@@ -196,7 +226,10 @@ class LaneCensusScheduler:
             )
         return ModelLaneCensusScheduleResult(
             exit_code=0,
-            stdout=f"OK {len(self.overlay.hosts)} hosts, each a Docker Engine host\n",
+            stdout=(
+                f"OK {len(self.overlay.hosts)} hosts, each a Docker Engine host; "
+                f"{len(self.overlay.registry)} registry hosts\n"
+            ),
         )
 
     def install(
@@ -218,8 +251,11 @@ class LaneCensusScheduler:
                 omni_root=omni_root,
                 venv=venv,
                 home=self.home,
+                registry_path=resolve_registry_path(self.environ),
                 config_root=config_root,
             )
+        except NodeOverlayError as exc:
+            return ModelLaneCensusScheduleResult(exit_code=1, stderr=f"{exc}\n")
         except ValueError as exc:
             return ModelLaneCensusScheduleResult(exit_code=1, stderr=f"{exc}\n")
         if dry_run:

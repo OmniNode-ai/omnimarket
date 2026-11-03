@@ -58,7 +58,7 @@ class HandlerLabHostKeyDistribution:
                 if name not in by_name:
                     raise ValueError(f"unknown host {name!r}")
                 host = by_name[name]
-                if not host.available:
+                if not host.available and name not in request.allow_unavailable:
                     raise ValueError(
                         f"unavailable host {name!r}: {host.unavailable_reason or 'not available'}"
                     )
