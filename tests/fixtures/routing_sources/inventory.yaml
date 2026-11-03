@@ -182,6 +182,8 @@ not_routing_resolution_sites:
     reason: the retrospective weekday, role vocabulary, draft state, credit grammar, wording and bus transport of the Friday stand-up section; it shapes a text sheet and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_omnidash_host_effect/handlers/adapter_omnidash_host_install.py:find_node_overlay(NODE_NAME)"
     reason: the host rows of the omnidash hosting node (bind address, port, repository URL, build root, node version, status path, poll interval); it decides where a dashboard is served and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_prompt_cost_estimate_compute/handlers/contract_config.py:find_node_overlay(OVERLAY_ID)"
+    reason: tells whether a deployment overlay is present before the cost estimator lets it replace the saving range its contract declares; the range bounds a price estimate and the call chooses no backend, model or tier
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
