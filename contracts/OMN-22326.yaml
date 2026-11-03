@@ -21,7 +21,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Request refusal before any subprocess, argv from the environment command only, and the model fields."
-    command: "uv run pytest tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q -n 0 --no-cov"
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_request_command_is_never_executed.py tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov"
 dod_evidence:
   - id: "dod-omn22326-request-command"
     description: "A request carrying reconcile_command is refused before any subprocess; the argv comes only from the environment command."
@@ -29,16 +29,35 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_broker_acl_reconcile_effect -v -rs -k request_command -n 0 --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_request_command_is_never_executed.py -v -rs -k request_command --no-cov"
   - id: "dod-omn22326-model-fields"
     description: "The request model no longer declares reconcile_command."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_broker_acl_reconcile_effect -v -rs -k model_fields -n 0 --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_request_command_is_never_executed.py -v -rs -k model_fields --no-cov"
+  - id: "dod-omn22326-deploy-source-readback"
+    description: "Hosted-runner source-artifact readback compares the published request model and handler at the evaluated revision with this checkout, then checks that the model has no reconcile_command field and that the handler takes its command from the operator environment. This probe covers the published source artifact; live broker ACL state is outside its scope."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          model=src/omnimarket/models/broker_acl_reconcile.py;
+          handler=src/omnimarket/nodes/node_broker_acl_reconcile_effect/handlers/handler_broker_acl_reconcile.py;
+          for path in "$model" "$handler"; do
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+              --output "$readback_dir/$(basename "$path")";
+            cmp "$path" "$readback_dir/$(basename "$path")";
+          done;
+          ! grep -Eq '^[[:space:]]+reconcile_command[[:space:]]*:' "$readback_dir/$(basename "$model")";
+          grep -F 'command = shlex.split(self._environ.get(settings["reconcile_command_env"], ""))' "$readback_dir/$(basename "$handler")";
+          printf 'ACL reconcile source readback matched %s\n' "$revision"
   - id: "dod-omn22326-integration-proof"
     description: "The pushed head ran the reconcile node's request, model and golden-chain tests on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
