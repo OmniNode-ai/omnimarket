@@ -70,7 +70,7 @@ dod_evidence:
     check_value: |-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_machinery_candidates.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLabFillMachineryCandidates" > /dev/null'
     cwd: .
-- id: dod-omn22413-lab-proof
+- id: dod-omn22413-integration-proof
   description: AC4 the pushed head, run on a lab host through lab-run, passes every lab_fill test. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
   binds_ac:
