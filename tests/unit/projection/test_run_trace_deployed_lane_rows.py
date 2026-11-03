@@ -8,10 +8,12 @@ envelope the port puts on the bus, unwraps it the way the standalone writer's
 runner does, and hands it to the writer's ``project_event`` against a stand-in
 pool that keeps rows by (tenant, run, sequence). No database is read or written.
 
-AC2 builds the per-attempt record the way the dispatch builds it and asserts the
-wire record carries ``duration_ms`` on every rung, including a rung that was
-never sent (0) and an earlier model of one customer route (measured by the
-effect that made the call).
+AC1 also projects the local port's earlier and final provider calls, retaining
+the duration the effect measured for an earlier model of one customer route.
+
+AC2 checks that the consumer accepts and drops ``duration_ms`` on attempt
+payloads, including a rung that was never sent (0). The wire declaration is
+step 2 of 2, deferred until omniclaude's pin carries this consumer.
 """
 
 from __future__ import annotations
@@ -22,12 +24,21 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.models.delegation.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.models.delegation.wire import model_delegate_skill_response
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    _record_run_step_calls,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     _BufferedRunStepPublisher,
@@ -35,6 +46,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     RunStepRecorder,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect import (
+    ModelLlmDelegationCallResult,
 )
 from omnimarket.nodes.node_projection_run_trace.handlers.handler_run_trace_writer import (
     RunTraceProjectionWriter,
@@ -143,6 +157,20 @@ def _writer(
     return _Writer()
 
 
+async def _project_buffered_steps(
+    buffer: _BufferedRunStepPublisher,
+    writer: RunTraceProjectionWriter,
+) -> None:
+    for offset, step in enumerate(buffer.pending):
+        wire = json.dumps({"event_type": step.event_type, "payload": step.payload})
+        data = unwrap_envelope(wire.encode("utf-8"))
+        assert data is not None
+        meta = MessageMeta(
+            partition=0, offset=offset, fallback_id=f"run-step-0-{offset}", topic=_TOPIC
+        )
+        assert await writer.project_event(_TOPIC, data, meta) is True
+
+
 def _deployed_terminal() -> dict[str, object]:
     """A deployed run that climbed one rung: two attempts, both timed by the chain."""
     return {
@@ -200,14 +228,7 @@ async def test_deployed_run_steps_projected() -> None:
         "publishes run steps on; its contract.yaml event_bus.subscribe_topics "
         "must name it"
     )
-    for offset, step in enumerate(buffer.pending):
-        wire = json.dumps({"event_type": step.event_type, "payload": step.payload})
-        data = unwrap_envelope(wire.encode("utf-8"))
-        assert data is not None
-        meta = MessageMeta(
-            partition=0, offset=offset, fallback_id=f"run-step-0-{offset}", topic=_TOPIC
-        )
-        assert await writer.project_event(_TOPIC, data, meta) is True
+    await _project_buffered_steps(buffer, writer)
 
     stored = sorted(rows.values(), key=lambda row: row["step_sequence"])
     assert [row["step_sequence"] for row in stored] == list(
@@ -226,27 +247,71 @@ async def test_deployed_run_steps_projected() -> None:
     ]
 
 
+async def test_deployed_run_steps_projected_carry_the_duration_of_an_earlier_model_of_one_route() -> (
+    None
+):
+    started_at = datetime(2026, 11, 3, 1, 0, tzinfo=UTC)
+    buffer = _BufferedRunStepPublisher()
+    recorder = RunStepRecorder(
+        tenant_id=_TENANT,
+        correlation_id=_RUN,
+        publisher=buffer,
+        store=None,
+        started_at=started_at,
+        started_monotonic=0.0,
+    )
+    backend = ModelResolvedDelegationBackend(
+        backend_id="customer-route",
+        model_id="model-b",
+        endpoint_ref="https://provider.example/v1/chat/completions",
+        tier="cheap_cloud",
+        max_tokens=4096,
+        timeout_ms=30000,
+    )
+    result = ModelLlmDelegationCallResult(
+        request_id=str(_RUN),
+        success=True,
+        served_model_id="model-b",
+        earlier_model_attempts=(
+            ModelEarlierModelAttempt(
+                model_id="model-a",
+                failure_class=EnumDelegationFailureClass.RATE_LIMITED,
+                error_message="provider throttled the earlier model",
+                duration_ms=700,
+            ),
+        ),
+    )
+    _record_run_step_calls(recorder, backend, result, started_at, duration_ms=910)
+    assert len(buffer.pending) == 2
+    assert {step.topic for step in buffer.pending} == {_TOPIC}
+
+    rows: dict[tuple[str, str, int], dict[str, Any]] = {}
+    await _project_buffered_steps(buffer, _writer(rows))
+    stored = sorted(rows.values(), key=lambda row: row["step_sequence"])
+    assert [row["step_kind"] for row in stored] == ["provider_call", "provider_call"]
+    assert [row["backend_id"] for row in stored] == [backend.backend_id] * 2
+    earlier_call, final_call = stored
+    assert earlier_call["model_id"] == "model-a"
+    assert earlier_call["duration_ms"] == 700
+    assert final_call["model_id"] == "model-b"
+    assert final_call["duration_ms"] == 910
+
+
 def test_attempt_has_duration_on_the_wire_record() -> None:
-    assert "duration_ms" in ModelDelegateSkillAttemptRecord.model_fields, (
-        "the per-rung attempt record declares no duration, so per-rung time "
-        "cannot be split from a run with two or more attempts"
-    )
-    record = ModelDelegateSkillAttemptRecord(
-        tier="local",
-        backend_id="local-qwen",
-        model_id="model-a",
-        quality_gate_passed=False,
-        duration_ms=2140,
-    )
-    assert record.duration_ms == 2140
-    with pytest.raises(ValueError, match="duration_ms"):
-        ModelDelegateSkillAttemptRecord(
-            tier="local",
-            backend_id="local-qwen",
-            model_id="model-a",
-            quality_gate_passed=False,
-            duration_ms=-1,
-        )
+    assert "duration_ms" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert "duration_ms" not in ModelDelegateSkillAttemptRecord.model_fields
+    payload = {
+        "tier": "local",
+        "backend_id": "local-qwen",
+        "model_id": "model-a",
+        "quality_gate_passed": False,
+        "duration_ms": 2140,
+    }
+    record = ModelDelegateSkillAttemptRecord.model_validate(payload)
+    assert record.model_id == "model-a"
+    assert "duration_ms" not in record.model_dump()
+    with pytest.raises(ValidationError, match="unknown_key"):
+        ModelDelegateSkillAttemptRecord.model_validate(payload | {"unknown_key": 1})
 
 
 def test_attempt_has_duration_on_an_earlier_model_of_one_route() -> None:
@@ -288,27 +353,32 @@ def test_attempt_has_duration_at_every_dispatch_site() -> None:
     assert not missing, f"attempt records built without duration_ms at lines {missing}"
 
 
-def test_attempt_has_duration_from_the_port_record_and_the_bus_ladder() -> None:
+def test_attempt_has_duration_from_the_port_record_is_accepted_and_dropped() -> None:
     from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
         _attempt_records,
     )
 
-    port_rungs = _attempt_records(
+    attempts = [
         {
-            "attempts": [
-                {"tier": "local", "backend_id": "a", "model_id": "m", "duration_ms": 0},
-                {
-                    "tier": "local",
-                    "backend_id": "a",
-                    "model_id": "n",
-                    "duration_ms": 31,
-                },
-            ]
-        }
-    )
-    assert [rung.duration_ms for rung in port_rungs] == [0, 31]
-
-    bus_rungs = _attempt_records(
-        {"escalation_history": _deployed_terminal()["escalation_history"]}
-    )
-    assert [rung.duration_ms for rung in bus_rungs] == [2140, 910]
+            "tier": "local",
+            "backend_id": "a",
+            "model_id": "m",
+            "quality_gate_passed": False,
+            "duration_ms": 0,
+        },
+        {
+            "tier": "local",
+            "backend_id": "a",
+            "model_id": "n",
+            "quality_gate_passed": False,
+            "duration_ms": 31,
+        },
+    ]
+    port_rungs = _attempt_records({"attempts": attempts})
+    assert [rung.model_id for rung in port_rungs] == ["m", "n"]
+    # Validate the same payloads at the consumer boundary too: the merge-base
+    # handler already ignored duration_ms, but its wire model still forbids it.
+    assert port_rungs == [
+        ModelDelegateSkillAttemptRecord.model_validate(raw) for raw in attempts
+    ]
+    assert all("duration_ms" not in rung.model_dump() for rung in port_rungs)

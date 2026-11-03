@@ -121,8 +121,12 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # entry and publishes it to the quality-gate-result topic; this consumer
 # accepts and drops it first (OMN-18868 consumer-first), and the declared
 # field lands once omniclaude's pin carries this consumer.
+#
+# OMN-22224 adds ``duration_ms``: how long a rung took, 0 for a rung never
+# sent. This consumer-first step 1 of 2 accepts and drops it; a later change
+# declares the field once omniclaude's pin carries this consumer.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"backend_pinned", "gate_record", "secret_ref"}
+    {"backend_pinned", "duration_ms", "gate_record", "secret_ref"}
 )
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
@@ -258,15 +262,6 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     # why the earlier one was abandoned. ``None`` means this attempt never
     # reached an accept/climb decision (a transport skip on the bus-less path),
     # which is a different fact from "it was rejected" and is typed as such.
-    # OMN-22224: how long this rung took, so a run with two or more attempts can
-    # split its time per rung. 0 for a rung that was never sent (skipped before
-    # inference). None only for a producer that predates the field or a bus
-    # chain that reported no latency for the rung; never a guess.
-    duration_ms: int | None = Field(
-        default=None,
-        ge=0,
-        description="Milliseconds this rung took; 0 when the rung was never sent.",
-    )
     acceptance_decision: EnumDelegationAcceptanceDecision | None = Field(
         default=None,
         description="Whether this rung's response was accepted or the ladder climbed past it.",
