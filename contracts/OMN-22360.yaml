@@ -1,0 +1,35 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-22360
+title: 'omnimarket: first-party dependency pins follow the core dependency-pin policy'
+summary: >-
+  omnibase-compat is pinned as the range >=0.5.7,<0.6.0 instead of the exact ==0.5.7, in the project dependencies and the uv override, as the core dependency-pin policy requires; the resolved compat stays 0.5.7.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22360-omnimarket-pins
+    statement: omnimarket declares no first-party pin the core dependency-pin validator (OMN-22360) refuses.
+    acceptance:
+      - id: AC8
+        statement: "AC8: every violation the validator reports on the registry repositories at origin of
+          2026-11-03 is fixed by a pull request named in a comment here, and none is recorded in a baseline
+          or allowlist"
+evidence_requirements:
+  - kind: tests
+    description: The lock resolves with the compat range and the dependency-pin validator reports no manifest finding.
+    command: uv lock --check
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22360-omnimarket-lock
+    description: The lock resolves with the compat range and the dependency-pin validator reports no manifest finding.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv lock --check
+        cwd: ${OMNI_HOME}/omnimarket

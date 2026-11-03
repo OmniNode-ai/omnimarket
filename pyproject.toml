@@ -162,7 +162,10 @@ dependencies = [
     # WINS, installing 0.5.6 underneath an infra release built against 0.5.7,
     # which is the masked-incompatibility failure the paragraph above warns
     # about. The two move together or the override hides the break.
-    "omnibase-compat==0.5.7",
+    # OMN-22360: a range, not an exact pin (the core dependency-pin policy). The
+    # floor still moves with infra's compat pin; the range admits the next
+    # compat release without a second edit here.
+    "omnibase-compat>=0.5.7,<0.6.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
@@ -1555,7 +1558,7 @@ override-dependencies = [
     # chains resolve a topic through the one fixture in omnibase_infra. 0.38.75
     # also carries migration 0003 (infra#5036), so the dev-tag git source is gone.
     "omnibase-infra>=0.38.75,<0.39.0",
-    "omnibase-compat==0.5.7",
+    "omnibase-compat>=0.5.7,<0.6.0",
 ]
 
 # OMN-16024: the security floors for the five TRANSITIVE packages flagged by
