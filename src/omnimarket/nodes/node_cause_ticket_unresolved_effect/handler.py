@@ -23,6 +23,11 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.exception_queue import (
+    ModelExceptionEmitRequest,
+    ModelExceptionResolveRequest,
+    ModelExceptionRow,
+)
 from omnimarket.nodes.node_cause_ticket_unresolved_effect.container.container_cause_ticket_unresolved_effect import (
     build_handler_exception_emit,
     build_handler_exception_resolve,
@@ -32,11 +37,6 @@ from omnimarket.nodes.node_cause_ticket_unresolved_effect.models import (
     ModelCauseTicketResolution,
     ModelCauseTicketUnresolvedRequest,
     ModelCauseTicketUnresolvedResult,
-)
-from omnimarket.nodes.node_exception_queue_effect.models import (
-    ModelExceptionEmitRequest,
-    ModelExceptionResolveRequest,
-    ModelExceptionRow,
 )
 
 CLASS = "cause-ticket-unresolved"

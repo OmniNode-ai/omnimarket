@@ -50,3 +50,10 @@ dod_evidence:
       - check_type: command
         check_value: grep -F 'case = classify_block(row)' src/omnimarket/nodes/node_cause_ticket_unresolved_effect/handler.py
         cwd: .
+  - id: dod-omn22143-gates
+    description: The node's contract test names its declared terminal event, so the state-coverage gate passes in full mode, and the handler types its exception-queue requests from the shared omnimarket.models.exception_queue, so the cross-node reach-in gate finds no new reach-in. Both tests pass at origin/dev and failed at the PR head before this change.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/scripts/test_validate_state_coverage.py::test_real_baseline_passes_full_mode tests/test_no_cross_node_reach_in.py::test_no_new_cross_node_model_reach_ins -q --no-cov --tb=line
+        cwd: .
