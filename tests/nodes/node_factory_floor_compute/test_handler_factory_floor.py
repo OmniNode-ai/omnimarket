@@ -40,6 +40,7 @@ from tests.nodes.node_factory_floor_compute.support import (
     running_on_dev,
     table_plan,
     task,
+    wave_config,
     wave_plan,
 )
 
@@ -100,6 +101,7 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     plan = wave_plan()
     result = compute_factory_floor(
         request(
+            cfg=wave_config(),
             plans=(plan,),
             prs=(pr("kb#1", "MERGED", title="W0.1 reuse verification"),),
             ledger=(row("CLAIM", 10, task="W0.2"), *proven("kb#1")),
@@ -139,6 +141,7 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
 def test_manifest_gate_pass_opens_next_station_to_prep() -> None:
     result = compute_factory_floor(
         request(
+            cfg=wave_config(),
             prs=(
                 pr("kb#1", "MERGED", title="W0.1 a"),
                 pr("kb#2", "MERGED", head_ref="w0.2-branch W0.2"),
@@ -262,6 +265,7 @@ def _andon_ledger() -> tuple[ModelFloorLedgerRow, ...]:
 def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -> None:
     result = compute_factory_floor(
         request(
+            cfg=wave_config(),
             prs=(pr("kb#1", "MERGED", title="W0.1"),),
             ledger=_andon_ledger(),
         )
@@ -345,6 +349,7 @@ def test_andon_or_fallback_plan_with_no_manifest_uses_the_plans_today_task_table
 ):
     result = compute_factory_floor(
         request(
+            cfg=wave_config(),
             plans=(table_plan(),),
             prs=(pr("repo#1", "MERGED", title="feat(OMN-7): the first task"),),
             ledger=proven("repo#1"),

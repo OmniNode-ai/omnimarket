@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
 )
@@ -35,7 +36,7 @@ class ModelFloorItem(BaseModel):
 
 
 class ModelFloorStation(BaseModel):
-    """One station: a wave or stage of a plan."""
+    """One station: a task of a plan (or, under wave grouping, a wave of tasks)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -44,6 +45,10 @@ class ModelFloorStation(BaseModel):
     state: ItemState
     items: tuple[ModelFloorItem, ...]
     feeders: tuple[str, ...]
+    # The wave label of the station's task ("" when the plan declares none): the band a renderer groups stations by.
+    group: str = ""
+    # The tickets of the station's own parts.
+    tickets: tuple[str, ...] = ()
 
 
 class ModelFloorAndon(BaseModel):
@@ -317,6 +322,7 @@ class ModelFloorSection(BaseModel):
     shipped: tuple[ModelFloorPrRef, ...]
     waiting: tuple[ModelFloorPrRef, ...]
     stoppages: tuple[ModelFloorStoppageOut, ...]
+    phoenix_traces: ModelFloorPhoenixTraces
     # The merged-and-running count for the Eastern day and the idle slots per host; None when it was not read.
     merged_running: ModelMergedRunningCountResult | None = None
 

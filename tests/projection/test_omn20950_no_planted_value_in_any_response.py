@@ -211,7 +211,7 @@ def test_a_key_added_through_onex_models_add_is_in_no_response_and_no_log(
         lambda _backend: (1, "", "onex delegate failed: stubbed test delegation"),
     )
     monkeypatch.setattr(
-        "omnimarket.routing.byok_model_discovery.get_models_json",
+        "omnimarket.handlers.routing.byok_model_discovery.get_models_json",
         lambda **_: {"data": [{"id": "openai/gpt-5-nano"}]},
     )
     caplog.set_level("DEBUG")

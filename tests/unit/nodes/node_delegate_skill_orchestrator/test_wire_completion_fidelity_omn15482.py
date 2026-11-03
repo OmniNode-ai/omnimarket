@@ -43,6 +43,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.handlers.routing import delegation_backend_resolution
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -60,7 +61,6 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.routing import delegation_backend_resolution
 
 _MLX_ENDPOINT = "http://stickybeatz-studio:8401/v1/chat/completions"
 _MLX_MODEL_ID = "mlx-community/Qwen3.6-35B-A3B-8bit"

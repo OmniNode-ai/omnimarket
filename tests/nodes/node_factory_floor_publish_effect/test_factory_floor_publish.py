@@ -11,6 +11,8 @@ import shutil
 import stat
 import subprocess
 import textwrap
+import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
@@ -28,6 +30,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
+    ModelPublishStep,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
@@ -88,6 +91,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         serve_url="http://example.invalid:8088/",
         bus_lane="lane-x",
         history_root=str(tmp_path / "kept"),
+        owner_login="owner@example.invalid",
     )
 
 
@@ -146,6 +150,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
             remote_dir="/srv/site",
             serve_url="u",
             history_root="/srv/site",
+            owner_login="owner@example.invalid",
         )
 
 
@@ -157,6 +162,7 @@ def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
             remote_dir=path,
             serve_url="u",
             history_root="/srv/site",
+            owner_login="owner@example.invalid",
         )
 
 
@@ -322,13 +328,15 @@ def _program_calls(runner: LocalSsh) -> list[str]:
     ]
 
 
-def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
+def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floor_effect_last(
     tmp_path: Path,
 ) -> None:
     runner = Scripted({"--json": (0, b"[]", b"")})
     request = _refresh_request(tmp_path)
     HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
-    assert _program_calls(runner) == ["hosts", "pool", HEALTH_MODULE, FACTORY]
+    calls = _program_calls(runner)
+    assert sorted(calls[:-1]) == sorted(["hosts", "pool", HEALTH_MODULE])
+    assert calls[-1] == FACTORY
     pool = next(c[0] for c in runner.calls if any("onex_lab_run.py" in w for w in c[0]))
     assert pool == [
         "python3",
@@ -345,6 +353,102 @@ def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
     ).read_text() == "[]"
     factory = next(c[0] for c in runner.calls if FACTORY in c[0])
     assert factory[-2:] == ["--home", request.home]
+
+
+def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_not() -> (
+    None
+):
+    steps = {s.name: s for s in load_runtime().steps}
+    assert [n for n, s in steps.items() if s.concurrent] == [
+        "hosts",
+        "pool",
+        "friction",
+        "process_health",
+    ]
+    assert steps["factory_floor"].concurrent is False
+
+
+def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
+    tmp_path: Path,
+) -> None:
+    barrier = threading.Barrier(
+        3, timeout=10
+    )  # hosts, pool and process_health in flight at once
+
+    class Overlapping(Scripted):
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] != "ssh" and FACTORY not in argv:
+                barrier.wait()
+            return super().__call__(argv, stdin, timeout)
+
+    request = _refresh_request(tmp_path)
+    result = HandlerFactoryFloorPublish(
+        Overlapping({"--json": (0, b"[]", b"")})
+    ).handle(request, environ=PLUGIN)
+    assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
+    # the friction report is absent in this home, which is its own failed step
+    assert [s.name for s in result.steps if s.status != "ok"] == ["friction"]
+
+
+def test_refresh_a_step_with_a_fresh_output_is_skipped_and_a_stale_one_runs(
+    tmp_path: Path,
+) -> None:
+    request = _refresh_request(tmp_path)
+    health = Path(request.home or "") / load_runtime().process_health_relpath
+    health.parent.mkdir(parents=True)
+    health.write_text(json.dumps(HEALTH), encoding="utf-8")
+    fresh = Scripted({"--json": (0, b"[]", b"")})
+    HandlerFactoryFloorPublish(fresh).handle(request, environ=PLUGIN)
+    assert HEALTH_MODULE not in _program_calls(fresh)
+    old = time.time() - 3600
+    os.utime(health, (old, old))
+    stale = Scripted({"--json": (0, b"[]", b"")})
+    HandlerFactoryFloorPublish(stale).handle(request, environ=PLUGIN)
+    assert HEALTH_MODULE in _program_calls(stale)
+
+
+def test_refresh_a_freshness_gate_names_its_file_and_its_age_together() -> None:
+    with pytest.raises(ValueError, match="together or neither"):
+        ModelPublishStep(
+            name="x",
+            kind="command",
+            required=False,
+            timeout_seconds=1,
+            argv=("a",),
+            fresh_relpath="f.json",
+        )
+
+
+def test_transfer_retries_an_ssh_connection_error_and_gives_up_after_the_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish.time.sleep",
+        lambda _s: None,
+    )
+    request = _request(tmp_path)
+
+    class Flaky(LocalSsh):
+        def __init__(self, failures: int) -> None:
+            super().__init__()
+            self.failures = failures
+
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            if argv[0] == "ssh" and self.failures > 0:
+                self.failures -= 1
+                return subprocess.CompletedProcess(
+                    list(argv), 255, b"", b"Network is unreachable"
+                )
+            return super().__call__(argv, stdin, timeout)
+
+    result = HandlerFactoryFloorPublish(Flaky(2)).handle(request, environ={})
+    assert "factory-floor.json" in result.published
+    with pytest.raises(PublishRefusedError, match="exit 255"):
+        HandlerFactoryFloorPublish(Flaky(3)).handle(request, environ={})
 
 
 def test_refresh_a_required_step_failing_publishes_nothing(tmp_path: Path) -> None:
@@ -1073,7 +1177,7 @@ def _shell_out(result: dict[str, object]) -> dict[str, str]:
     return cast("dict[str, str]", result["out"])
 
 
-def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first() -> (
+def test_page_tabs_the_site_is_one_page_with_four_tabs_and_the_dashboard_first() -> (
     None
 ):
     labels = re.findall(r'\{id: "(\w+)", label: "([^"]+)"', SHELL)
@@ -1082,18 +1186,20 @@ def test_page_tabs_the_site_is_one_page_with_five_tabs_and_the_dashboard_first()
         ("floor", "Factory floor"),
         ("process", "Process before and after"),
         ("map", "Decision map"),
-        ("quality", "Decision quality"),
     ]
-    for pane in ("dashboard", "floor", "process", "map", "quality"):
+    for pane in ("dashboard", "floor", "process", "map"):
         assert f'id="pane-{pane}"' in SHELL
+    assert "pane-quality" not in SHELL
     assert 'role="tablist"' in SHELL
     for page in (
         'page: "floor/?embed=1"',
         'page: "reports/process-health/?embed=1"',
         'page: "reports/decision-map/?embed=1"',
-        'page: "reports/decision-quality/?embed=1"',
     ):
         assert page in SHELL
+    assert "decision-quality" not in SHELL
+    assert "decision_quality" not in SHELL
+    assert "Decision quality" not in SHELL
 
 
 def test_page_tabs_open_the_dashboard_with_no_hash_and_no_remembered_tab() -> None:
@@ -1122,8 +1228,7 @@ def test_page_tabs_a_hash_that_names_no_tab_falls_back_to_the_remembered_one() -
     result = _run_shell(SHELL_FILES, hash="#nonsense", stored="map")
     assert result["sel"] == ["tab-map"]
     result = _run_shell(SHELL_FILES, stored="quality")
-    assert result["sel"] == ["tab-quality"]
-    assert result["hash"] == "#quality"
+    assert result["sel"] == ["tab-dashboard"]
 
 
 def test_page_tabs_blocked_browser_storage_still_opens_the_dashboard() -> None:
@@ -1211,7 +1316,7 @@ def test_page_tabs_carry_a_lamp_and_a_caption_read_from_the_same_files() -> None
     assert "1 of 2 lines stopped" in out["sub-dashboard"]
     assert "3 better, 1 worse" in out["sub-process"]
     assert "snapshot" in out["sub-map"]
-    assert "data unread" in out["sub-quality"]
+    assert "sub-quality" not in out
 
 
 def test_page_dashboard_without_a_record_draws_nothing_and_says_it_is_unread() -> None:

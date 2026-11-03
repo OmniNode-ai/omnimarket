@@ -42,7 +42,9 @@ _CUSTOMER_MODEL = "customer-local-model"
 
 def _bind_customer_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The customer's overlay: their model on the two shipped local rungs."""
-    from omnimarket.routing import delegation_backend_resolution as resolution_mod
+    from omnimarket.handlers.routing import (
+        delegation_backend_resolution as resolution_mod,
+    )
 
     overlay = tmp_path / "bifrost_overrides.yaml"
     overlay.write_text(

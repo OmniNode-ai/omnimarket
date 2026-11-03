@@ -1,6 +1,6 @@
 name: node_claude_code_binding_install_effect
 version: "1.0.0"
-description: "Installs the rendered Claude Code binding module outside any git work tree and writes additive command hooks to the user settings"
+description: "Installs rendered Claude Code bindings outside a git work tree, preserving a compaction experiment arm across bus input, and writes additive command hooks to user settings"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -17,7 +17,7 @@ dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "hooks", "claude-code", "install", "client-bindings"]
+tags: ["effect", "hooks", "claude-code", "install", "client-bindings", "compaction-experiment"]
 pack: "core"
 display_name: "Claude Code Binding Install"
 node_role: "effect"

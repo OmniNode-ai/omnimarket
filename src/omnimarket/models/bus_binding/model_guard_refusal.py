@@ -25,7 +25,8 @@ class ModelGuardRefusal(BaseModel):
 
     ``lost_stamp`` is the stamp of the TERMINAL that was lost ("" when the evidence names none),
     ``refused_path`` is where the writer's machine kept the refused request ("" when not named) and
-    ``cell`` is the worktree path the guard named ("" for the friction guard).
+    ``cell`` is the worktree path the guard named ("" for the friction guard). ``lost_rows`` names each
+    row the refusal lost as ``<KIND>@<stamp>`` (empty when the evidence names none).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -35,6 +36,7 @@ class ModelGuardRefusal(BaseModel):
     lost_stamp: str
     refused_path: str
     cell: str
+    lost_rows: tuple[str, ...] = ()
 
 
 class ModelGuardResolution(BaseModel):

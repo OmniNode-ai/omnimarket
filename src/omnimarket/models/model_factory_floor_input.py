@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.model_floor_phoenix_traces import ModelFloorPhoenixTraces
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -26,6 +27,7 @@ ItemState = Literal["done", "integrating", "active", "prep", "wait", "stop"]
 TableTaskState = Literal["merged", "open-green", "open-red", "not-started", "unread"]
 PrState = Literal["OPEN", "MERGED", "CLOSED"]
 CiState = Literal["green", "red", "pending", "none", "unread"]
+StationGrouping = Literal["task", "wave"]
 
 
 def _aware(value: datetime) -> datetime:
@@ -47,6 +49,9 @@ class ModelFloorManifestTask(BaseModel):
     depends_on: tuple[str, ...] = ()
     tickets: tuple[str, ...] = ()
     prs: tuple[str, ...] = ()
+    # The state the manifest records for the task. Read only when the ledger, the watcher and Linear give the task no
+    # evidence; a recorded "done" is never taken without a merged pull request.
+    state: ItemState | None = None
     # True for a task read from a plan's own paragraphs: its id (T1, S3) is not unique across plans, so only its
     # tickets and pull requests link it to the ledger and the watcher, never the bare id.
     scoped: bool = False
@@ -340,6 +345,7 @@ class ModelFactoryFloorConfig(BaseModel):
     integration_fail_verdicts: tuple[str, ...] = Field(min_length=1)
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)
     live_claim_minutes: int = Field(gt=0)
+    station_grouping: StationGrouping
     station_name_template: str = Field(min_length=1)
     fallback_station_id: str = Field(min_length=1)
     fallback_station_name: str = Field(min_length=1)
@@ -402,5 +408,7 @@ class ModelFactoryFloorRequest(BaseModel):
     runner_fleet_cause: str = ""
     # One verdict per host read by node_lane_container_budget_compute; None when no host was read.
     lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
+    # One Phoenix trace reading; None when the Phoenix URL is not configured (the floor draws it unread).
+    phoenix_traces: ModelFloorPhoenixTraces | None = None
 
     _utc = field_validator("generated_at")(_aware)

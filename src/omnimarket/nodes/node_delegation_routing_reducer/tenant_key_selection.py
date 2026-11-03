@@ -13,8 +13,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.handlers.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
-from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 # The resolver's logger name, so these warnings read exactly as before the move.

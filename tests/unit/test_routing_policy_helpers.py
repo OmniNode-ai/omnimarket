@@ -9,8 +9,8 @@ import uuid
 import pytest
 
 from omnimarket.enums.enum_polish_task_class import EnumPolishTaskClass
+from omnimarket.handlers.routing.routing_policy_helpers import resolve_routing_policy
 from omnimarket.models.model_polish_task_envelope import ModelPolishTaskEnvelope
-from omnimarket.routing.routing_policy_helpers import resolve_routing_policy
 
 
 def _make_envelope(routing_policy: dict | None) -> ModelPolishTaskEnvelope:

@@ -23,13 +23,13 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import substitute_local_byok_route
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import substitute_local_byok_route
 
 pytestmark = pytest.mark.unit
 

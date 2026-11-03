@@ -26,6 +26,10 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.routing.backend_placement import (
+    load_bound_bifrost_placements,
+    placement_digest,
+)
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
@@ -68,10 +72,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
-)
-from omnimarket.routing.backend_placement import (
-    load_bound_bifrost_placements,
-    placement_digest,
 )
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
