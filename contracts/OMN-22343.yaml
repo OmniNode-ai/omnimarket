@@ -31,13 +31,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22343-ac1
-  description: AC1 the PR body table names each builder with its measured shape and the source of each number.
+  description: AC1 the builders found are the gateway builder (which now reads its cache policy from the node contract) and the direct Messages caller; the PR body table carries the measured shape and the source of each number. This check pins the gateway side, the contract key the table's first row refers to, and fails at the merge base where the key is absent.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: test -f contracts/OMN-22343.yaml
+    check_value: grep -F 'prompt_cache:' src/omnimarket/nodes/node_claude_review_gateway_effect/contract.yaml
     cwd: .
 - id: dod-omn22343-ac2
   description: AC2 the golden request fixture, block order, breakpoint count and contract-sourced TTL.
