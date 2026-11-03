@@ -1,0 +1,47 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22223
+title: The delegate runtime dispatch deadline is timed from publish, as the caller's wait is, so queue wait is deducted and the caller always sees the terminal the runtime records
+summary: The delegate-skill handler deducts the measured queue wait from its publish-timed budget, ends a record that queued the whole budget with a typed queue_budget_exhausted terminal before any dispatch, and clamps its wait allowance so its deadline never exceeds the caller's wait.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-one-budget-one-clock
+    statement: The runtime dispatch deadline and the caller wait are the same budget timed from the same instant, publish.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the runtime dispatch timeout is measured from publish, so queue wait is deducted from the execution budget, and a run that spent its budget in the queue ends with a typed queue-budget terminal before the caller''s wait ends -- falsifier: `uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q -k queue_wait_deducted`, a stub run with 120 s of queue wait and a 300 s total budget, which runs the full 300 s from pickup today.'
+      - id: AC2
+        statement: 'AC2: the caller wait is never shorter than the runtime timeout it waits on, so a terminal that the runtime records is always seen -- falsifier: `uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q -k caller_wait_covers_runtime`.'
+evidence_requirements:
+  - kind: tests
+    description: Focused tests of the handler's publish-timed dispatch deadline and its clamp against the caller's wait.
+    command: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22223-queue-wait-deducted
+    description: A stub run with 120 s of queue wait and a 300 s budget gets a 180 s dispatch deadline, an unstamped request keeps the full 300 s, and a record that queued the whole budget ends as a queue_budget_exhausted terminal with nothing dispatched.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -k queue_wait_deducted
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn22223-caller-wait-covers-runtime
+    description: For every task class and a spread of named timeouts the caller's terminal wait is at least the runtime's execution timeout plus allowance, and a grace declared wider than the margin is clamped.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -k caller_wait_covers_runtime
+        cwd: .
+    binds_ac: [AC2]
+  - id: dod-omn22223-deploy-probe
+    description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines resolve_dispatch_window_seconds, which the merge base does not.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def resolve_dispatch_window_seconds" > /dev/null'
+        cwd: .

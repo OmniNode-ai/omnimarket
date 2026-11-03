@@ -1001,6 +1001,48 @@ def _queue_wait_ms(
     return max(0, int(delta_ms))
 
 
+def resolve_dispatch_window_seconds(
+    *,
+    requested_timeout_seconds: int | None,
+    ceiling_seconds: int,
+    margin_seconds: int,
+    grace_seconds: int | None,
+) -> tuple[int, int]:
+    """Return ``(execution_timeout_seconds, wait_allowance_seconds)`` for a run.
+
+    OMN-22223. The runtime dispatch deadline is their sum, and the caller waits
+    ``min(requested, ceiling) + margin`` (omnibase_infra ``_terminal_wait_seconds``).
+    The allowance is clamped to the margin, so the runtime deadline can never
+    exceed the caller's wait: a terminal this handler records is a terminal the
+    caller is still waiting for.
+    """
+    execution_timeout_seconds = (
+        ceiling_seconds
+        if requested_timeout_seconds is None
+        else requested_timeout_seconds
+    )
+    allowance = (
+        grace_seconds
+        if requested_timeout_seconds is not None and grace_seconds is not None
+        else margin_seconds
+    )
+    return execution_timeout_seconds, min(allowance, margin_seconds)
+
+
+def remaining_budget_seconds(total_seconds: int, queue_wait_ms: int | None) -> float:
+    """Seconds of the publish-timed budget left at pickup (OMN-22223).
+
+    The caller's wait starts at publish, so the time a record spent in the
+    queue is already gone from the budget when the handler picks it up. An
+    unstamped request (``queue_wait_ms`` is ``None``) deducts nothing: the wait
+    was not measured, and an unmeasured wait is never booked as zero or as
+    exhausted. May be zero or negative: the queue used the whole budget.
+    """
+    if queue_wait_ms is None:
+        return float(total_seconds)
+    return total_seconds - queue_wait_ms / 1000.0
+
+
 def _request_ticket_id(request: ModelDelegateSkillRequest) -> str | None:
     """The ticket the caller named in the request metadata, or None.
 
@@ -1552,14 +1594,12 @@ class HandlerDelegateSkill:
         # resolves the same identity) while its RECEIPT carried None, which is
         # the split AC "receipts carry the minted identity" exists to refuse.
         resolved_tenant_id = _request_tenant_id(request)
-        # OMN-18852: PICKUP is here, and the budget below is measured from
-        # here -- not from the record's publish time. That was already true
-        # before this change (``asyncio.wait_for`` starts when ``handle`` is
-        # entered) and is now stated rather than inferred, because the two
-        # intervals are reported separately on the terminal and a reader has
-        # to know which one the budget governs. The monotonic clock times the
-        # work; the wall clock is only for the interval against the producer's
-        # own stamp, which lives in another process.
+        # OMN-18852: PICKUP is here; the queue wait is measured against the
+        # producer's own stamp and reported on the terminal.
+        # OMN-22223: the budget is timed from PUBLISH, as the caller's wait is,
+        # so the queue wait is deducted from it below. The monotonic clock times
+        # the work; the wall clock is only for the interval against the
+        # producer's stamp, which lives in another process.
         picked_up_monotonic = time.monotonic()
         queue_wait_ms = _queue_wait_ms(request, datetime.now(UTC))
         execution_budget = resolve_task_class_execution_budget(request.task_type)
@@ -1624,10 +1664,15 @@ class HandlerDelegateSkill:
                 ),
                 attempts_count=0,
             )
-        execution_timeout_seconds = (
-            timeout_ceiling_seconds
-            if requested_timeout_seconds is None
-            else requested_timeout_seconds
+        execution_timeout_seconds, wait_allowance_seconds = (
+            resolve_dispatch_window_seconds(
+                requested_timeout_seconds=requested_timeout_seconds,
+                ceiling_seconds=timeout_ceiling_seconds,
+                margin_seconds=execution_budget.terminal_delivery_margin_seconds,
+                grace_seconds=getattr(
+                    execution_budget, "requested_timeout_grace_seconds", None
+                ),
+            )
         )
         budget_evidence = ModelDelegationBudgetEvidence(
             requested_timeout_seconds=requested_timeout_seconds,
@@ -1638,17 +1683,45 @@ class HandlerDelegateSkill:
             ),
         )
         # OMN-21326: a caller who named a timeout is answered inside it plus the
-        # declared grace. The delivery margin stays the allowance for a run
-        # whose timeout nobody named, where it also carries a second rung.
-        requested_grace_seconds: int | None = getattr(
-            execution_budget, "requested_timeout_grace_seconds", None
+        # declared grace (resolve_dispatch_window_seconds). The delivery margin
+        # stays the allowance for a run whose timeout nobody named, where it
+        # also carries a second rung.
+        #
+        # OMN-22223: that sum is timed from PUBLISH, the same clock as the
+        # caller's wait, so the queue wait measured above is already spent.
+        total_budget_seconds = execution_timeout_seconds + wait_allowance_seconds
+        dispatch_deadline_seconds = remaining_budget_seconds(
+            total_budget_seconds, queue_wait_ms
         )
-        wait_allowance_seconds = (
-            requested_grace_seconds
-            if requested_timeout_seconds is not None
-            and requested_grace_seconds is not None
-            else execution_budget.terminal_delivery_margin_seconds
-        )
+        if dispatch_deadline_seconds <= 0:
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                error_message=(
+                    "queue_budget_exhausted: "
+                    f"queue_wait_ms={queue_wait_ms}; "
+                    f"total_budget_seconds={total_budget_seconds}; "
+                    f"task_type={request.task_type}; "
+                    "the record spent the whole publish-timed budget "
+                    "(execution "
+                    f"{execution_timeout_seconds}s plus {wait_allowance_seconds}s "
+                    "allowance) waiting to be picked up, so nothing was "
+                    "dispatched and the request can be sent again (OMN-22223)"
+                ),
+                # Nothing was dispatched, so the cause is the pre-dispatch
+                # refusal the model reserves attempts_count=0 for.
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+                ),
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=0,
+                budget_evidence=budget_evidence,
+                budget_source=budget_source,
+                attempts_count=0,
+            )
         # OMN-20557 / OMN-21752: the session model rides a context variable,
         # not a dispatch() keyword -- see session_model.py.
         session_token = bind_session_model(request, self._dispatch_port)
@@ -1721,7 +1794,7 @@ class HandlerDelegateSkill:
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
-                timeout=float(execution_timeout_seconds + wait_allowance_seconds),
+                timeout=dispatch_deadline_seconds,
             )
         except asyncio.CancelledError:
             progress.finalize_run_steps(
@@ -1776,7 +1849,7 @@ class HandlerDelegateSkill:
                 if queue_wait_ms is None
                 else (
                     f"; measured queue wait before pickup: {queue_wait_ms} ms "
-                    "(the budget is measured from pickup, not from publish)"
+                    "(the budget is measured from publish, so this wait is already spent)"
                 )
             )
             # OMN-17427: the terminal is built from what the dispatch already
