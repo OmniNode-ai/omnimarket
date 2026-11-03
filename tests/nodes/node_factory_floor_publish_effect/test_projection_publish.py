@@ -30,7 +30,13 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
 )
-from tests.nodes.node_factory_floor_compute.support import NOW, pr, request
+from tests.nodes.node_factory_floor_compute.support import (
+    NOW,
+    pr,
+    proven,
+    request,
+    running_on_dev,
+)
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     LocalSsh,
 )
@@ -54,6 +60,8 @@ def test_published_projection_http_readback(tmp_path: Path) -> None:
         request(
             plans=(plan,),
             prs=(pr("repo#1", "MERGED"),),
+            ledger=proven("repo#1"),
+            running_evidence=running_on_dev("repo#1"),
             selection=("projection-plan", "unread-plan"),
         )
     )

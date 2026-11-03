@@ -1083,7 +1083,7 @@ def _condition(
     stopped for a hard cause (an andon hold, a failed gate, no task table); needs_review while progress is unknown;
     stopped for a soft cause (a red pull request, a ledger stop; ``_running`` turns it building while a live lane works
     the line); complete only when every work task is done by merged, terminal or closed-ticket evidence and every gate
-    has passed; building when work is done or active; else queued.
+    has passed; building when work is done, integrating or active; else queued.
     """
     if hard:
         return "stopped"
@@ -1097,7 +1097,7 @@ def _condition(
         and gates.passed == len(gates.items)
     ):
         return "complete"
-    if any(item.state in {"done", "active"} for item in items):
+    if any(item.state in {"done", "integrating", "active"} for item in items):
         return "building"
     return "queued"
 

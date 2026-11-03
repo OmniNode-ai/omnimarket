@@ -32,6 +32,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorSelection,
     ModelFloorWatcher,
 )
+from omnimarket.models.model_merged_running_count import ModelMrcEvidence
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     HandlerFactoryFloor,
 )
@@ -78,6 +79,18 @@ LEDGER = "\n".join(
 )
 
 
+# The pull requests that run on dev in the proven profile, each with a passed integration-proof row written at the merge.
+PROVEN = (
+    ("example_docs", 1573),
+    ("example_docs", 1583),
+    ("omnimarket", 9101),
+)
+PROOF_ROWS = "\n".join(
+    f"L{n + 10} 2026-11-02T15:00:00Z | STATUS | lane=prover | state=integration | verdict=pass | pr={repo}#{number} | proof"
+    for n, (repo, number) in enumerate(PROVEN)
+)
+
+
 def _compute_config() -> ModelFactoryFloorConfig:
     raw = yaml.safe_load(COMPUTE_CONTRACT.read_text(encoding="utf-8"))
     return ModelFactoryFloorConfig.model_validate(raw["config"])
@@ -89,8 +102,12 @@ def _kb(tmp_path: Path) -> Path:
     return kb
 
 
-def _in_memory(tmp_path: Path) -> dict[str, Any]:
-    """The plan read with the effect contract's values, the ledger parsed by its reader, the handler called in process."""
+def _in_memory(tmp_path: Path, *, proven: bool = False) -> dict[str, Any]:
+    """The plan read with the effect contract's values, the ledger parsed by its reader, the handler called in process.
+
+    ``proven`` also supplies the running-on-dev records and the integration-proof rows that make a merge done; the
+    effect entry reads neither, so the overlay profile never reaches done (OMN-22106).
+    """
     runtime = load_contract(EFFECT_CONTRACT).runtime
     request = ModelFactoryFloorRequest(
         generated_at=NOW,
@@ -112,7 +129,19 @@ def _in_memory(tmp_path: Path) -> dict[str, Any]:
                 for key, title in MERGES
             ),
         ),
-        ledger=parse_ledger_text(LEDGER),
+        ledger=parse_ledger_text(f"{LEDGER}\n{PROOF_ROWS}" if proven else LEDGER),
+        running_evidence=tuple(
+            ModelMrcEvidence(
+                repo=repo,
+                kind="deploy-receipt",
+                source="deploy agent receipt",
+                number=number,
+                observed_at=NOW,
+            )
+            for repo, number in PROVEN
+        )
+        if proven
+        else None,
     )
     return HandlerFactoryFloor().handle(request).model_dump(mode="json")
 
@@ -162,6 +191,12 @@ PROFILES: dict[str, Callable[[Path, pytest.MonkeyPatch], dict[str, Any]]] = {
     "in-memory": lambda tmp_path, _monkeypatch: _in_memory(tmp_path),
     "overlay": _overlay,
 }
+# Done needs running-on-dev records and a proof row, which only the in-process request can carry.
+PROVEN_PROFILES: dict[str, Callable[[Path, pytest.MonkeyPatch], dict[str, Any]]] = {
+    "in-memory-proven": lambda tmp_path, _monkeypatch: _in_memory(
+        tmp_path, proven=True
+    ),
+}
 
 
 def _line(document: dict[str, Any]) -> dict[str, Any]:
@@ -178,13 +213,31 @@ def _stations(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def test_stale_terminal_merged_task_reads_merged(
     profile: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A merged task reads merged although a stale blocked (W0.1) or partial (W0.2) TERMINAL is bound to it."""
+    """A merged task reads merged although a stale blocked (W0.1) or partial (W0.2) TERMINAL is bound to it.
+
+    Without running-on-dev records the merge is integrating, not done, but it is still read from the merged pull request.
+    """
     stations = _stations(PROFILES[profile](tmp_path, monkeypatch))
     w01, w02 = stations["W0.1"], stations["W0.2"]
-    assert (w01["state"], w01["items"][0]["note"]) == ("done", "PRs merged")
-    assert (w02["state"], w02["items"][0]["note"]) == (
-        "done",
-        "PRs merged (task-to-ticket map)",
+    assert w01["state"] == "integrating"
+    assert w01["items"][0]["note"].startswith("PRs merged:")
+    assert w01["items"][0]["evidence_kind"] == "merged"
+    assert w02["state"] == "integrating"
+    assert w02["items"][0]["note"].startswith("PRs merged (task-to-ticket map):")
+    assert w02["items"][0]["evidence_kind"] == "merged"
+
+
+def test_stale_terminal_merged_task_reads_done_once_running_and_proven(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With running-on-dev records and a passed proof the same merged tasks are done, whatever their stale TERMINALs say."""
+    stations = _stations(PROVEN_PROFILES["in-memory-proven"](tmp_path, monkeypatch))
+    w01, w02 = stations["W0.1"], stations["W0.2"]
+    assert w01["state"] == "done"
+    assert w01["items"][0]["note"].startswith("PRs merged, running on dev")
+    assert w02["state"] == "done"
+    assert w02["items"][0]["note"].startswith(
+        "PRs merged (task-to-ticket map), running on dev"
     )
 
 
@@ -215,19 +268,29 @@ def test_text_mention_not_evidence(
     assert (w12a["state"], w12a["items"][0]["note"]) == ("prep", "ready")
 
 
-@pytest.mark.parametrize("profile", sorted(PROFILES))
+@pytest.mark.parametrize("profile", sorted(PROVEN_PROFILES))
 def test_built_ahead_of_gate_left_out_of_built_percent(
     profile: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """W1.1 merged, but its gate G1b reads fail: it shows the contract's label and does not count as built."""
-    document = PROFILES[profile](tmp_path, monkeypatch)
+    document = PROVEN_PROFILES[profile](tmp_path, monkeypatch)
     label = _compute_config().built_ahead_of_gate_label
     stations = _stations(document)
     w11 = stations["W1.1"]
     assert w11["state"] != "done"
-    assert w11["items"][0]["note"] == f"{label} G1b: PRs merged"
+    assert w11["items"][0]["note"].startswith(f"{label} G1b: PRs merged")
     assert stations["G1b"]["state"] == "stop"
     # Built: W0.1 and W0.2 of four work tasks; W1.1 is left out and the gate is counted apart.
     line = _line(document)
     assert line["progress"]["percent"] == 50.0
+    assert line["gates"]["failed"] == 1
+
+
+@pytest.mark.parametrize("profile", sorted(PROFILES))
+def test_merged_task_behind_failed_gate_is_not_built_without_running_records(
+    profile: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no running-on-dev records no merge is built, so the percent is 0.0 and the failed gate is still counted."""
+    line = _line(PROFILES[profile](tmp_path, monkeypatch))
+    assert line["progress"]["percent"] == 0.0
     assert line["gates"]["failed"] == 1

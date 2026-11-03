@@ -28,8 +28,10 @@ from tests.nodes.node_factory_floor_compute.support import (
     ago,
     merge,
     pr,
+    proven,
     request,
     row,
+    running_on_dev,
 )
 
 pytestmark = pytest.mark.unit
@@ -72,6 +74,15 @@ def gate_row(gate_id: str, verdict: str) -> Any:
 
 
 def line_of(*args: Any, **kwargs: Any) -> ModelFloorLine:
+    """The first line of a floor in which every merged pull request runs on dev and is integration-proven.
+
+    Done means merged, running on dev and proven; a test that reads the evidence counts passes its own
+    ``running_evidence`` and ``ledger`` and gets neither added.
+    """
+    if "running_evidence" not in kwargs:
+        keys = tuple(p.key for p in kwargs.get("prs", ()) if p.state == "MERGED")
+        kwargs["running_evidence"] = running_on_dev(*keys)
+        kwargs["ledger"] = (*kwargs.get("ledger", ()), *proven(*keys))
     return compute_factory_floor(request(*args, **kwargs)).lines[0]
 
 
@@ -87,12 +98,12 @@ def values(node: Any) -> list[Any]:
 def test_line_b_work_tasks_and_gates() -> None:
     # The live Line B: 68 parts, 20 of them named gates, 6 work tasks merged.
     tasks = tuple(
-        work(f"W{n}", prs=(f"repo#{n}",) if n < 6 else ()) for n in range(48)
+        work(f"W{n}", prs=(f"repo#{n + 1}",) if n < 6 else ()) for n in range(48)
     ) + tuple(gate(f"G{n}") for n in range(20))
     ledger = (gate_row("G0", "pass"), gate_row("G1", "fail"))
     line = line_of(
         plans=(plan_of(*tasks),),
-        prs=tuple(pr(f"repo#{n}", "MERGED") for n in range(6)),
+        prs=tuple(pr(f"repo#{n + 1}", "MERGED") for n in range(6)),
         ledger=ledger,
     )
     assert line.progress.state == "known"
@@ -106,11 +117,15 @@ def test_line_b_work_tasks_and_gates() -> None:
 
 
 def test_percent_rounds_half_up_to_one_decimal() -> None:
-    tasks = tuple(work(f"W{n}", prs=(f"repo#{n}",) if n < 1 else ()) for n in range(8))
-    line = line_of(plans=(plan_of(*tasks),), prs=(pr("repo#0", "MERGED"),))
+    tasks = tuple(
+        work(f"W{n}", prs=(f"repo#{n + 1}",) if n < 1 else ()) for n in range(8)
+    )
+    line = line_of(plans=(plan_of(*tasks),), prs=(pr("repo#1", "MERGED"),))
     assert line.progress.percent == 12.5
-    tasks = tuple(work(f"W{n}", prs=(f"repo#{n}",) if n < 1 else ()) for n in range(3))
-    line = line_of(plans=(plan_of(*tasks),), prs=(pr("repo#0", "MERGED"),))
+    tasks = tuple(
+        work(f"W{n}", prs=(f"repo#{n + 1}",) if n < 1 else ()) for n in range(3)
+    )
+    line = line_of(plans=(plan_of(*tasks),), prs=(pr("repo#1", "MERGED"),))
     assert line.progress.percent == 33.3
 
 
@@ -240,19 +255,21 @@ def test_merged_only_percent_and_separate_evidence() -> None:
         linear=linear,
     )
     items = {item.id: item for station in line.stations for item in station.items}
-    assert [items[k].state for k in "ABC"] == ["done", "done", "done"]
+    # Done means merged, running on dev and proven: the terminal and closed-ticket tasks name no pull request to show
+    # running, so they stay integrating and never reach done.
+    assert [items[k].state for k in "ABC"] == ["done", "integrating", "integrating"]
     assert [items[k].evidence_kind for k in "ABC"] == [
         "merged",
         "terminal",
         "linear_done",
     ]
-    # Terminal and closed-ticket work counts toward the condition, never toward the progress.
+    # Only merged, running and proven work counts toward the progress.
     assert (line.progress.completed, line.progress.total) == (1, 3)
-    assert line.condition == "complete"
-    # Neither source of running-on-dev was read: None, never 0.
+    assert line.condition == "building"
+    # The line evidence counts merged work apart from the others.
     assert line.line_evidence.merged == 1
-    assert line.line_evidence.running_on_dev is None
-    assert line.line_evidence.verified is None
+    assert line.line_evidence.running_on_dev == 1
+    assert line.line_evidence.verified == 1
     assert line.line_evidence.of == 3
 
 
@@ -286,6 +303,7 @@ def test_merged_only_percent_and_separate_evidence_when_running_is_read() -> Non
         prs=(pr("repo#1", "MERGED"),),
         merges=(merge("repo#1", 90),),
         ledger=(proof,),
+        running_evidence=None,
     )
     assert (unread.line_evidence.running_on_dev, unread.line_evidence.verified) == (
         None,
