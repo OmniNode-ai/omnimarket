@@ -119,3 +119,34 @@ def test_published_projection_http_readback(tmp_path: Path) -> None:
     assert lines[1]["progress"]["state"] == "unknown"
     assert lines[1]["progress"]["percent"] is None
     assert lines[1]["condition"] == "stopped"
+
+
+def test_published_site_pages_carry_memory_used_label(tmp_path: Path) -> None:
+    """AC66: the pages one publish puts on the site carry the Memory used label."""
+    projection = compute_factory_floor(request())
+    home, site = tmp_path / "home", tmp_path / "site"
+    source = home / load_runtime().source.relpath
+    source.parent.mkdir(parents=True)
+    source.write_bytes(projection.model_dump_json().encode("utf-8"))
+
+    result = HandlerFactoryFloorPublish(LocalSsh()).handle(
+        ModelFactoryFloorPublishRequest(
+            home=str(home),
+            skip_refresh=True,
+            now=NOW,
+            overlay=ModelFactoryFloorPublishOverlay(
+                ssh_target="local-shell",
+                remote_dir=str(site),
+                serve_url="http://127.0.0.1:1/",
+                bus_lane="projection-readback",
+                history_root=str(tmp_path / "history"),
+                owner_login="owner@example.invalid",
+            ),
+        ),
+        environ={},
+    )
+
+    pages = sorted(str(path.relative_to(site)) for path in site.rglob("index.html"))
+    assert pages == ["floor/index.html", "index.html"], (pages, result.published)
+    for page in pages:
+        assert "Memory used" in (site / page).read_text(encoding="utf-8"), page
