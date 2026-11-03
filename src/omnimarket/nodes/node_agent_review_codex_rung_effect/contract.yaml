@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_codex_rung_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The codex rung of the agent review: casts one voter's review of one pull request head
+  through the Codex CLI signed in with ChatGPT, run by the harness-delegate path on the
+  host where that login is. It refuses a run that was not the codex harness, not the
+  ChatGPT login, did not finish, or left no published delegation event, and returns the
+  vote with the provenance the receipt verifier checks (identity, endpoint, model,
+  delegation event id) and the findings parsed from the answer. It never calls an API key
+  path, the review gateway or any Anthropic endpoint. The dispatch orchestrator starts it
+  only for a voter whose roster rung is codex.
+input_model:
+  name: ModelCodexVoteRequest
+  module: omnimarket.nodes.node_agent_review_codex_rung_effect.models.model_codex_rung
+output_model:
+  name: ModelCodexVote
+  module: omnimarket.nodes.node_agent_review_codex_rung_effect.models.model_codex_rung
+handler:
+  module: omnimarket.nodes.node_agent_review_codex_rung_effect.handlers.handler_codex_rung
+  class: HandlerAgentReviewCodexRung
+  input_model: omnimarket.nodes.node_agent_review_codex_rung_effect.models.model_codex_rung.ModelCodexVoteRequest
+  output_model: omnimarket.nodes.node_agent_review_codex_rung_effect.models.model_codex_rung.ModelCodexVote
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_review_codex_rung_effect.handlers.handler_codex_rung:HandlerAgentReviewCodexRung
+  handlers:
+    - operation: cast_codex_vote
+      topic: onex.cmd.omnimarket.agent-review-codex-vote-requested.v1
+      handler:
+        name: HandlerAgentReviewCodexRung
+        module: omnimarket.nodes.node_agent_review_codex_rung_effect.handlers.handler_codex_rung
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  runtime_profiles:
+  - effects
+  idempotent: false
+  timeout_ms: 660000
+config:
+  agent_review_codex_rung:
+    harness: codex
+    login: codex ChatGPT login
+    endpoint: chatgpt.com
+    task_class: code_review
+    effort: high
+    call_budget_seconds: 600
+    harness_script: skills/harness-delegate/scripts/harness_delegate.py
+terminal_event: onex.evt.omnimarket.agent-review-codex-vote-cast.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.agent-review-codex-vote-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.agent-review-codex-vote-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.agent-review-codex-vote-cast.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-review-codex-vote-cast.v1
+published_events:
+  - event_type: AgentReviewCodexVoteCast
+    topic: onex.evt.omnimarket.agent-review-codex-vote-cast.v1
+    description: One codex voter's review of one pull request head, with its provenance.
+metadata:
+  transport_type: inmemory
+  description: The codex rung of the agent review, a separate node from the lab rung
+  author: OmniNode Team
+  created: "2026-11-03"
