@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OVERLAY. No ticket, lane, host, account or bus lane lives in this node; they arrive from
+# <root>/node_agent_review_cloud_rung_effect/overlay.yaml (overlay.example.yaml shows the shape).
+name: node_agent_review_cloud_rung_effect
+node_type: EFFECT_GENERIC
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >-
+  The cloud rung of the agent review: casts one voter's review of one pull request head
+  through a review-only Claude cloud session, started by the remote-lane runner on the
+  host where the claude.ai login is. It renders a review-only brief (the pull request, its
+  exact head, the v2 compact verdict format, the instruction to end with the review),
+  reads the review the cloud placement node parsed from the session's final message,
+  emits one delegation event and returns the vote UNSIGNED with that event's id. It never
+  holds, passes or reads a signing key: the dispatch orchestrator signs. It refuses a lane
+  that ended without a review, a review of another head and an event the bus did not
+  take; a model or endpoint other than the voter's is returned as written. The dispatch
+  orchestrator starts it only for a voter whose roster rung is cloud.
+input_model:
+  name: ModelCloudVoteRequest
+  module: omnimarket.nodes.node_agent_review_cloud_rung_effect.models.model_cloud_rung
+output_model:
+  name: ModelCloudVote
+  module: omnimarket.nodes.node_agent_review_cloud_rung_effect.models.model_cloud_rung
+handler:
+  module: omnimarket.nodes.node_agent_review_cloud_rung_effect.handlers.handler_cloud_rung
+  class: HandlerAgentReviewCloudRung
+  input_model: omnimarket.nodes.node_agent_review_cloud_rung_effect.models.model_cloud_rung.ModelCloudVoteRequest
+  output_model: omnimarket.nodes.node_agent_review_cloud_rung_effect.models.model_cloud_rung.ModelCloudVote
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_review_cloud_rung_effect.handlers.handler_cloud_rung:HandlerAgentReviewCloudRung
+  handlers:
+    - operation: cast_cloud_vote
+      topic: onex.cmd.omnimarket.agent-review-cloud-vote-requested.v1
+      handler:
+        name: HandlerAgentReviewCloudRung
+        module: omnimarket.nodes.node_agent_review_cloud_rung_effect.handlers.handler_cloud_rung
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  runtime_profiles: [effects]
+  idempotent: false
+  timeout_ms: 10500000
+# OVERLAY KEYS: transport (in_memory | redpanda, the bus of the delegation event), ticket (the
+# carrier the cloud lane's CLAIM names), parent (the lane its rows name as parent), lane_prefix,
+# runner_model (the runner's --model; a cloud session runs only a Sonnet lane), timeout_min,
+# harness (the backend's harness name), task_type and bus_lane. Every key is required.
+delegation_event:
+  topic: onex.evt.omnimarket.delegate-skill-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.agent-review-cloud-vote-requested.v1
+terminal_event: onex.evt.omnimarket.agent-review-cloud-vote-cast.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.agent-review-cloud-vote-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.agent-review-cloud-vote-cast.v1
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-review-cloud-vote-cast.v1
+published_events:
+  - event_type: AgentReviewCloudVoteCast
+    topic: onex.evt.omnimarket.agent-review-cloud-vote-cast.v1
+    description: One cloud voter's unsigned review of one pull request head, with its provenance.
+  - event_type: DelegateSkillCompleted
+    topic: onex.evt.omnimarket.delegate-skill-completed.v1
+    description: The delegation terminal of the cloud session, backend harness:<harness>:<model>.
+dependencies:
+  - name: omnimarket.nodes.node_cloud_session_placement_effect
+    dependency_type: internal
+    description: "Through the remote-lane runner: the review-only lane's route, prompt, session read, review parse and close."
+    required: true
+metadata:
+  transport_type: kafka
+  ticket: OMN-22345
+  description: The cloud rung of the agent review, a separate node from the lab and codex rungs
+  author: OmniNode Team
+  created: "2026-11-03"
+  tags: [effect, agent-review, cloud-session, OMN-22345]

@@ -157,6 +157,7 @@ jobs:
           sparse-checkout: |
             config/onex/overlays/node_review_voters_overlay_compute
             config/onex/overlays/agent_review_gate_accept
+            config/onex/overlays/review_agent_receipt_verify
           sparse-checkout-cone-mode: false
 
       - name: Place the CI overlay outside the workspace
@@ -733,6 +734,10 @@ jobs:
           ACCEPT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ONEX_SKILL_OVERLAY_ROOTS: ${{ github.workspace }}/../ci-overlay/config/onex/overlays
+          # OMN-22177: the receipt key the review step already carries, for the verifier
+          # node the accept node runs in a subprocess of ../omniintelligence when the
+          # agent_review_gate_accept overlay names verifier_endpoint subprocess:<path>.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
         run: |
           ACCEPT_BASE="${RUNNER_TEMP:-/tmp}/agent-review-accept-base"
           rm -rf "$ACCEPT_BASE"
