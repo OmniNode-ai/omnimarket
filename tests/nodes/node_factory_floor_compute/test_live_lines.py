@@ -23,8 +23,10 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from tests.nodes.node_factory_floor_compute.support import (
     merge,
     pr,
+    proven,
     request,
     row,
+    running_on_dev,
 )
 
 pytestmark = pytest.mark.unit
@@ -209,9 +211,11 @@ def test_a_stop_on_a_ticket_whose_parts_are_all_done_is_over() -> None:
                     reason="premise failed",
                     tickets=("OMN-3",),
                 ),
+                *proven("repo#9"),
             ),
             prs=(pr("repo#9", "MERGED"),),
             merges=(merge("repo#9", 30),),
+            running_evidence=running_on_dev("repo#9"),
         )
     )
     line = result.lines[0]
@@ -235,7 +239,8 @@ def test_a_hand_off_is_active_until_its_pull_request_merges_never_done() -> None
         result = compute_factory_floor(
             request(
                 plans=(plan_of(scoped("T10"), scoped("T1")),),
-                ledger=(handed_off("omnimarket#4799"),),
+                ledger=(handed_off("omnimarket#4799"), *proven("omnimarket#4799")),
+                running_evidence=running_on_dev("omnimarket#4799"),
                 **kwargs,
             )
         )
@@ -251,7 +256,8 @@ def test_a_hand_off_is_active_until_its_pull_request_merges_never_done() -> None
     merged = state(
         prs=(pr("omnimarket#4799", "MERGED"),), merges=(merge("omnimarket#4799", 5),)
     )
-    assert merged == ("done", "PRs merged")
+    assert merged[0] == "done"
+    assert merged[1].startswith("PRs merged, running on dev, integration proof passed")
 
 
 def test_a_hand_off_adds_nothing_to_the_percent_built() -> None:

@@ -337,3 +337,50 @@ def test_an_upload_that_is_not_its_declared_shape_is_refused() -> None:
         _estimate("not json", EnumExportFormat.CHATGPT_CONVERSATIONS)
     with pytest.raises(ExportParseError):
         _estimate("model,tokens\nx,1\n", EnumExportFormat.CSV)
+
+
+# OMN-21483 AC1 -------------------------------------------------------------
+
+_SESSION_FIXTURE = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "prompt_cost_estimate"
+    / "claude_code_session.jsonl"
+)
+
+
+def test_claude_code_session_jsonl_prices_each_assistant_turn_on_the_model_the_file_names() -> (
+    None
+):
+    result = _estimate(
+        _SESSION_FIXTURE.read_text(encoding="utf-8"),
+        EnumExportFormat.CLAUDE_CODE_JSONL,
+    )
+
+    # Four distinct assistant messages: msg_01A1 is written on two lines and
+    # counts once, and the synthetic reply is not a model turn.
+    assert [
+        (row.source_model, row.tokens_in, row.tokens_out) for row in result.rows
+    ] == [
+        ("claude-opus-5-5", 1500, 400),
+        ("claude-haiku-4-5", 300, 90),
+        ("claude-opus-5-5", 2100, 250),
+        ("claude-sonnet-4-6", 900, 320),
+    ]
+    assert result.prompts_total == result.prompts_priced == 4
+    assert result.prompts_unpriced == 0
+    assert all(row.model_source is EnumModelSource.EXPORT for row in result.rows)
+    assert all(row.tokens_estimated is False for row in result.rows)
+    # A turn belongs to the prompt that caused it.
+    assert [row.prompt_text for row in result.rows] == [
+        "write a python function that parses ISO dates and returns UTC"
+    ] * 3 + ["what is the capital of france and why did it become the capital"]
+    # Each turn is priced at its own model's manifest rate, never the prompt's
+    # first model.
+    for row in result.rows:
+        assert row.actual_cost_usd == _manifest_cost(
+            row.source_model, row.tokens_in, row.tokens_out
+        )
+    assert result.actual_cost_usd == sum(
+        (row.actual_cost_usd for row in result.rows), Decimal(0)
+    )

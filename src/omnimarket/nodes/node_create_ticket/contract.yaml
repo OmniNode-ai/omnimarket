@@ -6,22 +6,38 @@ runtime_profiles: [main]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  The one Linear ticket node (OMN-20595): create, read, comment and transition. A create is
+  The one Linear ticket node (OMN-20595): create, read, comment, transition, clear_project and
+  repair_project. A create is
   judged first by the installed omniclaude ticket-creation guard (OMN-17942) on
   the exact payload filed, Backlog with no project and the caller's description
   unchanged; with no guard found, or a refusal, nothing is created. A transition
   moves a ticket to a named workflow state through the adapter's update_issue,
   after the same guard judges the update payload. Read and comment go through the omnibase_infra Linear project-tracker adapter, with no
-  stub fallback when the key is missing.
+  stub fallback when the key is missing. Linear copies a parent's project onto a sub-issue
+  created without one, and the Linear MCP cannot send a null project, so clear_project clears one
+  ticket's project with a direct GraphQL issueUpdate(projectId: null) and reports success only
+  when an independent readback shows an explicit null project; repair_project lists the
+  lane-created tickets of one UTC day that sit in a named project and clears each after
+  rechecking its creation day, label and project (OMN-21723). A create under a parent does the
+  same clear.
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    # One routing entry; the request's `operation` field selects create, read, comment or transition.
+    # HandlerCreateTicket routes create, read, comment and transition by the request's `operation`
+    # field and hands clear_project and repair_project to HandlerTicketProject (OMN-21723).
     - operation: create_ticket
       handler:
         name: HandlerCreateTicket
         module: omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket
+    - operation: clear_project
+      handler:
+        name: HandlerTicketProject
+        module: omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project
+    - operation: repair_project
+      handler:
+        name: HandlerTicketProject
+        module: omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project
 
 handler:
   module: omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket
@@ -37,10 +53,10 @@ descriptor:
 inputs:
   operation:
     type: str
-    description: "create (default), read, comment or transition"
+    description: "create (default), read, comment, transition, clear_project or repair_project"
     required: false
     default: "create"
-    allowed_values: ["create", "read", "comment", "transition"]
+    allowed_values: ["create", "read", "comment", "transition", "clear_project", "repair_project"]
   title:
     type: str
     description: "Ticket title (create)"
@@ -51,7 +67,7 @@ inputs:
     required: false
   ticket_id:
     type: str
-    description: "Ticket identifier, e.g. OMN-1234 (read, comment)"
+    description: "Ticket identifier, e.g. OMN-1234 (read, comment, transition, clear_project)"
     required: false
   body:
     type: str
@@ -82,6 +98,14 @@ inputs:
     type: str
     description: "REFUSED when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)"
     required: false
+  day:
+    type: str
+    description: "One UTC day, YYYY-MM-DD, whose lane-created tickets repair_project lists (repair_project)"
+    required: false
+  from_project:
+    type: str
+    description: "The project repair_project clears from the tickets it lists, e.g. Ready (repair_project)"
+    required: false
   team:
     type: str
     description: "Linear team name (default: Omninode)"
@@ -100,7 +124,19 @@ inputs:
 outputs:
   status:
     type: str
-    description: "created | read | commented | transitioned | dry_run | error"
+    description: "created | read | commented | transitioned | project_cleared | project_repaired | dry_run | error"
+  project_cleared:
+    type: bool
+    description: "clear_project: the independent readback showed an explicit null project"
+  cleared_ids:
+    type: list[str]
+    description: "repair_project: the tickets whose project was cleared and read back as null"
+  candidate_ids:
+    type: list[str]
+    description: "repair_project: the tickets the listing found for the day, label and project"
+  skipped:
+    type: list[str]
+    description: "repair_project: id and reason for each listed ticket the recheck refused"
   ticket_id:
     type: str
     description: "Created, read or commented Linear ticket ID (e.g., OMN-5957)"
