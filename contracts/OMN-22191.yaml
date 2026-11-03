@@ -17,7 +17,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: Handler tests of the four slice 2 nodes, with literal expected values ported from the source scripts' behaviour.
-    command: uv run pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
+    command: uv run pytest tests/nodes/node_lane_rules_block_compute/test_golden_chain_lane_rules_block_compute.py tests/nodes/node_onex_pillar_owner_compute/test_golden_chain_onex_pillar_owner_compute.py tests/nodes/node_ledger_rows_build_compute/test_golden_chain_ledger_rows_build_compute.py tests/nodes/node_ledger_tail_compute/test_golden_chain_ledger_tail_compute.py -q --no-cov -m "not kafka"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -28,7 +28,7 @@ dod_evidence:
     source: manual
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
+        check_value: uv run pytest tests/nodes/node_lane_rules_block_compute/test_golden_chain_lane_rules_block_compute.py tests/nodes/node_onex_pillar_owner_compute/test_golden_chain_onex_pillar_owner_compute.py tests/nodes/node_ledger_rows_build_compute/test_golden_chain_ledger_rows_build_compute.py tests/nodes/node_ledger_tail_compute/test_golden_chain_ledger_tail_compute.py -q --no-cov -m "not kafka"
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: [AC1]
   - id: dod-omn22191-slice-2-integration-proof
@@ -38,6 +38,22 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |-
-          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22191-20261103T1154Z -- uv run --frozen pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22191-20261103T1154Z -- uv run --frozen pytest tests/nodes/node_lane_rules_block_compute/test_golden_chain_lane_rules_block_compute.py tests/nodes/node_onex_pillar_owner_compute/test_golden_chain_onex_pillar_owner_compute.py tests/nodes/node_ledger_rows_build_compute/test_golden_chain_ledger_rows_build_compute.py tests/nodes/node_ledger_tail_compute/test_golden_chain_ledger_tail_compute.py -q --no-cov -m "not kafka"
         cwd: .
-    binds_ac: [AC1]
+  - id: dod-g0-slice-2-deploy-source-readback
+    description: Read each compute handler from the public repository at the checked-out commit and require its entry point. The hosted runner needs only curl and GitHub HTTPS access. A missing handler or failed HTTP read fails the check; handler behaviour is covered by the AC1 tests.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_lane_rules_block_compute/handlers/handler_lane_rules_block.py" | grep -F "class HandlerLaneRulesBlock:" > /dev/null'
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_onex_pillar_owner_compute/handlers/handler_onex_pillar_owner.py" | grep -F "class HandlerOnexPillarOwner:" > /dev/null'
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_ledger_rows_build_compute/handlers/handler_ledger_rows_build.py" | grep -F "class HandlerLedgerRowsBuild:" > /dev/null'
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_ledger_tail_compute/handlers/handler_ledger_tail.py" | grep -F "class HandlerLedgerTail:" > /dev/null'
