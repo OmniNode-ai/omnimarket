@@ -618,14 +618,16 @@ function lineFacts(L){
     active: items.filter(i => i.state === "active").length,
     stopped: L.condition === "stopped",
     // A line whose condition the record does not carry is unread. It is never counted as running.
-    unread: !COND[L.condition]};
+    unread: !condEntry(L.condition)};
 }
 
 // ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
 // (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
 const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+// A condition string is looked up as an own key only: a record value such as "constructor" or "toString" names no condition.
+function condEntry(key){ return Object.prototype.hasOwnProperty.call(COND, key) ? COND[key] : undefined; }
 function lineCondition(L){
-  const c = COND[L.condition];
+  const c = condEntry(L.condition);
   return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
 }
 function conditionPill(L){
@@ -1008,7 +1010,6 @@ function renderDashboard(p){
   if (fresh.stale) parts.push(`${plural(fresh.stale, "source is", "sources are")} out of date`);
   if (fresh.unread) parts.push(`${plural(fresh.unread, "source is", "sources are")} not read`);
   if (unreadM) parts.push(`${plural(unreadM, "machine is", "machines are")} not read`);
-  const needsPerson = stoppedN || stalled || redLanes;
   const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : "ok";
   const needs = [];
   // Needs you holds only what the operator decides. What the workers and the publish machinery handle is listed apart.
@@ -1026,7 +1027,7 @@ function renderDashboard(p){
   if (notFresh) handled.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}: ${fresh.names}.`, href: "#freshH", link: "See which sources"});
   if (unreadM) handled.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, href: "#baysH", link: "See the machines"});
   const verdict = !parts.length ? "All lines running. Nothing needs you."
-    : `${needsPerson ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
+    : `${needs.length ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
   const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : "Stopped or failing";
 
   const board = [];

@@ -394,8 +394,10 @@ function buildSlots(lines, status){
 // ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
 // (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
 const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+// A condition string is looked up as an own key only: a record value such as "constructor" or "toString" names no condition.
+function condEntry(key){ return Object.prototype.hasOwnProperty.call(COND, key) ? COND[key] : undefined; }
 function lineCondition(L){
-  const c = COND[L.condition];
+  const c = condEntry(L.condition);
   return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
 }
 function conditionPill(L){
@@ -489,7 +491,7 @@ function lineFacts(L){
     active: items.filter(i => i.state === "active").length,
     stopped: L.condition === "stopped",
     // A line the record carries no condition for is unread, and is never counted as running.
-    unread: !COND[L.condition]};
+    unread: !condEntry(L.condition)};
 }
 
 function stationName(stations, id){
@@ -569,7 +571,6 @@ function renderVerdict(slots, floor, bayState, health){
   const real = slots.filter(x => x.line).map(x => lineFacts(x.line));
   const stopped = real.filter(x => x.stopped).length;
   const unreadLines = real.filter(x => x.unread).length;
-  const readLines = real.length - unreadLines;
   const parts = [];
   parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : unreadLines ? `No line is known to be stopped, but ${unreadLines} of ${real.length} line${real.length === 1 ? " is" : "s are"} not read` : `No line is stopped (${real.length} read)`) : "No line has a plan file yet");
   if (stopped && unreadLines) parts.push(`${unreadLines} line${unreadLines === 1 ? " is" : "s are"} not read`);

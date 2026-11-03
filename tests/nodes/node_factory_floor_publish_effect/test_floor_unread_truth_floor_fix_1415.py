@@ -139,3 +139,61 @@ def test_the_tab_words_are_short_enough_for_a_phone() -> None:
 def test_a_snapshot_tab_is_a_steady_grey_dot_not_a_dashed_spinner_ring() -> None:
     assert '"snap", snap ? "Snapshot"' in SHELL_SRC
     assert ".tab i.c-snap{background:var(--muted)" in SHELL_SRC
+
+
+def _with_condition(value: str) -> dict[str, Any]:
+    record = _unread_record()
+    record["lines"][0]["condition"] = value
+    return record
+
+
+def test_a_condition_named_like_an_object_member_is_unread_never_read_and_green() -> (
+    None
+):
+    """The page looks conditions up in a plain object; "constructor" and "toString" are not conditions."""
+    for value in ("constructor", "toString", "__proto__", "hasOwnProperty"):
+        record = _with_condition(value)
+        out = _shell(record)
+        assert "All lines running" not in out["dash"], value
+        assert "1 line is not read" in out["dash"], value
+        assert "Not read" in out["dash"], value
+        assert "Running" not in out["word-floor"], value
+        floor = _run_floor({"factory-floor.json": record})["verdict"]
+        assert "not read" in floor, value
+        assert "No line is stopped (" not in floor, value
+
+
+def test_a_real_condition_is_still_read_so_the_own_key_check_costs_nothing() -> None:
+    out = _shell(_with_condition("building"))
+    assert "1 line is not read" not in out["dash"]
+    assert "Building" in out["dash"]
+
+
+def test_the_verdict_and_the_needs_you_list_agree_when_only_the_factory_has_work() -> (
+    None
+):
+    """A quiet worker and a failing change are the factory's to fix: the list says nothing, so the verdict never says Needs attention."""
+    record = copy.deepcopy(SHELL_RECORD)
+    record["lines"][0]["condition"] = "building"
+    dash = _shell(record)["dash"]
+    assert "Needs you: nothing" in dash
+    assert "Needs attention" not in dash
+    assert "Needs a look" in dash
+    assert "gone quiet" in dash
+
+
+def test_the_verdict_says_needs_attention_when_the_list_holds_an_operator_item() -> (
+    None
+):
+    dash = _shell(copy.deepcopy(SHELL_RECORD))["dash"]
+    assert "Needs you: nothing" not in dash
+    assert "Needs attention" in dash
+
+
+def test_the_floor_verdict_holds_no_unused_variable_and_no_plain_object_lookup() -> (
+    None
+):
+    floor_src = (NODE_DIR / "page/floor/index.html").read_text(encoding="utf-8")
+    assert not re.search(r"\breadLines\b", floor_src)
+    assert "COND[L.condition]" not in floor_src
+    assert "COND[L.condition]" not in SHELL_SRC

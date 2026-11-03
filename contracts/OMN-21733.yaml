@@ -620,3 +620,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_publish_effect/tests/test_page_containers.py -q --no-cov --tb=line -k at_its_budget_is_drawn_against_its_target"
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov --tb=line -k declared_target_reaches_the_record_lane_row"
+        cwd: "."
