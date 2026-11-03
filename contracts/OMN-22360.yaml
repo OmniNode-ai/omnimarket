@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: The lock resolves with the compat range and the dependency-pin validator reports no manifest finding.
-    command: uv lock --check
+    command: uv run pytest tests/ci/test_core_pin_compat_omn17427.py tests/ci/test_pin_resolvability_gate_workflow.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -31,5 +31,5 @@ dod_evidence:
       - AC8
     checks:
       - check_type: test_passes
-        check_value: uv lock --check
+        check_value: uv run pytest tests/ci/test_core_pin_compat_omn17427.py tests/ci/test_pin_resolvability_gate_workflow.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket
