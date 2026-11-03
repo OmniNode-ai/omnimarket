@@ -727,7 +727,10 @@ jobs:
         # The node runs from the BASE commit, never the checkout under review (the
         # same rule as the parse veto above), so a pull request cannot supply the
         # code that accepts itself; a base that does not carry the node yet, or a
-        # node that does not run, leaves the voters' verdict as it stands.
+        # node that does not run, leaves the voters' verdict as it stands. `python -P`
+        # keeps the checkout under review (this step's working directory) off
+        # sys.path, so a module the pull request adds at its root cannot shadow an
+        # import of the node while the step holds the receipt key.
         id: accept
         if: always()
         env:
@@ -749,7 +752,7 @@ jobs:
             echo "decision=unchanged" >> "$GITHUB_OUTPUT"
           else
             ACCEPT_EXIT=0
-            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
+            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -P -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
               --repository "${{ github.repository }}" \
               --pull-request "${{ github.event.pull_request.number }}" \
               --head-sha "${{ github.event.pull_request.head.sha }}" \

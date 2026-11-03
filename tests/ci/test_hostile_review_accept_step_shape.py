@@ -69,13 +69,16 @@ def test_the_accept_step_runs_the_node_from_the_base_commit_under_if_always() ->
     run = str(step["run"])
     assert "onex run-node" not in run
     assert 'worktree add --detach "$ACCEPT_BASE" "$ACCEPT_BASE_SHA"' in run
-    calls = re.findall(rf"python -m {re.escape(NODE_MODULE)}\b", run)
+    calls = re.findall(rf"python -P -m {re.escape(NODE_MODULE)}\b", run)
     assert len(calls) == 1, calls
     assert (
-        'PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -m ' + NODE_MODULE
+        'PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -P -m ' + NODE_MODULE
     ) in run
     assert "PYTHONPATH" not in run.replace('PYTHONPATH="$ACCEPT_BASE/src"', "")
     assert "$GITHUB_WORKSPACE/src" not in run
+    # The step holds the receipt key and runs in the checkout under review: -P keeps
+    # that checkout off sys.path, so a root-level module the PR adds is never imported.
+    assert "python -m " not in run, "the node runs with python -P"
     assert "::notice::" in run, "a base without the node must skip with a notice"
     assert run.count("decision=unchanged") == 3, "one fallback per skipped path"
     for decided in ("pass_agent", "decision=refuse", "decision=pass"):
