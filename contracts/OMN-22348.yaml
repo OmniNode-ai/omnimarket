@@ -1,0 +1,68 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22348"
+title: "omnimarket dev fails two unit tests on every pull request: the AC66 binding and the stale test durations record"
+summary: "Two unit tests failed on dev itself. The AC66 entry of the OMN-21733 contract bound its criterion with a grep command; it now names a pytest file that asserts the Memory used label in both published page sources. The committed durations record left 67 test files unrecorded against a limit of 50; the unrecorded files are now recorded from a measured full-suite run."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22348-ac66"
+    statement: |-
+      The AC66 entry of the OMN-21733 contract is bound to evidence the repo-evidence rule accepts.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: contracts/OMN-21733.yaml binds AC66 with a uv run pytest command naming an existing test file that asserts the Memory used label, so the binds-every-criterion test passes at the fix head"
+  - id: "req-omn22348-durations"
+    statement: |-
+      The committed durations record leaves fewer than fifty test files unrecorded.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: config/test_file_durations.json records the test files that were unrecorded, so fewer than fifty test files are unrecorded at the fix head"
+  - id: "req-omn22348-suite"
+    statement: |-
+      The full unit suite at the fix head has no failure that also fails at the dev merge base.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the full omnimarket unit suite at the fix head on a lab host has no failure that also fails at the dev merge base"
+evidence_requirements:
+  - kind: "tests"
+    description: "The two formerly failing tests pass."
+    command: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22348-ac66-binding"
+    description: "Every repo contract binds every criterion, including AC66 of the OMN-21733 contract."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -k test_every_repo_contract_binds_every_criterion"
+        cwd: "."
+  - id: "dod-omn22348-memory-used-label"
+    description: "Both published page sources carry the Memory used label."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_page_memory_used_label.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22348-durations-record"
+    description: "The committed durations record leaves fewer than fifty test files unrecorded."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22348-both-tests-green"
+    description: "Both formerly failing tests pass together at the fix head. The full-suite comparison against the dev merge base is a lab run recorded in the PR; hosted CI runs the whole suite as its Tests splits."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov"
+        cwd: "."
