@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_harness_rung_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The harness rung of the agent review: casts one voter's review of one pull request head
+  through a CLI harness on its subscription login (Codex signed in with ChatGPT, Claude
+  Code on the Claude subscription via claude -p), run by the harness-delegate path on the
+  host where that login is. The rung's harness, login, endpoint, task class, effort, call
+  budget, harness script and run-directory leaf are data: the dispatch orchestrator reads
+  them from its overlay's harness_rungs map and sends them in each vote request, so one
+  node serves every harness rung and none is named in code. It refuses a run that was not
+  the rung's harness or login, did not finish, left no published delegation event or used
+  a model other than the roster's, and returns the vote unsigned with the provenance the
+  receipt verifier checks (identity, endpoint, model, delegation event id) and the
+  findings parsed from the answer. It never calls an API key path or the review gateway,
+  and never receives the receipt signing key.
+input_model:
+  name: ModelHarnessVoteRequest
+  module: omnimarket.nodes.node_agent_review_harness_rung_effect.models.model_harness_rung
+output_model:
+  name: ModelHarnessVote
+  module: omnimarket.nodes.node_agent_review_harness_rung_effect.models.model_harness_rung
+handler:
+  module: omnimarket.nodes.node_agent_review_harness_rung_effect.handlers.handler_harness_rung
+  class: HandlerAgentReviewHarnessRung
+  input_model: omnimarket.nodes.node_agent_review_harness_rung_effect.models.model_harness_rung.ModelHarnessVoteRequest
+  output_model: omnimarket.nodes.node_agent_review_harness_rung_effect.models.model_harness_rung.ModelHarnessVote
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_review_harness_rung_effect.handlers.handler_harness_rung:HandlerAgentReviewHarnessRung
+  handlers:
+    - operation: cast_harness_vote
+      topic: onex.cmd.omnimarket.agent-review-harness-vote-requested.v1
+      handler:
+        name: HandlerAgentReviewHarnessRung
+        module: omnimarket.nodes.node_agent_review_harness_rung_effect.handlers.handler_harness_rung
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  runtime_profiles:
+  - effects
+  idempotent: false
+  timeout_ms: 660000
+terminal_event: onex.evt.omnimarket.agent-review-harness-vote-cast.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.agent-review-harness-vote-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.agent-review-harness-vote-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.agent-review-harness-vote-cast.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-review-harness-vote-cast.v1
+published_events:
+  - event_type: AgentReviewHarnessVoteCast
+    topic: onex.evt.omnimarket.agent-review-harness-vote-cast.v1
+    description: One harness voter's unsigned review of one pull request head, with its provenance.
+metadata:
+  transport_type: inmemory
+  description: The harness rung of the agent review (every subscription CLI rung), a separate node from the lab rung
+  author: OmniNode Team
+  created: "2026-11-03"
