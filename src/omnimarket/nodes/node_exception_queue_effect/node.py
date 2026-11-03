@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from omnimarket.models.model_andon_ledger_holds import (
+    ModelAndonLedgerHoldsRequest,
+    ModelAndonLedgerHoldsResult,
+)
+
 from .models import (
     ModelExceptionEmitRequest,
     ModelExceptionEmitResult,
@@ -32,7 +37,8 @@ class NodeExceptionQueueEffect:
         | ModelExceptionResolveRequest
         | ModelExceptionQueueReadRequest
         | ModelStopEventRequest
-        | ModelOpenStopsRequest,
+        | ModelOpenStopsRequest
+        | ModelAndonLedgerHoldsRequest,
     ) -> (
         ModelExceptionEmitResult
         | ModelExceptionQueueResult
@@ -40,8 +46,10 @@ class NodeExceptionQueueEffect:
         | ModelExceptionQueueRead
         | ModelStopEventResult
         | ModelOpenStopsResult
+        | ModelAndonLedgerHoldsResult
     ):
         from .container.container_exception_queue_effect import (
+            create_handler_andon_ledger_holds,
             create_handler_exception_emit,
             create_handler_exception_queue,
             create_handler_exception_queue_read,
@@ -62,6 +70,8 @@ class NodeExceptionQueueEffect:
             return create_handler_stop_event().handle(request)
         if isinstance(request, ModelOpenStopsRequest):
             return create_handler_open_stops().handle(request)
+        if isinstance(request, ModelAndonLedgerHoldsRequest):
+            return create_handler_andon_ledger_holds().handle(request)
         raise TypeError(
             f"Unsupported exception queue request: {type(request).__name__}"
         )
