@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Protocols for the Claude Code hook adapter effect node."""
 
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.protocols.protocol_additive_miss_journal import (
+    ProtocolAdditiveMissJournal,
+)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.protocols.protocol_receipt_mode_client import (
     ProtocolReceiptModeClient,
 )
@@ -9,4 +12,8 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.protocols.protocol_se
     ProtocolSessionBarrierJournal,
 )
 
-__all__ = ["ProtocolReceiptModeClient", "ProtocolSessionBarrierJournal"]
+__all__ = [
+    "ProtocolAdditiveMissJournal",
+    "ProtocolReceiptModeClient",
+    "ProtocolSessionBarrierJournal",
+]
