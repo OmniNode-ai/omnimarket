@@ -132,7 +132,7 @@ def test_manifest_line_record_has_pill_percent_stations_and_feeders() -> None:
     assert notes["W0.1"].startswith(
         "PRs merged, running on dev, integration proof passed"
     )
-    assert notes["W0.2"] == "claim lane-a"
+    assert notes["W0.2"] == "worker lane-a is on it"
     assert notes["G0"] == "waits for W0.2"
     assert line.andon.flag is False
     assert line.andon.reason == ""
@@ -240,7 +240,7 @@ def test_manifest_evidence_from_terminal_linear_open_pr_and_stale_claim() -> Non
     assert notes["A"] == "Linear done: no merged pull request to show running"
     assert notes["B"] == "Linear in progress"
     assert notes["C"] == "PR repo#3 open"
-    assert notes["E"] == "lane x ended blocked"
+    assert notes["E"] == "worker x ended blocked"
 
 
 # ------------------------------------------------------------------------- andon or fallback
@@ -284,7 +284,7 @@ def test_andon_or_fallback_andon_stopped_plan_flags_reason_and_stops_station() -
     assert states["G0"] == "stop"
     assert _station_states(line) == {"0": "stop", "1a": "wait"}
     note = {i.id: i.note for st in line.stations for i in st.items}
-    assert note["W0.2"] == "andon hold hold-andon-1: andon:gate:0:W0.2"
+    assert note["W0.2"] == "stopped by hold hold-andon-1: andon:gate:0:W0.2"
     assert note["G0"].startswith("gate failed ")
 
 

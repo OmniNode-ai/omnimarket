@@ -170,6 +170,12 @@ requirements:
         statement: "AC65: the car is a decorative icon with no data and is `aria-hidden` -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -q -k car_is_decorative"
       - id: "AC66"
         statement: "AC66: the change is proven on the real site after a publish: the served page and factory-floor.json read from the tailnet site show the new bar text, the \"Memory used\" label and the refusing-machine line, recorded as installed=<host>:<revision> with observed=<what ran> -- falsifier: curl -s \"$FACTORY_FLOOR_URL\" | grep -c \"Memory used\" prints 1 or more after the publish, where the variable holds the served site address from the deployment overlay"
+  - id: "req-omn21733-single-integration-state"
+    statement: |-
+      The floor has one definition of integration state, built and done: the integrating state dev already carries (OMN-22106), with this change's projection fields reading it and declaring no second one.
+    acceptance:
+      - id: "AC67"
+        statement: "AC67: the input model and the compute contract declare exactly one integration_state with its pass and fail verdicts and one running_evidence input, the handler maps a merged item without running evidence to the integrating state and a proven running merge to done -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -654,6 +660,14 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html && grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html"
         cwd: "."
+  - id: "dod-omn21733-ac67"
+    description: "AC67 the floor keeps dev's one integration state: one integration_state with its verdicts in the model and the contract, one running_evidence input, and the handler maps a merged item without running evidence to integrating."
+    source: "manual"
+    binds_ac: ["AC67"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac66-served-site"
     description: "AC66 served-site probe, unbound: after a real publish the served page carries the Memory used label. Hosted CI cannot reach the tailnet, so only the local Done gate runs this check."
     source: "manual"

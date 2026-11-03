@@ -1,4 +1,5 @@
 {
+  "src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py": 0.17,
   "tests/analysis/test_ast_import_scanner.py": 0.17,
   "tests/chains/delegation/test_chain_delegation_error_paths.py": 3.25,
   "tests/chains/delegation/test_chain_delegation_orchestrator.py": 1.73,
