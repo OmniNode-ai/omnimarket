@@ -165,6 +165,7 @@ from omnimarket.handlers.routing.local_byok_route import (
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
 )
+from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -1941,6 +1942,11 @@ class LocalDelegationDispatchPort:
         resolved_tenant_id = resolve_or_mint_local_deployment_tenant_id(
             tenant_id or (get_settings().onex_tenant_id or None)
         )
+        # OMN-22221: a tenant the evidence target's mirror cannot resolve used to
+        # run to completion and leave no delegation_events row, with only a
+        # WARNING from the best-effort write below. Refused here, before any
+        # provider call or row, naming the tenant.
+        require_tenant_mirrored(self._evidence_db, resolved_tenant_id)
         # OMN-19987: this run's step counter. Every step below takes its number
         # here, in the order this method reaches it; the Workflow page shows the
         # run in that order and no other.
