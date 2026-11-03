@@ -357,6 +357,7 @@ class ModelFactoryFloorConfig(BaseModel):
     progress_note_unscoped: str = Field(min_length=1)
     progress_note_duplicate_ids: str = Field(min_length=1)
     progress_note_under_review: str = Field(min_length=1)
+    progress_note_running_unread: str = Field(min_length=1)
     # The blocker of a line whose work tasks are all done while a gate has not passed; {gates} are the waiting ids.
     pending_gate_blocker: str = Field(min_length=1)
     blocked_outcomes: tuple[str, ...] = Field(min_length=1)

@@ -954,11 +954,13 @@ def _progress(
     plan: ModelFloorPlanInput,
     items: tuple[ModelFloorItem, ...],
     request: ModelFactoryFloorRequest,
+    index: _Index,
 ) -> ModelFloorProgress:
     """Merged work tasks over valid work tasks; unknown is never 0.
 
-    ``unknown`` when the plan's scope is under review, its task ids repeat, or no manifest and no table was read;
-    ``no_tasks`` when zero work tasks are declared; ``known`` otherwise, a real 0 completed included.
+    ``unknown`` with no total when the plan's scope is under review, its task ids repeat, or no manifest and no table
+    was read; ``no_tasks`` when zero work tasks are declared; ``unknown`` with the total kept when work is merged but the
+    running-on-dev records were not read, because done needs them; ``known`` otherwise, a real 0 completed included.
     """
     config = request.config
     work = _work_items(items, request)
@@ -997,6 +999,17 @@ def _progress(
             total=0,
             percent=None,
             note=config.progress_note_no_tasks,
+        )
+    merged = _merged_any(work)
+    if index.running is None and merged:
+        return ModelFloorProgress(
+            state="unknown",
+            completed=None,
+            total=len(work),
+            percent=None,
+            note=config.progress_note_running_unread.format(
+                merged=len(merged), total=len(work)
+            ),
         )
     completed = len(_merged_work(work))
     return ModelFloorProgress(
@@ -1080,14 +1093,15 @@ def _condition(
 ) -> Condition:
     """The one condition of the line.
 
-    stopped for a hard cause (an andon hold, a failed gate, no task table); needs_review while progress is unknown;
+    stopped for a hard cause (an andon hold, a failed gate, no task table); needs_review while the work-task total is
+    unknown (a progress whose total is known but whose done count is unread reads by its causes and items instead);
     stopped for a soft cause (a red pull request, a ledger stop; ``_running`` turns it building while a live lane works
     the line); complete only when every work task is done by merged, terminal or closed-ticket evidence and every gate
     has passed; building when work is done, integrating or active; else queued.
     """
     if hard:
         return "stopped"
-    if progress.state == "unknown":
+    if progress.state == "unknown" and progress.total is None:
         return "needs_review"
     if causes:
         return "stopped"
@@ -1234,7 +1248,7 @@ def _line(
         else ""
     )
     work = _work_items(items, request)
-    progress = _progress(plan, items, request)
+    progress = _progress(plan, items, request, index)
     gates = _gates(items, request)
     line_id = _line_id(plan)
     return ModelFloorLine(

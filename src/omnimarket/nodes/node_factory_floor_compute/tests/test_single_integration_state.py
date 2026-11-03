@@ -135,3 +135,40 @@ def test_handler_settles_a_proven_running_merge_to_done() -> None:
         "STATUS", 4, state="integration", verdict="pass", prs=(PR,)
     )
     assert _a1_state(running_evidence=(running,), ledger=(proof,)) == "done"
+
+
+def _a1_line(**facts: Any) -> Any:
+    plan = ModelFloorPlanInput(
+        plan_path=PLAN,
+        title="Single integration plan",
+        manifest=ModelFloorManifest(
+            tasks=(task("A1", "0", tickets=("OMN-500",), prs=(PR,)),)
+        ),
+    )
+    base: dict[str, Any] = {
+        "plans": (plan,),
+        "prs": (pr(PR, "MERGED"),),
+        "merges": (merge(PR, 30),),
+    }
+    return compute_factory_floor(request(**{**base, **facts})).lines[0]
+
+
+def test_unread_running_progress_is_unknown_never_a_known_zero() -> None:
+    """The live effect passes no running-on-dev records: merged work then reads unknown, not 0 / N complete."""
+    unread = _a1_line()
+    assert unread.progress.state == "unknown"
+    assert unread.progress.completed is None
+    assert unread.progress.percent is None
+    assert unread.progress.total == 1
+    assert unread.progress.note == "1 / 1 work tasks merged; running on dev not read"
+    assert unread.line_evidence.running_on_dev is None
+    # The total is known, so the line reads by its items (building), not as a scope under review.
+    assert unread.condition == "building"
+
+
+def test_unread_running_progress_is_unknown_only_while_unread() -> None:
+    """Read records that do not show the merge running leave a real, known 0."""
+    read_empty = _a1_line(running_evidence=())
+    assert read_empty.progress.state == "known"
+    assert read_empty.progress.completed == 0
+    assert read_empty.progress.percent == 0.0

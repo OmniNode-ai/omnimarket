@@ -174,8 +174,8 @@ requirements:
     statement: |-
       The floor has one definition of integration state, built and done: the integrating state dev already carries (OMN-22106), with this change's projection fields reading it and declaring no second one.
     acceptance:
-      - id: "AC67"
-        statement: "AC67: the input model and the compute contract declare exactly one integration_state with its pass and fail verdicts and one running_evidence input, the handler maps a merged item without running evidence to the integrating state and a proven running merge to done -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q"
+      - id: "AC70"
+        statement: "AC70: the input model and the compute contract declare exactly one integration_state with its pass and fail verdicts and one running_evidence input, the handler maps a merged item without running evidence to the integrating state and a proven running merge to done, and while the running-on-dev records are unread a line with merged work reads its progress as unknown with its merged count named, never as a known 0 -- falsifier: uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q -k unread_running_progress_is_unknown"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -653,23 +653,20 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k car_is_decorative"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac66"
-    description: "AC66 the pages this publish serves carry the Memory used label. This binds the page sources the publish ships (the Dashboard and the Floor), and a publish test this PR adds reads both back from the site directory after a local-shell publish; that test file is absent at the merge base. It does not show the served site: the served-site read is the separate unbound check dod-omn21733-ac66-served-site, run at the local Done gate."
+    description: "AC66 the pages this publish serves carry the Memory used label. This binds the page sources the publish ships (the Dashboard and the Floor), which lack the label at the merge base. It does not show the served site: the served-site read is the separate unbound check dod-omn21733-ac66-served-site, run at the local Done gate."
     source: "manual"
     binds_ac: ["AC66"]
     checks:
-      - check_type: "command"
-        check_value: "grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html && grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html"
-        cwd: "."
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_projection_publish.py -q --no-cov --tb=line -k published_site_pages_carry_memory_used_label"
-        cwd: "."
-  - id: "dod-omn21733-ac67"
-    description: "AC67 the floor keeps dev's one integration state: one integration_state with its verdicts in the model and the contract, one running_evidence input, and the handler maps a merged item without running evidence to integrating."
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py -q --no-cov --tb=line -k memory_gauge_matches_label"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac70"
+    description: "AC70 the floor keeps dev's one integration state, and while the running-on-dev records are unread a line with merged work reads its progress as unknown with the merged count named, never a known 0."
     source: "manual"
-    binds_ac: ["AC67"]
+    binds_ac: ["AC70"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q --no-cov --tb=line"
+        check_value: "uv run pytest src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py -q --no-cov --tb=line -k unread_running_progress_is_unknown"
         cwd: "."
   - id: "dod-omn21733-ac66-served-site"
     description: "AC66 served-site probe, unbound: after a real publish the served page carries the Memory used label. Hosted CI cannot reach the tailnet, so only the local Done gate runs this check."

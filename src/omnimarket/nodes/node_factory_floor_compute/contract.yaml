@@ -75,6 +75,8 @@ config:
   progress_note_unscoped: Work task total not read
   progress_note_duplicate_ids: Work task total not valid, task ids repeat
   progress_note_under_review: "Scope needs review: {note}"
+  # Merged work exists but the running-on-dev records were not read, so done is unknown: never a known 0.
+  progress_note_running_unread: "{merged} / {total} work tasks merged; running on dev not read"
   pending_gate_blocker: "All work tasks recorded done; gate {gates} pending"
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
