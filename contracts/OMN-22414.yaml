@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-22414
+title: 'Lab hosts run lanes with a partial toolchain: pyright''s nodeenv broken on h053, bare onex failing ModuleNotFoundError on h101, no node or pnpm on h051 and h053'
+summary: The lane toolchain of each lab host (the sanctioned onex entry point, node, pnpm, pyright's node runtime) is declared as data in node_host_capability_compute/lane_toolchain.yaml; the host capability node's check_lane_toolchain operation judges a host's measured probes against it and names each missing or broken tool; the new node_lane_toolchain_provision_effect probes and repairs the declared toolchain on a host from that table and its overlay, re-probing before it reports a tool changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22414-lane-toolchain
+  statement: A lane placed on a lab host fails on the part of the lane toolchain the host lacks (bare onex raises ModuleNotFoundError, pyright's nodeenv is empty, node and pnpm are absent) unless the toolchain is declared per host, checked by name, and repaired by the declared installer.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a regression test with a fixture host whose onex entry point raises ModuleNotFoundError and whose pyright nodeenv is empty makes the parity read report both by name, and fails on the current code -- falsifier: uv run pytest tests -q -k lane_toolchain_parity'
+  - id: AC2
+    statement: 'AC2: the declared toolchain is data (a contract or overlay), not literals in code -- falsifier: uv run pytest tests -q -k lane_toolchain_parity_contract_data'
+  - id: AC3
+    statement: 'AC3: after the declared installer runs, `onex --help` on h101 and a pyright run on h053 exit 0 -- falsifier: onex lab-run receipts on h101 and h053 with exit=0'
+evidence_requirements:
+- kind: tests
+  description: The lane toolchain parity suite, the installer node suite and the host capability node suites.
+  command: uv run pytest tests/nodes/test_lane_toolchain_parity.py tests/nodes/node_lane_toolchain_provision_effect tests/nodes/node_host_capability_compute -q --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22414-ac1
+  description: AC1 a fixture host whose onex probe raises ModuleNotFoundError and whose pyright nodeenv directory is empty fails the parity read for both tools by name; a missing node and pnpm and a command-not-found printed with exit 0 fail the same way. The suite fails at the merge base, which has no lane toolchain handler.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_lane_toolchain_parity.py -q --no-cov --tb=line -k lane_toolchain_parity
+    cwd: .
+- id: dod-omn22414-ac2
+  description: AC2 the toolchain per host is read from lane_toolchain.yaml; the judging code names no tool or host, and a tool added to the data is judged with no code change.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_lane_toolchain_parity.py -q --no-cov --tb=line -k lane_toolchain_parity_contract_data
+    cwd: .
+- id: dod-omn22414-ac3-installer
+  description: AC3 hosted part. The installer node links the sanctioned onex wrapper into the lane PATH directory, runs the overlay's installer argv, clears an empty nodeenv, re-probes before it reports a tool changed, changes nothing on a second run, and names a tool with no declared installer as an owner step. The lab runs on h101 and h053 are the unbound items below.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_toolchain_provision_effect -q --no-cov --tb=line -m "not kafka"
+    cwd: .
+- id: dod-omn22414-ac3-lab-h101
+  description: AC3 lab run, unbound because hosted CI cannot reach the lab. After the installer ran on h101 from the branch, onex --help exits 0 under the lane PATH; the lab-run receipt is in the PR.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h101 --lane mf-toolchain-2105 -- onex --help
+    cwd: .
+- id: dod-omn22414-ac3-lab-h053
+  description: AC3 lab run, unbound because hosted CI cannot reach the lab. After the installer ran on h053 from the branch, a pyright run exits 0; the lab-run receipt is in the PR.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h053 --lane mf-toolchain-2105 -- uvx pyright --version
+    cwd: .
+- id: dod-omn22414-integration-proof
+  description: The pushed head ran the lane toolchain suites on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane mf-toolchain-2105 -- uv run --frozen pytest tests/nodes/test_lane_toolchain_parity.py tests/nodes/node_lane_toolchain_provision_effect tests/nodes/node_host_capability_compute -q --no-cov
+    cwd: .
+- id: dod-omn22414-deploy-probe
+  description: 'Deploy probe: the lane toolchain handler GitHub serves at the checked-out commit defines HandlerLaneToolchain, which the merge base does not carry.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_capability_compute/handlers/handler_lane_toolchain.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLaneToolchain" > /dev/null'
+    cwd: .
+- id: dod-omn22414-node-deploy-probe
+  description: 'Deploy probe: the installer handler GitHub serves at the checked-out commit defines HandlerLaneToolchainProvision, which the merge base does not carry.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_toolchain_provision_effect/handlers/handler_lane_toolchain_provision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLaneToolchainProvision" > /dev/null'
+    cwd: .

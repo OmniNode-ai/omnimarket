@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_toolchain_provision_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+node_version: 1.0.0
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Probe and repair, on one lab lane host, the declared lane toolchain (the sanctioned onex entry point, node, pnpm
+  and pyright's node runtime). For each tool the committed table lists for the host it probes the tool under the PATH lanes
+  run with, repairs a failing one the way the table declares (a link in the lane PATH directory, removal of an empty cache
+  directory, or the installer argv the host overlay declares), re-probes, and names without a value what only the host owner
+  can supply. Hosts, paths and commands come from the node overlay and the committed table, never from this package.
+input_model:
+  name: ModelLaneToolchainProvisionRequest
+  module: omnimarket.nodes.node_lane_toolchain_provision_effect.models.model_lane_toolchain_provision
+output_model:
+  name: ModelLaneToolchainProvisionResult
+  module: omnimarket.nodes.node_lane_toolchain_provision_effect.models.model_lane_toolchain_provision
+handler:
+  module: omnimarket.nodes.node_lane_toolchain_provision_effect.handlers.handler_lane_toolchain_provision
+  class: HandlerLaneToolchainProvision
+  input_model: omnimarket.nodes.node_lane_toolchain_provision_effect.models.model_lane_toolchain_provision.ModelLaneToolchainProvisionRequest
+  output_model: omnimarket.nodes.node_lane_toolchain_provision_effect.models.model_lane_toolchain_provision.ModelLaneToolchainProvisionResult
+# The overlay is <root>/node_lane_toolchain_provision_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS (hosts: name, home,
+# lane_path, lane_bin_dir, registry_root, install). The table is node_host_capability_compute/lane_toolchain.yaml.
+# The host boundary (ProtocolLaneToolchainHost) is injected.
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_toolchain_provision_effect.handlers.handler_lane_toolchain_provision:HandlerLaneToolchainProvision
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLaneToolchainProvision
+      module: omnimarket.nodes.node_lane_toolchain_provision_effect.handlers.handler_lane_toolchain_provision
+    topic: onex.cmd.omnimarket.lane-toolchain-provision-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.lane-toolchain-provision-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.lane-toolchain-provision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-toolchain-provision-requested.v1
+terminal_event: onex.evt.omnimarket.lane-toolchain-provision-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.lane-toolchain-provision-completed.v1
+runtime_profiles:
+- effects
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 700000
+  runtime_profiles:
+  - effects
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: kafka
+  execution_locus: host-local
+  description: Probe and repair the declared lane toolchain on one lane host.
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - effect
+  - lane-toolchain-provision
+  - OMN-22414
+  related_tickets:
+  - OMN-22414
