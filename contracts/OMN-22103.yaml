@@ -44,8 +44,6 @@ dod_evidence:
     description: >-
       Integration proof on a lab host at the pushed head: the two compaction reply topic test files run through onex lab-work, which loads the shipped adapter and orchestrator contracts from disk. This is a lab test run, not the live round trip on the dev lane, which needs the omnibase_infra applier change merged and the runtime redeployed through the deploy agent and is recorded in the pull request. The hosted verifier cannot dispatch lab work, so this item runs in the local done gate.
     source: manual
-    binds_ac:
-      - AC2
     execution_scope: local_done_gate
     checks:
       - check_type: command
