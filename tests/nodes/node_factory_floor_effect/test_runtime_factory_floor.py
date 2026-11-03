@@ -252,12 +252,18 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
         "HOLD 2026-10-31T11:41:00Z-lane-a: andon:gate:0:W0.2",
         "GATE G0 failed",
     ]
+    # Every task of the plan is its own station, its wave kept as the station's group.
     stations = {st["id"]: st for st in wave["stations"]}
-    assert stations["0"]["state"] == "stop"
-    assert stations["1a"]["feeders"] == ["0"]
+    assert list(stations) == [t["id"] for t in MANIFEST["tasks"]]
+    assert stations["G0"]["state"] == "stop"
+    assert stations["G0"]["feeders"] == ["W0.1", "W0.2"]
+    assert stations["G0"]["group"] == "Wave 0"
     old = lines["2026-10-01-old-plan"]
     assert old["source"] == "plan-task-table"
-    assert [i["state"] for i in old["stations"][0]["items"]] == ["done", "prep"]
+    assert [(st["id"], st["state"]) for st in old["stations"]] == [
+        ("T1", "done"),
+        ("T2", "prep"),
+    ]
     floor = document["floor"]
     # The bays follow the machines the overlay declares; this overlay declares none, so the bus advertisement does not make one.
     assert floor["bays"] == []
@@ -483,6 +489,7 @@ def test_determinism_or_cli_a_plan_without_a_plans_today_entry_maps_only_its_hea
         plans_relpath="beta/plans",
         manifest_suffix=".tasks.yaml",
         header_keys=("ticket", "tickets", "epic"),
+        heading_task_patterns=load_contract(CONTRACT).runtime.heading_task_patterns,
         contains=("example",),
         plans_today=None,
     )

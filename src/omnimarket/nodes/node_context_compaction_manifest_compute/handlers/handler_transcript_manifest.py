@@ -17,8 +17,8 @@ the boundary second), NO_OBLIGATION (a supplied must-survive count under 5) and 
 (a credential-shaped string in the prefix bytes). A boundary that passes all five and is not
 picked by the seeded per-session draw is NOT_DRAWN, so the manifest never loses a boundary.
 
-A summary with no pin is a case marked `UNPINNED`: without a pin there is nothing to compare its
-length and hash against, and the manifest says so rather than calling it verified. The handler
+A summary with no pin is SUMMARY_UNVERIFIED. Missing obligation evidence is NO_OBLIGATION.
+Selected cases carry the exact frozen bytes needed to reproduce every hash. The handler
 reads no file and no variable; `omnimarket.handlers.context_compaction_bundle` reads
 `ONEX_TRANSCRIPT_ROOT`, writes under `ONEX_CONTEXT_REPLAY_ROOT` and fails loudly when either is
 unset.
@@ -37,6 +37,10 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.replay_bundle import ModelBundleFile
+from omnimarket.models.transcript_manifest import (
+    MissingRequiredVariableError as MissingRequiredVariableError,
+)
 from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_compaction_manifest import (
     _RULING_LINE,
     QUOTE_MIN_CHARS,
@@ -48,6 +52,8 @@ from omnimarket.nodes.node_context_compaction_manifest_compute.handlers.handler_
 )
 from omnimarket.nodes.node_context_compaction_manifest_compute.models.model_transcript_manifest import (
     EnumCaseExclusion,
+    ModelCheckpointCut,
+    ModelCheckpointSnapshot,
     ModelLaneAttribution,
     ModelLaneEvidence,
     ModelLedgerCut,
@@ -84,7 +90,7 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[bytes]], ...] = (
         "assigned-secret",
         re.compile(
             rb"\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password)"
-            rb"\s*[:=]\s*['\"]?[A-Za-z0-9\-._~+/]{16,}",
+            rb"[\\'\"]*\s*[:=]\s*[\\'\"]*[A-Za-z0-9\-._~+/]{16,}",
             re.IGNORECASE,
         ),
     ),
@@ -96,14 +102,6 @@ __all__ = [
     "HandlerTranscriptManifest",
     "MissingRequiredVariableError",
 ]
-
-
-class MissingRequiredVariableError(ManifestRefusalError):
-    """A required variable is unset or empty. `variable` names it."""
-
-    def __init__(self, variable: str) -> None:
-        super().__init__(f"{variable} is required and has no default")
-        self.variable = variable
 
 
 @dataclass
@@ -118,11 +116,13 @@ class _Boundary:
     pre_tokens: int | None
     post_tokens: int | None
     boundary_sha: str
+    raw: bytes
     prefix_sha: str
     prefix_records: int
     previous: _Boundary | None
     summary_text: str | None
     summary_record_sha: str | None
+    summary_raw: bytes | None
 
 
 @dataclass(frozen=True)
@@ -188,7 +188,6 @@ def _scan(file: ModelTranscriptFile) -> _Scan:
     unparseable = 0
     offset = 0
     records_before = 0
-    stem = file.relative_path.rsplit("/", 1)[-1].removesuffix(".jsonl")
     previous: _Boundary | None = None
     open_boundary: _Boundary | None = None
     for number, raw in enumerate(raw_lines):
@@ -203,6 +202,10 @@ def _scan(file: ModelTranscriptFile) -> _Scan:
             try:
                 loaded = json.loads(raw)
             except ValueError:
+                if b"compact_boundary" in raw:
+                    raise ManifestRefusalError(
+                        "unparseable compact_boundary record"
+                    ) from None
                 unparseable += 1
             else:
                 if isinstance(loaded, dict):
@@ -215,12 +218,20 @@ def _scan(file: ModelTranscriptFile) -> _Scan:
                 meta = metadata if isinstance(metadata, dict) else {}
                 trigger = meta.get("trigger")
                 session = record.get("sessionId")
+                boundary_uuid = record.get("uuid")
+                if (
+                    not isinstance(session, str)
+                    or not session
+                    or not isinstance(boundary_uuid, str)
+                    or not boundary_uuid
+                ):
+                    raise ManifestRefusalError(
+                        "compact_boundary requires sessionId and uuid"
+                    )
                 built = _Boundary(
                     path=file.relative_path,
-                    session_id=session
-                    if isinstance(session, str) and session
-                    else stem,
-                    uuid=str(record.get("uuid") or f"boundary-{number}"),
+                    session_id=session,
+                    uuid=boundary_uuid,
                     offset=offset,
                     index=len(parsed),
                     moment=_moment(record.get("timestamp")),
@@ -228,20 +239,27 @@ def _scan(file: ModelTranscriptFile) -> _Scan:
                     pre_tokens=_int(meta.get("preTokens")),
                     post_tokens=_int(meta.get("postTokens")),
                     boundary_sha=_sha(whole),
+                    raw=whole,
                     prefix_sha=hasher.copy().hexdigest(),
                     prefix_records=records_before,
                     previous=previous,
                     summary_text=None,
                     summary_record_sha=None,
+                    summary_raw=None,
                 )
                 boundaries.append(built)
                 open_boundary = built
                 previous = built
-            elif open_boundary is not None and record.get("isCompactSummary") is True:
+            elif (
+                open_boundary is not None
+                and record.get("isCompactSummary") is True
+                and record.get("sessionId") == open_boundary.session_id
+            ):
                 text = _text_of(record) if record.get("type") == "user" else None
                 if text:
                     open_boundary.summary_text = text
                     open_boundary.summary_record_sha = _sha(whole)
+                    open_boundary.summary_raw = whole
                     open_boundary = None
             parsed.append((offset, whole, record))
         if raw.strip():
@@ -260,10 +278,9 @@ def _scan(file: ModelTranscriptFile) -> _Scan:
 
 def _recompaction_detail(boundary: _Boundary) -> str | None:
     previous = boundary.previous
-    if previous is None:
-        return None
     if (
-        boundary.moment is not None
+        previous is not None
+        and boundary.moment is not None
         and previous.moment is not None
         and boundary.moment - previous.moment < RECOMPACTION_GAP
     ):
@@ -366,16 +383,47 @@ class HandlerTranscriptManifest:
         self, request: ModelTranscriptManifestRequest
     ) -> ModelTranscriptManifestResult:
         files = sorted(request.transcripts, key=lambda f: f.relative_path)
+        if len({file.relative_path for file in files}) != len(files):
+            raise ManifestRefusalError("duplicate transcript path")
         ledger = sorted(request.ledger_files, key=lambda f: f.name)
+        if len({file.name for file in ledger}) != len(ledger):
+            raise ManifestRefusalError("duplicate ledger name")
         pins = {(p.session_id, p.boundary_uuid): p for p in request.summary_pins}
+        if len(pins) != len(request.summary_pins):
+            raise ManifestRefusalError("duplicate summary pin")
         obligations = {
-            o.boundary_uuid: o.must_survive_items for o in request.obligation_counts
+            (o.session_id, o.boundary_uuid): o.must_survive_items
+            for o in request.obligation_counts
         }
+        if len(obligations) != len(request.obligation_counts):
+            raise ManifestRefusalError("duplicate obligation count")
+        checkpoints = {(c.session_id, c.boundary_uuid): c for c in request.checkpoints}
+        if len(checkpoints) != len(request.checkpoints):
+            raise ManifestRefusalError("duplicate checkpoint snapshot")
         scans = {file.relative_path: _scan(file) for file in files}
+        by_session: dict[str, list[_Boundary]] = {}
+        for scan in scans.values():
+            for item in scan.boundaries:
+                by_session.setdefault(item.session_id, []).append(item)
+        for boundaries in by_session.values():
+            boundaries.sort(
+                key=lambda b: (
+                    b.moment or datetime.min.replace(tzinfo=UTC),
+                    b.path,
+                    b.offset,
+                )
+            )
+            seen: set[str] = set()
+            previous: _Boundary | None = None
+            for item in boundaries:
+                if item.uuid in seen:
+                    raise ManifestRefusalError("duplicate boundary UUID within session")
+                seen.add(item.uuid)
+                item.previous = previous
+                previous = item
 
         exclusions: list[ModelTranscriptExclusion] = []
         eligible: dict[str, list[_Boundary]] = {}
-        checks: dict[tuple[str, str], str] = {}
 
         def exclude(item: _Boundary, reason: EnumCaseExclusion, detail: str) -> None:
             exclusions.append(
@@ -404,20 +452,19 @@ class HandlerTranscriptManifest:
                     )
                     continue
                 digest = _sha(item.summary_text.encode("utf-8"))
-                if pin is not None and (
+                if pin is None or (
                     pin.summary_length != len(item.summary_text)
                     or pin.summary_sha256 != digest
                 ):
                     exclude(
                         item,
                         EnumCaseExclusion.SUMMARY_UNVERIFIED,
-                        f"summary is {len(item.summary_text)} characters with sha256 {digest}; "
+                        "native summary has no independent length/hash pin"
+                        if pin is None
+                        else f"summary is {len(item.summary_text)} characters with sha256 {digest}; "
                         f"pinned {pin.summary_length} characters with sha256 {pin.summary_sha256}",
                     )
                     continue
-                checks[(item.path, item.uuid)] = (
-                    "PINNED" if pin is not None else "UNPINNED"
-                )
                 if item.moment is None or not any(
                     _ledger_cut(f.content, _second(item.moment))[2] for f in ledger
                 ):
@@ -429,22 +476,42 @@ class HandlerTranscriptManifest:
                         else "the boundary record has no timestamp",
                     )
                     continue
-                count = obligations.get(item.uuid)
-                if count is not None and count < MIN_OBLIGATION_ITEMS:
+                count = obligations.get(
+                    (item.session_id, item.uuid), obligations.get((None, item.uuid))
+                )
+                if count is None or count < MIN_OBLIGATION_ITEMS:
                     exclude(
                         item,
                         EnumCaseExclusion.NO_OBLIGATION,
-                        f"{count} must-survive items, fewer than {MIN_OBLIGATION_ITEMS}",
+                        "no must-survive item count was captured"
+                        if count is None
+                        else f"{count} must-survive items, fewer than {MIN_OBLIGATION_ITEMS}",
                     )
                     continue
+                checkpoint = checkpoints.get((item.session_id, item.uuid))
+                if checkpoint is not None and checkpoint.captured_at > item.moment:
+                    raise ManifestRefusalError(
+                        "checkpoint snapshot is after the boundary"
+                    )
+                frozen = [
+                    f.content[: _ledger_cut(f.content, _second(item.moment))[0]]
+                    for f in ledger
+                ]
+                frozen.extend((item.raw, item.summary_raw or b""))
+                if checkpoint is not None:
+                    frozen.append(checkpoint.content)
+                secrets = [_first_secret(content) for content in frozen]
+                kind = next((found[1] for found in secrets if found is not None), None)
                 if (
                     scan.first_secret_end is not None
                     and scan.first_secret_end <= item.offset
                 ):
+                    kind = scan.first_secret_kind
+                if kind is not None:
                     exclude(
                         item,
                         EnumCaseExclusion.SECRET_IN_PREFIX,
-                        f"credential-shaped string ({scan.first_secret_kind}) in the prefix bytes",
+                        f"credential-shaped string ({kind}) in the frozen bundle",
                     )
                     continue
                 eligible.setdefault(item.session_id, []).append(item)
@@ -465,7 +532,12 @@ class HandlerTranscriptManifest:
                     )
 
         cases = tuple(
-            self._case(item, scans[item.path], ledger, checks)
+            self._case(
+                item,
+                scans[item.path],
+                ledger,
+                checkpoints.get((item.session_id, item.uuid)),
+            )
             for item in sorted(drawn, key=lambda b: (b.path, b.offset))
         )
         exclusions.sort(
@@ -488,6 +560,21 @@ class HandlerTranscriptManifest:
         )
         reason_counts = Counter(e.reason.value for e in exclusions)
         counts = tuple(sorted(reason_counts.items()))
+        content_by_path = {file.relative_path: file.content for file in files}
+        bundle: dict[str, bytes] = {}
+        for case, item in zip(
+            cases, sorted(drawn, key=lambda b: (b.path, b.offset)), strict=True
+        ):
+            bundle[case.prefix_bundle_path] = content_by_path[item.path][: item.offset]
+            bundle[case.boundary_bundle_path] = item.raw
+            bundle[case.summary_record_bundle_path] = item.summary_raw or b""
+            for cut, file in zip(case.ledger_cuts, ledger, strict=True):
+                bundle[cut.bundle_path] = file.content[: cut.prefix_bytes]
+            checkpoint = checkpoints.get((item.session_id, item.uuid))
+            if checkpoint is not None and case.checkpoint.bundle_path is not None:
+                bundle[case.checkpoint.bundle_path] = checkpoint.content
+        if any(t.cases + t.exclusions != t.boundary_records for t in transcripts):
+            raise ManifestRefusalError("a boundary is absent from both decision lists")
         document = {
             "schema": SCHEMA,
             "source": "transcript_jsonl",
@@ -510,6 +597,10 @@ class HandlerTranscriptManifest:
             transcripts=transcripts,
             exclusion_counts=counts,
             manifest_yaml=yaml.safe_dump(document, sort_keys=True, allow_unicode=True),
+            bundle_files=tuple(
+                ModelBundleFile(path=path, content=bundle[path])
+                for path in sorted(bundle)
+            ),
         )
 
     @staticmethod
@@ -517,7 +608,7 @@ class HandlerTranscriptManifest:
         item: _Boundary,
         scan: _Scan,
         ledger: list[Any],
-        checks: dict[tuple[str, str], str],
+        checkpoint: ModelCheckpointSnapshot | None,
     ) -> ModelTranscriptCase:
         assert item.moment is not None
         assert item.summary_text is not None
@@ -534,6 +625,7 @@ class HandlerTranscriptManifest:
                     prefix_bytes=end,
                     prefix_sha256=_sha(file.content[:end]),
                     prefix_rows=rows,
+                    bundle_path=f"ledger/{_sha(file.content[:end])}.prefix",
                 )
             )
         key = uuid.uuid5(
@@ -552,12 +644,24 @@ class HandlerTranscriptManifest:
             summary_record_sha256=item.summary_record_sha,
             summary_length=len(item.summary_text),
             summary_sha256=_sha(item.summary_text.encode("utf-8")),
-            summary_check="PINNED"
-            if checks[(item.path, item.uuid)] == "PINNED"
-            else "UNPINNED",
+            summary_check="PINNED",
             prefix_bytes=item.offset,
             prefix_sha256=item.prefix_sha,
             prefix_records=item.prefix_records,
+            prefix_bundle_path=f"prefix/{item.prefix_sha}.jsonl",
+            boundary_bundle_path=f"boundaries/{item.boundary_sha}.jsonl",
+            summary_record_bundle_path=f"summaries/{item.summary_record_sha}.jsonl",
             ledger_cuts=tuple(cuts),
+            checkpoint=ModelCheckpointCut(
+                status="UNAVAILABLE", reason="no frozen checkpoint was recovered"
+            )
+            if checkpoint is None
+            else ModelCheckpointCut(
+                status="PINNED",
+                captured_at=checkpoint.captured_at.isoformat(),
+                sha256=_sha(checkpoint.content),
+                bytes=len(checkpoint.content),
+                bundle_path=f"checkpoints/{_sha(checkpoint.content)}.snapshot",
+            ),
             lane_attribution=_lane_attribution(prefixes, scan.records, item),
         )

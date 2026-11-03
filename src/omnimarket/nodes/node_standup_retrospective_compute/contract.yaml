@@ -3,7 +3,7 @@
 name: node_standup_retrospective_compute
 lifecycle: experimental
 node_type: COMPUTE_GENERIC
-runtime_profiles: []
+runtime_profiles: [main]
 contract_version:
   major: 1
   minor: 0
@@ -33,18 +33,25 @@ handler_routing:
   default_handler: omnimarket.nodes.node_standup_retrospective_compute.handlers.handler_standup_retrospective:HandlerStandupRetrospective
   handlers:
   - operation: handle
+    topic: onex.cmd.omnimarket.standup-retrospective-requested.v1
     handler:
       name: HandlerStandupRetrospective
       module: omnimarket.nodes.node_standup_retrospective_compute.handlers.handler_standup_retrospective
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+  - onex.cmd.omnimarket.standup-retrospective-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.standup-retrospective-built.v1
 runtime_dispatch:
-  external_trigger: Direct Python invocation of HandlerStandupRetrospective.handle with its typed request.
+  command_topic: onex.cmd.omnimarket.standup-retrospective-requested.v1
+  external_trigger: A command record on the command topic, or the run envelope onex node node_standup_retrospective_compute with the request as input.
+terminal_event: onex.evt.omnimarket.standup-retrospective-built.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.standup-retrospective-built.v1
 descriptor:
   node_archetype: compute
   purity: pure
-  runtime_profiles: []
+  runtime_profiles: [main]
   idempotent: true
   timeout_ms: 5000
 replay:
@@ -52,11 +59,52 @@ replay:
   timestamp_authority: ingest_sequence
   deterministic: true
 metadata:
-  transport_type: local
-  description: Standup Retrospective Compute through local Python invocation.
+  transport_type: inmemory
+  description: Standup Retrospective Compute over its command topic or local Python invocation.
   author: OmniNode Team
   created: '2026-10-24'
   tags:
   - compute
   - standup-retrospective-compute
   related_tickets: []
+config:
+  standup_retrospective:
+    transport: in_memory
+    retro_weekday: 4
+    role_vocabulary:
+    - operator
+    - platform engineer
+    - product designer
+    - product manager
+    - engineer
+    - designer
+    role_key: role
+    product_use_key: product_use
+    idea_key: idea
+    friction_key: friction
+    process_change_key: process_change
+    idea_kind: idea
+    friction_kind: friction
+    draft_state: Backlog
+    draft_title_max_chars: 120
+    credit_template: "{role}"
+    draft_description_template: "{text}\n\nContributed at the Friday retrospective ending {until}, credited to the {credit}."
+    messages:
+      error_prefix: "retrospective: "
+      not_a_retro_day_note: "not a Friday: no retrospective section"
+      no_input_note: "Friday: no retrospective input (--retro); the section is empty"
+      not_a_list_detail: "input is not a JSON list of entries"
+      no_role_detail: "entry {number} has no role; skipped"
+      unknown_role_detail: "entry {number} role is not in the role vocabulary; skipped"
+      unparsable_detail: "unparsable input"
+    labels:
+      section_heading: "retrospective ({count}):"
+      drafts_heading: "ticket drafts ({count}, not filed):"
+      person_line: "  {role}: {parts}"
+      part_separator: "; "
+      use_part: "use: {text}"
+      detail_part: "{kind}: {text}"
+      change_part: "process change: {text}"
+      default_kind_label: "idea or friction"
+      not_reported: "not reported"
+      draft_line: "  [{state}] {title} (credit: {credit})"

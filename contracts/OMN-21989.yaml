@@ -64,9 +64,6 @@ dod_evidence:
   description: Hosted-runner deploy smoke dispatches the packaged guard through the ONEX local runtime with an in-memory backend. A compose dry run and docker events must be allowed; a real up, a disabled dry-run flag and a flag in another command must be refused without a grant. The dry-run assertion fails on the pre-fix guard. Commands are input text only; no Docker command is executed and no production rollout is claimed.
   source: manual
   execution_scope: hosted_and_local
-  binds_ac:
-  - AC1
-  - AC2
   checks:
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k readonly_allow -q --no-cov --tb=line

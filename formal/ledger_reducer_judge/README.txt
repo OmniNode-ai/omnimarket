@@ -100,8 +100,14 @@ counterexample cannot be another invariant's.
 
 ## Review
 
-The verdict (VERDICT.txt) is written by the review lane, which is neither the modelling lane nor
-the 2026-10-04 reviewer. It is not part of this change.
+The verdict is in REVIEW.txt beside this file, written by the review lane, which is neither the
+modelling lane nor the 2026-10-04 reviewer.
+
+Reading note for L10 (from that review): the offset is committed after the transaction commit, and the
+receipt is an entry of the transactional outbox written in that transaction. "Offsets commit after the
+receipt" therefore means the receipt is durable in the outbox, not that the relay has published it; the
+relay publishes later and EveryRequestAnswered covers that gap. The receipts topic is a set, so a
+republished receipt is invisible, and a request can carry an accepted and a duplicate receipt.
 
 ## Run
 

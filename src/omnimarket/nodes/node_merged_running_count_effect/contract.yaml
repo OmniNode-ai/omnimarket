@@ -63,6 +63,8 @@ runtime:
   watcher_state_env: ONEX_PR_WATCHER_STATE
   watcher_relpath: .claude_scratch/pr-watcher/state.json
   hosts_table_env: ONEX_LAB_RUN_HOSTS
+  # The floor reader may supply its already resolved table path through the read protocol.
+  # That explicit path takes precedence; the standalone entry requires hosts_table_env.
   placement_read_relpath: .claude_scratch/lab-run/hosts.json
   # The lane-health projection the lab-pass receipt of the dev lane is read from (evidence kind deployed). The address
   # and the lane id are the environment's, never committed; either unset reads as unread, never as no evidence.

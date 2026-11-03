@@ -19,20 +19,22 @@ import json
 from pathlib import Path
 from typing import Final
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.local_byok_route import (
+    registered_local_model_routes,
+    resolve_pinned_byok_route,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     local_model_tests_path,
     registered_local_byok_providers,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
-)
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-)
-from omnimarket.routing.local_byok_route import (
-    registered_local_model_routes,
-    resolve_pinned_byok_route,
 )
 
 FIRST_CHOICE_FILE: Final = "delegation_first_choice.json"

@@ -16,7 +16,7 @@ not become the long-lived owner for workflow business logic.
 - Keep node logic inside `src/omnimarket/nodes/node_*`.
 - Keep shared cross-node models in shared packages such as
   `omnimarket.events`, `omnimarket.intelligence`, `omnimarket.projection`,
-  `omnimarket.routing`, or `omnimarket.models`.
+  `omnimarket.handlers.routing`, or `omnimarket.models`.
 - Do not make one node import another node's private handler or model package.
   Promote shared types instead.
 - Keep event topics declared in `contract.yaml`; avoid hardcoded topic strings

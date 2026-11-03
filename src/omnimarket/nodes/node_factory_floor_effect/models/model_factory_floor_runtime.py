@@ -79,6 +79,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     plans_kb_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
     plugin_root_env: str = Field(min_length=1)
+    phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
@@ -86,6 +87,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     manifest_suffix: str = Field(min_length=1)
     plan_header_keys: tuple[str, ...] = Field(min_length=1)
     plans_relpath: str = Field(min_length=1)
+    heading_task_patterns: tuple[str, ...] = Field(min_length=1)
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
     container_source: ModelFactoryFloorContainerSource

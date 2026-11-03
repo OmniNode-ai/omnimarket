@@ -25,20 +25,20 @@ from pathlib import Path
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    refuse_undeclared_local_model,
+)
+from omnimarket.handlers.routing.local_byok_route import (
+    ByokKeyNotRegisteredError,
+    ByokPinNotPermittedError,
+    substitute_any_registered_byok_route,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     resolve_delegation_backend,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    refuse_undeclared_local_model,
-)
-from omnimarket.routing.local_byok_route import (
-    ByokKeyNotRegisteredError,
-    ByokPinNotPermittedError,
-    substitute_any_registered_byok_route,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 

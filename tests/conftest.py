@@ -24,7 +24,7 @@ import pytest_asyncio
 import yaml
 
 from omnimarket.config.env_flags import env_flag
-from omnimarket.routing.task_class_contract_path import (
+from omnimarket.handlers.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 
@@ -174,7 +174,7 @@ def catalogue_picks_models(monkeypatch: pytest.MonkeyPatch) -> None:
     re-aims once) stays reachable from a row that sets ``customer_chooses_model``
     false, and the tests that exercise that path opt in here.
     """
-    from omnimarket.routing import byok_provider_backends as catalogue
+    from omnimarket.handlers.routing import byok_provider_backends as catalogue
 
     plans = {
         key: row.model_copy(update={"customer_chooses_model": False})
@@ -245,7 +245,7 @@ def _no_real_byok_model_list_reads(monkeypatch: pytest.MonkeyPatch) -> None:
 
     import httpx
 
-    from omnimarket.routing import byok_model_discovery
+    from omnimarket.handlers.routing import byok_model_discovery
 
     real_get = byok_model_discovery.get_models_json
 
@@ -296,7 +296,7 @@ def _ensure_delegation_routing_tiers_path(monkeypatch: pytest.MonkeyPatch) -> No
     RED-refusal-path tests that ``delenv`` this key inside the test body are
     unaffected.
     """
-    from omnimarket.routing.routing_tiers_path import (
+    from omnimarket.handlers.routing.routing_tiers_path import (
         ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     )
 
@@ -1120,6 +1120,13 @@ def _isolate_local_secret_store(
     monkeypatch.setattr(
         "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
         lambda: _local_secret_store_root / f"{digest}.sqlite",
+    )
+    # OMN-21921: a delegation key is read through the secret store node, whose
+    # overlay is read from the ONEX home. Point it at an empty one so a developer's
+    # own config.yaml never decides which store a unit test reads.
+    monkeypatch.setattr(
+        "omnibase_infra.doctor.delegation_doctor_support.default_onex_home",
+        lambda: _local_secret_store_root / "onex-home",
     )
 
 

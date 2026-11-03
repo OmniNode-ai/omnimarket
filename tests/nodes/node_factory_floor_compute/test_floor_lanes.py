@@ -333,7 +333,8 @@ def test_a_lane_links_to_the_station_that_holds_its_ticket() -> None:
         request(plans=(plan,), machines=MACHINES, ledger=lane_rows("lane-a"))
     ).floor.lanes[0]
     assert lane.station is not None
-    assert (lane.station.station_id, lane.station.item_id) == ("0", "W0.2")
+    # Every task is its own station, so the lane links to the task's station.
+    assert (lane.station.station_id, lane.station.item_id) == ("W0.2", "W0.2")
     assert floor(ledger=lane_rows("lane-a")).lanes[0].station is None
 
 

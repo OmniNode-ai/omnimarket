@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_handoff_dod_receipt_effect
+version: "1.0.0"
+description: "Check a passing ticket DoD receipt bound to an exact PR head."
+omnibase_core_compat: ">=0.47.53,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_handoff_dod_receipt_effect: omnimarket.nodes.node_pr_handoff_dod_receipt_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  side_effect_class: filesystem_read
+dependencies:
+  - omnibase_core>=0.47.53
+  - pydantic>=2.11.0
+  - PyYAML>=6.0.1
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, handoff, receipt, validation]
+pack: core
+display_name: "PR Handoff DoD Receipt Effect"
+node_role: effect

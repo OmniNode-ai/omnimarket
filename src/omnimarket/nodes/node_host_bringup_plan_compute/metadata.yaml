@@ -1,0 +1,23 @@
+name: node_host_bringup_plan_compute
+version: "0.1.0"
+description: "The ordered host bring-up plan over the declared target graph, or a refusal naming the offender"
+pack: host_bringup
+node_role: compute
+display_name: "Host Bring-up Plan"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_bringup_plan_compute: "omnimarket.nodes.node_host_bringup_plan_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "host-bringup", "dependency-graph"]

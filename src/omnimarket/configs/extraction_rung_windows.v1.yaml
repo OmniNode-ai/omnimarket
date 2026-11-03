@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Extraction rung windows (plan task TE.3). Read by callers of
+# node_extraction_rung_harness_compute. chunk_derivation is the declared rule:
+#   max_chars = (window_tokens - output_reserve_tokens - instruction_tokens)
+#               * chars_per_token * safety_factor
+# measured_windows holds one entry per measurement, each naming its measurement_id,
+# so a chunk size is traceable to a measured window. This file names no lab host,
+# port or backend: private rungs are measured and recorded in the lab overlay.
+chunk_derivation:
+  output_reserve_tokens: 2048
+  instruction_tokens: 1024
+  safety_factor: 0.8
+  overlap_chars: 400
+measured_windows: []

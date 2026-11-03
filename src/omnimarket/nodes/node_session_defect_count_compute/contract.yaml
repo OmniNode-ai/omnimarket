@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_defect_count_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Count defects per session and per equal window around each boundary, per merged pull request, from watcher check-run history, reverts and ledger CORRECTION rows.
+input_model:
+  name: ModelDefectCountRequest
+  module: omnimarket.nodes.node_session_defect_count_compute.models.model_defect_count
+output_model:
+  name: ModelDefectCountResult
+  module: omnimarket.nodes.node_session_defect_count_compute.models.model_defect_count
+handler:
+  module: omnimarket.nodes.node_session_defect_count_compute.handlers.handler_defect_count
+  class: HandlerSessionDefectCount
+  input_model: omnimarket.nodes.node_session_defect_count_compute.models.model_defect_count.ModelDefectCountRequest
+  output_model: omnimarket.nodes.node_session_defect_count_compute.models.model_defect_count.ModelDefectCountResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerSessionDefectCount
+        module: omnimarket.nodes.node_session_defect_count_compute.handlers.handler_defect_count
+      event_model:
+        name: ModelDefectCountRequest
+        module: omnimarket.nodes.node_session_defect_count_compute.models.model_defect_count
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with typed slices of the local pull request watcher snapshot and the ledger.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local

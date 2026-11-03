@@ -10,9 +10,8 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_standup_retrospective_compute.handlers.handler_standup_retrospective import (
-    HandlerStandupRetrospective,
-    retrospective_lines,
+from omnimarket.nodes.node_standup_retrospective_compute import (
+    NodeStandupRetrospectiveCompute,
 )
 from omnimarket.nodes.node_standup_retrospective_compute.models.model_standup_retrospective import (
     ModelStandupRetrospectiveRequest,
@@ -23,7 +22,7 @@ pytestmark = pytest.mark.unit
 
 
 def run(until: str, path: Path | None) -> ModelStandupRetrospectiveResult:
-    return HandlerStandupRetrospective().handle(
+    return NodeStandupRetrospectiveCompute().handle(
         ModelStandupRetrospectiveRequest(
             until=until, entries=path.read_text() if path is not None else None
         )
@@ -126,7 +125,9 @@ def test_each_idea_is_one_backlog_draft_credited_by_role(tmp_path: Path) -> None
 
 def test_retrospective_lines_renders_roles_and_unfiled_drafts(tmp_path: Path) -> None:
     facts = run(FRIDAY_UNTIL, retro_file(tmp_path))
-    output = "\n".join(retrospective_lines(facts.retrospective, facts.ticket_drafts))
+    node = NodeStandupRetrospectiveCompute()
+    output = "\n".join(node.render(facts.retrospective, facts.ticket_drafts))
+    assert output.splitlines() == facts.section_lines
     assert "Pat Example" not in output
     assert "Sam Sample" not in output
     assert "retrospective (3):" in output
@@ -140,11 +141,11 @@ def test_retrospective_lines_renders_roles_and_unfiled_drafts(tmp_path: Path) ->
         "operator: use: ran the merge drain; idea or friction: not reported; process change: not reported"
         in output
     )
-    assert retrospective_lines({}, []) == []
+    assert node.render({}, []) == []
 
 
 def test_unparsable_text_is_a_retrospective_error() -> None:
-    facts = HandlerStandupRetrospective().handle(
+    facts = NodeStandupRetrospectiveCompute().handle(
         ModelStandupRetrospectiveRequest(until=FRIDAY_UNTIL, entries="{not json")
     )
     assert facts.errors

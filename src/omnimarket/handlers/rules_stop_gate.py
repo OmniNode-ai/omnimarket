@@ -30,7 +30,9 @@ from omnibase_core.models.reducer.payloads.model_payload_fsm_transition_action i
 )
 from omnibase_core.utils.util_fsm_executor import execute_transition
 
+from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.models.stop_gate import (
+    ENGINE_SCOPE_KIND,
     EnumFoldStatus,
     EnumReadingOrigin,
     EnumReadingVerdict,
@@ -39,12 +41,16 @@ from omnimarket.models.stop_gate import (
     EnumStopGateReason,
     EnumStopMode,
     ModelAndonStopConfig,
+    ModelStopBinding,
     ModelStopEvent,
+    ModelStopExemptionClaim,
     ModelStopFoldResult,
+    ModelStopGateFacts,
     ModelStopGateRequest,
     ModelStopGateResult,
     ModelStopReading,
     ModelStopRecord,
+    ModelStopScope,
 )
 
 _REDUCER_PACKAGE = "omnimarket.nodes.node_andon_stop_reducer"
@@ -310,13 +316,50 @@ def _gate_one(
             line=f"ADMIT {named} mode=enforce reason=swarm_lane",
             **common,
         )
+    claim = request.exemption
+    problem = ""
+    if claim is not None:
+        problem = _exemption_problem(claim, request)
+        if not problem:
+            return ModelStopGateResult(
+                outcome=EnumStopGateOutcome.ADMIT,
+                reason=EnumStopGateReason.EXEMPT,
+                mode=mode,
+                exemption=claim.kind,
+                line=f"ADMIT {named} mode=enforce reason=exempt exemption={claim.kind.value}",
+                **common,
+            )
     return ModelStopGateResult(
         outcome=EnumStopGateOutcome.REFUSE,
         reason=EnumStopGateReason.STOP_OPEN,
         mode=mode,
-        line=f"REFUSE {named} mode=enforce",
+        line=f"REFUSE {named} mode=enforce"
+        + (f" exemption_refused={claim.kind.value}:{problem}" if claim else ""),
         **common,
     )
+
+
+def _exemption_problem(
+    claim: ModelStopExemptionClaim, request: ModelStopGateRequest
+) -> str:
+    """Why a claimed exemption is not honoured ('' when it is).
+
+    A claim is honoured only against a binding the dispatcher or the PR watcher wrote: the same kind, the
+    same ref and not expired at ``now``. A brief's own claim never reaches this function as a binding.
+    """
+    of_kind = [b for b in request.bindings if b.kind is claim.kind]
+    if not of_kind:
+        return "unbound"
+    matching = [b for b in of_kind if b.ref == claim.ref]
+    if not matching:
+        return "unrelated"
+    if any(_binding_live(b, request.now) for b in matching):
+        return ""
+    return "expired"
+
+
+def _binding_live(binding: ModelStopBinding, now: datetime) -> bool:
+    return binding.expires_at is None or binding.expires_at > now
 
 
 def stop_gate(
@@ -345,4 +388,62 @@ def stop_gate(
     results = [_gate_one(stop, request) for stop in blocking]
     return next(
         (r for r in results if r.outcome is EnumStopGateOutcome.REFUSE), results[0]
+    )
+
+
+def engine_stop_scopes(
+    engine: str, ladder: ModelEngineLadder
+) -> tuple[ModelStopScope, ...]:
+    """The engine scopes a dispatch to ``engine`` falls under: the engine as named, each ladder rung that
+    runs on it, and (when ``engine`` is a rung) the host engine of that rung. Every name is the ladder
+    contract's (``config.engine_ladder``); none is written here."""
+    keys = [engine]
+    keys.extend(entry.rung for entry in ladder.entries if entry.host_engine == engine)
+    keys.extend(entry.host_engine for entry in ladder.entries if entry.rung == engine)
+    return tuple(
+        ModelStopScope(kind=ENGINE_SCOPE_KIND, key=key) for key in dict.fromkeys(keys)
+    )
+
+
+def gate_dispatch(
+    facts: ModelStopGateFacts,
+    scopes: tuple[ModelStopScope, ...],
+    fsm: ModelFSMSubcontract,
+    *,
+    exemption: ModelStopExemptionClaim | None = None,
+) -> ModelStopGateResult:
+    """``stop_gate`` over every scope a dispatch falls under; the first refusal wins.
+
+    With no refusal the result is the first that names a stop (an observed or exempt admit), else the
+    first, which is the ``no_stop`` admit. ``exemption`` overrides the facts' own, for a dispatcher that
+    judges one candidate at a time.
+    """
+    claim = exemption if exemption is not None else facts.exemption
+    results = [
+        stop_gate(
+            ModelStopGateRequest(
+                scope=scope,
+                stops=facts.stops,
+                policy=facts.policy,
+                now=facts.now,
+                lane_id=facts.lane_id,
+                exemption=claim,
+                bindings=facts.bindings,
+            ),
+            fsm,
+        )
+        for scope in scopes
+    ]
+    refused = next(
+        (r for r in results if r.outcome is EnumStopGateOutcome.REFUSE), None
+    )
+    if refused is not None:
+        return refused
+    named = next((r for r in results if r.stop_id is not None), None)
+    if named is not None:
+        return named
+    return ModelStopGateResult(
+        outcome=EnumStopGateOutcome.ADMIT,
+        reason=EnumStopGateReason.NO_STOP,
+        line="ADMIT stop-gate reason=no_stop",
     )

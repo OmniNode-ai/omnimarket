@@ -8,6 +8,7 @@ from omnimarket.models.bus_binding.model_bus_binding import (
     ModelBusBindingDecision,
     ModelBusBindingOrder,
     ModelBusBindingResolution,
+    ModelBusBindingSettlementPolicy,
     ModelBusBindingTickEvidence,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "ModelBusBindingDecision",
     "ModelBusBindingOrder",
     "ModelBusBindingResolution",
+    "ModelBusBindingSettlementPolicy",
     "ModelBusBindingTickEvidence",
 ]

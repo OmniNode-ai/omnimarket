@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_handoff_dod_receipt_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Read-only PR handoff prerequisite. A core ModelDodReceipt must name the ticket,
+  exactly match the full PR head SHA and remain PASS after core validation.
+  Every current receipt at that head must pass; numeric supersessions replace
+  earlier receipts of the same item/check. Missing and unreadable evidence refuse.
+  The generic node runtime routes the command and publishes the typed result.
+input_model:
+  name: ModelPrHandoffDodReceiptRequest
+  module: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.models.model_pr_handoff_dod_receipt_request
+output_model:
+  name: ModelPrHandoffDodReceiptResult
+  module: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.models.model_pr_handoff_dod_receipt_result
+handler:
+  module: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.handlers.handler_pr_handoff_dod_receipt
+  class: HandlerPrHandoffDodReceipt
+  input_model: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.models.model_pr_handoff_dod_receipt_request.ModelPrHandoffDodReceiptRequest
+  output_model: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.models.model_pr_handoff_dod_receipt_result.ModelPrHandoffDodReceiptResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: check_pr_handoff_dod_receipt
+      handler:
+        name: HandlerPrHandoffDodReceipt
+        module: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.handlers.handler_pr_handoff_dod_receipt
+      event_model:
+        name: ModelPrHandoffDodReceiptRequest
+        module: omnimarket.nodes.node_pr_handoff_dod_receipt_effect.models.model_pr_handoff_dod_receipt_request
+      subscribe_topic: onex.cmd.omnimarket.pr-handoff-dod-receipt-requested.v1
+      topic: onex.cmd.omnimarket.pr-handoff-dod-receipt-requested.v1
+      publish_topic: onex.evt.omnimarket.pr-handoff-dod-receipt-completed.v1
+      message_category: command
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.pr-handoff-dod-receipt-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-handoff-dod-receipt-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-handoff-dod-receipt-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pr-handoff-dod-receipt-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.pr-handoff-dod-receipt-completed.v1
+metadata:
+  transport_type: kafka
+receipt_policy:
+  ticket_pattern: 'OMN-[0-9]+'
+  head_pattern: '[0-9a-f]{40}'
+  receipt_pattern: '([^.]+)(?:\.supersede\.([0-9]+))?\.(?:ya?ml|json)'
+  receipt_root_env: ONEX_DOD_RECEIPTS_DIR
+  evidence_root_env: ONEX_EVIDENCE_ROOT
+  state_home_key: dod_evidence.home_subdir
+  summary_name: dod_report.json
+  passing_status: PASS
+  admitted_code: 0
+  refused_code: 4
+  unreadable_code: 2

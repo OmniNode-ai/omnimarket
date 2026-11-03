@@ -38,7 +38,7 @@ _ROW_LINE_RE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ(?: \| |$)")
 _ROW_RE = re.compile(
     rf"^(?P<stamp>{_STAMP}) \| (?P<type>[^|]*?)\s*(?:\|(?P<rest>.*))?$"
 )
-_FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*)=(?P<value>.*)$", re.DOTALL)
+FIELD_RE = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*)=(?P<value>.*)$", re.DOTALL)
 _HOLD_TYPES = frozenset({"HOLD", "HELD"})
 _CLOSING_TYPES = frozenset({"TERMINAL", "CLOSEOUT"})
 RULING_TYPES = ("RULING", "OPERATOR-CONSENT")
@@ -58,7 +58,7 @@ class LedgerRow:
         self.cells = [c.strip() for c in rest.split("|")] if rest is not None else []
         self.fields: dict[str, list[str]] = {}
         for cell in self.cells:
-            keyed = _FIELD_RE.match(cell)
+            keyed = FIELD_RE.match(cell)
             if keyed:
                 self.fields.setdefault(keyed.group("key").lower(), []).append(
                     keyed.group("value").strip()
@@ -71,7 +71,7 @@ class LedgerRow:
     def token(self, key: str) -> str | None:
         """A value only when its cell is exactly ``key=<one token>``."""
         for cell in self.cells:
-            keyed = _FIELD_RE.match(cell)
+            keyed = FIELD_RE.match(cell)
             if keyed and keyed.group("key").lower() == key:
                 value = keyed.group("value").strip()
                 if value and not re.search(r"\s", value):
@@ -399,6 +399,7 @@ def _count(value: str | None) -> int | None:
 
 
 __all__ = [
+    "FIELD_RE",
     "RULING_TYPES",
     "LedgerRow",
     "holds_in_force",

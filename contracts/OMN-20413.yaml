@@ -50,5 +50,5 @@ dod_evidence:
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20413 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute -q -p no:randomly
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20413 -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q -p no:randomly
         cwd: .

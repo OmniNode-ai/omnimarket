@@ -47,6 +47,10 @@ from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetRequest,
     ModelLaneContainerBudgetVerdict,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
+    merge_task_links,
+    prose_task_tickets,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorContainerHost,
     ModelFactoryFloorContainerSource,
@@ -446,14 +450,102 @@ def header_text(text: str, keys: tuple[str, ...]) -> str:
     return "\n".join(lines)
 
 
-HEADING_TASK_RE = re.compile(
-    r"^(?:\d+\.\s+|[-*]\s+)?\*\*([A-Z]{1,4}\.?\d+(?:\.\d+)*[a-z]?)[.,:]?(?:\s+(.+?))?\*\*(.*)$",
-    re.MULTILINE,
+def heading_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    """The contract's task heading patterns, compiled line by line; each must name the group ``id``."""
+    compiled = tuple(re.compile(pattern, re.MULTILINE) for pattern in patterns)
+    for pattern in compiled:
+        if "id" not in pattern.groupindex:
+            raise SourceRefusedError(
+                f"heading task pattern {pattern.pattern!r} names no 'id' group: correct heading_task_patterns"
+            )
+    return compiled
+
+
+SECTION_RE = re.compile(r"^## (.*)$", re.MULTILINE)
+REVIEW_SECTION_RE = re.compile(r"adversarial|review|checklist", re.IGNORECASE)
+TASK_SECTION_RE = re.compile(r"\btasks?\b", re.IGNORECASE)
+SUBHEADING_TASK_RE = re.compile(
+    r"^#{3,4}\s+([A-Z]{1,4}\.\d+(?:\.\d+)*[a-z]?)[.:]?\s+(.+?)\s*$", re.MULTILINE
 )
 
 
+def _sections(text: str) -> tuple[tuple[str, int, int], ...]:
+    """Each ``## `` section of a plan as (heading, start, end)."""
+    marks = list(SECTION_RE.finditer(text))
+    return tuple(
+        (
+            mark.group(1),
+            mark.start(),
+            marks[i + 1].start() if i + 1 < len(marks) else len(text),
+        )
+        for i, mark in enumerate(marks)
+    )
+
+
+def _in_review_section(text: str, offset: int) -> bool:
+    """True when ``offset`` falls in an adversarial-review or checklist section: its R1 to R8 are checks on the plan, not its tasks."""
+    return any(
+        start <= offset < end and REVIEW_SECTION_RE.search(heading) is not None
+        for heading, start, end in _sections(text)
+    )
+
+
+def _only_in_review(label: str, text: str) -> bool:
+    """True when every place the plan leads a line with the label (bold or a table cell) is in a review section."""
+    leads = [
+        match.start()
+        for match in re.finditer(
+            rf"^(?:\d+\.\s+|[-*]\s+)?(?:\*\*|\|\s*){re.escape(label)}(?![\w.])",
+            text,
+            re.MULTILINE,
+        )
+    ]
+    return bool(leads) and all(_in_review_section(text, at) for at in leads)
+
+
+def _heading_tasks(
+    text: str, links: dict[str, tuple[str, ...]], epic: str
+) -> tuple[ModelFloorManifestTask, ...]:
+    """The tasks a plan writes as ``### CM.1 Title`` headings inside its own ``## Tasks`` section, which win over any bold list."""
+    tasks: dict[str, ModelFloorManifestTask] = {}
+    for heading, start, end in _sections(text):
+        if (
+            TASK_SECTION_RE.search(heading) is None
+            or REVIEW_SECTION_RE.search(heading) is not None
+        ):
+            continue
+        for match in SUBHEADING_TASK_RE.finditer(text, start, end):
+            task_id = match.group(1)
+            if task_id in tasks:
+                continue
+            title = match.group(2).strip(" .:")
+            tasks[task_id] = ModelFloorManifestTask(
+                id=task_id,
+                title=f"{task_id} {title}"[:200],
+                tickets=tuple(
+                    dict.fromkeys(
+                        (
+                            *(
+                                t
+                                for t in sorted(set(TICKET_RE.findall(title)))
+                                if t != epic
+                            ),
+                            *links.get(task_id, ()),
+                        )
+                    )
+                ),
+                prs=tuple(sorted(set(PR_RE.findall(title)))),
+                scoped=True,
+            )
+    return tuple(tasks.values())
+
+
 def parse_heading_tasks(
-    text: str, links: dict[str, tuple[str, ...]], epic: str = ""
+    text: str,
+    links: dict[str, tuple[str, ...]],
+    epic: str = "",
+    *,
+    patterns: tuple[re.Pattern[str], ...],
 ) -> tuple[ModelFloorManifestTask, ...]:
     """A plan's tasks from its bold-led task paragraphs (``**T1. Title.** ...``, ``1. **S1, now:** ...``), for a plan with no manifest and no table.
 
@@ -463,21 +555,37 @@ def parse_heading_tasks(
     (``**D3.**``) are not drawn as tasks, and a repeated id keeps its first paragraph. The tasks are ``scoped``: a bare
     ``T1`` names a different task in every plan.
     """
-    found = list(HEADING_TASK_RE.finditer(text))
+    sectioned = _heading_tasks(text, links, epic)
+    if sectioned:
+        return sectioned
+    found = next(
+        (
+            matches
+            for pattern in patterns
+            if (
+                matches := [
+                    match
+                    for match in pattern.finditer(text)
+                    if not _in_review_section(text, match.start())
+                ]
+            )
+        ),
+        [],
+    )
     if not found:
         return ()
-    letters = [match.group(1)[0] for match in found]
+    letters = [match.group("id")[0] for match in found]
     wanted = max(set(letters), key=lambda letter: (letters.count(letter), letter))
     tasks: dict[str, ModelFloorManifestTask] = {}
     for match in found:
-        task_id = match.group(1)
+        groups = match.groupdict()
+        task_id = match.group("id")
         if task_id[0] != wanted or task_id in tasks:
             continue
-        title = (match.group(2) or match.group(3)).strip(" .:")
+        lead, rest = groups.get("title") or "", groups.get("rest") or ""
+        title = (lead or rest).strip(" .:")
         # A task's own lead names its tickets and pull requests; a list item's whole line is its lead, a paragraph's prose is not.
-        named = (match.group(2) or "") + (
-            "" if match.group(0).startswith("**") else f" {match.group(3)}"
-        )
+        named = lead + ("" if match.group(0).startswith("**") else f" {rest}")
         tasks[task_id] = ModelFloorManifestTask(
             id=task_id,
             title=f"{task_id} {title}"[:200],
@@ -541,6 +649,7 @@ def _plan_input(
     entry: dict[str, Any] | None,
     header_keys: tuple[str, ...],
     links: dict[str, tuple[str, ...]],
+    patterns: tuple[re.Pattern[str], ...],
 ) -> ModelFloorPlanInput:
     header = header_text(text, header_keys)
     title = re.search(r"^# (.*)", text, re.MULTILINE)
@@ -554,14 +663,21 @@ def _plan_input(
         if entry is not None
         else tuple(sorted(set(TICKET_RE.findall(header))))
     )
+    # A review checklist is not a part: its R1 to R8 are checks on the plan, whatever table the plans-today writer found.
+    table = tuple(row for row in table if not _only_in_review(row.label, text))
     # A section heading is not a part: the plans-today table lists a plan's ``### A.1`` headings beside its tasks.
     sections = {row.label for row in table if is_section_heading(row.label, text)}
     parts = tuple(row for row in table if row.label not in sections)
     if (manifest is None or not manifest.tasks) and (not table or sections):
         # Neither a manifest nor a table of parts: the plan's own task paragraphs are the line's tasks.
         header_tickets = TICKET_RE.findall(header)
+        epic = header_tickets[0] if header_tickets else ""
+        # The plan's own prose pairs a task id with its tickets (``T0.1 OMN-21494``); the overlay's links add to them.
         written = parse_heading_tasks(
-            text, links, epic=header_tickets[0] if header_tickets else ""
+            text,
+            merge_task_links(prose_task_tickets(text, epic), links),
+            epic=epic,
+            patterns=patterns,
         )
         if written:
             by_label = {row.label: row for row in table}
@@ -593,11 +709,13 @@ def load_plans(
     plans_relpath: str,
     manifest_suffix: str,
     header_keys: tuple[str, ...],
+    heading_task_patterns: tuple[str, ...],
     contains: tuple[str, ...],
     plans_today: dict[str, Any] | None,
     plan_refs: tuple[ModelFactoryFloorPlanRef, ...] = (),
     task_links: tuple[ModelFactoryFloorTaskLinks, ...] = (),
 ) -> tuple[ModelFloorPlanInput, ...]:
+    patterns = heading_patterns(heading_task_patterns)
     directory = kb / plans_relpath
     with _source(directory):
         if not directory.is_dir():
@@ -640,6 +758,7 @@ def load_plans(
                     entry=entries.get(relative),
                     header_keys=header_keys,
                     links=links_of(relative),
+                    patterns=patterns,
                 )
             )
     drawn = {plan.plan_path for plan in plans}
@@ -665,8 +784,11 @@ def load_plans(
                     entry=entries.get(plan_ref.path),
                     header_keys=header_keys,
                     links=links_of(plan_ref.path),
+                    patterns=patterns,
                 )
             )
+            # The first readable ref of a plan draws it; a stale declared ref does not hide the pull request's head.
+            drawn.add(plan_ref.path)
     return tuple(plans)
 
 
@@ -758,10 +880,11 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
             cells.setdefault(key.strip(), value.strip())
         elif "REFUSED(" in part:
             refusal = part[part.index("(") + 1 :].rstrip(")")
-    cores, cap, slots = (
+    cores, cap, slots, lane_slots = (
         _number(cells.get("cores", "")),
         _number(cells.get("lane_cap", "") or cells.get("cap", "")),
         _number(cells.get("lane_slots", "") or cells.get("slots", "")),
+        _number(cells.get("lane_slots", "")),
     )
     return ModelFloorPoolReading(
         host=host,
@@ -774,6 +897,7 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
         swap_used_pct=_number(cells.get("swap", "")),
         cap=int(cap) if cap is not None else None,
         slots=int(slots) if slots is not None else None,
+        lane_slots=int(lane_slots) if lane_slots is not None else None,
         refusal=refusal,
     )
 

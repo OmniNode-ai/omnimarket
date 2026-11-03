@@ -15,12 +15,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from omnimarket.models.work_ledger_query import (
+    DEFAULT_POINT_PAGE_SIZE,
+    POINT_QUERY_KINDS,
     EnumWorkLedgerParityStatus,
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerFreshness,
     ModelWorkLedgerParity,
     ModelWorkLedgerQueryRequest,
     ModelWorkLedgerQueryResult,
+    ModelWorkLedgerStateQuery,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
@@ -32,8 +35,15 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
     ProtocolWorkLedgerQueryReader,
+    ProtocolWorkLedgerStateReader,
     WorkLedgerReadError,
     load_work_ledger_query_source,
+)
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_state_answer import (
+    decode_cursor,
+    encode_cursor,
+    parse_claims_since,
+    state_answer,
 )
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
@@ -87,12 +97,17 @@ class HandlerWorkLedgerQuery:
                 )
                 return base.model_copy(update=history_answer(request, records))
             except WorkLedgerReadError as exc:
-                return base.model_copy(update={"error": str(exc)})
+                return self._fail(base, str(exc))
             except Exception as exc:
-                return base.model_copy(
-                    update={
-                        "error": f"{type(exc).__name__}: history acquisition failed"
-                    }
+                return self._fail(
+                    base, f"{type(exc).__name__}: history acquisition failed"
+                )
+        if request.query in POINT_QUERY_KINDS:
+            if isinstance(self._reader, ProtocolWorkLedgerStateReader):
+                return self._point_query(request, base, now)
+            if request.query is EnumWorkLedgerQueryKind.OPEN_RULINGS:
+                return self._fail(
+                    base, "open-rulings needs a reader backed by work_ledger_state"
                 )
         try:
             records = self._reader.read_rows(since=request.since, until=until)
@@ -110,12 +125,7 @@ class HandlerWorkLedgerQuery:
                 close = getattr(self._reader, "close", None)
                 if close is not None:
                     close()
-            error = (
-                str(exc)
-                if isinstance(exc, WorkLedgerReadError)
-                else f"{type(exc).__name__}: {exc}"
-            )
-            return base.model_copy(update={"error": error})
+            return self._fail(base, self._message(exc))
         parity = replay.window_parity(days, replay.parse_rows(receipts))
         if capped and parity.status is EnumWorkLedgerParityStatus.EXACT:
             parity = ModelWorkLedgerParity(
@@ -134,6 +144,73 @@ class HandlerWorkLedgerQuery:
                     rows_read=len(records),
                 ),
                 "parity": parity,
+            }
+        )
+
+    @staticmethod
+    def _message(exc: Exception) -> str:
+        if isinstance(exc, WorkLedgerReadError):
+            return str(exc)
+        return f"{type(exc).__name__}: {exc}"
+
+    @staticmethod
+    def _fail(
+        base: ModelWorkLedgerQueryResult,
+        message: str,
+        *,
+        page_size: int | None = None,
+    ) -> ModelWorkLedgerQueryResult:
+        """An error answer: no section is an answer, so none is filled."""
+        return base.model_copy(
+            update={"error": message, "status": "error", "page_size": page_size}
+        )
+
+    def _point_query(
+        self,
+        request: ModelWorkLedgerQueryRequest,
+        base: ModelWorkLedgerQueryResult,
+        now: datetime,
+    ) -> ModelWorkLedgerQueryResult:
+        """holds, inbox, open-claims and open-rulings from ``work_ledger_state``:
+        one keyset page of the open set, with its size and the table's watermark."""
+        page_size = request.page_size or DEFAULT_POINT_PAGE_SIZE
+        reader = self._reader
+        assert isinstance(reader, ProtocolWorkLedgerStateReader)
+        try:
+            query = ModelWorkLedgerStateQuery(
+                point=request.query,
+                now=now,
+                limit=page_size,
+                after=decode_cursor(request.cursor, request.query)
+                if request.cursor
+                else None,
+                lane=request.lane,
+                lanes=request.lanes or ((request.lane,) if request.lane else ()),
+                ticket=request.ticket,
+                repo=request.repo,
+                pr=request.pr,
+                surface=request.surface,
+                to=request.to,
+                claims_since=parse_claims_since(request.claims_since)
+                if request.claims_since
+                else None,
+            )
+            page = reader.read_state_page(query=query)
+            answer = state_answer(request, page, now)
+        except Exception as exc:  # the reader already redacts connection details
+            with contextlib.suppress(Exception):
+                close = getattr(reader, "close", None)
+                if close is not None:
+                    close()
+            return self._fail(base, self._message(exc), page_size=page_size)
+        return base.model_copy(
+            update={
+                **answer,
+                "page_size": page_size,
+                "watermark": page.watermark,
+                "next_cursor": encode_cursor(request.query, page.entities[-1])
+                if page.has_more and page.entities
+                else None,
             }
         )
 

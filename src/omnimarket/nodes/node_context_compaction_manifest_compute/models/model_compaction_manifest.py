@@ -16,6 +16,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from omnimarket.models.replay_bundle import (
     ModelBundleFile as ModelBundleFile,
 )
+from omnimarket.models.replay_bundle import ModelLedgerFile as ModelLedgerFile
 from omnimarket.models.replay_bundle import (
     ModelVerifyBundleRequest as ModelVerifyBundleRequest,
 )
@@ -71,13 +72,6 @@ class ModelCapturedRecord(_Frozen):
     emitted_at: AwareDatetime
     content: str
     content_sha256: str | None = None
-
-
-class ModelLedgerFile(_Frozen):
-    """The ledger file or one archive roll, as bytes."""
-
-    name: str
-    content: bytes
 
 
 class ModelBoundaryPair(_Frozen):

@@ -108,6 +108,12 @@ requirements:
         statement: "AC29: the effect node reads each declared host's container listing and judges it against the declared budgets, a host it cannot read draws UNKNOWN with the cause and never zero, a dead row with no name in a listing is dropped while a nameless row in any other state still refuses it, and no declared host means no container read -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k 'declared_host or cannot_be_read or listing_command or dead_row or nameless_row'"
       - id: "AC30"
         statement: "AC30: an unread runner fleet names the file and why it is unread in the record's sources and on each machine -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q -k runner_fleet"
+  - id: "req-omn21733-slot-truth"
+    statement: |-
+      The floor draws each machine's free slots as the figure the tick's admission reads, and a machine the admission refuses is drawn as refused with the reading's reason, never as free.
+    acceptance:
+      - id: "AC31"
+        statement: "AC31: each machine in the record carries free_slots, which is the pool reading's lane_slots cell when its line has one, else the cap less the placed units, never negative and zero when the reading carries an admission or lane refusal, and an admission object (open, refused or unread, with the reading's reason); the page draws refused with the reason in place of free squares and sums only open machines -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_slot_truth.py tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py -q"
   - id: "req-omn21733-cloud-card"
     statement: |-
       The cloud card lists every cloud account that can start a session, draws each account's open sessions as the number open in the session list built from the same receipts, and draws a cap, a credit or an open count that was not read as unread, never as zero.
@@ -120,6 +126,14 @@ requirements:
         statement: "AC43: a signed-in account the overlay does not declare is not drawn as a card but is counted in the cloud note with the cause, not dropped silently -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov -k 'overlay_does_not_declare'"
       - id: "AC44"
         statement: "AC44: the cloud card's headline count of open sessions equals the sum of the open counts of the accounts drawn beneath it -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k headline_open_count"
+  - id: "req-omn21733-publish-cadence"
+    statement: |-
+      The floor publisher finishes inside its tick and survives one lost ssh connection: independent input steps run together, a step with a fresh output is skipped, and a transfer whose connection did not open is retried before the run is refused.
+    acceptance:
+      - id: "AC45"
+        statement: "AC45: consecutive steps the contract marks concurrent run in threads and report in contract order, hosts, pool, friction and process_health are marked and factory_floor is not, and a step naming fresh_relpath and fresh_seconds is skipped while its output is younger and runs when it is older -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
+      - id: "AC46"
+        statement: "AC46: a transfer whose ssh connection did not open (exit 255) is retried twice before the publish is refused, and a command that ran is never retried -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov -k transfer_retries"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -418,6 +432,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py -q --no-cov --tb=line -k runner_fleet"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac31"
+    description: "AC31 a machine's free slots are the tick's own figure and a refused machine is drawn as refused."
+    source: "manual"
+    binds_ac: ["AC31"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_slot_truth.py tests/nodes/node_factory_floor_publish_effect/test_page_slot_truth.py -q --no-cov --tb=line"
+
   - id: "dod-omn21733-ac41"
     description: "AC41 an account's open figure is the count of open sessions in its own list, with a stale-entry note when the accounts file disagrees."
     source: "manual"
@@ -449,6 +471,22 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k headline_open_count"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac45"
+    description: "AC45 concurrent input steps overlap and report in contract order, and a fresh output is skipped."
+    source: "manual"
+    binds_ac: ["AC45"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'concurrent or fresh_output or freshness_gate or independent_inputs_together'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac46"
+    description: "AC46 an ssh connection that did not open is retried and then refused."
+    source: "manual"
+    binds_ac: ["AC46"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k transfer_retries"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-floor-suites"
     description: "The floor's four test suites pass; the command names tests/nodes, where the tests are, and not the node directories under src, which hold none and make pytest exit 5."

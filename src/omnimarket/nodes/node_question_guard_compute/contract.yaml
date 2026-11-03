@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_question_guard_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Pure compute over a drafted reply to the operator. Each question in the reply (a
+  sentence ending in a question mark, or one opening with a question lead) is judged
+  by the rule data in config.question_guard, in order. A refuse rule whose patterns
+  all match refuses the question, naming its ruling and reason; an admit rule whose
+  option count is met admits it; a question no rule matches is admitted. A rule acts
+  only while the request's ruling rows carry a RULING row with its stamp. One refused
+  question refuses the reply. Quoted and fenced text is not read. The rule data and
+  the transport are replaced by the question_guard overlay; the handler takes the
+  rule data by injection and reads no file, environment or clock while it judges.
+input_model:
+  name: ModelQuestionGuardRequest
+  module: omnimarket.nodes.node_question_guard_compute.models.model_question_guard
+output_model:
+  name: ModelQuestionGuardResult
+  module: omnimarket.nodes.node_question_guard_compute.models.model_question_guard
+handler:
+  module: omnimarket.nodes.node_question_guard_compute.handlers.handler_question_guard
+  class: HandlerQuestionGuard
+  input_model: omnimarket.nodes.node_question_guard_compute.models.model_question_guard.ModelQuestionGuardRequest
+  output_model: omnimarket.nodes.node_question_guard_compute.models.model_question_guard.ModelQuestionGuardResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_question_guard_compute.handlers.handler_question_guard:HandlerQuestionGuard
+  handlers:
+    - operation: judge_question
+      topic: onex.cmd.omnimarket.question-guard-requested.v1
+      handler:
+        name: HandlerQuestionGuard
+        module: omnimarket.nodes.node_question_guard_compute.handlers.handler_question_guard
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+inputs:
+  reply_text: {type: str, required: true, description: "The drafted reply to the operator."}
+  ruling_rows: {type: list, required: true, description: "Ledger rows; a rule acts only while its RULING row is among them."}
+  rules: {type: object, required: false, description: "Rule data replacing the injected rule data for this request."}
+outputs:
+  verdict: {type: str, description: "refuse or admit."}
+  rule_id: {type: str}
+  ruling_id: {type: str, description: "The stamp of the ruling that decided, empty when none did."}
+  reason: {type: str}
+  questions: {type: list, description: "One verdict per question found in the reply."}
+config:
+  question_guard:
+    transport: in_memory
+    question_lead: '^(?:question|ask|decision)\s*:'
+    option_list: '\boptions?\s*:'
+    option_list_separator: ";"
+    alternative: '\bor\b'
+    unmatched_reason: "no rule in the question guard data matches this question"
+    rules:
+      - id: dev-lane-restore
+        ruling: "2026-10-20T17:35:21Z"
+        verdict: refuse
+        reason: "a dev-lane restore or rebuild never waits for the operator; restore it and report"
+        match_all:
+          - '\b(?:restor|rebuil|recreat|redeploy|bring (?:it |the \S+ )?back)\w*'
+          - '\bdev[- ](?:lane|runtime)\b'
+          - '\b(?:may|can|shall|should) (?:i|we)\b|\b(?:ok|okay) to\b|\bwant me to\b|\bapprov\w*|\bgo ahead\b|\bdo you want\b'
+      - id: subagents-allowed
+        ruling: "2026-10-15T11:37:28Z"
+        verdict: refuse
+        reason: "work may always go to subagents on this Mac; dispatch it and report"
+        match_all:
+          - '\bsub-?agents?\b|\bbackground agents?\b'
+          - '\b(?:may|can|shall|should) (?:i|we)\b|\b(?:ok|okay) to\b|\bwant me to\b|\bapprov\w*|\bgo ahead\b|\bdo you want\b'
+      - id: real-options
+        ruling: "2026-10-10T17:54:23Z"
+        verdict: admit
+        reason: "two or more real options that no ruling settles: the operator is asked"
+        min_options: 2
+terminal_event: onex.evt.omnimarket.question-guard-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.question-guard-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.question-guard-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.question-guard-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.question-guard-decided.v1
+published_events:
+  - event_type: QuestionGuardDecided
+    topic: onex.evt.omnimarket.question-guard-decided.v1
+    description: The verdict on one drafted reply's questions.
+metadata:
+  transport_type: inmemory
+  description: Refuses a drafted question that a ruling in force already answers
+  author: OmniNode Team
+  created: "2026-11-02"

@@ -43,6 +43,11 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+    resolve_delegation_backend,
+    resolve_timeout_seconds,
+)
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_api_key_loop_safe,
@@ -59,11 +64,6 @@ from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision imp
     ModelTypedDecisionShadowResult,
     ModelTypedDecisionWorkflowRequest,
     ModelTypedDecisionWorkflowResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    ModelResolvedDelegationBackend,
-    resolve_delegation_backend,
-    resolve_timeout_seconds,
 )
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"

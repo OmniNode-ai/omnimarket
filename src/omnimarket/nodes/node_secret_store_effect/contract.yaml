@@ -8,6 +8,10 @@
 # <onex_home>/config.yaml) from the node's adapters package, the only place a
 # product is named. Nothing deployment specific is in this contract.
 #
+# A machine whose overlay block names no store is read as the local one only by a
+# caller that says so (the delegation key store does); everyone else is told
+# not_configured.
+#
 # On the bus a request and a result never carry a value: both value fields are
 # excluded from serialization. An event can resolve (proving a secret exists
 # and this identity can read it), list a folder's key names, or be told
@@ -80,6 +84,14 @@ reference_namespaces:
   tenant:
     folder: /tenant-inference-credentials
     key_template: "{name}"
+  # OMN-21921: a provider key a backend's routing declares (llm.<provider>.<name>)
+  # is key <ref> in /provider-credentials: secret://onex/provider/<ref>. The
+  # overlay may point a name at the path its own store keeps it under
+  # (secret_store.references), so a deployment's layout is never in this contract.
+  provider:
+    folder: /provider-credentials
+    key_template: "{name}"
+    overlay_mapped: true
 
 terminal_event: onex.evt.omnimarket.secret-store-completed.v1
 published_events:
@@ -113,3 +125,4 @@ metadata:
   related_tickets:
     - "OMN-20944"
     - "OMN-20994"
+    - "OMN-21921"

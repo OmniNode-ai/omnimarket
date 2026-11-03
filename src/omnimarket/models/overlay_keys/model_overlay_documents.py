@@ -67,6 +67,9 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
+    # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
+    fallback_targets: tuple[NonEmptyStr, ...] = ()
     local: bool = False
     codex: bool = False
     available: bool = True
@@ -84,7 +87,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     lane_ready: bool = False
     lane_not_ready_reason: str | None = None
     push: bool = True
-    cap: int | None = Field(default=None, ge=1)
+    # 0 places no lane or landing worker on the host (OMN-22015); a lab-run unit is judged by slots, not this cap.
+    cap: int | None = Field(default=None, ge=0)
+    # The units the host's lab-work serve process runs at once (``serve --max-units``); omitted: the serve default.
+    unit_slots: int | None = Field(default=None, ge=1, le=64)
     reserve: int | None = Field(default=None, ge=0)
     unit_cores: float | None = Field(default=None, gt=0)
     penalty: float = Field(default=0.0, ge=0)
@@ -116,6 +122,16 @@ class ModelLabHostRow(_ModelOverlayBase):
     max_weight: NonEmptyStr | None = None
     # ``speed``: a measured figure, relative to h101 on the same suite (1.0); ranks the host.
     speed: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _fallback_targets_are_distinct_from_target(self) -> "ModelLabHostRow":
+        """No fallback name is the row's ``target`` or repeats another."""
+        names = self.fallback_targets
+        if self.target in names or len(set(names)) != len(names):
+            raise ValueError(
+                f"lab host {self.name!r}: fallback_targets repeats target or itself: {list(names)}"
+            )
+        return self
 
 
 class ModelUnitNeedsRule(_ModelOverlayBase):

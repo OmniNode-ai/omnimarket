@@ -19,9 +19,18 @@ Identity
 --------
 The overlay names the machine identity's client id and secret by reference.
 They resolve at run time from the injected bootstrap ``ProtocolSecretStore``
-(the runtime's own store) or, with none injected, from
-``<onex_home>/credentials.json``, refused unless mode 0600. No environment
-variable is required and nothing deployment specific is committed.
+(the runtime's own store), from the ``NAME=value`` file the overlay's
+``identity_file`` names, or, with neither, from ``<onex_home>/credentials.json``,
+refused unless mode 0600. No environment variable is required and nothing
+deployment specific is committed. A provider that reads a machine-local store
+needs no identity at all.
+
+A machine with no overlay block
+-------------------------------
+Answered ``not_configured``, unless the caller hands the handler the overlay
+that machine is read as (``unconfigured_overlay``): the delegation key store
+hands it the local one, so a customer laptop with no config resolves from its
+own database through this same handler.
 
 Never a value
 -------------
@@ -58,7 +67,12 @@ from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
     ModelSecretStoreResult,
 )
-from omnimarket.nodes.node_secret_store_effect.adapters import secret_store_for
+from omnimarket.nodes.node_secret_store_effect.adapters import (
+    IdentityFileStore,
+    identity_needed,
+    missing_overlay_fields,
+    secret_store_for,
+)
 
 if TYPE_CHECKING:
     from omnibase_infra.cli.store_onex_home_files import StoreOnexHomeFiles
@@ -77,18 +91,23 @@ _SAFE_MESSAGE = re.compile(r"^[a-z]+ (refused|unavailable|rejected|failed)[\w :]
 class _Namespace:
     folder: str
     key_template: str
+    #: Whether the overlay may point a name of this namespace at another path.
+    overlay_mapped: bool = False
 
 
 @dataclass(frozen=True)
 class _Target:
     folder: str
     key: str | None
+    #: The namespace name, when the overlay may remap it.
+    alias: str | None = None
 
 
 @dataclass(frozen=True)
 class _Resolved:
     store: ProtocolSecretStore | None = None
     root: str = "/"
+    references: Mapping[str, str] | None = None
     refusal: EnumSecretStoreOutcome | None = None
     detail: str | None = None
 
@@ -107,6 +126,7 @@ def _load_namespaces(contract_path: Path) -> dict[str, _Namespace]:
         namespaces[str(name)] = _Namespace(
             folder=_folder(str(spec["folder"])),
             key_template=str(spec["key_template"]),
+            overlay_mapped=bool(spec.get("overlay_mapped", False)),
         )
     return namespaces
 
@@ -180,6 +200,8 @@ class HandlerSecretStore:
         bootstrap_store: Where the identity's credential references resolve.
             With none, ``<onex_home>/credentials.json``.
         contract_path: The node contract, for ``reference_namespaces``.
+        unconfigured_overlay: The overlay a machine with no ``secret_store``
+            block is read as. With none, such a machine is ``not_configured``.
     """
 
     def __init__(
@@ -190,12 +212,14 @@ class HandlerSecretStore:
         onex_home: Path | None = None,
         bootstrap_store: ProtocolSecretStore | None = None,
         contract_path: Path | None = None,
+        unconfigured_overlay: ModelSecretStoreOverlay | None = None,
     ) -> None:
         self._store = store
         self._overlay = overlay
         self._onex_home = onex_home
         self._bootstrap_store = bootstrap_store
         self._namespaces = _load_namespaces(contract_path or _CONTRACT_PATH)
+        self._unconfigured_overlay = unconfigured_overlay
 
     # ------------------------------------------------------------------ naming
 
@@ -216,7 +240,11 @@ class HandlerSecretStore:
             folder = (
                 namespace.folder if not rest else _join(namespace.folder, f"/{rest}")
             )
-            return _Target(folder=folder, key=namespace.key_template.format(name=name))
+            return _Target(
+                folder=folder,
+                key=namespace.key_template.format(name=name),
+                alias=name if namespace.overlay_mapped and not rest else None,
+            )
         return _Target(folder=_folder("/" + "/".join(folders)), key=name)
 
     def _target(self, request: ModelSecretStoreRequest) -> _Target:
@@ -238,13 +266,51 @@ class HandlerSecretStore:
     # ---------------------------------------------------------------- the store
 
     async def _credential(
-        self, ref: str, files: StoreOnexHomeFiles
+        self,
+        ref: str,
+        files: StoreOnexHomeFiles,
+        bootstrap: ProtocolSecretStore | None,
     ) -> SecretStr | None:
-        if self._bootstrap_store is not None:
-            value = await self._bootstrap_store.get_secret(ref)
+        if bootstrap is not None:
+            value = await bootstrap.get_secret(ref)
             return SecretStr(value) if value else None
         remediation = f"file it in credentials.json under '{ref}' (mode 0600)"
         return SecretStr(files.read_secret(ref, remediation))
+
+    def _bootstrap(
+        self, overlay: ModelSecretStoreOverlay
+    ) -> ProtocolSecretStore | None:
+        """Where the identity's references resolve: injected, the overlay's file, or neither."""
+        if self._bootstrap_store is not None:
+            return self._bootstrap_store
+        if overlay.identity_file is None:
+            return None
+        relative = Path(overlay.identity_file)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise _InvalidRequestError("identity_file is a path under the user's home")
+        return IdentityFileStore(Path.home() / relative)
+
+    def configured_provider(self) -> str | None:
+        """The provider this machine's overlay names, or ``None`` when it names none.
+
+        A machine with no block answers the provider of ``unconfigured_overlay``.
+        Reads the overlay only; it never reaches a store or an identity.
+        """
+        from omnibase_core.errors.model_onex_error import ModelOnexError
+        from omnibase_infra.cli.store_onex_home_files import StoreOnexHomeFiles
+        from omnibase_infra.doctor.delegation_doctor_support import default_onex_home
+
+        overlay = self._overlay
+        if overlay is None:
+            files = StoreOnexHomeFiles(self._onex_home or default_onex_home())
+            try:
+                overlay = load_secret_store_overlay(
+                    files.load_config(must_exist=False), source=str(files.config_path)
+                )
+            except (ModelOnexError, ValueError):
+                return None
+            overlay = overlay or self._unconfigured_overlay
+        return overlay.provider if overlay is not None else None
 
     async def _resolve_store(self) -> _Resolved:
         """The store and the root folder, or why there is none."""
@@ -262,6 +328,7 @@ class HandlerSecretStore:
                 )
             except (ModelOnexError, ValueError) as exc:
                 return _Resolved(refusal=misconfigured, detail=_detail_of(exc))
+            overlay = overlay or self._unconfigured_overlay
             if overlay is None:
                 return _Resolved(
                     refusal=EnumSecretStoreOutcome.NOT_CONFIGURED,
@@ -273,22 +340,44 @@ class HandlerSecretStore:
         except _InvalidRequestError as exc:
             return _Resolved(refusal=misconfigured, detail=f"root_folder: {exc}")
         if self._store is not None:
-            return _Resolved(store=self._store, root=root)
-        try:
-            client_id = await self._credential(overlay.client_id_ref, files)
-            client_secret = await self._credential(overlay.client_secret_ref, files)
-        except ModelOnexError as exc:
-            return _Resolved(refusal=misconfigured, detail=_detail_of(exc))
-        if client_id is None or client_secret is None:
-            missing = (
-                overlay.client_id_ref
-                if client_id is None
-                else overlay.client_secret_ref
+            return _Resolved(
+                store=self._store, root=root, references=overlay.references
             )
+        missing = missing_overlay_fields(overlay)
+        if missing:
             return _Resolved(
                 refusal=misconfigured,
-                detail=f"the bootstrap store has no entry for '{missing}'",
+                detail=f"the overlay for provider '{overlay.provider}' lacks {list(missing)}",
             )
+        client_id: SecretStr | None = None
+        client_secret: SecretStr | None = None
+        if identity_needed(overlay.provider):
+            if overlay.client_id_ref is None or overlay.client_secret_ref is None:
+                return _Resolved(
+                    refusal=misconfigured, detail="the overlay names no identity"
+                )
+            try:
+                bootstrap = self._bootstrap(overlay)
+                client_id = await self._credential(
+                    overlay.client_id_ref, files, bootstrap
+                )
+                client_secret = await self._credential(
+                    overlay.client_secret_ref, files, bootstrap
+                )
+            except ModelOnexError as exc:
+                return _Resolved(refusal=misconfigured, detail=_detail_of(exc))
+            except (_InvalidRequestError, PermissionError, OSError) as exc:
+                return _Resolved(refusal=misconfigured, detail=_safe_detail(exc))
+            if client_id is None or client_secret is None:
+                missing_ref = (
+                    overlay.client_id_ref
+                    if client_id is None
+                    else overlay.client_secret_ref
+                )
+                return _Resolved(
+                    refusal=misconfigured,
+                    detail=f"the bootstrap store has no entry for '{missing_ref}'",
+                )
         store = secret_store_for(
             overlay,
             client_id=client_id,
@@ -301,7 +390,18 @@ class HandlerSecretStore:
                 detail=f"no adapter for provider '{overlay.provider}'",
             )
         self._store = store
-        return _Resolved(store=store, root=root)
+        return _Resolved(store=store, root=root, references=overlay.references)
+
+    @staticmethod
+    def _remapped(target: _Target, references: Mapping[str, str] | None) -> _Target:
+        """The target the overlay points a declared name at, or the contract's own."""
+        path = references.get(target.alias) if references and target.alias else None
+        if path is None:
+            return target
+        folder, _, key = path.rpartition("/")
+        if not _SEGMENT.match(key) or key in (".", ".."):
+            raise _InvalidRequestError("an overlay reference ends in a key")
+        return _Target(folder=_folder(folder or "/"), key=key)
 
     # ------------------------------------------------------------------ handle
 
@@ -355,6 +455,12 @@ class HandlerSecretStore:
             return result(
                 resolved.refusal or EnumSecretStoreOutcome.MISCONFIGURED,
                 detail=resolved.detail,
+            )
+        try:
+            target = self._remapped(target, resolved.references)
+        except _InvalidRequestError as exc:
+            return result(
+                EnumSecretStoreOutcome.MISCONFIGURED, detail=f"overlay: {exc}"
             )
         folder = _join(resolved.root, target.folder)
         key = target.key
