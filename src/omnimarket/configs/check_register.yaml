@@ -938,6 +938,11 @@ checks:
     blocks:
     - measured-class rubric acceptance
     source: OMN-20166; delegation_class_rubrics.v1.yaml criterion edits_apply
+  - check_id: delegation.rubric.criterion.generated_tests_pass_reference
+    check_class: gate
+    blocks:
+    - measured-class rubric acceptance
+    source: OMN-22214; delegation_class_rubrics.v1.yaml criterion generated_tests_pass_reference
   - check_id: delegation.rubric.criterion.id_coverage
     check_class: gate
     blocks:

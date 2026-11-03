@@ -64,7 +64,8 @@ x-review-criteria: &review_criteria
 - *declared_format
 
 x-code-criteria: &code_criteria
-- criterion_id: code_parses
+- &code_parses
+  criterion_id: code_parses
   description: Python, YAML and JSON code in the answer parses, without executing it.
   params:
     code_field_names:
@@ -83,11 +84,13 @@ x-code-criteria: &code_criteria
     json_phrases:
     - json
 - *declared_format
-- criterion_id: stated_test_passes
+- &stated_test_passes
+  criterion_id: stated_test_passes
   description: Test targets named in the request or answer have caller-supplied passing execution results.
   params:
     target_pattern: *test_target_pattern
-- criterion_id: ids_traceable
+- &ids_traceable
+  criterion_id: ids_traceable
   description: Ticket-shaped identifiers in the added lines of a diff answer (the whole answer when it is not a diff) occur in the request or supplied context.
   params:
     ticket_id_pattern: *ticket_id_pattern
@@ -189,7 +192,17 @@ classes:
   document:
   - *claims_traceable
   code_generation: *code_criteria
-  test: *code_criteria
+  # A generated test file is also run against the task's reference function
+  # when the task supplies one; a test that fails against it refuses the file.
+  test:
+  - *code_parses
+  - *declared_format
+  - *stated_test_passes
+  - *ids_traceable
+  - criterion_id: generated_tests_pass_reference
+    description: Every generated test passes when run against the reference function the task supplied, and the file names at least the configured number of tests.
+    params:
+      min_generated_tests: 1
 
 # OMN-20166: no class has a measured MET line on dev. Flip only the measured
 # class and keep its rubric version and declared line with the measurement.

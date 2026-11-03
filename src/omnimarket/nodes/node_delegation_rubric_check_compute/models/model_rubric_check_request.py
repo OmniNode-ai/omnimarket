@@ -6,6 +6,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_class_rubric import (
     ModelClassRubric,
 )
@@ -27,6 +28,9 @@ class ModelRubricCheckRequest(BaseModel):
     rubric: ModelClassRubric
     transcript: ModelToolUseTranscript | None = None
     execution_results: tuple[ModelRubricExecutionResult, ...] = ()
+    # The generated tests run against the task's reference function, when
+    # the task supplied one; the node reads it and never executes anything.
+    reference_test_run: ModelNamedTestRun | None = None
 
     @property
     def context(self) -> str:
