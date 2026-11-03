@@ -83,9 +83,14 @@ def _sources(home: Path) -> dict[str, str]:
         paths["reports/decision-map/decisions.json"],
         json.dumps(DECISIONS).encode(),
     )
+    operator = {
+        d.remote: d.relpath
+        for e in load_runtime().operator_reports.entries
+        for d in e.data
+    }
     _put(
         home,
-        paths["reports/decision-quality/decision-quality.md"],
+        operator["reports/decision-quality/decision-quality.md"],
         REPORT_TEXT.encode(),
         REPORT_MTIME,
     )
@@ -104,6 +109,7 @@ def _request(tmp_path: Path) -> ModelReportsPublishRequest:
             serve_url="http://example.invalid:8088/",
             bus_lane="lane-x",
             history_root=str(tmp_path / "kept"),
+            owner_login="owner@example.invalid",
         ),
         now=NOW,
     )
@@ -182,10 +188,9 @@ def test_reports_publish_writes_the_index_pages_data_and_manifest(
         "reports/process-health/index.html",
         "reports/decision-map/index.html",
         "reports/decision-map/decisions.json",
-        "reports/decision-quality/index.html",
-        "reports/decision-quality/decision-quality.md",
         "reports/manifest.json",
     }
+    assert not [n for n in result.published if "decision-quality" in n]
     assert result.unread == ()
     assert result.published[-1] == "reports/manifest.json"
     assert (site / "reports/decision-map/decisions.json").read_bytes() == json.dumps(
@@ -213,7 +218,6 @@ def test_reports_manifest_states_each_data_age_and_what_it_is_measured_from(
         "factory_floor",
         "process_health",
         "decision_map",
-        "decision_quality",
     ]
     floor = reports["factory_floor"]["data"][0]
     assert floor["as_of"] == "2026-10-31T15:40:00Z"
@@ -221,9 +225,10 @@ def test_reports_manifest_states_each_data_age_and_what_it_is_measured_from(
     assert "generated_at" in floor["as_of_basis"]
     assert reports["decision_map"]["refresh"] == "snapshot"
     assert reports["decision_map"]["data"][0]["as_of"] == "2026-10-30T00:00:00Z"
-    quality = reports["decision_quality"]["data"][0]
-    assert quality["as_of"] == "2026-10-31T08:11:00Z"
-    assert quality["as_of_basis"] == "the file's modified time"
+    assert "decision_quality" not in reports
+    assert "decision-quality" not in (
+        tmp_path / "site/reports/manifest.json"
+    ).read_text(encoding="utf-8")
     assert reports["process_health"]["refresh"] == "tick"
 
 
@@ -288,7 +293,8 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
     overlay.write_text(
         f"ssh_target: lab-web\nremote_dir: {tmp_path / 'site'}\n"
         "serve_url: http://example.invalid:8088/\nbus_lane: lane-x\n"
-        f"history_root: {tmp_path / 'kept'}\n",
+        f"history_root: {tmp_path / 'kept'}\n"
+        "owner_login: owner@example.invalid\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY", str(overlay))
@@ -298,11 +304,29 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
     ssh = fake_bin / "ssh"
     ssh.write_text('#!/bin/sh\nfor last; do :; done\nexec sh -c "$last"\n')
     ssh.chmod(0o755)
+    # The tailnet status names one device of the owner's login; the web server container is a stand-in that dumps
+    # the marker and the include the publish wrote, as the real server does from its read-only mount.
+    status = {
+        "User": {"7": {"LoginName": "owner@example.invalid"}},
+        "Self": {"UserID": 7, "OS": "macOS", "TailscaleIPs": ["192.0.2.10"]},
+        "Peer": {},
+    }
+    tailscale = fake_bin / "tailscale"
+    tailscale.write_text(f"#!/bin/sh\nprintf '%s' '{json.dumps(status)}'\n")
+    tailscale.chmod(0o755)
+    docker = fake_bin / "docker"
+    docker.write_text(
+        '#!/bin/sh\ncase "$*" in *"nginx -T"*) '
+        f"echo '# operator-only report gate'; cat {tmp_path / 'access/operator-only.conf'};; esac\n"
+    )
+    docker.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
     assert main(["--omni-home", request.home or "", "--skip-refresh"]) == 0
     out = capsys.readouterr().out
+    assert "operator-access: admitted_devices=1" in out
+    assert (tmp_path / "site/reports/decision-quality/index.html").is_file()
     assert "factory-floor-publish: published=" in out
-    assert "reports-site-publish: published=7 files unread=none" in out
+    assert "reports-site-publish: published=5 files unread=none" in out
     assert (tmp_path / "site/reports/index.html").is_file()
     shutil.rmtree(tmp_path / "site")
     assert (
@@ -368,7 +392,7 @@ def test_page_reports_every_report_page_links_back_and_the_tab_page_draws_each_i
     for name in ("process-health", "decision-map", "decision-quality"):
         assert 'href="../"' in REPORT_PAGES[name].read_text(encoding="utf-8"), name
     shell = (NODE_DIR / "page/index.html").read_text(encoding="utf-8")
-    for name in ("process-health", "decision-map", "decision-quality"):
+    for name in ("process-health", "decision-map"):
         assert f'page: "reports/{name}/?embed=1"' in shell, name
     assert 'href="reports/"' not in shell
 

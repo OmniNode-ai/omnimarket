@@ -7,15 +7,15 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    _select_backend,
+    _select_backend_by_id,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    _select_backend,
-    _select_backend_by_id,
 )
 from tests.unit.delegation.test_exact_backend_pin_routing_omn15539 import (
     _request,

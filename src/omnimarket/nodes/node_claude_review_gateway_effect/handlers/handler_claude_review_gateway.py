@@ -84,6 +84,9 @@ from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_review_call_attempt_kind import EnumReviewCallAttemptKind
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
 from omnimarket.handlers.tenant_identity_forms import sync_tenant_identity_forms
 from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptMessage,
@@ -95,7 +98,6 @@ from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_revi
     ModelReviewGatewayKey,
     ModelReviewGatewayPlan,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
 logger = logging.getLogger(__name__)
 

@@ -27,6 +27,12 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
     classify_boundary_failure,
 )
 
+from omnimarket.handlers.routing.customer_key_terminus import (
+    CustomerKeyRefusedError,
+    EnumCustomerKeyRefusalReason,
+    EnumDelegationSurface,
+    ModelCustomerKeyRefusal,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
@@ -35,12 +41,6 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationResult,
-)
-from omnimarket.routing.customer_key_terminus import (
-    CustomerKeyRefusedError,
-    EnumCustomerKeyRefusalReason,
-    EnumDelegationSurface,
-    ModelCustomerKeyRefusal,
 )
 
 pytestmark = pytest.mark.unit

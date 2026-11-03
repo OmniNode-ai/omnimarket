@@ -1,0 +1,16 @@
+title: Account limit monitoring
+epic: OMN-30000
+tasks:
+  - id: ALM.1
+    title: ALM.1 Read each account's limit
+    tickets: [OMN-30001]
+    state: done
+  - id: ALM.2
+    title: ALM.2 Project the limit onto the floor
+    tickets: [OMN-30002]
+    depends_on: [ALM.1]
+    state: active
+  - id: ALM.3
+    title: ALM.3 Alert before the limit is reached
+    tickets: [OMN-30003]
+    depends_on: [ALM.2]

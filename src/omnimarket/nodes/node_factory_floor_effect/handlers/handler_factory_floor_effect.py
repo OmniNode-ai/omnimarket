@@ -33,6 +33,9 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorOverlay,
 )
+from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
+    load_phoenix_traces,
+)
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
     load_cloud_accounts,
@@ -78,13 +81,13 @@ class HandlerFactoryFloorEffect:
         self._merged_running = merged_running
 
     def _read_merged_running(
-        self, now: datetime
+        self, now: datetime, hosts_table: Path | None
     ) -> tuple[ModelMergedRunningCountResult | None, str]:
         """The count and an empty cause, or None and why it was not read: a count that fails never stops the floor."""
         if self._merged_running is None:
             return None, "no merged-running count reader is bound"
         try:
-            return self._merged_running.read(now), ""
+            return self._merged_running.read(now, hosts_table=hosts_table), ""
         except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
             return None, f"{type(exc).__name__}: {exc}"
 
@@ -157,6 +160,7 @@ class HandlerFactoryFloorEffect:
                 plans_relpath=rt.plans_relpath,
                 manifest_suffix=rt.manifest_suffix,
                 header_keys=rt.plan_header_keys,
+                heading_task_patterns=rt.heading_task_patterns,
                 contains=contains,
                 plans_today=plans_today,
                 # A plan not on the default branch is read from its open pull request's head when no declared ref names it.
@@ -208,6 +212,9 @@ class HandlerFactoryFloorEffect:
             runner_fleet_cause=""
             if runner_fleet is not None
             else runner_fleet_cause(fleet_path),
+            phoenix_traces=load_phoenix_traces(
+                os.environ.get(rt.phoenix_url_env, "").strip(), now
+            ),
             lane_containers=load_lane_containers(
                 source=rt.container_source,
                 hosts=overlay.container_hosts if overlay is not None else (),
@@ -215,7 +222,9 @@ class HandlerFactoryFloorEffect:
             ),
         )
         result = HandlerFactoryFloor().handle(compute_request)
-        merged_running, merged_running_cause = self._read_merged_running(now)
+        merged_running, merged_running_cause = self._read_merged_running(
+            now, host_table_path
+        )
         result = result.model_copy(
             update={
                 "floor": result.floor.model_copy(

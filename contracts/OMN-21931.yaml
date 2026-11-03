@@ -57,7 +57,7 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_merged_running_count_compute/test_handler_merged_running_count.py tests/nodes/node_merged_running_count_effect -k idle -q --no-cov --tb=line
   - id: dod-omn21931-ac4
-    description: AC4 the floor section field, the floor effect wiring and the page panel.
+    description: AC4 the floor section field, the floor effect wiring (including its resolved host table) and the page panel; table-cap fallback causes remain visible for out-of-service hosts.
     source: manual
     binds_ac:
       - AC4

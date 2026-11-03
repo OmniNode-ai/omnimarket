@@ -53,6 +53,15 @@ from omnimarket.handlers.node_overlay_reader import (
     load_node_overlay,
     resolve_setting,
 )
+from omnimarket.handlers.routing.byok_model_discovery import get_models_json
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_provider_backend,
+)
+from omnimarket.handlers.routing.local_byok_route import (
+    LOCAL_URL_BACKEND,
+    is_local_url_backend,
+    local_url_backend_id,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     local_model_tests_path,
@@ -71,13 +80,6 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
     ModelModelTestResult,
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
-from omnimarket.routing.byok_model_discovery import get_models_json
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
-from omnimarket.routing.local_byok_route import (
-    LOCAL_URL_BACKEND,
-    is_local_url_backend,
-    local_url_backend_id,
-)
 
 PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
 

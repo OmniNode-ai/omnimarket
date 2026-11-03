@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-11-02",
+  "source": "clean macOS VM onboarding walk (Tart VM, 4 CPU, 8 GB, macOS 26.6.2); local keyless server on the VM bridge",
+  "setup_choice": "Local URL",
+  "setup_model_test": "Local URL answered",
+  "delegate_command": "onex delegate",
+  "task_type": "document",
+  "surface": "customer_local",
+  "refusal": "onex delegate failed: provider_error: [ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT] delegation.customer_provider_key.absent: delegation refused for tenant '<tenant>' (task_type='document', surface=customer_local): the resolved route would run on a platform-owned key, which customer work may never use. Register your own provider key on this machine, or declare a local model, and retry.",
+  "script_summary": "route UNATTRIBUTED -- no backend was reached"
+}

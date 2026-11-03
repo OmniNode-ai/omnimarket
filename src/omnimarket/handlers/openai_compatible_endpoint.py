@@ -31,7 +31,7 @@ from omnimarket.handlers.openai_compatible_endpoint_adapter import (
     read_base_url,
     record_base_url,
 )
-from omnimarket.routing.byok_provider_backends import (
+from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     resolve_byok_provider_backend,
 )

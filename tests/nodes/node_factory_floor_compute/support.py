@@ -42,6 +42,11 @@ def config() -> ModelFactoryFloorConfig:
     return ModelFactoryFloorConfig.model_validate(raw["config"])
 
 
+def wave_config() -> ModelFactoryFloorConfig:
+    """The contract's vocabularies with the stations grouped by wave instead of one per task."""
+    return config().model_copy(update={"station_grouping": "wave"})
+
+
 def ago(minutes: float) -> datetime:
     return NOW - timedelta(minutes=minutes)
 

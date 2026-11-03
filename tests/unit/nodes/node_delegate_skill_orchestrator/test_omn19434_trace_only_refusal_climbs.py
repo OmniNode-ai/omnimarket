@@ -26,6 +26,9 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.delegation.reasoning_preamble import UNRESOLVED_PREAMBLE_CHECK_NAME
+from omnimarket.handlers.routing.delegation_backend_resolution import (
+    resolve_delegation_backend as _real_resolve_delegation_backend,
+)
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
     resolve_task_class_output_contract,
@@ -42,9 +45,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.routing.delegation_backend_resolution import (
-    resolve_delegation_backend as _real_resolve_delegation_backend,
 )
 from tests.fixtures.task_class_transitions import with_declared_transitions
 
