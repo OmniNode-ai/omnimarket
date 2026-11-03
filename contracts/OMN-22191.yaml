@@ -1,0 +1,33 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22191
+title: G0 script rebuild, slice 2 - lane rules block, pillar owner, ledger rows build and ledger tail as compute nodes
+summary: Slice 2 of the ten G0 script rebuild. Four pure compute nodes with a behaviour-preserving port of lane_rules_block.py, onex_pillar_owner.py, ledger_rows.py and ledger_tail.py. The lane-end nodes are slice 1, a separate pull request. entrypoint_lib.sh, the onex_ledger.py, onex_ledger_reconcile.py, skill_exec.py and tool_use_rubric.py rebuilds, the release and the plugin wiring are later slices.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - events
+  - topics
+  - public_api
+requirements:
+  - id: req-g0-slice-2-nodes
+    statement: Four of the ten G0 scripts are nodes whose handler tests pass in omnimarket CI. The other six are not covered by this slice.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: Each of the ten G0 scripts (entrypoint_lib.sh, lane_rules_block.py, ledger_rows.py, ledger_tail.py, onex_lane_closeout.py, onex_ledger.py, onex_ledger_reconcile.py, onex_pillar_owner.py, skill_exec.py, tool_use_rubric.py) is rebuilt as an omnimarket node whose handler tests and canonical shape check pass in omnimarket CI, and the release holding them is published -- falsifier: uv run pytest on a rebuilt node''s test directory fails, the shape check ([OMN-21331](https://linear.app/omninode/issue/OMN-21331)) exits non-zero on a new file, or the published release lacks one of the nodes'
+evidence_requirements:
+  - kind: tests
+    description: Handler tests of the four slice 2 nodes, with literal expected values ported from the source scripts' behaviour.
+    command: uv run pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-g0-slice-2-handler-tests
+    description: The four slice 2 node test directories pass. This covers lane_rules_block, onex_pillar_owner, ledger_rows and ledger_tail only; the other six G0 scripts and the published release are not part of this evidence.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lane_rules_block_compute tests/nodes/node_onex_pillar_owner_compute tests/nodes/node_ledger_rows_build_compute tests/nodes/node_ledger_tail_compute -q --no-cov -m "not kafka"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]
