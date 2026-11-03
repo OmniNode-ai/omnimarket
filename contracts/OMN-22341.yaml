@@ -55,7 +55,7 @@ dod_evidence:
       - check_type: test_passes
         check_value: env ONEX_HOOK_EVENTS_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_runtime_mount_profiles.py -q --no-cov
         cwd: .
-  - id: hook-events-both-profiles-lab-proof
+  - id: hook-events-integration-proof-both-profiles
     description: >
       Both profile legs of the node test directory ran at the pushed head on a
       lab host through lab-work. Hosted CI cannot reach the lab, so only the
@@ -66,7 +66,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane t18c-g7-hook-events-1220 -- env ONEX_HOOK_EVENTS_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect -q --no-cov -m "not kafka"
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22341 -- env ONEX_HOOK_EVENTS_HTTP_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect -q --no-cov -m "not kafka"
         cwd: .
   - id: hook-events-fail-closed
     description: >
