@@ -55,11 +55,26 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_both_csv_shapes_same_result -q --no-cov --refuse-skips
         cwd: .
+  - id: in-memory-profile-leg
+    description: The in-memory profile leg of AC4 runs the node handler with contract spreads and an injected zero-spread overlay; the hosted runner has no broker, so the Redpanda comparison is the unbound local Done gate item two-real-profiles.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -k test_in_memory_profile_leg -q --no-cov --refuse-skips
+        cwd: .
+  - id: both-imports-pre-merge
+    description: Pre-merge handler proof for AC5 that both CSV shapes give the same result; the observed dev installation proof is the unbound local Done gate item dev-runtime-both-imports.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_both_csv_shapes_same_result -q --no-cov --refuse-skips
+        cwd: .
   - id: two-real-profiles
     description: Both transports execute the same node handler, with contract spreads and an injected zero-spread overlay. The dedicated CI job provisions the isolated broker; the local Done gate requires it too.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC4]
     checks:
       - check_type: test_passes
         check_value: env PROMPT_COST_TEST_BUS_OVERLAY=tests/nodes/node_prompt_cost_estimate_compute/fixtures/local_redpanda_profile.yaml uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -k test_two_profile_same_result -q --no-cov --refuse-skips
@@ -84,7 +99,6 @@ dod_evidence:
     description: Pending post-merge orchestrator proof. Run inside the observed dev installation with its checkout root and the merged revision. This check is deliberately excluded from hosted pre-merge evidence.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC5]
     checks:
       - check_type: command
         check_value: |
