@@ -50,21 +50,21 @@ from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm
 
 pytestmark = pytest.mark.unit
 
-# These failure lines preserve the supplied first-walk excerpt verbatim.
+# These failure lines preserve the supplied first-walk excerpt, with the home directory generalized.
 FAILED_LOG = """21:04:03 OmniNode developer onboarding (local runtime). Status file: /var/folders/p7/T/omninode-onboarding/status
 21:04:03 ▶ Phase 0/6: Preflight (reads this Mac; changes nothing you have not agreed to)  (usually under a minute)
   macOS                  26.6.2           14+            14+
 21:04:04 ✔ Phase 0/6 PASSED: Preflight (reads this Mac; changes nothing you have not agreed to) (1s) -- native onex.
 21:04:04 ▶ Phase 1/6: Base tools (Xcode tools, Homebrew, gh, jq, python@3.13, uv)  (usually 5-20 minutes on a clean Mac)
 21:07:12 ✔ Phase 1/6 PASSED: Base tools (Xcode tools, Homebrew, gh, jq, python@3.13, uv) (3m 08s)
-21:07:12 ▶ Phase 2/6: Workspace (/Users/admin/Code/omnibase)  (usually 2-5 minutes)
-21:07:58 ✔ Phase 2/6 PASSED: Workspace (/Users/admin/Code/omnibase) (46s)
+21:07:12 ▶ Phase 2/6: Workspace (/srv/walker/Code/omnibase)  (usually 2-5 minutes)
+21:07:58 ✔ Phase 2/6 PASSED: Workspace (/srv/walker/Code/omnibase) (46s)
 21:07:58 ▶ Phase 3/6: onex, local identity and your models  (usually 3-10 minutes, more when Ollama downloads a model)
 21:09:06 $ one onex delegate (attempt 1/3; output not logged)
 identity: host=Manageds-Virtual-Machine.local locus=venv:.../omnibase/.onex-dispatch-venv omnibase_compat=0.5.7@registry omnibase_core=0.47.50@registry omnibase_infra=0.38.76@local_path omnibase_spi=0.23.7@registry omnimarket=0.4.319@370f405
 onex delegate failed: provider_error: [ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT] delegation.customer_provider_key.absent: delegation refused ...
 {"skill_name":"node_delegate_skill_orchestrator","node_name":"node_delegate_skill_orchestrator","status":"failed","correlation_id":"17929dbf-1da7-4420-87d1-33cc0f8a0ccb","run_id":"8fee00c1-b313-4100-8fc0-953057f184de","exit_code":1,"duration_ms":1042,"result":{"workflow_result":"failed","exit_code":1,"terminal_payload":{"status":"failed","task_type":"document"}}}
-delegate artifacts (route UNATTRIBUTED -- no backend was reached: this run was refused before any rung was dispatched): /Users/admin/.onex_state/runs/8fee00c1/result.txt
+delegate artifacts (route UNATTRIBUTED -- no backend was reached: this run was refused before any rung was dispatched): /srv/walker/.onex_state/runs/8fee00c1/result.txt
 21:09:28 ✘ Phase 3/6 FAILED: onex, local identity and your models (1m 30s)
 21:09:28   Step:      one onex delegate (after 3 attempt(s))
 21:09:28   Last error: delegate artifacts (route UNATTRIBUTED -- no backend was reached ...)
