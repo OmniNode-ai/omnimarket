@@ -371,10 +371,6 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_gate_no_occ_fallback.py -q -p no:randomly -k names_no_occ_clone_or_ref"
         cwd: "${OMNI_HOME}/omnimarket"
-      - check_type: "command"
-        check_value: |-
-          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/occ-gate-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_20074_gate_no_occ_fallback.py -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/occ-gate-tests -k names_no_occ_clone_or_ref
-        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC20"]
   - id: "dod-omn20074-occ-only-tickets-refused"
     description: "Each recorded OCC-only ticket is refused by the gate at the head; the replay fails against the merge-base gate, which admits the recorded passes."
