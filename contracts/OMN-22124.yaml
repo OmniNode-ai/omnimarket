@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-22124
+title: 'node_lab_placement_compute: a lane takes the class of its repository, and a plugin parity read ignores the .orphaned_at marker'
+summary: The lab placement node gains two pure operations whose rules are its contract's data, lane_priority (declared class, then ticket, then repository, then other, with the holdback and the no-free-slot refusal) and plugin_parity (an installed plugin tree against its shipped revision, leaving out the runtime markers .in_use and .orphaned_at directly under the install path).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22124-lane-class-and-orphan-marker
+  statement: Placement charged an omnibase_infra lane to other and refused it PRIORITY-HOLDBACK with a slot free, and refused a pinned lane PARITY-FAILED for the .orphaned_at file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a lane whose repository the placement contract lists as mvp-landing takes the mvp-landing class when no --priority-class is given, so its holdback share is not charged to it as other -- falsifier: uv run pytest tests/nodes/node_lab_placement_compute -q -k priority_class_of_repo'
+  - id: AC2
+    statement: 'AC2: a plugin parity read ignores the .orphaned_at marker so a pinned lane is not refused PARITY-FAILED for it -- falsifier: uv run pytest tests/nodes/node_lab_placement_compute -q -k orphan_marker'
+  - id: AC3
+    statement: 'AC3: a regression test built from the incident''s recorded data (fixture path tests/nodes/node_lab_placement_compute/fixtures/no_host_1102) fails on the broken code and passes on the fix, with the slots=0 refusals as negative controls that still refuse -- falsifier: uv run pytest tests/nodes/node_lab_placement_compute -q'
+  - id: AC4
+    statement: 'AC4: the fixed placement is installed and running on a lab host, and a lane dispatched for omnibase_infra with one free slot held for mvp-landing is placed, recorded as installed=host:revision with observed=what ran -- falsifier: the next remote-lane receipt for an omnibase_infra lane names a host and not no-host'
+evidence_requirements:
+- kind: tests
+  description: The node's focused suite.
+  command: uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22124-ac1
+  description: AC1 an omnibase_infra lane with no declared class takes mvp-landing and is not held back.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov --tb=line -k priority_class_of_repo
+    cwd: .
+- id: dod-omn22124-ac2
+  description: AC2 the .orphaned_at file directly under the install path is left out of the plugin tree comparison.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov --tb=line -k orphan_marker
+    cwd: .
+- id: dod-omn22124-ac3
+  description: AC3 the incident fixture tests pass, with the no-free-slot refusals as negative controls.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22124-ac4
+  description: AC4 the remote-lane runner asks this node for the lane's class. Runs only at the local Done gate on a host that has the registry; it fails until the runner is wired to the node.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: grep -lF HandlerLabLanePriority "$OMNI_HOME"/*/plugins/omni/skills/remote-lane/scripts/onex_remote_lane.py
+    cwd: .
+- id: dod-omn22124-deploy-probe
+  description: 'Deploy probe: the contract GitHub serves at the checked-out commit names the node.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_placement_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "name: node_lab_placement_compute" > /dev/null'''
+    cwd: .
