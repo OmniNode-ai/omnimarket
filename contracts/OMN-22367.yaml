@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-22367
+title: 'Lean line board T2: the six 2026-11-03 cases as frozen, time-stamped fixtures'
+summary: The lean line board plan (approved, RULING 2026-11-03T15:20:04Z) T2 freezes the six surprises of 2026-11-03 (S1 to S6), an all-sources-unread case and a repaired variant of each as time-stamped fixtures under the factory floor compute tests, rebuilt from the ledger rows and the pull request records that evidence them. One test per case and variant asserts the stop kinds and evidence ids the plan requires; each is a strict xfail naming the T5 ticket (OMN-22370) until T5 builds the stops. Fixtures and tests only; no source file changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22367-cases
+  statement: Seven cases, each with a repaired variant, are frozen as fixtures and tested, and every fixture ledger row is tied to its ledger row by a recorded digest.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: fourteen tests (seven cases, each with its repaired variant) are collected by tests/nodes/node_factory_floor_compute/test_line_board_cases.py -- falsifier: a count assertion in the file, run with uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_cases.py -q'
+  - id: AC2
+    statement: 'AC2: every fixture ledger row equals its ledger or archive row byte for byte, by the sha256 recorded in the fixture header -- falsifier: a test recomputes each digest and compares, run with uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_cases.py -q'
+evidence_requirements:
+- kind: tests
+  description: The line board case tests are collected and xfail strictly, and the fixture tests pass.
+  command: uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_cases.py tests/nodes/node_factory_floor_compute/test_line_board_fixtures.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22367-ac1
+  description: AC1 fourteen strict-xfail case tests are collected; the module asserts the count at import.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_cases.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22367-ac2
+  description: AC2 each stored ledger row matches its scrubbed digest, was written by the observation time, and (where the ledger is on the machine) its original digest is a line of the ledger or an archive roll.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_line_board_fixtures.py -q --no-cov --tb=line
+    cwd: .
