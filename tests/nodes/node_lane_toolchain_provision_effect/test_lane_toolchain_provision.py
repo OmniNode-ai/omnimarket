@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 HOME = "/h/lane"
 BIN = f"{HOME}/bin"
 ROOT = f"{HOME}/reg"
-WRAPPER = f"{ROOT}/omnibase_infra/scripts/onex"
+WRAPPER = f"{ROOT}/.onex-dispatch-venv/bin/onex"
 NODEENV = f"{HOME}/.cache/pyright-python/nodeenv"
 NODE_INSTALL: dict[str, tuple[str, ...]] = {"node": ("brew", "install", "node")}
 
@@ -36,7 +36,7 @@ TABLE_TEXT = """
 tools:
   onex:
     probe: [onex, --help]
-    repair: {kind: lane-link, target: omnibase_infra/scripts/onex}
+    repair: {kind: lane-link, target: .onex-dispatch-venv/bin/onex}
     owner_fix: link the wrapper
   node:
     probe: [node, --version]

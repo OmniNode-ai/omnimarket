@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_lane_toolchain_provision_effect
 version: 1.0.0
-description: Probe and repair, on one lab lane host, the declared lane toolchain (the sanctioned onex entry point, node, pnpm and
+description: Probe and repair, on one lab lane host, the declared lane toolchain (the dispatch venv's onex entry point, node, pnpm and
   pyright's node runtime) through the installer the committed table and the host overlay declare.
 pack: distributed_validation
 node_role: effect

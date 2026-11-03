@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22414
 title: 'Lab hosts run lanes with a partial toolchain: pyright''s nodeenv broken on h053, bare onex failing ModuleNotFoundError on h101, no node or pnpm on h051 and h053'
-summary: The lane toolchain of each lab host (the sanctioned onex entry point, node, pnpm, pyright's node runtime) is declared as data in node_host_capability_compute/lane_toolchain.yaml; the host capability node's check_lane_toolchain operation judges a host's measured probes against it and names each missing or broken tool; the new node_lane_toolchain_provision_effect probes and repairs the declared toolchain on a host from that table and its overlay, re-probing before it reports a tool changed.
+summary: The lane toolchain of each lab host (the dispatch venv's onex entry point, node, pnpm, pyright's node runtime) is declared as data in node_host_capability_compute/lane_toolchain.yaml; the host capability node's check_lane_toolchain operation judges a host's measured probes against it and names each missing or broken tool; the new node_lane_toolchain_provision_effect probes and repairs the declared toolchain on a host from that table and its overlay, re-probing before it reports a tool changed.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -43,7 +43,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/test_lane_toolchain_parity.py -q --no-cov --tb=line -k lane_toolchain_parity_contract_data
     cwd: .
 - id: dod-omn22414-ac3-installer
-  description: AC3 hosted part. The installer node links the sanctioned onex wrapper into the lane PATH directory, runs the overlay's installer argv, clears an empty nodeenv, re-probes before it reports a tool changed, changes nothing on a second run, and names a tool with no declared installer as an owner step. The lab runs on h101 and h053 are the unbound items below.
+  description: AC3 hosted part. The installer node links the dispatch venv's onex entry point into the lane PATH directory, runs the overlay's installer argv, clears an empty nodeenv, re-probes before it reports a tool changed, changes nothing on a second run, and names a tool with no declared installer as an owner step. The lab runs on h101 and h053 are the unbound items below.
   source: manual
   binds_ac:
   - AC3

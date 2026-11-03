@@ -8,7 +8,7 @@ contract_version:
   major: 1
   minor: 0
   patch: 0
-description: Probe and repair, on one lab lane host, the declared lane toolchain (the sanctioned onex entry point, node, pnpm
+description: Probe and repair, on one lab lane host, the declared lane toolchain (the dispatch venv's onex entry point, node, pnpm
   and pyright's node runtime). For each tool the committed table lists for the host it probes the tool under the PATH lanes
   run with, repairs a failing one the way the table declares (a link in the lane PATH directory, removal of a cache tree that holds no file
   directory, or the installer argv the host overlay declares), re-probes, and names without a value what only the host owner

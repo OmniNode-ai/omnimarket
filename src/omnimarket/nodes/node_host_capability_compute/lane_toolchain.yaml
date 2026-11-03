@@ -6,10 +6,12 @@
 # in install order: node comes before pyright because pyright-python uses a node on PATH and only builds a nodeenv without one.
 tools:
   onex:
-    # The sanctioned wrapper, not the bare `onex` a package manager leaves on PATH (it raises ModuleNotFoundError: omnibase_core).
+    # The dispatch venv's own entry point, not the bare `onex` a package manager leaves on PATH (it raises ModuleNotFoundError:
+    # omnibase_core). The wrapper script is not the target: it resolves the venv from OMNIBASE_PATH, which a lab-work unit sets to
+    # a clone-refresh root that has none.
     probe: [onex, --help]
-    repair: {kind: lane-link, target: omnibase_infra/scripts/onex}
-    owner_fix: the host installer links the sanctioned onex wrapper into the lane PATH directory ahead of any package-manager onex
+    repair: {kind: lane-link, target: .onex-dispatch-venv/bin/onex}
+    owner_fix: the host installer links the dispatch venv's onex entry point into the lane PATH directory ahead of any package-manager onex
   node:
     probe: [node, --version]
     repair: {kind: install}

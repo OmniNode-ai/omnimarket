@@ -5,7 +5,7 @@
 Lanes placed on a lab host tripped on a half-installed toolchain: the bare ``onex`` on PATH raised ``ModuleNotFoundError``,
 pyright-python's nodeenv directory was empty and its install exited 1, and two hosts had no node or pnpm. For a declared host this
 effect probes each tool the committed table lists for it, under the PATH lanes run with, and repairs a failing one the way the
-table declares: it links the sanctioned wrapper into the lane PATH directory, removes an empty cache directory the tool will
+table declares: it links the dispatch venv's onex entry point into the lane PATH directory, removes an empty cache directory the tool will
 recreate, or runs the installer argv the host overlay declares. It re-probes after a repair and reports the tool as changed only
 when the probe then passes. A tool whose installer the overlay does not declare is named as an owner step.
 
