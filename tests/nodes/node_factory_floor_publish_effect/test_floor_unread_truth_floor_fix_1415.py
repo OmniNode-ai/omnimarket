@@ -223,3 +223,54 @@ def test_a_planned_line_with_no_plan_file_is_named_in_the_floor_verdict() -> Non
         }
     )
     assert "2 planned lines have no plan file yet" in out["verdict"]
+
+
+def _all_fresh_files(lines: list[dict[str, Any]]) -> dict[str, object]:
+    """Every source read at the record time, no worker, no machine: only the lines decide the Dashboard tab."""
+    at = SHELL_RECORD["generated_at"]
+    record = copy.deepcopy(SHELL_RECORD)
+    record["lines"] = lines
+    record["floor"] = {**record["floor"], "lanes": [], "machines": []}
+    record["sources"] = {
+        "watcher_last_tick": at,
+        "ledger_newest_row": at,
+        "pool_read_at": at,
+        "host_table_read": True,
+        "placement_markers_read": True,
+        "receipts_read": True,
+        "cloud_accounts_read": True,
+        "runner_fleet_read": True,
+        "running_evidence_read": True,
+        "stoppage_report": True,
+        "linear_issues": 5,
+    }
+    status = {
+        "published_at": at,
+        "steps": [],
+        "lines_declared": {"state": "read", "plan_path_contains": ["two-plan"]},
+    }
+    return {
+        **SHELL_FILES,
+        "factory-floor.json": record,
+        "publish-status.json": status,
+        "delegation.json": {"generated_at": at},
+        "reports/manifest.json": {
+            "schema": "omni.reports-site/1",
+            "published_at": at,
+            "reports": [],
+        },
+    }
+
+
+def test_a_dashboard_with_no_line_read_is_never_running_on_its_tab_or_verdict() -> None:
+    """A planned line with no plan file and nothing else wrong: the Dashboard tab and verdict are grey, not Running."""
+    out = _shell_out(_run_shell(_all_fresh_files([])))
+    assert out["word-dashboard"].endswith("No line read")
+    assert "Running" not in out["word-dashboard"]
+    assert "All lines running" not in out["dash"]
+    assert "No line is read: 1 planned line has no plan file yet" in out["dash"]
+    running = copy.deepcopy(SHELL_RECORD["lines"][0])
+    running["condition"] = "building"
+    running["blocker"] = None
+    control = _shell_out(_run_shell(_all_fresh_files([running])))
+    assert control["word-dashboard"].endswith("Running")

@@ -1212,8 +1212,10 @@ function renderTabs(p, d){
   tabAge.dashboard = tabAge.floor = Number.isNaN(recAge) ? {text: "Record time unreadable"} : {iso: rec.generated_at, label: "Record computed"};
   // The tab words are short so a phone shows them whole: Stopped, Failing, Needs a look, Not read, Running.
   const needsLook = d.stale || d.stalled || d.unread || d.unreadM || d.unreadL;
-  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : needsLook ? "warn" : "ok",
-    d.stoppedN ? "Stopped" : d.redLanes ? "Failing" : needsLook ? "Needs a look" : "Running",
+  // No line read at all is never Running on the Dashboard tab either: it is grey, like its verdict.
+  const noneRead = !d.readL && !d.unreadL;
+  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : needsLook ? "warn" : noneRead ? "idle" : "ok",
+    d.stoppedN ? "Stopped" : d.redLanes ? "Failing" : needsLook ? "Needs a look" : noneRead ? "No line read" : "Running",
     `${d.stoppedN} of ${d.slots} lines stopped, ${d.unreadL} not read`, `${d.stale} out of date and ${d.unread} not read sources`);
   // A line the record does not carry a condition for is never green: all unread is grey, some unread is amber.
   // No line read at all (only planned lines with no plan file, or none) is grey too, never Running.
