@@ -1,0 +1,105 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22345"
+title: "The agent review roster approves one Codex and one Sonnet voter beside the lab rung, and a review-only cloud lane returns its review to the dispatch node"
+summary: "This omnimarket slice builds the code side: the cloud placement node gains the review-only lane kind (route, a cloud prompt that asks for no push and no pull request, a session read that takes the ended session's final message and review file from the sessions API events, a strict parse into the typed unsigned review in the v2 compact verdict format, and the close decision under which a review-only lane with a parsed review ends done with no PR and one with none ends cloud-review-unparsed, outcome failed, never blocked); a new node node_agent_review_cloud_rung_effect renders the review-only brief for one voter of rung cloud, runs it through the remote-lane runner with every secret-shaped name dropped from the child environment, emits one delegation event and returns the vote unsigned. AC1 to AC4 are the roster and verifier overlay data of the sibling data pull request; AC7 is the lab proof; each is a disposition at the local Done gate."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22345-roster"
+    statement: "The dispatch overlay approves the two lab identities, one Codex identity and one Sonnet cloud identity with quorum unchanged; the Anthropic API stays out of the agent path; no single provider meets the quorum; the verifier overlay carries the same policy."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The dispatch overlay approves exactly the two lab identities, one Codex identity and one Sonnet cloud identity, with rungs lab, codex and cloud, and its quorum block is unchanged -- falsifier: `uv run python` calling omnimarket load_agent_review_config with ONEX_SKILL_OVERLAY_ROOTS set to the overlay tree prints any other approved identity set, a second identity on rung codex or cloud, or quorum_size or min_agreeing_voters other than 2"
+      - id: "AC2"
+        statement: "AC2: The Anthropic API stays out of the agent path: a voter of endpoint class review_gateway or anthropic_api is refused by both the dispatch roster check and the verifier -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -k forbidden -v` in omnimarket run with this overlay as fixture, or the omniintelligence verifier suite run with the deployment policy, admits such a voter"
+      - id: "AC3"
+        statement: "AC3: Codex alone or Sonnet alone cannot meet the quorum -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -k quorum -v` with two Codex reviews from two hosts reports sufficient true"
+      - id: "AC4"
+        statement: "AC4: The verifier deployment overlay review_agent_receipt_verify carries the same approved identities and forbidden lists as the dispatch policy -- falsifier: a diff of the two policy blocks loaded with yaml.safe_load is non-empty"
+  - id: "req-omn22345-cloud-rung"
+    statement: "A cloud session never holds the shared signing secret; the cloud rung returns the review unsigned and the dispatch node signs it."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: A cloud session never holds the shared signing secret and the dispatch node signs its unsigned review -- falsifier: `uv run pytest` of the cloud rung port test finds the secret name or value in the rendered session prompt or environment, or a review carrying a signature from the session"
+  - id: "req-omn22345-return-channel"
+    statement: "A review-only cloud lane reads the ended session's final message or review file back, parses the typed review and ends done with no PR."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: A review-only cloud lane reads the session final message or its review file back into the dispatch node and ends done with no PR -- falsifier: `uv run pytest` of the remote-lane runner tests for a review-only cloud lane with a final message and no PR closes it cloud-no-pr or outcome blocked, or the dispatch node receives no review"
+  - id: "req-omn22345-lab-proof"
+    statement: "One real pull request head is reviewed by Codex plus Sonnet on the lab and the gate accepts the signed receipt."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: Lab proof: one real pull request head is reviewed by Codex plus Sonnet, the receipt is signed and the gate accepts it -- falsifier: `onex run-node node_agent_review_gate_accept_effect` on that head returns anything other than pass_agent, or the receipt voters are not exactly the Codex and Sonnet identities"
+evidence_requirements:
+  - kind: "tests"
+    description: "The cloud rung's tests on the in-memory overlay (the Redpanda overlay case runs under the kafka marker): the brief and the runner's child environment hold no secret name or value, a vote has no signature, a review of another head is refused, a foreign model or endpoint is returned as written, no delegation event means no vote. None exists at the merge base."
+    command: "uv run pytest tests/unit/nodes/node_agent_review_cloud_rung_effect/test_cloud_rung.py -q -m 'not kafka' --no-cov"
+  - kind: "tests"
+    description: "The review-only return channel of the cloud placement node: route, prompt, the session events read run end to end over a stubbed sessions API, the strict parse with its typed refusals, and the close (done with no PR; cloud-review-unparsed and failed, never blocked). Twelve of its cases fail at the merge base."
+    command: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_review_only.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22345-ac1"
+    description: "AC1 is overlay data of the sibling roster data pull request (lane roster-data-1240), outside this repository. Pending: this pull request changes no roster or policy value. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac1"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac2"
+    description: "AC2 is the forbidden endpoint classes of the roster and verifier overlays, set by the sibling roster data pull request. Pending: this pull request changes no policy value. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac2"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac3"
+    description: "AC3 is the quorum of the dispatch node (omnimarket#4946) over the sibling roster data. Pending: this pull request changes no quorum code or value. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac3"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac4"
+    description: "AC4 is the verifier deployment overlay of the sibling roster data pull request. Pending: this pull request changes no overlay. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac4"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-ac5"
+    description: "AC5: the cloud rung's tests pass: the rendered brief holds neither the signing secret's name nor any host environment value, the remote-lane runner binding run as a real child process receives no secret-shaped name or value, a vote carrying a signature is refused by its model, and the rung returns its vote unsigned for the dispatch node to sign."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_agent_review_cloud_rung_effect/test_cloud_rung.py -q -m 'not kafka' --no-cov"
+        cwd: "."
+    binds_ac: ["AC5"]
+  - id: "dod-omn22345-ac6"
+    description: "AC6, the node side: a review-only lane whose ended session's final message or review file holds the review closes done with no PR and the typed review on the result, and one with no parseable review closes cloud-review-unparsed with outcome failed, never cloud-no-pr or blocked. The runner's caller patch that closes on this answer is a sibling pull request in the plugin repository."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_review_only.py -q --no-cov"
+        cwd: "."
+    binds_ac: ["AC6"]
+  - id: "dod-omn22345-ac7"
+    description: "AC7 is the lab proof on one real pull request head after the roster data and the dispatch bindings run on a lab host. Pending: recorded in a PR comment starting `Lab: head=` when it runs. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn22345-ac7"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn22345-deploy-probe"
+    description: "Deploy probe. GitHub serves the cloud rung handler and the review-only close of the cloud placement node at the checked-out HEAD. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_agent_review_cloud_rung_effect/handlers/handler_cloud_rung.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerAgentReviewCloudRung", "secret_leaks", "runner_environment", "CloudRungRefusedError")); print("cloud rung deploy probe: PASS")' &&
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("cloud_review_result", "CLOUD_REVIEW_UNPARSED", "CLOUD_SESSION_REVIEW_TAIL")); print("review-only close deploy probe: PASS")'

@@ -1181,6 +1181,7 @@ node_workflow_comparison_compute = "omnimarket.nodes.node_workflow_comparison_co
 node_retrospective_run_reducer = "omnimarket.nodes.node_retrospective_run_reducer"
 node_retrospective_run_projection_effect = "omnimarket.nodes.node_retrospective_run_projection_effect"
 node_retrospective_digest_render_compute = "omnimarket.nodes.node_retrospective_digest_render_compute"
+node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
