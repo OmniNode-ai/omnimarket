@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-22330
+title: Contract-routed clear_project on node_create_ticket ignores dry_run and removes the ticket project
+summary: contract.yaml routes clear_project and repair_project straight to HandlerTicketProject, so the dry-run check that lived only in HandlerCreateTicket was bypassed and the lane-intake label was never set. HandlerTicketProject now returns a dry_run result for clear_project before it touches the gateway, and repair_project takes the lane-intake label from the policy beside the installed ticket guard. The duplicate check in HandlerCreateTicket is removed. A recording-fake sweep proves a dry run makes no Linear write on create, create under a parent, comment, transition, clear_project, repair_project and the CLI.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22330-clear-project-dry-run
+  statement: A contract-routed clear_project with dry_run true sends no Linear request that writes and reports status dry_run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A contract-routed clear_project with dry_run true sends no Linear update -- falsifier: uv run pytest tests/nodes/node_create_ticket -v -rs -k clear_project_dry_run'
+- id: req-omn22330-repair-project-label
+  statement: A contract-routed repair_project takes the lane-intake label from the policy.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: A contract-routed repair_project runs with the lane-intake label from the policy -- falsifier: uv run pytest tests/nodes/node_create_ticket -v -rs -k repair_project_routed'
+evidence_requirements:
+- kind: tests
+  description: The node_create_ticket tests run the routed handlers and every dry-run path over recording fakes; no Linear endpoint is called.
+  command: uv run pytest tests/nodes/node_create_ticket -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22330-ac1
+  description: AC1 the handler contract.yaml names for clear_project, built the way a router builds it, sends no request that writes on a dry run and reports dry_run; the same handler without dry_run still sends the update.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket -q --no-cov --tb=line -k clear_project_dry_run
+    cwd: .
+- id: dod-omn22330-ac2
+  description: AC2 the handler contract.yaml names for repair_project lists and clears with the label read from the installed guard's policy, not an empty label.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket -q --no-cov --tb=line -k repair_project_routed
+    cwd: .
+- id: dod-omn22330-deploy-probe
+  description: 'Deploy probe: the project handler GitHub serves at the checked-out commit carries the dry-run check and the policy label, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_create_ticket/handlers/handler_ticket_project.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def _lane_intake_label" > /dev/null'
+    cwd: .
+- id: dod-omn22330-integration-proof
+  description: The pushed head ran the node_create_ticket tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fix-22330-1205 -- uv run --frozen pytest tests/nodes/node_create_ticket -q --no-cov
+    cwd: .
