@@ -324,7 +324,7 @@ def test_a_transient_probe_failure_keeps_the_rerun_advice() -> None:
     assert "authorized_keys" not in fix
 
 
-# OMN-17427: recorded 2026-11-03. h101 had read UNREADABLE for 163 consecutive ticks (rbs@stickybeatz-2) and h053 for 113
+# OMN-17427: recorded 2026-11-03. h101 had read UNREADABLE for 163 consecutive ticks (rbs@lab-hop-1) and h053 for 113
 # (rbs@hp-gen9), each `cause=AUTH-REFUSED`; no rerun changes a file on the refusing hop, so the FIX names its owner.
 @pytest.mark.parametrize(
     ("name", "ticks", "error"),
@@ -332,7 +332,7 @@ def test_a_transient_probe_failure_keeps_the_rerun_advice() -> None:
         (
             "h101",
             163,
-            "rc=255 via=stickybeatz-2 rbs@stickybeatz-2: Permission denied (publickey,password,keyboard-interactive).",
+            "rc=255 via=lab-hop-1 rbs@lab-hop-1: Permission denied (publickey,password,keyboard-interactive).",
         ),
         ("h053", 113, "rc=255 via=hp-gen9 rbs@hp-gen9: Permission denied (publickey)."),
         ("h201", 1, "rc=255 via=lab-hop rbs@lab-hop: Too many authentication failures"),
