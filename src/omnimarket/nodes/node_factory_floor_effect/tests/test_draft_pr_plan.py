@@ -36,11 +36,17 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorPlanRef,
 )
-from omnimarket.nodes.node_factory_floor_effect.source_loader import load_plans
+from omnimarket.nodes.node_factory_floor_effect.source_loader import (
+    load_contract,
+    load_plans,
+)
 
 pytestmark = pytest.mark.unit
 
 PLANS = "beta/plans"
+PATTERNS = load_contract(
+    Path(__file__).resolve().parents[1] / "contract.yaml"
+).runtime.heading_task_patterns
 DRAFT_PLAN = "beta/plans/2026-10-31-draft-wave-plan.md"
 NOW = datetime(2026, 11, 2, 12, 0, 0, tzinfo=UTC)
 
@@ -96,6 +102,7 @@ def _drawn(
         plans_relpath=PLANS,
         manifest_suffix=".tasks.yaml",
         header_keys=("ticket",),
+        heading_task_patterns=PATTERNS,
         contains=("draft-wave-plan",),
         plans_today=None,
         plan_refs=refs,
@@ -211,6 +218,7 @@ def test_plan_prose_links_reach_the_tasks_a_plan_writes_without_tickets(
         plans_relpath=PLANS,
         manifest_suffix=".tasks.yaml",
         header_keys=("ticket",),
+        heading_task_patterns=PATTERNS,
         contains=("validators",),
         plans_today=None,
     )

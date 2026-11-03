@@ -74,6 +74,10 @@ class ModelPublishStep(BaseModel):
     JSON list at ``output_relpath``; ``command`` runs ``argv`` for what it writes itself and keeps nothing of its output; ``copy`` copies ``source_relpath`` to ``output_relpath`` (the JSON object at the key path ``select`` when it is given). ``{home}``,
     ``{bus_lane}`` and ``{plugin_root}`` in ``args`` and ``argv`` are the registry home, the overlay's bus lane and the plugin root. A step that is not
     ``required`` may fail: the failure is recorded in the status file and the page shows its source as unread.
+    Consecutive steps marked ``concurrent`` run together, so a run takes as long as the slowest of them and not the sum
+    (OMN-21733: the run took 8.5 to 10 minutes against a 300 s tick, which left the heartbeat older than twice its
+    interval half the time). A step with ``fresh_relpath`` and ``fresh_seconds`` is skipped, counted ok, while that file
+    under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -88,9 +92,16 @@ class ModelPublishStep(BaseModel):
     source_relpath: str | None = None
     output_relpath: str | None = None
     select: tuple[str, ...] = ()
+    concurrent: bool = False
+    fresh_relpath: str | None = None
+    fresh_seconds: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:
+        if (self.fresh_relpath is None) != (self.fresh_seconds is None):
+            raise ValueError(
+                f"step {self.name} names fresh_relpath and fresh_seconds together or neither"
+            )
         need = {
             "module": bool(self.module),
             "capture": bool(self.argv) and bool(self.output_relpath),

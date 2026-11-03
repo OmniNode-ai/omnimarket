@@ -4,8 +4,15 @@
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.unit
 
 PAGE = (
     Path(__file__).resolve().parents[3]
@@ -69,3 +76,50 @@ def test_merged_running_names_evidence_that_could_not_be_read() -> None:
 def test_merged_running_panel_text_is_not_below_twelve_pixels() -> None:
     for size in re.findall(r"font(?:-size)?:(?:[0-9]+ )?([0-9]*\.?[0-9]+)rem", CSS):
         assert float(size) >= 0.75, size
+
+
+@pytest.mark.parametrize("state", ["read", "out"])
+def test_merged_running_renders_table_cap_cause_for_each_host_state(state: str) -> None:
+    node = shutil.which("node")
+    assert node is not None, "the page render test requires Node.js"
+    record = {
+        "merged_running": {
+            "days": [
+                {
+                    "local_date": "2026-11-02",
+                    "merged": 1,
+                    "running": 0,
+                    "not_running": 1,
+                }
+            ],
+            "idle_total": 0,
+            "idle_hosts": [
+                {
+                    "host": "worker",
+                    "state": state,
+                    "slots": 8,
+                    "idle": 0,
+                    "slots_source": "table_cap",
+                    "cause": "no placement advertisement for the host",
+                }
+            ],
+        }
+    }
+    result = subprocess.run(
+        [
+            node,
+            "-e",
+            "const card = {hidden: true, innerHTML: ''}; "
+            "const el = () => card, esc = String;\n"
+            + _function("renderMergedRunning")
+            + f"\nrenderMergedRunning({json.dumps(record)});"
+            + "\nprocess.stdout.write(card.innerHTML);",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    assert "host table cap" in result.stdout
+    assert "no placement advertisement for the host" in result.stdout
+    assert ("out of service" if state == "out" else "0 idle") in result.stdout

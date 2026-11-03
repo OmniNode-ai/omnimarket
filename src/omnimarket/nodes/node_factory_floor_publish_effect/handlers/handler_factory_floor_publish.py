@@ -19,7 +19,9 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 
@@ -48,6 +50,11 @@ OWN_CONTRACT = NODE_DIR / "contract.yaml"
 Runner = Callable[
     [Sequence[str], bytes | None, int], "subprocess.CompletedProcess[bytes]"
 ]
+
+
+SSH_CONNECTION_ERROR = 255
+SSH_CONNECT_RETRIES = 2
+SSH_RETRY_SECONDS = 10.0
 
 
 class PublishRefusedError(RuntimeError):
@@ -185,15 +192,19 @@ def copy_to_server(
     exclusive: bool = False,
 ) -> None:
     """Store ``payload`` as ``name`` under the serving host's directory (``root`` when given) over ssh; a failure leaves the old file."""
-    done = run(
-        ssh_argv(
-            rt,
-            overlay,
-            remote_write_command(root or overlay.remote_dir, name, exclusive=exclusive),
-        ),
-        payload,
-        rt.transport.transfer_timeout_seconds,
+    argv = ssh_argv(
+        rt,
+        overlay,
+        remote_write_command(root or overlay.remote_dir, name, exclusive=exclusive),
     )
+    done = run(argv, payload, rt.transport.transfer_timeout_seconds)
+    for _ in range(SSH_CONNECT_RETRIES):
+        if done.returncode != SSH_CONNECTION_ERROR:
+            break
+        # ssh's own exit 255 is a connection that did not open (2026-11-02 18:23Z: "Network is unreachable" for a few
+        # seconds on the launching Mac refused a whole 10-minute run); the remote command did not run, so it is tried again.
+        time.sleep(SSH_RETRY_SECONDS)
+        done = run(argv, payload, rt.transport.transfer_timeout_seconds)
     if done.returncode != 0:
         raise PublishRefusedError(
             f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "
@@ -233,13 +244,15 @@ class HandlerFactoryFloorPublish:
 
         results: list[ModelPublishStepResult] = []
         if not request.skip_refresh:
-            for step in rt.steps:
-                result = self._step(step, home, overlay, rt.plugin_root_env, env)
-                results.append(result)
-                if result.status == "failed" and step.required:
-                    raise PublishRefusedError(
-                        f"the required step {step.name} failed ({result.detail}): {result.diagnostic}"
-                    )
+            for group in self._groups(rt.steps):
+                for step, result in zip(
+                    group, self._run_group(group, home, overlay, rt, env), strict=True
+                ):
+                    results.append(result)
+                    if result.status == "failed" and step.required:
+                        raise PublishRefusedError(
+                            f"the required step {step.name} failed ({result.detail}): {result.diagnostic}"
+                        )
 
         data = self._read_record(home / rt.source.relpath)
         record = json.loads(data)
@@ -348,6 +361,35 @@ class HandlerFactoryFloorPublish:
             )
         return doomed
 
+    @staticmethod
+    def _groups(steps: Sequence[ModelPublishStep]) -> list[list[ModelPublishStep]]:
+        """The steps in contract order, consecutive ``concurrent`` ones in one group."""
+        groups: list[list[ModelPublishStep]] = []
+        for step in steps:
+            if step.concurrent and groups and groups[-1][-1].concurrent:
+                groups[-1].append(step)
+            else:
+                groups.append([step])
+        return groups
+
+    def _run_group(
+        self,
+        group: Sequence[ModelPublishStep],
+        home: Path,
+        overlay: ModelFactoryFloorPublishOverlay,
+        rt: ModelFactoryFloorPublishRuntime,
+        env: Mapping[str, str],
+    ) -> list[ModelPublishStepResult]:
+        """The results of one group, in the group's order; a group of several runs its steps in threads."""
+        if len(group) == 1:
+            return [self._step(group[0], home, overlay, rt.plugin_root_env, env)]
+        with ThreadPoolExecutor(max_workers=len(group)) as pool:
+            futures = [
+                pool.submit(self._step, step, home, overlay, rt.plugin_root_env, env)
+                for step in group
+            ]
+            return [future.result() for future in futures]
+
     def _step(
         self,
         step: ModelPublishStep,
@@ -374,6 +416,13 @@ class HandlerFactoryFloorPublish:
                 name=step.name, status="failed", detail=detail, diagnostic=diagnostic
             )
 
+        if step.fresh_relpath is not None and step.fresh_seconds is not None:
+            try:
+                age = time.time() - (home / step.fresh_relpath).stat().st_mtime
+            except OSError:
+                age = step.fresh_seconds
+            if 0 <= age < step.fresh_seconds:
+                return ModelPublishStepResult(name=step.name, status="ok")
         try:
             if step.kind == "copy":
                 if step.source_relpath is None or step.output_relpath is None:

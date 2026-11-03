@@ -1,0 +1,58 @@
+schema_version: 1.0.0
+ticket_id: OMN-22164
+title: The throughput tick clears failed dispatch findings when a receipt lineage runs
+summary: The existing throughput decision node matches running or done relaunches by ticket or by the lane name with its trailing relaunch suffix removed, alongside its brief match.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-dispatch-lineage
+    statement: Failed dispatch findings follow later running or done receipts of the same brief, ticket or relaunch lane family.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a later running or done receipt with the same ticket, or a lane name equal to the earlier name plus an -r or -rN suffix (or the earlier name minus such a suffix), supersedes the earlier failed receipt and prints no MISSING dispatch line -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute -k lineage -q'
+      - id: AC2
+        statement: 'AC2: a regression test built from the recorded receipts of comp-cm11-1102-r3 and comp-cm11-1102-r4 (fixture path in the PR) fails on the old match and passes on the fix, and an unrelated lane of another ticket still prints MISSING -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute -k recorded_relaunch -q'
+evidence_requirements:
+  - kind: tests
+    description: Focused dispatch lineage regressions and the scrubbed recorded relaunch fixture.
+    command: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-lineage-ac1
+    description: Later running and done receipts clear findings by ticket or exact relaunch family; unrelated prefixes, missing tickets and earlier or failed receipts do not.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov -k lineage
+        cwd: .
+  - id: dod-lineage-ac2
+    description: Recorded r3/r4 receipts clear the failed dispatch with and without ticket metadata while an unrelated failed lane remains MISSING.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov -k recorded_relaunch
+        cwd: .
+  - id: dod-lineage-integration-proof
+    description: The pushed head's lineage and recorded relaunch tests run on a lab pool host through the lab-work bus unit and exit 0. They drive the packaged throughput decision handler (the code the tick node serves) with receipts shaped like the recorded r3 and r4 receipts and read its printed MISSING dispatch lines. This proves the branch code on a lab host. It does not read the live tick adapter's receipts, which run on another host.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane tick-lineage-integration-proof-1102 -- uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov
+        cwd: .
+  - id: dod-lineage-deploy-source
+    description: The handler at the checked-out revision served by the repository includes ticket matching; the original handler fails this check.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_throughput_tick_decision_compute/handlers/handler_throughput_tick_decision.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "other.ticket == receipt.ticket" > /dev/null'
+        cwd: .
