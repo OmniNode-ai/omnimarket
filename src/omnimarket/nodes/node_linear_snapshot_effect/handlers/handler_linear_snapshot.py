@@ -101,11 +101,11 @@ def _issue(node: dict[str, Any], viewer: str) -> ModelSnapshotIssue:
         id=node.get("identifier") or "",
         title=node.get("title") or "",
         status=state.get("name") or "",
-        statusType=state.get("type") or "",
+        status_type=state.get("type") or "",
         assignee=assignee.get("id") or viewer,
         labels=tuple(str(label["name"]) for label in labels if label.get("name")),
         project=(node.get("project") or {}).get("name") or "",
-        updatedAt=node.get("updatedAt") or "",
+        updated_at=node.get("updatedAt") or "",
         description=node.get("description") or "",
         priority=priority,
     )

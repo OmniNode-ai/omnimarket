@@ -14,11 +14,13 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_linear_snapshot_effect.handlers.handler_linear_snapshot import (
     HandlerLinearSnapshot,
+    Post,
     SnapshotReadError,
 )
 from omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot import (
     ModelLinearSnapshot,
     ModelLinearSnapshotRequest,
+    ModelLinearSnapshotResult,
 )
 from omnimarket.nodes.node_linear_snapshot_effect.runtime_linear_snapshot import main
 from omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today import (
@@ -33,7 +35,7 @@ VIEWER = "7f1c0f6e-0000-4000-8000-000000000001"
 
 def node(
     n: int, *, description: str | None = "Body of the ticket.", **over: Any
-) -> dict:
+) -> dict[str, Any]:
     base = {
         "identifier": f"OMN-{n}",
         "title": f"Ticket {n}",
@@ -52,11 +54,11 @@ def node(
 class Pages:
     """A transport answering the batches in order, with hasNextPage true until the last."""
 
-    def __init__(self, *batches: list[dict]) -> None:
+    def __init__(self, *batches: list[dict[str, Any]]) -> None:
         self.batches = batches
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, Any]] = []
 
-    def __call__(self, query: str, variables: dict) -> dict:
+    def __call__(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(variables)
         i = len(self.calls) - 1
         return {
@@ -71,7 +73,7 @@ class Pages:
         }
 
 
-def write(tmp_path: Path, post, **req: Any):
+def write(tmp_path: Path, post: Post, **req: Any) -> ModelLinearSnapshotResult:
     return HandlerLinearSnapshot(post).handle(
         ModelLinearSnapshotRequest(out_dir=str(tmp_path), date="2026-11-03", **req)
     )
@@ -157,7 +159,7 @@ def test_snapshot_json_shape_keeps_yesterdays_file_when_the_read_fails(
     target = tmp_path / "linear-2026-11-03.json"
     target.write_text("{}", encoding="utf-8")
 
-    def boom(query: str, variables: dict) -> dict:
+    def boom(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         raise SnapshotReadError("LINEAR_API_KEY is not set")
 
     result = write(tmp_path, boom)
