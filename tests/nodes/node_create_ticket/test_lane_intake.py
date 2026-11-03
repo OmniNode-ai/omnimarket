@@ -203,9 +203,21 @@ def test_the_gateway_sends_the_label_ids_with_the_create(
             return {"data": {"viewer": {"id": "user-1"}}}
         if "issueLabels" in query:
             return {"data": {"issueLabels": {"nodes": [{"id": "label-1"}]}}}
+        if "GetIssueProject" in query:
+            return {
+                "data": {
+                    "issue": {
+                        "identifier": "OMN-9",
+                        "createdAt": "",
+                        "labels": {"nodes": []},
+                        "project": None,
+                    }
+                }
+            }
         return {"data": {"issueCreate": {"issue": {"identifier": "OMN-9", "url": "u"}}}}
 
     gateway = LinearTicketHttpGateway("k")
+    gateway._SETTLE_SECONDS = 0.0
     monkeypatch.setattr(gateway, "_post", post)
     gateway.create_ticket(
         title="t",

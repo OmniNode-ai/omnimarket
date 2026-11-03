@@ -147,13 +147,26 @@ class LinearTicketProjectGateway:
 
 
 def clear_inherited_project(
-    gateway: TicketProjectGatewayProtocol, ticket_id: str
+    gateway: TicketProjectGatewayProtocol,
+    ticket_id: str,
+    *,
+    settle: Callable[[], None] | None = None,
 ) -> bool:
     """Clear ``ticket_id``'s project if it has one; return True when an update was sent.
 
     A ticket that reads back with no project sends no update. After an update the ticket is read
     again, and anything but an explicit null project raises :class:`TicketProjectNotClearedError`.
+    When ``settle`` is given it runs once after the first pass and the ticket is checked again,
+    so a project Linear attaches after the create returned is cleared and read back too.
     """
+    sent = _clear_once(gateway, ticket_id)
+    if settle is not None:
+        settle()
+        sent = _clear_once(gateway, ticket_id) or sent
+    return sent
+
+
+def _clear_once(gateway: TicketProjectGatewayProtocol, ticket_id: str) -> bool:
     before = gateway.read(ticket_id)
     if before.project_reported and before.project is None:
         return False

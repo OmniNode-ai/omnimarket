@@ -16,7 +16,7 @@ read and comment on tickets.
   a create), and the write goes through the adapter's ``update_issue``, whose
   own Done-write gate still applies.
 * ``clear_project`` and ``repair_project`` clear a project Linear copied from a parent (OMN-21723);
-  see ``handler_ticket_project``. A create under a parent also clears and reads it back.
+  see ``handler_ticket_project``. Every create sends an explicit null project and reads the issue back.
 * ``read`` and ``comment`` go through the omnibase_infra Linear project-tracker
   adapter (``AdapterLinearGraphQLProjectTracker``), constructed with the
   contract-declared key, so a missing key fails loud instead of reaching a stub.
@@ -154,12 +154,13 @@ query GetIssueByIdentifier($identifier: String!) {
 """
 
 _ISSUE_CREATE_MUTATION = """
-mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $stateId: String, $assigneeId: String, $labelIds: [String!]) {
+mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $parentId: String, $projectId: String, $stateId: String, $assigneeId: String, $labelIds: [String!]) {
   issueCreate(input: {
     teamId: $teamId,
     title: $title,
     description: $description,
     parentId: $parentId,
+    projectId: $projectId,
     stateId: $stateId,
     assigneeId: $assigneeId,
     labelIds: $labelIds
@@ -584,7 +585,8 @@ class LinearTicketHttpGateway:
 
         # Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
         # created in the Backlog with NO project. The state is set explicitly
-        # rather than trusting the team default, and no projectId is ever sent.
+        # rather than trusting the team default. The create sends an explicit null projectId, so it
+        # never relies on Linear leaving a sub-issue's project unset.
         state_data = self._post(_BACKLOG_STATE_QUERY, {"teamId": team_id})
         state_nodes = (
             state_data.get("data", {}).get("workflowStates", {}).get("nodes", [])
@@ -601,6 +603,9 @@ class LinearTicketHttpGateway:
             "title": title,
             "description": description,
             "stateId": state_nodes[0]["id"],
+            # An explicit JSON null, never an omitted key: Linear copies a parent's project onto a
+            # sub-issue that names none.
+            "projectId": None,
         }
         if not assignee_id:
             viewer = self._post(_VIEWER_QUERY, {}).get("data", {}).get("viewer", {})
@@ -624,11 +629,21 @@ class LinearTicketHttpGateway:
         issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
         identifier = str(issue.get("identifier", ""))
         url = str(issue.get("url", ""))
-        if identifier and "parentId" in variables:
-            # Linear copies the parent's project onto the new sub-issue (OMN-21723): clear it,
-            # and read it back, before the create is reported.
-            clear_inherited_project(self.project_gateway(), identifier)
+        if not identifier:
+            return identifier, url
+        # Every create is read back by a separate query and cleared when a project is still set
+        # (Linear copies a parent's project onto a sub-issue, and may do so after the create
+        # returns): the create is not reported until the readback shows an explicit null project.
+        clear_inherited_project(self.project_gateway(), identifier, settle=self._settle)
         return identifier, url
+
+    # Seconds to let Linear finish any asynchronous project copy before the final readback.
+    _SETTLE_SECONDS: float = 2.0
+
+    def _settle(self) -> None:
+        import time
+
+        time.sleep(self._SETTLE_SECONDS)
 
     def project_gateway(self) -> LinearTicketProjectGateway:
         """The project gateway over this client's own GraphQL transport."""

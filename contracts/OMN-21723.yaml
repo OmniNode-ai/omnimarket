@@ -31,6 +31,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_project.py -q --no-cov --tb=line"
         cwd: "."
+  - id: "dod-omn21723-create-null-project-tests"
+    description: "The create sends an explicit null projectId, reads the new issue back by a separate query, clears an inherited or late-attached project and fails on a project that stays; the tests fail on a create that omits the null or skips the readback"
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_create_null_project.py -q --no-cov --tb=line"
+        cwd: "."
   - id: "dod-omn21723-ac1-live-integration-proof"
     description: "AC1 through the host LINEAR_API_KEY, no ticket of 2026-11-02 in project Ready is left for a lane-created ticket. Hosted CI holds no Linear key, so only the local Done gate runs this unbound check."
     source: "manual"

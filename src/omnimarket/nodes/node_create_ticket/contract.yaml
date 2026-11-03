@@ -18,8 +18,9 @@ description: >
   ticket's project with a direct GraphQL issueUpdate(projectId: null) and reports success only
   when an independent readback shows an explicit null project; repair_project lists the
   lane-created tickets of one UTC day that sit in a named project and clears each after
-  rechecking its creation day, label and project (OMN-21723). A create under a parent does the
-  same clear.
+  rechecking its creation day, label and project (OMN-21723). A create sends projectId as
+  an explicit null, reads the issue back by a separate query and clears a project that is still
+  set before it reports the create.
 
 handler_routing:
   routing_strategy: operation_match

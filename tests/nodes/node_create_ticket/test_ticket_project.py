@@ -115,6 +115,8 @@ def _gateway_over(
     """The real HTTP gateway with its one network method replaced by ``post``."""
 
     class _Offline(LinearTicketHttpGateway):
+        _SETTLE_SECONDS = 0.0
+
         def _post(self, query: str, variables: dict[str, Any]) -> Any:
             return post(query, variables)
 
@@ -392,8 +394,11 @@ def test_http_gateway_create_under_a_parent_clears_the_inherited_project() -> No
     assert fake.issues["OMN-99002"]["data"]["issue"]["project"] is None
 
 
-def test_http_gateway_create_without_a_parent_sends_no_clear() -> None:
+def test_http_gateway_create_without_a_parent_reads_back_and_sends_no_clear() -> None:
     fake = _FakeLinear()
+    fake.issues["OMN-99003"] = _FakeLinear._clone(
+        _RECORDED["read_no_project"], "OMN-99003", "2026-11-03T03:00:00.000Z"
+    )
 
     def post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         if "GetTeamByName" in query:
@@ -417,7 +422,8 @@ def test_http_gateway_create_without_a_parent_sends_no_clear() -> None:
     gateway.create_ticket(
         title="t", description="d", team="Omninode", parent=None, assignee_id="user-1"
     )
-    assert fake.calls == []
+    assert fake.mutations() == []
+    assert any("GetIssueProject" in q for q, _ in fake.calls)
 
 
 # --- the contract-routed path: the request reaches HandlerTicketProject without HandlerCreateTicket ----

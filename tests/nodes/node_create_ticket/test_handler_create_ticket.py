@@ -216,6 +216,7 @@ def _recording_gateway() -> tuple[object, list[tuple[str, dict[str, object]]]]:
     )
 
     gateway = LinearTicketHttpGateway("test-key")
+    gateway._SETTLE_SECONDS = 0.0
     calls: list[tuple[str, dict[str, object]]] = []
 
     def fake_post(query: str, variables: dict[str, object]) -> object:
@@ -255,11 +256,11 @@ def test_gateway_creates_in_backlog_with_no_project() -> None:
         parent="OMN-5",
         assignee_id=None,
     )
-    query, variables = next(c for c in calls if "issueCreate" in c[0])
+    _query, variables = next(c for c in calls if "issueCreate" in c[0])
     assert variables["stateId"] == "state-backlog"
     assert variables["parentId"] == "parent-uuid"
-    assert "projectId" not in variables
-    assert "projectId" not in query
+    # No project is ever set: the create names projectId only as an explicit null.
+    assert variables["projectId"] is None
 
 
 def test_gateway_refuses_when_the_team_has_no_backlog_state() -> None:
@@ -371,7 +372,7 @@ def test_gateway_assigns_the_pillar_owner_else_the_viewer() -> None:
     gateway.create_ticket(  # type: ignore[attr-defined]
         title="t", description="d", team="Omninode", parent=None, assignee_id=_DASH
     )
-    assert calls[-1][1]["assigneeId"] == _DASH
+    assert next(v for q, v in calls if "issueCreate" in q)["assigneeId"] == _DASH
     assert not any("GetViewer" in q for q, _ in calls)
 
 
@@ -380,4 +381,4 @@ def test_gateway_without_a_pillar_assigns_the_creator() -> None:
     gateway.create_ticket(  # type: ignore[attr-defined]
         title="t", description="d", team="Omninode", parent=None, assignee_id=None
     )
-    assert calls[-1][1]["assigneeId"] == "viewer-1"
+    assert next(v for q, v in calls if "issueCreate" in q)["assigneeId"] == "viewer-1"
