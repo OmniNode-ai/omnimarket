@@ -187,6 +187,11 @@ _VERB_FIELDS: dict[EnumRepoWriteOperation, dict[str, object]] = {
         "pr_number": 4000,
         "review_thread_id": "PRRT_kwDOExample0001",
     },
+    EnumRepoWriteOperation.PR_REVIEW_POST: {
+        "pr_number": 4000,
+        "expected_head_sha": _HEAD,
+        "body": "review",
+    },
     EnumRepoWriteOperation.WORKFLOW_DISPATCH: {"workflow": "ci.yml", "ref": "dev"},
     EnumRepoWriteOperation.CHECK_RUN_CREATE: {
         "name": "lab-pass",

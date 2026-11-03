@@ -4422,6 +4422,7 @@ class EvidenceCollector:
         cwd_template: str,
         ticket_id: str,
         own_repository: str | None = None,
+        contract_tree: Path | None = None,
     ) -> tuple[str | None, str | None]:
         """Resolve a ``cwd`` template string into an absolute, contained path.
 
@@ -4438,6 +4439,19 @@ class EvidenceCollector:
         - the resolved path must be relative to ``OMNI_HOME`` (when set);
           paths that escape via symlinks are rejected after ``Path.resolve()``
         - the resolved path must exist and be a directory
+
+        A relative ``cwd`` (``"."``, ``"src"``) names a place in the contract's
+        own repository tree, the same tree a check that omits ``cwd`` runs in
+        (``_infer_occ_cwd``). It is anchored at ``contract_tree`` when the
+        contract sits in one, and at the process cwd otherwise. Anchoring at
+        the process cwd alone made the verdict depend on where the verifier
+        was started: a check read verified from a clone under ``OMNI_HOME``
+        and "cwd escapes OMNI_HOME containment" from a lane clone outside it
+        or from the sweep's contract-roots clone (OMN-22315). The contract's
+        own tree counts as contained for a relative ``cwd`` only; an absolute
+        path or a template that renders outside ``OMNI_HOME`` stays refused,
+        and so does a symlink that leaves both roots, because containment is
+        tested on the resolved path.
         """
         if ".." in Path(cwd_template).parts:
             return None, f"cwd path traversal not allowed: {cwd_template}"
@@ -4464,12 +4478,15 @@ class EvidenceCollector:
                 f"substitution: {cwd_template!r} -> {rendered!r}"
             )
 
-        candidate = Path(rendered).resolve()
+        relative = not os.path.isabs(rendered)
+        anchor = contract_tree.resolve() if relative and contract_tree else None
+        candidate = (anchor / rendered if anchor else Path(rendered)).resolve()
 
         omni_home = os.environ.get("OMNI_HOME")
         if omni_home:
             base = Path(omni_home).resolve()
-            if not candidate.is_relative_to(base):
+            in_own_tree = anchor is not None and candidate.is_relative_to(anchor)
+            if not in_own_tree and not candidate.is_relative_to(base):
                 return None, (
                     f"cwd escapes OMNI_HOME containment: {cwd_template!r} "
                     f"resolved to {candidate}"
@@ -5366,7 +5383,13 @@ class EvidenceCollector:
             own_repository = contract_path.parent.parent.name
         if own_repository is None:
             own_repository = os.environ.get("REPO", "").rsplit("/", 1)[-1] or None
-        resolved, err = self._resolve_cwd(cwd_template, ticket_id, own_repository)
+        tree = self._resolve_contract_repo_dir(contract_path)
+        resolved, err = self._resolve_cwd(
+            cwd_template,
+            ticket_id,
+            own_repository,
+            Path(tree) if tree else None,
+        )
         if err is not None:
             return None, err, True
         return resolved, None, True
