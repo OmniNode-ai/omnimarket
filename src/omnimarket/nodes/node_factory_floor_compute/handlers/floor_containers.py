@@ -27,6 +27,7 @@ def _rows(
             observed=lane.observed,
             budget=lane.budget,
             alarm_key=alarms.get((lane.host, lane.lane), ""),
+            target=lane.target,
             detail=lane.detail,
         )
         for lane in verdict.lanes
