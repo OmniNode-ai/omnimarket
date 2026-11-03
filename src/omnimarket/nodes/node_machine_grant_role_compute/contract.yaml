@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - machine grant role compute (OMN-22139)
+name: node_machine_grant_role_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Resolve which machine principals hold a named grant role, and the broker grants each role
+  carries. The binding of a machine to a role is the deployment's: it is the grant_roles list of
+  that machine's row in the developer.principal overlay (the document is passed on the request, or
+  read from <root>/developer.principal/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS). The grant set
+  of each role is declared here, under grant_roles, and nowhere else. The node names no host and
+  no principal; a binding exists only when an overlay row declares it. A row binding a role this
+  contract does not declare is refused (grant-role-undeclared), never granted nothing in silence;
+  a missing or invalid overlay is refused too. Writes nothing: the caller applies the grants.
+input_model:
+  name: ModelMachineGrantRoleRequest
+  module: omnimarket.nodes.node_machine_grant_role_compute.models.model_machine_grant_role
+output_model:
+  name: ModelMachineGrantRoleResult
+  module: omnimarket.nodes.node_machine_grant_role_compute.models.model_machine_grant_role
+handler:
+  module: omnimarket.nodes.node_machine_grant_role_compute.handlers.handler_machine_grant_role
+  class: HandlerMachineGrantRole
+  input_model: omnimarket.nodes.node_machine_grant_role_compute.models.model_machine_grant_role.ModelMachineGrantRoleRequest
+  output_model: omnimarket.nodes.node_machine_grant_role_compute.models.model_machine_grant_role.ModelMachineGrantRoleResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_machine_grant_role_compute.handlers.handler_machine_grant_role:HandlerMachineGrantRole
+  handlers:
+    - operation: resolve_machine_grant_roles
+      handler:
+        name: HandlerMachineGrantRole
+        module: omnimarket.nodes.node_machine_grant_role_compute.handlers.handler_machine_grant_role
+descriptor:
+  node_archetype: compute
+  purity: effectful  # reads the developer.principal overlay from disk when none is passed; writes nothing
+  idempotent: true
+  timeout_ms: 5000
+
+# The overlay the bindings come from (dependency injection: the deployment supplies the document).
+overlay:
+  id: developer.principal
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+# Each grant role's broker grant set. A machine row in the overlay selects a set by name.
+#
+# scm-writer: a machine whose lanes run `onex scm <verb>`. The verb publishes the typed command
+# that node_github_repo_write_effect subscribes to and reads that node's terminal events, so the
+# grant set is exactly that node's runtime_dispatch topics; a test pins the two contracts together.
+grant_roles:
+  scm-writer:
+    description: Publish PR write commands to the repo write node and read its terminal events.
+    write_topics:
+      - onex.cmd.omnimarket.github-repo-write-requested.v1
+    read_topics:
+      - onex.evt.omnimarket.github-repo-write-completed.v1
+      - onex.evt.omnimarket.github-repo-write-failed.v1
+
+terminal_event: onex.evt.omnimarket.machine-grant-role-resolved.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.machine-grant-role-resolve-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.machine-grant-role-resolved.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.machine-grant-role-resolve-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.machine-grant-role-resolved.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.machine-grant-role-resolved.v1
+metadata:
+  transport_type: inmemory
+  description: Machine principal grant role bindings from the developer.principal overlay
+  author: OmniNode Team
+  created: "2026-11-02"
+  related_tickets: [OMN-22139]
