@@ -80,11 +80,11 @@ def test_topic_constants_agree_with_the_orchestrator_contract() -> None:
     assert declared == {
         *context_pack_contract["event_bus"]["subscribe_topics"],
         topics.CONTEXT_COMPACTION_REQUESTED_TOPIC_V1,
-        topics.CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
-        topics.CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
         topics.CONTEXT_COMPACTION_ACTIVATED_TOPIC_V1,
-        topics.CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
     }
+    # The package reply, prepared and fallback are per-principal (OMN-22103): declared in
+    # parts on published_events rows, so they are never in the static topic lists.
+    assert all("{principal}" not in topic for topic in declared)
 
 
 @pytest.mark.parametrize("model", COMPACTION_RECEIPT_MODELS, ids=lambda m: m.__name__)

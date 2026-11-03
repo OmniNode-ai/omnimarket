@@ -18,6 +18,7 @@ import re
 import shutil
 import signal
 import time
+from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
@@ -25,6 +26,13 @@ from typing import Any, Literal
 import yaml
 from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    declared_handler_dependencies,
+    installed_overlay_document,
+    overlay_documents,
+    process_environment,
+    require_dependencies,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.models.delegation.model_delegation_target import (
     ModelDelegationGeneration,
@@ -32,23 +40,31 @@ from omnimarket.models.delegation.model_delegation_target import (
     ModelDelegationTargetResult,
 )
 from omnimarket.nodes.node_model_router import HandlerModelRouter, ModelRoutingRequest
+from omnimarket.protocols.protocol_overlay_document import ProtocolOverlayDocument
+from omnimarket.protocols.protocol_process_environment import (
+    ProtocolProcessEnvironment,
+)
+
+_PACKAGE = "omnimarket.nodes.node_llm_delegation_call_effect"
+_ADAPTER_DOCUMENT = "delegation_adapters"
 
 
-def load_delegation_config() -> dict[str, Any]:
-    """Read contract defaults and the deployment's explicit adapter overlay."""
+def load_delegation_config(
+    documents: ProtocolOverlayDocument | None = None,
+) -> dict[str, Any]:
+    """Read contract defaults and the lane overlay's ``delegation_adapters`` document."""
     contract = yaml.safe_load(
         resources.files("omnimarket.nodes.node_llm_delegation_call_effect")
         .joinpath("contract.yaml")
         .read_text()
     )
     config: dict[str, Any] = contract["delegation_adapters"]
-    path = os.environ.get("DELEGATION_ADAPTER_CONFIG_PATH")
-    if path:
-        overlay = yaml.safe_load(Path(path).read_text())
-        if not isinstance(overlay, dict):
-            raise ValueError("delegation adapter overlay must be a mapping")
-        config = config | overlay
-    return config
+    overlay = (
+        documents.read(_ADAPTER_DOCUMENT)
+        if documents is not None
+        else installed_overlay_document(_ADAPTER_DOCUMENT)
+    )
+    return config if overlay is None else config | overlay
 
 
 class HandlerClaudeCodeArguments:
@@ -211,11 +227,11 @@ class HandlerDelegationModelCall:
         )
 
 
-def _agent_environment() -> dict[str, str]:
+def _agent_environment(environment: ProtocolProcessEnvironment) -> dict[str, str]:
     """A child checkout must not inherit the launching hook's git location."""
     return {
         key: value
-        for key, value in os.environ.items()
+        for key, value in environment.environment().items()
         if key
         not in {
             "GIT_DIR",
@@ -296,9 +312,43 @@ def _read_agent_result(path: Path, target: str) -> tuple[str, str | None, bool]:
 class HandlerDelegationTarget:
     """Canonical typed handler for model calls and local coding-agent sessions."""
 
-    def __init__(self, event_bus: Any, config: dict[str, Any] | None = None) -> None:
-        self._config = config if config is not None else load_delegation_config()
+    def __init__(
+        self,
+        event_bus: Any,
+        config: dict[str, Any] | None = None,
+        dependencies: Mapping[str, object] | None = None,
+    ) -> None:
         self._bus = event_bus
+        self._given = (config, dependencies)
+        self._resolved: tuple[dict[str, Any], ProtocolProcessEnvironment] | None = None
+
+    def _bind(self) -> tuple[dict[str, Any], ProtocolProcessEnvironment]:
+        """Build the declared dependencies on first use, so auto-wiring builds this handler unbound.
+
+        An unbound overlay refuses here, before the handler publishes or subscribes.
+        """
+        if self._resolved is None:
+            config, dependencies = self._given
+            bound = (
+                dependencies
+                if dependencies is not None
+                else require_dependencies(declared_handler_dependencies(_PACKAGE))
+            )
+            self._resolved = (
+                config
+                if config is not None
+                else load_delegation_config(overlay_documents(bound)),
+                process_environment(bound),
+            )
+        return self._resolved
+
+    @property
+    def _config(self) -> dict[str, Any]:
+        return self._bind()[0]
+
+    @property
+    def _environment(self) -> ProtocolProcessEnvironment:
+        return self._bind()[1]
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -392,7 +442,7 @@ class HandlerDelegationTarget:
         digest = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
         started = time.monotonic()
         result: ModelDelegationTargetResult
-        env = _agent_environment()
+        env = _agent_environment(self._environment)
         adapters: dict[
             str,
             HandlerClaudeCodeArguments

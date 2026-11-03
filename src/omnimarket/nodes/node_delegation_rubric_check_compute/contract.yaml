@@ -71,6 +71,11 @@ inputs:
     type: object
     required: false
     description: Caller-supplied typed tool-use run transcript.
+  reference_test_run:
+    type: object
+    required: false
+    description: Caller-supplied run of a generated test file against the test task's
+      reference function; read by generated_tests_pass_reference, never executed here.
 outputs:
   task_class:
     type: str
