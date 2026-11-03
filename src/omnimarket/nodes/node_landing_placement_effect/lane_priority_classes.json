@@ -1,0 +1,53 @@
+{
+  "classes": [
+    "mvp-landing",
+    "occ-retirement",
+    "process-fix",
+    "other"
+  ],
+  "repos": {
+    "mvp-landing": [
+      "omnibase_infra",
+      "omnibase_core",
+      "omnimarket",
+      "omniclaude",
+      "omnidash"
+    ]
+  },
+  "tickets": {
+    "occ-retirement": [
+      "OMN-20074",
+      "OMN-20068"
+    ]
+  },
+  "merge_ranks": [
+    "cause-fix",
+    "process-fix",
+    "m4",
+    "pin-bump",
+    "other"
+  ],
+  "pin_bump_titles": [
+    "^chore(\\([^)]*\\))?: release [A-Za-z0-9_.-]+ v?[0-9]",
+    "(?i)\\b(bump|advance|re-?pin)\\b[^:]*\\b(omni|onex)[A-Za-z0-9_-]*\\b[^:]*\\bpin\\b"
+  ],
+  "pool_reading_max_age_s": 300,
+  "launcher_gap_cooldown_s": {
+    "AUTH-REFUSED": 3600,
+    "NAME-UNRESOLVED": 3600,
+    "NO-ROUTE": 1800,
+    "SSHD-REFUSED": 1800
+  },
+  "rulings": [
+    "RULING 2026-10-15T08:14:02Z lane=orchestrator-bb1a (OMN-20864): merges for the MVP and process fixes get priority on lanes",
+    "RULING 2026-10-15T19:56:37Z lane=orchestrator-bb1a (OMN-20074): M4 work first, OCC retirement second, then everything else",
+    "RULING 2026-10-15T23:27:32Z lane=orchestrator-bb1a (OMN-19998): land PRs first, keep the lab busy, fix the process; the PR priority list that makes the most important PRs merge first (OMN-20074)"
+  ],
+  "note": "The lane priority contract (OMN-20074). classes lists the lane priority classes from highest to lowest; the last must be other, which a unit of no named class takes. A class at rank i leaves i free pool slots to the classes above it (handler_landing_placement.priority_holdback_refusal). repos names the repositories whose landing PRs are of a class; tickets names the parent tickets whose own work and children's work is of a class, and a ticket class outranks the repository class (an OCC retirement PR in an MVP repository is occ-retirement, not mvp-landing, because M4 work comes first). merge_ranks ranks open PRs for the landing controller, highest first, other last: a PR takes the first rank it meets. cause-fix is a declared cause fix (a cause lease's fix_ref, or fix= on an open cause CLAIM: a fix for a red base or a repository under its floor); process-fix is a PR in a repository, or of a ticket, listed under process-fix above; m4 is a PR whose title cites an M4 delegation carrier; pin-bump is a PR whose title matches a pin_bump_titles pattern (a pin or release bump that unblocks others); other is everything else. The controller dispatches workers and enqueues in rank order, and while a merge-queue base is red and a cause-fix PR is open on it, it enqueues nothing else there and dequeues the other entries (landing_controller.red_base_gates). landing_placement.load_priority_contract reads this file (ONEX_LANE_PRIORITY_CLASSES overrides the path); pool_reading_max_age_s (OMN-21809, orchestrator decision 2026-10-31 on the pool-status timeout) is how many seconds a host's last good probe reading may stand in for a live read that timed out under concurrent readers: landing_placement.read_pool uses it, marks the Reading cached and says so in the receipt, and past it the host reads UNREADABLE; the probe timeout is not raised. Reordering a class or a rank is an edit here and a new ruling, never a list in code.",
+  "repo_roles": {
+    "process-fix": [
+      "private_data",
+      "plugin_source"
+    ]
+  }
+}
