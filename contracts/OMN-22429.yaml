@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-22429
+title: Host desired state and host converge are modelled in TLA+ before build, 17 invariants each with a mutant that breaks it
+summary: Adds docs/formal/host_desired_state and docs/formal/host_converge, laid out as docs/formal/remote_lane_stop is. Each holds the TLA+ model, the design Model.cfg, one mutant cfg per invariant, the TLC outputs under results and a design-review verdict. Documentation and model files only, no code, node or contract change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22429-design-passes
+  statement: Both models pass TLC in their design configuration.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The design configuration passes TLC -- falsifier: either `results/Model.out` contains `Error:`, or either lacks `Model checking completed. No error has been found.`'
+- id: req-omn22429-mutants
+  statement: Each of the seventeen invariants has a mutant that fails exactly that invariant.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: Each of the seventeen mutants runs and fails exactly its invariant -- falsifier: for any invariant listed above, `mut_<Invariant>.cfg` or `results/mut_<Invariant>.out` is missing, or the output reports no violation or a violation of another invariant.'
+- id: req-omn22429-verdicts
+  statement: Both models have a design-review verdict that passes.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: Both have a design-review verdict -- falsifier: either `results/design_review_verdict.txt` is absent, or either does not end `VERDICT: PASS`.'
+evidence_requirements:
+- kind: docs
+  description: The committed TLC outputs and verdicts are read from the tree.
+  command: ls docs/formal/host_desired_state/results docs/formal/host_converge/results
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22429-ac1
+  description: AC1 both results/Model.out files hold no Error line and the completion line.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'for d in host_desired_state host_converge; do f=docs/formal/$d/results/Model.out; test -f $f; if grep -q "Error:" $f; then exit 1; fi; grep -qF "Model checking completed. No error has been found." $f; done'
+    cwd: .
+- id: dod-omn22429-ac2
+  description: AC2 each mutant cfg and output exists and the output names a violation of exactly that invariant.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'set -e; chk() { d=docs/formal/$1; shift; for i in "$@"; do test -f $d/mut_$i.cfg; o=$d/results/mut_$i.out; test -f $o; grep -qF "Invariant $i is violated." $o; test "$(grep -c "is violated" $o)" = 1; done; }; chk host_desired_state GenerationMonotone OnePublisherAccepted PendingTagsBeforePublish PendingRepublishedExactly ReleasedLayerNeverReturns DependentLeavesWithDependency StaleRequestNeverApplies NoLaunchOnExpiredLayer; chk host_converge NoObservedBeforeReadback NoLaneOnUnverifiedTree PinnedTreeNeverRemoved OrphanPinReleased OwnedSurfaceOneWriter ForeignWriteReported TakeoverBeforeMutation StateWritesSerialised EverySurfaceWithinTwoPasses'
+    cwd: .
+- id: dod-omn22429-ac3
+  description: AC3 both design-review verdict files end with VERDICT PASS on the last line.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''for d in host_desired_state host_converge; do test "$(tail -n 1 docs/formal/$d/results/design_review_verdict.txt)" = "VERDICT: PASS"; done'''
+    cwd: .
