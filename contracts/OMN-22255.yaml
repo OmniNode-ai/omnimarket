@@ -82,6 +82,33 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k profile_parity --tb=line'
         cwd: "."
+  - id: "dod-omn22255-deploy-source-readback"
+    description: "Hosted-runner deploy artifact readback for the pure compute node: compare the published handler, dialect table and runtime contract at the evaluated commit with this checkout, require the graph handler and dialect wiring, then run the registered route and in-memory bus profile. This checks published source and local dispatch, not a runtime rollout or Redpanda parity."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_network_graph_compute;
+          for relative_path in handlers/handler_network_graph_compute.py handlers/dialect_table.py contract.yaml; do
+            target="$readback_dir/$(basename "$relative_path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/$relative_path" \
+              --output "$target";
+            cmp "$node_path/$relative_path" "$target";
+          done;
+          grep -F 'class HandlerNetworkGraphCompute:' "$readback_dir/handler_network_graph_compute.py";
+          grep -F 'read_declared_topics(parsed, DIALECT_TABLE)' "$readback_dir/handler_network_graph_compute.py";
+          grep -F 'command_topic: onex.cmd.omnimarket.network-graph-compute-requested.v1' "$readback_dir/contract.yaml";
+          printf 'network graph compute source readback matched %s\n' "$revision"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_network_graph_compute/test_registration.py tests/nodes/node_network_graph_compute/test_profile_parity.py -q --no-cov -m "not kafka" --tb=line'
+        cwd: "."
   - id: "dod-omn22255-integration-proof"
     description: "The pushed head ran the network graph compute node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
