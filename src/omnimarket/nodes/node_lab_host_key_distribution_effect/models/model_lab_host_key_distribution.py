@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 
@@ -45,6 +45,10 @@ class ModelLabHostKeyDistributionRequest(BaseModel):
     table_path: str | None = None
     dry_run: bool = False
     local_host: str | None = None
+    # `available: false` in the host table is a placement flag, so a host that takes no lanes can
+    # still need its keys: the operator names each such host here and it is reached by key
+    # distribution alone. Every name must also be in `hosts`; no other host is admitted.
+    allow_unavailable: tuple[str, ...] = ()
     identity_public_files: tuple[str, ...] = (
         "id_ed25519.pub",
         "id_ecdsa.pub",
@@ -52,6 +56,17 @@ class ModelLabHostKeyDistributionRequest(BaseModel):
     )
     host_key_files: tuple[str, ...] = ("/etc/ssh/ssh_host_ed25519_key.pub",)
     timeout_s: int = Field(default=30, ge=1)
+
+    @model_validator(mode="after")
+    def validate_allow_unavailable_in_scope(
+        self,
+    ) -> ModelLabHostKeyDistributionRequest:
+        outside = [name for name in self.allow_unavailable if name not in self.hosts]
+        if outside:
+            raise ValueError(
+                f"allow_unavailable names hosts outside the scope: {', '.join(outside)}"
+            )
+        return self
 
     @field_validator("identity_public_files")
     @classmethod

@@ -36,6 +36,9 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_clie
     CONTRACT_PATH,
     load_client_section,
 )
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.reply_principal import (
+    ReplyPrincipalResolver,
+)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelClientSection,
     ModelHookAdapterRequest,
@@ -111,6 +114,7 @@ def main(
     stderr: TextIO | None = None,
     section: ModelClientSection | None = None,
     clock: Callable[[], float] = time.monotonic,
+    principal_resolver: Callable[[], str] | None = None,
 ) -> int:
     started = clock()
     parent_pid = os.getppid()
@@ -157,7 +161,12 @@ def main(
         remaining_ms = (
             binding.deadline_ms - round((clock() - started) * 1000) - EXIT_RESERVE_MS
         )
-        result = HandlerClaudeCodeHookAdapter(receipt_client).handle(
+        result = HandlerClaudeCodeHookAdapter(
+            receipt_client,
+            principal_resolver=principal_resolver
+            if principal_resolver is not None
+            else ReplyPrincipalResolver().resolve,
+        ).handle(
             ModelHookAdapterRequest(
                 binding=binding.model_copy(
                     update={"deadline_ms": max(1, remaining_ms)}

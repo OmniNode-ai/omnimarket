@@ -18,6 +18,7 @@ from __future__ import annotations
 from omnimarket.models.savings_estimate.model_savings_estimate import (
     ESTIMATE_CSV_COLUMNS,
     EnumSavingsBasis,
+    ModelClaudeCodeAssistantTurn,
     ModelClaudeCodePromptRecord,
     ModelEstimateDelegateRoute,
     ModelSavingsEstimateRow,
@@ -26,6 +27,7 @@ from omnimarket.models.savings_estimate.model_savings_estimate import (
 __all__ = [
     "ESTIMATE_CSV_COLUMNS",
     "EnumSavingsBasis",
+    "ModelClaudeCodeAssistantTurn",
     "ModelClaudeCodePromptRecord",
     "ModelEstimateDelegateRoute",
     "ModelSavingsEstimateRow",
