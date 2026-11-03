@@ -34,6 +34,9 @@ from omnimarket.handlers.stats_wilson import WILSON_CONFIDENCE, wilson_interval
 from omnimarket.nodes.node_compaction_verdict_compute.handlers.joint_power import (
     simulate_joint_power,
 )
+from omnimarket.nodes.node_compaction_verdict_compute.handlers.preregistration_gate import (
+    verify_confirmatory,
+)
 from omnimarket.nodes.node_compaction_verdict_compute.handlers.thresholds_loader import (
     parse_thresholds,
 )
@@ -90,6 +93,10 @@ class HandlerCompactionVerdict:
         self, request: ModelCompactionVerdictRequest
     ) -> ModelCompactionVerdictReport:
         thresholds = parse_thresholds(request.thresholds_text)
+        judged = (
+            verify_confirmatory(request, thresholds) if request.confirmatory else None
+        )
+        prereg = thresholds.preregistration
         ordered = sorted(
             request.boundaries, key=lambda c: (c.session_id, c.boundary_id)
         )
@@ -114,12 +121,6 @@ class HandlerCompactionVerdict:
             sessions < thresholds.minimum_sessions
             or power.simulated_power < thresholds.minimum_power
         )
-        if request.confirmatory and below:
-            raise CompactionVerdictRefusedError(
-                f"confirmatory run refused: simulated power {power.simulated_power:.3f} "
-                f"is below minimum_power={thresholds.minimum_power}"
-            )
-
         outcome = evaluate(
             vectors,
             thresholds,
@@ -127,9 +128,24 @@ class HandlerCompactionVerdict:
             resamples=thresholds.bootstrap_resamples,
             seed=_VERDICT_SEED,
         )
+        infeasible = prereg.infeasible_safeguards if prereg is not None else ()
+        exploratory = outcome.exploratory or bool(infeasible)
+        # An EXPLORATORY run cannot issue HELPS, so its simulated power is zero by
+        # construction; it is labelled, not refused for power.
+        if request.confirmatory and below and not exploratory:
+            raise CompactionVerdictRefusedError(
+                f"confirmatory run refused: simulated power {power.simulated_power:.3f} "
+                f"is below minimum_power={thresholds.minimum_power}"
+            )
+
         hold = fallback_share > thresholds.fallback_limit
         verdict = EnumCompactionVerdict.HOLD if hold else outcome.verdict
-        if outcome.exploratory:
+        if infeasible and verdict in (
+            EnumCompactionVerdict.HELPS,
+            EnumCompactionVerdict.NO_DIFFERENCE,
+        ):
+            verdict = EnumCompactionVerdict.INCONCLUSIVE
+        if exploratory:
             label = EnumRunLabel.EXPLORATORY
         elif below:
             label = EnumRunLabel.NOT_POWERED
@@ -176,6 +192,14 @@ class HandlerCompactionVerdict:
             safeguards=outcome.safeguards,
             arm_display=tuple(display),
             power=power,
+            judged_build=judged.candidate_id if judged is not None else None,
+            split_sha256=prereg.split.sha256
+            if prereg is not None and request.confirmatory
+            else None,
+            data_pr=request.registration.data_pr
+            if request.registration is not None and request.confirmatory
+            else None,
+            infeasible_safeguards=infeasible,
         )
 
 
