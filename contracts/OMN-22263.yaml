@@ -53,6 +53,8 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_route_line_parse_compute -q -p no:randomly --no-cov
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_work_classify_compute/test_rubric_load.py -q -p no:randomly --no-cov -k 'enum_lacks'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_route_line_parse_compute/test_route_line_parse.py -q -p no:randomly --no-cov -k 'template_before or prose_before or later_one_is_valid or first_valid_one_wins or no_marker_validates'
   binds_ac:
   - AC1
 - id: dod-omn22263-ac2

@@ -108,3 +108,62 @@ def test_a_contract_without_dimensions_is_refused_at_load() -> None:
                 "dimensions: [S, A, R, V, N, C, J]", "dimensions: []"
             )
         )
+
+
+TEMPLATE = (
+    "ROUTE: band=<B> score=<n> dims=S<s>A<a>R<r>V<v>N<n>C<c>J<j> "
+    "dest=<d> model=<m> effort=<e>"
+)
+
+
+def test_a_brief_quoting_the_format_as_a_template_before_its_real_line_parses_the_real_line() -> (
+    None
+):
+    real_alone = _parse(GOOD)
+    assert real_alone.status is EnumRouteParseStatus.PARSED
+    result = _parse(
+        f"Put a line in this form at the end of the brief:\n{TEMPLATE}\n\n{GOOD}\n"
+    )
+    assert result.status is EnumRouteParseStatus.PARSED
+    assert result.route == real_alone.route
+    assert result.refused_field is None
+
+
+def test_a_brief_quoting_the_marker_in_prose_before_its_real_line_parses_the_real_line() -> (
+    None
+):
+    result = _parse(
+        f"Every brief ends with a ROUTE: line, and this one does too.\n{GOOD}\n"
+    )
+    assert result.status is EnumRouteParseStatus.PARSED
+    assert result.route is not None
+    assert result.route.band == "B3"
+
+
+def test_with_two_markers_where_only_the_later_one_is_valid_the_later_one_parses() -> (
+    None
+):
+    bad_score = GOOD.replace("score=13", "score=12")
+    result = _parse(f"{bad_score}\nsecond try:\n{GOOD}")
+    assert result.status is EnumRouteParseStatus.PARSED
+    assert result.route is not None
+    assert result.route.score == 13
+
+
+def test_with_several_valid_markers_the_first_valid_one_wins() -> None:
+    other = GOOD.replace("band=B3", "band=B4").replace("score=13", "score=14")
+    other = other.replace("S2A2R1V1N2C3J2", "S2A2R1V1N2C3J3")
+    first_is_other = _parse(f"{other}\n{GOOD}")
+    assert first_is_other.route is not None
+    assert first_is_other.route.band == "B4"
+    first_is_good = _parse(f"{GOOD}\n{other}")
+    assert first_is_good.route is not None
+    assert first_is_good.route.band == "B3"
+
+
+def test_when_no_marker_validates_the_first_markers_refusal_is_reported() -> None:
+    bad_score = GOOD.replace("score=13", "score=12")
+    result = _parse(f"{bad_score}\nthen prose with a ROUTE: marker and nothing else")
+    assert result.status is EnumRouteParseStatus.REFUSED
+    assert result.route is None
+    assert result.refused_field == "score"
