@@ -17,12 +17,13 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 import asyncpg
 import psycopg2
 import pytest
-from psycopg2.extensions import make_dsn, parse_dsn
+from psycopg2.extensions import parse_dsn
 
 from omnimarket.events.model_ledger_row_event import work_ledger_row_id
 from omnimarket.nodes.node_projection_work_ledger.handlers import (
@@ -59,12 +60,15 @@ def _test_dsn() -> str | None:
     }
     if not all(service.values()):
         return None
-    return make_dsn(
-        host=service["host"],
-        port=service["port"],
-        user=service["user"],
-        password=service["password"],
-        dbname=service["db"],
+    # A URI, not psycopg2's keyword/value form: psycopg2 reads either, asyncpg
+    # only reads a URI and refuses a keyword/value string with
+    # "invalid DSN: scheme is expected to be either postgresql or postgres".
+    # This fallback is the only DSN the hosted job supplies, so the keyword form
+    # passed the psycopg2 fixture and then failed every asyncpg connection.
+    return (
+        f"postgresql://{quote(service['user'], safe='')}"
+        f":{quote(service['password'], safe='')}"
+        f"@{service['host']}:{service['port']}/{quote(service['db'], safe='')}"
     )
 
 
