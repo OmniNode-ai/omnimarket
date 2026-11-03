@@ -1,0 +1,79 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22315"
+title: "A relative cwd in a dod_verify check names the contract's own tree and stays contained"
+summary: >-
+  EvidenceCollector._resolve_cwd anchors a declared relative cwd at the contract's own repository tree instead of the verifier process cwd, and counts that tree as contained for a relative cwd only. A check declaring cwd "." no longer reads "cwd escapes OMNI_HOME containment" when the verifier is started outside OMNI_HOME (a lane clone, the autoclose sweep's contract-roots clone). An absolute path outside OMNI_HOME, a dot-dot traversal and a symlink that leaves both roots stay refused, and a failing command still reads FAILED.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22315-relative-cwd"
+    statement: "A relative cwd in a dod_verify check resolves in the contract's own tree and the containment refusals that protect OMNI_HOME survive."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a command check declaring cwd \".\" verifies when the verifier process cwd is outside OMNI_HOME and the contract sits in a repository tree -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k relative_cwd_outside_omni_home, red on the current tree with the containment message"
+      - id: "AC2"
+        statement: "AC2: an absolute cwd outside OMNI_HOME, a dot-dot traversal and a symlink under the contract tree that leaves both roots stay refused -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k relative_cwd_still_contained, where any of the three resolving fails the test"
+      - id: "AC3"
+        statement: "AC3: a command that fails under a relative cwd still reads FAILED, never verified -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k relative_cwd_failing_command_fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "Relative cwd containment tests for OMN-22315."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22315-ac1-relative-cwd-outside-omni-home"
+    description: "A cwd \".\" and a relative subdirectory verify from a process cwd outside OMNI_HOME and run in the contract's own tree."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov -k 'relative_cwd_outside_omni_home or relative_subdirectory_cwd or runs_in_contract_tree'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn22315-ac2-still-contained"
+    description: "A relative cwd verifies while an absolute cwd outside OMNI_HOME or inside the own tree, a dot-dot traversal and a symlink leaving both roots stay refused. Both the new allowance and retained refusals must pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov -k 'relative_cwd_still_contained or relative_cwd_outside_omni_home'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn22315-ac3-failing-command-fails"
+    description: "A failing command and an absent marker file under a relative cwd read FAILED."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q --no-cov -k 'relative_cwd_failing_command_fails or relative_cwd_missing_file_check_fails'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn22315-integration-proof"
+    description: "The pushed head ran the relative cwd containment tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22315 -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py -q -p no:randomly --no-cov"
+        cwd: "."
+  - id: "dod-omn22315-deploy-source-readback"
+    description: "Hosted-runner source-artifact readback compares the published evidence collector at the evaluated revision with this checkout and requires its relative-cwd contract-tree anchor. This reads the published source artifact; it does not assert a running service revision."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          path=src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py;
+          curl --fail --silent --show-error --location --retry 2 --max-time 20 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+            --output "$readback_dir/evidence_collector.py";
+          cmp "$path" "$readback_dir/evidence_collector.py";
+          grep -F 'contract_tree: Path | None = None' "$readback_dir/evidence_collector.py";
+          grep -F 'candidate = (anchor / rendered if anchor else Path(rendered)).resolve()' "$readback_dir/evidence_collector.py";
+          printf 'relative-cwd evidence collector source readback matched %s\n' "$revision"
+        cwd: "${OMNI_HOME}/omnimarket"
