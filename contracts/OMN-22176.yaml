@@ -111,6 +111,9 @@ dod_evidence:
   - check_type: command
     check_value: grep -rq pass_agent src/omnimarket/nodes/node_agent_review_gate_accept_effect/handlers && echo 'deploy - gate-accept handler carries pass_agent'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov --tb=line
+    cwd: .
 - id: dod-omn22176-integration-proof
   description: The pushed head ran the gate-accept node suites in both profiles, the gateway suites and the workflow tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
