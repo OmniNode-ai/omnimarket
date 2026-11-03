@@ -51,7 +51,7 @@ def _failure(
     probe = " ".join(spec.probe)
     said = f": {reading.tail}" if reading.tail else ""
     stale = (
-        f"; {spec.repair.path} is an empty directory"
+        f"; {spec.repair.path} holds no file"
         if spec.repair.path and spec.repair.path in host.empty_dirs
         else ""
     )

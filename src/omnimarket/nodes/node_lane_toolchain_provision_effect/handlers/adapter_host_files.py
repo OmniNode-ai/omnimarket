@@ -44,14 +44,16 @@ class HostFiles:
         tmp.symlink_to(target)
         os.replace(tmp, link)
 
-    def list_dir(self, path: str) -> tuple[str, ...] | None:
-        try:
-            return tuple(sorted(os.listdir(path)))
-        except OSError:
+    def file_count(self, path: str) -> int | None:
+        if not os.path.isdir(path):
             return None
+        return sum(len(files) for _, _, files in os.walk(path))
 
-    def remove_empty_dir(self, path: str) -> None:
-        os.rmdir(path)
+    def remove_empty_tree(self, path: str) -> None:
+        if self.file_count(path):
+            raise OSError(f"{path} holds a file and is not removed")
+        for root, _, _ in os.walk(path, topdown=False):
+            os.rmdir(root)
 
     def run(self, argv: Sequence[str], env: Mapping[str, str]) -> tuple[int, str]:
         merged = {**os.environ, **env}

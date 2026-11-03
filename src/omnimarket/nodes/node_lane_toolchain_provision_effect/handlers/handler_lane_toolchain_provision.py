@@ -134,12 +134,12 @@ class HandlerLaneToolchainProvision:
                     f"{reading}; {link} is not a link and is left as it is",
                 )
             action = f"{link} would point at {target}"
-        elif repair.kind == "clear-empty-dir":
+        elif repair.kind == "clear-empty-tree":
             directory = f"{host.home}/{repair.path}"
-            if self._port.list_dir(directory) != ():
-                return owner(
-                    f"{directory} is not an empty directory, so there is nothing to clear"
-                )
+            held = self._port.file_count(directory)
+            if held != 0:
+                why = "is absent" if held is None else f"holds {held} file(s)"
+                return owner(f"{directory} {why}, so there is no empty tree to clear")
             action = f"{directory} would be removed"
         else:
             argv = host.install.get(name)
@@ -171,8 +171,8 @@ class HandlerLaneToolchainProvision:
             self._port.replace_link(
                 f"{host.lane_bin_dir}/{name}", f"{host.registry_root}/{repair.target}"
             )
-        elif repair.kind == "clear-empty-dir":
-            self._port.remove_empty_dir(f"{host.home}/{repair.path}")
+        elif repair.kind == "clear-empty-tree":
+            self._port.remove_empty_tree(f"{host.home}/{repair.path}")
         else:
             argv = host.install[name]
             status, tail = self._port.run(

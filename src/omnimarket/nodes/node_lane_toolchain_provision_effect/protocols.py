@@ -21,11 +21,13 @@ class ProtocolLaneToolchainHost(Protocol):
 
     def replace_link(self, path: str, target: str) -> None: ...
 
-    def list_dir(self, path: str) -> tuple[str, ...] | None:
-        """The entry names of a directory, or ``None`` when ``path`` is not a directory."""
+    def file_count(self, path: str) -> int | None:
+        """How many non-directory entries the tree under ``path`` holds, or ``None`` when ``path`` is not a directory."""
         ...
 
-    def remove_empty_dir(self, path: str) -> None: ...
+    def remove_empty_tree(self, path: str) -> None:
+        """Remove a tree that holds no file."""
+        ...
 
     def run(self, argv: Sequence[str], env: Mapping[str, str]) -> tuple[int, str]:
         """Run argv; return its exit status (127 when not found) and the tail of its output."""

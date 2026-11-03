@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # The lane toolchain every lab host provides, as data. A tool row: `probe` (argv run with the PATH lanes run with), `repair`
-# (how the host installer repairs it: lane-link | clear-empty-dir | install; an `install` row's argv is the host overlay's, never
+# (how the host installer repairs it: lane-link | clear-empty-tree | install; an `install` row's argv is the host overlay's, never
 # this file's) and `owner_fix` (what the host owner adds when the installer cannot). A host row lists the tools its lanes need,
 # in install order: node comes before pyright because pyright-python uses a node on PATH and only builds a nodeenv without one.
 tools:
@@ -20,7 +20,7 @@ tools:
     owner_fix: the host owner declares a pnpm installer argv for the host in the toolchain overlay, or installs pnpm
   pyright:
     probe: [uvx, pyright, --version]
-    repair: {kind: clear-empty-dir, path: .cache/pyright-python/nodeenv}
+    repair: {kind: clear-empty-tree, path: .cache/pyright-python/nodeenv}
     owner_fix: pyright-python needs a node on the lane PATH or a working nodeenv under its cache; the host owner installs node, or removes the broken nodeenv
 hosts:
   h051: [onex, node, pnpm, pyright]

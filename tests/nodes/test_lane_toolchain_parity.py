@@ -84,7 +84,7 @@ def test_lane_toolchain_parity_names_the_broken_onex_and_the_empty_nodeenv() -> 
     by_tool = {f.tool: f.reason for f in result.failures}
     assert "ModuleNotFoundError" in by_tool["onex"]
     assert NODEENV in by_tool["pyright"]
-    assert "empty directory" in by_tool["pyright"]
+    assert "holds no file" in by_tool["pyright"]
 
 
 def test_lane_toolchain_parity_names_a_missing_node_and_pnpm() -> None:
@@ -140,7 +140,7 @@ def test_lane_toolchain_parity_contract_data_the_toolchain_is_declared_not_coded
     raw = yaml.safe_load(TABLE_PATH.read_text(encoding="utf-8"))
     for name, spec in raw["tools"].items():
         assert spec["probe"], name
-        assert spec["repair"]["kind"] in {"lane-link", "clear-empty-dir", "install"}
+        assert spec["repair"]["kind"] in {"lane-link", "clear-empty-tree", "install"}
     # No tool name or host name is a literal of the judging code.
     source = inspect.getsource(handler_lane_toolchain)
     for literal in (*raw["tools"], *raw["hosts"]):

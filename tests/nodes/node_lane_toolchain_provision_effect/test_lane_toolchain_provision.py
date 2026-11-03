@@ -5,10 +5,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 import pytest
 
 from omnimarket.nodes.node_lane_toolchain_provision_effect.handlers.adapter_host_files import (
+    HostFiles,
     load_table,
 )
 from omnimarket.nodes.node_lane_toolchain_provision_effect.handlers.handler_lane_toolchain_provision import (
@@ -42,7 +44,7 @@ tools:
     owner_fix: install node
   pyright:
     probe: [uvx, pyright, --version]
-    repair: {kind: clear-empty-dir, path: .cache/pyright-python/nodeenv}
+    repair: {kind: clear-empty-tree, path: .cache/pyright-python/nodeenv}
     owner_fix: fix the nodeenv
 hosts:
   lane-a.test: [onex, node, pyright]
@@ -69,11 +71,11 @@ class FakeHost:
     def replace_link(self, path: str, target: str) -> None:
         self.links[path] = target
 
-    def list_dir(self, path: str) -> tuple[str, ...] | None:
+    def file_count(self, path: str) -> int | None:
         entries = self.dirs.get(path)
-        return None if entries is None else tuple(entries)
+        return None if entries is None else len(entries)
 
-    def remove_empty_dir(self, path: str) -> None:
+    def remove_empty_tree(self, path: str) -> None:
         del self.dirs[path]
 
     def run(self, argv: Sequence[str], env: Mapping[str, str]) -> tuple[int, str]:
@@ -203,3 +205,31 @@ def test_an_undeclared_host_is_refused() -> None:
     result = run(FakeHost(), host="nowhere.test")
     assert [s.state for s in result.steps] == ["refused"]
     assert not result.ok
+
+
+def test_a_nodeenv_that_holds_a_file_is_an_owner_step_and_is_not_removed() -> None:
+    port = NodeenvStaysBroken()
+    port.dirs[NODEENV] = ["bin/node"]
+    result = run(port, install=NODE_INSTALL)
+    assert states(result)["tool:pyright"] == "needs-operator"
+    assert NODEENV in port.dirs
+
+
+def test_the_real_host_clears_a_tree_of_empty_directories_and_keeps_one_with_a_file(
+    tmp_path: Path,
+) -> None:
+    # The h053 reading of 2026-11-03: nodeenv/ held only an empty src/ directory and no bin/.
+    host = HostFiles()
+    stale = tmp_path / "nodeenv"
+    (stale / "src").mkdir(parents=True)
+    assert host.file_count(str(stale)) == 0
+    host.remove_empty_tree(str(stale))
+    assert not stale.exists()
+    assert host.file_count(str(stale)) is None
+    kept = tmp_path / "kept"
+    (kept / "bin").mkdir(parents=True)
+    (kept / "bin" / "node").write_text("x")
+    assert host.file_count(str(kept)) == 1
+    with pytest.raises(OSError, match="holds a file"):
+        host.remove_empty_tree(str(kept))
+    assert (kept / "bin" / "node").exists()

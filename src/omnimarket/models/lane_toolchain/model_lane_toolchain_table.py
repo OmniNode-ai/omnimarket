@@ -15,14 +15,14 @@ from typing import Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-RepairKind = Literal["lane-link", "clear-empty-dir", "install"]
+RepairKind = Literal["lane-link", "clear-empty-tree", "install"]
 
 
 class ModelToolchainRepair(BaseModel):
     """How the host installer repairs a tool.
 
     ``lane-link``: link ``<lane_bin_dir>/<tool>`` at ``target``, relative to the host's registry root.
-    ``clear-empty-dir``: remove ``path`` (relative to the host's home) when it is an empty directory, so the tool recreates it.
+    ``clear-empty-tree``: remove ``path`` (relative to the host's home) when the tree holds no file, so the tool recreates it.
     ``install``: run the argv the host overlay declares for the tool.
     """
 
@@ -34,7 +34,9 @@ class ModelToolchainRepair(BaseModel):
 
     @model_validator(mode="after")
     def _kind_has_its_field(self) -> Self:
-        needed = {"lane-link": self.target, "clear-empty-dir": self.path}.get(self.kind)
+        needed = {"lane-link": self.target, "clear-empty-tree": self.path}.get(
+            self.kind
+        )
         if self.kind != "install" and not needed:
             raise ValueError(f"repair kind {self.kind!r} needs its target or path")
         for value in (self.target, self.path):
