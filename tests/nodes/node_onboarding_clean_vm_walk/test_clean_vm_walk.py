@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import shlex
 import subprocess
@@ -384,6 +385,29 @@ def test_contract_declares_documented_steps_and_topics() -> None:
     )
     assert contract["terminal_event"] == dispatch["terminal_events"]["success"]
     assert contract["descriptor"]["timeout_ms"] == 3600000
+
+
+def test_canonical_file_shape_binds_walk_handlers_without_scripts() -> None:
+    """AC4 checks the new node's layout as well as the shared ratchet."""
+    contract = yaml.safe_load(CONTRACT.read_text())
+    handlers = (
+        (contract["handler"], "class", walk.HandlerOnboardingCleanVmWalk),
+        (
+            contract["transport_bindings"]["tart_ssh"]["handler"],
+            "name",
+            HandlerSshTart,
+        ),
+    )
+    for binding, class_key, expected_class in handlers:
+        module = importlib.import_module(binding["module"])
+        assert getattr(module, binding[class_key]) is expected_class
+        assert module.__file__ is not None
+        assert Path(module.__file__).resolve().parent == CONTRACT.parent / "handlers"
+    assert not [
+        path.relative_to(CONTRACT.parent)
+        for path in CONTRACT.parent.rglob("*")
+        if path.is_file() and path.suffix in {".sh", ".bash", ".zsh"}
+    ]
 
 
 def test_redaction() -> None:

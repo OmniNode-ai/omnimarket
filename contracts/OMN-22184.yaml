@@ -14,7 +14,7 @@ requirements:
   - id: AC2
     statement: 'AC2: the node returns a typed receipt with each phase''s result and seconds, the seconds to the first delegated run, the delegated run''s backend and status, the dashboard result (HTTP status of the root page and of `/projections`), the VM spec and the pins installed -- falsifier: the same pytest module asserts every field is present and typed, and that a failed phase yields a receipt with the failure text and not an exception'
   - id: AC4
-    statement: 'AC4: the node adds no script file and passes the canonical-file-shape ratchet -- falsifier: `uv run pytest tests/test_canonical_file_shape.py -q`'
+    statement: 'AC4: the node adds no script file and passes the canonical-file-shape ratchet -- falsifier: `uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/ci/test_canonical_file_shape_pin_omn20460.py -k canonical_file_shape -q --no-cov` checks the node handler bindings and absence of shell script files alongside the ratchet'
   - id: AC5
     statement: 'AC5: the dependency above is stated in this ticket and the receipt records the omnibase-spi version it installed -- falsifier: a receipt with no pin list'
 evidence_requirements:
@@ -45,13 +45,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov --tb=line -k "receipt or failed"
     cwd: .
 - id: dod-omn22184-ac4
-  description: AC4 the node adds only files under src/omnimarket/nodes and tests, and the canonical-file-shape ratchet tests pass.
+  description: AC4 the new node's walk and transport handlers are bound by its contract inside the node's handlers directory, the node contains no shell script files, and the canonical-file-shape ratchet tests pass. The node-specific test cannot collect at the merge base without the new product modules.
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci -q --no-cov --tb=line -k canonical_file_shape
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/ci/test_canonical_file_shape_pin_omn20460.py -q --no-cov --tb=line -k canonical_file_shape
     cwd: .
 - id: dod-omn22184-ac5
   description: AC5 the receipt carries the pin list and the omnibase_spi version parsed from the onboarding log.
