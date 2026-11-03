@@ -80,7 +80,7 @@ def test_the_plan_a_hold_names_as_exempt_is_not_stopped_by_it_and_the_other_plan
     )
     exempt = drawn["2026-10-28-validators-to-core-and-hardcoded-rules"]
     held = drawn["2026-10-28-orchestration-alignment-wave-plan"]
-    assert (exempt.andon.flag, exempt.status_pill) == (False, "building")
+    assert (exempt.andon.flag, exempt.condition) == (False, "building")
     assert held.andon.flag is True
 
 
@@ -108,7 +108,7 @@ def test_a_line_whose_part_has_a_red_open_pull_request_is_stopped_by_that_cause(
     line = drawn["2026-10-28-validators-to-core-and-hardcoded-rules"]
     assert line.andon.flag is True
     assert line.andon.causes == ("PR repo#7 CI red (3 red of 150)",)
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
 
 
 def test_a_green_open_pull_request_stops_nothing() -> None:
