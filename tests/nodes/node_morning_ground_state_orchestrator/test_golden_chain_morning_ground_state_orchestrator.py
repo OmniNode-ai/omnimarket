@@ -48,7 +48,10 @@ def test_golden_chain_morning_ground_state_orchestrator() -> None:
     routing = cast(dict[str, JsonValue], contract["handler_routing"])
     assert routing["routing_strategy"] == "operation_match"
     entries = cast(list[dict[str, JsonValue]], routing["handlers"])
-    assert [entry["operation"] for entry in entries] == ["morning_ground_state"]
+    assert [entry["operation"] for entry in entries] == [
+        "morning_ground_state",
+        "morning_phase_session_files",
+    ]
     entry = entries[0]
     handler_ref = cast(dict[str, str], entry["handler"])
     handler_type = getattr(
