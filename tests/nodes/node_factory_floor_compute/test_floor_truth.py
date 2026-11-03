@@ -54,7 +54,7 @@ NOW = datetime(2026, 11, 2, 15, 0, 0, tzinfo=UTC)
 # The watcher's merge list: W0.1's mapped pull request and W1.1's, each titled with its ticket.
 MERGES = (
     (
-        "knowledge_base_internal#1573",
+        "example_docs#1573",
         "feat(OMN-33001): capture the workflow identities",
     ),
     ("omnimarket#9101", "feat(OMN-33003): report workflow-level results"),
@@ -67,9 +67,9 @@ LEDGER = "\n".join(
         "L1 2026-10-31T08:19:23Z | TERMINAL | lane=retro-track-b | task=W0.1 | outcome=blocked | W0.1 capture blocked",
         "L2 2026-10-31T08:20:00Z | TERMINAL | lane=retro-track-c | task=W0.2 | outcome=partial | W0.2 partial",
         # The task-to-ticket map: one STATUS row per task, scoped to the plan by its subject cell.
-        f"L3 2026-11-02T14:00:00Z | STATUS | lane=fill-orchestration | state=task-map | subject={LINE} | task=W0.1 | ticket=OMN-33001 | pr=OmniNode-ai/knowledge_base_internal#1573 | map",
+        f"L3 2026-11-02T14:00:00Z | STATUS | lane=fill-orchestration | state=task-map | subject={LINE} | task=W0.1 | ticket=OMN-33001 | pr=OmniNode-ai/example_docs#1573 | map",
         # W0.2's pull request is in a repository the watcher does not read: the map records that it merged.
-        f"L4 2026-11-02T14:00:01Z | STATUS | lane=fill-orchestration | state=task-map | subject={LINE} | task=W0.2 | ticket=OMN-33002 | pr=OmniNode-ai/knowledge_base_internal#1583 | outcome=merged | map",
+        f"L4 2026-11-02T14:00:01Z | STATUS | lane=fill-orchestration | state=task-map | subject={LINE} | task=W0.2 | ticket=OMN-33002 | pr=OmniNode-ai/example_docs#1583 | outcome=merged | map",
         # A ticket-minting lane that only names W1.2a in its free text, carrying the plan's epic ticket.
         "L5 2026-11-02T14:10:00Z | TERMINAL | lane=tickets-orchestration | ticket=OMN-33000 | outcome=done | minted the tickets for W1.2a and W1.2b",
         # Gate G1b reads fail.
@@ -195,8 +195,8 @@ def test_map_status_ticket_pr_on_row_and_station(
     """The task-to-ticket map STATUS row puts its ticket and pull request on the task's row and its station."""
     stations = _stations(PROFILES[profile](tmp_path, monkeypatch))
     for task_id, ticket, pr in (
-        ("W0.1", "OMN-33001", "OmniNode-ai/knowledge_base_internal#1573"),
-        ("W0.2", "OMN-33002", "OmniNode-ai/knowledge_base_internal#1583"),
+        ("W0.1", "OMN-33001", "OmniNode-ai/example_docs#1573"),
+        ("W0.2", "OMN-33002", "OmniNode-ai/example_docs#1583"),
     ):
         station = stations[task_id]
         (item,) = station["items"]
