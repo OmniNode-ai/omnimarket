@@ -50,6 +50,7 @@ LANE_WRITES: dict[str, str] = {
     "api --method POST /repos/{o}/{r}/check-runs": "check_run_create",
     "api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies": "pr_thread_reply",
     "api graphql resolveReviewThread": "pr_thread_resolve",
+    "api --method POST /repos/{o}/{r}/pulls/{n}/reviews": "pr_review_post",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 
