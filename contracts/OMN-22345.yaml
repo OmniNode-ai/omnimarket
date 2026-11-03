@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-22345
+title: 'The agent review dispatch signer binds to the secret store by name: the receipt signing key is read from the store at bind time and is never a file, a setting or an argument on a host'
+summary: build_production_ports reads the receipt signing key through the overlay's signing_key_store reference (secret name, environment slug, secret path) with the host's own store identity, and hands it to the signer child's environment only. The process-environment and host-env-file paths for the key are removed. The store identity names (address, client id, client secret, project) are read from the environment or the host env file, never reach a voter's child process, and an absent or unreadable store ends the request before any port is called, with the name on stderr and no value.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22345-ac1
+  statement: 'AC1: The signing key is read by the overlay signing_key_store reference, and no path reads it from the process environment or the host env file'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The signing key is read by the overlay signing_key_store reference, and no path reads it from the process environment or the host env file -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -k "key" -q` shows a build that succeeds with LOCAL_LLM_SHARED_SECRET in the environment and no store reference read, or the store is asked for a reference other than the overlay block'
+- id: req-omn22345-ac2
+  statement: 'AC2: An absent store identity or an unreadable store ends the request before any port is called and names the missing setting, never a value'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: An absent store identity or an unreadable store ends the request before any port is called and names the missing setting, never a value -- falsifier: the same test file finds a bind that returns ports after the store refused, or an error text holding the key or the client secret'
+- id: req-omn22345-ac3
+  statement: 'AC3: The store identity names never reach a voter child process'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: The store identity names never reach a voter child process -- falsifier: `uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q` finds INFISICAL_ADDR, INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET or INFISICAL_PROJECT_ID in a harness child environment or request'
+- id: req-omn22345-ac4
+  statement: 'AC4: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: Lab step: from a lab host, the request entry for one pull request head binds the signer from the store, runs the Codex and Sonnet rungs and posts or stores one signed receipt naming both voters -- falsifier: the entry exits 1 with a not-bound line, or the stored receipt lists fewer than two counted non-lab voters'
+evidence_requirements:
+- kind: tests
+  description: The dispatch node suite under both profiles and the literal scan.
+  command: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22345-ac1
+  description: 'AC1: the key tests read the key through the overlay reference with a fake store and find no environment path.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'key or store'
+    cwd: .
+- id: dod-omn22345-ac2
+  description: 'AC2: an absent store identity and a refusing store end the bind with the name and no value.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py -q -n 0 -p no:randomly --no-cov --tb=line -k 'identity or cannot_be_read'
+    cwd: .
+- id: dod-omn22345-ac3
+  description: 'AC3: the harness child holds none of the store identity names.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py -q -n 0 -p no:randomly --no-cov --tb=line
+    cwd: .
+- id: dod-omn22345-ac4
+  description: 'AC4: lab step, recorded as a ledger receipt by the proof lane (review-proof-1525). Not met by this change alone.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'onex run-node node_agent_review_dispatch_orchestrator --help > /dev/null'
+    cwd: .
+- id: dod-omn22345-integration-proof
+  description: The pushed head ran the dispatch node suite on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ticket-omn-22345-1103-r -- uv run --frozen pytest tests/unit/nodes/node_agent_review_dispatch_orchestrator -q --no-cov
+    cwd: .
