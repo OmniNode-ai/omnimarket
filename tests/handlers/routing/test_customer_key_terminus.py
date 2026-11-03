@@ -276,3 +276,25 @@ def test_nothing_declared_and_no_key_is_still_refused(
         CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE in message
         or "No local model is declared" in message
     )
+
+
+def test_nothing_declared_no_platform_owned_rung_is_offered_to_a_customer() -> None:
+    """AC3: with nothing declared the ladder's platform-owned rung stays unreachable.
+
+    ``customer_may_run_backend`` is the fix's helper; it does not exist before it.
+    """
+    backend = resolution_mod.ModelResolvedDelegationBackend(
+        backend_id="house-entry",
+        model_id="m",
+        endpoint_ref="https://example.invalid/v1/chat/completions",
+        max_tokens=16,
+        timeout_ms=1000,
+        secret_ref="house-ref",
+    )
+    refs = frozenset({"house-ref"})
+    assert not resolution_mod.customer_may_run_backend(
+        tenant_id="customer-tenant", backend=backend, house_refs=refs
+    )
+    assert resolution_mod.customer_may_run_backend(
+        tenant_id=None, backend=backend, house_refs=refs
+    )

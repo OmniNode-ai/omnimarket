@@ -33,7 +33,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line -k customers_own
+    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line -k walk_2026_11_02_a_declared
     cwd: .
 - id: dod-omn22179-ac2
   description: AC2 one case per auto-classed task class (document, code_generation, test, planning) for both the serving and the failing declared model.
@@ -51,7 +51,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line -k nothing_declared
+    check_value: uv run pytest tests/handlers/routing/test_customer_key_terminus.py -q --no-cov --tb=line -k nothing_declared_no_platform_owned_rung
     cwd: .
 - id: dod-omn22179-ac4
   description: AC4 the walk's recorded refusal, kept as a fixture, does not recur for a declared local model that fails.
