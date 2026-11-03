@@ -62,6 +62,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk -q --no-cov --tb=line -k "receipt or parser"
     cwd: .
+- id: dod-omn22184-ac1-guest-over-ssh
+  description: AC1 every guest step is issued over ssh to the address the tart_ip step returned, with the guest commands unchanged; a stub runner fails the walk if a guest step is issued as tart exec, and the guard refuses the tart exec form of every guest step.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_guest_over_ssh.py -q --no-cov --tb=line
+    cwd: .
 - id: dod-omn22184-deploy-probe
   description: 'Deploy probe: the handler GitHub serves at the checked-out commit defines the walk effect, which the merge base does not.'
   source: manual
