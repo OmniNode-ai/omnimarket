@@ -1112,6 +1112,8 @@ async def test_key_set_aside_ttl_and_events_inmemory(
             assert all(event["host"] == _HOST for event in events)
             assert secret not in json.dumps(events)
             assert secret not in caplog.text
+            # The credential reference is bus identity only; logs carry the display name.
+            assert call.calls[0].secret_ref not in caplog.text
     finally:
         await bus.close()
 

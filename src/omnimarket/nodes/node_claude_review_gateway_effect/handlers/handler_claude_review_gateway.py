@@ -722,15 +722,16 @@ class ClaudeReviewGateway:
                 self._pending_events.popleft()
 
     async def _refuse_key(
-        self, key_ref: str, cause: EnumDelegationFailureClass
+        self, key: ModelReviewGatewayKey, cause: EnumDelegationFailureClass
     ) -> None:
         record = ModelReviewGatewaySetAside(
-            key_ref=key_ref, cause=cause, set_aside_at=self._clock()
+            key_ref=key.api_key_ref, cause=cause, set_aside_at=self._clock()
         )
-        self._set_aside[key_ref] = record
-        self._retry_announced.pop(key_ref, None)
+        self._set_aside[key.api_key_ref] = record
+        self._retry_announced.pop(key.api_key_ref, None)
         await self._emit_key_event("set_aside", record)
-        logger.warning("review gateway: key %s set aside (%s)", key_ref, cause.value)
+        # Log the display name, never the credential reference (clear-text logging).
+        logger.warning("review gateway: key %s set aside (%s)", key.name, cause.value)
 
     def candidate_keys(
         self, now: datetime | None = None
@@ -901,7 +902,7 @@ class ClaudeReviewGateway:
                     await self._emit_key_event("retry", record)
                 if not await self._key_values.get_secret(key.api_key_ref):
                     await self._refuse_key(
-                        key.api_key_ref,
+                        key,
                         EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING,
                     )
                     continue
@@ -920,7 +921,7 @@ class ClaudeReviewGateway:
                 if outcome.success:
                     return 200, _completion(self._request.model, outcome)
                 if _is_key_failure(outcome):
-                    await self._refuse_key(key.api_key_ref, _key_failure_cause(outcome))
+                    await self._refuse_key(key, _key_failure_cause(outcome))
                     continue
             finally:
                 if record is not None:
@@ -932,7 +933,7 @@ class ClaudeReviewGateway:
                         ):
                             # A cancelled or raising call consumed this retry too.
                             await self._refuse_key(
-                                key.api_key_ref, EnumDelegationFailureClass.UNKNOWN
+                                key, EnumDelegationFailureClass.UNKNOWN
                             )
                     finally:
                         self._retrying.discard(key.api_key_ref)
