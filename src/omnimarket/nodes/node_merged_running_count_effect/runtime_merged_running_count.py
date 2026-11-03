@@ -60,7 +60,9 @@ def _required_env(name: str) -> str:
     return value
 
 
-def build_sources(now: datetime) -> SourceLocalFiles:
+def build_sources(
+    now: datetime, *, hosts_table: Path | None = None
+) -> SourceLocalFiles:
     rt = yaml.safe_load(OWN_CONTRACT.read_text(encoding="utf-8"))["runtime"]
     home = Path(_required_env(rt["home_env"]))
     lab_pass, lab_pass_cause = build_lab_pass_source(rt["lab_pass"], os.environ)
@@ -72,7 +74,9 @@ def build_sources(now: datetime) -> SourceLocalFiles:
         ),
         ledger=Path(_required_env(rt["ledger_env"])),
         labels=ModelSourceLabels.model_validate(rt["labels"]),
-        hosts_table=Path(_required_env(rt["hosts_table_env"])),
+        hosts_table=hosts_table
+        if hosts_table is not None
+        else Path(_required_env(rt["hosts_table_env"])),
         placement_read=home / rt["placement_read_relpath"],
         now=now,
     )
@@ -81,9 +85,11 @@ def build_sources(now: datetime) -> SourceLocalFiles:
 class MergedRunningCountReader:
     """The count as the floor reads it (``ProtocolMergedRunningCountReader``): the local-file sources, the handler, the count."""
 
-    def read(self, now: datetime) -> ModelMergedRunningCountResult:
+    def read(
+        self, now: datetime, *, hosts_table: Path | None = None
+    ) -> ModelMergedRunningCountResult:
         try:
-            sources = build_sources(now)
+            sources = build_sources(now, hosts_table=hosts_table)
         except SystemExit as exc:
             raise RuntimeError(str(exc)) from exc
         container: Any = _LocalContainer(sources)

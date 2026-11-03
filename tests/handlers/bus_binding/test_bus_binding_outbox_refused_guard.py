@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.bus_binding.guard_port_types import GuardPorts
 from omnimarket.handlers.bus_binding.guard_refusal import (
-    GuardPorts,
     read_guard_refusal,
     settle_guard_case,
     settle_guard_refusals,

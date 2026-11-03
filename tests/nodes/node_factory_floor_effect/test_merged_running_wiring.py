@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountRequest,
@@ -36,11 +37,15 @@ from tests.nodes.node_factory_floor_effect.test_runtime_factory_floor import (
     _argv,
 )
 
+pytestmark = pytest.mark.unit
+
 NOW = datetime(2026, 10, 31, 12, 0, 0, tzinfo=UTC)
 
 
 class _Reader:
-    def read(self, now: datetime) -> ModelMergedRunningCountResult:
+    def read(
+        self, now: datetime, *, hosts_table: Path | None = None
+    ) -> ModelMergedRunningCountResult:
         return HandlerMergedRunningCount().handle(
             ModelMergedRunningCountRequest(
                 now=now, config=load_contract_config(), prs=(), hosts=()
@@ -49,7 +54,9 @@ class _Reader:
 
 
 class _Broken:
-    def read(self, now: datetime) -> ModelMergedRunningCountResult:
+    def read(
+        self, now: datetime, *, hosts_table: Path | None = None
+    ) -> ModelMergedRunningCountResult:
         raise OSError("the PR watcher state is gone")
 
 
@@ -124,3 +131,94 @@ def test_merged_running_cli_binds_the_count_reader(
         (world["home"] / load_contract(CONTRACT).runtime.output.relpath).read_text()
     )
     assert document["floor"]["merged_running"] is not None
+
+
+def test_merged_running_receives_the_floor_overlay_host_table(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The publish tick has an overlay table and no host-table environment variable."""
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    overlay = world["home"] / "floor-overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "plan_path_contains": ["beta/plans/2026-10-"],
+                "host_table_relpath": "hosts.yaml",
+            }
+        )
+    )
+    monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    (world["home"] / "hosts.yaml").write_text("hosts: []\n")
+    received: list[Path | None] = []
+
+    class Reader:
+        def read(
+            self, now: datetime, *, hosts_table: Path | None = None
+        ) -> ModelMergedRunningCountResult:
+            received.append(hosts_table)
+            return _Reader().read(now)
+
+    document = _record(world, Reader())
+    assert received == [world["home"] / "hosts.yaml"]
+    assert document["floor"]["merged_running"] is not None
+
+
+def test_merged_running_real_reader_uses_the_resolved_table_without_the_env(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_merged_running_count_effect.runtime_merged_running_count import (
+        MergedRunningCountReader,
+    )
+
+    home = world["home"]
+    monkeypatch.setenv("OMNI_HOME", str(home))
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    monkeypatch.delenv("ONEX_PR_WATCHER_STATE", raising=False)
+    monkeypatch.delenv("ONEX_LAB_PASS_RECEIPTS_URL", raising=False)
+    monkeypatch.delenv("ONEX_LAB_PASS_LANE", raising=False)
+    ledger = home / "ledger.md"
+    ledger.write_text("")
+    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    overlay = home / "floor-overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "plan_path_contains": ["beta/plans/2026-10-"],
+                "host_table_relpath": "hosts.yaml",
+            }
+        )
+    )
+    monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    (home / "hosts.yaml").write_text("hosts: [{name: h051, cap: 2}]\n")
+    (home / ".claude_scratch/pr-watcher/state.json").write_text(
+        json.dumps(
+            {
+                "last_tick": NOW.isoformat(),
+                "merges": {
+                    "omnimarket#1": {
+                        "repo": "omnimarket",
+                        "number": 1,
+                        "base": "dev",
+                        "merge_sha": "a" * 40,
+                        "merged_at": NOW.isoformat(),
+                    }
+                },
+                "prs": {},
+            }
+        )
+    )
+
+    document = _record(world, MergedRunningCountReader())
+    count = document["floor"]["merged_running"]
+    assert count is not None, document["sources"]["merged_running_cause"]
+    assert (count["days"][0]["merged"], count["days"][0]["running"]) == (1, 0)
+    assert count["idle_hosts"][0] == {
+        "host": "h051",
+        "state": "read",
+        "slots": 2,
+        "live_slots": 0,
+        "idle": 2,
+        "slots_source": "table_cap",
+        "cause": "no placement advertisement for the host",
+    }
+    assert document["sources"]["merged_running_cause"] == ""

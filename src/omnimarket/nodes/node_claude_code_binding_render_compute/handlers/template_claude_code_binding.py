@@ -39,6 +39,14 @@ const PATTERN_@@name@@ = new RegExp(@@pattern@@)
 const DEADLINE_@@name@@ = @@deadline_ms@@
 """
 
+COMPACTION_ARM_CONSTANT = "const ARM_@@name@@ = @@arm@@\n"
+
+NATIVE_COMPACTION_HOOK = """\
+  on(@@event@@, @@matcher@@, async ($, e, next) => {
+    return next(e)
+  })
+"""
+
 REGISTER_OPEN = """\
 
 export const register: Register = on => {

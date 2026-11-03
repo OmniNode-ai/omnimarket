@@ -1,0 +1,61 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21285
+title: "A lane cannot hand off a PR until its ticket's definition of done is verified at the PR head"
+summary: >
+  The omnimarket node owns the read-only receipt prerequisite. It accepts a
+  core-validated PASS for the ticket at the exact full PR head, and refuses
+  absent, failed, advisory or unreadable receipts. Its bus contract supports
+  in-memory and Redpanda overlays. The handoff.sh call site and its wrapper
+  falsifiers belong to the named follow-up lane; this node alone does not
+  complete the ticket's end-to-end acceptance criteria.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-handoff-head-bound-dod-receipt
+    statement: "A handoff requires a passing definition-of-done receipt for its ticket at the PR head."
+    acceptance:
+      - id: AC1
+        statement: "AC1: [handoff.sh](<http://handoff.sh>) refuses a handoff with no passing dod_verify receipt for the ticket at the head -- falsifier: pytest of [handoff.sh](<http://handoff.sh>) in plugins/omni/skills/pr-handoff/tests with a fixture lacking the receipt"
+      - id: AC2
+        statement: "AC2: [handoff.sh](<http://handoff.sh>) admits a handoff whose receipt matches the head sha -- falsifier: pytest with a fixture receipt bound to the head"
+evidence_requirements:
+  - kind: tests
+    description: "The node-level missing and head-bound fixtures run through the contract's bus runtime. Wrapper integration remains pending."
+    command: 'uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" --no-cov -p no:randomly -n 0'
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-ac1-node-refusal
+    description: "AC1 node contribution: missing and non-passing receipts refuse. The handoff.sh falsifier is pending in the follow-up lane."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" -k "missing_receipt or refuses_receipt or current_failure or unreadable" --no-cov -p no:randomly -n 0'
+        cwd: "."
+  - id: dod-ac2-node-admission
+    description: "AC2 node contribution: a schema-valid PASS for the exact ticket and full head admits. The handoff.sh falsifier is pending in the follow-up lane."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: 'uv run pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m "not kafka" -k "passing_at_head or summary_receipt or supersession or default_store" --no-cov -p no:randomly -n 0'
+        cwd: "."
+  - id: dod-handoff-receipt-integration-proof
+    description: "Named integration check handoff-dod-receipt-dev: after the deploy agent installs the revision on dev, drive both missing and head-bound fixtures through the declared Redpanda transport. Pending execution by the deploy agent; hosted CI does not reach dev."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane handoff-dod-receipt-dev -- uv run --frozen pytest tests/test_golden_chain_pr_handoff_dod_receipt_effect.py -q -m kafka --no-cov -p no:randomly -n 0 --refuse-skips'
+        cwd: "."
+  - id: dod-handoff-receipt-deploy-probe
+    description: "Hosted-runner deploy probe: the immutable repository content at HEAD contains the new effect handler; at the merge base the content read fails. This does not claim an installed or running dev revision."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_handoff_dod_receipt_effect/handlers/handler_pr_handoff_dod_receipt.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"class HandlerPrHandoffDodReceipt\"'"
+        cwd: "."
