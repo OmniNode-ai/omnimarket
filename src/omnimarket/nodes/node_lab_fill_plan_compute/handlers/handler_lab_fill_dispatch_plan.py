@@ -20,7 +20,9 @@ taken for an idle slot) ranks after pr-land, is scoped by the kind it was enumer
 
 from __future__ import annotations
 
+import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cmp_to_key
 
@@ -30,32 +32,24 @@ from ..models import (
     ModelLabFillDispatchPlanResult,
     ModelLabFillFallback,
     ModelLabFillHostCapacity,
+    ModelLabFillMachineryPolicy,
     ModelLabFillPlanConfig,
     ModelLabFillSkipEntry,
 )
 from .helpers_js_value import get, has_word, has_word_stem, text_of, truthy, words
+from .helpers_machinery_policy import machinery_policy
 
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
 PR_LAND = "pr-land"
 DOD_VERIFY = "dod-verify"
+MACHINERY = "machinery"
 PR_KINDS = ("pr-red", "pr-stalled", PR_LAND)
 KINDS = ("pr-red", "pr-stalled", "defect", "ticket", *APPROVED_KINDS)
 # The kinds a plan dispatches. pr-land is not an enumerated source kind (the STATUS row's per-kind cells
-# iterate KINDS): lab-fill selection's idle-slot fallback produces it (OMN-20864).
-DISPATCH_KINDS = (*KINDS, PR_LAND, DOD_VERIFY)
-# Lower first: a red PR blocks a merge now, a stalled one blocks it soon, a defect
-# degrades every lane, a ticket is new work.
-KIND_PRIORITY = {
-    "pr-red": 0,
-    "pr-stalled": 1,
-    "defect": 2,
-    "ticket": 3,
-    "process-fix": 4,
-    "partial-node": 4,
-    "wiring": 4,
-    PR_LAND: 5,
-    DOD_VERIFY: 6,
-}
+# iterate KINDS): lab-fill selection's idle-slot fallback produces it (OMN-20864). machinery is the
+# factory's own breaks (OMN-22413): the fill effect hands the plan the facts, the machinery handler
+# classifies them, and the policy's tier order in contract.yaml ranks the kind.
+DISPATCH_KINDS = (*KINDS, PR_LAND, DOD_VERIFY, MACHINERY)
 LANE = "lab-fill"
 # The dispatched lane's ROUTE line. The runner refuses a --model or --effort that
 # differs from it, so the two are rendered from one table.
@@ -96,6 +90,11 @@ def _lane_name(candidate: object, tag: str) -> str:
     if get(candidate, "kind") == PR_LAND:
         repo, _, number = _pr_key(candidate).partition("#")
         return f"{LANE}-land-{re.sub(r'[^a-z0-9_-]', '', repo)}-{number}-{tag}"
+    if get(candidate, "kind") == MACHINERY:
+        digest = hashlib.sha1(
+            text_of(get(candidate, "machinery_key")).encode(), usedforsecurity=False
+        ).hexdigest()[:8]
+        return f"{LANE}-machinery-{digest}-{tag}"
     ticket = re.sub(r"[^a-z0-9]", "", text_of(get(candidate, "ticket")).lower())
     if get(candidate, "kind") == DOD_VERIFY:
         return f"{LANE}-verify-{ticket}-{tag}"
@@ -166,7 +165,7 @@ def skip_reason(
             return f"excluded-area:{area}"
     milestone = text_of(c.get("milestone")).strip().lower()
     in_milestone = milestone == "" or milestone == cfg.milestone.lower()
-    if kind == PR_LAND:
+    if kind in (PR_LAND, MACHINERY):
         scoped = not cfg.pr_repos or text_of(c.get("repo")).lower() in cfg.pr_repos
     elif cfg.project_id:
         scoped = (
@@ -182,7 +181,7 @@ def skip_reason(
         )
         if not is_defect:
             return "not-a-pillar-defect"
-    elif not approved and not scoped:
+    elif not approved and kind != MACHINERY and not scoped:
         return "out-of-scope"
     holder = c.get("claim_holder")
     holder = holder.strip() if isinstance(holder, str) else ""
@@ -222,13 +221,28 @@ def _entry(
     return ModelLabFillSkipEntry(**fields)
 
 
-def _compare(x: dict[str, object], y: dict[str, object]) -> int:
-    by_kind = KIND_PRIORITY[str(x["kind"])] - KIND_PRIORITY[str(y["kind"])]
+def kind_priority(policy: ModelLabFillMachineryPolicy) -> dict[str, int]:
+    """Rank of every dispatch kind, lower first, from the policy's tier order.
+
+    A red PR blocks a merge now, a stalled one blocks it soon, a defect degrades every lane, a
+    ticket is new work: the contract's order says where machinery sits among them.
+    """
+    rank = {k: i for i, group in enumerate(policy.tier_order) for k in group}
+    missing = [k for k in DISPATCH_KINDS if k not in rank]
+    if missing:
+        raise ValueError(f"tier_order does not rank {missing}")
+    return rank
+
+
+def _compare(
+    x: dict[str, object], y: dict[str, object], priority: Mapping[str, int]
+) -> int:
+    by_kind = priority[str(x["kind"])] - priority[str(y["kind"])]
     if by_kind:
         return by_kind
     if x["kind"] in APPROVED_KINDS and y["kind"] in APPROVED_KINDS:
         return 0
-    if x["kind"] == y["kind"] and x["kind"] in (PR_LAND, DOD_VERIFY):
+    if x["kind"] == y["kind"] and x["kind"] in (PR_LAND, DOD_VERIFY, MACHINERY):
         return 0
     by_ticket = _ticket_number(x["ticket"]) - _ticket_number(y["ticket"])
     if by_ticket:
@@ -250,7 +264,7 @@ class HandlerLabFillDispatchPlan:
         for candidate in request.candidates:
             if (
                 isinstance(candidate, dict)
-                and candidate.get("kind") == PR_LAND
+                and candidate.get("kind") in (PR_LAND, MACHINERY)
                 and not text_of(candidate.get("ticket")).strip()
             ):
                 candidate = {**candidate, "ticket": cfg.parent_ticket}
@@ -260,20 +274,35 @@ class HandlerLabFillDispatchPlan:
             elif isinstance(candidate, dict):
                 ok.append(candidate)
         # A stable sort keeps the approved file's value order inside the approved tier.
-        ok.sort(key=cmp_to_key(_compare))
+        priority = kind_priority(request.machinery or machinery_policy())
+        ok.sort(key=cmp_to_key(lambda x, y: _compare(x, y, priority)))
         seen_pr: set[str] = set()
         seen_ticket: set[object] = set()
+        seen_machinery: set[str] = set()
         unique: list[dict[str, object]] = []
         for c in ok:
             key = _pr_key(c)
-            by_ticket = c["kind"] != PR_LAND
-            if (key and key in seen_pr) or (by_ticket and c["ticket"] in seen_ticket):
+            # A pr-land item and a friction or tick machinery class share a ticket with other work
+            # (the run's parent, or an umbrella): they are deduplicated by PR and by class key.
+            by_ticket = c["kind"] != PR_LAND and (
+                c["kind"] != MACHINERY or c.get("source") == "machinery-ticket"
+            )
+            class_key = (
+                text_of(c.get("machinery_key")) if c["kind"] == MACHINERY else ""
+            )
+            if (
+                (key and key in seen_pr)
+                or (by_ticket and c["ticket"] in seen_ticket)
+                or (class_key and class_key in seen_machinery)
+            ):
                 skipped.append(_entry(c, cfg, "duplicate"))
                 continue
             if key:
                 seen_pr.add(key)
             if by_ticket:
                 seen_ticket.add(c["ticket"])
+            if class_key:
+                seen_machinery.add(class_key)
             unique.append(c)
         slots: dict[str, _Slot] = {}
         for host in request.capacity.hosts:
@@ -344,7 +373,11 @@ class HandlerLabFillDispatchPlan:
                 "pr": text_of(c.get("pr")),
                 "repo": text_of(c.get("repo")),
                 "ref": text_of(c.get("head_ref")),
-                "title": text_of(c.get("title"))[:160],
+                "title": (
+                    f"{text_of(c.get('title'))}: {text_of(c.get('evidence'))}"
+                    if c["kind"] == MACHINERY
+                    else text_of(c.get("title"))
+                )[:160],
                 "updated_at": text_of(c.get("updated_at")),
                 "host": slot.host.name,
                 "pinned": bool(pin),
@@ -353,6 +386,9 @@ class HandlerLabFillDispatchPlan:
             }
             if c["kind"] in APPROVED_KINDS:
                 fields["id"] = c.get("id")
+            if c["kind"] == MACHINERY:
+                fields["machinery_key"] = text_of(c.get("machinery_key"))
+                fields["priority_class"] = text_of(c.get("priority_class")) or None
             if truthy(c.get("repo_source")):
                 fields["repo_source"] = c["repo_source"]
             if fallback is not None:

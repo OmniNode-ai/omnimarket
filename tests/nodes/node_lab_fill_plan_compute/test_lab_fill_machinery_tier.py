@@ -242,7 +242,6 @@ def test_lab_fill_machinery_tier_contract_data() -> None:
     from omnimarket.nodes.node_lab_fill_plan_compute.handlers.helpers_machinery_policy import (
         machinery_policy,
     )
-
     from omnimarket.nodes.node_lab_fill_plan_compute.models import (
         ModelLabFillMachineryPolicy,
     )
@@ -295,7 +294,11 @@ def test_lab_fill_machinery_tier_contract_data() -> None:
     reordered = ModelLabFillMachineryPolicy.model_validate(
         {
             **base,
-            "tier_order": [["ticket"], ["machinery"], *base["tier_order"][1:]],
+            "tier_order": [
+                ["ticket"],
+                ["machinery"],
+                *[g for g in base["tier_order"][1:] if g != ["ticket"]],
+            ],
         }
     )
     assert reordered.tier_order[0] == ("ticket",)
@@ -348,3 +351,46 @@ def test_lab_fill_machinery_lane_carries_the_priority_class() -> None:
     assert rendered.launch.priority_class == "mvp-landing"
     args = runner_args(rendered.launch, "/tmp/brief.md")
     assert args[args.index("--priority-class") + 1] == "mvp-landing"
+
+
+def test_lab_fill_machinery_tier_reads_first_in_the_idle_row() -> None:
+    from omnimarket.nodes.node_lab_fill_plan_compute.handlers import (
+        HandlerLabFillStatus,
+    )
+    from omnimarket.nodes.node_lab_fill_plan_compute.models import (
+        ModelLabFillStatusRequest,
+    )
+
+    found = _machinery(claims=[{"lane": "owner", "text": "class lab-idle"}])
+    request = {
+        "config": {
+            "pillar": "lab-fill",
+            "parent_lane": "lab-fill",
+            "parent_ticket": "OMN-17427",
+            "run_key": "2026-11-03T2037Z",
+            "authority_ruling": "2026-11-03T20:50:00Z",
+            "authority_lane": "orchestrator-31d9",
+        },
+        "capacity": {
+            "hosts": [
+                h.model_dump(by_alias=True, mode="json") for h in _recorded_hosts()
+            ],
+            "free": 12,
+            "budget": 12,
+        },
+        "selection": {"budget": 12},
+        "candidates": {
+            "source": "enumerate",
+            "source_diagnostics": {"machinery": found.diagnostic.model_dump()},
+        },
+        "observed_at": OBSERVED_AT,
+    }
+    idle = (
+        HandlerLabFillStatus()
+        .handle(ModelLabFillStatusRequest.model_validate(request))
+        .idle
+    )
+    tiers = str(idle["friction_cells"]).split("tier-reasons=")[1]
+    assert tiers.startswith("tier0-machinery:machinery:ok:seen=")
+    assert ":eligible=3:" in tiers.split(";")[0]
+    assert "owned:1" in tiers.split(";")[0]
