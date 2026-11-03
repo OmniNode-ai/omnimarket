@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_overlay_resolver_effect
 node_type: effect
-runtime_profiles: [main]
+runtime_profiles: [effects]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
@@ -36,6 +36,7 @@ descriptor:
   purity: effectful  # reads the overlay and its schema from the overlay roots
   idempotent: true
   timeout_ms: 10000
+  runtime_profiles: [effects]
 inputs:
   skill: {type: str, required: true, description: The skill name; a hyphenated name maps to its underscore overlay id.}
   roots: {type: list, required: false, description: Overlay roots searched in order; empty means the roots named by ONEX_SKILL_OVERLAY_ROOTS.}
