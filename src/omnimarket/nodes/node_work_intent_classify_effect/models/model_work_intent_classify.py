@@ -80,7 +80,7 @@ class EnumIntentStatus(StrEnum):
 
 
 class ModelWorkIntentClassifyRequest(BaseModel):
-    """One unit's fallback call. The intent text is in memory for the call and is not serialised."""
+    """One unit's fallback call. The intent text is hidden from repr and is not held by the result."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -88,7 +88,7 @@ class ModelWorkIntentClassifyRequest(BaseModel):
     current_work_type: str = Field(min_length=1)
     undetermined_id: str = Field(min_length=1)
     allowed_work_type_ids: tuple[str, ...] = Field(min_length=1)
-    intent_text: str | None = Field(repr=False, exclude=True)
+    intent_text: str | None = Field(repr=False)
     intent_digest: str | None
     rubric_version: str = Field(min_length=1)
     prompt_template: str = Field(min_length=1)

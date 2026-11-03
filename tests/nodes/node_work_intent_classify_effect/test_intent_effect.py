@@ -196,9 +196,19 @@ def test_no_prompt_text_is_in_the_result_the_request_dump_or_the_route_log() -> 
         route=route, store=InMemoryFallbackStore()
     ).handle(request)
     assert "UNIQUETOKEN" not in result.model_dump_json()
-    assert "UNIQUETOKEN" not in request.model_dump_json()
     assert "UNIQUETOKEN" not in repr(request)
     assert all("UNIQUETOKEN" not in repr(entry) for entry in route.requests)
+
+
+def test_the_request_round_trips_through_its_dump_and_its_json_with_the_text() -> None:
+    request = _request()
+    assert (
+        ModelWorkIntentClassifyRequest.model_validate(request.model_dump()) == request
+    )
+    assert (
+        ModelWorkIntentClassifyRequest.model_validate_json(request.model_dump_json())
+        == request
+    )
 
 
 def test_a_second_call_for_the_same_key_reuses_the_stored_result_without_the_route() -> (

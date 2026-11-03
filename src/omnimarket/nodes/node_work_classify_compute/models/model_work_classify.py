@@ -31,11 +31,11 @@ class ModelBriefFeatures(BaseModel):
 
 
 class ModelBriefExtractRequest(BaseModel):
-    """A brief's text, in memory for the call, and the rubric whose patterns read it."""
+    """A brief's text and the rubric whose patterns read it. The text is hidden from repr and is not held by the result."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    text: str = Field(repr=False, exclude=True)
+    text: str = Field(repr=False)
     rubric: ModelWorkTypeRubric
 
 

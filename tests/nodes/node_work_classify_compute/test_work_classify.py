@@ -191,10 +191,30 @@ def test_brief_features_read_falsifier_and_premise_marks_and_hold_no_text() -> N
     assert "UNIQUETOKEN" not in result.model_dump_json()
 
 
-def test_the_request_serialisation_drops_the_brief_text() -> None:
+def test_the_brief_extract_request_round_trips_and_hides_the_text_from_its_repr() -> (
+    None
+):
     request = ModelBriefExtractRequest(text="UNIQUETOKEN-REQ", rubric=RUBRIC)
-    assert "UNIQUETOKEN-REQ" not in request.model_dump_json()
+    assert ModelBriefExtractRequest.model_validate(request.model_dump()) == request
+    assert (
+        ModelBriefExtractRequest.model_validate_json(request.model_dump_json())
+        == request
+    )
     assert "UNIQUETOKEN-REQ" not in repr(request)
+
+
+def test_brief_features_hold_only_the_words_the_rules_read_not_the_briefs_words() -> (
+    None
+):
+    text = "an adversarial review of lowercasetoken secretphrase wording"
+    features = HandlerBriefFeatureExtract().handle(
+        ModelBriefExtractRequest(text=text, rubric=RUBRIC)
+    )
+    declared = {w for rule in RUBRIC.rules for w in rule.match.brief_words}
+    assert features.words == {"adversarial"}
+    assert features.words <= declared
+    for word in ("lowercasetoken", "secretphrase", "wording"):
+        assert word not in features.model_dump_json()
 
 
 def test_the_run_style_comes_from_the_signals() -> None:

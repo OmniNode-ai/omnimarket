@@ -60,13 +60,17 @@ def brief_stratum(rubric: ModelWorkTypeRubric, features: ModelBriefFeatures) -> 
 
 
 class HandlerBriefFeatureExtract:
-    """Read brief features with the rubric's patterns. The text is not retained."""
+    """Read brief features with the rubric's patterns. Neither the text nor its words are retained, only the words the rules read."""
 
     def handle(self, request: ModelBriefExtractRequest) -> ModelBriefFeatures:
         patterns = request.rubric.brief_patterns
         text = request.text
+        read_by_rules = {
+            word for rule in request.rubric.rules for word in rule.match.brief_words
+        }
         return ModelBriefFeatures(
-            words=frozenset(re.findall(patterns.brief_word, text.lower())),
+            words=frozenset(re.findall(patterns.brief_word, text.lower()))
+            & read_by_rules,
             repositories_named=len(
                 {
                     m.lower()
