@@ -33,7 +33,7 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-SIBLINGS = ("omniintelligence", "omnibase_core", "omnibase_compat")
+SIBLINGS = ("omniintelligence", "omnibase_core")
 # The fetch that took about 110 seconds sets the floor, with a margin above it.
 MIN_ATTEMPT_BUDGET_SECONDS = 120
 _TIMEOUT = re.compile(r"timeout\s+(\d+)s\s+bash\s+-c\s+'git init")
