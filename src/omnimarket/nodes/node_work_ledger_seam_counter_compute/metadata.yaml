@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_seam_counter_compute
+version: "1.0.0"
+description: "Per-window work-ledger seam counts (file, topic, projection) and the conservation check."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_seam_counter_compute: omnimarket.nodes.node_work_ledger_seam_counter_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+tags: [compute, work-ledger]
+pack: "data"
+display_name: "Compute: Work Ledger Seam Counter"
+node_role: "compute"
+license: "MIT"
