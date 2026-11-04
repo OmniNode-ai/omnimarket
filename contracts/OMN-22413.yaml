@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-22413
+title: The lab fill's candidate builder ranks open machinery classes (FRICTION classes, recurring tick lines, machinery-class tickets) above plan and feature work
+summary: The lab-fill plan had no machinery tier, so twelve free slots sat idle at 2026-11-03T20:37:51Z while every tier read eligible=0 and the ledger held recurring FRICTION classes. node_lab_fill_plan_compute now classifies recurring FRICTION classes, recurring throughput-tick MISSING/UNKNOWN keys and tickets carrying a Class machinery line into machinery candidates, skips a class a live CLAIM names as owned, and ranks the machinery kind first in the dispatch plan. The window, recurrence floors, tier order, source order and priority class are contract data under config.lab_fill_plan.machinery.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22413-ranks-first
+  statement: A recurring FRICTION class ranks above a plan-stalled task in the dispatch plan.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a red-first test built from the recorded 20:37:51Z lab-idle row and a fixture FRICTION window shows today''s plan returns no machinery candidate and, after the fix, ranks a recurring FRICTION class above a plan-stalled task -- falsifier: uv run pytest tests -q -k lab_fill_machinery_tier_ranks_first'
+- id: req-omn22413-owned
+  statement: A machinery class a live CLAIM names is skipped.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a machinery class whose key a live CLAIM names is skipped with reason owned -- falsifier: uv run pytest tests -q -k lab_fill_machinery_owned_skipped'
+- id: req-omn22413-contract-data
+  statement: The tier order, window, recurrence floor and priority class are contract data.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the tier order, window, recurrence floor and priority class are contract data, not literals in the handler -- falsifier: uv run pytest tests -q -k lab_fill_machinery_tier_contract_data'
+- id: req-omn22413-lab
+  statement: The node's tests pass on a lab host.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the node''s tests pass on a lab host under lab-run -- falsifier: onex lab-run receipt exit=0 for uv run pytest tests -q -k lab_fill'
+evidence_requirements:
+- kind: tests
+  description: The machinery classification, the owned skip, the contract data and the dispatch ranking run against the real handlers and the packaged contract.
+  command: uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_machinery_tier.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22413-ac1
+  description: AC1 the recurring FRICTION classes, tick keys and the Class machinery ticket become machinery candidates that the dispatch plan ranks above the plan-stalled task on the recorded twelve slots. At the merge base the handler does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_machinery_tier.py -q --no-cov --tb=line -k lab_fill_machinery_tier_ranks_first
+    cwd: .
+- id: dod-omn22413-ac2
+  description: AC2 a class a live CLAIM names, and a ticket a live CLAIM holds, are skipped with an owned reason naming the claiming lane.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_machinery_tier.py -q --no-cov --tb=line -k lab_fill_machinery_owned_skipped
+    cwd: .
+- id: dod-omn22413-ac3
+  description: AC3 the contract block carries the priority class, window, floors and tier order; the policy model has no defaults, the handlers hold no class literal, and changing the policy changes the decision.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_machinery_tier.py -q --no-cov --tb=line -k lab_fill_machinery_tier_contract_data
+    cwd: .
+- id: dod-omn22413-deploy-probe
+  description: 'Deploy probe: the machinery candidate handler exists at the checked-out commit, which the merge base does not carry.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_machinery_candidates.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerLabFillMachineryCandidates" > /dev/null'
+    cwd: .
+- id: dod-omn22413-ac4
+  description: AC4 the node's machinery and golden-chain tests exercise the real handlers and contract. Hosted CI executes this focused suite at the head and merge base; the separate local integration proof runs the lab_fill selection on a lab host.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_machinery_tier.py tests/nodes/node_lab_fill_plan_compute/test_golden_chain_lab_fill_plan_compute.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22413-integration-proof
+  description: The pushed head, run on a lab host through lab-run, passes every lab_fill test. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane mf-fillfirst-2105 -- uv run --frozen pytest tests -q --no-cov -k lab_fill
+    cwd: .

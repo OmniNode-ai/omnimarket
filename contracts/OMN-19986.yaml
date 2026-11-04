@@ -31,7 +31,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19986_local_identity.py -q"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19986-deploy-local-store-readback"
     description: "Hosted-runner deploy smoke opens a real local SQLite store, folds and replays a mint event, reads back one unchanged identity row and its cursor, and opens the initialized store read-only. It requires no external service."
@@ -40,7 +40,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn19986_local_identity.py -q --no-cov -k 'ac1_replaying or table_is_a_store_step'"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19986-ac1-local-identity-migrations"
     description: "Migrations half of the projection step only. On a real Postgres, node_projection_local_identity's migrations 0000 to 0002 key public.local_identity on tenant_id, so a replayed mint lands on one row; the table carries the columns the local SQLite store does; RLS is enabled with the tenant policy and forced in a separate step; the writer cannot delete. It does not prove the writer, the producer or the omnidash binding. The test file is absent at the merge base, so the check fails there."
     source: "manual"
@@ -48,7 +48,7 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19986_local_identity_migrations_real_postgres.py -q --no-cov"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19986-integration-proof"
     description: "Migrations half of the projection step only. The pushed head ran the local_identity migration tests against a real Postgres on a lab host and exited 0: public.local_identity is keyed on tenant_id, RLS is enabled with the tenant policy and forced in a separate step, and the writer cannot delete. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
@@ -63,4 +63,4 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_local_identity/migrations/0002_force_rls_local_identity.sql?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"ALTER TABLE public.local_identity FORCE ROW LEVEL SECURITY\" > /dev/null'"
-        cwd: "."
+        cwd: "${OMNI_HOME}/omnimarket"

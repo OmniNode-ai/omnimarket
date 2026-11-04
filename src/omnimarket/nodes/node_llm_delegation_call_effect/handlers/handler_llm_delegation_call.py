@@ -734,6 +734,7 @@ class HandlerLlmDelegationCall:
             failure_class=first.failure_class or EnumDelegationFailureClass.UNKNOWN,
             error_message=first.error_message or "",
             http_status=first.http_status,
+            duration_ms=first.latency_ms,
         )
         second = self._execute_call_once(retry, endpoint_url, event_publisher)
         update: dict[str, Any] = {
