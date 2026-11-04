@@ -31,6 +31,15 @@ requirements:
     acceptance:
       - id: AC5
         statement: 'AC5: the default bound equals the runner-owned producer limit; keys, headers and record framing count toward the bound; recorded oversized records are refused before producer creation, exact-limit records are accepted, and the source advances only after durable quarantine -- falsifier: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov'
+  - id: req-omn19998-tracked-operator-items
+    statement: Operator item folds retain accountability, source sentence dispositions and explicit reply linkage.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the pure tracked-item fold retains an accountable owner in every state, requires completion evidence beyond a terminal outcome, keeps unclassified prompts visible and reads ruling completion from supplied mechanism audit rows -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0'
+      - id: AC7
+        statement: 'AC7: every sentence of a mixed operator prompt has a source-linked disposition, including chat, and replay yields no new rows -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_sentence_dispositions.py -q --no-cov -n 0'
+      - id: AC8
+        statement: 'AC8: operator message arrivals stay unanswered until an explicit reply, and both item-fold nodes publish typed results through installed contract discovery and in-memory runtime wiring -- falsifier: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -122,4 +131,28 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov -k recorded_retry
+        cwd: .
+  - id: dod-omn19998-tracked-operator-items
+    description: Synthetic regression replay checks all tracked kinds and states, persistent owners, live claims, audit input, input time and row order. This does not assert the unavailable operator gold corpus, reconciled samples or a live Redpanda replay.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-source-dispositions
+    description: The producer regression checks two asks and two chat sentences, omitted delegated sentences, decimal versions and idempotent replay.
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_sentence_dispositions.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-message-state-runtime
+    description: Arrival/reply regression and deployment smoke through discovered contracts, production auto-wiring and the real in-memory event bus. No broker or live host installation is asserted.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0
         cwd: .

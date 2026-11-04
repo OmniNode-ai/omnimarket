@@ -101,7 +101,8 @@ def test_golden_chain_prompt_to_ledger_to_open_ask_to_closed(tmp_path: Path) -> 
     assert result.processed == 1
     assert result.pending == 0
     rows = [r for r in ledger.read_text().splitlines() if "lane=operator-capture" in r]
-    assert len(rows) == result.rows_appended == 3
+    assert len(rows) == result.rows_appended == 7
+    assert len([r for r in rows if "kind=disposition" in r]) == 4
     assert all("session=sess-op" in r for r in rows)
     assert all(r.split(" | ")[-1].strip('"') in sample["text"] for r in rows)
     drifted = [r for r in rows if "drift=re-ruled" in r]

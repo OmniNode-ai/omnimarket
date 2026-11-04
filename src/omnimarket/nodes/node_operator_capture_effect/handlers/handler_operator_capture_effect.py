@@ -133,6 +133,7 @@ class HandlerOperatorCaptureEffect:
             received_at=said_at,
             origin_event=ORIGIN_EVENT,
             prompt_id=record.prompt_id,
+            lane=record.lane or self._promotion_lane,
         )
         result = self.retry()
         if taken is None:

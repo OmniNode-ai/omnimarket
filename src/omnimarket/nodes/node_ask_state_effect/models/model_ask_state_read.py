@@ -9,6 +9,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.model_ask_state import ModelRulingMechanismAudit
+
 
 class ModelAskStateReadRequest(BaseModel):
     """The capture store, the ledger file, the window start and the time the report is judged at."""
@@ -20,6 +22,7 @@ class ModelAskStateReadRequest(BaseModel):
     since: datetime
     now: datetime
     archives: bool = True
+    ruling_mechanisms: tuple[ModelRulingMechanismAudit, ...] = ()
 
 
 __all__ = ["ModelAskStateReadRequest"]

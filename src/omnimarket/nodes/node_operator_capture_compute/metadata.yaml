@@ -1,6 +1,6 @@
 name: node_operator_capture_compute
 version: "0.1.0"
-description: "Pure decisions of the operator capture: classify a message, build its ledger rows, flag re-rulings, fold open asks"
+description: "Pure decisions of the operator capture: classify a message, retain each sentence disposition, build its ledger rows, flag re-rulings, fold open asks"
 pack: operator_capture
 node_role: compute
 display_name: "Operator Capture Decisions"

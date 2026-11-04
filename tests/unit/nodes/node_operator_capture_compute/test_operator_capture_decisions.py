@@ -95,8 +95,9 @@ def test_rows_one_per_item_with_verbatim_words_and_session() -> None:
         )
         .rows
     )
-    assert len(rows) == 2
-    decision, ask = rows
+    assert len(rows) == 4
+    decision, ask = rows[:2]
+    assert all(" | kind=disposition | " in row for row in rows[2:])
     assert decision.startswith(
         "2026-10-10T18:00:00Z | STATUS | lane=operator-capture | kind=decision"
     )
@@ -140,9 +141,9 @@ def test_rows_none_for_machine_and_drop_rows_for_drops() -> None:
         )
         .rows
     )
-    assert len(rows) == 1
+    assert len(rows) == 3
     assert (
-        "closes-ask=ask-0123456789 | state=dropped | evidence=operator-drop" in rows[0]
+        "closes-ask=ask-0123456789 | state=dropped | evidence=operator-drop" in rows[-1]
     )
 
 
@@ -161,7 +162,7 @@ def test_every_capture_row_names_the_capture_handler_as_its_actor() -> None:
         )
         .rows
     )
-    assert len(rows) == 3
+    assert len(rows) == 5
     for row in rows:
         assert row.count(" | actor=script:handler-capture-process | ") == 1
 

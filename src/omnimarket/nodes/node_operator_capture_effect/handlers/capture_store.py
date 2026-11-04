@@ -109,6 +109,7 @@ def ingest(
     origin_event: str,
     transcript_path: str | None = None,
     prompt_id: str | None = None,
+    lane: str | None = None,
 ) -> Path | None:
     """Write one prompt to the inbox and record its digest; None when already taken in."""
     digest = text_digest(session_id, text, prompt_id)
@@ -123,6 +124,7 @@ def ingest(
         "origin_event": origin_event,
         "transcript_path": transcript_path,
         "digest": digest,
+        "lane": lane,
     }
     path = root / "inbox" / f"{stamp}-{os.getpid()}-{secrets.token_hex(3)}.json"
     _atomic_write(path, json.dumps(record, ensure_ascii=False))

@@ -115,6 +115,7 @@ class HandlerCaptureProcess:
                 session_id=str(record.get("session_id") or "unknown"),
                 source=str(record.get("source") or "unknown"),
                 captured_at=datetime.fromisoformat(str(record["received_at"])),
+                lane=str(record.get("lane") or "") or None,
             )
             planned = record.get("rows_planned")
             if isinstance(planned, list):
