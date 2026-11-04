@@ -840,6 +840,83 @@ def test_dangling_shadow_repair_without_a_wrapper_file_moves_nothing(
     assert not list(shadow.parent.glob("onex.shadowed-*"))
 
 
+def dispatch_link_shadow(root: Path) -> tuple[Path, Path, Path]:
+    """``~/.local/bin/onex`` links the dispatch venv's own console script.
+
+    A live link, so bash does not skip it, but it outranks the canonical wrapper
+    for every non-interactive ``onex`` and is not a ``uv tool`` shim, so the old
+    ``uv tool uninstall`` fix line never applied (observed on a lab host).
+    """
+    wrapper = root / "omnibase_infra/scripts/onex"
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    wrapper.write_text("#!/usr/bin/env bash\nexit 0\n")
+    wrapper.chmod(0o755)
+    console = root / ".onex-dispatch-venv/bin/onex"
+    console.parent.mkdir(parents=True, exist_ok=True)
+    console.write_text("#!/bin/sh\nexit 0\n")
+    console.chmod(0o755)
+    shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
+    shadow.parent.mkdir(parents=True)
+    shadow.symlink_to(console)
+    assert shadow.exists()
+    return shadow, wrapper, console
+
+
+def test_dispatch_venv_link_is_reported_in_check_mode_with_the_repair_fix_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, _wrapper, console = dispatch_link_shadow(root)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "check")
+    )
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert "uv tool uninstall" not in surface.detail
+    assert "moves the dispatch-venv link aside and links the wrapper" in surface.detail
+    assert shadow.resolve() == console.resolve()
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+
+def test_dispatch_venv_link_repair_links_the_wrapper_and_keeps_the_old_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    shadow, wrapper, console = dispatch_link_shadow(root)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "MOVED"
+    assert shadow.resolve() == wrapper.resolve()
+    moved = list(shadow.parent.glob("onex.shadowed-*"))
+    assert len(moved) == 1
+    assert moved[0].resolve() == console.resolve()
+    again = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert (
+        next(s for s in again.surfaces if s.surface == "onex-path-shadow").verdict
+        == "ALREADY_AT_TARGET"
+    )
+    assert len(list(shadow.parent.glob("onex.shadowed-*"))) == 1
+
+
+def test_a_symlink_to_some_other_onex_is_still_not_repaired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    _shadow, _wrapper, _console = dispatch_link_shadow(root)
+    other = tmp_path / "other-venv/bin/onex"
+    other.parent.mkdir(parents=True)
+    other.write_text("#!/bin/sh\nexit 0\n")
+    other.chmod(0o755)
+    shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
+    shadow.unlink()
+    shadow.symlink_to(other)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert shadow.resolve() == other.resolve()
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+
 def test_dangling_shadow_repair_that_cannot_link_still_fails_naming_the_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
