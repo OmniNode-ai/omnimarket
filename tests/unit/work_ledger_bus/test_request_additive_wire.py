@@ -76,6 +76,27 @@ def test_plain_append_wire_names_no_append_if_absent_field() -> None:
     assert "append_if_absent_row_id" not in json.loads(_plain().model_dump_json())
 
 
+def test_a_future_optional_field_is_omitted_until_it_carries_a_value() -> None:
+    class ModelFutureRequest(ModelWorkLedgerAppendRequest):
+        future_hint: str | None = None
+
+    request = ModelFutureRequest.model_validate(_plain().model_dump(mode="json"))
+
+    for wire in (
+        request.model_dump(mode="json"),
+        json.loads(request.model_dump_json()),
+    ):
+        assert "future_hint" not in wire
+        ModelRequestBeforeAppendIfAbsent.model_validate(wire)
+
+    used = request.model_copy(update={"future_hint": "requested"})
+    for wire in (used.model_dump(mode="json"), json.loads(used.model_dump_json())):
+        assert wire["future_hint"] == "requested"
+        assert ModelFutureRequest.model_validate(wire) == used
+        with pytest.raises(ValidationError, match=RECORDED_ERROR):
+            ModelRequestBeforeAppendIfAbsent.model_validate(wire)
+
+
 def test_plain_append_wire_is_read_by_a_host_older_than_the_field() -> None:
     request = _plain()
 
