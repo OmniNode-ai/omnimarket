@@ -27,10 +27,18 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn22403-ac1-ac2-bound-scoped-item-refused"
-    description: "The checker refuses a bound local_done_gate item and no contract on the tree carries one; the tests are absent at the merge base, so they fail there."
+    description: "AC1: the checker refuses a bound local_done_gate item and accepts an unbound one; the regression tests are absent at the merge base, so they fail there."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k local_done_gate"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1", "AC2"]
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -k local_done_gate"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn22403-ac2-repo-contracts"
+    description: "AC2: every repository contract passes the binding checker, including the prompt-cache contract's bound evidence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -k every_repo_contract_binds"
+        cwd: "."
+    binds_ac: ["AC2"]
