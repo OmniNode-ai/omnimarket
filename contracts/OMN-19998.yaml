@@ -21,6 +21,11 @@ requirements:
     acceptance:
       - id: AC3
         statement: 'AC3: scope derivation preserves first-mention order, deduplication, the 20-file cap, unknown-path refusal and declared checks; installed discovery and infra auto-wiring publish the result on the declared completed topic for both named and unknown files -- falsifier: uv run pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov'
+  - id: req-omn19998-ticket-read-secret-reason
+    statement: A ticket read whose consumer cannot resolve LINEAR_API_KEY answers secret_unavailable, and a missing bus config names its fix.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: an unresolved Linear key answers reason secret_unavailable with finding linear_api_key_unresolved instead of operation_failed, and a missing lane declaration answers bus_unavailable with detail and fix naming ONEX_WORKSPACE_CONFIG_ROOT -- falsifier: uv run pytest tests/nodes/node_linear_ticket_write_effect -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-pool-probe-overlay
     statement: The Claude pool refill passes a lane overlay to the credential probe that requires it.
     acceptance:
@@ -51,6 +56,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-cloud-limit-ending
+    statement: Cloud placement distinguishes a terminal limit ending from subscription telemetry and uses recorded credit balances.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the recorded completed session with rejected weekly telemetry and 167 credit remains eligible; the recorded weekly-limit error session closes limited and records a hold; zero recorded credit excludes an account, while rate-only readings and migrated inferred holds do not -- falsifier: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect'
   - id: req-omn19998-floor-worker-occupancy
     statement: A finished receipt or an absent worker process removes an unclosed claim from worker occupancy; silence alone does not.
     acceptance:
@@ -120,6 +130,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov --tb=line -k runtime_command
+        cwd: .
+  - id: dod-omn19998-ticket-read-secret-reason
+    description: The golden chain test fails at the merge base because an unresolved key answers operation_failed, and the CLI test fails at the merge base because bus_unavailable carries no fix field.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-pool-probe-overlay
     description: The refill tests check the required overlay argument and both dependency bindings, typed receipt classification, token rotation and dry-run behavior. The overlay regression test fails before this PR's handler change because the probe command supplies no --overlay.
@@ -212,6 +231,24 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
+        cwd: .
+  - id: dod-omn19998-cloud-limit-ending
+    description: Replay the completed credit probe and weekly-limit error result through the placement handler. Check positive and zero recorded balances, actual refusal holds, migration of rate-only state, and preservation of PR handoffs. The completed-probe regression fails before this change because rejected telemetry is classified as a limit.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect
+        cwd: .
+  - id: dod-omn19998-cloud-limit-deploy
+    description: Hosted wiring smoke runs the exact session program returned by the handler against recorded API responses, reads the terminal result through parse_session, and closes through render_result. The completed and limited cases require no credential or lab network access. This is a hosted wiring check; live installation remains the publishing host's responsibility.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect -k recorded_session_reader
         cwd: .
   - id: dod-omn19998-floor-worker-occupancy
     description: Focused regressions start from the named missing-terminal workers, finished receipt, and hostless cause claims. They retain live and unread quiet workers and reject previous-run evidence. This slice does not assert the original controller timer criteria.
