@@ -14,7 +14,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.adapter_local_session_files import LocalSessionFiles
 from omnimarket.handlers.session_scope import bind_session_scope
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 from ..models.model_session_checkpoint import (
     ModelSessionCheckpointRequest,
@@ -25,6 +27,9 @@ from . import hook
 
 
 class HandlerSessionCheckpoint:
+    def __init__(self, fs: ProtocolSessionFiles | None = None) -> None:
+        self._fs: ProtocolSessionFiles = fs or LocalSessionFiles()
+
     def handle(
         self, request: ModelSessionCheckpointRequest
     ) -> ModelSessionCheckpointResult:
@@ -41,7 +46,7 @@ class HandlerSessionCheckpoint:
                 if spec.from_file:
                     try:
                         start = json.loads(
-                            Path(spec.from_file).read_text(encoding="utf-8")
+                            self._fs.read_text(Path(spec.from_file), encoding="utf-8")
                         )
                     except OSError as exc:
                         raise ckpt.InputError(f"cannot read from_file: {exc}") from exc

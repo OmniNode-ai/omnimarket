@@ -1,0 +1,177 @@
+{
+  "duration_ms": 9334,
+  "focused_tests": {
+    "argv": [
+      "uv",
+      "run",
+      "--frozen",
+      "pytest",
+      "tests/nodes/node_host_installer_net_units/test_host_net_units.py",
+      "tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py",
+      "-q",
+      "--no-cov"
+    ],
+    "exit_code": 0,
+    "host": "h101",
+    "stderr": "",
+    "stdout": ".................                                                        [100%]\n17 passed in 3.17s\n"
+  },
+  "installed_source_sha": "1e69e11aaf14603ed2d4f99edf7955d6b51dc2dc",
+  "lab": {
+    "captured_at": "2026-11-04T07:29:39.261383+00:00",
+    "duration_ms": 248,
+    "host": "h053",
+    "installed_files": {
+      "/etc/ssh/sshd_config.d/00-omn17232-hardening.conf": {
+        "mode": "0644",
+        "sha256": "707ade3a8e8c3543a603248afb58da57552ff51891c752b9b502516f62205511"
+      },
+      "/etc/ssh/sshd_config.d/10-omn22217-sessions.conf": {
+        "mode": "0644",
+        "sha256": "8ff6677022c0cfda7867942b64f39a0ae96e65741f4fc6c21021c2aee14418bf"
+      },
+      "/etc/systemd/system/onex-arp-assert.service": {
+        "mode": "0644",
+        "sha256": "8b3788f6ddb402cb36fd5163e597708d91122aea882e296c98aca8393a002a80"
+      },
+      "/usr/local/sbin/onex-arp-assert": {
+        "mode": "0755",
+        "sha256": "4c67ddf35d23f47e8cccbb7a279d56765f21fc3817ea0ce2b8003c2b112b401d"
+      }
+    },
+    "platform": "Linux",
+    "readbacks": [
+      {
+        "changed": false,
+        "digests": {
+          "/etc/systemd/system/onex-arp-assert.service": "8b3788f6ddb402cb36fd5163e597708d91122aea882e296c98aca8393a002a80",
+          "/usr/local/sbin/onex-arp-assert": "4c67ddf35d23f47e8cccbb7a279d56765f21fc3817ea0ce2b8003c2b112b401d"
+        },
+        "exit_code": 0,
+        "mode": "status",
+        "reason": "",
+        "status": "success",
+        "stderr": "",
+        "stdout": "identical /usr/local/sbin/onex-arp-assert\nidentical /etc/systemd/system/onex-arp-assert.service\nonex-arp-assert.service active\n",
+        "unit": "onex-arp-assert"
+      },
+      {
+        "changed": false,
+        "digests": {
+          "/etc/systemd/system/onex-arp-assert.service": "8b3788f6ddb402cb36fd5163e597708d91122aea882e296c98aca8393a002a80",
+          "/usr/local/sbin/onex-arp-assert": "4c67ddf35d23f47e8cccbb7a279d56765f21fc3817ea0ce2b8003c2b112b401d"
+        },
+        "exit_code": 0,
+        "mode": "dry-run",
+        "reason": "",
+        "status": "success",
+        "stderr": "",
+        "stdout": "unchanged /usr/local/sbin/onex-arp-assert\nunchanged /etc/systemd/system/onex-arp-assert.service\nno change: onex-arp-assert already matches its declaration\n",
+        "unit": "onex-arp-assert"
+      },
+      {
+        "changed": false,
+        "digests": {
+          "/etc/ssh/sshd_config.d/10-omn22217-sessions.conf": "8ff6677022c0cfda7867942b64f39a0ae96e65741f4fc6c21021c2aee14418bf"
+        },
+        "exit_code": 0,
+        "mode": "status",
+        "reason": "",
+        "status": "success",
+        "stderr": "",
+        "stdout": "identical /etc/ssh/sshd_config.d/10-omn22217-sessions.conf\nsshd -t ok\n",
+        "unit": "sshd-session-limits"
+      },
+      {
+        "changed": false,
+        "digests": {
+          "/etc/ssh/sshd_config.d/10-omn22217-sessions.conf": "8ff6677022c0cfda7867942b64f39a0ae96e65741f4fc6c21021c2aee14418bf"
+        },
+        "exit_code": 0,
+        "mode": "dry-run",
+        "reason": "",
+        "status": "success",
+        "stderr": "",
+        "stdout": "unchanged /etc/ssh/sshd_config.d/10-omn22217-sessions.conf\nno change: sshd-session-limits already matches its declaration\n",
+        "unit": "sshd-session-limits"
+      },
+      {
+        "changed": false,
+        "digests": {
+          "/etc/ssh/sshd_config.d/00-omn17232-hardening.conf": "707ade3a8e8c3543a603248afb58da57552ff51891c752b9b502516f62205511"
+        },
+        "exit_code": 0,
+        "mode": "status",
+        "reason": "",
+        "status": "success",
+        "stderr": "",
+        "stdout": "identical /etc/ssh/sshd_config.d/00-omn17232-hardening.conf\nsshd -t ok\n",
+        "unit": "sshd-hardening"
+      },
+      {
+        "changed": false,
+        "digests": {
+          "/etc/ssh/sshd_config.d/00-omn17232-hardening.conf": "707ade3a8e8c3543a603248afb58da57552ff51891c752b9b502516f62205511"
+        },
+        "exit_code": 0,
+        "mode": "dry-run",
+        "reason": "",
+        "status": "success",
+        "stderr": "",
+        "stdout": "unchanged /etc/ssh/sshd_config.d/00-omn17232-hardening.conf\nno change: sshd-hardening already matches its declaration\n",
+        "unit": "sshd-hardening"
+      }
+    ],
+    "service": {
+      "argv": [
+        "systemctl",
+        "is-active",
+        "onex-arp-assert.service"
+      ],
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "active\n"
+    },
+    "source_manifest": {
+      "src/omnimarket/nodes/node_host_installer_net_units/__init__.py": "28106933a84872846fc91541e2bae3a1572149d8d57539105ba26c20aa729f93",
+      "src/omnimarket/nodes/node_host_installer_net_units/__main__.py": "26585cf23c7701bb2b6b9e0b7e8bcbb26e31d35a8841e51ef360bd8a907ce2a8",
+      "src/omnimarket/nodes/node_host_installer_net_units/contract.yaml": "7bd30f2ffdc9aa8462b6a2831196cdc765bacc3fe7606213b3a9fb1813eb3a05",
+      "src/omnimarket/nodes/node_host_installer_net_units/handlers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/omnimarket/nodes/node_host_installer_net_units/handlers/handler_net_units.py": "c3e4ee6823b02678cf6dec806eda525d2d4bab0f126a048c285c69e660b9e972",
+      "src/omnimarket/nodes/node_host_installer_net_units/metadata.yaml": "6589afbb1aaf83b708b46f328423ca85574f9904be924ae02aa0173d4e85617d",
+      "src/omnimarket/nodes/node_host_installer_net_units/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/omnimarket/nodes/node_host_installer_net_units/models/model_net_units.py": "c53eff25518903b882d26d70b1d6555232d1f062febd2b5493dde432d5fcf128",
+      "src/omnimarket/nodes/node_host_installer_net_units/node.py": "0dcfab649ac0c218d3614f1a5aab03952ed431b187beb90416e9f2b325bbb50b"
+    }
+  },
+  "overlay": {
+    "base_sha": "f4c9a0aeb422860697cb2b38c719a7ef31eaae29",
+    "captured_at": "2026-11-04T07:29:38.307614+00:00",
+    "changed_paths": [
+      "config/onex/overlays/node_host_installer_net_units/onex-arp-assert.b64",
+      "config/onex/overlays/node_host_installer_net_units/onex-arp-assert.service.tmpl",
+      "config/onex/overlays/node_host_installer_net_units/sshd-hardening.conf",
+      "config/onex/overlays/node_host_installer_net_units/sshd-session-limits.conf",
+      "config/onex/overlays/node_host_installer_net_units/units.yaml",
+      "contracts/OMN-22217.yaml"
+    ],
+    "diff_stdout": "config/onex/overlays/node_host_installer_net_units/onex-arp-assert.b64\nconfig/onex/overlays/node_host_installer_net_units/onex-arp-assert.service.tmpl\nconfig/onex/overlays/node_host_installer_net_units/sshd-hardening.conf\nconfig/onex/overlays/node_host_installer_net_units/sshd-session-limits.conf\nconfig/onex/overlays/node_host_installer_net_units/units.yaml\ncontracts/OMN-22217.yaml\n",
+    "exit_code": 0,
+    "head_sha": "f93fe0fc7b9533a53af0c765e6a99d6a762e6ae8",
+    "merge_base_sha": "c528083405b69fab09390086c1c0a5657786bf2b"
+  },
+  "product_head_sha": "c41d1dfd7a8d9c7bf76f6bae49105f6be6f19c7b",
+  "schema": "host_net_readback.v1",
+  "source_manifest": {
+    "src/omnimarket/nodes/node_host_installer_net_units/__init__.py": "28106933a84872846fc91541e2bae3a1572149d8d57539105ba26c20aa729f93",
+    "src/omnimarket/nodes/node_host_installer_net_units/__main__.py": "26585cf23c7701bb2b6b9e0b7e8bcbb26e31d35a8841e51ef360bd8a907ce2a8",
+    "src/omnimarket/nodes/node_host_installer_net_units/contract.yaml": "7bd30f2ffdc9aa8462b6a2831196cdc765bacc3fe7606213b3a9fb1813eb3a05",
+    "src/omnimarket/nodes/node_host_installer_net_units/handlers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/omnimarket/nodes/node_host_installer_net_units/handlers/handler_net_units.py": "c3e4ee6823b02678cf6dec806eda525d2d4bab0f126a048c285c69e660b9e972",
+    "src/omnimarket/nodes/node_host_installer_net_units/metadata.yaml": "6589afbb1aaf83b708b46f328423ca85574f9904be924ae02aa0173d4e85617d",
+    "src/omnimarket/nodes/node_host_installer_net_units/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/omnimarket/nodes/node_host_installer_net_units/models/model_net_units.py": "c53eff25518903b882d26d70b1d6555232d1f062febd2b5493dde432d5fcf128",
+    "src/omnimarket/nodes/node_host_installer_net_units/node.py": "0dcfab649ac0c218d3614f1a5aab03952ed431b187beb90416e9f2b325bbb50b"
+  },
+  "ticket_id": "OMN-22217"
+}
