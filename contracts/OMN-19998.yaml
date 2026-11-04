@@ -24,8 +24,13 @@ requirements:
   - id: req-omn19998-host-reconcile-proven-floor
     statement: A repair that cannot stamp the dispatch floor restores the venv to the existing proven omnimarket commit.
     acceptance:
+      - id: AC5
+        statement: 'AC5: after a repair installs the clone head and a refused clone prevents stamping, the delegate runs again with --proven, the installed commit returns to the floor and the floor stays unchanged; a stamping repair, a repair without a floor and check mode never restore -- falsifier: uv run --frozen pytest tests/test_host_reconcile_effect.py -q --no-cov --refuse-skips -k "cannot_stamp_puts or repair_that_stamps or no_floor_restores or check_mode_never_restores"'
+  - id: req-omn19998-pool-probe-overlay
+    statement: The Claude pool refill passes a lane overlay to the credential probe that requires it.
+    acceptance:
       - id: AC4
-        statement: 'AC4: after a repair installs the clone head and a refused clone prevents stamping, the delegate runs again with --proven, the installed commit returns to the floor and the floor stays unchanged; a stamping repair, a repair without a floor and check mode never restore -- falsifier: uv run --frozen pytest tests/test_host_reconcile_effect.py -q --no-cov --refuse-skips -k "cannot_stamp_puts or repair_that_stamps or no_floor_restores or check_mode_never_restores"'
+        statement: 'AC4: the refill probe writes a lane overlay binding the host process environment and file overlay documents and passes it with --overlay to runtime_claude_probe; typed probe receipts remain classified as ok, limited, timeout or unavailable -- falsifier: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov -k "probe"'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -82,11 +87,29 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov --tb=line -k runtime_command
         cwd: .
+  - id: dod-omn19998-pool-probe-overlay
+    description: The refill tests check the required overlay argument and both dependency bindings, typed receipt classification, token rotation and dry-run behavior. The overlay regression test fails before this PR's handler change because the probe command supplies no --overlay.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-pool-probe-overlay-deploy
+    description: Hosted deployment smoke checks that the generated remote probe script invokes the credential probe with a lane overlay binding the host environment and file documents, and that typed receipts are read and classified. It needs no lab access or live credential and does not claim a live host installation readback.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
+        cwd: .
   - id: dod-omn19998-host-reconcile-proven-floor
     description: Exercise the repair and check paths through local git repositories and executable delegate scripts. The refused-clone case fails without the restoration call because the venv remains on the unproven clone head. The other cases guard stamping, absent-floor and check-mode behavior.
     source: manual
     binds_ac:
-      - AC4
+      - AC5
     checks:
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_host_reconcile_effect.py -q --no-cov --refuse-skips -k "cannot_stamp_puts or repair_that_stamps or no_floor_restores or check_mode_never_restores"
@@ -95,7 +118,7 @@ dod_evidence:
     description: Hosted deployment smoke invokes the host reconcile effect with local git clones and a shell delegate that records argv and installs either the clone head or the proven commit. It reads back the installed commit, unchanged floor, failed result and second delegate call with --proven. This checks the script boundary without changing a live host installation.
     source: manual
     binds_ac:
-      - AC4
+      - AC5
     checks:
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_host_reconcile_effect.py::test_a_repair_that_cannot_stamp_puts_the_venv_back_on_the_floor -q --no-cov --refuse-skips
