@@ -245,7 +245,7 @@ class HandlerCloudSessionPlacement:
         elif action == "render_session_script":
             return {
                 "text": ses.cloud_session_script(
-                    r.path_export, r.session_id, r.sessions_api_url
+                    r.path_export, r.session_id, r.sessions_api_url, r.brief
                 )
             }
         elif action == "render_pr_open_script":
@@ -277,18 +277,18 @@ class HandlerCloudSessionPlacement:
             )
             return {"title": title, "text": text}
         elif action == "render_result":
-            return {
-                "text": ses.cloud_result_text(
-                    r.owner,
-                    r.account,
-                    r.session,
-                    r.prs,
-                    r.run_id,
-                    r.ended,
-                    session_branches=r.session_branches,
-                    opened=r.opened,
-                )
-            }
+            # OMN-22345: the close (status, outcome) is the node's; a review-only lane's review rides on ``parsed``.
+            return ses.cloud_close(
+                r.owner,
+                r.account,
+                r.session,
+                r.prs,
+                r.run_id,
+                r.ended,
+                r.brief,
+                session_branches=r.session_branches,
+                opened=r.opened,
+            )
         elif action == "parse_start":
             return {
                 "parsed": {

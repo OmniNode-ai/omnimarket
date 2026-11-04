@@ -157,6 +157,7 @@ jobs:
           sparse-checkout: |
             config/onex/overlays/node_review_voters_overlay_compute
             config/onex/overlays/agent_review_gate_accept
+            config/onex/overlays/review_agent_receipt_verify
           sparse-checkout-cone-mode: false
 
       - name: Place the CI overlay outside the workspace
@@ -727,12 +728,27 @@ jobs:
         # same rule as the parse veto above), so a pull request cannot supply the
         # code that accepts itself; a base that does not carry the node yet, or a
         # node that does not run, leaves the voters' verdict as it stands.
+        #
+        # It runs in ../omniintelligence, as the parse veto and the omnibase_infra
+        # accept step do, never in the checkout under review: in that checkout
+        # `uv run` built an empty environment from the pull request's own
+        # pyproject.toml (measured on job 126160569597: no module named pydantic),
+        # and a root-level module of the pull request (json.py, yaml.py) could
+        # shadow an import while the step holds the receipt key. `python -P` keeps
+        # the working directory off sys.path as well. The omniintelligence
+        # environment, synced above, carries pydantic, PyYAML and omnibase_infra;
+        # PYTHONPATH puts the base commit's omnimarket first.
         id: accept
         if: always()
+        working-directory: ../omniintelligence
         env:
           ACCEPT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ONEX_SKILL_OVERLAY_ROOTS: ${{ github.workspace }}/../ci-overlay/config/onex/overlays
+          # OMN-22177: the receipt key the review step already carries, for the verifier
+          # node the accept node runs in a subprocess of ../omniintelligence when the
+          # agent_review_gate_accept overlay names verifier_endpoint subprocess:<path>.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
         run: |
           ACCEPT_BASE="${RUNNER_TEMP:-/tmp}/agent-review-accept-base"
           rm -rf "$ACCEPT_BASE"
@@ -744,7 +760,7 @@ jobs:
             echo "decision=unchanged" >> "$GITHUB_OUTPUT"
           else
             ACCEPT_EXIT=0
-            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
+            PYTHONPATH="$ACCEPT_BASE/src" uv run --no-sync python -P -m omnimarket.nodes.node_agent_review_gate_accept_effect.runtime_gate_accept \
               --repository "${{ github.repository }}" \
               --pull-request "${{ github.event.pull_request.number }}" \
               --head-sha "${{ github.event.pull_request.head.sha }}" \
