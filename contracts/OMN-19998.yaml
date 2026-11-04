@@ -100,3 +100,18 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
         cwd: .
+
+  - id: dod-omn19998-enumeration-full-read-bound
+    description: The process-fix slice reproduces the recorded exit-124, no-JSON, empty-stderr enumeration failure and returns typed UNREAD before the outer deadline. A complete empty read is the positive control. Source failures never select candidates from unread kinds, and the existing idle alarm remains visible. This evidence does not assert the landing-controller timer criteria.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-enumeration-bus-deployment-smoke
+    description: Hosted smoke resolves the packaged enumeration operation and uses the host runtime bus adapter to publish READ and UNREAD terminals on the declared completed topic. This is a wiring smoke, not a live branch installation readback.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly -k bus_adapter
+        cwd: .

@@ -1,0 +1,13 @@
+{
+  "run": "2026-11-03T1950Z",
+  "returncode": 124,
+  "stdout": "",
+  "stderr": "",
+  "bound_min_s": 60,
+  "bound_max_s": 180,
+  "phase_deadline": "2026-11-03T19:56:02Z",
+  "finished_utc": "2026-11-03T19:56:07Z",
+  "free_slots": 19,
+  "source": "enumerate-partial",
+  "kinds": ["pr-red", "pr-stalled", "defect", "ticket", "plan-stalled", "ruling-pending", "lane-resend", "process-fix", "partial-node", "wiring"]
+}
