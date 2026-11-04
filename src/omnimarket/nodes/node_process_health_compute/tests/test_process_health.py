@@ -352,6 +352,8 @@ def test_selected_range_changes_counts() -> None:
         second.flat,
         second.unmeasured,
     )
+    assert first.after is not None
+    assert first.before is not None
     assert first.after.start == at(29, 0)
     assert first.before.start == at(28, 0)
     assert first.before.end == first.after.start
