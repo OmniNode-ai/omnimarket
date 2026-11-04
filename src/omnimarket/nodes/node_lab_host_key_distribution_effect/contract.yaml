@@ -29,6 +29,12 @@ handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_key_distribution:HandlerLabHostKeyDistribution
   handlers:
+  - operation: install_declared_keys
+    handler:
+      name: HandlerLabHostPublicKeysInstall
+      module: omnimarket.nodes.node_lab_host_key_distribution_effect.handlers.handler_lab_host_public_keys_install
+    input_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_public_keys_install.ModelLabHostPublicKeysInstallRequest
+    output_model: omnimarket.nodes.node_lab_host_key_distribution_effect.models.model_lab_host_public_keys_install.ModelLabHostPublicKeysInstallResult
   - operation: distribute
     handler:
       name: HandlerLabHostKeyDistribution
@@ -40,7 +46,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: The onex-host-key-distribution console script (runtime_lab_host_key_distribution)
-    on the launching host, or python -m omnimarket.nodes.node_lab_host_key_distribution_effect.
+    on the launching host, with --declared-keys for the declared key set, or python -m
+    omnimarket.nodes.node_lab_host_key_distribution_effect.
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -50,6 +57,7 @@ descriptor:
   side_effects:
   - appends missing public user keys to ~/.ssh/authorized_keys over ssh
   - appends missing public host keys to ~/.ssh/known_hosts over ssh
+  - appends the missing public keys the lab_host_public_keys overlay declares to ~/.ssh/authorized_keys of every available pool host over ssh
 metadata:
   transport_type: local
   ticket: OMN-22115
@@ -64,3 +72,4 @@ metadata:
   related_tickets:
   - OMN-22115
   - OMN-20348
+  - OMN-22174
