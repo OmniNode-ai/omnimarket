@@ -61,52 +61,6 @@ _DESCRIPTION = (
 )
 
 
-# --------------------------------------------------------------------------- #
-# Recorded OCC-only inputs -> deterministic probes (the base-compatible part).
-# --------------------------------------------------------------------------- #
-
-
-def _occ_gate(case: dict[str, Any], **repo_readers: Any) -> DurableEvidenceGate:
-    occ = case["occ"]
-    assert isinstance(occ, dict)
-    pr_view = {
-        (p["repo"], p["number"]): (p["state"], p["merge_commit_oid"])
-        for p in case["pr_view"]
-    }
-    pr_commits = {
-        (p["repo"], p["number"]): tuple(p["oids"]) for p in case["pr_commits"]
-    }
-    tags = {(t["repo"], t["sha"]): t["tags"] for t in case["release_tags"]}
-    index = {(i["distribution"], i["version"]): i["files"] for i in case["index_files"]}
-
-    def release_tags_containing(repo: str, commit_sha: str) -> tuple[str, ...] | None:
-        if (repo, commit_sha) in tags:
-            found = tags[(repo, commit_sha)]
-            return None if found is None else tuple(found)
-        return ("v9.9.9",)
-
-    def index_release_files(distribution: str, version: str) -> frozenset[str] | None:
-        if (distribution, version) in index:
-            files = index[(distribution, version)]
-            return None if files is None else frozenset(files)
-        return frozenset({"bdist_wheel", "sdist"})
-
-    def gh_pr_view(repo: str, pr_number: int) -> tuple[str, str | None]:
-        return pr_view[(repo, pr_number)]
-
-    return DurableEvidenceGate(
-        is_receipt_tracked=lambda _p, _r, _d: bool(occ["tracked"]),
-        gh_pr_view=gh_pr_view,
-        pr_commits=lambda repo, n: pr_commits.get((repo, n), ()),
-        load_contract_on_ref=lambda _p, _r, _rel: occ["contract_on_ref"],
-        load_receipts_on_ref=lambda _p, _r, _d: [dict(r) for r in occ["receipts"]],
-        release_tags_containing=release_tags_containing,
-        index_release_files=index_release_files,
-        occ_repo_path="/fake/onex_change_control",
-        **repo_readers,
-    )
-
-
 def _cases() -> list[dict[str, Any]]:
     data = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     cases = data["cases"]
@@ -199,22 +153,11 @@ def _readers(
     }
 
 
-def _no_occ_gate(**repo_readers: Any) -> DurableEvidenceGate:
-    """A gate whose OCC side holds nothing for the ticket: no receipt, no contract."""
-
-    def refuse_pr_probe(repo: str, pr_number: int) -> tuple[str, str | None]:
-        msg = f"OCC receipt PR probe must not run: {repo}#{pr_number}"
-        raise AssertionError(msg)
-
+def _gate(**repo_readers: Any) -> DurableEvidenceGate:
+    """A gate over the given product-repository readers and released probes."""
     return DurableEvidenceGate(
-        is_receipt_tracked=lambda _p, _r, _d: False,
-        gh_pr_view=refuse_pr_probe,
-        pr_commits=lambda _repo, _n: (),
-        load_contract_on_ref=lambda _p, _r, _rel: None,
-        load_receipts_on_ref=lambda _p, _r, _d: [],
         release_tags_containing=lambda _repo, _sha: ("v0.4.309",),
         index_release_files=lambda _d, _v: frozenset({"bdist_wheel", "sdist"}),
-        occ_repo_path="/fake/onex_change_control",
         **repo_readers,
     )
 
@@ -227,7 +170,7 @@ def _evaluate(
     description: str = _DESCRIPTION,
     labels: frozenset[str] = frozenset({"source-done"}),
 ) -> ModelDurableEvidenceGateResult:
-    return gate.evaluate_default(
+    return gate.evaluate(
         ticket_id=_TICKET,
         contract=contract if contract is not None else _contract(["AC1"], ["AC2"]),
         ticket_labels=labels,
@@ -260,7 +203,7 @@ class TestRepoFirstAdmits:
         self,
     ) -> None:
         contract = _contract(["AC1"], ["AC2"])
-        result = _evaluate(_no_occ_gate(**_green_readers(contract)), (_pr(),))
+        result = _evaluate(_gate(**_green_readers(contract)), (_pr(),))
 
         assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
         governing = _check(result, EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN)
@@ -293,7 +236,7 @@ class TestRepoFirstAdmits:
             },
         )
 
-        result = _evaluate(_no_occ_gate(**readers), (old, _pr()))
+        result = _evaluate(_gate(**readers), (old, _pr()))
 
         assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
 
@@ -302,9 +245,7 @@ class TestRepoFirstAdmits:
     ) -> None:
         merged = _contract(["AC1"], ["AC2"])
         occ_copy = _contract(["AC1"], ["AC2"], ["AC2"])
-        result = _evaluate(
-            _no_occ_gate(**_green_readers(merged)), (_pr(),), contract=occ_copy
-        )
+        result = _evaluate(_gate(**_green_readers(merged)), (_pr(),), contract=occ_copy)
 
         assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
 
@@ -313,7 +254,7 @@ class TestRepoFirstAdmits:
     ) -> None:
         merged = {**_contract(["AC1"], ["AC2"]), "prevention_gate": "ci.yml"}
         result = _evaluate(
-            _no_occ_gate(**_green_readers(merged)),
+            _gate(**_green_readers(merged)),
             (_pr(),),
             contract=_contract(["AC1"], ["AC2"]),
             labels=frozenset({"source-done", "bug"}),
@@ -402,7 +343,7 @@ class TestRepoFirstRefuses:
     def test_refuses_repo_contract_leaving_one_criterion_unbound(self) -> None:
         contract = _contract(["AC1"])
         result = _evaluate(
-            _no_occ_gate(**_green_readers(contract)), (_pr(),), contract=contract
+            _gate(**_green_readers(contract)), (_pr(),), contract=contract
         )
         self._refused(result, "AC2")
 
@@ -412,9 +353,7 @@ class TestRepoFirstRefuses:
             {(_REPO, _MERGE): _found(contract), (_REPO, _HEAD): _found(contract)},
             {(_REPO, _HEAD): (_run(7001, "failure"),)},
         )
-        self._refused(
-            _evaluate(_no_occ_gate(**readers), (_pr(),)), "conclusion=failure"
-        )
+        self._refused(_evaluate(_gate(**readers), (_pr(),)), "conclusion=failure")
 
     def test_refuses_rerun_in_progress_over_an_older_success(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
@@ -427,7 +366,7 @@ class TestRepoFirstRefuses:
                 )
             },
         )
-        self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "run 7002")
+        self._refused(_evaluate(_gate(**readers), (_pr(),)), "run 7002")
 
     def test_refuses_contract_changed_between_verified_head_and_merge(self) -> None:
         merged = _contract(["AC1"], ["AC2"])
@@ -438,7 +377,7 @@ class TestRepoFirstRefuses:
             },
             {(_REPO, _HEAD): (_run(7001),)},
         )
-        self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "contract changed")
+        self._refused(_evaluate(_gate(**readers), (_pr(),)), "contract changed")
 
     def test_refuses_unreadable_repo_contract(self) -> None:
         readers = _readers(
@@ -449,7 +388,7 @@ class TestRepoFirstRefuses:
             },
             {},
         )
-        self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "HTTP 502")
+        self._refused(_evaluate(_gate(**readers), (_pr(),)), "HTTP 502")
 
     def test_refuses_unreadable_check_runs(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
@@ -457,20 +396,18 @@ class TestRepoFirstRefuses:
             {(_REPO, _MERGE): _found(contract), (_REPO, _HEAD): _found(contract)},
             {(_REPO, _HEAD): None},
         )
-        self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "unreadable")
+        self._refused(_evaluate(_gate(**readers), (_pr(),)), "unreadable")
 
     def test_refuses_contract_naming_another_ticket(self) -> None:
         contract = _contract(["AC1"], ["AC2"], ticket_id="OMN-1")
-        self._refused(
-            _evaluate(_no_occ_gate(**_green_readers(contract)), (_pr(),)), "OMN-1"
-        )
+        self._refused(_evaluate(_gate(**_green_readers(contract)), (_pr(),)), "OMN-1")
 
     def test_refuses_unlabelled_criterion(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
         description = _DESCRIPTION + "- [ ] a criterion with no label\n"
         self._refused(
             _evaluate(
-                _no_occ_gate(**_green_readers(contract)),
+                _gate(**_green_readers(contract)),
                 (_pr(),),
                 description=description,
             ),
@@ -480,23 +417,27 @@ class TestRepoFirstRefuses:
     def test_refuses_ticket_with_no_readable_criterion(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
         self._refused(
-            _evaluate(
-                _no_occ_gate(**_green_readers(contract)), (_pr(),), description=""
-            ),
+            _evaluate(_gate(**_green_readers(contract)), (_pr(),), description=""),
             "no acceptance criterion",
         )
 
-    def test_refuses_missing_repo_contract_without_an_occ_contract(self) -> None:
+    def test_refuses_missing_repo_contract_and_decides_it_nowhere_else(self) -> None:
         readers = _readers({}, {})
-        self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "is not present on")
+        self._refused(
+            _evaluate(_gate(**readers), (_pr(),)), "no product repository governs"
+        )
 
-    def test_refuses_newest_pr_without_a_run_falls_back_to_occ(self) -> None:
+    def test_refuses_newest_pr_without_a_run_and_decides_it_nowhere_else(
+        self,
+    ) -> None:
         contract = _contract(["AC1"], ["AC2"])
         readers = _readers(
             {(_REPO, _MERGE): _found(contract), (_REPO, _HEAD): _found(contract)},
             {(_REPO, _HEAD): (_run(7001, name="some other check"),)},
         )
-        self._refused(_evaluate(_no_occ_gate(**readers), (_pr(),)), "is not present on")
+        self._refused(
+            _evaluate(_gate(**readers), (_pr(),)), "no product repository governs"
+        )
 
     def test_refuses_defect_ticket_whose_repo_contract_links_no_prevention(
         self,
@@ -504,7 +445,7 @@ class TestRepoFirstRefuses:
         merged = _contract(["AC1"], ["AC2"])
         local = {**merged, "prevention_gate": ".github/workflows/ci.yml"}
         result = _evaluate(
-            _no_occ_gate(**_green_readers(merged)),
+            _gate(**_green_readers(merged)),
             (_pr(),),
             contract=local,
             labels=frozenset({"source-done", "bug"}),
@@ -519,7 +460,7 @@ class TestRepoFirstRefuses:
     def test_refuses_green_repo_ticket_without_a_done_class_label(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
         result = _evaluate(
-            _no_occ_gate(**_green_readers(contract)), (_pr(),), labels=frozenset()
+            _gate(**_green_readers(contract)), (_pr(),), labels=frozenset()
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
@@ -529,14 +470,8 @@ class TestRepoFirstRefuses:
     def test_refuses_green_repo_ticket_merged_but_unreleased(self) -> None:
         contract = _contract(["AC1"], ["AC2"])
         gate = DurableEvidenceGate(
-            is_receipt_tracked=lambda _p, _r, _d: False,
-            gh_pr_view=lambda _repo, _n: ("MERGED", None),
-            pr_commits=lambda _repo, _n: (),
-            load_contract_on_ref=lambda _p, _r, _rel: None,
-            load_receipts_on_ref=lambda _p, _r, _d: [],
             release_tags_containing=lambda _repo, _sha: (),
             index_release_files=lambda _d, _v: frozenset(),
-            occ_repo_path="/fake/onex_change_control",
             **_green_readers(contract),
         )
         result = _evaluate(gate, (_pr(),))
@@ -548,7 +483,7 @@ class TestRepoFirstRefuses:
 
 
 # --------------------------------------------------------------------------- #
-# AC5: an OCC-only ticket decides exactly as it did before the change.
+# OMN-20074: a ticket only OCC governed is refused, never admitted.
 # --------------------------------------------------------------------------- #
 
 
@@ -562,7 +497,7 @@ class TestOccOnlyReplay:
         assert statuses == {"pass", "fail"}
 
     @pytest.mark.parametrize("case", _cases(), ids=lambda case: str(case["name"]))
-    def test_replay_occ_only_ticket_decides_as_recorded(
+    def test_replay_occ_only_ticket_is_refused_whatever_it_was_recorded_as(
         self, case: dict[str, Any]
     ) -> None:
         merged_prs = tuple(
@@ -584,12 +519,10 @@ class TestOccOnlyReplay:
             msg = "no repo contract, so no check run is read"
             raise AssertionError(msg)
 
-        gate = _occ_gate(
-            case,
+        result = _gate(
             read_repo_contract=read_repo_contract,
             read_repo_check_runs=read_repo_check_runs,
-        )
-        result = gate.evaluate_default(
+        ).evaluate(
             ticket_id=str(case["ticket_id"]),
             contract=case["contract"],
             ticket_labels=frozenset(case["labels"]),
@@ -597,8 +530,12 @@ class TestOccOnlyReplay:
             ticket_description=_DESCRIPTION,
         )
 
-        assert result.model_dump(mode="json") == case["decision"]
+        # Stricter, never looser: a recorded refusal is still a refusal.
+        assert result.status == EnumDurableEvidenceStatus.FAIL
         assert consulted == [(pr.repo, pr.merge_commit_sha) for pr in merged_prs]
+        governing = _check(result, EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN)
+        assert not governing.passed
+        assert "no product repository governs" in governing.message
 
 
 # --------------------------------------------------------------------------- #
