@@ -46,6 +46,53 @@ event_bus:
   - onex.dlq.omnimarket.projection-pr-state-malformed.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.projection-pr-state-applied.v1
+projection_api:
+  expose: true
+  topic: onex.snapshot.projection.pr-state.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
+  route_aliases:
+    - pr_state
+  key_grain: mutable
+  table: pr_state
+  # The loader's schema field records the DATABASE the relation lives in; the
+  # physical relation is omninode_internal.pr_state (db_io below).
+  schema: omnidash_analytics
+  columns:
+    - repo
+    - pr_number
+    - state
+    - head_sha
+    - base
+    - head_ref
+    - title
+    - draft
+    - author
+    - author_is_bot
+    - labels
+    - armed
+    - queued
+    - watcher_class
+    - ci_verdict
+    - red_contexts
+    - pending_contexts
+    - ci_read_at
+    - merged_at
+    - observed_at
+  json_columns:
+    - labels
+    - red_contexts
+    - pending_contexts
+  order_by: observed_at DESC
+  page_selection: order_by
+  freshness_column: observed_at
+  cursor_column: observed_at
+  limit: 500
+  bus_backed: true
+  key_columns:
+    - repo
+    - pr_number
 db_io:
   db_tables:
   - name: pr_state
