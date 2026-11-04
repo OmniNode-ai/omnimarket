@@ -88,7 +88,6 @@ class ModelExemplarAdmissionRules(BaseModel):
     pure_import_list_version: str = "pure-import-deny.v1"
     gate_absent_repositories: tuple[str, ...] = (
         "omnibase_spi",
-        "omnibase_compat",
         "omnidash",
         "onex_change_control",
     )

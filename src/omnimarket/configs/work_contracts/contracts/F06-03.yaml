@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: d56d58480cad2957f117f276cb10e0852abf66cf9c72f525d94c3c6fee25f6b1
+      sha256: cef7788a0d51c7cde1533ce4fe5cd6d66fe0e3def591575f8dad6c43f407683a
     expected_exit: 0
     target: src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py
     patch:
