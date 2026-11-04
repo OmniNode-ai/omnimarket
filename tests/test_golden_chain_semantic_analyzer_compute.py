@@ -85,6 +85,8 @@ async def handler() -> HandlerSemanticCompute:
     config = ModelHandlerSemanticComputeConfig(
         policy_config=ModelSemanticComputePolicyConfig(
             entity_extraction_mode=EnumEntityExtractionMode.DETERMINISTIC,
+            allowed_embedding_models=["stub-embedding"],
+            default_embedding_model="stub-embedding",
         )
     )
     h = HandlerSemanticCompute(container=container)
