@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-22418"
+title: "Lab-fill reads tickets through node_ticket_query with the credential resolved from the store"
+summary: "Lab-fill's per-ticket Linear read took LINEAR_API_KEY from the process environment, so a launchd job without the key could not read a ticket. The read now goes through node_ticket_query's read_ticket_facts operation, whose tracker key is one resolve request to node_secret_store_effect, in process. A key the store does not hold is a typed refusal naming the secret reference; there is no environment fallback."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22418-read-through-the-node"
+    statement: |-
+      Every Linear read lab-fill makes goes through node_ticket_query, and no lab-fill code path reads the Linear key from the environment.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the lab-fill ticket read goes through node_ticket_query and no code path of lab-fill reads LINEAR_API_KEY from the environment -- falsifier: pytest in the repository that owns the read with a test that fails when the env key is required and passes when only the store resolves it"
+  - id: "req-omn22418-lab-read"
+    statement: |-
+      On a lab host with no Linear key in the process environment, the lab-fill read returns a ticket.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: on the lab, lab-fill reads tickets and reports eligible greater than 0 with LINEAR_API_KEY unset in its environment -- falsifier: lab-fill run on h051 with env -u LINEAR_API_KEY, its receipt file showing the ticket count and the unset key"
+  - id: "req-omn22418-handoff"
+    statement: |-
+      The pull request is handed to the landing controller with the lab receipt in its body.
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the PR is handed to the landing controller with the lab receipt in its body -- falsifier: ledger MSG to landing-controller carrying pr= and head= for the PR"
+evidence_requirements:
+  - kind: "tests"
+    description: "The store-resolved ticket read tests and the lab-fill adapter tests pass."
+    command: "uv run pytest tests/nodes/node_ticket_query tests/nodes/node_lab_fill_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22418-read-through-the-node"
+    description: "A lab-fill ticket read with no LINEAR_API_KEY or LINEAR_TOKEN in the environment resolves the key from the secret store node and reads through node_ticket_query; a missing store entry is a typed refusal naming the secret reference even when an environment key is set."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_query tests/nodes/node_lab_fill_effect -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22418-lab-read"
+    description: "The lab receipt on a lab host with LINEAR_API_KEY unset in the process environment is the Lab: line of the pull request."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_query -q --no-cov -k 'no_environment_key or no_lab_fill_code_path'"
+        cwd: "."
+  - id: "dod-omn22418-handoff"
+    description: "The ledger MSG to landing-controller carrying pr= and head= for the pull request."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_query -q --no-cov -k 'missing_store_entry or unconfigured_store'"
+        cwd: "."
+  - id: "dod-omn22418-integration-proof"
+    description: "The pushed head ran the store-resolved ticket read tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22418 -- uv run --frozen pytest tests/nodes/node_ticket_query -q --no-cov'
+        cwd: "."
+  - id: "dod-omn22418-deploy-source-readback"
+    description: "Hosted-runner deploy artifact readback: fetch the ticket credential resolver and node contract at the evaluated revision, compare them to the checkout, and require the store-only credential refusal and declared HTTP transport. This checks the published package source, not a live tracker read or a runtime rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_ticket_query;
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/handlers/store_resolved_tracker.py" \
+            --output "$readback_dir/store_resolved_tracker.py";
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/contract.yaml" \
+            --output "$readback_dir/contract.yaml";
+          cmp "$node_path/handlers/store_resolved_tracker.py" "$readback_dir/store_resolved_tracker.py";
+          cmp "$node_path/contract.yaml" "$readback_dir/contract.yaml";
+          grep -F 'EnumSecretStoreOutcome.VALUE_MISSING.value' "$readback_dir/store_resolved_tracker.py";
+          grep -F 'operation=EnumSecretStoreOperation.RESOLVE' "$readback_dir/store_resolved_tracker.py";
+          grep -F 'transport_type: "HTTP"' "$readback_dir/contract.yaml";
+          printf 'ticket-query source readback matched %s\n' "$revision"
+        cwd: "."

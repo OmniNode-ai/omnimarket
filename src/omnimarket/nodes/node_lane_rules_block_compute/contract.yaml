@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_rules_block_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Render lane rules and contract instructions or decide the canonical block path from caller-supplied facts.
+  Pure behaviour-preserving decisions; the caller performs all I/O.
+input_model:
+  name: ModelLaneRulesBlockRequest
+  module: omnimarket.nodes.node_lane_rules_block_compute.models.model_lane_rules_block
+output_model:
+  name: ModelLaneRulesBlockResult
+  module: omnimarket.nodes.node_lane_rules_block_compute.models.model_lane_rules_block
+handler:
+  module: omnimarket.nodes.node_lane_rules_block_compute.handlers.handler_lane_rules_block
+  class: HandlerLaneRulesBlock
+  input_model: omnimarket.nodes.node_lane_rules_block_compute.models.model_lane_rules_block.ModelLaneRulesBlockRequest
+  output_model: omnimarket.nodes.node_lane_rules_block_compute.models.model_lane_rules_block.ModelLaneRulesBlockResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_rules_block_compute.handlers.handler_lane_rules_block:HandlerLaneRulesBlock
+  handlers:
+    - operation: render_block
+      handler:
+        name: HandlerLaneRulesBlock
+        module: omnimarket.nodes.node_lane_rules_block_compute.handlers.handler_lane_rules_block
+    - operation: contract_step
+      handler:
+        name: HandlerLaneRulesBlock
+        module: omnimarket.nodes.node_lane_rules_block_compute.handlers.handler_lane_rules_block
+    - operation: contract_block
+      handler:
+        name: HandlerLaneRulesBlock
+        module: omnimarket.nodes.node_lane_rules_block_compute.handlers.handler_lane_rules_block
+    - operation: block_path
+      handler:
+        name: HandlerLaneRulesBlock
+        module: omnimarket.nodes.node_lane_rules_block_compute.handlers.handler_lane_rules_block
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [render_block, contract_step, contract_block, block_path], description: Which text or path to return.}
+  block_text: {type: str, required: false, description: Caller-read UTF-8 text for render_block.}
+  ticket: {type: str, required: false, description: Ticket text for contract_step and contract_block.}
+  checkout_path: {type: str, required: false, description: Resolved checkout path for block_path.}
+  resolve_error: {type: str, required: false, description: Resolver failure text to return unchanged.}
+  block_exists: {type: bool, required: false, description: Whether the caller reports the block is a file.}
+outputs:
+  operation: {type: str}
+  text: {type: str}
+  path: {type: str}
+  exit_code: {type: int}
+  message: {type: str}
+terminal_event: onex.evt.omnimarket.lane-rules-block-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-rules-block-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-rules-block-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-rules-block-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-rules-block-completed.v1
+metadata:
+  transport_type: inmemory
+  description: lane-rules-block decisions
+  author: OmniNode Team
+  created: "2026-11-03"

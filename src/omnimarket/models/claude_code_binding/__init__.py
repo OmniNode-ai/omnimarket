@@ -9,6 +9,16 @@ from omnimarket.models.claude_code_binding.enum_client_max_mode import (
 from omnimarket.models.claude_code_binding.enum_client_verdict_action import (
     EnumClientVerdictAction,
 )
+from omnimarket.models.claude_code_binding.model_additive_client_binding import (
+    ADDITIVE_BUDGET_CAPS_MS,
+    ADDITIVE_TEXT_CAP_CHARS,
+    EnumAdditiveStartScope,
+    ModelAdditiveClientBinding,
+)
+from omnimarket.models.claude_code_binding.model_additive_miss_record import (
+    EnumAdditiveMissReason,
+    ModelAdditiveMissRecord,
+)
 from omnimarket.models.claude_code_binding.model_binding_registration import (
     ModelBindingRegistration,
 )
@@ -29,9 +39,15 @@ from omnimarket.models.claude_code_binding.model_compaction_client_binding impor
 )
 
 __all__ = [
+    "ADDITIVE_BUDGET_CAPS_MS",
+    "ADDITIVE_TEXT_CAP_CHARS",
+    "EnumAdditiveMissReason",
+    "EnumAdditiveStartScope",
     "EnumBindingKind",
     "EnumClientMaxMode",
     "EnumClientVerdictAction",
+    "ModelAdditiveClientBinding",
+    "ModelAdditiveMissRecord",
     "ModelBindingRegistration",
     "ModelBindingRenderRequest",
     "ModelBindingRenderResult",

@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: OMN-22016
+title: "TC.11 The additive binding rows: the omnimarket-owned criteria (rows, server-side list, miss record)"
+summary: >
+  The adapter contract's client_bindings.claude_code section declares the additive rows
+  session_start (SessionStart), agent_spawn (SubagentStart) and per_prompt (UserPromptSubmit), each
+  naming its profile and a latency_budget_ms at or under its cap (5000, 3000, 500). The context pack
+  orchestrator's contract carries enabled_additive_profiles, empty by default, and answers an
+  additive call for a profile not on it with none and builds nothing; per_prompt is refused by the
+  list loader until TC.13. The adapter waits no longer than the row's budget, prints nothing and
+  journals one miss record (profile, reason, elapsed time only) when no package arrives, and the
+  session_start row acts only in a session started inside the workspace registry or an
+  internal-library clone. The miss record is registered in the emit registry as node-owned. The
+  hook-inventory criterion AC6 is bound by omniclaude. AC4 (a lab session quotes the sentinel with
+  the profile enabled) needs a live Claude Code session on a lab host and is bound by the evidence
+  that run produces, not by this change.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - events
+  - topics
+requirements:
+  - id: req-omn22016-scope
+    statement: The session_start row acts only inside the workspace registry or an internal clone.
+    acceptance:
+      - id: AC1
+        statement: "AC1 (D7): the `session_start` row acts only when the session's starting directory is inside the workspace registry or an internal-library clone, and in every other directory the hook exits at once, prints nothing, sends no request and journals no miss record; the session-start skill returns the same package inline in both cases -- falsifier: `uv run pytest -k session_start_scope`, running the hook entry point on a recorded SessionStart input with the fixture session started in three directories (inside the registry, inside an internal-library clone, unrelated), asserting for the unrelated one empty stdout, zero requests on a recording bus double and an empty miss journal, asserting the package is emitted for the other two, and asserting the session-start skill returns the same package inline in all three with exit 0"
+  - id: req-omn22016-budget
+    statement: Each row waits no longer than its budget and per_prompt stays off the list.
+    acceptance:
+      - id: AC2
+        statement: "AC2 (D8): each of the three rows waits on the lab bus for its package up to its profile's `latency_budget_ms` (at most 5000 for `session_start`, 3000 for `agent_spawn`, 500 for `per_prompt`, each at p95) and no longer; `per_prompt` stays out of the server-side list until TC.13 promotes it -- falsifier: `uv run pytest -k additive_latency_budget`, a fixture per row asserting the wait never exceeds the row's budget, a budget above its cap is refused, and `per_prompt` is absent from the enabled list"
+  - id: req-omn22016-empty-list
+    statement: With the list empty every additive call returns none.
+    acceptance:
+      - id: AC3
+        statement: "AC3: with the server-side list empty, every additive call returns `none` and the hook prints nothing -- falsifier: `uv run pytest -k additive_list_empty`, asserting no `additionalContext` on stdout for each of the three rows while the list is empty"
+  - id: req-omn22016-timeout
+    statement: A forced timeout prints nothing and journals one miss record.
+    acceptance:
+      - id: AC5
+        statement: "AC5: a forced adapter timeout yields no output within the budget and one journalled miss record -- falsifier: `uv run pytest -k additive_forced_timeout`, asserting empty stdout, no partial package, exit within the budget and exactly one miss record"
+  - id: req-omn22016-miss-record
+    statement: The miss record is registered in the emit registry and carries no package text.
+    acceptance:
+      - id: AC7
+        statement: "AC7: the miss record is a journal record type declared in the hook registry with parity in omnimarket's emit registry, `event_registry_drift` passing in both, and it carries the profile, the reason and the elapsed time only -- falsifier: `uv run pytest -k event_registry_drift` in omniclaude and in omnimarket, plus a record-shape test failing if package text appears in the record"
+evidence_requirements:
+  - kind: tests
+    description: The additive row, server-list and miss-record tests.
+    command: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -q -m "not kafka" --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22016-ac1-scope
+    binds_ac: [AC1]
+    description: The unrelated directory prints nothing, sends nothing and journals nothing; the registry and internal-clone sessions emit the same package; the inline orchestrator call returns it in all three. Fails at the merge base, which has no additive row.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -k session_start_scope -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac2-budget
+    binds_ac: [AC2]
+    description: The wait handed to the bus is the budget left after startup for each row, a budget above its cap is refused, per_prompt is absent from the shipped list and refused by the loader, and a package after the budget is not injected.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k 'additive_latency_budget or additive_list_loader' -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac3-empty-list
+    binds_ac: [AC3]
+    description: Through the real orchestrator the empty list answers none for all three rows and the hook prints nothing; a control with session_start enabled prints the package, so the zero is not vacuous.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k additive_list_empty -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac5-timeout
+    binds_ac: [AC5]
+    description: A bus that never answers, answers with a partial chunk, a package that fails its hash or the size cap, or fails outright, each prints nothing, exits 0 and journals exactly one miss record.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -k additive_forced_timeout -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac7-miss-record
+    binds_ac: [AC7]
+    description: The omnimarket half. The miss record has exactly profile, reason and elapsed_ms and refuses package text, it is registered in the emit registry as node-owned, and the drift validator passes against the pinned omniclaude. The hook-registry declaration is not made, because this node and not a hook script journals the record; see the PR body.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/validators/test_event_registry_drift.py -k event_registry_drift -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-deploy-source-validation
+    description: >-
+      Deployment source validation. The checkout's own environment loads the shipped contract and
+      asserts the three additive rows with their caps, the empty enabled list, and that the list
+      loader refuses per_prompt. It runs on the hosted runner with no bus, no installed binding and
+      no sibling checkout, and fails at the merge base, which has no ModelAdditiveClientBinding.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run --frozen python -c '
+          import tempfile, pathlib, yaml
+          from omnimarket.models.claude_code_binding import ADDITIVE_BUDGET_CAPS_MS, ModelAdditiveClientBinding
+          from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import load_client_section
+          from omnimarket.nodes.node_context_pack_orchestrator.handlers import load_enabled_additive_profiles
+          rows = {b.name: b for b in load_client_section().bindings if isinstance(b, ModelAdditiveClientBinding)}
+          assert {n: r.latency_budget_ms for n, r in rows.items()} == dict(ADDITIVE_BUDGET_CAPS_MS), rows
+          assert load_enabled_additive_profiles() == ()
+          p = pathlib.Path(tempfile.mkdtemp()) / "c.yaml"
+          p.write_text(yaml.safe_dump({"enabled_additive_profiles": ["per_prompt"]}))
+          try:
+              load_enabled_additive_profiles(p)
+          except ValueError:
+              print(sorted(rows))
+          else:
+              raise SystemExit("per_prompt accepted")'
+  - id: dod-omn22016-integration-proof
+    description: The pushed head ran the adapter, orchestrator and drift tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane tc11-resume-1435 -- uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_context_pack_orchestrator tests/validators/test_event_registry_drift.py -q -m "not kafka" --no-cov
+        cwd: .
+  - id: dod-omn22016-emit-parity-ratchet
+    description: The emit registry's new additive.miss kind is held byte-identical across the old and new enrichment paths, and the parity ratchet counts it (event types 104 -> 105, published records 107 -> 108, keyed 104 -> 105). Fails without the additive.miss registry row.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_enrichment_parity.py -q -m 'not kafka' --no-cov"
