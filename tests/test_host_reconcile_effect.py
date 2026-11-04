@@ -902,7 +902,7 @@ def test_a_symlink_to_some_other_onex_is_still_not_repaired(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = setup_workspace(tmp_path, monkeypatch)
-    _shadow, _wrapper, _console = dispatch_link_shadow(root)
+    _shadow, _wrapper, console = dispatch_link_shadow(root)
     other = tmp_path / "other-venv/bin/onex"
     other.parent.mkdir(parents=True)
     other.write_text("#!/bin/sh\nexit 0\n")
@@ -914,6 +914,18 @@ def test_a_symlink_to_some_other_onex_is_still_not_repaired(
     surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
     assert surface.verdict == "SHADOWED"
     assert shadow.resolve() == other.resolve()
+    assert not list(shadow.parent.glob("onex.shadowed-*"))
+
+    shadow.unlink()
+    shadow.symlink_to(console)
+    result = handler(RecordingEvaluator(), RecordingPublisher()).handle(
+        command(root, "check")
+    )
+    surface = next(s for s in result.surfaces if s.surface == "onex-path-shadow")
+    assert surface.verdict == "SHADOWED"
+    assert "uv tool uninstall" not in surface.detail
+    assert "moves the dispatch-venv link aside and links the wrapper" in surface.detail
+    assert shadow.resolve() == console.resolve()
     assert not list(shadow.parent.glob("onex.shadowed-*"))
 
 
