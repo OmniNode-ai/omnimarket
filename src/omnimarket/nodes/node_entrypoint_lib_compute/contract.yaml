@@ -1,0 +1,130 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_entrypoint_lib_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decide the output lines, exit codes and budgets of the one-command skill entrypoint helpers from caller-supplied facts.
+  Pure behaviour-preserving decisions; the caller performs all I/O.
+input_model:
+  name: ModelEntrypointLibRequest
+  module: omnimarket.nodes.node_entrypoint_lib_compute.models.model_entrypoint_lib
+output_model:
+  name: ModelEntrypointLibResult
+  module: omnimarket.nodes.node_entrypoint_lib_compute.models.model_entrypoint_lib
+handler:
+  module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+  class: HandlerEntrypointLib
+  input_model: omnimarket.nodes.node_entrypoint_lib_compute.models.model_entrypoint_lib.ModelEntrypointLibRequest
+  output_model: omnimarket.nodes.node_entrypoint_lib_compute.models.model_entrypoint_lib.ModelEntrypointLibResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib:HandlerEntrypointLib
+  handlers:
+    - operation: refuse
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: dry_run_guard
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: require_env
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: detail_dir
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: verb_budget
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: start_line
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: step_start_line
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: step_end_line
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: timing_line
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: too_old
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: verb_failed
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: last
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+    - operation: field
+      handler:
+        name: HandlerEntrypointLib
+        module: omnimarket.nodes.node_entrypoint_lib_compute.handlers.handler_entrypoint_lib
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [refuse, dry_run_guard, require_env, detail_dir, verb_budget, start_line, step_start_line, step_end_line, timing_line, too_old, verb_failed, last, field], description: Which question is asked.}
+  code: {type: int, required: false}
+  rule: {type: str, required: false}
+  reason: {type: str, required: false}
+  fix: {type: str, required: false}
+  timing_line: {type: str, required: false}
+  onex_dry_run: {type: str, required: false}
+  registry_root: {type: str, required: false}
+  ledger_path: {type: str, required: false}
+  sandbox_marker_exists: {type: bool, required: false}
+  detail_dir_override: {type: str, required: false}
+  verb: {type: str, required: false}
+  budget_override: {type: str, required: false}
+  entry_name: {type: str, required: false}
+  detail_path: {type: str, required: false}
+  step: {type: str, required: false}
+  budget_seconds: {type: str, required: false}
+  rc: {type: int, required: false}
+  took_seconds: {type: str, required: false}
+  total_seconds: {type: str, required: false}
+  steps: {type: list, required: false}
+  detail_text: {type: str, required: false}
+  verb_error_suffix: {type: str, required: false}
+  prefix: {type: str, required: false}
+  line: {type: str, required: false}
+  key: {type: str, required: false}
+outputs:
+  operation: {type: str}
+  stdout: {type: list}
+  stderr: {type: list}
+  exit_code: {type: int}
+  value: {type: str}
+terminal_event: onex.evt.omnimarket.entrypoint-lib-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.entrypoint-lib-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.entrypoint-lib-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.entrypoint-lib-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.entrypoint-lib-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Decide the output lines, exit codes and budgets of the one-command skill entrypoint helpers from caller-supplied facts.
+  author: OmniNode Team
+  created: "2026-11-03"
