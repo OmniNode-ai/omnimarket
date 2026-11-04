@@ -30,7 +30,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_linear_snapshot_effect -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn22361-deploy-linear-snapshot-node
-  description: 'Hosted deploy smoke, runnable on the hosted runner with no Linear key, broker or lab route: resolve node_linear_snapshot_effect through its onex.nodes entry point and write a snapshot from a fake two-issue Linear answer, requiring a written result with two issues and a JSON whose operator is the viewer id and whose issues carry the named fields.'
+  description: 'Hosted source readback and runtime smoke with no Linear key, broker or lab route: read the handler at the checked-out revision through the GitHub contents API and require its bytes to match the handler exercised locally, then resolve node_linear_snapshot_effect through its onex.nodes entry point and write a snapshot from a fake two-issue Linear answer, requiring a written result with two issues and a JSON whose operator is the viewer id and whose issues carry the named fields.'
   source: manual
   checks:
   - check_type: command
@@ -39,6 +39,13 @@ dod_evidence:
       export PYTHONDONTWRITEBYTECODE=1;
       probe_dir="$(mktemp -d)";
       trap 'rm -rf "$probe_dir"' EXIT;
+      handler_path=src/omnimarket/nodes/node_linear_snapshot_effect/handlers/handler_linear_snapshot.py;
+      curl --fail --silent --show-error --location --connect-timeout 10 --max-time 60 \
+        -H "Authorization: Bearer ${GH_TOKEN:-${GITHUB_TOKEN:?GitHub token required}}" \
+        -H "Accept: application/vnd.github.raw+json" \
+        "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/$handler_path?ref=$(git rev-parse HEAD)" \
+        --output "$probe_dir/handler.py";
+      cmp "$probe_dir/handler.py" "$handler_path";
       uv run --locked python -c '
       import importlib, json, sys
       from importlib.metadata import entry_points

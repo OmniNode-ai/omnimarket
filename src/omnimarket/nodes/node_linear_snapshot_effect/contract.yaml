@@ -45,7 +45,7 @@ descriptor:
   - reads the signed-in subject's open Linear issues through the GraphQL API with the LINEAR_API_KEY of the environment
   - writes linear-<UTC date>.json under the output directory, replacing the file atomically
 metadata:
-  transport_type: local
+  transport_type: HTTP
   description: >-
     Write linear-<UTC date>.json, the signed-in subject's open Linear issues, validated by one typed model.
   author: OmniNode Team
