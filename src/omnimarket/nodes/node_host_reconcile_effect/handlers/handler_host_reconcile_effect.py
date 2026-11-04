@@ -927,8 +927,23 @@ class _ReconcilePass:
                 resolved = shadow.resolve() if is_symlink else shadow
                 wrapper_resolved = wrapper.resolve() if is_symlink else wrapper
                 is_dangling = is_symlink and not shadow.exists()
+                # A live link to the dispatch venv's own console script: the wrapper
+                # execs that exact script, so replacing the link loses nothing.
+                dispatch_console = (
+                    Path(
+                        self.request.dispatch_venv or self.root / ".onex-dispatch-venv"
+                    )
+                    / "bin/onex"
+                )
+                is_dispatch_link = (
+                    is_symlink
+                    and not is_dangling
+                    and dispatch_console.is_file()
+                    and resolved == dispatch_console.resolve()
+                    and resolved != wrapper_resolved
+                )
                 moved_to = link_error = ""
-                if self.request.mode == "repair" and is_dangling:
+                if self.request.mode == "repair" and (is_dangling or is_dispatch_link):
                     moved_to, link_error = self.replace_dangling_shadow(shadow, wrapper)
                     if moved_to and not link_error:
                         wrapper_resolved = wrapper.resolve()
@@ -946,6 +961,7 @@ class _ReconcilePass:
                         resolved=str(resolved),
                         points_to_wrapper=points_to_wrapper,
                         is_dangling=is_dangling,
+                        is_dispatch_link=is_dispatch_link,
                         moved_to=moved_to,
                         link_error=link_error,
                     )

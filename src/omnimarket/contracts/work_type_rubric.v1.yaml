@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# work_type_rubric.v1.yaml: the work-type rubric (OMN-22263), held as data.
+#
+# Every id, rule, token, task-class mapping, outcome word, edge and pattern the
+# work classification uses is in this file; the handlers hold none. The overlay key
+# work_type_rubric names the file the handlers read. A work-type id the enum lacks, an
+# enum member this file does not declare, a task class that task_class_contracts.v1.yaml
+# does not name, or a rule whose precision on the labelled sample is under the
+# overlay's precision_bar refuses the load.
+#
+# The ticket's Class: line (factory-unblock, factory-fix, feature) is a priority class
+# carried as its own field. A rule may read it as one input; it is never a work type.
+rubric_version: "1.0.0"
+undetermined_id: undetermined
+
+work_types:
+  build:
+    task_classes: [code_generation, test]
+    completion_evidence: merged-pull-request
+    good_outcomes: [merged]
+  fix:
+    task_classes: [code_generation, refactor]
+    completion_evidence: merged-pull-request
+    good_outcomes: [merged]
+  plan:
+    task_classes: [planning]
+    completion_evidence: good-terminal-outcome
+    good_outcomes: [done, handed-off]
+  diagnose:
+    task_classes: [reasoning, complex_reasoning]
+    completion_evidence: good-terminal-outcome
+    good_outcomes: [done, handed-off]
+  review:
+    task_classes: [review, code_review]
+    completion_evidence: good-terminal-outcome
+    good_outcomes: [done, handed-off]
+  land:
+    task_classes: [agent_delegation]
+    completion_evidence: merged-pull-request
+    good_outcomes: [merged]
+  ops:
+    task_classes: [agent_delegation]
+    completion_evidence: merged-pull-request
+    good_outcomes: [merged]
+  docs:
+    task_classes: [documentation, document]
+    completion_evidence: merged-pull-request
+    good_outcomes: [merged]
+  triage:
+    task_classes: [summarization, reasoning]
+    completion_evidence: good-terminal-outcome
+    good_outcomes: [done, handed-off]
+  research:
+    task_classes: [research]
+    completion_evidence: good-terminal-outcome
+    good_outcomes: [done, handed-off]
+  undetermined:
+    task_classes: []
+    completion_evidence: none
+    good_outcomes: []
+
+# First match wins, top to bottom. Within one rule every declared input must match;
+# within one input any listed value matches.
+rules:
+  - {id: land-lane-token, work_type: land, match: {lane_tokens: [land, drain, handoff]}}
+  - {id: triage-lane-token, work_type: triage, match: {lane_tokens: [triage]}}
+  - {id: review-lane-token, work_type: review, match: {lane_tokens: [review, audit]}}
+  - {id: review-adversarial-brief, work_type: review, match: {route_dest: [claude], brief_words: [adversarial]}}
+  - {id: diagnose-lane-token, work_type: diagnose, match: {lane_tokens: [diagnose, rca, debug]}}
+  - {id: research-lane-token, work_type: research, match: {lane_tokens: [research, survey]}}
+  - {id: plan-lane-token, work_type: plan, match: {lane_tokens: [plan, design]}}
+  - {id: docs-lane-token, work_type: docs, match: {lane_tokens: [docs, doc, readme]}}
+  - {id: ops-lane-token, work_type: ops, match: {lane_tokens: [ops, deploy, install, host]}}
+  - {id: fix-lane-token, work_type: fix, match: {lane_tokens: [fix, repair, hotfix]}}
+  - {id: fix-ticket-class, work_type: fix, match: {ticket_class: [factory-fix]}}
+  - {id: build-lane-token, work_type: build, match: {lane_tokens: [build, feat, add, impl]}}
+  - {id: build-ticket-class, work_type: build, match: {ticket_class: [feature]}}
+
+# Existing classifiers: candidate rule inputs. Each is admitted only when its measured
+# precision on the labelled sample reaches the overlay's precision_bar; below it the
+# classifier is excluded and the exclusion is a recorded result. `maps` turns the
+# classifier's own label into a work-type id.
+classifier_inputs:
+  - id: node_prompt_intent_classify_compute
+    maps: {feature_request: build, bug_fix: fix, planning: plan, question: research}
+  - id: operator_capture_utterance_classifier
+    maps: {directive: build, question: research, status: triage}
+  - id: node_ticket_classify_compute
+    maps: {feature: build, bug: fix, chore: ops, docs: docs}
+  - id: delegation_admission_task_intent_classifier
+    maps: {code: build, review: review, plan: plan}
+
+# How lane names split into tokens, and how brief text is read for features.
+tokenizer:
+  separators: ["-", ":", "_", "/", " "]
+brief_patterns:
+  repositories_named: "\\b(?:omni[a-z_]+|onex[a-z_]*)\\b"
+  criteria_line: "^\\s*(?:-\\s*\\[[ x]\\]\\s*)?AC\\d+\\b"
+  falsifier: "falsifier"
+  premise_verified: "verified by:"
+  premise_unverified: "UNVERIFIED"
+  brief_word: "[a-z][a-z-]{3,}"
+
+# Unrated units (no ROUTE line) take a brief stratum from features read before the run.
+# It names no band and no score. First stratum whose limits all hold wins; null is unbounded.
+brief_strata:
+  - {id: brief-small, max_repositories: 1, max_length_chars: 1500, max_criteria: 3}
+  - {id: brief-medium, max_repositories: 3, max_length_chars: 6000, max_criteria: 10}
+  - {id: brief-large, max_repositories: null, max_length_chars: null, max_criteria: null}
+
+# Causes a unit stays undetermined, as data so consumers keep them apart.
+causes:
+  no_intent_text: no-intent-text
+  no_rule: no-rule-matched
+  no_route: no-route
+  route_invalid: route-invalid
+
+# The prompt the lab route receives for a unit no rule decides. {ids} is the declared
+# work-type ids except the undetermined id; {text} is the unit's first operator prompt, in
+# memory for the call and never stored.
+lab_route_prompt: "Classify the work below into exactly one of these ids: {ids}. Reply with the id only.\n\n{text}"
