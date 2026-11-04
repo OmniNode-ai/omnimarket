@@ -13,6 +13,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.nodes.node_dod_verify.services.scoped_item_binding import (
+    scoped_item_binding_violation,
+)
 from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
 
 pytestmark = pytest.mark.unit
@@ -170,6 +173,11 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
         if "ac_bindings" in item:
             violations.append(f"{label}: use binds_ac, not ac_bindings")
         if "binds_ac" not in item:
+            continue
+        # OMN-22403: the rule lives in the verifier's service module.
+        refusal = scoped_item_binding_violation(item)
+        if refusal:
+            violations.append(f"{label}: {refusal}")
             continue
         bound.update(item["binds_ac"])
         argvs = [
@@ -628,3 +636,77 @@ def test_omn22399_the_diagnosis_marks_a_missing_target() -> None:
     violations = contract_binds_violations("OMN-21733.yaml", contract)
     assert len(violations) == 1
     assert "test_gone.py (MISSING)" in binds_diagnosis(contract, violations[0])
+
+
+# OMN-22403: the hosted receipt gate's own annotation, read from omnimarket#4918
+# (run 41703707219, job 126153377625) and, with other ids, from nine more PRs.
+_LOCAL_DONE_GATE_REFUSAL = (
+    "scoped local_done_gate, which this hosted check runs neither at the head "
+    "nor at the merge base; this job gives every bound test a Postgres "
+    "(INTEGRATION_POSTGRES_*, PG16 initdb on PATH), so bind a database test "
+    "with the default execution_scope"
+)
+
+
+def _contract_with_scoped_item(*, binds: list[str]) -> dict[str, Any]:
+    """The shape of omnimarket#4918's contracts/OMN-22159.yaml public-cutover-pending."""
+    scoped: dict[str, Any] = {
+        "id": "public-cutover-pending",
+        "execution_scope": "local_done_gate",
+        "checks": [
+            {
+                "check_type": "test_passes",
+                "check_value": "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+            }
+        ],
+    }
+    if binds:
+        scoped["binds_ac"] = binds
+    return {
+        "requirements": [{"acceptance": [{"id": "AC1"}, {"id": "AC3"}]}],
+        "dod_evidence": [
+            {
+                "id": "hosted-proof",
+                "binds_ac": ["AC1", "AC3"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+                    }
+                ],
+            },
+            scoped,
+        ],
+    }
+
+
+def test_contract_binds_refuses_a_bound_local_done_gate_item() -> None:
+    """The hosted gate cannot control a scoped item, so binding one is refused here first."""
+    violations = contract_binds_violations(
+        "OMN-22159.yaml", _contract_with_scoped_item(binds=["AC3"])
+    )
+    assert violations == [
+        "OMN-22159.yaml:public-cutover-pending: a local_done_gate item may not carry "
+        "binds_ac; " + _LOCAL_DONE_GATE_REFUSAL.split(";")[0]
+    ]
+
+
+def test_contract_binds_accepts_an_unbound_local_done_gate_item() -> None:
+    """An unbound or empty-bound scoped item is the dev convention and stays valid."""
+    contract = _contract_with_scoped_item(binds=[])
+    assert contract_binds_violations("OMN-22159.yaml", contract) == []
+    contract["dod_evidence"][1]["binds_ac"] = []
+    assert contract_binds_violations("OMN-22159.yaml", contract) == []
+
+
+def test_no_repo_contract_binds_a_local_done_gate_item() -> None:
+    """OMN-22403: no contract on the tree binds an acceptance criterion to a scoped item."""
+    violations: list[str] = []
+    for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
+        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        violations.extend(
+            violation
+            for violation in contract_binds_violations(path.name, contract)
+            if "a local_done_gate item may not carry binds_ac" in violation
+        )
+    assert not violations, "\n".join(violations)

@@ -13,15 +13,15 @@ description: >-
   none is packaged. The handler reads no clock, file, environment or envelope.
 input_model:
   name: ModelWorkProgressRequest
-  module: omnimarket.nodes.node_work_progress_compute.models.model_work_progress
+  module: omnimarket.models.model_work_progress
 output_model:
   name: ModelWorkProgressResult
-  module: omnimarket.nodes.node_work_progress_compute.models.model_work_progress
+  module: omnimarket.models.model_work_progress
 handler:
   module: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_progress
   class: HandlerWorkProgress
-  input_model: omnimarket.nodes.node_work_progress_compute.models.model_work_progress.ModelWorkProgressRequest
-  output_model: omnimarket.nodes.node_work_progress_compute.models.model_work_progress.ModelWorkProgressResult
+  input_model: omnimarket.models.model_work_progress.ModelWorkProgressRequest
+  output_model: omnimarket.models.model_work_progress.ModelWorkProgressResult
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_progress:HandlerWorkProgress

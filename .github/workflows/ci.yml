@@ -433,6 +433,14 @@ jobs:
       # with pre-commit hook 'projection-contract-access'.
       - name: Projection contract-access gate
         run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule access
+      # OMN-18883 (trap one): a routed entry of a contract that writes a db_io
+      # table reaches BaseProjectionRunner but overrides handle with a typed
+      # request whose result reports no rows_upserted. The runtime wires a typed
+      # handle on the typed arm, so the write path is never called and the
+      # projection stores zero rows at zero lag. SYNC with pre-commit hook
+      # 'projection-typed-entry'.
+      - name: Projection typed-entry gate
+        run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry
       # OMN-18043: every projection_api exposure declares a cursor_column, against
       # the shrink-only baseline scripts/validation/projection_cursor_baseline.txt.
       # SYNC with pre-commit hook 'projection-cursor-declared'.
@@ -3628,6 +3636,15 @@ jobs:
           echo "RESIDUAL: this harness is SCRAM; staging/prod are AWS_MSK_IAM."
           echo "================================================================"
           uv run --no-sync pytest tests/integration/customer_path/ -v --tb=short -p no:randomly
+      - name: Verify webhook HTTP boundary and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+      - name: Verify webhook HTTP Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_WEBHOOK_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
 
   # ============================================================================
   # JS TOOLCHAIN HERMETIC (OMN-18012 gate 5)
