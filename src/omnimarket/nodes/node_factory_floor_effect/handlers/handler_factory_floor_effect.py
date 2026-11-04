@@ -59,6 +59,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     read_ledger_rows,
     resolve_dir,
     resolve_home,
+    resolve_host_table,
     runner_fleet_cause,
     write_result,
 )
@@ -144,13 +145,11 @@ class HandlerFactoryFloorEffect:
         placement_dir = resolve_dir(
             os.environ, ls.placement_dir_env, ls.placement_dir_fallback
         )
-        table_env = os.environ.get(ls.host_table_env, "").strip()
-        host_table_path = (
-            Path(table_env)
-            if table_env
-            else home / overlay.host_table_relpath
-            if overlay is not None and overlay.host_table_relpath
-            else None
+        host_table_path = resolve_host_table(
+            os.environ,
+            ls.host_table_env,
+            home,
+            overlay.host_table_relpath if overlay is not None else "",
         )
         linear_snapshot = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_snapshot_glob

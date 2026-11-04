@@ -50,14 +50,14 @@ class TestResolvePathsHelper:
     def test_none_with_omni_home_returns_src_dirs(self, tmp_path: Path) -> None:
         """When paths=None and OMNI_HOME is set, returns existing repo/src dirs."""
         # Build a minimal fake omni_home with a few repo/src dirs
-        (tmp_path / "omnibase_compat" / "src").mkdir(parents=True)
+        (tmp_path / "omnibase_core" / "src").mkdir(parents=True)
         (tmp_path / "omnimarket" / "src").mkdir(parents=True)
 
         with mock.patch.dict(os.environ, {"OMNI_HOME": str(tmp_path)}):
             resolved = _resolve_paths(None)
 
         # Should include the src dirs that exist
-        assert any("omnibase_compat" in p and p.endswith("src") for p in resolved)
+        assert any("omnibase_core" in p and p.endswith("src") for p in resolved)
         assert any("omnimarket" in p and p.endswith("src") for p in resolved)
 
     def test_none_without_omni_home_returns_empty(
@@ -88,7 +88,7 @@ class TestHandlerShimScannerNoArg:
         import datetime
 
         # Create a tiny fake repo with one shim-decorated file
-        src_dir = tmp_path / "omnibase_compat" / "src"
+        src_dir = tmp_path / "omnibase_core" / "src"
         src_dir.mkdir(parents=True)
         shim_py = src_dir / "shim_fn.py"
         shim_py.write_text(
