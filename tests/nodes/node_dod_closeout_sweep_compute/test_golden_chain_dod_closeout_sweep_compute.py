@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
+import subprocess
+import tempfile
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
@@ -21,6 +24,7 @@ from typing import Any
 import pytest
 import yaml
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
@@ -717,6 +721,42 @@ async def test_error_chain_over_the_bus_fails_without_a_result(tmp_path: Path) -
 
 # --- flip_decision --------------------------------------------------------------
 
+
+def _runtime_proof() -> dict[str, Any]:
+    """A merged change and a lab-pass receipt at a revision that contains it (OMN-22334).
+
+    The flip predicate also demands runtime proof; these cases are about its other conjuncts,
+    so each starts from a ticket whose change is shown to run. Built in a real git repository.
+    """
+    root = Path(tempfile.mkdtemp(prefix="omn22334-golden-"))
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=scrub_git_location_env(os.environ),
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (root / "f").write_text("change")
+    git("add", "f")
+    git("commit", "-q", "-m", "change")
+    change = git("rev-parse", "HEAD")
+    return {
+        "ticket_id": "OMN-1",
+        "change_merged": True,
+        "change_sha": change,
+        "repo_path": str(root),
+        "receipts": [
+            {"kind": "lab_pass", "passed": True, "revision": change, "host": "h201"}
+        ],
+    }
+
+
 FLIPPABLE: dict[str, Any] = {
     "ticket_id": "OMN-1",
     "total_checks": 6,
@@ -726,6 +766,7 @@ FLIPPABLE: dict[str, Any] = {
     "criteria": ["AC1", "AC2", "AC3"],
     "bound_criteria": ["AC1", "AC2", "AC3"],
     "all_prs_merged": True,
+    "runtime_proof": _runtime_proof(),
 }
 
 

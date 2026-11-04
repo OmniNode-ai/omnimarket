@@ -1,0 +1,24 @@
+name: node_transcript_session_facts_compute
+version: "1.0.0"
+description: "Pure aggregation of transcript JSONL text into deterministic session facts"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_transcript_session_facts_compute: "omnimarket.nodes.node_transcript_session_facts_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "transcript", "session-facts", "deterministic"]
+pack: "pipeline"
+display_name: "Transcript Session Facts Compute"
+node_role: "compute"
+tickets: ["OMN-22259"]

@@ -101,8 +101,15 @@ class HandlerLabFillStatus:
             )
 
         def tiers(idle: bool) -> str:
+            # OMN-22413: the machinery tier reads first once the caller supplied its diagnostic.
+            machinery = (
+                "tier0-machinery:" + kind_reasons("machinery", idle) + ";"
+                if "machinery" in diagnostics
+                else ""
+            )
             return (
-                "tier1-m4-sprint:"
+                machinery
+                + "tier1-m4-sprint:"
                 + ",".join(
                     kind_reasons(k, idle) for k in KINDS if k not in APPROVED_KINDS
                 )
