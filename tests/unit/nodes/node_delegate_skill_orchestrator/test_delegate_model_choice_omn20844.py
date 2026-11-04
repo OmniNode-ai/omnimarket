@@ -45,6 +45,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 
 pytestmark = pytest.mark.unit
 
@@ -148,6 +149,7 @@ def _dispatch(
 ) -> tuple[dict[str, object], _Effect]:
     monkeypatch.setattr(port_mod, "resolve_delegation_backend", lambda *_a, **_k: route)
     effect = _Effect()
+    mirror_tenant_in_store(tmp_path / "d.sqlite", "acme")
     port = LocalDelegationDispatchPort(
         effect_handler=effect,
         evidence_db_path=tmp_path / "d.sqlite",
