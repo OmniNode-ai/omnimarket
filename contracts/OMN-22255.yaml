@@ -1,0 +1,119 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-22255
+title: 'Network graph compute node reads every contract topic dialect and returns vertices keyed repo/name with exact topic edges'
+summary: 'node_network_graph_compute turns contract texts and a handed overlay into vertices keyed repo/name and exact (publisher, topic, subscriber) edges, reading every topic dialect in its own pure code'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn22255-ac1
+    statement: 'the contract reader reads every topic dialect, and a reader that skips a dialect fails that dialect''s fixture'
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the contract reader reads every topic dialect, and a reader that skips a dialect fails that dialect''s fixture -- falsifier: uv run pytest tests/nodes/node_network_graph_compute -q -k dialect'
+  - id: req-omn22255-ac2
+    statement: 'every node contract is a vertex keyed repo/name; a contract with node_type and invalid YAML below it is one vertex unknown / contract-unreadable; a contract.yaml without node_type yields none'
+    acceptance:
+      - id: AC2
+        statement: 'AC2: every node contract is a vertex keyed repo/name; a contract with node_type and invalid YAML below it is one vertex unknown / contract-unreadable; a contract.yaml without node_type yields none -- falsifier: uv run pytest tests/nodes/node_network_graph_compute -q -k vertex'
+  - id: req-omn22255-ac3
+    statement: 'edges are exact, one per (publisher, topic, subscriber) among declared topics, self-loops kept'
+    acceptance:
+      - id: AC3
+        statement: 'AC3: edges are exact, one per (publisher, topic, subscriber) among declared topics, self-loops kept -- falsifier: uv run pytest tests/nodes/node_network_graph_compute -q -k edges'
+  - id: req-omn22255-ac4
+    statement: 'the node rule holds: no I/O library, overlay values handed in, sorted lists, identical bytes on two runs, and each omnibase_core checker passes over the node and rejects a planted violation'
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the node rule holds: no I/O library, overlay values handed in, sorted lists, identical bytes on two runs, and each omnibase_core checker passes over the node and rejects a planted violation -- falsifier: uv run pytest tests/nodes/node_network_graph_compute -q -k node_rule'
+  - id: req-omn22255-ac5
+    statement: 'the node runs under the in-memory profile and the Redpanda profile with equal output digests, on a lab host'
+    acceptance:
+      - id: AC5
+        statement: 'AC5: the node runs under the in-memory profile and the Redpanda profile with equal output digests, on a lab host -- falsifier: uv run pytest tests/nodes/node_network_graph_compute -q -k profile_parity'
+evidence_requirements:
+  - kind: "tests"
+    description: "Dialect, vertex, edge, node-rule and profile-parity tests of the node"
+    command: "uv run pytest tests/nodes/node_network_graph_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: 'AC1: a reader that skips a dialect fails that dialect''s fixture'
+    source: "manual"
+    binds_ac: [AC1]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k dialect --tb=line'
+        cwd: "."
+  - id: "dod-002"
+    description: 'AC2: the same name in two repos is two vertices, unparseable below node_type is unknown / contract-unreadable, no node_type is no vertex'
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k vertex --tb=line'
+        cwd: "."
+  - id: "dod-003"
+    description: 'AC3: a missing, an extra and a reversed edge each fail the exact comparison'
+    source: "manual"
+    binds_ac: [AC3]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k edges --tb=line'
+        cwd: "."
+  - id: "dod-004"
+    description: 'AC4: each omnibase_core checker passes over the node and rejects one planted violation'
+    source: "manual"
+    binds_ac: [AC4]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k node_rule --tb=line'
+        cwd: "."
+  - id: "dod-005"
+    description: 'AC5: the in-memory profile runs here; the Redpanda profile runs on a lab host'
+    source: "manual"
+    binds_ac: [AC5]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k profile_parity --tb=line'
+        cwd: "."
+  - id: "dod-omn22255-deploy-source-readback"
+    description: "Hosted-runner deploy artifact readback for the pure compute node: compare the published handler, dialect table and runtime contract at the evaluated commit with this checkout, require the graph handler and dialect wiring, then run the registered route and in-memory bus profile. This checks published source and local dispatch, not a runtime rollout or Redpanda parity."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_network_graph_compute;
+          for relative_path in handlers/handler_network_graph_compute.py handlers/dialect_table.py contract.yaml; do
+            target="$readback_dir/$(basename "$relative_path")";
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/$relative_path" \
+              --output "$target";
+            cmp "$node_path/$relative_path" "$target";
+          done;
+          grep -F 'class HandlerNetworkGraphCompute:' "$readback_dir/handler_network_graph_compute.py";
+          grep -F 'read_declared_topics(parsed, DIALECT_TABLE)' "$readback_dir/handler_network_graph_compute.py";
+          grep -F 'command_topic: onex.cmd.omnimarket.network-graph-compute-requested.v1' "$readback_dir/contract.yaml";
+          printf 'network graph compute source readback matched %s\n' "$revision"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_network_graph_compute/test_registration.py tests/nodes/node_network_graph_compute/test_profile_parity.py -q --no-cov -m "not kafka" --tb=line'
+        cwd: "."
+  - id: "dod-omn22255-integration-proof"
+    description: "The pushed head ran the network graph compute node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22255 -- uv run --frozen pytest tests/nodes/node_network_graph_compute -q --no-cov
+        cwd: "."
