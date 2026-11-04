@@ -19,7 +19,9 @@ import secrets
 from collections.abc import Mapping
 from pathlib import Path
 
+from omnimarket.adapters.local_session_files import LocalSessionFiles
 from omnimarket.models.session_scope import ModelSessionScope
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 from ..models.model_session_front_door import (
     HOST_MODES,
@@ -203,7 +205,12 @@ def session_env_body(
 
 
 def init(
-    root: Path, lane: str, body: str, *, dry_run: bool
+    root: Path,
+    lane: str,
+    body: str,
+    *,
+    dry_run: bool,
+    fs: ProtocolSessionFiles | None = None,
 ) -> tuple[list[str], Path | None]:
     """Write ``session.env`` and an empty ``lanes.txt``; refuse (code 3) when it exists."""
     folder = root / token("lane", lane)
@@ -220,26 +227,31 @@ def init(
     if path.exists():
         raise RefusedError(f"{path} exists; pick a new session lane name", code=3)
     folder.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
+    files = fs or LocalSessionFiles()
+    files.write_text(path, body, encoding="utf-8")
     if not (folder / "lanes.txt").exists():
-        (folder / "lanes.txt").write_text(LANES_HEADER, encoding="utf-8")
+        files.write_text(folder / "lanes.txt", LANES_HEADER, encoding="utf-8")
     resolved = path.resolve()
     return [f"wrote {folder / 'lanes.txt'}", f"SESSION_ENV={resolved}"], resolved
 
 
-def show(root: Path, lane: str) -> list[str]:
+def show(root: Path, lane: str, *, fs: ProtocolSessionFiles | None = None) -> list[str]:
     path = root / token("lane", lane) / "session.env"
     if not path.is_file():
         raise RefusedError(f"{path} is missing; run the session start first")
-    return path.read_text(encoding="utf-8").splitlines()
+    return (fs or LocalSessionFiles()).read_text(path, encoding="utf-8").splitlines()
 
 
-def read_lanes(folder: Path) -> list[tuple[str, str]]:
+def read_lanes(
+    folder: Path, *, fs: ProtocolSessionFiles | None = None
+) -> list[tuple[str, str]]:
     path = folder / "lanes.txt"
     if not path.is_file():
         raise RefusedError(f"{path} is missing; run init first")
     rows = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for raw in (
+        (fs or LocalSessionFiles()).read_text(path, encoding="utf-8").splitlines()
+    ):
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue

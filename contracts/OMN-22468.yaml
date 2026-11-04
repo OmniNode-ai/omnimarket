@@ -1,0 +1,46 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22468"
+title: "The four session compute nodes pass node-purity: their file reads and writes move behind an injected boundary"
+summary: "The session front door, checkpoint, resume and team identity compute nodes read and wrote files directly, so the node-purity hook failed on dev with 12 file-I/O violations. Their file access now goes through one injected port, ProtocolSessionFiles, whose local adapter holds the only real disk calls; each call site takes the port as a keyword argument defaulting to the local adapter, so existing callers are unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22468-session-nodes-pure"
+    statement: |-
+      The four session compute nodes perform no file I/O themselves; they read and write only through the injected ProtocolSessionFiles port, with no node-purity-ok suppression. The criteria below are transcribed from the ticket body.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the node-purity hook reports no violation in the four session compute nodes and no node-purity-ok suppression line is added to them
+      - id: "AC2"
+        statement: |-
+          AC2: the four nodes keep their behaviour: their existing tests pass with the file access supplied through the injected boundary
+evidence_requirements:
+  - kind: "tests"
+    description: "The repo's own node-purity hook passes the seven handler files and none carries a node-purity-ok line; on dev 63bc3719c the same hook reports 12 violations in them."
+    command: "uv run pytest tests/test_omn22468_session_files_port.py -q -k node_purity_gate"
+  - kind: "tests"
+    description: "Each of the twelve call sites reads or writes through an injected fake port and fails when it touches the disk directly (two mutants reverted to direct reads were caught); the four nodes' existing tests pass."
+    command: "uv run pytest tests/test_omn22468_session_files_port.py tests/nodes/node_session_front_door_compute tests/nodes/node_session_checkpoint_compute tests/nodes/node_session_resume_compute tests/nodes/node_team_identity_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22468-ac1-node-purity-gate"
+    description: "AC1. The node-purity pre-commit hook, the pinned omnibase_core validator, passes the seven session handler files, and none of them carries a node-purity-ok suppression. The port module is absent at the merge base, so the file cannot be collected there."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn22468_session_files_port.py -q --no-cov -k node_purity_gate"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22468-ac2-port-and-node-tests"
+    description: "AC2. Every changed function reads or writes through an injected fake ProtocolSessionFiles and is caught if it touches the disk directly; the four nodes' existing tests still pass with the local adapter as the default."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn22468_session_files_port.py tests/nodes/node_session_front_door_compute tests/nodes/node_session_checkpoint_compute tests/nodes/node_session_resume_compute tests/nodes/node_team_identity_compute -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"

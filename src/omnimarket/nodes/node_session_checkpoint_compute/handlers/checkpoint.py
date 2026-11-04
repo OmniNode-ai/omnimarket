@@ -35,7 +35,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.adapters.local_session_files import LocalSessionFiles
 from omnimarket.models.session_scope import ModelSessionScope
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 SCHEMA_ID = "omni.session-checkpoint/1"
 STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -232,9 +234,9 @@ def validate(data: Any) -> list[str]:
     return findings
 
 
-def load(path: Path) -> dict[str, Any]:
+def load(path: Path, *, fs: ProtocolSessionFiles | None = None) -> dict[str, Any]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads((fs or LocalSessionFiles()).read_text(path, encoding="utf-8"))
     except OSError as exc:
         raise InputError(f"cannot read checkpoint {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
@@ -268,14 +270,18 @@ def records(directory: Path, scope: ModelSessionScope) -> list[dict[str, Any]]:
     return sorted(result, key=lambda data: str(data["written_at"]), reverse=True)
 
 
-def newest(directory: Path, scope: ModelSessionScope) -> Path | None:
+def newest(
+    directory: Path, scope: ModelSessionScope, *, fs: ProtocolSessionFiles | None = None
+) -> Path | None:
     """The valid checkpoint this session owns with the newest written_at, or None."""
     best: tuple[str, Path] | None = None
     if not directory.is_dir():
         return None
     for path in directory.glob(f"*{SUFFIX}"):
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(
+                (fs or LocalSessionFiles()).read_text(path, encoding="utf-8")
+            )
         except (OSError, json.JSONDecodeError):
             continue
         if validate(data) or not owned(scope, data):
@@ -285,7 +291,9 @@ def newest(directory: Path, scope: ModelSessionScope) -> Path | None:
     return best[1] if best else None
 
 
-def newest_prose_handoff(directory: Path, scope: ModelSessionScope) -> Path | None:
+def newest_prose_handoff(
+    directory: Path, scope: ModelSessionScope, *, fs: ProtocolSessionFiles | None = None
+) -> Path | None:
     """The newest prose handoff this session owns (the fallback when no checkpoint is found).
 
     An operator session takes the newest one, as before. A member session takes only a handoff
@@ -296,7 +304,9 @@ def newest_prose_handoff(directory: Path, scope: ModelSessionScope) -> Path | No
     candidates: list[tuple[float, str, Path]] = []
     for path in directory.glob(f"*{PROSE_SUFFIX}"):
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            text = (fs or LocalSessionFiles()).read_text(
+                path, encoding="utf-8", errors="replace"
+            )
             modified = path.stat().st_mtime
         except OSError:
             continue
