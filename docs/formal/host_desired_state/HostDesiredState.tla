@@ -25,9 +25,13 @@
      ReleasedLayerNeverReturns: a released id cannot be live at a strictly later
        generation, including releases in durable tombstone history. Tombstones=
        FALSE omits the durable tombstone guard and permits a fresh registration.
-     DependentLeavesWithDependency: every accepted record has no live layer whose
-       dependency is in its cumulative gone set. Cascade=FALSE disables BOTH the
-       transitive cascade and register-time dependency refusal.
+     DependentLeavesWithDependency: in every accepted record each live layer's
+       dependency is live, merged into the base (the dependent then survives: the
+       base holds the dependency's change), or was never registered; a dependency
+       that left for any other reason (withdrawn, expired, dependency_released) is
+       in the cumulative gone set and takes its dependents with it, transitively.
+       Cascade=FALSE disables the transitive cascade only; the register-time
+       refusal of a layer whose dependency is already gone stays on.
      StaleRequestNeverApplies: each applied request names the live revision at
        application. CheckRevision=FALSE accepts a stale extend/withdraw revision.
      NoLaunchOnExpiredLayer: no admitted lane used an expired held record or a
@@ -102,12 +106,13 @@ VARIABLES scn, fault, v, pendingHistory, commitHistory, tombHistory
 vars == <<scn, fault, v, pendingHistory, commitHistory, tombHistory>>
 S == v.state
 EmptyCore == [live |-> {}, rev |-> [l \in Layers |-> 0], exp |-> [l \in Layers |-> 0],
-              tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0]
+              tomb |-> {}, gone |-> {}, merged |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0]
 
 Leave(W, leaving, why) ==
   [W EXCEPT !.live = @ \ leaving,
             !.tomb = IF Tombstones THEN @ \cup leaving ELSE @,
             !.gone = IF why = "merged" THEN @ ELSE @ \cup leaving,
+            !.merged = IF why = "merged" THEN @ \cup leaving ELSE @,
             !.rel = [l \in Layers |-> IF l \in leaving THEN why ELSE W.rel[l]]]
 
 Note(W, r, outcome, reason) ==
@@ -123,7 +128,7 @@ ApplyReq(W, r, t) ==
       refused == Note(W, r, "refused", "stale_or_released")
   IN IF r \in W.consumed THEN W
      ELSE CASE Kind[r] = "register" ->
-            IF Cascade /\ Dep[l] \in W.gone
+            IF Dep[l] \in W.gone
               THEN Leave(Note(W, r, "refused", "dependency_released"), {l}, "dependency_released")
             ELSE IF l \notin W.live /\ (~Tombstones \/ l \notin W.tomb)
               THEN [applied EXCEPT !.live = @ \cup {l}, !.rev[l] = 1,
@@ -151,15 +156,15 @@ MinExp(W) == IF W.live = {} THEN INF
 Compute(core, rs, off, t, merged, g) ==
   LET W0 == [core EXCEPT !.off = off]
       W1 == Fold([live |-> W0.live, rev |-> W0.rev, exp |-> W0.exp,
-                  tomb |-> W0.tomb, gone |-> W0.gone, consumed |-> W0.consumed,
+                  tomb |-> W0.tomb, gone |-> W0.gone, merged |-> W0.merged, consumed |-> W0.consumed,
                   decisions |-> W0.decisions, off |-> W0.off, rel |-> NoRel], rs, t)
       W2 == Leave(W1, W1.live \cap merged, "merged")
       W3 == Leave(W2, {l \in W2.live : W2.exp[l] <= t}, "expired")
       W4 == IF Cascade THEN Close(W3, Cardinality(Layers)) ELSE W3
       coreOut == [live |-> W4.live, rev |-> W4.rev, exp |-> W4.exp, tomb |-> W4.tomb,
-                  gone |-> W4.gone, consumed |-> W4.consumed, decisions |-> W4.decisions, off |-> off]
+                  gone |-> W4.gone, merged |-> W4.merged, consumed |-> W4.consumed, decisions |-> W4.decisions, off |-> off]
       tag == [name |-> g, commit |-> <<g, W4.live, W4.rev, W4.exp>>]
-      rec == [gen |-> g, pub |-> "h1", live |-> W4.live, gone |-> W4.gone, tomb |-> W4.tomb,
+      rec == [gen |-> g, pub |-> "h1", live |-> W4.live, gone |-> W4.gone, merged |-> W4.merged, tomb |-> W4.tomb,
               rel |-> W4.rel, valid_until |-> MinExp(W4), tag |-> tag,
               decisions |-> W4.decisions, consumed |-> W4.consumed]
   IN [gen |-> g, core |-> coreOut, rec |-> rec]
@@ -285,7 +290,7 @@ OpenOther ==
 PublishOther ==
   /\ Ready /\ v.otherStage = 1
   /\ LET g == IF scn = "otherEarly" THEN 2 ELSE 1
-         rec == [gen |-> g, pub |-> "h2", live |-> {}, gone |-> {}, tomb |-> {},
+         rec == [gen |-> g, pub |-> "h2", live |-> {}, gone |-> {}, merged |-> {}, tomb |-> {},
                  rel |-> NoRel, valid_until |-> INF,
                  tag |-> [name |-> g, commit |-> <<"unknown writer">>], decisions |-> {}, consumed |-> {}]
      IN v' = [v EXCEPT !.bus = Append(@, [gen |-> g, rec |-> rec, ep |-> v.otherEpoch]),
@@ -394,8 +399,12 @@ ReleasedLayerNeverReturns ==
   /\ \A g \in 1..MaxGen : \A i \in DOMAIN AccSeq :
        g < AccSeq[i].rec.gen => tombHistory[g] \cap AccSeq[i].rec.live = {}
 
+NeverRegistered(rec, d) == d \notin (rec.live \cup rec.gone \cup rec.merged)
 DependentLeavesWithDependency ==
-  \A i \in DOMAIN AccSeq : \A l \in AccSeq[i].rec.live : Dep[l] \notin AccSeq[i].rec.gone
+  \A i \in DOMAIN AccSeq : LET rec == AccSeq[i].rec IN
+    /\ \A l \in rec.live : Dep[l] = "none" \/ Dep[l] \in rec.live \cup rec.merged
+                            \/ NeverRegistered(rec, Dep[l])
+    /\ rec.merged \subseteq v.merged        \* a merge release rests on the fetched base holding the change
 
 StaleRequestNeverApplies ==
   /\ \A d \in S.core.decisions : d.outcome = "applied" => d.named = d.at
