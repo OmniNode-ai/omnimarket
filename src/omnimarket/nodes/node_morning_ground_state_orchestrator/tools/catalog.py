@@ -21,6 +21,7 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from ..handlers.handler_morning_runtime_probe import RUNTIME_PROBE_TOOL
 from .base import (
     BAR_ROW_RE,
     LANE_PATTERN,
@@ -600,5 +601,6 @@ TOOLS: dict[str, MorningTool] = {
         *READ_TOOLS,
         *LINEAR_TOOLS,
         *EFFECT_TOOLS,
+        RUNTIME_PROBE_TOOL,
     )
 }

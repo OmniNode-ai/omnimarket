@@ -121,6 +121,7 @@
         "kb_read_source_doc",
         "kb_read_plan",
         "ledger_lane_rows",
+        "runtime_probe",
         "pull_merge_state",
         "ticket_prs",
         "merged_prs_in_window",
@@ -142,7 +143,7 @@
       "note": [
         "Order: ledger_append_claim, kb_worktree_prepare, kb_read_artifact ground_state (today's input), kb_source_doc_keys then kb_read_source_doc per key (each result names the copy read and every copy checked: record it), the per-row reads, delegate_prose for prose (delegate_dispose each), kb_write_artifact rebaseline, kb_scrub, kb_commit, delegation_cells, ledger_append_terminal.",
         "Rules: morning_readme 'Reconcile' and 'The verdict ladder'.",
-        "LANDED proof: pull_merge_state (merged with merge sha) or ticket_prs; DEPLOYED needs a running-artifact readback, and PROBED needs the row's own probe executed in this run: no tool executes a row's free-form probe, so a row can reach PROBED only when one of your read tools IS its probe, and otherwise its highest honest stage stands with the probe named in residuals.",
+        "LANDED proof: pull_merge_state (merged with merge sha) or ticket_prs. For every runtime row, call runtime_probe with its source document key, source_sha256 and one-based source_line from kb_read_source_doc. The tool executes that row's HTTP GET and optional JSON field/equality readback on the declared dev runtime host. Cite source_command, actual stdout/stderr, observed_at and source_sha256. DEPLOYED still needs running-artifact readback; PROBED still needs this run's complete row probe and its expected result. Nonzero/null exits, empty or truncated output, absent fields, refusals and unsupported probe shapes stay unverified with the exact reason in residuals; never infer runtime state from a merge or substitute a health response for a version/digest assertion.",
         "LINEAR MISMATCHES: linear_issues scope=workspace ids=[...] for every ticket a row carries; report only.",
         "Today's triage TERMINAL row: ledger_lane_rows lanes=[morning-triage-adjudication, morning-triage] since_hours=24."
       ]
@@ -268,15 +269,15 @@
       "workflow job steps and logs (6b's sweep result JSON, 6c's failing step name and the BUSINESS PROOF gate step): no GitHub read on the morning host, and the watcher projection holds no job steps",
       "runtime / lane health receipts for the dev lane refresh, the stability lane, the prod dispatch outcome and the CI runner queue depth"
     ],
-    "plan-reconcile": [
-      "runtime_probe: a row's own Done-proof probe as a typed operation (version or digest readback, introspection), so no row reaches DEPLOYED or PROBED unless one of the read tools is its probe"
-    ],
     "integration-plan": [
       "package_release_read: the package index's latest version and upload time per package",
       "image digests pushed by the build workflows (only the watcher-window run conclusions are readable)"
     ],
     "dropped-work": [
       "lab_pass_receipts_read: the lab-pass receipt artifacts for the integration head (actions artifacts API: no GitHub read on the morning host)"
+    ],
+    "plan-reconcile": [
+      "Non-HTTP Done-proof probes: runtime_probe refuses unsupported commands and pipelines; report each refusal and affected row UNKNOWN rather than substitute merge or health evidence."
     ]
   },
   "pending": {}

@@ -11,6 +11,7 @@ file name or a heading, never a path.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import socket
@@ -739,11 +740,25 @@ def kb_source_doc_keys(ctx: ModelMorningToolContext, _: BaseModel) -> Result:
 def kb_read_source_doc(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
     """SOURCE-DOC RESOLUTION: the knowledge-base copy by basename first, then the workspace."""
     p = cast(ModelSourceDocInput, params)
-    if p.doc not in ctx.source_docs:
+    resolution, text = read_source_document(ctx, p.doc)
+    if text is None:
+        return resolution
+    return {
+        **resolution,
+        "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        **_chunk(text, p.offset_lines),
+    }
+
+
+def read_source_document(
+    ctx: ModelMorningToolContext, doc: str
+) -> tuple[Result, str | None]:
+    """Resolve the same complete source for display and execution, before paging."""
+    if doc not in ctx.source_docs:
         raise MorningToolRefusalError(
-            f"no source document {p.doc!r}; declared: {sorted(ctx.source_docs)}"
+            f"no source document {doc!r}; declared: {sorted(ctx.source_docs)}"
         )
-    relative = ctx.source_docs[p.doc]
+    relative = ctx.source_docs[doc]
     basename = Path(relative).name
     checked: list[str] = []
     for folder in ("beta/plans", "beta/tracking"):
@@ -752,31 +767,27 @@ def kb_read_source_doc(ctx: ModelMorningToolContext, params: BaseModel) -> Resul
         blob = _git_blob(ctx.kb_clone, spec)
         if blob is not None:
             return {
-                "doc": p.doc,
+                "doc": doc,
                 "declared_path": relative,
                 "copy_read": f"knowledge base origin/main {folder}/{basename}",
                 "checked": cast(JsonValue, checked),
-                **_chunk(blob, p.offset_lines),
-            }
+            }, blob
     local = ctx.root / relative
     checked.append(f"workspace {relative}")
     if local.is_file():
         return {
-            "doc": p.doc,
+            "doc": doc,
             "declared_path": relative,
             "copy_read": f"workspace {relative}",
             "checked": cast(JsonValue, checked),
-            **_chunk(
-                local.read_text(encoding="utf-8", errors="replace"), p.offset_lines
-            ),
-        }
+        }, local.read_text(encoding="utf-8", errors="replace")
     return {
-        "doc": p.doc,
+        "doc": doc,
         "declared_path": relative,
         "copy_read": None,
         "verdict": "UNKNOWN",
         "checked": cast(JsonValue, checked),
-    }
+    }, None
 
 
 def _plans_dir(ctx: ModelMorningToolContext) -> str:

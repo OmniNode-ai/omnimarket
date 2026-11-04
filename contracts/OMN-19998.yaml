@@ -208,3 +208,17 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
         cwd: .
+  - id: dod-omn19998-source-row-runtime-probe
+    description: The four recorded reconciliation failures now have a source-bound runtime probe through the phase tool server. A local HTTP runtime exercises version equality, mismatches, source changes and unsafe-probe refusals. This evidence covers the HTTP probe repair, not the ticket's controller timer criterion or unsupported non-HTTP probes.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-deploy
+    description: Hosted wiring smoke invokes the reconciliation phase tool server against a real loopback HTTP runtime and reads its source-bound output. HTTP failures, stale sources and unsupported commands remain unverified. This smoke requires no lab network or credential and is not a live installation readback.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -k "row_probe or readback or probe_refuses or probe_refuses_mutations"
+        cwd: .

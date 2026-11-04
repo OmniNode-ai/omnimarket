@@ -12,6 +12,7 @@ a free path.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import subprocess
@@ -486,3 +487,228 @@ def test_the_overlay_model_accepts_every_tool_key() -> None:
     assert values <= set(overlay_model.OPTIONAL_VALUES) | set(
         overlay_model.REQUIRED_VALUES
     )
+
+
+# The four recorded plan-reconcile failures: the source of the recurring missing
+# tool, rather than an inference that a merge means the runtime is running.
+RUNTIME_PROBE_FAILURES = (
+    ("2026-10-27T10:13:15Z", "No tool executes a row's free-form Done-proof probe"),
+    (
+        "2026-11-02T10:42:46Z",
+        "No tool runs a row's own Done-proof probe (runtime_probe missing).",
+    ),
+    (
+        "2026-11-03T10:28:50Z",
+        "No runtime_probe tool, so no row's own Done-proof probe could run",
+    ),
+    (
+        "2026-11-04T10:30:45Z",
+        "No tool executes a row's own Done-proof probe, so runtime rows stop at LANDED or UNKNOWN.",
+    ),
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("stamp", "diagnosis"), RUNTIME_PROBE_FAILURES)
+def test_recorded_reconcile_failures_have_an_executable_probe_tool(
+    stamp: str, diagnosis: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _env(monkeypatch, tmp_path)
+    server = HandlerMorningToolServer(_context("plan-reconcile"))
+    assert "runtime_probe" in server.tools, (stamp, diagnosis)
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.tools.phases import (
+        phase_note,
+    )
+
+    guide = phase_note("plan-reconcile")
+    assert "no tool executes" not in guide
+    assert "runtime_probe:" not in guide
+
+
+@pytest.fixture
+def runtime_probe_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.tools import (
+        local_reads,
+    )
+
+    _env(monkeypatch, tmp_path)
+    requests: list[str] = []
+
+    class Runtime(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requests.append(self.path)
+            self.send_response(
+                503
+                if self.path == "/unhealthy"
+                else 302
+                if self.path == "/redirect"
+                else 200
+            )
+            if self.path == "/redirect":
+                self.send_header("Location", "/version")
+            self.end_headers()
+            if self.path == "/empty":
+                return
+            if self.path == "/oversized":
+                self.wfile.write(b"x" * 33_000)
+                return
+            self.wfile.write(
+                b'{"version":"branch-revision","nodes":["probe"],"count":1,"ready":true}'
+            )
+
+        def log_message(self, *_args: Any) -> None:
+            pass
+
+    http = ThreadingHTTPServer(("127.0.0.1", 0), Runtime)
+    thread = Thread(target=http.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(local_reads, "_git_blob", lambda *_args: None)
+    ctx = _context("plan-reconcile").model_copy(
+        update={"source_docs": {"must_do_doc": "docs/must-do.md"}}
+    )
+    source = ctx.root / "docs/must-do.md"
+    declaration = ctx.root / "config/lab/ci_bus_lanes.yaml"
+    declaration.parent.mkdir(parents=True)
+    declaration.write_text(
+        "lanes:\n  dev:\n    broker: localhost:19092\n    security_protocol: PLAINTEXT\n"
+    )
+    monkeypatch.setenv("ONEX_WORKSPACE_CONFIG_ROOT", str(ctx.root))
+
+    def call(
+        command: str, *, row_number: int = 3, source_hash: str | None = None
+    ) -> tuple[bool, dict[str, Any]]:
+        source.write_text(
+            "| # | Work | Done-proof |\n| -- | -- | -- |\n"
+            f"| 14 | Runtime revision | `{command}` |\n"
+        )
+        server = HandlerMorningToolServer(ctx, tmp_path / "calls.jsonl")
+        ok, text = server.call(
+            "runtime_probe",
+            {
+                "doc": "must_do_doc",
+                "source_line": row_number,
+                "source_sha256": source_hash
+                or hashlib.sha256(source.read_bytes()).hexdigest(),
+            },
+        )
+        return ok, json.loads(text) if ok else {"error": text}
+
+    try:
+        yield f"http://127.0.0.1:{http.server_port}", call, requests, source
+    finally:
+        http.shutdown()
+        http.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.unit
+def test_row_probe_runs_through_the_phase_server_with_fresh_output(
+    runtime_probe_server: Any,
+) -> None:
+    origin, call, requests, source = runtime_probe_server
+    command = f"curl -fsS {origin}/version | jq -e '.version == \"branch-revision\"'"
+    ok, result = call(command)
+    assert ok, result
+    assert requests == ["/version"]
+    assert result["executed"] is True
+    assert result["assertion_passed"] is True
+    assert result["source_command"] == command
+    assert result["stdout"] == "true\n"
+    assert result["observed_at"].endswith("Z")
+    assert result["host"]
+    assert result["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+
+
+@pytest.mark.unit
+def test_probe_refuses_a_changed_source_before_the_readback(
+    runtime_probe_server: Any,
+) -> None:
+    origin, call, requests, _source = runtime_probe_server
+    ok, result = call(f"curl -fsS {origin}/version", source_hash="a" * 64)
+    assert not ok, result
+    assert "source changed" in result["error"]
+    assert requests == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("suffix", ["/unhealthy", "/version"])
+def test_failed_row_probe_never_becomes_runtime_proof(
+    runtime_probe_server: Any, suffix: str
+) -> None:
+    origin, call, requests, _source = runtime_probe_server
+    ok, result = call(f"curl -fsS {origin}{suffix} | jq -e '.version == \"old\"'")
+    assert ok, result
+    assert requests == [suffix]
+    assert result["exit"] != 0
+    assert result["assertion_passed"] is not True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "command",
+    [
+        "curl -fsS {origin}/version; touch /tmp/should-not-run",
+        "curl -X POST {origin}/version",
+        "curl -fsS {origin}/version | sh",
+        "curl -fsSL {origin}/version",
+        "curl -fsS http://unbound-runtime.invalid/version",
+        "curl -fsS {origin}/version | jq -e 'true'",
+        "curl -fsS {origin}/version` and `curl -fsS {origin}/health",
+        "curl -fsS {origin}/version?one=1&two=2",
+        "curl -fsS {origin}/version | jq -e '.ready == {{\"nested\":true}}'",
+    ],
+)
+def test_probe_refuses_mutations_unbound_targets_and_unrelated_assertions(
+    runtime_probe_server: Any, command: str
+) -> None:
+    origin, call, requests, _source = runtime_probe_server
+    ok, result = call(command.format(origin=origin))
+    assert not ok, result
+    assert "REFUSED" in result["error"]
+    assert requests == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("suffix", ["/empty", "/oversized", "/redirect"])
+def test_incomplete_readbacks_and_redirects_are_unverified(
+    runtime_probe_server: Any, suffix: str
+) -> None:
+    origin, call, requests, _source = runtime_probe_server
+    ok, result = call(f"curl -fsS {origin}{suffix}")
+    assert ok, result
+    assert requests == [suffix]
+    assert result["exit"] != 0
+    assert result["assertion_passed"] is None
+    assert result["stderr"]
+    assert result["truncated"] is (suffix == "/oversized")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("field", ["missing", "count", "ready"])
+def test_missing_fields_and_json_type_mismatches_are_unverified(
+    runtime_probe_server: Any, field: str
+) -> None:
+    origin, call, requests, _source = runtime_probe_server
+    expected = "1" if field == "ready" else "true"
+    ok, result = call(f"curl -fsS {origin}/version | jq -e '.{field} == {expected}'")
+    assert ok, result
+    assert requests == ["/version"]
+    assert result["exit"] != 0
+    assert result["assertion_passed"] is not True
+
+
+@pytest.mark.unit
+def test_a_readback_without_an_assertion_does_not_infer_a_stage(
+    runtime_probe_server: Any,
+) -> None:
+    origin, call, requests, _source = runtime_probe_server
+    ok, result = call(f"curl -fsS {origin}/version | jq -r '.version'")
+    assert ok, result
+    assert requests == ["/version"]
+    assert result["exit"] == 0
+    assert result["stdout"] == "branch-revision\n"
+    assert result["assertion_passed"] is None
+    assert "stage" not in result
