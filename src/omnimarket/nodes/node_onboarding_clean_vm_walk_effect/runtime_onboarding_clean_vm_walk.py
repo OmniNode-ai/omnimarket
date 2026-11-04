@@ -10,9 +10,6 @@ import sys
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.handler_onboarding_clean_vm_walk import (
     HandlerOnboardingCleanVmWalk,
 )
-from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner import (
-    HandlerSshTart,
-)
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.models.model_clean_vm_walk import (
     ModelWalkRequest,
 )
@@ -23,8 +20,6 @@ def main() -> int:
     parser.add_argument("--input", required=True, help="JSON ModelWalkRequest")
     args = parser.parse_args()
     request = ModelWalkRequest.model_validate_json(args.input)
-    receipt = HandlerOnboardingCleanVmWalk(HandlerSshTart(request.tart_host)).handle(
-        request
-    )
+    receipt = HandlerOnboardingCleanVmWalk().handle(request)
     sys.stdout.write(receipt.model_dump_json() + "\n")
     return 0

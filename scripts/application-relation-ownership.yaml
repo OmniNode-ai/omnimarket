@@ -1147,6 +1147,17 @@ database_objects:
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-21934: the BIGSERIAL id sequence of public.context_audit_events.
+  # Declared ahead of node_projection_context_audit: omnibase_infra vendors the
+  # tenant_projection_writer grant first, and its SQL gate needs the sequence
+  # that GRANT names to have one owner here.
+  - name: context_audit_events_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   - name: contract_registry_id_seq
     kind: sequence
     database_ref: application

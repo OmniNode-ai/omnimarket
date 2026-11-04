@@ -21,4 +21,4 @@ tags: ["orchestrator", "context-pack", "deterministic"]
 pack: "pipeline"
 display_name: "Context Pack Orchestrator"
 node_role: "orchestrator"
-tickets: ["OMN-21110"]
+tickets: ["OMN-21110", "OMN-22016"]
