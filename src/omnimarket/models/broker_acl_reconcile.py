@@ -12,9 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class ModelBrokerAclReconcileRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     mode: Literal["dry_run", "apply"]
-    # Overrides the contract's reconcile command (for example a `uv run --project`
-    # invocation of the same command); empty means the contract's own.
-    reconcile_command: tuple[str, ...] = ()
 
 
 class ModelBrokerAclReconcileResult(BaseModel):
