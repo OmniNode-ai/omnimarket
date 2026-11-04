@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-review-verdict-refusal
+    statement: The review acceptance handler refuses unknown and malformed explicit quorum verdicts before reading reviews.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: unknown verdict strings and malformed explicit quorum objects refuse with typed reasons and make no review or verifier call; supported degraded verdicts and the recorded legacy result remain compatible -- falsifier: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -207,4 +212,12 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
+        cwd: .
+  - id: dod-omn19998-review-verdict-refusal
+    description: Scoped review acceptance regression. New refusal cases failed before the handler change; both bus profiles include passing exact-head receipt controls. The original landing controller timer criteria and the live six-case review proof remain unproven by this check.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_gate_accept.py -q --no-cov -n 0 -p no:randomly
         cwd: .

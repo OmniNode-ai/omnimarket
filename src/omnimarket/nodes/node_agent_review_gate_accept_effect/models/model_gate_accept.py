@@ -30,6 +30,8 @@ class EnumGateAcceptReason(StrEnum):
     NO_UNSUCCESSFUL_VOTER = "no_unsuccessful_voter"
     NO_RECEIPT_REVIEW = "no_receipt_review"
     VOTER_RESULT_UNREADABLE = "voter_result_unreadable"
+    VERDICT_UNREAD = "verdict_unread"
+    VERDICT_UNRECOGNISED = "verdict_unrecognised"
     REVIEWS_UNREADABLE = "reviews_unreadable"
     RECEIPT_MALFORMED = "receipt_malformed"
     RECEIPT_REFUSED = "receipt_refused"
@@ -93,6 +95,13 @@ class ModelGateAcceptPolicy(BaseModel):
         min_length=1, description="The fenced block name that holds a receipt."
     )
     blocking_severities: tuple[str, ...] = Field(min_length=1)
+    degraded_verdicts: tuple[
+        Literal["degraded", "degraded_quorum", "no_models"], ...
+    ] = (
+        "degraded",
+        "degraded_quorum",
+        "no_models",
+    )
     causes: ModelGateAcceptCauses
 
 
