@@ -1,0 +1,42 @@
+case: s6_release_at_old_head
+variant: repaired
+observed_at: '2026-11-03T12:00:00Z'
+derivation: same selection as the observed variant, extended to observed_at 12:00Z, which adds RELEASE
+  2026-11-03T11:54:25Z
+overlay_file: ../../line_board.yaml
+plan_path_contains: []
+sources:
+  pr_watcher: present
+  plans_clone: absent
+  goal_file: absent
+  plans_today: absent
+  linear_snapshot: absent
+  required_contexts: present
+  running_evidence: absent
+  ledger_window: 'present: 3 rows'
+ledger_rows:
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7823
+  ts: '2026-11-03T07:59:41Z'
+  kind: CLAIM
+  original_sha256: 52f6cdffba1a7d6751df29020f68b5ff0b787033f9c347c469aee0ee78429fd1
+  scrubbed_sha256: 3f6ff7bf0508d31e3e180fb9e9c8ad1442def1395bf704753582feba34de28db
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8530
+  ts: '2026-11-03T10:25:27Z'
+  kind: RELEASE
+  original_sha256: 73a66e334478780ba97598ae24adf92ac01c903ace96f06dc27fd02f3839af0b
+  scrubbed_sha256: 7c3369ec43ff80e6aae473146b96aeaf0e669d0c0173b9fc4ef256b59f13c82c
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L9185
+  ts: '2026-11-03T11:54:25Z'
+  kind: RELEASE
+  original_sha256: 3ecb1adc18c5b9e3918f9e897dacf8c93a1901f5b083264bf5ff0e795119d223
+  scrubbed_sha256: 780ad12183faea44a523ccc8d4370dbe8b04bedcc3e096d2e8452f32c74aa29d
+expected:
+  stops: []
+  absent:
+  - line: ticket:OMN-22312
+    kind: release-at-old-head
+    pr: private-repo-3#1511
+scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every
+  stored text are replaced (private-repo-N, [scrubbed]). original_sha256 is the digest of the ledger row
+  as the ledger or its archive roll holds it; scrubbed_sha256 is the digest of the row as stored here.'
+repaired_basis: 'observed: RELEASE 2026-11-03T11:54:25Z at head 148511fd943c supersedes the row of 10:25:27Z'

@@ -38,6 +38,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.delegation.model_claude_credential_probe import (
     ModelClaudeCredentialProbeReceipt,
     ModelClaudeCredentialProbeRequest,
@@ -128,13 +129,18 @@ def load_overlay(path: Path) -> Overlay:
         raise ClaudePoolRefillRefusedError(f"{path} has no mapping at its root")
     where = str(path)
     store = _need(raw, "store", where)
-    table_rel = _need(raw, "hosts_table", where)
-    table_path = (
-        (config_root(path) / table_rel)
-        if not Path(table_rel).is_absolute()
-        else Path(table_rel)
-    )
-    table_path = Path(os.environ.get("ONEX_LAB_RUN_HOSTS") or table_path)
+    # The lab host table is the file ONEX_LAB_RUN_HOSTS names, else the lab_hosts overlay of the overlay roots; the
+    # overlay's own hosts_table (relative to the workspace config root) is read only when neither supplies one.
+    shared = os.environ.get("ONEX_LAB_RUN_HOSTS") or find_node_overlay("lab_hosts")
+    if shared:
+        table_path = Path(shared)
+    else:
+        table_rel = _need(raw, "hosts_table", where)
+        table_path = (
+            (config_root(path) / table_rel)
+            if not Path(table_rel).is_absolute()
+            else Path(table_rel)
+        )
     if not table_path.is_file():
         raise ClaudePoolRefillRefusedError(
             f"the hosts table {table_path} named by {where} does not exist"
