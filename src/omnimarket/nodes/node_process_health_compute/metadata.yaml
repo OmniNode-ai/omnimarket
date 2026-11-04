@@ -1,6 +1,6 @@
 name: node_process_health_compute
 version: "1.0.0"
-description: "Pure daily process-health series (reds, regressions, bugs, validation failures, lane outcomes, merges, andon stops, friction, delegation) and a before and after summary around the factory reset"
+description: "Pure daily process-health series (reds, regressions, bugs, validation failures, lane outcomes, merges, andon stops, friction, delegation) and exact range comparisons with an anonymised observation overlay"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
