@@ -716,6 +716,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # the roughly 31-minute composed boot part of every pull request's CI Summary
     # (operator choice, 2026-10-30).
     "composed-runtime-boot (omnimarket on infra)",
+    # OMN-22126 (prompt-cost-estimate-contract.yml): import schema, token
+    # provenance and both runtime profiles of the prompt cost estimate node.
+    # Unconditional on pull_request and merge_group; an in-job scope step skips
+    # the checks when the node is untouched, so the context is never absent.
+    "prompt-cost-estimate-contract",
 )
 
 # Conclusions that count as "provably passed" for an L4 external context. A
@@ -900,10 +905,7 @@ def has_newer_pull_request_run(
     if workflow_runs is None or current_run_id <= 0 or pr_number <= 0:
         return False
     for raw in workflow_runs:
-        try:
-            run_id = int(str(raw.get("id") or 0))
-        except (TypeError, ValueError):
-            continue
+        run_id = _run_int(raw, "id")
         if run_id <= current_run_id or raw.get("event") != "pull_request":
             continue
         pull_requests = raw.get("pull_requests")
@@ -912,10 +914,7 @@ def has_newer_pull_request_run(
         for pull_request in pull_requests:
             if not isinstance(pull_request, dict):
                 continue
-            try:
-                candidate = int(str(pull_request.get("number") or 0))
-            except (TypeError, ValueError):
-                continue
+            candidate = _run_int(pull_request, "number")
             if candidate == pr_number:
                 return True
     return False
@@ -2030,10 +2029,7 @@ def check_run_event_index(
 
     index: dict[int, str] = {}
     for raw in workflow_runs or []:
-        try:
-            run_id = int(str(raw.get("id") or 0))
-        except (TypeError, ValueError):
-            continue
+        run_id = _run_int(raw, "id")
         event = str(raw.get("event") or "")
         if run_id and event:
             index[run_id] = event

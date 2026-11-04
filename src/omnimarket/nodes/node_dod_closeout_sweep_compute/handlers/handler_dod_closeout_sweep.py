@@ -15,6 +15,10 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta
 
+from omnimarket.handlers.runtime_proof_close_rules import (
+    MERGED_NOT_PROVEN_RUNNING,
+    evaluate_proof_close,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
     refusal_of,
     refusal_reason,
@@ -67,6 +71,7 @@ BLOCK_AC_UNBOUND = "ac:unbound"
 BLOCK_CHECKS_TALLY = "checks:tally"
 BLOCK_BEHAVIOR_NONE = "behavior:none"
 BLOCK_REVERTED_UNCHANGED = "reverted:unchanged"
+BLOCK_MERGED_NOT_PROVEN_RUNNING = "proof:merged-not-yet-proven-running"
 BLOCK_MERGED_UNRELEASED = "released:merged-unreleased"
 BLOCK_RELEASED_INDETERMINATE = "released:indeterminate"
 BLOCK_UNCLASSIFIED = "unclassified"
@@ -474,6 +479,23 @@ def flip_decision(
         unmet.append(BLOCK_BEHAVIOR_NONE)
     if request.prior_reversal and not request.outcome_changed_since_reversal:
         unmet.append(BLOCK_REVERTED_UNCHANGED)
+    # OMN-22334: a merge delivers the change; the ticket closes only on proof it runs.
+    proof_reason = ""
+    if request.all_prs_merged:
+        proof = (
+            evaluate_proof_close(
+                request.runtime_proof.model_copy(update={"change_merged": True})
+            )
+            if request.runtime_proof is not None
+            else None
+        )
+        if proof is None or not proof.allowed:
+            unmet.append(BLOCK_MERGED_NOT_PROVEN_RUNNING)
+            proof_reason = (
+                proof.reason
+                if proof is not None
+                else f"{MERGED_NOT_PROVEN_RUNNING}: no runtime receipt was supplied"
+            )
     if unmet:
         return ModelDodCloseoutDecisionResult(
             kind=kind,
@@ -482,6 +504,7 @@ def flip_decision(
             unmet=unmet,
             primary_blocker=unmet[0],
             unbound_criteria=unbound,
+            reason=proof_reason or None,
         )
     if request.released is EnumReleasedState.MERGED_UNRELEASED:
         return ModelDodCloseoutDecisionResult(
