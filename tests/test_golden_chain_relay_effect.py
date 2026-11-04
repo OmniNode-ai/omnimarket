@@ -51,8 +51,6 @@ from omnimarket.nodes.node_stop_only_on_withdrawal_compute import (
 )
 from omnimarket.nodes.node_stop_only_on_withdrawal_effect import (
     NodeStopOnlyOnWithdrawalEffect,
-)
-from omnimarket.nodes.node_stop_only_on_withdrawal_effect.handlers.handler_s8_ledger_bus import (
     S8LedgerBusWriter,
 )
 from omnimarket.nodes.node_work_ledger_append_effect import (
@@ -676,6 +674,45 @@ def test_relay_effect_packaged_node_runtime_serialization(
     else:
         assert terminal["outcome"] == "withdrawn"
         assert terminal["ledger_cells"]["withdrawn-by"] == "2026-11-04T12:05:00Z-parent"
+
+
+@pytest.mark.parametrize(
+    ("node", "success_topic", "failure_topics"),
+    [
+        (
+            "node_stop_only_on_withdrawal_compute",
+            "onex.evt.omnimarket.stop-only-on-withdrawal-decided.v1",
+            (),
+        ),
+        (
+            "node_stop_only_on_withdrawal_effect",
+            "onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1",
+            ("onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1",),
+        ),
+    ],
+)
+def test_relay_effect_runtime_terminal_routes(
+    node: str, success_topic: str, failure_topics: tuple[str, ...]
+) -> None:
+    from omnibase_infra.runtime.contract_terminal_events import (
+        declared_failure_terminal_topics,
+        load_terminal_event_topics,
+    )
+
+    contract_path = (
+        Path(__file__).parents[1] / "src/omnimarket/nodes" / node / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    publishable = contract["event_bus"]["publish_topics"]
+    assert contract["terminal_event"] == success_topic
+    assert set(publishable) == {success_topic, *failure_topics}
+    assert load_terminal_event_topics(contract_path) == {success_topic, *failure_topics}
+    assert (
+        declared_failure_terminal_topics(
+            contract_path, success_topic=success_topic, publishable_topics=publishable
+        )
+        == failure_topics
+    )
 
 
 def test_relay_effect_policy_and_contract_are_data() -> None:

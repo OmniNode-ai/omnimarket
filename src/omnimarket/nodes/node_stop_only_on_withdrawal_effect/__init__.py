@@ -5,10 +5,11 @@
 from .handlers.handler_stop_only_on_withdrawal_effect import (
     HandlerStopOnlyOnWithdrawalEffect,
 )
+from .ledger_bus_writer import S8LedgerBusWriter
 
 
 class NodeStopOnlyOnWithdrawalEffect(HandlerStopOnlyOnWithdrawalEffect):
     """Registered ONEX effect node."""
 
 
-__all__ = ["NodeStopOnlyOnWithdrawalEffect"]
+__all__ = ["NodeStopOnlyOnWithdrawalEffect", "S8LedgerBusWriter"]
