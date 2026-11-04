@@ -436,6 +436,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # the baseline, unchanged.
         "node_projection_tenant_credentials::tenant_inference_credentials#1",
         "node_projection_tenant_credentials::delegation_routing_tenant_overlay#2",
+        # OMN-19486: the pr_state exposure declares `cursor_column:
+        # observed_at`, a member column, from its first commit.
+        "node_projection_pr_state::pr_state#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -461,7 +464,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 77 as of OMN-21336: compaction_receipts does the same.
 # 79 as of OMN-21217: the tenant credentials node's two state-topic exposures
 # declare their cursors in the same change, so the measured backlog is unmoved.
-_AC3_TOTAL_EXPOSURES = 79
+# 80 as of OMN-19486: the pr_state exposure declares its cursor in the same
+# change, so the measured backlog is unmoved.
+_AC3_TOTAL_EXPOSURES = 80
 _AC3_MEASURED_GAP = 55
 
 

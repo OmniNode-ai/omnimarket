@@ -213,6 +213,7 @@
   "tests/ci/test_topic_closure_gate_wiring.py": 2.01,
   "tests/ci/test_typed_decision_repository_scope_wiring_omn20780.py": 1.71,
   "tests/classifier/test_seed_harness.py": 0.06,
+  "tests/cli/test_pr_state.py": 7.92,
   "tests/delegation_golden/test_code_case_names_its_artifact.py": 0.04,
   "tests/delegation_golden/test_corpus_boundary_conformance.py": 0.7,
   "tests/delegation_golden/test_layer1_contract_unit.py": 0.35,
