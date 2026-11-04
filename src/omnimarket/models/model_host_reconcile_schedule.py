@@ -11,6 +11,10 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from omnimarket.models.model_repository_retirement import (
+    ModelRepositoryRetirementOverlay,
+)
+
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 # What runs the reconciler on a host. Only ``systemd-user`` is installed by the node; the others
@@ -63,6 +67,7 @@ class ModelHostReconcileScheduleOverlay(_Frozen):
     """The node overlay: every host that runs the reconciler."""
 
     hosts: Annotated[tuple[ModelHostReconcileHostRow, ...], Field(min_length=1)]
+    retirement: ModelRepositoryRetirementOverlay | None = None
 
 
 class ModelHostReconcileScheduleResult(_Frozen):
