@@ -16,6 +16,8 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase_spi>=0.3.0"
+  - "omnibase-infra"
+  - "httpx"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "ticket-query", "protocol-project-tracker", "linear"]

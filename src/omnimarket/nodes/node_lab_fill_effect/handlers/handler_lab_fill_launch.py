@@ -87,7 +87,10 @@ def runner_args(
             args += ["--ref", launch.ref]
     if launch.pr:
         args += ["--pr", launch.pr]
-    args += priority_class_args(ticket_text)
+    if launch.priority_class:
+        args += ["--priority-class", launch.priority_class]
+    else:
+        args += priority_class_args(ticket_text)
     args.append("--detach")
     return args
 

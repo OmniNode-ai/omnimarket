@@ -87,6 +87,17 @@ CONTRACT = (
 )
 
 
+STUB_GUEST_IP = "192.0.2.77"
+STUB_ASKPASS = "/opt/walk/askpass"
+
+
+def guest_command(argv: Sequence[str]) -> str:
+    """The unchanged guest command inside the ssh argv's `bash -lc '<command>'`."""
+    shell, flag, command = shlex.split(argv[-1])
+    assert (shell, flag) == ("bash", "-lc")
+    return command
+
+
 def request(**overrides: object) -> ModelWalkRequest:
     return ModelWalkRequest.model_validate(
         {
@@ -97,6 +108,8 @@ def request(**overrides: object) -> ModelWalkRequest:
             "local_model": "test model",
             "tart_host": "192.0.2.1",
             "vm_name": "onex-walk-1234abcd",
+            "guest_askpass_path": STUB_ASKPASS,
+            "guest_ip": STUB_GUEST_IP,
             **overrides,
         }
     )
@@ -127,6 +140,8 @@ class StubTartRunner:
         if self.scripted.get(kind):
             return self.scripted[kind].pop(0)
         stdout = ""
+        if kind == EnumWalkStepKind.TART_IP:
+            stdout = f"{STUB_GUEST_IP}\n"
         if kind in (EnumWalkStepKind.GUEST_RUN_SCRIPT, EnumWalkStepKind.GUEST_READ_LOG):
             stdout = self.log
         if kind in (
@@ -435,10 +450,17 @@ def test_builders_quote_flags_and_use_login_shell() -> None:
     )
     for kind in EnumWalkStepKind:
         argv = walk.build_step_argv(kind, req)
-        assert argv[0] == "~/.local/bin/tart"
         if kind.value.startswith("guest_"):
-            assert argv[1:5] == ("exec", req.vm_name, "bash", "-lc")
-    command = walk.build_step_argv(EnumWalkStepKind.GUEST_RUN_SCRIPT, req)[-1]
+            assert argv[0] == "env"
+            assert argv[3] == "ssh"
+            assert argv[-2] == f"{req.guest_user}@{STUB_GUEST_IP}"
+            assert "exec" not in argv
+            assert guest_command(argv)
+        else:
+            assert argv[0] == "~/.local/bin/tart"
+    command = guest_command(
+        walk.build_step_argv(EnumWalkStepKind.GUEST_RUN_SCRIPT, req)
+    )
     tokens = shlex.split(command)
     assert tokens[tokens.index("--provider") + 1] == "local,ollama"
     assert tokens[tokens.index("--ollama-model") + 1] == "qwen; echo oops"
@@ -532,7 +554,7 @@ def test_dashboard_shell_preserves_auth_query_without_printing_it(
         if projections
         else EnumWalkStepKind.GUEST_DASHBOARD_PROBE_ROOT
     )
-    command = walk.build_step_argv(kind, walk.resolve_request(request()))[-1]
+    command = guest_command(walk.build_step_argv(kind, walk.resolve_request(request())))
     prefix = 'curl() { printf "%s" "${!#}" > "$HOME/curl-target"; printf 200; }; '
     completed = subprocess.run(
         ["bash", "-c", prefix + command],
@@ -665,7 +687,7 @@ def test_cli_prints_receipt(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = StubTartRunner()
-    monkeypatch.setattr(runtime, "HandlerSshTart", lambda _host: runner)
+    monkeypatch.setattr(walk, "HandlerSshTart", lambda _host: runner)
     monkeypatch.setattr("sys.argv", ["walk", "--input", request().model_dump_json()])
     assert runtime.main() == 0
     receipt = ModelWalkReceipt.model_validate_json(capsys.readouterr().out)
