@@ -370,6 +370,50 @@ def test_readme_and_venv_verdict_reads(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("query", ["Goal", "  ## gOaL  "])
+@pytest.mark.parametrize("exact_first", [False, True])
+def test_readme_prefers_exact_heading_over_substring(
+    tmp_path: Path, query: str, exact_first: bool
+) -> None:
+    ctx = _ctx(tmp_path)
+    exact = "## Goal\nexact body\n### Detail\nnested body\n"
+    longer = "## Goal history\nhistory body\n"
+    ctx.place("process_readme").write_text(
+        exact + longer if exact_first else longer + exact
+    )
+
+    section = _run("morning_readme", ctx, heading=query)
+
+    assert section["heading"] == "## Goal"
+    assert section["text"] == exact.rstrip("\n")
+    assert section["lines"] == 4
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "headings", [("## Goal history", "## Goal status"), ("## Goal", "### GOAL")]
+)
+def test_readme_refuses_ambiguous_headings(
+    tmp_path: Path, headings: tuple[str, str]
+) -> None:
+    ctx = _ctx(tmp_path)
+    ctx.place("process_readme").write_text(
+        f"{headings[0]}\nfirst body\n{headings[1]}\nsecond body\n"
+    )
+
+    with pytest.raises(MorningToolRefusalError, match="ambiguous heading"):
+        _run("morning_readme", ctx, heading="Goal")
+
+
+@pytest.mark.unit
+def test_readme_refuses_missing_heading(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+
+    with pytest.raises(MorningToolRefusalError, match="no heading contains"):
+        _run("morning_readme", ctx, heading="Absent section")
+
+
+@pytest.mark.unit
 def test_claim_delegation_and_terminal_go_through_the_overlay_programs(
     tmp_path: Path,
 ) -> None:

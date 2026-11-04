@@ -73,7 +73,7 @@ def test_page_plain_process_status_words_use_the_darker_light_tokens() -> None:
 def test_page_plain_process_opens_on_what_changed_and_folds_the_sources() -> None:
     page = _text("process-health")
     assert page.index("What changed most") < page.index("Quality, before and after")
-    assert page.index("Quality by day") < page.index('class="sources"')
+    assert page.index('id="timeline"') < page.index("What changed most")
     assert '<details class="sources"><summary>Sources and what was read' in page
     assert "lower is better" in page
     assert "slice(0, 5)" in page
