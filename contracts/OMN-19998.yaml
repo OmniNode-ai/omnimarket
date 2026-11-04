@@ -40,6 +40,15 @@ requirements:
         statement: 'AC7: every sentence of a mixed operator prompt has a source-linked disposition, including chat, and replay yields no new rows -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_sentence_dispositions.py -q --no-cov -n 0'
       - id: AC8
         statement: 'AC8: operator message arrivals stay unanswered until an explicit reply, and both item-fold nodes publish typed results through installed contract discovery and in-memory runtime wiring -- falsifier: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0'
+  - id: req-omn19998-orchestrator-promise-capture
+    statement: Stop assistant replies retain promise items, source sentence dispositions and uncertain review candidates without duplicate replay rows.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: orchestrator Stop replies yield exact-quote promise items and one source-linked disposition per sentence; ten commitments remain distinct, replay creates no new row, machine replies yield none and low-confidence items retain an owner and a visible review count -- falsifier: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_classify.py -k promise_classify -q --no-cov -n 0'
+      - id: AC10
+        statement: 'AC10: the labelled-sample measurement reports precision and recall with counts and Wilson intervals, refuses a below-bar or missing-bar activation and keeps candidate words out of tick output -- falsifier: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_bar.py -k promise_bar -q --no-cov -n 0'
+      - id: AC11
+        statement: 'AC11: installed promise nodes accept typed requests and emit typed results through production runtime discovery and in-memory bus dispatch -- falsifier: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_golden_chain_promise_runtime.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -155,4 +164,28 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-promise-capture
+    description: Focused synthetic regressions exercise Stop wire assembly, durable replay, session ownership, machine exclusion, exact source dispositions and shadow tick count output. This is not a live corpus measurement or a running orchestrator tick.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_classify.py -k promise_classify -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-promise-bar
+    description: Sixty explicitly synthetic labelled replies exercise confusion counts, 95 percent Wilson intervals, unset and failed bars, distinct-source requirements and policy-bound activation. Synthetic measurement cannot authorize activation; the operator corpus and decision-1 values remain required.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_bar.py -k promise_bar -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-promise-runtime-deploy
+    description: Hosted deployment smoke discovers the installed promise contracts and wires the real runtime to an in-memory event bus with an injected durable effect store. This asserts no Redpanda replay, corpus measurement or live installation.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_golden_chain_promise_runtime.py -q --no-cov -n 0
         cwd: .

@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_orchestrator_promise_capture_effect
+node_type: EFFECT_GENERIC
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: 0.1.0
+lifecycle: experimental
+description: Consume Stop assistant content records into a durable promise and disposition projection.
+input_model:
+  name: ModelPromiseCaptureRecord
+  module: omnimarket.models.model_orchestrator_promise
+output_model:
+  name: ModelPromiseCaptureReceipt
+  module: omnimarket.models.model_orchestrator_promise
+handler:
+  module: omnimarket.nodes.node_orchestrator_promise_capture_effect.handlers.handler_promise_capture
+  class: HandlerPromiseCapture
+  input_model: omnimarket.models.model_orchestrator_promise.ModelPromiseCaptureRecord
+  output_model: omnimarket.models.model_orchestrator_promise.ModelPromiseCaptureReceipt
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_orchestrator_promise_capture_effect.handlers.handler_promise_capture:HandlerPromiseCapture
+  handlers:
+    - operation: capture_promise
+      topic: onex.cmd.omniintelligence.content-captured.v1
+      handler:
+        name: HandlerPromiseCapture
+        module: omnimarket.nodes.node_orchestrator_promise_capture_effect.handlers.handler_promise_capture
+entrypoint:
+  name: NodeOrchestratorPromiseCaptureEffect
+  module: omnimarket.nodes.node_orchestrator_promise_capture_effect.node
+terminal_event: onex.evt.omnimarket.orchestrator-promise-capture-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omniintelligence.content-captured.v1
+  terminal_events:
+    success: onex.evt.omnimarket.orchestrator-promise-capture-completed.v1
+    failure: onex.evt.omnimarket.orchestrator-promise-capture-failed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omniintelligence.content-captured.v1]
+  publish_topics: [onex.evt.omnimarket.orchestrator-promise-capture-completed.v1, onex.evt.omnimarket.orchestrator-promise-capture-failed.v1]
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 360000
+config:
+  assistant_reply_kind: assistant_reply
+  # Candidate rows and dispositions stay in the durable projection. Only open items
+  # appear in ledger_rows, so the existing tracked-item tick cannot print candidates.
+  candidate_projection: local-store
+  ledger_projection: open-only
+  overlay_required: true
+  policy_node: node_orchestrator_promise_classify_compute
+dod_evidence:
+  PYTEST:
+    command: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_classify.py -q
+    pass_criteria: every focused capture regression passes
