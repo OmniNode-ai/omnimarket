@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_guard_unit_effect
+version: "0.1.0"
+description: "Effect: start a lane engine inside the guard unit onexlane-<lane>-<id>, list its members, and stop it with a confirmed-empty answer. Hosted by a serve process on the host that runs the engine, never by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Lane Guard Unit Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lane_guard_unit_effect: "omnimarket.nodes.node_lane_guard_unit_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lane-guard"]
