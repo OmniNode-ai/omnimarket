@@ -81,11 +81,9 @@ from omnimarket.handlers.cause_signature import (
     cause_key,
     normalize_signature,
 )
+from omnimarket.models.model_priority_rules import ModelPriorityRules
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
     load_priority_rules,
-)
-from omnimarket.nodes.node_lab_placement_compute.models.model_lab_lane_priority import (
-    ModelPriorityRules,
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,

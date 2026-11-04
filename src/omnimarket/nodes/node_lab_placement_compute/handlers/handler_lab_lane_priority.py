@@ -33,16 +33,15 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.model_priority_rules import PRIORITY_OTHER, ModelPriorityRules
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement import (
     NODE_PACKAGE,
     HostTableError,
 )
 from omnimarket.nodes.node_lab_placement_compute.models.model_lab_lane_priority import (
-    PRIORITY_OTHER,
     ModelLanePriorityOverlay,
     ModelLanePriorityRequest,
     ModelLanePriorityResult,
-    ModelPriorityRules,
 )
 
 
