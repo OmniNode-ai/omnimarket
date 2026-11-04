@@ -78,6 +78,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: selected ranges change counts; browser values match the typed compute for counts, shares, durations and medians; partial coverage and sub-bucket ranges remain unmeasured; custom times use Eastern across clock changes -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov'
+  - id: req-omn19998-morning-readme-heading
+    statement: The morning README tool selects a unique exact heading before considering substring matches and refuses ambiguous matches.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: through the registered morning_readme tool, a normalized exact heading wins in either document order, ambiguous substring and duplicate exact matches are refused, and unique substring, missing-heading, listing and section-boundary behavior are covered -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -k readme'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -107,6 +112,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line -k canonical_runtime_bus
+        cwd: .
+  - id: dod-omn19998-morning-readme-heading
+    description: Focused registered-tool regressions cover exact-match precedence, ambiguity refusal, unique substring fallback, missing headings, heading listing and section boundaries. They do not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -k readme
         cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
