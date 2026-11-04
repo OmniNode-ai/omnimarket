@@ -24,6 +24,13 @@
 repos:
   - repo: local
     hooks:
+      - id: workflow-contract-catalog-http
+        name: Workflow contract catalog runtime HTTP route
+        entry: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_contract_catalog_effect/.*|tests/nodes/node_workflow_contract_catalog_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       # OMN-22156: the same guard runs in the required CI lint job, on every PR.
       - id: morning-phase-tools-guard
         name: Morning phase tools guard and wiring
