@@ -15,6 +15,7 @@ from omnimarket.models.process_health import (
     ModelMetric,
     ModelMetricComparison,
     ModelResetSummary,
+    ModelTimeSpan,
     ModelWindowMetrics,
 )
 from omnimarket.nodes.node_process_health_compute.handlers.context import Context
@@ -38,7 +39,7 @@ _DAY_HOURS = 24.0
 
 def comparable_value(metric: ModelMetric, window_hours: float) -> float | None:
     """A count or a duration as a rate per day; a ratio or a median as itself."""
-    if metric.value is None or metric.status is EnumReadStatus.UNREAD:
+    if metric.value is None or metric.status is not EnumReadStatus.READ:
         return None
     if metric.kind in _PER_DAY:
         return metric.value / window_hours * _DAY_HOURS if window_hours > 0 else None
@@ -113,11 +114,16 @@ def _compare(
 def build_summary(
     ctx: Context,
     window_metrics: WindowCalculator,
+    selected: ModelTimeSpan | None = None,
 ) -> ModelResetSummary:
     """Compare [reset - L, reset) with [reset, reset + L), L the shorter of the contract's maximum and the time since the reset."""
     config = ctx.config
     available = (ctx.request.generated_at - config.reset_at).total_seconds() / 3600.0
-    length = min(config.summary_max_hours, available)
+    length = (
+        (selected.end - selected.start).total_seconds() / 3600.0
+        if selected
+        else min(config.summary_max_hours, available)
+    )
     if length <= 0:
         return ModelResetSummary(
             reset_at=config.reset_at,
@@ -134,8 +140,9 @@ def build_summary(
             unmeasured=0,
         )
     span = timedelta(hours=length)
-    before_window = Window(config.reset_at - span, config.reset_at)
-    after_window = Window(config.reset_at, config.reset_at + span)
+    start = selected.start if selected else config.reset_at
+    before_window = Window(start - span, start)
+    after_window = Window(start, start + span)
     before = window_metrics(before_window)
     after = window_metrics(after_window)
     after_by_key = {metric.key: metric for metric in after.metrics}
