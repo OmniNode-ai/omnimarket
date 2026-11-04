@@ -1450,6 +1450,7 @@
   "tests/projection/test_dashboard_catalogue_serves_what_it_lists_omn20709.py": 0.45,
   "tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py": 0.17,
   "tests/projection/test_dashboard_serves_routing_and_quality_omn20754.py": 0.34,
+  "tests/projection/test_dashboard_served_money_omn21342.py": 4.0,
   "tests/projection/test_decisions_cost_matches_the_stored_cost_omn20717.py": 1.17,
   "tests/projection/test_local_serving_auth.py": 0.25,
   "tests/projection/test_omn19919_failure_cause_served.py": 2.31,
