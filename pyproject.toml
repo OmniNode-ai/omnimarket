@@ -374,6 +374,7 @@ node_friction_rollup_compute = "omnimarket.nodes.node_friction_rollup_compute"
 node_factory_floor_compute = "omnimarket.nodes.node_factory_floor_compute"
 node_factory_floor_effect = "omnimarket.nodes.node_factory_floor_effect"
 node_floor_fill_candidates_compute = "omnimarket.nodes.node_floor_fill_candidates_compute"
+node_floor_fill_reducer = "omnimarket.nodes.node_floor_fill_reducer"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_merged_running_count_compute = "omnimarket.nodes.node_merged_running_count_compute"
 node_merged_running_count_effect = "omnimarket.nodes.node_merged_running_count_effect"
@@ -1830,9 +1831,9 @@ markers = [
     "integration: Integration tests that test multiple components together",
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
-    "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus",
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
     "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
+    "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]
