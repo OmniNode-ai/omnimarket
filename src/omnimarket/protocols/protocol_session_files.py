@@ -18,12 +18,9 @@ class ProtocolSessionFiles(Protocol):
         self, path: Path, *, encoding: str = "utf-8", errors: str = "strict"
     ) -> str:
         """Read text from a file path."""
-        ...
 
     def read_bytes(self, path: Path) -> bytes:
         """Read bytes from a file path."""
-        ...
 
     def write_text(self, path: Path, data: str, *, encoding: str = "utf-8") -> None:
         """Write text to a file path."""
-        ...
