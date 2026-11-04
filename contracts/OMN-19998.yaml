@@ -40,6 +40,12 @@ requirements:
         statement: 'AC7: every sentence of a mixed operator prompt has a source-linked disposition, including chat, and replay yields no new rows -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_sentence_dispositions.py -q --no-cov -n 0'
       - id: AC8
         statement: 'AC8: operator message arrivals stay unanswered until an explicit reply, and both item-fold nodes publish typed results through installed contract discovery and in-memory runtime wiring -- falsifier: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0'
+  - id: req-omn19998-open-item-render
+    statement: Every tick surfaces the tracked open items through one pure renderer.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: waiting and throughput ticks print the same exhaustive owner-grouped block over one ledger snapshot, including old items on otherwise OK ticks; unread or absent snapshots print UNKNOWN open-items and prevent OK -- falsifier: uv run pytest tests/nodes/node_operator_item_render_compute/test_item_render.py -k item_render -m "not kafka" -q --no-cov'
+
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -155,4 +161,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-open-item-render
+    description: Focused replay covers 212 items, both ticks over one fixture ledger, failed reads, overlay limits, order, clipping and NEW marks, plus installed entry point discovery and production in-memory runtime wiring. The separate broker test compares the same renderer input across in-memory and Redpanda overlays. Caller migration and installed plugin sentinel proof are separate remaining work.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_item_render_compute/test_item_render.py -k item_render -m "not kafka" -q --no-cov
         cwd: .

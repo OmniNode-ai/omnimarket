@@ -3,11 +3,12 @@ node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >
-  The operator-waiting tick's output and its acting row (RULING 2026-10-14T18:04:24Z, OMN-16177). From the open asks
-  to the operator that loops_check.py operator-waiting read from the ledger inbox, it renders the list (oldest first,
-  grouped by ticket, each with its age, the new ones marked) and, when at least one ask is open, appends one STATUS
-  row with actor=script:operator-waiting-tick through the plugin's row writer, so the ruling audit reads the tick as
-  the mechanism acting. A refused write is one NOTE line after the list, never a lost list.
+  Reads the live ledger with the caller's capture and archive snapshot through the Wave 1 fold.
+  Both waiting and throughput ticks consume that one typed snapshot. The waiting list is the
+  pure operator item renderer's exhaustive output, grouped by owner and oldest first.
+  An unread source prints UNKNOWN open-items and exits nonzero. An otherwise healthy tick
+  still prints every old item. Nonempty known lists append one STATUS row with
+  actor=script:operator-waiting-tick through the row writer; a refused write never hides the list.
 input_model:
   name: ModelOperatorWaitingRequest
   module: omnimarket.nodes.node_operator_waiting_tick_effect.models
@@ -31,6 +32,18 @@ handler_routing:
       handler:
         name: HandlerOperatorWaitingTick
         module: omnimarket.nodes.node_operator_waiting_tick_effect.handler
+    - operation: read_items
+      topic: onex.cmd.omnimarket.operator-items-read-requested.v1
+      handler:
+        name: HandlerOperatorItemsRead
+        module: omnimarket.nodes.node_operator_waiting_tick_effect.handlers.handler_operator_items_read
+      event_model: omnimarket.models.model_operator_item_render.ModelOperatorItemsReadRequest
+      output_model: omnimarket.models.model_operator_item_render.ModelOperatorItemRenderRequest
+published_events:
+  - event_type: ModelOperatorWaiting
+    topic: onex.evt.omnimarket.operator-waiting-tick-completed.v1
+  - event_type: ModelOperatorItemRenderRequest
+    topic: onex.evt.omnimarket.operator-items-read-completed.v1
 terminal_event: onex.evt.omnimarket.operator-waiting-tick-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.operator-waiting-tick-requested.v1
@@ -42,10 +55,11 @@ descriptor:
   runtime_profiles:
     - effects
 event_bus:
-  subscribe_topics: [onex.cmd.omnimarket.operator-waiting-tick-requested.v1]
-  publish_topics: [onex.evt.omnimarket.operator-waiting-tick-completed.v1]
+  subscribe_topics: [onex.cmd.omnimarket.operator-waiting-tick-requested.v1, onex.cmd.omnimarket.operator-items-read-requested.v1]
+  publish_topics: [onex.evt.omnimarket.operator-waiting-tick-completed.v1, onex.evt.omnimarket.operator-items-read-completed.v1]
 metadata:
   transport_type: inmemory
   related_tickets: [OMN-19854]
 externally_consumed_topics:
 - onex.evt.omnimarket.operator-waiting-tick-completed.v1
+- onex.evt.omnimarket.operator-items-read-completed.v1

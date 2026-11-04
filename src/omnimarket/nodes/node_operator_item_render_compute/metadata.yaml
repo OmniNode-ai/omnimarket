@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_operator_item_render_compute
+version: 0.1.0
+description: Pure exhaustive rendering of tracked open operator items
+pack: operator_capture
+node_role: compute
+display_name: Operator Item Render Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_operator_item_render_compute: omnimarket.nodes.node_operator_item_render_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- pydantic>=2.11.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- operator-capture
+- work-ledger
+- open-items

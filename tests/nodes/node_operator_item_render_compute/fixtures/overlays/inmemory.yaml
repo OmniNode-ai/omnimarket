@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+event_bus:
+  type: inmemory
+config:
+  words_chars: 160
+  age_limit_minutes: 60
+  closed_states: [done]
+  new_states: [new]

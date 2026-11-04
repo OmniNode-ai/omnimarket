@@ -57,6 +57,7 @@ descriptor:
   idempotent: true
   timeout_ms: 1000
 inputs:
+  operator_items: {type: object, required: false, description: "The waiting-tick read_items snapshot and render overlay; printed by the shared operator item renderer on every tick. Omission or a failed read is UNKNOWN open-items and prevents OK."}
   now: {type: str, required: true, description: ISO-Z time of the tick.}
   controller_max_minutes: {type: int, required: false}
   controller_run_max_minutes: {type: int, required: false}

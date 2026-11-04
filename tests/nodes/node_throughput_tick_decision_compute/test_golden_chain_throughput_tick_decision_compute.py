@@ -23,6 +23,9 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_throughput_tick_decision_compute as node_package
+from omnimarket.nodes.node_operator_item_render_compute import (
+    NodeOperatorItemRenderCompute,
+)
 from omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision import (
     HandlerThroughputTickDecision,
 )
@@ -64,9 +67,25 @@ HEALTHY_WATCHER = {
 }
 
 
+def empty_items(now: str) -> dict[str, Any]:
+    return {
+        "now": now,
+        "config": yaml.safe_load(
+            NodeOperatorItemRenderCompute.contract_path.read_text()
+        )["config"],
+        "report": {
+            "schema_id": "omni.ask-state/1",
+            "generated_at": now,
+            "since": now,
+            "asks": [],
+        },
+    }
+
+
 def request(**overrides: Any) -> dict[str, Any]:
     return {
         "now": NOW,
+        "operator_items": empty_items(NOW),
         "launchctl": "loaded",
         "launchctl_stdout": '{ "PID" = 77; };',
         "pid_etime": "02:00",
@@ -112,8 +131,23 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
 
 @pytest.mark.parametrize("case", PARITY["cases"], ids=lambda c: str(c["name"]))
 def test_old_behavior_parity(case: dict[str, Any]) -> None:
-    result = HANDLER.handle(ModelThroughputTickRequest.model_validate(case["request"]))
-    assert result.model_dump() == case["expected"]
+    stamp = case["request"]["now"]
+    result = HANDLER.handle(
+        ModelThroughputTickRequest.model_validate(
+            {
+                **case["request"],
+                "operator_items": empty_items(stamp),
+            }
+        )
+    )
+    expected = {
+        **case["expected"],
+        "lines": [
+            *case["expected"]["lines"],
+            f"OPEN-ITEMS n=0 unowned=0 oldest=none as_of={stamp}",
+        ],
+    }
+    assert result.model_dump() == expected
 
 
 def test_parity_fixture_exercises_every_finding_class() -> None:
@@ -196,9 +230,9 @@ def test_land_like_operator_logins_compare_case_insensitively() -> None:
     report_only = HANDLER.handle(
         ModelThroughputTickRequest.model_validate(request(watcher_state=watcher))
     )
-    assert (
-        "floors do not count report-only authors' PRs (landing policy): r/a 1"
-        in (report_only.lines)[-1]
+    assert any(
+        "floors do not count report-only authors' PRs (landing policy): r/a 1" in line
+        for line in report_only.lines
     )
 
 
@@ -242,10 +276,19 @@ async def test_golden_chain_over_the_bus_matches_a_captured_case(
         for c in PARITY["cases"]
         if c["expected"]["status_line"].startswith("THROUGHPUT OK")
     )
-    runtime = await _run(tmp_path, case["request"])
+    stamp = case["request"]["now"]
+    runtime = await _run(
+        tmp_path, {**case["request"], "operator_items": empty_items(stamp)}
+    )
     result = runtime.handler_result
     assert isinstance(result, ModelThroughputTickResult)
-    assert result.model_dump() == case["expected"]
+    assert result.model_dump() == {
+        **case["expected"],
+        "lines": [
+            *case["expected"]["lines"],
+            f"OPEN-ITEMS n=0 unowned=0 oldest=none as_of={stamp}",
+        ],
+    }
     assert (
         ModelThroughputTickResult.model_validate_json(result.model_dump_json())
         == result

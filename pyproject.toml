@@ -1168,6 +1168,7 @@ node_cause_ticket_unresolved_effect = "omnimarket.nodes.node_cause_ticket_unreso
 node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
 node_script_node_src_compute = "omnimarket.nodes.node_script_node_src_compute"
 node_controller_fix_plan_compute = "omnimarket.nodes.node_controller_fix_plan_compute"
+node_operator_item_render_compute = "omnimarket.nodes.node_operator_item_render_compute"
 node_operator_waiting_tick_effect = "omnimarket.nodes.node_operator_waiting_tick_effect"
 node_green_draft_clock_compute = "omnimarket.nodes.node_green_draft_clock_compute"
 node_flow_measures_compute = "omnimarket.nodes.node_flow_measures_compute"
