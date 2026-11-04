@@ -69,6 +69,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k 'dry_run or refusal or contract_and_models'"
         cwd: "."
+  - id: "dod-omn22115-out-of-placement-host"
+    description: "A host the table marks available: false, such as the one the h201 offload keeps out of placement, is reached only when the request names it in allow_unavailable and in hosts; the default refusal and the scope check still stand. Without this the four-host run of AC3 is refused before any pair is written."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k 'allow_unavailable or out_of_placement or unknown_or_unavailable'"
+        cwd: "."
   - id: "dod-omn22115-deploy-local-runtime"
     description: "Hosted-runner smoke invokes the packaged node through the ONEX local runtime with an in-memory backend and asserts that an unknown host is refused with exit code 2 and no pair operations. It needs no lab network or SSH credentials and does not assert a live rollout or the four-host run."
     source: "manual"

@@ -110,7 +110,12 @@ async def _run_over_bus(
     )
     assert discovered.handler_routing is not None
     routes = {r.operation: r for r in discovered.handler_routing.handlers}
-    assert set(routes) == {"resolve", "create", "list"}
+    assert set(routes) == {
+        "resolve",
+        "create",
+        "list",
+        "resolve_house_model_key",
+    }
     route = routes[request.operation.value]
     assert route.event_model is not None
     callback = _make_dispatch_callback(handler, event_model=route.event_model)

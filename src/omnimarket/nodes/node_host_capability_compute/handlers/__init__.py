@@ -4,10 +4,12 @@
 
 from .handler_host_capability import HandlerHostCapability
 from .handler_lane_reader_inputs import HandlerLaneReaderInputs
+from .handler_lane_toolchain import HandlerLaneToolchain
 from .handler_pr_create_placement import HandlerPrCreatePlacement
 
 __all__ = [
     "HandlerHostCapability",
     "HandlerLaneReaderInputs",
+    "HandlerLaneToolchain",
     "HandlerPrCreatePlacement",
 ]

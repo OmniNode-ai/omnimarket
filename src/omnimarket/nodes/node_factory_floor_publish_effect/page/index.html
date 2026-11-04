@@ -15,9 +15,10 @@ function set(){r.setAttribute("data-onex-theme","onex.theme."+(r.getAttribute("d
 set();q.addEventListener("change",set)})();
 </script>
 <style>
-/* One page, a tab bar across the top. The first tab is a dashboard drawn from the same files the other tabs read:
-   each assembly line with its stop reason, each machine with its lanes, today's merges and reds, and how old every
-   source is. The other four tabs draw their own page inside this one. */
+/* One page, a tab bar across the top. The first tab is a dashboard: a one-sentence verdict, what needs a person, then
+   each assembly line, each machine and how old every source is. The other four tabs draw their own page inside this one.
+   The document scrolls as one page; only the title and tab bar stay put. Words use the body face; the mono face is for
+   numbers. Status words are 14px or more, chips and captions 12px or more. */
 :root{
   --floor:var(--onex-color-background-primary); --panel:var(--onex-color-background-secondary);
   --ink:var(--onex-color-text-primary); --muted:var(--onex-color-text-secondary); --rule:var(--onex-color-border-default);
@@ -25,6 +26,7 @@ set();q.addEventListener("change",set)})();
   --steel:#4b5c68; --car:#3d6f8f; --car-edge:#24475d;
   --safety:#d9a300; --safety-soft:#f6e6ae;
   --stop-soft:#f3d2ce; --idle:#b4bdb6;
+  --ok-t:#1f6b38; --warn-t:#8a5300; --stop-t:#a3271f;
   --belt:#3a403d;
   --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
   --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -34,16 +36,17 @@ set();q.addEventListener("change",set)})();
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --stop-soft:#4a2421; --idle:#4a554f;
+  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ff8378;
   --belt:#0f1211; color-scheme:dark}}
 :root[data-theme="dark"]{
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --stop-soft:#4a2421; --idle:#4a554f;
+  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ff8378;
   --belt:#0f1211; color-scheme:dark}
 
 *{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:var(--floor);color:var(--ink);font:15px/1.5 var(--f-body);overflow:hidden}
+body{margin:0;background:var(--floor);color:var(--ink);font:15px/1.5 var(--f-body);min-height:100vh}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:.01em;text-transform:uppercase}
 h2{font-size:1.45rem;font-weight:800;line-height:1}
 h3{font-size:1.05rem;font-weight:600;letter-spacing:.03em}
@@ -53,18 +56,20 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
 .unread{color:var(--muted);font-style:italic}
-.age-stale{color:var(--stop);font-weight:600}
+#freshH,#baysH{scroll-margin-top:180px}
+.age-stale{color:var(--stop-t);font-weight:700}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.c-ok{--c:var(--ok);--ct:var(--ok-t)} .c-warn{--c:var(--warn);--ct:var(--warn-t)} .c-stop{--c:var(--stop);--ct:var(--stop-t)} .c-idle,.c-none{--c:var(--idle);--ct:var(--muted)}
 
-/* frame: the title and tab bar stay put, the chosen tab scrolls */
-.app{height:100vh;height:100dvh;display:flex;flex-direction:column;min-width:0}
-.top{flex:none;background:var(--panel);border-bottom:1px solid var(--rule);
+/* frame: the title and tab bar stay at the top while the page scrolls */
+.app{min-width:0}
+.top{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--rule);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .hazard{height:8px;margin:0 -16px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
 .titlerow{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 20px;padding:10px 0 4px;min-width:0}
 h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
-#stamp{font:500 .74rem/1.4 var(--f-mono);color:var(--muted);min-width:0}
-.banner{background:var(--stop-soft);border:1px solid var(--stop);border-radius:4px;padding:8px 12px;margin:6px 0 2px;font-size:.88rem}
+#stamp{font-size:.8125rem;line-height:1.4;color:var(--muted);min-width:0}
+.banner{background:var(--stop-soft);border:1px solid var(--stop);border-radius:4px;padding:8px 12px;margin:6px 0 2px;font-size:.9rem}
 .banner[hidden]{display:none}
 
 /* tab bar */
@@ -73,100 +78,133 @@ h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
   color:var(--muted);font:inherit;text-align:left;cursor:pointer;padding:8px 12px 9px;display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:9px;align-items:center}
 .tab:hover{color:var(--ink);background:color-mix(in srgb,var(--safety) 10%,transparent)}
 .tab[aria-selected="true"]{background:var(--floor);border-color:var(--rule);color:var(--ink);box-shadow:inset 0 4px 0 var(--safety);padding-top:11px;margin-bottom:-1px}
-.tab i{grid-row:span 2;width:12px;height:12px;border-radius:50%;background:var(--c,var(--idle));box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--idle)) 25%,transparent)}
-.tab i.c-stop{animation:blink 1.1s steps(2,jump-none) infinite}
-.tab i.c-none{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
-@keyframes blink{50%{opacity:.3}}
+.tab i{grid-row:span 3;width:12px;height:12px;border-radius:50%;background:var(--c,var(--idle));box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--idle)) 25%,transparent)}
+.tab i.c-none,.tab i.c-idle{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
+.tab i.c-snap{background:var(--muted);box-shadow:none}
+.c-snap{--c:var(--muted);--ct:var(--muted)}
 .tab b{font:600 1.05rem/1.1 var(--f-display);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tab small{font-size:.72rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab em{font:700 .875rem/1.3 var(--f-body);font-style:normal;color:var(--ct,var(--muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab small{font-size:.8125rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tab .short{display:none}
-.c-ok{--c:var(--ok)} .c-warn{--c:var(--warn)} .c-stop{--c:var(--stop)} .c-idle{--c:var(--idle)}
 
-main{flex:1 1 auto;min-height:0;position:relative}
-.pane{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain}
+main{min-width:0}
+.pane{min-width:0}
 .pane[hidden]{display:none}
-.pane iframe{display:block;width:100%;height:100%;border:0;background:var(--floor)}
+.pane iframe{display:block;width:100%;height:80vh;border:0;background:var(--floor)}
+
+/* a stopped lamp is steady and full strength; it pulses once when it turns red */
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 70%,transparent)}100%{box-shadow:0 0 0 9px transparent}}
+.pulse i{animation:pulse 1s ease-out 1}
 
 /* dashboard */
 .dash{max-width:1500px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) 56px max(16px,env(safe-area-inset-left,0px));display:grid;gap:22px;min-width:0}
+.verdict{background:var(--panel);border:1px solid var(--rule);border-left:6px solid var(--c);border-radius:6px;padding:14px 18px;display:grid;gap:10px;min-width:0}
+.verdict .vs{font:700 1.5rem/1.25 var(--f-body);text-wrap:balance}
+.verdict .vs .st{color:var(--ct)}
+.needs{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.needs li{display:grid;gap:2px;padding:8px 0;border-top:1px dashed var(--rule);font-size:.95rem}
+.needs .who{font-size:.85rem;color:var(--muted)}
+.needs a{font-size:.88rem;font-weight:600}
+.sub{font:700 .85rem/1.2 var(--f-body);letter-spacing:.02em;color:var(--steel);margin-top:2px}
 .board{display:flex;flex-wrap:wrap;gap:2px;background:var(--belt);border-radius:6px;overflow:hidden}
-.lamp{flex:1 1 210px;background:var(--panel);padding:12px 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;align-items:center;min-width:0}
-.lamp i{width:16px;height:16px;border-radius:50%;grid-row:span 2;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
-.lamp.c-stop i{animation:blink 1.1s steps(2,jump-none) infinite}
+.lamp{flex:1 1 200px;background:var(--panel);padding:12px 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;align-items:center;min-width:0}
+.lamp i{width:16px;height:16px;border-radius:50%;grid-row:span 3;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
+.lamp.c-idle i{background:transparent;box-shadow:none;border:2px dashed var(--idle)}
 .lamp b{font:800 1.5rem/1.05 var(--f-display);letter-spacing:.02em;text-transform:uppercase}
-.lamp b small{font:600 .85rem/1 var(--f-display);letter-spacing:.05em;color:var(--muted);margin-left:6px}
-.lamp span{font-size:.8rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.lamp b small{font:600 .9rem/1.2 var(--f-display);letter-spacing:.05em;color:var(--muted);margin-left:6px}
+.lamp .st{font-size:.9rem;font-weight:700;color:var(--ct)}
+.lamp span.why{font-size:.8125rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.key{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.8125rem;color:var(--muted);align-items:center}
+.key span{display:inline-flex;gap:6px;align-items:center}
+.key i{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--c)}
+.key i.dash-dot{background:transparent;border:2px dashed var(--idle)}
+.key i.sq{border-radius:2px;width:14px;height:10px}
 
 .cols{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:22px;align-items:start}
 @media (max-width:1060px){.cols{grid-template-columns:minmax(0,1fr)}}
 .stack{display:grid;gap:22px;min-width:0;align-content:start}
 .sec{display:grid;gap:12px;min-width:0;align-content:start}
-.sec>header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 14px}
-.sec>header p{font-size:.8rem;color:var(--muted)}
+.sec>header{display:grid;gap:2px}
+.sec>header p{font-size:.85rem;color:var(--muted)}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:10px;min-width:0;align-content:start}
-.card.ghost{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 35%,transparent) 6px 7px),var(--panel)}
 .card.stopped{border-color:var(--stop);box-shadow:inset 4px 0 0 var(--stop)}
 
 /* assembly lines */
 .line-top{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
-.sign{font:800 .8rem/1 var(--f-display);letter-spacing:.16em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
-.pill{display:inline-flex;align-items:center;font:500 .72rem/1 var(--f-mono);letter-spacing:.06em;padding:4px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
-.pill.stop{color:var(--stop)} .pill.done,.pill.ok{color:var(--ok)} .pill.active,.pill.warn{color:var(--warn)} .pill.wait,.pill.idle{color:var(--muted)}
+.sign{font:800 .85rem/1 var(--f-display);letter-spacing:.16em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
+.pill{display:inline-flex;align-items:center;font:700 .875rem/1 var(--f-body);padding:4px 8px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.pill.stop{color:var(--stop-t)} .pill.done,.pill.ok{color:var(--ok-t)} .pill.active,.pill.warn{color:var(--warn-t)} .pill.wait,.pill.idle{color:var(--muted)}
 .pill.right{margin-left:auto}
-.line-name{font-size:.95rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.belt{position:relative;padding-top:20px}
-.cells{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:1px;height:14px;background:var(--belt);padding:2px;border-radius:2px}
-.cells b{display:block;border-radius:1px;background:transparent;box-shadow:inset 0 0 0 1px var(--idle)}
-.cells b.done{background:var(--car);box-shadow:none}
-.cells b.active{background:var(--safety);box-shadow:none}
-.cells b.prep{background:repeating-linear-gradient(45deg,transparent 0 2px,var(--steel) 2px 3px);box-shadow:inset 0 0 0 1px var(--steel)}
-.cells b.stop{background:var(--stop);box-shadow:none}
-.car{position:absolute;top:0;left:var(--pos);width:38px;height:17px;transform:translateX(-50%)}
-.cause{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.86rem;display:grid;gap:3px;overflow-wrap:anywhere}
-.cause b{font:600 .72rem/1 var(--f-mono);letter-spacing:.06em;color:var(--stop)}
+.line-name{font-size:1rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.progress{display:grid;gap:4px;min-width:0}
+.pbar{height:10px;background:var(--rule);border-radius:5px;overflow:hidden;max-width:420px}
+.pbar b{display:block;height:100%;background:var(--car);width:var(--w)}
+.pbar.unknown{background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);border:1px dashed var(--idle)}
+.alldone{font-weight:600}
+.refuse{color:var(--stop-t);font-size:.9rem}
+.slots i.over{outline:2px solid var(--stop);outline-offset:1px}
+.caricon{width:34px;height:15px;fill:var(--idle);stroke:none;flex:none}
+.key i.done{background:var(--car)}
+.key i.active{background:var(--safety)}
+.key i.prep{background:repeating-linear-gradient(45deg,transparent 0 2px,var(--steel) 2px 3px);box-shadow:inset 0 0 0 1px var(--steel)}
+.key i.stop{background:var(--stop)}
+.key i.wait{background:transparent;box-shadow:inset 0 0 0 1px var(--idle);border-radius:2px;width:14px;height:10px}
+.cause{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.92rem;display:grid;gap:3px;overflow-wrap:anywhere}
+.cause b{font:700 .88rem/1.2 var(--f-body);color:var(--stop-t)}
 .cause.nocause{border-left-color:var(--idle);background:transparent;border:1px dashed var(--idle);border-left-width:3px;color:var(--muted)}
-.facts{font-size:.8rem;color:var(--muted)}
-.go{font-size:.8rem}
+.cause.nocause b{color:var(--muted)}
+.facts{font-size:.85rem;color:var(--muted)}
+.go{font-size:.85rem}
+details.ghosts{background:var(--panel);border:1px dashed var(--idle);border-radius:6px}
+details.ghosts>summary{cursor:pointer;padding:10px 14px;font-size:.9rem;color:var(--muted)}
+details.ghosts ul{margin:0;padding:0 14px 12px 32px;display:grid;gap:6px;font-size:.88rem;color:var(--muted)}
 
 /* machines */
-.bays{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
-.bay{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:9px;align-content:start;min-width:0}
-.bay.repair{border-style:dashed}
-.bay.unreadbay{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
-.bay-top{display:flex;gap:8px;justify-content:space-between;align-items:baseline;flex-wrap:wrap}
-.bay-top b{font:800 1.25rem/1 var(--f-display);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
+.mrows{display:grid;gap:10px}
+.mrow{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:8px;align-content:start;min-width:0}
+.mrow.repair{border-style:dashed}
+.mrow.unreadbay{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
+.mrow.alert{border-color:var(--stop);box-shadow:inset 4px 0 0 var(--stop)}
+.mtop{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap}
+.mtop b{font:800 1.25rem/1 var(--f-display);text-transform:uppercase;letter-spacing:.02em;overflow-wrap:anywhere}
+.mtop .used{font-size:.95rem;font-weight:600}
+.mtop .pill{margin-left:auto}
 .slots{display:flex;flex-wrap:wrap;gap:3px}
-.slots i{width:14px;height:10px;border-radius:2px;border:1.5px solid var(--idle);background:transparent}
-.slots i.used{background:var(--car);border-color:var(--car-edge)}
-.slots i.codex{background:var(--steel);border-color:var(--steel)}
-.slots i.stall{background:var(--stop);border-color:var(--stop)}
-.slots i.over{background:var(--warn);border-color:var(--warn)}
-.capline{font-size:.78rem;color:var(--muted);overflow-wrap:anywhere}
+.slots i,.key i.slot{width:14px;height:10px;border-radius:2px;border:1.5px solid var(--idle);background:transparent}
+.slots i.used,.key i.used{background:var(--car);border-color:var(--car-edge)}
+.slots i.codex,.key i.codex{background:var(--steel);border-color:var(--steel)}
+.slots i.stall,.key i.stall{background:var(--stop);border-color:var(--stop)}
+.slots i.over,.key i.over{background:var(--warn);border-color:var(--warn)}
+.capline{font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+.alerts{display:flex;flex-wrap:wrap;gap:4px 6px;min-width:0}
+.alerts .chip{white-space:normal;overflow-wrap:anywhere;max-width:100%}
 .gauges{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
-.gauge{display:grid;gap:3px;font-size:.76rem;color:var(--muted);min-width:0}
-.gauge .v{font:500 .78rem/1.2 var(--f-mono);color:var(--ink)}
+.gauge{display:grid;gap:3px;font-size:.82rem;color:var(--muted);min-width:0}
+.gauge .v{font-size:.9rem;font-weight:600;color:var(--ink)}
 .gbar{height:5px;background:var(--rule);border-radius:3px;overflow:hidden}
 .gbar b{display:block;height:100%;width:var(--w);background:var(--car)}
 .gbar.hot b{background:var(--stop)}
-.lrows{display:grid;gap:0;margin:0 -14px -12px;border-top:1px solid var(--rule)}
-.lrow{display:grid;gap:3px;padding:8px 14px;text-decoration:none;color:inherit;border-bottom:1px dashed var(--rule)}
+.lrows{display:grid;gap:0;margin:0 -14px -12px;border-top:1px solid var(--rule);min-width:0}
+.mrow>*,.lrow>*{min-width:0}
+.lrow .chip{white-space:normal;overflow-wrap:anywhere}
+.lrow{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:8px 14px;text-decoration:none;color:inherit;border-bottom:1px dashed var(--rule)}
 .lrow:last-child{border-bottom:0}
 .lrow:hover{background:color-mix(in srgb,var(--safety) 10%,transparent)}
-.lrow .tk{font:500 .7rem/1.3 var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
-.lrow .doing{font-size:.82rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.lrow .tk{font-size:.8125rem;line-height:1.3;color:var(--muted);overflow-wrap:anywhere}
+.lrow .doing{font-size:.92rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .lrow .side{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
-.chip{font:500 .66rem/1 var(--f-mono);padding:3px 5px;border-radius:3px;border:1px solid var(--rule);white-space:nowrap;color:var(--muted)}
-.chip.red{color:var(--stop);border-color:var(--stop)} .chip.green{color:var(--ok);border-color:var(--ok)}
-.chip.pending{color:var(--warn);border-color:var(--warn)} .chip.stall{color:var(--stop);border-color:var(--stop);font-weight:600}
-.lrow .when{font:500 .66rem/1 var(--f-mono);color:var(--muted);margin-left:auto}
-details.more{font-size:.82rem}
-details.more>summary{cursor:pointer;color:var(--muted);padding:4px 0}
-details.fold{grid-column:1/-1;background:var(--panel);border:1px solid var(--rule);border-radius:6px}
-details.fold>summary{cursor:pointer;padding:10px 14px;font-size:.86rem;color:var(--muted)}
+.chip{font:600 .875rem/1 var(--f-body);padding:3px 6px;border-radius:3px;border:1px solid var(--muted);white-space:nowrap;color:var(--muted)}
+.chip.red,.chip.stall{color:var(--stop-t);border-color:var(--stop)} .chip.green{color:var(--ok-t);border-color:var(--ok)}
+.chip.pending,.chip.warn{color:var(--warn-t);border-color:var(--warn)}
+.lrow .when{font-size:.8125rem;color:var(--muted);margin-left:auto}
+details.more{font-size:.88rem}
+details.more>summary{cursor:pointer;color:var(--car-edge);font-weight:600;padding:4px 0}
+details.fold{background:var(--panel);border:1px solid var(--rule);border-radius:6px}
+details.fold>summary{cursor:pointer;padding:10px 14px;font-size:.9rem;color:var(--muted)}
 details.fold[open]>summary{border-bottom:1px solid var(--rule)}
 details.fold .lrows{margin:0;border-top:0}
-.lamp-stop{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.84rem}
-ul.plain{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.82rem}
+.lamp-stop{border-left:3px solid var(--stop);background:var(--stop-soft);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.9rem}
+ul.plain{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.88rem}
 ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px}
 
 /* today */
@@ -174,54 +212,50 @@ ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10
 .pair>div{background:var(--panel);padding:12px 14px;display:grid;gap:2px;align-content:start;min-width:0}
 .pair b{font:800 2.4rem/1 var(--f-display)}
 .pair b.unread{font:italic 400 1rem/1.4 var(--f-body)}
-.pair span{font-size:.8rem;color:var(--muted)}
-.pair .bad b{color:var(--stop)}
+.pair span{font-size:.85rem;color:var(--muted)}
+.pair .bad b{color:var(--stop-t)}
 .lst{list-style:none;margin:0;padding:0;display:grid}
-.lst li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:6px 0;border-bottom:1px dashed var(--rule);font-size:.84rem}
+.lst li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:6px 0;border-bottom:1px dashed var(--rule);font-size:.9rem}
 .lst li:last-child{border-bottom:0}
 .lst li span:first-child{min-width:0;overflow-wrap:anywhere}
-.lst li small{color:var(--muted);font:500 .7rem/1.4 var(--f-mono);overflow-wrap:anywhere;text-align:right;max-width:16em}
+.lst li small{color:var(--muted);font-size:.8125rem;line-height:1.4;overflow-wrap:anywhere;text-align:right;max-width:16em}
 .lst a{color:inherit;text-decoration:none}
 .lst a:hover{text-decoration:underline}
-.sub{font:600 .78rem/1 var(--f-mono);letter-spacing:.04em;color:var(--steel);margin-top:2px}
 
 /* freshness */
 .fresh{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:8px}
 .src{background:var(--panel);border:1px solid var(--rule);border-left:4px solid var(--c,var(--ok));border-radius:4px;padding:8px 10px;display:grid;gap:2px;min-width:0}
 .src.c-idle{border-left-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
-.src b{font-size:.8rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.src span{font:500 .78rem/1.3 var(--f-mono);overflow-wrap:anywhere}
-.src small{font-size:.72rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
-.fgroup{font:600 .78rem/1 var(--f-mono);letter-spacing:.04em;color:var(--steel);margin:6px 0 -2px;grid-column:1/-1}
+.src b{font-size:.88rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.src span{font-size:.88rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.src small{font-size:.8125rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+.fgroup{font:700 .85rem/1 var(--f-body);letter-spacing:.02em;color:var(--steel);margin:6px 0 -2px;grid-column:1/-1}
 .fgroup:first-child{margin-top:0}
 
-footer.note{font-size:.78rem;color:var(--muted);max-width:90ch}
+footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
 
 /* phone: five short tabs in one row, one column of content, nothing wider than the screen */
 @media (max-width:700px){
   h1{font-size:1.35rem}
   .titlerow{padding-top:8px}
-  #stamp{font-size:.68rem}
   .tabs{gap:2px;margin-top:4px}
   .tab{display:block;text-align:center;padding:7px 2px 8px}
   .tab[aria-selected="true"]{padding-top:10px}
-  .tab i{display:inline-block;width:9px;height:9px;margin:0 auto 3px;box-shadow:none}
-  .tab i{display:block}
-  .tab b{font-size:.78rem;letter-spacing:0;text-overflow:clip}
+  .tab i{display:block;width:9px;height:9px;margin:0 auto 3px;box-shadow:none}
+  .tab b{font-size:.85rem;letter-spacing:0;text-overflow:clip}
+  .tab em{display:block;font-size:.875rem;white-space:normal;line-height:1.15}
   .tab small{display:none}
   .tab .long{display:none}
   .tab .short{display:inline}
   .dash{padding-top:12px;gap:18px}
+  .verdict .vs{font-size:1.25rem}
   .lamp{flex-basis:calc(50% - 2px);padding:10px 12px;grid-template-columns:minmax(0,1fr);gap:2px}
   .lamp i{grid-row:auto;width:10px;height:10px}
-  .lamp:last-child{flex-basis:100%}
   .lamp b{font-size:1.2rem}
-  .lamp b small{display:block;margin:2px 0 0;font-size:.72rem}
-  .lamp span{font-size:.74rem}
+  .lamp b small{display:block;margin:2px 0 0;font-size:.8125rem}
   .pair b{font-size:2rem}
   .lst li{grid-template-columns:minmax(0,1fr)}
   .lst li small{text-align:left;max-width:none}
-  .gauges{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){.tab i.c-stop,.lamp.c-stop i{animation:none}}
 
@@ -230,25 +264,25 @@ footer.note{font-size:.78rem;color:var(--muted);max-width:90ch}
   transform:translateX(24px);opacity:0;visibility:hidden;transition:transform .18s ease,opacity .18s ease,visibility 0s linear .18s}
 .drawer.open{transform:none;opacity:1;visibility:visible;transition:transform .18s ease,opacity .18s ease,visibility 0s}
 .drawer-head{flex:none;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
-.drawer-head h2{font-size:1.35rem;line-height:1.05;overflow-wrap:anywhere}
+.drawer-head h2{font-size:1.35rem;line-height:1.15;overflow-wrap:anywhere;text-transform:none}
 .drawer-head h2:focus{outline:none}
-.drawer-head .eyebrow{display:block;font:600 .7rem/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--steel);margin-bottom:5px}
+.drawer-head .eyebrow{display:block;font:600 .8125rem/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--steel);margin-bottom:5px}
 .drawer-close{flex:none;font:700 1.3rem/1 var(--f-body);width:40px;height:40px;border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
 .drawer-close:hover{background:color-mix(in srgb,var(--safety) 15%,transparent)}
 .drawer-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 40px;display:grid;gap:14px;align-content:start}
 .drawer-body h3{margin:4px 0 -4px;color:var(--steel)}
 .scrim{display:none}
 dl.kv{margin:0;display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:6px 12px;font-size:.86rem}
-dl.kv dt{font:600 .72rem/1.5 var(--f-mono);letter-spacing:.04em;color:var(--steel)}
+dl.kv dt{font:600 .8125rem/1.5 var(--f-body);letter-spacing:.04em;color:var(--steel)}
 dl.kv dd{margin:0;overflow-wrap:anywhere}
 .dlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .dlist>li{border:1px solid var(--rule);border-radius:4px;padding:8px 10px;display:grid;gap:4px;font-size:.84rem;overflow-wrap:anywhere}
-.dlist ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.8rem}
+.dlist ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.8125rem}
 .dlist .pill{justify-self:start}
 .drawer .lrows{margin:0;border:1px solid var(--rule);border-radius:4px}
 .drawer .gauges{grid-template-columns:1fr 1fr}
 .drawer a.open-full{font-weight:600}
-a.drill{font-size:.78rem}
+a.drill{font-size:.8125rem}
 @keyframes paneIn{from{opacity:0}to{opacity:1}}
 .pane:not([hidden]){animation:paneIn .15s ease-out}
 @media (max-width:700px){
@@ -320,6 +354,43 @@ const num = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ?
 const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
 const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
 
+// Plain words for text that comes from the record: worker, stopped, failing checks, change, log entry.
+const NOT_ID = "(?<![\\w-])", NOT_ID_END = "(?![\\w-])";
+const PLAIN = [
+  [/\bCI red\b/g, "failing checks"],
+  [new RegExp(NOT_ID + "PRs" + NOT_ID_END, "g"), "changes"], [new RegExp(NOT_ID + "PR" + NOT_ID_END, "g"), "change"],
+  [/pull requests/gi, "changes"], [/pull request/gi, "change"],
+  [/ledger rows/gi, "log entries"], [/ledger row/gi, "log entry"],
+  [new RegExp(NOT_ID + "lanes" + NOT_ID_END, "gi"), "workers"], [new RegExp(NOT_ID + "lane" + NOT_ID_END, "gi"), "worker"]
+];
+const plain = s => PLAIN.reduce((t, [re, to]) => t.replace(re, to), String(s == null ? "" : s));
+// A task as the plan wrote it is a sentence with its number, its ticket and its falsifier. The heading is the plain words
+// of it: the number, the ticket and everything from "falsifier" on are dropped, the words are cut to a short run, and a
+// task that has no words of its own is named by its number. The record cuts a long line at 90 characters, so a heading
+// that reaches that cut loses its last, half-written word.
+const HEADING_WORDS = 8;
+function shortTask(raw, fallbackId){
+  const full = String(raw == null ? "" : raw);
+  let t = full.replace(/\s*(?:[-\u2013\u2014]{1,2}\s*)?falsifier\b.*$/i, "");
+  t = t.replace(/^\s*[A-Z]{0,3}\d+(?:\.\d+)*[a-z]?(?!\w)/, "").replace(/^(?:\s*\+\s*[A-Z]{1,3}\d+(?:\.\d+)*)+/, "");
+  t = t.replace(/\s*\([^)]*\)?/g, "").replace(/\bOMN-\d+\b/g, "");
+  t = t.replace(/^[\s.:;,\u2013\u2014-]+/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  let words = t.split(" ").filter(Boolean);
+  const cut = full.length >= 88 && words.length > 1 && !/falsifier/i.test(full) && !/\([^)]*$/.test(full);
+  if (cut) words = words.slice(0, -1);
+  const long = words.length > HEADING_WORDS;
+  const head = words.slice(0, HEADING_WORDS).join(" ").replace(/[\s.:;,]+$/, "");
+  if (head.length < 3) return fallbackId ? `Task ${fallbackId}` : "Task";
+  return head.charAt(0).toUpperCase() + head.slice(1) + (cut || long ? "\u2026" : "");
+}
+// What the record notes beside a part, in plain words: the name of the source that read it is dropped.
+function plainNote(raw){
+  const text = String(raw == null ? "" : raw);
+  const m = /^(.*?):\s*([a-z][a-z,-]*)$/.exec(text);
+  if (!m) return plain(text);
+  return plain([m[1]].concat(m[2].split(",").map(x => x === "no-ticket" ? "no ticket named" : "").filter(Boolean)).join(", "));
+}
+
 function ageText(ms){
   const m = Math.max(0, Math.round(ms / 60000));
   return m < 1 ? "under a minute" : m < 120 ? `${m} min` : m < 2880 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} days`;
@@ -339,6 +410,13 @@ function localDay(ms){ const p = Object.fromEntries(DAY_FMT.formatToParts(new Da
 let recordAt = NaN;
 function sinceRecord(){ return Number.isNaN(recordAt) ? 0 : Math.max(0, Date.now() - recordAt); }
 function liveMs(min){ return num(min) * 60000 + sinceRecord(); }
+function utcText(iso){ const t = Date.parse(iso); return Number.isNaN(t) ? "" : new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC"; }
+
+function when(iso){
+  const ms = ageMs(iso);
+  return ms == null ? "unread" : `${clock(iso)}, ${ageText(ms)} ago`;
+}
+const whenTag = iso => `<span title="${esc(utcText(iso))}">${esc(when(iso))}</span>`;
 
 // ---- Tabs: the hash names the tab (and, for the floor, a place on it); the last tab is kept per browser.
 function remembered(){
@@ -347,7 +425,7 @@ function remembered(){
 function remember(id){
   try { localStorage.setItem(STORE_KEY, id); } catch (e) { /* private window or blocked storage: the hash still works */ }
 }
-const DRILL_KINDS = {lane: "Lane", line: "Assembly line", bay: "Machine", st: "Station", part: "Part", stop: "Stoppage", report: "Report"};
+const DRILL_KINDS = {lane: "Worker", line: "Assembly line", bay: "Machine", st: "Station", part: "Part", stop: "Stoppage", report: "Report"};
 // A hash is #tab, or #tab/kind-id: the second form names the open panel (a lane, line, bay, station, stoppage or report).
 function parseHash(){
   const raw = decodeURIComponent((location.hash || "").replace(/^#/, ""));
@@ -360,11 +438,12 @@ function hashParts(tab, anchor){
 }
 
 let currentTab = "";
+let lastPayload = null;
 const frames = {};
 
 function buildTabs(){
   el("tabs").innerHTML = TABS.map((t, i) => `<button type="button" class="tab" role="tab" id="tab-${t.id}" data-tab="${t.id}" aria-controls="pane-${t.id}" aria-selected="false" tabindex="-1" title="${esc(t.label)}">
-    <i class="c-none" id="lamp-${t.id}"></i><b><span class="long">${esc(t.label)}</span><span class="short">${esc(t.short)}</span></b><small id="sub-${t.id}">reading</small></button>`).join("");
+    <i class="c-none" id="lamp-${t.id}"></i><b><span class="long">${esc(t.label)}</span><span class="short">${esc(t.short)}</span></b><em class="c-none" id="word-${t.id}">Reading</em><small id="sub-${t.id}">reading</small></button>`).join("");
   el("tabs").addEventListener("click", ev => {
     const b = ev.target.closest ? ev.target.closest(".tab") : null;
     if (b) go(b.dataset.tab);
@@ -385,20 +464,27 @@ function go(id){
   location.hash = next;
 }
 
-// Each tab keeps its own scroll position: a hidden pane loses its scroll, so it is saved on the way out and put back on the way in.
+// An embedded page is sized to its content, so the document is the only thing that scrolls.
+function fit(frame){
+  try {
+    const d = frame.contentDocument;
+    if (!d || !d.documentElement) return;
+    const h = Math.ceil(d.documentElement.scrollHeight);
+    if (h > 100 && Math.abs(h - frame.offsetHeight) > 2) frame.style.height = h + "px";
+  } catch (e) { /* a page that cannot be read keeps its starting height */ }
+}
+function sizeToContent(frame){
+  frame.addEventListener("load", () => {
+    fit(frame);
+    try { new ResizeObserver(() => fit(frame)).observe(frame.contentDocument.documentElement); } catch (e) { /* no observer: the timer below keeps it fitted */ }
+    setInterval(() => fit(frame), 1500);
+  });
+}
+
+// Each tab keeps its own scroll position: the document scrolls, so the place is saved on the way out and put back on the way in.
 const scrolls = {};
-function saveScroll(){
-  if (!currentTab) return;
-  let fy = 0;
-  try { fy = frames[currentTab] && frames[currentTab].contentWindow ? frames[currentTab].contentWindow.scrollY : 0; } catch (e) { fy = 0; }
-  scrolls[currentTab] = {y: el("pane-" + currentTab).scrollTop, fy};
-}
-function restoreScroll(id){
-  const sv = scrolls[id];
-  if (!sv) return;
-  el("pane-" + id).scrollTop = sv.y;
-  try { if (frames[id] && frames[id].contentWindow) frames[id].contentWindow.scrollTo(0, sv.fy); } catch (e) { /* the frame is still loading */ }
-}
+function saveScroll(){ if (currentTab) scrolls[currentTab] = window.scrollY || 0; }
+function restoreScroll(id){ window.scrollTo(0, scrolls[id] || 0); }
 
 function show(id){
   if (!TAB_IDS.includes(id)) id = "dashboard";
@@ -420,10 +506,12 @@ function show(id){
     f.title = tab.label;
     f.setAttribute("referrerpolicy", "no-referrer");
     f.src = tab.page;
+    sizeToContent(f);
     frames[id] = f;
     el("pane-" + id).appendChild(f);
   }
   restoreScroll(id);
+  renderStamp();
 }
 
 // ---- The drill-down drawer. It opens over the tab the reader is on and never moves that tab's scroll.
@@ -496,8 +584,8 @@ function closeDrawer(){
 
 function drawNow(){
   const m = drillContent(parseDrill(drawerKey));
-  el("drawerKind").textContent = m.kind;
-  el("drawerTitle").textContent = m.title;
+  el("drawerKind").textContent = plain(m.kind);
+  el("drawerTitle").textContent = plain(m.title);
   if (m.html !== drawerHTML){ drawerHTML = m.html; el("drawerBody").innerHTML = m.html; }
 }
 const parseDrill = key => { const i = key.indexOf("-"); return {kind: key.slice(0, i), id: key.slice(i + 1)}; };
@@ -554,12 +642,108 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.status_pill === "stopped" || !!(L.andon && L.andon.flag)};
+    stopped: L.condition === "stopped",
+    // A line whose condition the record does not carry is unread. It is never counted as running.
+    unread: !condEntry(L.condition)};
 }
 
-const CAR = `<svg class="car" viewBox="0 0 64 28" aria-hidden="true"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z" style="fill:var(--c);stroke:var(--belt)" stroke-width="2"/><circle cx="17" cy="22" r="5" style="fill:var(--belt)"/><circle cx="48" cy="22" r="5" style="fill:var(--belt)"/></svg>`;
+// ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
+// (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
+const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+// A condition string is looked up as an own key only: a record value such as "constructor" or "toString" names no condition.
+function condEntry(key){ return Object.prototype.hasOwnProperty.call(COND, key) ? COND[key] : undefined; }
+function lineCondition(L){
+  const c = condEntry(L.condition);
+  return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
+}
+function conditionPill(L){
+  const c = lineCondition(L);
+  return `<span class="pill ${c.cls}" data-condition="${esc(c.key)}"><span aria-hidden="true">${c.icon}</span> ${esc(c.label)}</span>`;
+}
+// The decorative car: one neutral icon that encodes no data. Hidden from assistive technology, no title, no data attribute.
+function carIcon(){
+  return `<svg class="caricon" viewBox="0 0 64 28" aria-hidden="true" focusable="false"><path d="M2 20 L2 14 Q3 11 7 11 L19 10 L26 4 Q28 2 31 2 L45 2 Q48 2 50 5 L55 11 L60 12 Q62 13 62 16 L62 20 Z"/><circle cx="17" cy="22" r="5"/><circle cx="48" cy="22" r="5"/></svg>`;
+}
+function blockerBlock(L){
+  const b = L.blocker;
+  const stopped = L.condition === "stopped";
+  if (!b || !b.reason) return stopped ? `<div class="cause nocause"><b>Why it is stopped</b><span>The record gives this line no blocker.</span></div>` : "";
+  const ev = Array.isArray(b.evidence) ? b.evidence.filter(Boolean) : [];
+  return `<div class="cause"><b>${stopped ? "Why it is stopped" : "Blocker"}</b><span>${esc(plain(String(b.reason).replace(/[:\s]+$/, "")))}</span>${ev.length ? `<small>Evidence: ${ev.map(x => esc(plain(x))).join(", ")}</small>` : ""}</div>`;
+}
+function gatesText(L){
+  const g = L.gates;
+  if (!g) return "Gates unread";
+  const p = num(g.passed), f = num(g.failed), w = num(g.waiting), n = p + f + w;
+  return `${n} ${n === 1 ? "gate" : "gates"}: ${p} passed, ${f} failed, ${w} waiting`;
+}
+function pendingGates(L){
+  const items = L.gates && Array.isArray(L.gates.items) ? L.gates.items : [];
+  return items.filter(x => x && x.state !== "passed" && x.state !== "pass");
+}
+// Built percent counts merged work tasks only; unknown is not zero.
+function progressBlock(L){
+  const p = L.progress;
+  const gates = `<span class="gates">${esc(gatesText(L))}</span>`;
+  const name = "Work tasks merged";
+  const known = p && p.state === "known" && p.completed != null && Number.isFinite(Number(p.total)) && Number(p.total) > 0;
+  if (known){
+    const c = num(p.completed), t = num(p.total);
+    const pct = p.percent == null ? "" : `, ${Number(p.percent).toFixed(1)}%`;
+    const text = `${c} / ${t} work tasks${pct}`;
+    const valuetext = `${c} of ${t} work tasks complete${pct}; ${gatesText(L)}`;
+    const w = Math.max(0, Math.min(100, t ? c / t * 100 : 0));
+    const done = c >= t && L.condition !== "complete"
+      ? `<p class="alldone">All tasks recorded done; ${pendingGates(L).length ? pendingGates(L).map(g => `gate ${esc(g.id)} ${g.state === "failed" ? "failed" : "pending"}`).join("; ") : L.blocker && L.blocker.reason ? esc(plain(String(L.blocker.reason).replace(/[:\s]+$/, ""))) : "the line is not Complete"}</p>` : "";
+    return `<div class="progress"><div class="pbar" role="progressbar" aria-label="${name}" aria-valuemin="0" aria-valuemax="${t}" aria-valuenow="${c}" aria-valuetext="${esc(valuetext)}"><b style="--w:${w}%"></b></div>
+      <span class="ptext"><span class="mono">${text}</span> · ${gates}</span>${done}</div>`;
+  }
+  const noTasks = p && p.state === "no_tasks";
+  const text = noTasks ? "No work tasks declared" : p ? "Progress unknown" : "Progress unread";
+  const note = p && p.note ? ` (${esc(plain(p.note))})` : "";
+  return `<div class="progress"><div class="pbar unknown" role="progressbar" aria-label="${name}" aria-valuetext="${esc(text + (p && p.note ? ": " + plain(p.note) : ""))}"></div>
+      <span class="ptext">${text}${note} · ${gates}</span></div>`;
+}
+// What backs a "done" item; none of these is deployment proof.
+const EVIDENCE_LABEL = {merged: "merged PR", terminal: "terminal outcome, not deployment proof", linear_done: "ticket closed, not deployment proof", recorded: "recorded done"};
+function itemEvidence(it){
+  return it.state === "done" ? (EVIDENCE_LABEL[it.evidence_kind] || "done, backing not recorded") : "";
+}
+function evidenceRow(L){
+  const e = L.line_evidence;
+  if (!e) return `<span class="eyebrow evidence">Evidence <span class="unread">not read</span></span>`;
+  const of = e.of == null ? "" : ` of ${num(e.of)}`;
+  const v = x => x == null ? `<span class="unread">not read</span>` : `<span class="mono">${num(x)}${of}</span>`;
+  return `<span class="eyebrow evidence">Merged ${v(e.merged)} · Running on dev ${v(e.running_on_dev)} · Verified ${v(e.verified)}</span>`;
+}
+// Machines: memory is drawn as used over total, load as a number against its reference, a refusal above the capacity row.
+function memoryGauge(m){
+  if (m.mem_free_gb == null) return gauge("Memory used", null, null);
+  const free = num(m.mem_free_gb), total = m.mem_total_gb ? num(m.mem_total_gb) : 0;
+  if (!total) return gauge("Memory free", `${fmt(free)} GB free (total unread)`, null);
+  const used = total - free;
+  return gauge("Memory used", `${fmt(used)} of ${fmt(total)} GB used`, used / total);
+}
+function loadGauge(m){
+  if (m.load_per_core == null) return gauge("Load per core", null, null);
+  return gauge("Load per core", `${Number(m.load_per_core).toFixed(2)} (1.0 = one runnable task per core)`, null);
+}
+function refusalReason(m){
+  if (m.admission && m.admission.state === "refused") return m.admission.reason || m.refusal || "no reason recorded";
+  return m.refusal ? String(m.refusal) : null;
+}
+function refusalNote(m){
+  const r = refusalReason(m);
+  return r == null ? "" : `<p class="refuse"><b>Not taking new work:</b> ${esc(plain(r))}</p>`;
+}
 
 // ---- Application containers per lane class, running of declared, from the line's own record; no record, no row.
+// The target is where the lane is going; a count at its budget is not a finished lane, so the distance is drawn beside it.
+function targetText(r){
+  if (r.target == null) return "";
+  const over = num(r.observed) - num(r.target);
+  return ` allowed, target ${fmt(num(r.target))}${over > 0 ? `, ${fmt(over)} still to remove` : ""}`;
+}
 function containersText(L){
   const c = L.application_containers;
   if (!c || typeof c !== "object") return "";
@@ -567,50 +751,38 @@ function containersText(L){
   if (!rows.length) return `<span class="unread">unread: no host could be read</span>`;
   return rows.map(r => {
     const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
-    return `<span title="${esc([r.host, r.detail].filter(Boolean).join(" · "))}">${esc(r.lane)} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+    return `<span title="${esc(plain([r.host, r.detail].filter(Boolean).join(" · ")))}">${esc(plain(r.lane))} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}${targetText(r)}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
   }).join(" · ");
 }
+const lineLetter = i => "Line " + (LETTERS[i] || i + 1);
 
 function lineCard(slot, i){
-  const letter = "Line " + (LETTERS[i] || i + 1);
-  if (!slot.line){
-    return `<article class="card ghost" aria-label="${esc(letter)}, not in the record">
-      <div class="line-top"><span class="sign">${esc(letter)}</span><span class="pill idle">not in the record</span></div>
-      <p class="line-name unread">No plan matched “${esc(slot.fragment)}”</p>
-      <p class="facts">The deployment declares this line, but no plan in the plans repository matches it, so there are no parts, no percent and no stop reason to show.</p>
-    </article>`;
-  }
+  const letter = lineLetter(i);
   const L = slot.line, f = lineFacts(L);
-  const pill = f.stopped ? ["stop", "Stopped"] : L.status_pill === "done" ? ["done", "Done"] : L.status_pill === "building" ? ["active", "Building"] : ["wait", "Queued"];
-  const cells = f.items.length ? f.items : f.stations;
-  const pct = Math.max(0, Math.min(100, num(L.percent_built)));
-  const reason = ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "");
-  const causes = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
-  const shown = causes.length ? causes : (reason ? [reason] : []);
-  const cause = f.stopped
-    ? (shown.length
-      ? `<div class="cause"><b>Why it is stopped</b>${shown.slice(0, 3).map(c => `<span>${esc(c)}</span>`).join("")}${shown.length > 3 ? `<span class="muted">and ${shown.length - 3} more on the floor tab</span>` : ""}</div>`
-      : `<div class="cause nocause"><b>Why it is stopped</b><span>The record flags this line stopped and gives no reason.</span></div>`)
-    : "";
-  const cur = f.stations[f.cur];
-  const c = f.stopped ? "var(--stop)" : "var(--safety)";
   return `<article class="card${f.stopped ? " stopped" : ""}" aria-label="${esc(letter)}">
-    <div class="line-top"><span class="sign">${esc(letter)}</span><span class="pill ${pill[0]}">${pill[1]}</span><span class="pill wait right" title="Share of the car built">${fmt(pct)}% built</span></div>
-    <p class="line-name">${esc(L.name)}</p>
-    <div class="belt" style="--pos:${pct}%;--c:${c}" role="img" aria-label="${f.done} of ${cells.length} parts done">${CAR}<div class="cells">${cells.map(x => `<b class="${esc(x.state)}"></b>`).join("")}</div></div>
-    ${cause}
-    <p class="facts">${f.n ? `Station ${f.cur + 1} of ${f.n}${cur ? `, ${esc(cur.name)}` : ""}; ` : ""}${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>
+    <div class="line-top">${carIcon()}<span class="sign">${esc(letter)}</span>${conditionPill(L)}</div>
+    <p class="line-name">${esc(plain(L.name))}</p>
+    ${progressBlock(L)}
+    ${blockerBlock(L)}
+    ${evidenceRow(L)}
     ${containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : ""}
     <a class="go" href="${drillHref("line", esc(safeId(L.line_id)))}">Show this line's stations and parts</a>
   </article>`;
 }
 
-// ---- Machines and their lanes. Every figure is from floor.machines, floor.lanes and floor.cloud.
+// Lines the deployment declares but no plan matches take one sentence, not a card each.
+function missingLines(items){
+  if (!items.length) return "";
+  return `<details class="ghosts" id="missingLines"><summary>${esc(plural(items.length, "more line is", "more lines are"))} planned but ${items.length === 1 ? "has" : "have"} no plan file yet (show)</summary>
+    <ul>${items.map(x => `<li>${esc(lineLetter(x.i))}: not in the record. No plan matched “${esc(x.slot.fragment)}”, so there are no parts, no percent and no stop reason to show.</li>`).join("")}</ul></details>`;
+}
+
+// ---- Machines and their workers. Every figure is from floor.machines, floor.lanes and floor.cloud.
 function ciChip(l){
-  if (!l.pr) return `<span class="chip" title="This lane has written no pull request">no PR yet</span>`;
-  const word = {green: "CI green", red: "CI red", pending: "CI pending", none: "no CI runs", unread: "CI unread"}[l.pr_ci] || "CI unread";
+  if (!l.pr) return `<span class="chip" title="This worker has written no change">no change yet</span>`;
+  const word = {green: "checks passing", red: "failing checks", pending: "checks running", none: "no checks yet", unread: "checks unread"}[l.pr_ci] || "checks unread";
   const merged = l.pr_state && l.pr_state !== "OPEN" && l.pr_state !== "unread" ? ` · ${String(l.pr_state).toLowerCase()}` : "";
-  return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${esc(l.pr)} · ${word}${esc(merged)}</span>`;
+  return `<span class="chip ${esc(l.pr_ci || "")}" title="${esc(plain(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : "")))}">${word} · change ${esc(l.pr)}${esc(merged)}</span>`;
 }
 
 // ---- Live lanes that name no machine the floor draws, grouped by the cause the record gives for each.
@@ -623,83 +795,90 @@ function unplacedFold(unplaced){
     return (PLACE_CAUSE[k] || "have no cause in the record (written before causes were recorded)") + (named.length ? ` (${named.join(", ")})` : "");
   };
   const keys = Object.keys(groups);
-  const head = `${plural(unplaced.length, "live lane names", "live lanes name")} no machine the floor draws: ` + keys.map(k => `${groups[k].length} ${label(k, groups[k])}`).join("; ");
-  return `<details class="fold"><summary>${esc(head)}</summary>${keys.map(k => `<p class="facts"><b>${groups[k].length} ${esc(label(k, groups[k]))}</b>: ${groups[k].map(l => esc(l.lane)).join(", ")}</p><div class="lrows">${groups[k].map(laneRow).join("")}</div>`).join("")}</details>`;
+  const head = `${plural(unplaced.length, "live worker names", "live workers name")} no machine the floor draws: ` + keys.map(k => `${groups[k].length} ${label(k, groups[k])}`).join("; ");
+  return `<details class="fold"><summary>${esc(head)}</summary>${keys.map(k => `<p class="facts"><b>${groups[k].length} ${esc(label(k, groups[k]))}</b>: ${groups[k].map(l => esc(l.lane)).join(", ")}</p><div class="lrows">${groups[k].map(l => laneRow(l)).join("")}</div>`).join("")}</details>`;
 }
 
 function laneRow(l, tab){
-  const doing = l.status_text ? esc(l.status_text) : l.title ? esc(l.title) : `<span class="unread">no status written</span>`;
-  return `<a class="lrow" href="${drillHref("lane", esc(safeId(l.lane)), tab)}" title="${esc([l.ticket, l.title, l.status_full].filter(Boolean).join(" · "))}">
-    <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}${l.engine === "codex" ? " · Codex" : ""}</span>
+  const doing = l.status_text ? esc(plain(l.status_text)) : l.title ? esc(plain(l.title)) : `<span class="unread">no status written</span>`;
+  return `<a class="lrow" href="${drillHref("lane", esc(safeId(l.lane)), tab)}" title="${esc(plain([l.ticket, l.title, l.status_full].filter(Boolean).join(" · ")))}">
     <span class="doing">${doing}</span>
-    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
+    <span class="side">${ciChip(l)}${l.stalled ? `<span class="chip stall">gone quiet ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}<span class="when">${esc(sinceText(l.status_at))} ago</span></span>
+    <span class="tk">${esc(l.lane)}${l.ticket ? " · " + esc(l.ticket) : ""}${l.engine === "codex" ? " · Codex" : ""}</span>
   </a>`;
 }
 
 function gauge(label, value, frac, why, hot){
-  if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${why ? ` (${esc(why)})` : ""}</span></div>`;
-  const bar = frac == null ? "" : `<div class="gbar${hot ? " hot" : ""}" role="img" aria-label="${esc(label)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
-  return `<div class="gauge"><span>${esc(label)}</span><span class="v">${esc(value)}</span>${bar}</div>`;
+  if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${why ? ` (${esc(plain(why))})` : ""}</span></div>`;
+  const bar = frac == null ? "" : `<div class="gbar${hot ? " hot" : ""}" role="img" aria-label="${esc(label + ": " + value)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
+  return `<div class="gauge"><span>${esc(label)}</span><span class="v mono">${esc(value)}</span>${bar}</div>`;
 }
 
-function bayCard(m, byId){
+// One row per machine: its name, workers used of capacity, and alerts only. The worker list is one click away.
+function machineRow(m, byId){
   const lanes = (m.lanes || []).map(id => byId[id]).filter(Boolean);
   const rd = m.state === "read";
-  const word = rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread";
+  const word = rd ? (m.stale ? "reading out of date" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "not read";
   const tone = rd ? (m.stale ? "warn" : "ok") : "idle";
-  const cls = rd ? "" : m.state === "repair" || m.state === "out" ? " repair" : " unreadbay";
   const cap = m.cap == null ? null : num(m.cap);
   const age = m.read_age_min == null ? "" : ` · ${m.read_at ? sinceText(m.read_at) : ageText(liveMs(m.read_age_min))} ago`;
+  const id = "bay-" + safeId(m.host || m.label);
+  const stalledN = lanes.filter(l => l.stalled).length;
+  const codexN = lanes.filter(l => !l.stalled && l.engine === "codex").length;
+  const runN = lanes.length - stalledN - codexN;
+  const over = cap != null && lanes.length > cap ? lanes.length - cap : 0;
+  const free = cap == null || refusalReason(m) !== null ? 0 : m.free_slots != null ? Math.max(0, num(m.free_slots)) : Math.max(0, cap - lanes.length);
+  let cls = rd ? "" : m.state === "repair" || m.state === "out" ? " repair" : " unreadbay";
+  if (stalledN || over || refusalReason(m) !== null) cls += " alert";
   let body;
   if (rd){
-    const cells = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}" title="${esc(l.lane)}"></i>`);
-    const free = cap == null ? 0 : Math.max(0, cap - lanes.length);
-    const over = cap == null ? 0 : Math.max(0, lanes.length - cap);
-    const load = m.load_per_core;
-    const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
-    body = `<div class="slots" role="img" aria-label="${lanes.length} lanes placed${cap == null ? "" : " of " + cap}">${cells.join("")}${"<i></i>".repeat(Math.min(free, 60))}</div>
-      <p class="capline"><span class="mono">${lanes.length}</span> lanes placed${cap == null ? ` · cap <span class="unread">unread</span>` : ` of <span class="mono">${cap}</span>`}${over ? ` · <b class="age-stale">${over} over the cap</b>` : ""}${m.refusal ? ` · refuses new work: ${esc(m.refusal)}` : ""}</p>
-      <div class="gauges">
-        ${gauge("load per core", load == null ? null : fmt(load), load == null ? null : num(load), "", num(load) >= 1)}
-        ${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}
-      </div>`;
+    const cells = lanes.map((l, k) => `<i class="${l.stalled ? "stall" : l.engine === "codex" ? "codex" : "used"}${cap != null && k >= cap ? " over" : ""}" title="${esc(l.lane)}"></i>`);
+    const counts = [`${runN} running`, codexN ? `${codexN} on Codex` : "", stalledN ? `${stalledN} gone quiet` : "", over ? `${over} over capacity` : "", cap == null ? "" : `${free} free`].filter(Boolean).join(", ");
+    const alerts = [stalledN ? `<span class="chip stall">${stalledN} gone quiet</span>` : "", over ? `<span class="chip stall">${over} over capacity</span>` : ""].filter(Boolean).join("");
+    body = `${refusalNote(m)}<div class="slots" role="img" aria-label="${esc(counts)}">${cells.join("")}${"<i></i>".repeat(Math.min(free, 60))}</div>
+      <p class="capline">${esc(counts)}${cap == null ? ` · capacity <span class="unread">unread</span>` : ""}</p>
+      ${alerts ? `<div class="alerts">${alerts}</div>` : ""}
+      <details class="more" id="${id}"><summary>${lanes.length ? `Show the ${plural(lanes.length, "worker", "workers")} and the load` : "Show the load"}</summary>
+        <div class="gauges">${loadGauge(m)}${memoryGauge(m)}</div>
+        ${lanes.length ? `<div class="lrows">${lanes.map(l => laneRow(l)).join("")}</div>` : `<p class="capline">No worker is placed here.</p>`}
+      </details>`;
   } else {
-    body = `<p class="capline">${esc(m.note || "no reading")}${lanes.length ? ` The ledger still places ${plural(lanes.length, "lane", "lanes")} here.` : ""}</p>`;
+    body = `<p class="capline">${esc(plain(m.note || "no reading"))}${lanes.length ? ` The log still places ${plural(lanes.length, "worker", "workers")} here.` : ""}</p>`;
   }
-  return `<article class="bay${cls}" aria-label="${esc(m.label)}">
-    <div class="bay-top"><b>${esc(m.label)}</b><span class="pill ${tone}">${esc(word)}${esc(age)}</span></div>
+  return `<article class="mrow${cls}" aria-label="${esc(m.label)}">
+    <div class="mtop"><b>${esc(m.label)}</b>${rd ? `<span class="used"><span class="mono">${lanes.length}</span>${cap == null ? " workers" : ` of <span class="mono">${cap}</span> workers`}</span>` : ""}<span class="pill ${tone}">${esc(word)}${esc(age)}</span></div>
     <a class="drill" href="${drillHref("bay", esc(safeId(m.host)))}">Show this machine's detail</a>
     ${body}
-    ${lanes.length ? `<div class="lrows">${lanes.map(laneRow).join("")}</div>` : (rd ? `<p class="capline">No lane is placed here.</p>` : "")}
   </article>`;
 }
 
-function cloudCard(cloud, lanes){
-  if (!cloud) return `<article class="bay unreadbay"><div class="bay-top"><b>Cloud</b><span class="pill idle">unread</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
+function cloudRow(cloud, lanes){
+  if (!cloud) return `<article class="mrow unreadbay"><div class="mtop"><b>Cloud</b><span class="pill idle">not read</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
   const rd = cloud.state === "read";
   const live = lanes.filter(l => l.placement === "cloud");
-  const stops = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b></div>`).join("");
+  const stops = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(plain(x.text))}</b></div>`).join("");
   const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span></li>`).join("");
   const sessions = cloud.sessions || [];
   const open = sessions.filter(s => s.open).length;
-  return `<article class="bay${rd ? "" : " unreadbay"}" aria-label="Cloud">
-    <div class="bay-top"><b>Cloud</b><span class="pill ${rd ? "ok" : "idle"}">${rd ? "read" : "unread"}</span></div>
+  const detail = `${rd ? (accts ? `<ul class="plain">${accts}</ul>` : `<p class="capline">No cloud account is signed in.</p>`) : `<p class="capline">${esc(plain(cloud.note || "the cloud accounts file could not be read"))}</p>`}
+    ${rd ? `<p class="capline">${open} of ${sessions.length} recent cloud sessions open${cloud.note ? ` · ${esc(plain(cloud.note))}` : ""}</p>` : ""}
+    ${live.length ? `<div class="lrows">${live.map(l => laneRow(l)).join("")}</div>` : ""}`;
+  return `<article class="mrow${rd ? "" : " unreadbay"}${stops ? " alert" : ""}" aria-label="Cloud">
+    <div class="mtop"><b>Cloud</b>${rd ? `<span class="used"><span class="mono">${live.length}</span> workers</span>` : ""}<span class="pill ${rd ? "ok" : "idle"}">${rd ? "read" : "not read"}</span></div>
     <a class="drill" href="${drillHref("bay", "cloud")}">Show the cloud detail</a>
     ${stops}
-    ${rd ? (accts ? `<ul class="plain">${accts}</ul>` : `<p class="capline">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
-    ${rd ? `<p class="capline">${open} of ${sessions.length} recent cloud sessions open${cloud.note ? ` · ${esc(cloud.note)}` : ""}</p>` : ""}
-    ${live.length ? `<div class="lrows">${live.map(laneRow).join("")}</div>` : ""}
+    <details class="more" id="bay-cloud"><summary>Show the accounts${live.length ? ` and ${plural(live.length, "worker", "workers")}` : ""}</summary>${detail}</details>
   </article>`;
 }
 
-// ---- The day: the newest day of the process-health series, and the pull requests that are red now.
+// ---- The day: the newest day of the process-health series, and the changes that are failing checks now.
 function metric(day, key){
   const ms = day && day.window && Array.isArray(day.window.metrics) ? day.window.metrics : [];
   const m = ms.find(x => x.key === key);
   return m && m.value != null && m.status !== "unread" ? m : null;
 }
 
-const redRow = l => `<li><span><a href="${drillHref("lane", esc(safeId(l.lane)))}">${esc(l.pr)}</a> <span class="muted">${esc(l.pr_title || l.title || "")}</span></span><small>${esc(l.pr_ci_note || "CI red")} · ${esc(l.lane)}</small></li>`;
+const redRow = l => `<li><span><a href="${drillHref("lane", esc(safeId(l.lane)))}">${esc(plain(l.pr_title || l.title || l.pr))}</a> <span class="muted">(${esc(l.pr)})</span></span><small>${esc(plain(l.pr_ci_note || "failing checks"))} · ${esc(l.lane)}</small></li>`;
 
 function todayCard(floor, health){
   const days = health && Array.isArray(health.days) ? health.days : [];
@@ -709,23 +888,24 @@ function todayCard(floor, health){
   const re = metric(day, "reds.episodes_opened"), rh = metric(day, "reds.hours_red");
   const pm = metric(prev, "merges.total");
   const today = localDay(Date.now());
+  const since = day && day.window && day.window.start ? day.window.start : day ? day.date + "T00:00:00Z" : "";
   const dayNote = !day ? "The process-health series is not published, so the day's counts are unread."
     : `Series day ${esc(day.date)}${day.partial ? ", so far" : ""}${day.window && day.window.end ? ` (to ${esc(clock(day.window.end))})` : ""}${day.date < today ? `. <b class="age-stale">This is not today (${esc(today)}): the series is behind.</b>` : ""}`;
   const redLanes = (floor.lanes || []).filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN"));
   const merged = (floor.shipped || []).slice(0, 6);
-  const mergeTime = p => { const t = /merged (\S+)/.exec(p.detail || ""); return t ? sinceText(t[1]) + " ago" : esc(p.detail || ""); };
+  const mergeTime = p => { const t = /merged (\S+)/.exec(p.detail || ""); return t ? whenTag(t[1]) : esc(plain(p.detail || "")); };
   return `<section class="sec" aria-labelledby="todayH">
-    <header><h2 id="todayH">Merged and red today</h2></header>
-    <p class="facts">${dayNote}</p>
+    <header><h2 id="todayH">Changes merged and failing today</h2><p>What shipped today, and which changes are failing their checks right now.</p></header>
+    <p class="facts" title="${esc(since ? utcText(since) : "")}">${dayNote}</p>
     <div class="pair">
-      <div><b ${mt ? "" : 'class="unread"'}>${mt ? fmt(mt.value) : "unread"}</b><span>merges${mp ? `, ${fmt(mp.value)} to product code` : ""}${pm ? `; the day before ${fmt(pm.value)}` : ""}</span></div>
-      <div class="${redLanes.length || (re && re.value > 0) ? "bad" : ""}"><b>${redLanes.length}</b><span>pull requests red now on live lanes${re ? `; ${fmt(re.value)} dev-branch red ${num(re.value) === 1 ? "episode" : "episodes"} opened today${rh ? `, ${fmt(rh.value)} repo-hours red` : ""}` : "; dev-branch red episodes unread"}</span></div>
+      <div><b ${mt ? 'class="mono"' : 'class="unread"'}>${mt ? fmt(mt.value) : "unread"}</b><span>changes merged${mp ? `, ${fmt(mp.value)} to product code` : ""}${pm ? `; the day before ${fmt(pm.value)}` : ""}</span></div>
+      <div class="${redLanes.length || (re && re.value > 0) ? "bad" : ""}"><b class="mono">${redLanes.length}</b><span>changes failing checks right now${re ? `; ${fmt(re.value)} ${num(re.value) === 1 ? "stretch" : "stretches"} of failing checks opened on the main branch today${rh ? `, ${fmt(rh.value)} repo-hours failing` : ""}` : "; stretches of failing checks on the main branch are unread"}</span></div>
     </div>
     <div class="card">
-      <p class="sub">Newest merges in the record</p>
-      ${merged.length ? `<ul class="lst">${merged.map(p => `<li><span>${esc(p.title)} <span class="muted">(${esc(p.pr)})</span></span><small>${mergeTime(p)}</small></li>`).join("")}</ul>` : `<p class="unread">The record lists no merged change.</p>`}
-      <p class="sub">Red now</p>
-      ${redLanes.length ? `<ul class="lst">${redLanes.slice(0, 5).map(redRow).join("")}</ul>${redLanes.length > 5 ? `<details class="more"><summary>Show the other ${redLanes.length - 5}</summary><ul class="lst">${redLanes.slice(5).map(redRow).join("")}</ul></details>` : ""}` : `<p class="muted">No live lane has a red pull request.</p>`}
+      <p class="sub">Newest changes merged</p>
+      ${merged.length ? `<ul class="lst">${merged.map(p => `<li><span>${esc(plain(p.title))} <span class="muted">(${esc(p.pr)})</span></span><small>${mergeTime(p)}</small></li>`).join("")}</ul>` : `<p class="unread">The record lists no merged change.</p>`}
+      <p class="sub">Failing checks now</p>
+      ${redLanes.length ? `<ul class="lst">${redLanes.slice(0, 5).map(redRow).join("")}</ul>${redLanes.length > 5 ? `<details class="more"><summary>Show the other ${redLanes.length - 5}</summary><ul class="lst">${redLanes.slice(5).map(redRow).join("")}</ul></details>` : ""}` : `<p class="muted">No worker has a change failing checks.</p>`}
     </div>
   </section>`;
 }
@@ -738,14 +918,15 @@ function freshRows(rec, status, health, manifest, delegation){
   const flag = (group, name, ok, note) => rows.push({group, name, ok, note: note || "", flag: true});
   timed("Factory record", "Factory record computed", rec.generated_at);
   if (status && status.published_at) timed("Factory record", "Published to this page", status.published_at);
-  timed("Factory record", "Pull request watcher, last tick", s.watcher_last_tick);
-  timed("Factory record", "Newest ledger row read", s.ledger_newest_row, s.ledger_rows != null ? `${fmt(num(s.ledger_rows))} rows read` : "");
+  timed("Factory record", "Change watcher, last tick", s.watcher_last_tick);
+  timed("Factory record", "Newest log entry read", s.ledger_newest_row, s.ledger_rows != null ? `${fmt(num(s.ledger_rows))} entries read` : "");
   timed("Factory record", "Pool read of the machines", s.pool_read_at, s.placement_hosts ? `${plural(num(s.placement_hosts), "host", "hosts")} advertising slots` : "no host advertising slots");
   flag("Factory record", "Lab host table (caps, repair)", s.host_table_read);
   flag("Factory record", "Placement markers (units)", s.placement_markers_read);
-  flag("Factory record", "Remote-lane receipts", s.receipts_read);
+  flag("Factory record", "Worker receipts", s.receipts_read);
   flag("Factory record", "Cloud accounts", s.cloud_accounts_read);
   flag("Factory record", "CI runner fleet observation", s.runner_fleet_read, s.runner_fleet_cause || "no observation read");
+  flag("Factory record", "Running-on-dev evidence for merged work", s.running_evidence_read, s.merged_running_cause || "no running-on-dev evidence read");
   flag("Factory record", "Friction report", s.stoppage_report);
   flag("Factory record", "Linear issues", num(s.linear_issues) > 0, num(s.linear_issues) > 0 ? `${fmt(num(s.linear_issues))} issues read` : "");
   if (status && Array.isArray(status.steps)){
@@ -786,23 +967,34 @@ function freshState(r){
 
 function freshnessCard(rows){
   const withState = rows.map(r => Object.assign({st: freshState(r)}, r));
+  const tile = (r, group) => {
+    let value;
+    if (r.flag) value = r.ok ? "read" : `<span class="unread">not read</span>`;
+    else { const ms = ageMs(r.iso); value = ms == null ? `<span class="unread">not read (no readable time)</span>` : `<span class="${r.st === "stop" ? "age-stale" : ""}">${esc(ageText(ms))} old${r.st === "stop" ? " (out of date)" : ""}</span>`; }
+    const nm = r.report ? `<a href="${drillHref("report", esc(safeId(r.report)))}">${esc(plain(r.name))}</a>` : esc(plain(r.name));
+    return `${group}<div class="src c-${r.st}" ><b>${nm}</b><span>${value}</span><small>${r.iso && !r.flag ? `<span title="${esc(utcText(r.iso))}">${esc(clock(r.iso))}</span>${r.note ? " · " : ""}` : ""}${esc(plain(r.note))}</small></div>`;
+  };
   let last = "";
   const html = withState.map(r => {
     const g = r.group !== last ? `<p class="fgroup">${esc(r.group)}</p>` : "";
     last = r.group;
-    let value;
-    if (r.flag) value = r.ok ? "read" : `<span class="unread">unread</span>`;
-    else { const ms = ageMs(r.iso); value = ms == null ? `<span class="unread">unread (no readable time)</span>` : `<span class="${r.st === "stop" ? "age-stale" : ""}">${esc(ageText(ms))} old</span>`; }
-    const nm = r.report ? `<a href="${drillHref("report", esc(safeId(r.report)))}">${esc(r.name)}</a>` : esc(r.name);
-    return `${g}<div class="src c-${r.st}" ><b>${nm}</b><span>${value}</span><small>${r.iso && !r.flag ? esc(clock(r.iso)) + (r.note ? " · " : "") : ""}${esc(r.note)}</small></div>`;
+    return tile(r, g);
   }).join("");
+  const problems = withState.filter(r => r.st !== "ok");
   const stale = withState.filter(r => r.st === "stop").length, unread = withState.filter(r => r.st === "idle").length;
-  return {stale, unread, total: withState.length, html};
+  return {stale, unread, total: withState.length, html, problems: problems.map(r => tile(r, "")).join(""), names: listWords(problems.map(r => plain(r.name).replace(/^([A-Z])(?=[a-z])/, c => c.toLowerCase())))};
 }
 
 // ---- Dashboard
-function lamp(cls, head, small, sub){
-  return `<div class="lamp c-${cls}" role="listitem"><i></i><b>${head}${small ? `<small>${esc(small)}</small>` : ""}</b><span>${esc(sub)}</span></div>`;
+const seenRed = new Set();
+function lamp(key, cls, head, small, word, why){
+  const pulse = cls === "stop" && !seenRed.has(key);
+  if (cls === "stop") seenRed.add(key); else seenRed.delete(key);
+  return `<div class="lamp c-${cls}${pulse ? " pulse" : ""}" role="listitem"><i></i><b class="mono">${head}${small ? `<small>${esc(small)}</small>` : ""}</b><span class="st">${esc(word)}</span><span class="why">${esc(plain(why))}</span></div>`;
+}
+
+function listWords(parts){
+  return parts.length < 2 ? parts.join("") : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
 }
 
 function renderDashboard(p){
@@ -810,9 +1002,13 @@ function renderDashboard(p){
   const floor = Object.assign({machines: [], lanes: [], cloud: null, shipped: [], waiting: [], stoppages: []}, rec.floor || {});
   const built = buildSlots(rec.lines || [], status);
   const slots = built.slots;
-  const facts = slots.filter(s => s.line).map(s => lineFacts(s.line));
+  const real = slots.map((s, i) => ({slot: s, i})).filter(x => x.slot.line);
+  const absent = slots.map((s, i) => ({slot: s, i})).filter(x => !x.slot.line);
+  const facts = real.map(x => lineFacts(x.slot.line));
   const stoppedN = facts.filter(f => f.stopped).length;
-  const missing = slots.filter(s => !s.line).length;
+  const unreadL = facts.filter(f => f.unread).length;
+  const readL = facts.length - unreadL;
+  const missing = absent.length;
 
   const ms = floor.machines || [], lanes = floor.lanes || [];
   const read = ms.filter(m => m.state === "read");
@@ -820,59 +1016,115 @@ function renderDashboard(p){
   const unreadM = ms.filter(m => m.state === "unread").length;
   const placed = ms.reduce((a, m) => a + num(m.lanes_placed), 0);
   const cap = read.reduce((a, m) => a + num(m.cap), 0);
-  const stalled = lanes.filter(l => l.stalled).length;
-  const redLanes = lanes.filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN")).length;
+  const stalledL = lanes.filter(l => l.stalled).sort((a, b) => num(b.silent_minutes) - num(a.silent_minutes));
+  const stalled = stalledL.length;
+  const redL = lanes.filter(l => l.pr && l.pr_ci === "red" && (!l.pr_state || l.pr_state === "OPEN"));
+  const redLanes = redL.length;
 
   const days = health && Array.isArray(health.days) ? health.days : [];
   const day = days.length ? days[days.length - 1] : null;
   const mt = metric(day, "merges.total");
   const fresh = freshnessCard(freshRows(rec, status, health, p.manifest, p.delegation));
+  const notFresh = fresh.stale + fresh.unread;
+
+  // The verdict: one sentence, then what needs a person.
+  const parts = [];
+  if (stoppedN) parts.push(`${plural(stoppedN, "line is", "lines are")} stopped`);
+  if (unreadL) parts.push(`${plural(unreadL, "line is", "lines are")} not read`);
+  if (stalled) parts.push(`${plural(stalled, "worker has", "workers have")} gone quiet`);
+  if (redLanes) parts.push(`${plural(redLanes, "change is", "changes are")} failing checks`);
+  if (fresh.stale) parts.push(`${plural(fresh.stale, "source is", "sources are")} out of date`);
+  if (fresh.unread) parts.push(`${plural(fresh.unread, "source is", "sources are")} not read`);
+  if (unreadM) parts.push(`${plural(unreadM, "machine is", "machines are")} not read`);
+  // No line read at all is never Running: the verdict is grey, not green.
+  const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : real.length ? "ok" : "idle";
+  const needs = [];
+  // Needs you holds only what the operator decides. What the workers and the publish machinery handle is listed apart.
+  const handled = [];
+  real.forEach(x => {
+    const f = lineFacts(x.slot.line);
+    if (!f.stopped) return;
+    const L = x.slot.line;
+    const why = L.blocker && L.blocker.reason ? String(L.blocker.reason).replace(/[:\s]+$/, "") : "";
+    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: you; clear the stop or let the factory fix its cause.", href: drillHref("line", safeId(L.line_id)), link: "Open this line"});
+  });
+  if (stalled) handled.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more, the longest ${ageText(liveMs(stalledL[0].silent_minutes))}.`, href: drillHref("lane", safeId(stalledL[0].lane)), link: "Open the quietest worker"});
+  if (redLanes) handled.push({what: `${plural(redLanes, "change is", "changes are")} failing checks; the worker that wrote each one fixes it.`, href: drillHref("lane", safeId(redL[0].lane)), link: "Open the first failing change"});
+  if (unreadL) handled.push({what: `${plural(unreadL, "line is", "lines are")} not read: the record carries no condition for ${unreadL === 1 ? "it" : "them"}, so ${unreadL === 1 ? "it is" : "they are"} not counted as running.`, href: "#linesH", link: "See the lines"});
+  if (notFresh) handled.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}: ${fresh.names}.`, href: "#freshH", link: "See which sources"});
+  if (unreadM) handled.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, href: "#baysH", link: "See the machines"});
+  // A planned line with no plan file has nothing to run, so it is named and never counted in "running".
+  const planned = missing ? `${plural(missing, "planned line has", "planned lines have")} no plan file yet` : "";
+  const verdict = !parts.length
+    ? (!real.length ? `No line is read${planned ? `: ${planned}` : ""}. Nothing needs you.`
+      : planned ? `${plural(real.length, "line is", "lines are")} running; ${planned}. Nothing needs you.`
+      : "All lines running. Nothing needs you.")
+    : `${needs.length ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
+  const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : vcls === "idle" ? "No line read" : "Stopped or failing";
 
   const board = [];
   board.push(slots.length
-    ? lamp(stoppedN ? "stop" : missing ? "warn" : "ok", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", missing ? `${plural(missing, "declared line is", "declared lines are")} not in the record` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`)
-    : lamp("idle", "Lines", "unread", "The record holds no lines"));
+    ? (unreadL
+      ? lamp("lines", stoppedN ? "stop" : readL ? "warn" : "idle", `${readL} of ${slots.length}`, "lines read", stoppedN ? "Stopped" : readL ? "Needs a look" : "Not read", `${plural(unreadL, "line is", "lines are")} not read and not counted as running${stoppedN ? `; ${stoppedN} of the ${readL} read ${stoppedN === 1 ? "is" : "are"} stopped` : ""}`)
+      : lamp("lines", stoppedN ? "stop" : real.length ? "ok" : "idle", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", stoppedN ? "Stopped" : real.length ? "Running" : "No data", missing ? `${plural(missing, "declared line has", "declared lines have")} no plan file yet` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`))
+    : lamp("lines", "idle", "Lines", "not read", "No data", "The record holds no lines"));
+  board.push(lamp("workers", stalled ? "warn" : lanes.length ? "ok" : "idle", `${stalled} of ${lanes.length}`, "workers gone quiet", stalled ? "Needs a look" : lanes.length ? "Running" : "No data", stalled ? `Nothing logged for ${floor.stall_minutes || "the stall"} minutes or more` : lanes.length ? "All are logging" : "No worker is live in the record"));
+  board.push(lamp("changes", redLanes ? "stop" : lanes.length ? "ok" : "idle", `${redLanes}`, redLanes === 1 ? "change failing checks" : "changes failing checks", redLanes ? "Failing" : lanes.length ? "Passing" : "No data", "Changes written by live workers"));
   board.push(ms.length
-    ? lamp(unreadM ? "warn" : "ok", `${read.length} of ${ms.length}`, "machines read", `${placed} lanes placed on ${cap} slots${repair ? `; ${repair} in repair or out of selection` : ""}${unreadM ? `; ${unreadM} unread` : ""}`)
-    : lamp("idle", "Machines", "unread", "The record declares no machine bays"));
-  board.push(lamp(stalled ? "stop" : lanes.length ? "ok" : "idle", `${lanes.length}`, "live lanes", stalled ? `${stalled} stalled: nothing written for ${floor.stall_minutes || "the stall"} minutes` : lanes.length ? "none stalled" : "no lane is live in the record"));
-  board.push(mt ? lamp("ok", fmt(mt.value), "merges today", `${redLanes} live ${redLanes === 1 ? "lane has" : "lanes have"} a red pull request`) : lamp("idle", "Merges today", "unread", "The process-health series is not published"));
-  board.push(lamp(fresh.stale ? "stop" : fresh.unread ? "warn" : "ok", `${fresh.stale}`, "stale sources", `${fresh.unread} unread of ${fresh.total} sources; stale means older than ${STALE_MIN} minutes`));
+    ? lamp("machines", unreadM ? "warn" : "ok", `${read.length} of ${ms.length}`, "machine readings available", unreadM ? "Needs a look" : "Running", `${read.filter(m => refusalReason(m) === null).length} accepting work, ${read.filter(m => refusalReason(m) !== null).length} refusing work; ${placed} workers on ${cap} slots${repair ? `; ${repair} in repair or out of selection` : ""}${unreadM ? `; ${unreadM} not read` : ""}`)
+    : lamp("machines", "idle", "Machines", "not read", "No data", "The record declares no machines"));
+  board.push(mt ? lamp("merges", num(mt.value) > 0 ? "ok" : "warn", fmt(mt.value), "changes merged today", num(mt.value) > 0 ? "Running" : "Needs a look", "From the process-health series") : lamp("merges", "idle", "Merges today", "not read", "No data", "The process-health series is not published"));
+  board.push(notFresh
+    ? lamp("sources", "warn", `${notFresh}`, fresh.stale && fresh.unread ? "sources not read or old" : fresh.stale ? (fresh.stale === 1 ? "source out of date" : "sources out of date") : (fresh.unread === 1 ? "source not read" : "sources not read"), "Needs a look", `${fresh.total - notFresh} of ${fresh.total} sources are fresh`)
+    : lamp("sources", "ok", `${fresh.total}`, "sources fresh", "Running", `Every source was read in the last ${STALE_MIN} minutes`));
 
   const byId = {};
   lanes.forEach(l => { byId[l.lane] = l; });
   const unplaced = lanes.filter(l => l.placement === "unplaced");
-  const bays = ms.map(m => bayCard(m, byId));
-  bays.push(cloudCard(floor.cloud, lanes));
-  if (unplaced.length) bays.push(unplacedFold(unplaced));
+  const rowsM = ms.map(m => machineRow(m, byId));
+  rowsM.push(cloudRow(floor.cloud, lanes));
+  if (unplaced.length) rowsM.push(unplacedFold(unplaced));
+
+  const freshLine = `${fresh.total - notFresh} of ${fresh.total} sources fresh${notFresh ? `; ${[fresh.stale ? plural(fresh.stale, "out of date", "out of date") : "", fresh.unread ? `${fresh.unread} not read` : ""].filter(Boolean).join(", ")}` : ""}`;
 
   el("dash").innerHTML = `
+    <section class="verdict c-${vcls}" aria-labelledby="verdictH">
+      <h2 class="sr" id="verdictH">Is anything wrong</h2>
+      <p class="vs" role="status"><span class="st">${esc(verdictWord)}.</span> ${esc(verdict)}</p>
+      ${needs.length ? `<div><p class="sub">Needs you</p><ol class="needs">${needs.slice(0, 5).map(n => `<li><span>${esc(plain(n.what))}</span><span class="who">${esc(plain(n.who))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : `<p class="sub">Needs you: nothing</p>`}
+      ${handled.length ? `<div><p class="sub">The factory is handling these, no action from you</p><ol class="needs">${handled.slice(0, 6).map(n => `<li><span>${esc(plain(n.what))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : ""}
+    </section>
     <div class="board" role="list" aria-label="Right now">${board.join("")}</div>
+    <div class="key" aria-label="What the lamp colours mean"><span><i style="--c:var(--ok)"></i>green: running as expected</span><span><i style="--c:var(--warn)"></i>amber: needs a look</span><span><i style="--c:var(--stop)"></i>red: stopped or failing</span><span><i class="dash-dot"></i>grey dashed: no data</span></div>
     <div class="cols">
       <div class="stack">
         <section class="sec" aria-labelledby="linesH">
-          <header><h2 id="linesH">Assembly lines</h2><p>${built.declared ? "In the order the deployment declares them" : esc("Which lines are declared is unread (" + built.reason + ")")}</p></header>
-          ${slots.length ? slots.map(lineCard).join("") : `<p class="unread">The record holds no lines.</p>`}
+          <header><h2 id="linesH">Assembly lines</h2><p>${built.declared ? "Each line is one plan being built, in the order the deployment declares them." : esc("Each line is one plan being built. Which lines are declared is unread (" + built.reason + ")")}</p></header>
+          ${real.length ? real.map(x => lineCard(x.slot, x.i)).join("") : `<p class="unread">The record holds no lines.</p>`}
+          ${missingLines(absent)}
+          ${real.length ? `<div class="key" aria-label="What the part colours mean"><span><i class="sq done"></i>part done</span><span><i class="sq active"></i>being built</span><span><i class="sq prep"></i>being prepared</span><span><i class="sq stop"></i>stopped</span><span><i class="sq wait"></i>not started</span></div>` : ""}
         </section>
         ${todayCard(floor, health)}
       </div>
       <section class="sec" aria-labelledby="baysH">
-        <header><h2 id="baysH">Machines and what runs on them</h2><p>${floor.stall_minutes ? `A lane is stalled after ${floor.stall_minutes} minutes without a row` : ""}</p></header>
-        <div class="bays">${bays.join("")}</div>
+        <header><h2 id="baysH">Machines and their workers</h2><p>${floor.stall_minutes ? `Each machine, how many workers use it, and anything wrong. A worker has gone quiet after ${floor.stall_minutes} minutes without a log entry.` : "Each machine, how many workers use it, and anything wrong."}</p></header>
+        <div class="key" aria-label="What the slot colours mean"><span><i class="slot used"></i>running</span><span><i class="slot codex"></i>on Codex</span><span><i class="slot stall"></i>gone quiet</span><span><i class="slot over"></i>over capacity</span><span><i class="slot"></i>free</span></div>
+        <div class="mrows">${rowsM.join("")}</div>
       </section>
     </div>
     <section class="sec" aria-labelledby="freshH">
-      <header><h2 id="freshH">How fresh each source is</h2><p>${fresh.stale} stale, ${fresh.unread} unread</p></header>
-      <div class="fresh">${fresh.html}</div>
+      <header><h2 id="freshH">How fresh each source is</h2><p>${esc(freshLine)}. A source is out of date after ${STALE_MIN} minutes.</p></header>
+      ${notFresh ? `<div class="fresh">${fresh.problems}</div>` : ""}
+      <details class="more" id="allSources"><summary>Show all ${fresh.total} sources</summary><div class="fresh">${fresh.html}</div></details>
     </section>
-    <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as unread, never as zero.</footer>`;
+    <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as not read, never as zero. Times are in your time zone, named beside each time; hover a time to see it in universal time.</footer>`;
 
-  return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled};
+  return {stoppedN, unreadL, readL, missing, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
 }
 
 // ---- What the drawer shows, read from the factory record in hand (the same files the dashboard reads).
-function kv(rows){ return `<dl class="kv">${rows.filter(Boolean).map(r => `<dt>${esc(r[0])}</dt><dd>${r[1]}</dd>`).join("")}</dl>`; }
-const unreadS = why => `<span class="unread">unread${why ? " (" + esc(why) + ")" : ""}</span>`;
+function kv(rows){ return `<dl class="kv">${rows.filter(Boolean).map(r => `<dt>${esc(plain(r[0]))}</dt><dd>${r[1]}</dd>`).join("")}</dl>`; }
+const unreadS = why => `<span class="unread">unread${why ? " (" + esc(plain(why)) + ")" : ""}</span>`;
 const stateWord = {done: "done", active: "being built", stop: "stopped", prep: "preparing", todo: "waiting", wait: "waiting"};
 
 function drillContent(d){
@@ -884,32 +1136,29 @@ function drillContent(d){
   const miss = (kind, what) => ({kind: DRILL_KINDS[kind] || "", title: "Not in the record", html: `<p class="unread">The current record holds no ${esc(what)} named “${esc(d.id)}”. It may have finished, or the record may be older than the link.</p>`});
   if (d.kind === "lane"){
     const l = lanes.find(x => safeId(x.lane) === d.id);
-    if (!l) return miss("lane", "lane");
+    if (!l) return miss("lane", "worker");
     const st = l.station ? stationRef(lines, l.station) : null;
-    return {kind: "Lane", title: l.title || l.lane, html: `<div>${ciChip(l)} ${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</div>` + kv([
-      ["Lane", esc(l.lane)],
+    return {kind: "Worker", title: l.title || l.lane, html: `<div>${ciChip(l)} ${l.stalled ? `<span class="chip stall">stalled ${esc(ageText(liveMs(l.silent_minutes)))}</span>` : ""}</div>` + kv([
+      ["Worker", esc(l.lane)],
       ["Ticket", l.ticket ? esc(l.ticket) : unreadS("none named")],
-      ["Kind", esc(l.kind || "") + (l.engine ? " · " + esc(l.engine === "codex" ? "Codex" : l.engine === "claude" ? "Claude" : l.engine) : "")],
-      ["Newest row", l.status_full ? esc(l.status_full) : unreadS("the lane wrote no text")],
-      ["Written", esc(clock(l.status_at)) + " · " + esc(sinceText(l.status_at)) + " ago"],
-      ["Claimed for", l.claim_full ? esc(l.claim_full) : unreadS("")],
-      ["Running", esc(sinceText(l.started_at)) + " since " + esc(clock(l.started_at))],
-      ["Pull request", l.pr ? esc(l.pr) + (l.pr_title ? " · " + esc(l.pr_title) : "") + (l.pr_ci_note ? " · " + esc(l.pr_ci_note) : "") : "none written yet"],
+      ["Kind", esc(plain(l.kind || "")) + (l.engine ? " · " + esc(l.engine === "codex" ? "Codex" : l.engine === "claude" ? "Claude" : l.engine) : "")],
+      ["Newest log entry", l.status_full ? esc(plain(l.status_full)) : unreadS("the worker wrote no text")],
+      ["Written", whenTag(l.status_at)],
+      ["Claimed for", l.claim_full ? esc(plain(l.claim_full)) : unreadS("")],
+      ["Running since", whenTag(l.started_at)],
+      ["Change", l.pr ? esc(l.pr) + (l.pr_title ? " · " + esc(plain(l.pr_title)) : "") + (l.pr_ci_note ? " · " + esc(plain(l.pr_ci_note)) : "") : "none written yet"],
       ["Placed on", esc(l.placement === "cloud" ? "cloud" : l.host || l.placement || "unread")],
-      ["Builds", st ? `<a href="${drillHref("st", esc(safeId(st.line.line_id) + "-" + safeId(st.station.id)), tab)}">${esc(st.station.name)} · ${esc(st.item ? st.item.title : "")}</a>` : "no station on the lines holds this ticket"]
+      ["Builds", st ? `<a href="${drillHref("st", esc(safeId(st.line.line_id) + "-" + safeId(st.station.id)), tab)}">${esc(shortTask(st.station.name, st.station.id))}${st.item && st.item.title !== st.station.name ? ` · ${esc(shortTask(st.item.title, st.item.id))}` : ""}</a>` : "no station on the lines holds this ticket"]
     ])};
   }
   if (d.kind === "line"){
     const L = lines.find(x => safeId(x.line_id) === d.id);
     if (!L) return miss("line", "assembly line");
     const f = lineFacts(L);
-    const reasons = (L.andon && Array.isArray(L.andon.causes) ? L.andon.causes : []).concat(L.andon && L.andon.reason ? [L.andon.reason] : []).map(c => String(c).replace(/[:\s]+$/, "")).filter(Boolean);
-    const uniq = reasons.filter((c, i) => reasons.indexOf(c) === i);
-    return {kind: "Assembly line", title: L.name, html: `<div><span class="pill ${f.stopped ? "stop" : L.status_pill === "done" ? "done" : "active"}">${f.stopped ? "Stopped" : esc(L.status_pill || "queued")}</span> <span class="pill wait">${fmt(num(L.percent_built))}% built</span></div>`
-      + (f.stopped ? `<div class="cause"><b>Why it is stopped</b>${uniq.length ? uniq.map(c => `<span>${esc(c)}</span>`).join("") : "<span>The record flags this line stopped and gives no reason.</span>"}</div>` : "")
-      + `<p class="facts">${f.done} of ${f.items.length} parts done${f.active ? `, ${f.active} being built` : ""}.</p>`
+    return {kind: "Assembly line", title: L.name, html: `<div>${carIcon()} ${conditionPill(L)}</div>`
+      + progressBlock(L) + blockerBlock(L) + evidenceRow(L)
       + (containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : "")
-      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(s.name)}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(i.title)} · ${esc(stateWord[i.state] || i.state || "")}</li>`).join("")}</ul></li>`).join("")}</ul>`};
+      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(shortTask(s.name, s.id))}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${i.title === s.name ? "" : `${esc(shortTask(i.title, i.id))} · `}${esc([stateWord[i.state] || i.state || "", itemEvidence(i)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></li>`).join("")}</ul>`};
   }
   if (d.kind === "st" || d.kind === "part"){
     let hit = null;
@@ -919,9 +1168,9 @@ function drillContent(d){
     }));
     if (!hit) return miss(d.kind, "station");
     const built = lanes.filter(l => l.station && l.station.line_id === hit.L.line_id && l.station.station_id === hit.s.id);
-    return {kind: "Station", title: hit.s.name, html: kv([["Line", `<a href="${drillHref("line", esc(safeId(hit.L.line_id)), tab)}">${esc(hit.L.name)}</a>`], ["State", esc(stateWord[hit.s.state] || hit.s.state || "unread")]])
-      + `<h3>Parts</h3><ul class="dlist">${(hit.s.items || []).map(i => `<li><span>${esc(i.title)}</span><span class="pill ${i.state === "stop" ? "stop" : i.state === "done" ? "done" : i.state === "active" ? "active" : "wait"}">${esc(stateWord[i.state] || i.state || "unread")}</span>${i.note || (i.prs && i.prs.length) ? `<small class="muted">${esc([i.note].concat(i.prs || []).filter(Boolean).join(" · "))}</small>` : ""}</li>`).join("") || `<li class="unread">No parts are listed.</li>`}</ul>`
-      + `<h3>Lanes building here</h3>` + (built.length ? `<div class="lrows">${built.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No live lane names this station.</p>`)};
+    return {kind: "Station", title: shortTask(hit.s.name, hit.s.id), html: kv([["Line", `<a href="${drillHref("line", esc(safeId(hit.L.line_id)), tab)}">${esc(plain(hit.L.name))}</a>`], ["State", esc(stateWord[hit.s.state] || hit.s.state || "unread")]])
+      + `<h3>Parts</h3><ul class="dlist">${(hit.s.items || []).map(i => `<li><span>${esc(shortTask(i.title, i.id))}</span><span class="pill ${i.state === "stop" ? "stop" : i.state === "done" ? "done" : i.state === "active" ? "active" : "wait"}">${esc(stateWord[i.state] || i.state || "unread")}</span>${i.note || (i.prs && i.prs.length) ? `<small class="muted">${esc([plainNote(i.note)].concat((i.prs || []).slice(0, 3)).filter(Boolean).join(" · ") + (i.prs && i.prs.length > 3 ? ` and ${i.prs.length - 3} more` : ""))}</small>` : ""}</li>`).join("") || `<li class="unread">No parts are listed.</li>`}</ul>`
+      + `<h3>Workers building here</h3>` + (built.length ? `<div class="lrows">${built.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No live worker names this station.</p>`)};
   }
   if (d.kind === "bay"){
     if (d.id === "cloud"){
@@ -929,9 +1178,9 @@ function drillContent(d){
       if (!c) return miss("bay", "cloud bay");
       const live = lanes.filter(l => l.placement === "cloud");
       return {kind: "Machine", title: "Cloud", html: kv([["State", c.state === "read" ? "read" : unreadS(c.note)]])
-        + (c.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b></div>`).join("")
+        + (c.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(plain(x.text))}</b></div>`).join("")
         + `<ul class="plain">${(c.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span></li>`).join("")}</ul>`
-        + `<h3>Lanes here</h3>` + (live.length ? `<div class="lrows">${live.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No cloud lane is live.</p>`)};
+        + `<h3>Workers here</h3>` + (live.length ? `<div class="lrows">${live.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No cloud worker is live.</p>`)};
     }
     const m = machines.find(x => safeId(x.host) === d.id);
     if (!m) return miss("bay", "machine");
@@ -939,24 +1188,23 @@ function drillContent(d){
     lanes.forEach(l => { byId[l.lane] = l; });
     const placed = (m.lanes || []).map(id => byId[id]).filter(Boolean);
     const rd = m.state === "read";
-    const memFrac = m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
     const rn = m.runners || {};
-    return {kind: "Machine", title: m.label, html: kv([["State", esc(rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread")], ["Read", m.read_age_min == null ? unreadS("") : esc(ageText(num(m.read_age_min) * 60000)) + " ago"], ["Lanes", esc(String(placed.length)) + (m.cap == null ? " (cap unread)" : " of a cap of " + esc(String(num(m.cap))))], m.refusal ? ["Refuses new work", esc(m.refusal)] : null, !rd && m.note ? ["Note", esc(m.note)] : null])
-      + (rd ? `<div class="gauges">${gauge("load per core", m.load_per_core == null ? null : fmt(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core), "", num(m.load_per_core) >= 1)}${gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac, "", memFrac != null && memFrac > 0.9)}${gauge("swap used", m.swap_used_pct == null ? null : fmt(m.swap_used_pct) + "%", m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported")}${gauge("CI runners", rn.state === "read" ? `${num(rn.busy)} busy of ${num(rn.total)}` : null, rn.state === "read" && num(rn.total) ? num(rn.busy) / num(rn.total) : null, rn.note)}</div>` : "")
-      + `<h3>Lanes here</h3>` + (placed.length ? `<div class="lrows">${placed.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No lane is placed here.</p>`)};
+    return {kind: "Machine", title: m.label, html: kv([["State", esc(rd ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread")], ["Read", m.read_age_min == null ? unreadS("") : esc(m.read_at ? sinceText(m.read_at) : ageText(liveMs(m.read_age_min))) + " ago"], ["Workers", esc(String(placed.length)) + (m.cap == null ? " (cap unread)" : " of a cap of " + esc(String(num(m.cap))))], refusalReason(m) !== null ? ["Not taking new work", esc(plain(refusalReason(m)))] : null, !rd && m.note ? ["Note", esc(plain(m.note))] : null])
+      + (rd ? `<div class="gauges">${loadGauge(m)}${memoryGauge(m)}${gauge("swap used", m.swap_used_pct == null ? null : fmt(m.swap_used_pct) + "%", m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported")}${gauge("CI runners", rn.state === "read" ? `${num(rn.busy)} busy of ${num(rn.total)}` : null, rn.state === "read" && num(rn.total) ? num(rn.busy) / num(rn.total) : null, rn.note)}</div>` : "")
+      + `<h3>Workers here</h3>` + (placed.length ? `<div class="lrows">${placed.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No worker is placed here.</p>`)};
   }
   if (d.kind === "stop"){
     const st = (floor.stoppages || []).find(x => safeId(x.name) === d.id);
     if (!st) return miss("stop", "stoppage");
-    return {kind: "Stoppage", title: String(st.name), html: kv(Object.keys(st).filter(k => k !== "name" && st[k] !== null && typeof st[k] !== "object").map(k => [k.replace(/_/g, " "), esc(st[k])]))};
+    return {kind: "Stoppage", title: String(st.name), html: kv(Object.keys(st).filter(k => k !== "name" && st[k] !== null && typeof st[k] !== "object").map(k => [k.replace(/_/g, " "), esc(plain(st[k]))]))};
   }
   if (d.kind === "report"){
     const m = CUR.manifest && Array.isArray(CUR.manifest.reports) ? CUR.manifest.reports : [];
     const r = m.find(x => safeId(x.id) === d.id);
     if (!r) return miss("report", "report");
     const t = TABS.find(x => x.report === r.id);
-    return {kind: "Report", title: r.title || r.name || r.id, html: kv([["Refreshed", r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : esc(r.refresh || "unread")], r.description ? ["About", esc(r.description)] : null])
-      + `<ul class="dlist">${(r.data || []).map(x => `<li><b>${esc(x.name)}</b>${x.status === "read" ? `<span>${esc(clock(x.as_of))} · ${esc(sinceText(x.as_of))} old</span>` : `<span class="unread">unread${x.reason ? " (" + esc(x.reason) + ")" : ""}</span>`}</li>`).join("")}</ul>`
+    return {kind: "Report", title: r.title || r.name || r.id, html: kv([["Refreshed", r.refresh === "snapshot" ? "a snapshot, not refreshed by a tick" : esc(r.refresh || "unread")], r.description ? ["About", esc(plain(r.description))] : null])
+      + `<ul class="dlist">${(r.data || []).map(x => `<li><b>${esc(plain(x.name))}</b>${x.status === "read" ? `<span>${whenTag(x.as_of)}</span>` : `<span class="unread">unread${x.reason ? " (" + esc(plain(x.reason)) + ")" : ""}</span>`}</li>`).join("")}</ul>`
       + (t ? `<a class="open-full" href="#${esc(t.id)}">Open the full ${esc(t.label)} view</a>` : "")};
   }
   return miss(d.kind, "item");
@@ -973,53 +1221,81 @@ function stationRef(lines, ref){
   return null;
 }
 
-// ---- Tab lamps and captions, read from the same files.
-function setTab(id, cls, sub, title){
-  const i = el("lamp-" + id), s = el("sub-" + id);
-  if (i){ i.className = "c-" + cls; i.title = title || ""; }
+// ---- Tab lamps, words and captions, read from the same files.
+function setTab(id, cls, word, sub, title){
+  const i = el("lamp-" + id), s = el("sub-" + id), w = el("word-" + id);
+  if (i){ i.className = "c-" + cls; i.title = plain(title || ""); }
+  if (w){ w.className = "c-" + cls; w.textContent = word; }
   if (s) s.textContent = sub;
 }
 
+// What the header stamp says for each tab: the age of the data that tab shows.
+const tabAge = {};
+
 function renderTabs(p, d){
   const rec = p.record;
-  setTab("dashboard", d.stoppedN || d.stale || d.stalled ? "stop" : d.unread || d.unreadM ? "warn" : "ok",
-    `${d.stoppedN} of ${d.slots} lines stopped`, `${d.stale} stale and ${d.unread} unread sources`);
-  setTab("floor", d.stoppedN ? "stop" : "ok", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : "no line stopped");
+  const recAge = Date.parse(rec.generated_at);
+  tabAge.dashboard = tabAge.floor = Number.isNaN(recAge) ? {text: "Record time unreadable"} : {iso: rec.generated_at, label: "Record computed"};
+  // The tab words are short so a phone shows them whole: Stopped, Failing, Needs a look, Not read, Running.
+  const needsLook = d.stale || d.stalled || d.unread || d.unreadM || d.unreadL;
+  // No line read at all is never Running on the Dashboard tab either: it is grey, like its verdict.
+  const noneRead = !d.readL && !d.unreadL;
+  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : needsLook ? "warn" : noneRead ? "idle" : "ok",
+    d.stoppedN ? "Stopped" : d.redLanes ? "Failing" : needsLook ? "Needs a look" : noneRead ? "No line read" : "Running",
+    `${d.stoppedN} of ${d.slots} lines stopped, ${d.unreadL} not read`, `${d.stale} out of date and ${d.unread} not read sources`);
+  // A line the record does not carry a condition for is never green: all unread is grey, some unread is amber.
+  // No line read at all (only planned lines with no plan file, or none) is grey too, never Running.
+  setTab("floor", d.stoppedN ? "stop" : d.unreadL ? (d.readL ? "warn" : "idle") : d.readL ? "ok" : "idle", d.stoppedN ? "Stopped" : d.unreadL ? (d.readL ? "Needs a look" : "Not read") : d.readL ? "Running" : "No line read", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : d.unreadL ? `${d.unreadL} lines not read` : d.readL ? (d.missing ? `no line stopped; ${d.missing} planned with no plan file` : "no line stopped") : "no line has a plan file yet");
   const h = p.health && p.health.summary;
-  if (!h) setTab("process", "none", "series not published", "unread");
-  else if (h.measured === false) setTab("process", "idle", "not measured", h.reason || "");
-  else setTab("process", num(h.worse) > 0 ? "warn" : "ok", `${num(h.improved)} better, ${num(h.worse)} worse`, `${num(h.flat)} flat, ${num(h.unmeasured)} unmeasured since the reset`);
+  tabAge.process = p.health && p.health.generated_at ? {iso: p.health.generated_at, label: "Series computed"} : {text: "Series not published"};
+  if (!h) setTab("process", "none", "No data", "series not published", "not read");
+  else if (h.measured === false) setTab("process", "idle", "Not measured", "not measured", h.reason || "");
+  else setTab("process", num(h.worse) > 0 ? "warn" : "ok", num(h.worse) > 0 ? "Needs a look" : "Running", `${num(h.improved)} better, ${num(h.worse)} worse`, `${num(h.flat)} flat, ${num(h.unmeasured)} unmeasured since the reset`);
   const m = p.manifest && Array.isArray(p.manifest.reports) ? p.manifest.reports : null;
   [["map", "decision_map"]].forEach(([tab, rid]) => {
     const r = m && m.find(x => x.id === rid);
     const x = r && (r.data || []).find(y => y.status === "read");
-    if (!m) setTab(tab, "none", "manifest unread", "unread");
-    else if (!x) setTab(tab, "idle", "data unread", r ? ((r.data || [])[0] || {}).reason || "" : "not in the manifest");
-    else setTab(tab, "none", `${r.refresh === "snapshot" ? "snapshot, " : ""}${sinceText(x.as_of)} old`, `data from ${clock(x.as_of)}`);
+    const snap = r && r.refresh === "snapshot";
+    tabAge[tab] = x ? {iso: x.as_of, label: snap ? "Snapshot from" : "Data from"} : {text: "Data not read"};
+    if (!m) setTab(tab, "none", "No data", "manifest not read", "not read");
+    else if (!x) setTab(tab, "idle", "No data", "data not read", r ? ((r.data || [])[0] || {}).reason || "" : "not in the manifest");
+    else setTab(tab, "snap", snap ? "Snapshot" : "Data", `${sinceText(x.as_of)} old`, `data from ${utcText(x.as_of)}`);
   });
 }
 
-// ---- Header: the record's age
-function renderStamp(rec){
+// ---- Header: the age of what the chosen tab shows. Only the record's own tabs get the stale-record banner.
+function renderStamp(){
+  const stamp = el("stamp"), banner = el("banner");
+  const rec = lastPayload && lastPayload.record;
+  if (!rec){ return; }
+  const a = tabAge[currentTab];
+  stamp.title = "";
+  if (!a) stamp.textContent = "Reading the factory record";
+  else if (a.text) stamp.textContent = a.text;
+  else {
+    stamp.textContent = `${a.label} ${when(a.iso)}`;
+    stamp.title = utcText(a.iso);
+  }
   const gen = Date.parse(rec.generated_at);
-  recordAt = gen;
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
-  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${clock(rec.generated_at)} · ${ageText(age)} old`;
-  const banner = el("banner");
-  if (age != null && age > STALE_MIN * 60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
-  else banner.hidden = true;
+  if ((currentTab === "dashboard" || currentTab === "floor") && age != null && age > STALE_MIN * 60000){
+    banner.hidden = false;
+    banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`;
+  } else banner.hidden = true;
 }
 
 let lastKey = "";
 function render(p){
   CUR = p;
-  renderStamp(p.record);
+  lastPayload = p;
+  recordAt = Date.parse(p.record.generated_at);
   const key = JSON.stringify([p.record, p.status, p.health && p.health.generated_at, p.manifest, p.delegation && p.delegation.generated_at, Math.floor(Date.now() / 60000)]);
   if (key !== lastKey){
     lastKey = key;
     renderTabs(p, renderDashboard(p));
   }
   refreshDrawer();
+  renderStamp();
 }
 
 async function fetchOptional(name){
@@ -1043,7 +1319,7 @@ async function load(){
     banner.hidden = false;
     banner.textContent = "The factory record could not be read (" + e.message + "). Retrying every minute.";
     el("dash").innerHTML = `<p class="unread">Nothing is drawn: the factory record is unread.</p>`;
-    TAB_IDS.forEach(id => setTab(id, "none", "unread", "the factory record could not be read"));
+    TAB_IDS.forEach(id => setTab(id, "none", "No data", "not read", "the factory record could not be read"));
   }
 }
 

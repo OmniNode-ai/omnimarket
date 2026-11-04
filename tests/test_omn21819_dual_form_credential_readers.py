@@ -243,7 +243,8 @@ def gateway_refs(db: FakeReader, tenant: str) -> list[str]:
     fake_self = SimpleNamespace(
         _catalog=db,
         _request=SimpleNamespace(tenant_id=tenant, host=HOST),
-        _set_aside=set(),
+        _set_aside={},
+        _retrying=set(),
     )
     return [
         k.api_key_ref

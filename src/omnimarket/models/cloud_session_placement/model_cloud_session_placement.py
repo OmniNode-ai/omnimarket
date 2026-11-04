@@ -12,16 +12,51 @@ from pydantic import BaseModel, ConfigDict, Field
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
-class ModelCloudHost(BaseModel):
-    """A caller supplied host row; consent is explicit."""
+class ModelCloudAccount(BaseModel):
+    """One claude.ai login identity, from the overlay's ``accounts[]``. Every key is checked by the registry loader,
+    which names the absent one; the defaults only let the loader, not pydantic, word the refusal."""
+
+    model_config = _FROZEN
+    label: str = ""
+    org_hash: str = ""
+    email_hash: str = ""
+    consent: str = ""
+    consent_expires: str = ""
+    credit_expires: str = ""
+    legacy_hosts: tuple[str, ...] = ()
+    transport_exclude: tuple[str, ...] = ()
+
+
+class ModelCloudTransportRow(BaseModel):
+    """A raw host table row handed to ``transports``. Fields the node does not read (a host's lab ``available``
+    among them) are ignored, never consulted."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+    name: str
+    target: str = ""
+    local: bool = False
+    push: bool = True
+    contributor: bool = False
+
+
+class ModelCloudTransport(BaseModel):
+    """A host a cloud start call may be made from (the output of ``transports``, the input of ``pick``)."""
 
     model_config = _FROZEN
     name: str
-    engines: tuple[str, ...] = ()
-    engines_live: bool = False
-    cloud_consent: str | None = None
-    push: bool = True
-    contributor: bool = False
+    target: str = ""
+    local: bool = False
+
+
+class ModelCloudLoginObservation(BaseModel):
+    """The raw texts the caller got from one host: ``claude auth status --json`` and the cloud probe. The node parses
+    both; an unreachable host carries no texts."""
+
+    model_config = _FROZEN
+    host: str
+    reachable: bool = True
+    auth_text: str = ""
+    probe_text: str = ""
 
 
 class ModelCloudSessionPlacementRequest(BaseModel):
@@ -31,7 +66,10 @@ class ModelCloudSessionPlacementRequest(BaseModel):
     action: Literal[
         "route",
         "slots",
+        "transports",
+        "observe_logins",
         "pick",
+        "start_outcome",
         "note_start",
         "note_refusal",
         "release",
@@ -54,11 +92,17 @@ class ModelCloudSessionPlacementRequest(BaseModel):
     ]
     placement_dir: str = ""
     now: datetime | None = None
-    hosts: tuple[ModelCloudHost, ...] = ()
-    claude_engines: tuple[str, ...] = ("claude_sonnet", "claude_opus")
+    accounts: tuple[ModelCloudAccount, ...] = ()
+    login_fresh_s: int | None = None
+    probe_timeout_s: int | None = None
+    rows: tuple[ModelCloudTransportRow, ...] = ()
+    transports: tuple[ModelCloudTransport, ...] = ()
+    observations: tuple[ModelCloudLoginObservation, ...] = ()
+    transport: str = ""
+    began: bool = False
+    untried: tuple[str, ...] = ()
     run_id: str = ""
     account: str = ""
-    probes: dict[str, str] = Field(default_factory=dict)
     why: str = ""
     until: str = ""
     remaining: float | None = None
@@ -110,8 +154,21 @@ class ModelCloudSessionPlacementResult(BaseModel):
     accounts: dict[str, int] = Field(default_factory=dict)
     caps: dict[str, dict[str, Any]] = Field(default_factory=dict)
     account: str | None = None
+    transport: str | None = None
     needs_probe: str | None = None
     tried: list[dict[str, str]] = Field(default_factory=list)
+    sentences: list[str] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
+    transports: list[dict[str, Any]] = Field(default_factory=list)
+    excluded: list[str] = Field(default_factory=list)
+    logins: dict[str, dict[str, dict[str, Any]]] = Field(default_factory=dict)
+    unconsented: list[dict[str, str]] = Field(default_factory=list)
+    unreachable: list[str] = Field(default_factory=list)
+    stale_hosts: list[str] = Field(default_factory=list)
+    probe_timeout_s: int | None = None
+    verdict: str | None = None
+    sentence: str | None = None
+    next_transport: str | None = None
     cap: int | None = None
     held: str | None = None
     entry: dict[str, Any] | None = None
@@ -120,3 +177,5 @@ class ModelCloudSessionPlacementResult(BaseModel):
     title: str | None = None
     parsed: dict[str, Any] | None = None
     branches: list[str] = Field(default_factory=list)
+    status: str | None = None
+    outcome: str | None = None

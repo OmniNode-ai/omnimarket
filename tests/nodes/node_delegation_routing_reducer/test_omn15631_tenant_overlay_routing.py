@@ -112,6 +112,24 @@ _BIFROST_ONE_TIER = textwrap.dedent(
 )
 
 
+def _reset_routing_caches() -> None:
+    """Forget every process-global the routing handler fills from the environment.
+
+    ``delta`` binds ``_config`` (the tier ladder, with the placements this
+    file's one-tier contract produced) and caches the task-class contract. Left
+    set, the next test file in the same pytest process routes on this file's
+    ladder: ``test_cloud_escalation_omn13140`` read ``cheap_cloud`` where it
+    expected ``cheap_frontier`` when the CI shard planner dealt the two files
+    to one shard in this order (Tests (Split 8/20) on omnimarket#4526). The
+    same leak, from another file, is OMN-21433.
+    """
+    routing._load_bifrost_endpoints.cache_clear()
+    routing._get_task_class_contract.cache_clear()
+    routing._config = None
+    routing._config_spread_peers = None
+    routing._config_spread_weights = None
+
+
 @pytest.fixture
 def platform_default_routable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -121,11 +139,11 @@ def platform_default_routable(
     contract_path.write_text(_BIFROST_ONE_TIER)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
-    routing._load_bifrost_endpoints.cache_clear()
+    _reset_routing_caches()
     try:
         yield
     finally:
-        routing._load_bifrost_endpoints.cache_clear()
+        _reset_routing_caches()
 
 
 def _request(

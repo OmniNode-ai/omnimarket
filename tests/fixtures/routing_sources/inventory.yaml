@@ -128,6 +128,10 @@ not_routing_resolution_sites:
     reason: the developer.principal overlay, read to find which machine principals hold a broker grant role; it decides broker grants and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_question_guard_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the rule data and bus transport of a guard that refuses a question a ruling in force answers; it chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_agent_review_gate_accept_effect/overlay.py:find_node_overlay(OVERLAY_ID)"
+    reason: the publisher identity, verifier endpoint and bus transport of the node that decides whether a verified agent receipt replaces lost review voters; it decides one gate attempt and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_prompt_cost_estimate_compute/handlers/contract_config.py:find_node_overlay(OVERLAY_ID)"
+    reason: reads the typed savings uncertainty spreads for pricing confidence and token estimation methods; the overlay changes only savings ranges and contains no backend, model, tier or provider selection
   - site: "src/omnimarket/nodes/node_branch_prune_effect/handlers/handler_branch_prune.py:find_node_overlay(NODE_NAME)"
     reason: the keep policy of a remote-branch prune (repositories in scope, protected names, age floor); it decides which branches are kept and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/handlers/handler_contract_policy_source.py:find_node_overlay(NODE_NAME)"
@@ -148,6 +152,8 @@ not_routing_resolution_sites:
     reason: the runtime host a sweep probes; a probe target, not a route for delegated work
   - site: "src/omnimarket/nodes/node_database_sweep/handlers/handler_database_sweep.py:resolve_setting(_NODE_NAME)"
     reason: the runtime host a sweep probes; a probe target, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_pr_state_read_effect/cli.py:resolve_setting(_NODE_NAME)"
+    reason: the projection API address the pr-state command reads from; a read target, not a route for delegated work
   - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:resolve_setting(DEFAULT_MODEL_NODE)"
     reason: the model onboarding offers to register on a customer's own key; it is checked against the key's list and stored as the customer's choice, and the stored model, not this value, selects the delegation route
   - site: "src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py:load_node_overlay(DEFAULT_MODEL_NODE)"
@@ -158,8 +164,14 @@ not_routing_resolution_sites:
     reason: whether a deployment enables the lab SLI pack; an on or off switch for four nodes, not a route for delegated work
   - site: "src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py:find_node_overlay(NODE_NAME)"
     reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
+  - site: "src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py:find_node_overlay(NODE_NAME)"
+    reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_factory_floor_effect/source_loader.py:find_node_overlay('lab_hosts')"
+    reason: locates the lab host table the floor reads for each machine's cap and whether it is in repair when neither the table variable nor the floor overlay names a file; it is a display read and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_claude_pool_refill_effect/handlers/handler_claude_pool_refill.py:find_node_overlay('lab_hosts')"
+    reason: locates the lab host table whose ssh targets the Claude pool refill copies a token to; the hosts it reaches are the ones the table names and it selects no backend, model or tier for delegated work
   - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"
     reason: names the overlay file in an error message when repos.private_data is not configured; the clone name supplies sandbox writable roots and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/overlay.py:find_node_overlay(overlay_id)"
@@ -176,6 +188,12 @@ not_routing_resolution_sites:
     reason: the mode, bus transport and read-age limit of the launch validity check; it decides whether a lane's target is still valid and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_standup_retrospective_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the retrospective weekday, role vocabulary, draft state, credit grammar, wording and bus transport of the Friday stand-up section; it shapes a text sheet and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_omnidash_host_effect/handlers/adapter_omnidash_host_install.py:find_node_overlay(NODE_NAME)"
+    reason: the host rows of the omnidash hosting node (bind address, port, repository URL, build root, node version, status path, poll interval); it decides where a dashboard is served and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_overlay_resolver_effect/handlers/handler_overlay_resolver.py:find_node_overlay(overlay_id)"
+    reason: finds the overlay.yaml of a skill under the overlay roots so it can be validated against its schema and returned; it reads whatever overlay the caller names and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_host_reconcile_effect/handlers/retired_repositories.py:find_node_overlay('node_host_reconcile_effect')"
+    reason: adds repository names to the retired list the host reconcile pass backs up and removes and refuses in sync inputs; it chooses no backend, model or tier
 not_routing_configs:
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route

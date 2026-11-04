@@ -9,11 +9,15 @@ The package text travels in ``messages``, so this result is published on the res
 from __future__ import annotations
 
 from collections.abc import Mapping
+from uuid import UUID
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.enums.enum_context_pack_failure import EnumContextPackFailure
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.claude_code_binding.enum_client_verdict_action import (
+    EnumClientVerdictAction,
+)
 from omnimarket.models.context_pack_orchestrator.enum_context_pack_orchestrator_status import (
     EnumContextPackOrchestratorStatus,
 )
@@ -58,6 +62,13 @@ class ModelContextPackBuilt(BaseModel):
     # Set on every failed build: the runtime's failure-terminal guard reads it and
     # publishes the result on the contract's declared failure terminal.
     terminal_failure_cause: EnumContextPackFailure | None = None
+    # An additive call (OMN-22016) is answered with a client verdict: the action ends the
+    # receipt-mode wait, ``invocation_id`` joins the reply to its hook and ``package_sha256``
+    # is the sha256 of ``text``, the joined message texts. Both stay empty for every other call.
+    action: EnumClientVerdictAction | None = None
+    invocation_id: UUID | None = None
+    text: str | None = None
+    package_sha256: str | None = None
 
     def model_section_ms(self) -> float | None:
         """Sum the timed reads of model-written tiers, or None when none was read."""

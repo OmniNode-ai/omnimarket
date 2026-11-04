@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_gate_accept_effect
+version: "1.0.0"
+description: Lets a verified agent review receipt replace lost CI voters on the Hostile Review job
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_agent_review_gate_accept_effect: omnimarket.nodes.node_agent_review_gate_accept_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: filesystem_write
+dependencies:
+  - omnibase_infra
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, review, gate, receipt]
+node_role: effect
+pack: "routing"
+display_name: "Agent Review Gate Accept Effect"

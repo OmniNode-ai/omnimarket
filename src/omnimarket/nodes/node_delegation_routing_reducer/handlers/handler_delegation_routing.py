@@ -91,6 +91,11 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    exceeds_measured_correct_ceiling,
+    load_grounding_budget_by_task_class,
+    measure_grounding_input_tokens,
+)
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
     resolve_routing_tiers_path,
@@ -130,9 +135,6 @@ from omnimarket.models.delegation.model_entry_tier_share import (
 )
 from omnimarket.models.delegation.model_escalation_transitions import (
     ModelTaskClassTransitions,
-)
-from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
-    ModelGroundingBudgetByTaskClass,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -526,6 +528,14 @@ def _select_model_for_task(
     transport-failure retry that excludes the member tried first still lands on
     another member of the group.
     """
+    # OMN-22220: a rung is never offered a task above its measured correct ceiling.
+    tier_models = tuple(
+        m
+        for m in tier_models
+        if not exceeds_measured_correct_ceiling(
+            m.backend_ref, task_type, estimated_tokens
+        )
+    )
     selected = _select_primary_model_for_task(
         tier_models,
         task_type,
@@ -2144,23 +2154,6 @@ def tiers_declaring_backend(backend_ref: str) -> tuple[str, ...]:
     return tuple(names)
 
 
-# OMN-18297: the divisor of the character-based input measurement. It is the
-# repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
-# _compute) and it UNDER-counts: the recorded 57,120-character prompt of
-# delegation d715f096-27b9-444f-9355-3554819ef8a5 measures 14,280 here against
-# the provider's metered 18,245, about 22% low. The budget is declared in these
-# same units so the comparison is like-for-like, and both numbers are recorded
-# on the receipt so a reader never has to guess which one a budget refers to.
-_GROUNDING_TOKEN_CHARS_PER_TOKEN: int = 4
-
-
-def measure_grounding_input_tokens(text: str) -> int:
-    """Measure a prompt in the units the grounding budget is declared in."""
-    if not text:
-        return 0
-    return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
-
-
 def resolve_backend_grounding_budget(
     backend_id: str, task_type: str | None = None
 ) -> int | None:
@@ -2190,23 +2183,13 @@ def resolve_backend_grounding_budget(
     for backend in config.backends:
         if backend.backend_id == backend_id:
             if task_type is not None:
-                class_budget = _load_grounding_budget_by_task_class().budget_for(
+                class_budget = load_grounding_budget_by_task_class().budget_for(
                     backend_id, task_type
                 )
                 if class_budget is not None:
                     return class_budget
             return backend.max_grounded_input_tokens
     return None
-
-
-@lru_cache(maxsize=1)
-def _load_grounding_budget_by_task_class() -> ModelGroundingBudgetByTaskClass:
-    """Load the packaged per-task-class grounded input budgets (OMN-20486)."""
-    resource = importlib.resources.files("omnimarket").joinpath(
-        "configs/grounding_budget_by_task_class.yaml"
-    )
-    data = yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
-    return ModelGroundingBudgetByTaskClass.model_validate(data)
 
 
 def backend_id_for_tier(
@@ -3462,6 +3445,7 @@ __all__: list[str] = [
     "first_eligible_tier",
     "house_credential_refs",
     "is_free_tier",
+    "measure_grounding_input_tokens",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_dod_resolution",

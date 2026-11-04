@@ -34,7 +34,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.adapter_local_session_files import LocalSessionFiles
 from omnimarket.models.session_scope import ModelIdentityClaim, ModelSessionScope
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 from ..models.model_session_front_door import (
     HostMode,
@@ -67,9 +69,11 @@ class ReceiptError(Exception):
     """The receipt is missing, empty or unreadable: the run refused or never started."""
 
 
-def read_receipt(path: Path) -> dict[str, Any]:
+def read_receipt(
+    path: Path, *, fs: ProtocolSessionFiles | None = None
+) -> dict[str, Any]:
     try:
-        text = path.read_text(encoding="utf-8")
+        text = (fs or LocalSessionFiles()).read_text(path, encoding="utf-8")
     except OSError as exc:
         raise ReceiptError(f"preflight receipt {path} is unreadable: {exc}") from exc
     if not text.strip():
@@ -104,6 +108,7 @@ def assert_required_checks(
     profile: Profile,
     *,
     expected_overlay_sha256: str | None = None,
+    fs: ProtocolSessionFiles | None = None,
 ) -> ModelReceiptAssertion:
     """The kept required-check assertion for ``profile``."""
     required = REQUIRED_CHECKS[profile]
@@ -132,7 +137,9 @@ def assert_required_checks(
         else:
             overlay_path = data.get("overlay_path")
             try:
-                now = hashlib.sha256(Path(str(overlay_path)).read_bytes()).hexdigest()
+                now = hashlib.sha256(
+                    (fs or LocalSessionFiles()).read_bytes(Path(str(overlay_path)))
+                ).hexdigest()
             except (OSError, TypeError, ValueError):
                 findings.append(
                     f"the receipt's overlay {overlay_path!r} is unreadable now"
