@@ -72,6 +72,7 @@ dod_evidence:
   - "uv run onex run node_ticket_query resolves without import errors"
   - "Entry point registered in pyproject.toml under [project.entry-points.'onex.nodes']"
 metadata:
+  transport_type: "HTTP"
   description: "Ticket query node — ProtocolProjectTracker dispatch layer"
   author: "OmniNode Team"
   created: "2026-04-14"

@@ -194,3 +194,24 @@ def test_no_lab_fill_code_path_reads_the_key_from_the_environment() -> None:
     assert 'os.environ.get("LINEAR' not in source
     assert "_graphql" not in source
     assert "urllib.request" not in source
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [None, "", "   "])
+async def test_resolved_store_without_a_usable_key_is_refused_before_adapter_creation(
+    monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    monkeypatch.setenv("LINEAR_API_KEY", "env-key-that-must-not-be-used")
+    secrets = _FakeSecretNode(EnumSecretStoreOutcome.RESOLVED, value)
+    built: list[str] = []
+
+    def factory(api_key: str) -> _FakeTracker:
+        built.append(api_key)
+        return _FakeTracker(api_key, {})
+
+    with pytest.raises(TicketQueryCredentialRefusedError) as raised:
+        await resolve_linear_tracker(secrets, factory)
+    assert raised.value.outcome == "value_missing"
+    assert raised.value.secret_reference == linear_secret_reference()
+    assert "env-key-that-must-not-be-used" not in str(raised.value)
+    assert built == []

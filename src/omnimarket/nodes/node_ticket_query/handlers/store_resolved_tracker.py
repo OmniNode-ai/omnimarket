@@ -84,11 +84,20 @@ async def resolve_linear_tracker(
             operation=EnumSecretStoreOperation.RESOLVE, reference=reference
         )
     )
-    if result.outcome is not EnumSecretStoreOutcome.RESOLVED or result.value is None:
+    if result.outcome is not EnumSecretStoreOutcome.RESOLVED:
         raise TicketQueryCredentialRefusedError(
             reference, result.outcome.value, result.detail or ""
         )
-    return tracker_factory(result.value.get_secret_value())
+    api_key = (
+        result.value.get_secret_value().strip() if result.value is not None else ""
+    )
+    if not api_key:
+        raise TicketQueryCredentialRefusedError(
+            reference,
+            EnumSecretStoreOutcome.VALUE_MISSING.value,
+            "the store returned no usable tracker credential",
+        )
+    return tracker_factory(api_key)
 
 
 __all__ = [

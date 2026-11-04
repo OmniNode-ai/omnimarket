@@ -67,3 +67,28 @@ dod_evidence:
       - check_type: "command"
         check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22418 -- uv run --frozen pytest tests/nodes/node_ticket_query -q --no-cov'
         cwd: "."
+  - id: "dod-omn22418-deploy-source-readback"
+    description: "Hosted-runner deploy artifact readback: fetch the ticket credential resolver and node contract at the evaluated revision, compare them to the checkout, and require the store-only credential refusal and declared HTTP transport. This checks the published package source, not a live tracker read or a runtime rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          node_path=src/omnimarket/nodes/node_ticket_query;
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/handlers/store_resolved_tracker.py" \
+            --output "$readback_dir/store_resolved_tracker.py";
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/contract.yaml" \
+            --output "$readback_dir/contract.yaml";
+          cmp "$node_path/handlers/store_resolved_tracker.py" "$readback_dir/store_resolved_tracker.py";
+          cmp "$node_path/contract.yaml" "$readback_dir/contract.yaml";
+          grep -F 'EnumSecretStoreOutcome.VALUE_MISSING.value' "$readback_dir/store_resolved_tracker.py";
+          grep -F 'operation=EnumSecretStoreOperation.RESOLVE' "$readback_dir/store_resolved_tracker.py";
+          grep -F 'transport_type: "HTTP"' "$readback_dir/contract.yaml";
+          printf 'ticket-query source readback matched %s\n' "$revision"
+        cwd: "."
