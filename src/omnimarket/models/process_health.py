@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -246,6 +246,8 @@ class ModelProcessHealthConfig(_Frozen):
     reset_at: datetime
     reset_label: str
     series_days: int = Field(gt=0)
+    range_history_days: int = Field(gt=0)
+    graph_bucket_hours: float = Field(gt=0)
     summary_max_hours: float = Field(gt=0)
     flat_threshold_ratio: float = Field(ge=0)
     fix_forward_window_hours: float = Field(gt=0)
@@ -285,6 +287,7 @@ class ModelProcessHealthRequest(_Frozen):
 
     generated_at: datetime
     config: ModelProcessHealthConfig
+    selected_range: ModelTimeSpan | None = None
     sources: tuple[ModelSourceRead, ...]
     ledger_rows: tuple[ModelLandingLedgerRow, ...] = ()
     repo_status_events: tuple[ModelRepoStatusEvent, ...] = ()
@@ -305,6 +308,11 @@ class ModelProcessHealthRequest(_Frozen):
         names = [source.name for source in self.sources]
         if len(set(names)) != len(names):
             raise ValueError("a source may be declared once")
+        if self.selected_range is not None:
+            if self.selected_range.end <= self.selected_range.start:
+                raise ValueError("the selected range end must follow its start")
+            if self.selected_range.end > self.generated_at:
+                raise ValueError("the selected range ends after generated_at")
         return self
 
 
@@ -407,6 +415,42 @@ class ModelSourceReport(_Frozen):
     covered_to: datetime | None
     gap_hours: float
     records: int
+    gaps: tuple[ModelTimeSpan, ...] = ()
+
+
+class ModelProcessObservation(_Frozen):
+    """A contribution to a measure; no source text or operator identifiers are published."""
+
+    at: datetime
+    end: datetime | None = None
+    value: float = 1.0
+    weight: float = Field(default=1.0, gt=0)
+    identity: str = ""
+    unmeasured_reason: str = ""
+
+    @field_validator("at", "end")
+    @classmethod
+    def _tz(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else _aware(value)
+
+
+class ModelProcessMeasureSeries(_Frozen):
+    """Sufficient statistics for arbitrary ranges, including distinct counts and medians."""
+
+    key: str
+    reducer: Literal["sum", "ratio", "median", "weighted_mean", "hours", "union_hours"]
+    observations: tuple[ModelProcessObservation, ...]
+    unavailable_reason: str = ""
+
+
+class ModelProcessRangeOverlay(_Frozen):
+    """Range policy and anonymised facts consumed by the graph and range details."""
+
+    start: datetime
+    end: datetime
+    bucket_hours: float = Field(gt=0)
+    flat_threshold_ratio: float = Field(ge=0)
+    measures: tuple[ModelProcessMeasureSeries, ...]
 
 
 class ModelProcessHealthResult(_Frozen):
@@ -419,3 +463,5 @@ class ModelProcessHealthResult(_Frozen):
     sources: tuple[ModelSourceReport, ...]
     days: tuple[ModelDaySeries, ...]
     summary: ModelResetSummary
+    selected_summary: ModelResetSummary
+    range_overlay: ModelProcessRangeOverlay
