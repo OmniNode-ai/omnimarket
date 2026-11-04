@@ -1,0 +1,683 @@
+{
+ "sample_version": "1",
+ "provenance": "synthetic fixture for the rubric load test; the 50-unit hand-labelled sample over T3 units is a lab step",
+ "units": [
+  {
+   "unit_id": "u01",
+   "lane_name": "land-pr-4501",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "land",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u02",
+   "lane_name": "drain-landing-0301",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "land",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u03",
+   "lane_name": "handoff-pr-4502",
+   "ticket_class": "factory-unblock",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "land",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u04",
+   "lane_name": "triage-ci-reds-11",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "triage",
+   "band": "B1",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u05",
+   "lane_name": "sweep-stale-prs-12",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "triage",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u06",
+   "lane_name": "review-pr-4510",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "review",
+   "band": "B3",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u07",
+   "lane_name": "audit-contracts-13",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "review",
+   "band": "B3",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u08",
+   "lane_name": "diagnose-redpanda-lag",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "diagnose",
+   "band": "B4",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u09",
+   "lane_name": "rca-timeout-14",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "diagnose",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u10",
+   "lane_name": "debug-parity-diff",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "diagnose",
+   "band": "B3",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u11",
+   "lane_name": "research-vector-store",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "research",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u12",
+   "lane_name": "survey-queue-options",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "research",
+   "band": "B2",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u13",
+   "lane_name": "plan-graph-layer",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "plan",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u14",
+   "lane_name": "design-store-port",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "plan",
+   "band": "B4",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u15",
+   "lane_name": "docs-runbook-update",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "docs",
+   "band": "B1",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "docs"
+   }
+  },
+  {
+   "unit_id": "u16",
+   "lane_name": "readme-refresh-15",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "docs",
+   "band": "B1",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "docs"
+   }
+  },
+  {
+   "unit_id": "u17",
+   "lane_name": "doc-nodes-index",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "docs",
+   "band": "B1",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "docs"
+   }
+  },
+  {
+   "unit_id": "u18",
+   "lane_name": "ops-host-census",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "ops",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "chore"
+   }
+  },
+  {
+   "unit_id": "u19",
+   "lane_name": "deploy-lab-lane-16",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "ops",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "chore"
+   }
+  },
+  {
+   "unit_id": "u20",
+   "lane_name": "install-unit-tick",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "ops",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "chore"
+   }
+  },
+  {
+   "unit_id": "u21",
+   "lane_name": "host-bringup-17",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "ops",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "chore"
+   }
+  },
+  {
+   "unit_id": "u22",
+   "lane_name": "fix-null-ledger-cell",
+   "ticket_class": "factory-fix",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "fix",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "bug"
+   }
+  },
+  {
+   "unit_id": "u23",
+   "lane_name": "repair-watcher-tick",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "fix",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "bug"
+   }
+  },
+  {
+   "unit_id": "u24",
+   "lane_name": "hotfix-pin-drift",
+   "ticket_class": "factory-fix",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "fix",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "bug"
+   }
+  },
+  {
+   "unit_id": "u25",
+   "lane_name": "fix-parity-race",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "fix",
+   "band": "B3",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "bug"
+   }
+  },
+  {
+   "unit_id": "u26",
+   "lane_name": "build-fold-node",
+   "ticket_class": "feature",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B3",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "feature"
+   }
+  },
+  {
+   "unit_id": "u27",
+   "lane_name": "feat-route-parse",
+   "ticket_class": "feature",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B3",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "feature"
+   }
+  },
+  {
+   "unit_id": "u28",
+   "lane_name": "add-projection-table",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B3",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "feature"
+   }
+  },
+  {
+   "unit_id": "u29",
+   "lane_name": "impl-store-once",
+   "ticket_class": "feature",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B4",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "feature"
+   }
+  },
+  {
+   "unit_id": "u30",
+   "lane_name": "build-estimate-node",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B4",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "feature"
+   }
+  },
+  {
+   "unit_id": "u31",
+   "lane_name": "feat-wip-gate",
+   "ticket_class": "feature",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "feature"
+   }
+  },
+  {
+   "unit_id": "u32",
+   "lane_name": "lane-aa-0101",
+   "ticket_class": "factory-fix",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "fix",
+   "band": "B2",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_ticket_classify_compute": "bug",
+    "node_prompt_intent_classify_compute": "feature_request"
+   }
+  },
+  {
+   "unit_id": "u33",
+   "lane_name": "lane-bb-0102",
+   "ticket_class": "feature",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "build",
+   "band": "B2",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_ticket_classify_compute": "feature",
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u34",
+   "lane_name": "lane-cc-0103",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "plan",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u35",
+   "lane_name": "lane-dd-0104",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "research",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u36",
+   "lane_name": "lane-ee-0105",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "docs",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_ticket_classify_compute": "docs",
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u37",
+   "lane_name": "lane-ff-0106",
+   "ticket_class": "factory-unblock",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "ops",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_ticket_classify_compute": "chore",
+    "node_prompt_intent_classify_compute": "feature_request"
+   }
+  },
+  {
+   "unit_id": "u38",
+   "lane_name": "fix-up-roadmap-doc",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "docs",
+   "band": "B1",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "docs"
+   }
+  },
+  {
+   "unit_id": "u39",
+   "lane_name": "build-plan-ranking",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "plan",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u40",
+   "lane_name": "host-review-notes",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "review",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u41",
+   "lane_name": "add-summary-research",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "research",
+   "band": "B2",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u42",
+   "lane_name": "sweep-and-fix-reds",
+   "ticket_class": "factory-fix",
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "fix",
+   "band": "B3",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "feature_request",
+    "node_ticket_classify_compute": "bug"
+   }
+  },
+  {
+   "unit_id": "u43",
+   "lane_name": "land-pr-4520",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "land",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u44",
+   "lane_name": "review-pr-4521",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "review",
+   "band": "B3",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u45",
+   "lane_name": "plan-rollout-18",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "plan",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u46",
+   "lane_name": "docs-guide-19",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "docs",
+   "band": "B1",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question",
+    "node_ticket_classify_compute": "docs"
+   }
+  },
+  {
+   "unit_id": "u47",
+   "lane_name": "lane-gg-0107",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [
+    "adversarial",
+    "pass"
+   ],
+   "label": "review",
+   "band": "B3",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u48",
+   "lane_name": "triage-ci-failures-20",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "triage",
+   "band": "B2",
+   "join_basis": "join-pr",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u49",
+   "lane_name": "diagnose-flake-21",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "diagnose",
+   "band": "B2",
+   "join_basis": "join-claim",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  },
+  {
+   "unit_id": "u50",
+   "lane_name": "research-bus-22",
+   "ticket_class": null,
+   "route_dest": "claude",
+   "brief_words": [],
+   "label": "research",
+   "band": "B2",
+   "join_basis": "join-ticket",
+   "classifier_outputs": {
+    "node_prompt_intent_classify_compute": "question"
+   }
+  }
+ ]
+}

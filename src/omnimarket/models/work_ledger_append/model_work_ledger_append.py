@@ -4,10 +4,17 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 PrincipalName = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{0,62}$")]
 # One pipe-free token: the value of a row's id cell, matched as a whole pipe cell.
@@ -42,6 +49,30 @@ class ModelWorkLedgerAppendRequest(BaseModel):
     # value; otherwise nothing is appended and the receipt is already-present with
     # the existing row's line. None is the plain append operation.
     append_if_absent_row_id: RowId | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_optionals(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Put an optional field on the wire only when it carries a value.
+
+        The ledger host validates this model with ``extra="forbid"``, so a host older than a field refuses
+        a request that merely names it, even as ``null`` (OMN-19998: a writer at the append_if_absent
+        commit was refused by a host one commit behind, "Extra inputs are not permitted", and every lane
+        CLAIM and TERMINAL from that writer was lost for 17 minutes). A request that does not use an
+        additive optional field is therefore byte-for-byte the request an older host reads. A request
+        that sets one is still refused by an older host, loudly, because dropping a set
+        ``append_if_absent_row_id`` would turn a conditional append into an unconditional one.
+        """
+        data: dict[str, Any] = handler(self)
+        optional_none = [
+            name
+            for name, field in type(self).model_fields.items()
+            if not field.is_required() and data.get(name) is None and name in data
+        ]
+        for name in optional_none:
+            del data[name]
+        return data
 
 
 class ModelAppendIfAbsentPolicy(BaseModel):

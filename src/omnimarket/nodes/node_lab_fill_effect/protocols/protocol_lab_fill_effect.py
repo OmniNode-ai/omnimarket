@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from omnimarket.models.ticket_query.model_ticket_facts import ModelTicketFactsOutput
 from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
@@ -89,6 +90,12 @@ class ProtocolLabFillOwnerReader(Protocol):
     def pr_claims(self, cli_path: str) -> Mapping[str, str]: ...
 
     def watcher_merged(self, state_path: str) -> Mapping[str, Sequence[str]]: ...
+
+
+class ProtocolLabFillTicketFacts(Protocol):
+    """A ticket's workflow state type and assignee id, read through node_ticket_query."""
+
+    def read(self, ticket: str) -> ModelTicketFactsOutput: ...
 
 
 class ProtocolLabFillLiveChecks(Protocol):

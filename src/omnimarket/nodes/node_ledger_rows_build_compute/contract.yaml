@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_rows_build_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Builds ledger row argv from typed fields or a supplied JSON request object, returning refusals without running a writer.
+input_model:
+  name: ModelLedgerRowsBuildRequest
+  module: omnimarket.nodes.node_ledger_rows_build_compute.models.model_ledger_rows_build
+output_model:
+  name: ModelLedgerRowsBuildResult
+  module: omnimarket.nodes.node_ledger_rows_build_compute.models.model_ledger_rows_build
+handler:
+  module: omnimarket.nodes.node_ledger_rows_build_compute.handlers.handler_ledger_rows_build
+  class: HandlerLedgerRowsBuild
+  input_model: omnimarket.nodes.node_ledger_rows_build_compute.models.model_ledger_rows_build.ModelLedgerRowsBuildRequest
+  output_model: omnimarket.nodes.node_ledger_rows_build_compute.models.model_ledger_rows_build.ModelLedgerRowsBuildResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ledger_rows_build_compute.handlers.handler_ledger_rows_build:HandlerLedgerRowsBuild
+  handlers:
+    - operation: build
+      handler:
+        name: HandlerLedgerRowsBuild
+        module: omnimarket.nodes.node_ledger_rows_build_compute.handlers.handler_ledger_rows_build
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [build], description: Which question is asked.}
+  request_mode: {type: str, required: false, enum: [fields, json]}
+  kind: {type: str, required: false}
+  lane: {type: str, required: false}
+  ticket: {type: str, required: false}
+  tickets: {type: list, required: false}
+  actor: {type: str, required: false}
+  model: {type: str, required: false}
+  text: {type: str, required: false}
+  extra: {type: dict, required: false}
+  request_data: {type: object, required: false}
+outputs:
+  operation: {type: str}
+  argv: {type: list}
+  refusal: {type: str}
+  admitted: {type: bool}
+terminal_event: onex.evt.omnimarket.ledger-rows-build-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ledger-rows-build-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ledger-rows-build-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-rows-build-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-rows-build-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Builds ledger row argv from typed fields or a supplied JSON request object, returning refusals without running a writer.
+  author: OmniNode Team
+  created: "2026-11-03"

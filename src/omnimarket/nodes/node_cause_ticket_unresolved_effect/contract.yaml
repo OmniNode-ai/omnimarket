@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_cause_ticket_unresolved_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Detector and actor for the cause-ticket-unresolved exception class the merge-sweep dispatcher emits when it plans a
+  lane it cannot place under a ticket. The detector recognises the class from the block's merge-sweep lane key and
+  from having tried the lane_dispatch overlay's standing_tickets. The actor resolves a case when the overlay now
+  names an open, non-umbrella standing ticket for the lane kind (standing_tickets['merge-sweep-<kind>']), and emits
+  to the exception queue only a case it cannot resolve (no standing ticket, the umbrella, a closed ticket or an
+  unread ticket state). A decision row is never resolved.
+input_model:
+  name: ModelCauseTicketUnresolvedRequest
+  module: omnimarket.nodes.node_cause_ticket_unresolved_effect.models
+output_model:
+  name: ModelCauseTicketUnresolvedResult
+  module: omnimarket.nodes.node_cause_ticket_unresolved_effect.models
+handler:
+  module: omnimarket.nodes.node_cause_ticket_unresolved_effect.handler
+  class: HandlerCauseTicketUnresolved
+  input_model: omnimarket.nodes.node_cause_ticket_unresolved_effect.models.ModelCauseTicketUnresolvedRequest
+  output_model: omnimarket.nodes.node_cause_ticket_unresolved_effect.models.ModelCauseTicketUnresolvedResult
+entrypoint:
+  name: NodeCauseTicketUnresolvedEffect
+  module: omnimarket.nodes.node_cause_ticket_unresolved_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_cause_ticket_unresolved_effect.handler:HandlerCauseTicketUnresolved
+  handlers:
+    - operation: settle_cause_ticket_unresolved
+      topic: onex.cmd.omnimarket.cause-ticket-unresolved-settle-requested.v1
+      handler:
+        name: HandlerCauseTicketUnresolved
+        module: omnimarket.nodes.node_cause_ticket_unresolved_effect.handler
+terminal_event: onex.evt.omnimarket.cause-ticket-unresolved-settled.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.cause-ticket-unresolved-settle-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.cause-ticket-unresolved-settle-requested.v1]
+  publish_topics: [onex.evt.omnimarket.cause-ticket-unresolved-settled.v1]
+externally_consumed_topics:
+  - onex.evt.omnimarket.cause-ticket-unresolved-settled.v1
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-22143]

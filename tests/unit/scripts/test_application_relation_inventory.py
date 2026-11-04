@@ -953,3 +953,19 @@ def test_internal_tenant_column_removal_has_dependency_evidence(name: str) -> No
     assert evidence["runtime_collision_scan"] == (
         "blocked_live_database_access_not_authorized"
     )
+
+
+def test_context_audit_events_sequence_is_declared_exactly_once() -> None:
+    manifest = yaml.safe_load(
+        (REPO_ROOT / "scripts" / "application-relation-ownership.yaml").read_text()
+    )
+    name = "context_audit_events_id_seq"
+    matches = [row for row in manifest["database_objects"] if row["name"] == name]
+    assert len(matches) == 1, f"expected exactly one {name} object, got {matches}"
+    row = matches[0]
+    assert row["kind"] == "sequence"
+    assert row["database_ref"] == "application"
+    assert row["schema"] == "public"
+    assert row["domain"] == "TENANT"
+    assert row["owner_declaration"] == "service:omnimarket_projection_migration_runner"
+    assert row["writers"] == []
