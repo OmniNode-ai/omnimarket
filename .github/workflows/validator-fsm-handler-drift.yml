@@ -62,14 +62,12 @@ jobs:
       # with exit 128 ("destination path already exists"). Clean first so the
       # clone step is idempotent on a reused workspace.
       - name: Clean stale dependency clones
-        run: rm -rf ../omnibase_core ../omnibase_compat
+        run: rm -rf ../omnibase_core
 
       # OMN-13735: the validator landed on omnibase_core dev in #1360.
       - name: Clone omnibase_core (for new validator)
         run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
 
-      - name: Clone omnibase_compat
-        run: git clone --depth=1 --branch "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
@@ -84,8 +82,6 @@ jobs:
       - name: Install omnimarket
         run: uv sync
 
-      - name: Install omnibase_compat
-        run: uv pip install --python .venv/bin/python -e ../omnibase_compat
 
       - name: Install omnibase_core (includes check-fsm-handler-drift validator)
         run: uv pip install --python .venv/bin/python --force-reinstall --no-deps -e ../omnibase_core

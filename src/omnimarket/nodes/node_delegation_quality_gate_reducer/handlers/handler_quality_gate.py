@@ -395,10 +395,10 @@ _WEIGHT_MARKERS: float = 0.3
 
 _MIN_LENGTH_CHECK_RE = re.compile(r"^min_length_chars_(\d+)$")
 # A labelled field such as "**Line:** 5" is a line citation (OMN-20910).
-# Three review answers refused on 2026-10-24/25 named their line that way.
+# The number may carry its diff side, "Line: new 5" (OMN-22213).
 _LINE_CITATION_RE = re.compile(
     r"(?i)(?:\bline\s+\d+\b|\blines\s+\d+(?:-\d+)?\b|\bL\d+\b|:[1-9]\d*"
-    r"|\blines?[*_`]{0,2}[ \t]*[:#][*_`]{0,2}[ \t]*\d+)"
+    r"|\blines?[*_`]{0,2}[ \t]*[:#][*_`]{0,2}[ \t]*(?:(?:new|old)[ \t]+)?\d+)"
 )
 # General source/reference citation detection for RESEARCH outputs (OMN-13354).
 # Research answers cite theorems, papers, sections, pages, URLs, and authors —

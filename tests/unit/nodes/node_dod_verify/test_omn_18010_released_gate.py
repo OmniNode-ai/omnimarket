@@ -21,17 +21,23 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
+    EnumRepoContractReadStatus,
+    ModelRepoContractRead,
+    ModelRepoEvidenceCheckRun,
+    ModelTicketMergedPr,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
+    REPO_EVIDENCE_APP_SLUG,
+    REPO_EVIDENCE_CHECK_NAME,
     DurableEvidenceGate,
     DurableEvidenceGateError,
 )
 
-_OCC_REPO = "/occ"
-_DEV_REF = "origin/dev"
 _TICKET = "OMN-18010"
-_RECEIPT_DIR = f"drift/dod_receipts/{_TICKET}"
-_CONTRACT_PATH = f"contracts/{_TICKET}.yaml"
+_DESCRIPTION = (
+    "## Acceptance criteria\n\n"
+    "- [ ] AC1: the released check -- falsifier: uv run pytest t.py\n"
+)
 
 # The squash merge commit GitHub reports for the cited PR. A release tag can
 # contain THIS sha; it can never contain the pre-merge head sha, because these
@@ -48,57 +54,52 @@ def _contract() -> dict[str, object]:
             {
                 "id": "released-probe",
                 "description": "the released check",
-                "checks": [{"check_type": "command", "check_value": "true"}],
+                "checks": [
+                    {"check_type": "test_passes", "check_value": "uv run pytest t.py"}
+                ],
+                "binds_ac": ["AC1"],
             }
         ],
     }
 
 
-def _receipt(repo: str, pr_number: int, commit_sha: str) -> dict[str, object]:
-    return {
-        "ticket_id": _TICKET,
-        "evidence_item_id": "released-probe",
-        "check_type": "command",
-        "status": "PASS",
-        "pr_number": pr_number,
-        "commit_sha": commit_sha,
-        "probe_command": (
-            f"gh pr view {pr_number} --repo {repo} --json number,url,state,mergeCommit"
-        ),
-        "probe_stdout": (
-            f'{{"number":{pr_number},"url":"https://github.com/{repo}/pull/'
-            f'{pr_number}","state":"MERGED","mergeCommit":{{"oid":"{commit_sha}"}}}}'
-        ),
-    }
+def _merged_pr(repo: str, pr_number: int, commit_sha: str, merge_oid: str):
+    return ModelTicketMergedPr(
+        repo=repo,
+        pr_number=pr_number,
+        head_sha=commit_sha,
+        merge_commit_sha=merge_oid,
+        merged_at="2026-10-09T12:00:00Z",
+    )
 
 
 def _make_gate(
     *,
-    repo: str,
-    pr_number: int,
-    commit_sha: str,
-    merge_oid: str,
     released_tags: dict[tuple[str, str], tuple[str, ...] | None],
     released_index: dict[tuple[str, str], frozenset[str] | None],
 ) -> DurableEvidenceGate:
+    """A gate whose product repository carries a green contract for the ticket."""
     contract = _contract()
 
-    def is_receipt_tracked(repo_path: str, ref: str, receipt_dir: str) -> bool:
-        return True
+    def read_repo_contract(
+        repo: str, ref: str, ticket_id: str
+    ) -> ModelRepoContractRead:
+        return ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.FOUND, contract=contract
+        )
 
-    def gh_pr_view(r: str, n: int) -> tuple[str, str | None]:
-        return ("MERGED", merge_oid)
-
-    def pr_commits(r: str, n: int) -> tuple[str, ...]:
-        return (commit_sha, merge_oid)
-
-    def load_contract(repo_path: str, ref: str, rel_path: str) -> dict[str, object]:
-        return contract
-
-    def load_receipts(
-        repo_path: str, ref: str, receipt_dir: str
-    ) -> list[dict[str, object]]:
-        return [_receipt(repo, pr_number, commit_sha)]
+    def read_repo_check_runs(
+        repo: str, sha: str
+    ) -> tuple[ModelRepoEvidenceCheckRun, ...] | None:
+        return (
+            ModelRepoEvidenceCheckRun(
+                id=7001,
+                name=REPO_EVIDENCE_CHECK_NAME,
+                app_slug=REPO_EVIDENCE_APP_SLUG,
+                status="completed",
+                conclusion="success",
+            ),
+        )
 
     def tags_probe(r: str, sha: str) -> tuple[str, ...] | None:
         if (r, sha) not in released_tags:
@@ -113,25 +114,20 @@ def _make_gate(
         return released_index[(distribution, version)]
 
     return DurableEvidenceGate(
-        is_receipt_tracked=is_receipt_tracked,
-        gh_pr_view=gh_pr_view,
-        pr_commits=pr_commits,
-        load_contract_on_ref=load_contract,
-        load_receipts_on_ref=load_receipts,
         release_tags_containing=tags_probe,
         index_release_files=index_probe,
-        occ_repo_path=_OCC_REPO,
-        occ_governance_ref=_DEV_REF,
+        read_repo_contract=read_repo_contract,
+        read_repo_check_runs=read_repo_check_runs,
     )
 
 
-def _evaluate(gate: DurableEvidenceGate):
+def _evaluate(gate: DurableEvidenceGate, repo: str, pr_number: int):
     return gate.evaluate(
         ticket_id=_TICKET,
         contract=_contract(),
-        receipt_dir=_RECEIPT_DIR,
-        contract_rel_path=_CONTRACT_PATH,
         ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        merged_prs=(_merged_pr(repo, pr_number, _HEAD_SHA, _MERGE_OID),),
+        ticket_description=_DESCRIPTION,
     )
 
 
@@ -150,42 +146,35 @@ class TestReleasedGate:
     def test_merged_but_unreleased_is_refused(self) -> None:
         """Every other check green; the merge is in no release tag => FAIL."""
         gate = _make_gate(
-            repo="OmniNode-ai/omnimarket",
-            pr_number=2370,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={("OmniNode-ai/omnimarket", _MERGE_OID): ()},
             released_index={},
         )
-        result = _evaluate(gate)
+        result = _evaluate(gate, "OmniNode-ai/omnimarket", 2370)
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
         check = _released_check(result)
         assert not check.passed
         assert "MERGED_UNRELEASED" in check.message
-        # The merged-PR check itself is UNAFFECTED — the PR really is merged.
-        # The two defects stay distinguishable, which is the point: the
-        # remediation for one is a receipt fix and for the other a release cut.
-        merge_check = next(
+        # The product-repository verdict itself is UNAFFECTED: the contract is
+        # governed and green. The two defects stay distinguishable, which is the
+        # point: the remediation for one is a repo-evidence fix and for the
+        # other a release cut.
+        governing = next(
             c
             for c in result.checks
-            if c.check is EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
+            if c.check is EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
         )
-        assert merge_check.passed
+        assert governing.passed
 
     def test_released_merge_passes(self) -> None:
         """Positive control for the case above: same shape, a containing tag."""
         gate = _make_gate(
-            repo="OmniNode-ai/omnimarket",
-            pr_number=2369,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={("OmniNode-ai/omnimarket", _MERGE_OID): ("v0.4.22",)},
             released_index={
                 ("omnimarket", "0.4.22"): frozenset({"bdist_wheel", "sdist"})
             },
         )
-        result = _evaluate(gate)
+        result = _evaluate(gate, "OmniNode-ai/omnimarket", 2369)
 
         assert result.status == EnumDurableEvidenceStatus.PASS
         check = _released_check(result)
@@ -201,33 +190,25 @@ class TestReleasedGate:
         reporting every squash-merged ticket as unreleased.
         """
         gate = _make_gate(
-            repo="OmniNode-ai/omnimarket",
-            pr_number=2369,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={("OmniNode-ai/omnimarket", _MERGE_OID): ("v0.4.22",)},
             released_index={
                 ("omnimarket", "0.4.22"): frozenset({"bdist_wheel", "sdist"})
             },
         )
-        assert _released_check(_evaluate(gate)).passed
+        assert _released_check(_evaluate(gate, "OmniNode-ai/omnimarket", 2369)).passed
 
     def test_non_publishing_repo_does_not_apply(self) -> None:
-        """A merge into onex_change_control publishes nothing, so it is exempt.
+        """A merge into a repository that publishes nothing, so it is exempt.
 
         The tag/index stubs are primed with NOTHING here: if the gate probed
         them for a non-publishing repo the stub would raise. That is the
         assertion — the check is skipped by registry membership, not by luck.
         """
         gate = _make_gate(
-            repo="OmniNode-ai/onex_change_control",
-            pr_number=8519,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={},
             released_index={},
         )
-        result = _evaluate(gate)
+        result = _evaluate(gate, "OmniNode-ai/onex_change_control", 8519)
 
         assert result.status == EnumDurableEvidenceStatus.PASS
         check = _released_check(result)
@@ -237,14 +218,10 @@ class TestReleasedGate:
     def test_indeterminate_probe_refuses_rather_than_certifies(self) -> None:
         """An unfetched clone is not a release. Fail-closed."""
         gate = _make_gate(
-            repo="OmniNode-ai/omnibase_core",
-            pr_number=1698,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={("OmniNode-ai/omnibase_core", _MERGE_OID): None},
             released_index={},
         )
-        result = _evaluate(gate)
+        result = _evaluate(gate, "OmniNode-ai/omnibase_core", 1698)
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
         check = _released_check(result)
@@ -253,14 +230,10 @@ class TestReleasedGate:
 
     def test_tag_without_a_published_distribution_is_refused(self) -> None:
         gate = _make_gate(
-            repo="OmniNode-ai/omnibase_core",
-            pr_number=1698,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={("OmniNode-ai/omnibase_core", _MERGE_OID): ("v0.99.99",)},
             released_index={("omnibase-core", "0.99.99"): frozenset()},
         )
-        result = _evaluate(gate)
+        result = _evaluate(gate, "OmniNode-ai/omnibase_core", 1698)
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
         assert "RELEASED_TAG_NOT_ON_INDEX" in _released_check(result).message
@@ -268,10 +241,6 @@ class TestReleasedGate:
     def test_enforce_raises_on_an_unreleased_merge(self) -> None:
         """The hard-fail entry point refuses, it does not merely report."""
         gate = _make_gate(
-            repo="OmniNode-ai/omnimarket",
-            pr_number=2370,
-            commit_sha=_HEAD_SHA,
-            merge_oid=_MERGE_OID,
             released_tags={("OmniNode-ai/omnimarket", _MERGE_OID): ()},
             released_index={},
         )
@@ -279,9 +248,11 @@ class TestReleasedGate:
             gate.enforce(
                 ticket_id=_TICKET,
                 contract=_contract(),
-                receipt_dir=_RECEIPT_DIR,
-                contract_rel_path=_CONTRACT_PATH,
                 ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+                merged_prs=(
+                    _merged_pr("OmniNode-ai/omnimarket", 2370, _HEAD_SHA, _MERGE_OID),
+                ),
+                ticket_description=_DESCRIPTION,
             )
 
     def test_the_released_probes_are_required_constructor_arguments(self) -> None:
@@ -292,10 +263,8 @@ class TestReleasedGate:
         """
         with pytest.raises(TypeError):
             DurableEvidenceGate(  # type: ignore[call-arg]
-                is_receipt_tracked=lambda *_a, **_k: True,
-                gh_pr_view=lambda *_a, **_k: ("MERGED", _MERGE_OID),
-                pr_commits=lambda *_a, **_k: (),
-                load_contract_on_ref=lambda *_a, **_k: None,
-                load_receipts_on_ref=lambda *_a, **_k: [],
-                occ_repo_path=_OCC_REPO,
+                read_repo_contract=lambda *_a, **_k: ModelRepoContractRead(
+                    status=EnumRepoContractReadStatus.ABSENT
+                ),
+                read_repo_check_runs=lambda *_a, **_k: (),
             )
