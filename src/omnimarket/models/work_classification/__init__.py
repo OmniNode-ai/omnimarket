@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Shared transcript facts and source revision models."""
+"""Shared work-classification models: the work-type and run-style vocabulary, transcript facts and source revision."""
 
 from omnimarket.models.work_classification.enum_record_type import EnumRecordType
 from omnimarket.models.work_classification.enum_stream_kind import EnumStreamKind

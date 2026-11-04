@@ -125,8 +125,9 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     # hygiene gate and OMN-20940 adds its deployment-config job. The OCC
     # emitter golden gate left the tuple with the OCC companion producer.
     # OMN-17427 adds the reviewer eval; OMN-21478 adds internal sibling pins;
-    # OMN-21588 adds the composed runtime boot.
-    assert len(resolved) == 60
+    # OMN-21588 adds the composed runtime boot; OMN-22126 adds the prompt cost
+    # estimate contract.
+    assert len(resolved) == 61
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
