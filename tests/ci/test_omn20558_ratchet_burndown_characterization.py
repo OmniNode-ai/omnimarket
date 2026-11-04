@@ -106,7 +106,9 @@ def _ref_diff(
     line-keyed golden failed every pull request once ``ci.yml`` gained a step.
     Additional uses of an existing pin in the same workflow are also accepted:
     adding a job does not change the action's resolved commit. The minimum
-    golden counts still apply, and an unfamiliar action or commit is refused.
+    golden counts still apply, and an unfamiliar action or commit is refused. A
+    workflow file the golden never saw is accepted when every pin it uses is one
+    the golden already holds.
     """
 
     def key(row: list[object]) -> tuple[object, object, object]:
@@ -115,7 +117,14 @@ def _ref_diff(
     expected_count = Counter(key(row) for row in expected)
     actual_count = Counter(key(row) for row in actual)
     missing_keys = expected_count - actual_count
-    extra_keys = actual_count.keys() - expected_count.keys()
+    known_pins = {(row[2], row[3]) for row in expected}
+    known_workflows = {row[0] for row in expected}
+    # A workflow file absent from the golden may use any pin the golden already holds.
+    extra_keys = {
+        k
+        for k in actual_count.keys() - expected_count.keys()
+        if k[0] in known_workflows or (k[1], k[2]) not in known_pins
+    }
     missing = [row for row in expected if key(row) in missing_keys]
     extra = [row for row in actual if key(row) in extra_keys]
     return missing, extra
@@ -157,7 +166,10 @@ def test_action_ref_diff_accepts_added_jobs_using_existing_pins() -> None:
     unknown = ["ci.yml", 20, "actions/unknown", "a" * 40]
     assert _ref_diff(golden, [*golden, unknown]) == ([], [unknown])
     other_workflow = ["new.yml", 20, "actions/checkout", "a" * 40]
-    assert _ref_diff(golden, [*golden, other_workflow]) == ([], [other_workflow])
+    # A workflow the golden never saw may use a pin the golden holds, never a new one.
+    assert _ref_diff(golden, [*golden, other_workflow]) == ([], [])
+    new_pin = ["new.yml", 20, "actions/checkout", "b" * 40]
+    assert _ref_diff(golden, [*golden, new_pin]) == ([], [new_pin])
     # Removing one of several original invocations remains a mismatch.
     assert _ref_diff([*golden, added], golden) == ([*golden, added], [])
     # Multiplicity still detects a changed use when the pin is used twice.
