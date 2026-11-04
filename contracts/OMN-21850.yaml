@@ -44,6 +44,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line"
         cwd: "."
+  - id: "dod-omn21850-floor-ui-fix"
+    description: "The factory floor page in a headless browser: no two stations overlap at 1728, 1280 and 390 pixels, the line card does not scroll sideways, station headings carry no task number, ticket or falsifier text, and a pull request counts for a task only when its title or branch names the task's ticket."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_station_layout_floor_ui_fix_0245.py tests/nodes/node_plans_today_effect/test_plans_today_dependency_bump_pr_attribution.py -q --no-cov --tb=line"
+        cwd: "."
   - id: "dod-omn21850-deploy-probe"
     description: "Deploy probe: the compute handler GitHub serves at the checked-out commit writes the worker note 'worker {claim.lane} is on it'; the merge base writes 'claim {claim.lane}', so the content read finds nothing there."
     source: "manual"
