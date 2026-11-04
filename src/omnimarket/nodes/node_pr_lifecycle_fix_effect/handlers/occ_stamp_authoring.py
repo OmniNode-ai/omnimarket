@@ -6,10 +6,9 @@ Piece 3/5 of the canonical OCC stamp-model (parent epic OMN-14180, ticket
 OMN-14189). Every ``Evidence-Source`` / ``Evidence-Ticket`` line this node
 writes onto a product PR body or an OCC companion PR body — and every read-back
 of an existing stamp — flows through the shared renderer/parser + typed models
-in :mod:`omnibase_compat.contracts.pr_occ_stamp` (relocated to omnibase_compat,
-the lowest zero-dep layer, so the gate and this emitter share one vocabulary
-without a cross-repo cycle — OMN-14223), never a hand-built f-string or an
-ad-hoc regex.
+in :mod:`omnibase_core.contracts.pr_occ_metadata_stamp` and the typed
+``omnibase_core.models.validation.model_pr_*`` models, never a hand-built
+f-string or an ad-hoc regex.
 
 This is the single authoring/extraction seam for the node: the emitter (this
 effect) and the receipt gate (``validator_receipt_gate`` / ``occ-preflight``)
@@ -25,13 +24,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from omnibase_compat.contracts.pr_occ_stamp import (
-    EnumPrEvidenceSourceKind,
-    ModelPrBodySection,
-    ModelPrEvidenceSource,
-    ModelPrOccMetadataStamp,
+from omnibase_core.contracts.pr_occ_metadata_stamp import (
     parse_pr_occ_metadata_stamp,
     render_pr_occ_metadata_stamp,
+)
+from omnibase_core.enums.enum_pr_evidence_source_kind import EnumPrEvidenceSourceKind
+from omnibase_core.models.validation.model_pr_body_section import ModelPrBodySection
+from omnibase_core.models.validation.model_pr_evidence_source import (
+    ModelPrEvidenceSource,
+)
+from omnibase_core.models.validation.model_pr_occ_metadata_stamp import (
+    ModelPrOccMetadataStamp,
 )
 
 # OMN-18853: the stamp COUNT and the per-line OCC numbers are read with the
