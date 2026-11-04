@@ -15,7 +15,6 @@ capabilities:
   side_effect_class: mutating
 dependencies:
   - "omnibase_core>=0.39.0"
-  - "omnibase_compat"
   - "pyyaml>=6.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"

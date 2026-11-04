@@ -325,7 +325,6 @@ _CANONICAL_REPOS = {
     "omnibase_core",
     "omnibase_infra",
     "omnibase_spi",
-    "omnibase_compat",
     "omnimarket",
     "omnidash",
     "omniintelligence",

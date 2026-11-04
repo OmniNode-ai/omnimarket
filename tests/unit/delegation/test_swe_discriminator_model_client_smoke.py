@@ -7,6 +7,8 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -49,8 +51,16 @@ def _offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         urllib.request, "urlopen", Mock(side_effect=AssertionError("network forbidden"))
     )
+    # Forbid sleeping in the code under test only. Patching `time.sleep` on the
+    # shared module also reached subprocess's poll loop in grade_floor, which
+    # sleeps whenever the child has not exited by its first poll (OMN-22348).
     monkeypatch.setattr(
-        time, "sleep", Mock(side_effect=AssertionError("sleep forbidden"))
+        model_client,
+        "time",
+        SimpleNamespace(
+            monotonic=time.monotonic,
+            sleep=Mock(side_effect=AssertionError("sleep forbidden")),
+        ),
     )
     monkeypatch.setattr(
         run_smoke,
@@ -61,6 +71,26 @@ def _offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
             )
         ),
     )
+
+
+def test_the_sleep_guard_leaves_a_subprocess_wait_alone() -> None:
+    """A child that outlives subprocess's first poll must not trip the guard.
+
+    `subprocess.run(..., timeout=...)` polls with `time.sleep`; before OMN-22348
+    the autouse guard patched the shared `time` module and failed any grading
+    run whose child was slower than that first poll.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-c", "import time; time.sleep(0.4)"],
+        timeout=30,
+        check=False,
+    )
+    assert proc.returncode == 0
+
+
+def test_the_sleep_guard_still_forbids_sleeping_in_the_model_client() -> None:
+    with pytest.raises(AssertionError, match="sleep forbidden"):
+        model_client.time.sleep(1.0)
 
 
 @pytest.fixture

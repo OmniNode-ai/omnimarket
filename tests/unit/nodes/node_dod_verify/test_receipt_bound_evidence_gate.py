@@ -10,16 +10,9 @@ coverage (``test_runtime_ops_readback_gate.py``):
   receipt-bound set (independent verifier, non-empty observed evidence) and
   REJECTS each abuse vector (self-attested, empty readback, zero receipts);
   and
-* the ``DurableEvidenceGate`` Check-2 branch — a ``proof_class:
-  "receipt-bound"`` contract with a well-formed receipt set PASSES the full
-  gate without ever calling the merged-PR probes, and each abuse REJECTS the
-  gate. The DEFAULT (merged-PR) path is unaffected when the contract does
-  not declare ``proof_class: "receipt-bound"`` — the exact OMN-15087
-  motivating case (a Postgres RLS audit ticket with durable receipts and no
-  product PR, permanently BLOCKED before this fix) is reproduced directly.
-
-The merged-PR probes (``gh_pr_view``/``pr_commits``) must never be called on
-the receipt-bound branch — the stubs raise if they are.
+* the ``DurableEvidenceGate`` — it reads no receipt trail (OMN-20074), so the
+  exact OMN-15087 shape (a Postgres RLS audit ticket with durable receipts and
+  no product PR) is refused unless a product repository governs the ticket.
 """
 
 from __future__ import annotations
@@ -30,12 +23,11 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
+    EnumRepoContractReadStatus,
+    ModelRepoContractRead,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
-    DEFAULT_OCC_GOVERNANCE_REF,
     DurableEvidenceGate,
-    default_contract_path,
-    default_receipt_dir,
 )
 from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
     RECEIPT_BOUND_PROOF_CLASS,
@@ -43,11 +35,7 @@ from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
     is_receipt_bound_contract,
 )
 
-_OCC_REPO = "/fake/onex_change_control"
-_DEV_REF = DEFAULT_OCC_GOVERNANCE_REF
 _TICKET = "OMN-15087"
-_RECEIPT_DIR = default_receipt_dir(_TICKET)
-_CONTRACT_PATH = default_contract_path(_TICKET)
 _EVIDENCE_ID = "dod-rls-role-audit"
 
 
@@ -107,84 +95,15 @@ def _receipt_bound_receipt(**overrides: object) -> dict[str, object]:
     return payload
 
 
-# OMN-18010: the released-is-Done probes are REQUIRED gate constructor
-# arguments — there is no unconfigured/skip path. These stubs answer "released"
-# for every input, so the pre-OMN-18010 behaviour of the cases in this file is
-# unchanged and the new check is exercised on its own terms in
-# tests/unit/nodes/node_dod_verify/test_omn_18010_released_gate.py.
-def _released_tags_stub(
-    table: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
-):
-    def probe(repo: str, commit_sha: str) -> tuple[str, ...] | None:
-        if table is not None and (repo, commit_sha) in table:
-            return table[(repo, commit_sha)]
-        return ("v9.9.9",)
-
-    return probe
-
-
-def _released_index_stub(
-    table: dict[tuple[str, str], frozenset[str] | None] | None = None,
-):
-    def probe(distribution: str, version: str) -> frozenset[str] | None:
-        if table is not None and (distribution, version) in table:
-            return table[(distribution, version)]
-        return frozenset({"bdist_wheel", "sdist"})
-
-    return probe
-
-
-def _make_gate(
-    *,
-    tracked: bool,
-    receipts: list[dict[str, object]],
-    contract_on_main: dict[str, object] | None,
-    released_tags: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
-    released_index: dict[tuple[str, str], frozenset[str] | None] | None = None,
-) -> DurableEvidenceGate:
-    def is_receipt_tracked(repo_path: str, ref: str, receipt_dir: str) -> bool:
-        return tracked
-
-    def gh_pr_view(repo: str, pr_number: int) -> tuple[str, str | None]:
-        raise AssertionError(
-            "gh_pr_view must NOT be called on the receipt-bound branch"
-        )
-
-    def pr_commits(repo: str, pr_number: int) -> tuple[str, ...]:
-        raise AssertionError(
-            "pr_commits must NOT be called on the receipt-bound branch"
-        )
-
-    def load_contract(
-        repo_path: str, ref: str, rel_path: str
-    ) -> dict[str, object] | None:
-        return contract_on_main
-
-    def load_receipts(
-        repo_path: str, ref: str, receipt_dir: str
-    ) -> list[dict[str, object]]:
-        return receipts
-
+def _gate_over_no_repo_contract() -> DurableEvidenceGate:
+    """A gate whose merged PR carries no product-repository contract."""
     return DurableEvidenceGate(
-        release_tags_containing=_released_tags_stub(released_tags),
-        index_release_files=_released_index_stub(released_index),
-        is_receipt_tracked=is_receipt_tracked,
-        gh_pr_view=gh_pr_view,
-        pr_commits=pr_commits,
-        load_contract_on_ref=load_contract,
-        load_receipts_on_ref=load_receipts,
-        occ_repo_path=_OCC_REPO,
-        occ_governance_ref=_DEV_REF,
-    )
-
-
-def _evaluate(gate: DurableEvidenceGate, contract: dict[str, object]):
-    return gate.evaluate(
-        ticket_id=_TICKET,
-        contract=contract,
-        receipt_dir=_RECEIPT_DIR,
-        contract_rel_path=_CONTRACT_PATH,
-        ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        release_tags_containing=lambda _repo, _sha: ("v9.9.9",),
+        index_release_files=lambda _d, _v: frozenset({"bdist_wheel", "sdist"}),
+        read_repo_contract=lambda _repo, _ref, _ticket: ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.ABSENT
+        ),
+        read_repo_check_runs=lambda _repo, _sha: (),
     )
 
 
@@ -320,133 +239,32 @@ class TestIsReceiptBoundContract:
 
 
 # ---------------------------------------------------------------------------
-# DurableEvidenceGate Check-2 branch
+# DurableEvidenceGate
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestDurableEvidenceGateReceiptBoundBranch:
-    def test_omn_15087_motivating_case_passes_gate(self) -> None:
-        """The exact OMN-15087 shape: a PR-less audit ticket with a durable,
-        independently-verified receipt trail. Before this fix this ticket
-        was PERMANENTLY BLOCKED at Check 2 (`No PASS receipt ... binds
-        pr_number, commit_sha, and a GitHub repo`) with no route to PASS —
-        this is the RED-before proof for shape 5."""
+    def test_omn_15087_motivating_case_is_refused_by_the_gate(self) -> None:
+        """The PR-less audit shape the gate used to admit from an OCC receipt trail.
+
+        The gate reads no receipt trail (OMN-20074), so a receipt-bound ticket
+        no product repository governs is refused.
+        """
         contract = _receipt_bound_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_receipt_bound_receipt()],
-            contract_on_main=contract,
+        result = _gate_over_no_repo_contract().evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
         )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.PASS, [
-            (c.check, c.passed, c.message) for c in result.checks
-        ]
+
+        assert result.status == EnumDurableEvidenceStatus.FAIL
         checks = {c.check for c in result.checks}
-        assert EnumDurableEvidenceCheck.RECEIPT_BOUND in checks
-        assert EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT not in checks
-        assert EnumDurableEvidenceCheck.RUNTIME_OPS_READBACK not in checks
-
-    def test_self_attested_receipt_fails_gate(self) -> None:
-        contract = _receipt_bound_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_receipt_bound_receipt(verifier="impl-agent")],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        rb = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RECEIPT_BOUND
-        )
-        assert rb.passed is False
-        assert "self-attested" in rb.message
-
-    def test_empty_readback_fails_gate(self) -> None:
-        contract = _receipt_bound_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_receipt_bound_receipt(probe_stdout="")],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-
-    def test_zero_pass_receipts_fails_gate(self) -> None:
-        contract = _receipt_bound_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_receipt_bound_receipt(status="FAIL")],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-
-    def test_contract_on_ref_must_declare_the_receipt_bound_keys(self) -> None:
-        """Check 3 (CONTRACT_ON_OCC_MAIN) still applies unchanged: the
-        receipt-bound evidence item's key must appear in the governance-ref
-        contract, exactly as for the merged-PR / runtime-ops branches."""
-        contract = _receipt_bound_contract()
-        stale_contract_on_main = _receipt_bound_contract()
-        stale_contract_on_main["dod_evidence"] = []  # missing the bound key
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_receipt_bound_receipt()],
-            contract_on_main=stale_contract_on_main,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        contract_check = next(
+        assert EnumDurableEvidenceCheck.RECEIPT_BOUND not in checks
+        governing = next(
             c
             for c in result.checks
             if c.check == EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
         )
-        assert contract_check.passed is False
-
-    def test_receipt_not_tracked_still_fails_check_1(self) -> None:
-        """Check 1 (RECEIPT_TRACKED) is unaffected by the new branch — a
-        receipt-bound contract with no tracked receipt still fails closed."""
-        contract = _receipt_bound_contract()
-        gate = _make_gate(
-            tracked=False,
-            receipts=[_receipt_bound_receipt()],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        rt = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RECEIPT_TRACKED
-        )
-        assert rt.passed is False
-
-    def test_default_merged_pr_path_unaffected_when_proof_class_absent(
-        self,
-    ) -> None:
-        """Non-weakening regression: a contract that does NOT declare
-        proof_class: "receipt-bound" must still route through the ORIGINAL
-        merged-PR check — a PR-less receipt set on such a contract still
-        fails exactly as it did before this fix (this is what made OMN-15087
-        blocked in the first place; only a contract that opts in via
-        proof_class gets the new path)."""
-        contract = _receipt_bound_contract(proof_class=None)
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_receipt_bound_receipt()],  # no pr_number/commit binding
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        checks = {c.check for c in result.checks}
-        assert EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT in checks
-        assert EnumDurableEvidenceCheck.RECEIPT_BOUND not in checks
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is False
-        assert "binds pr_number" in cite_check.message
+        assert governing.passed is False
+        assert "no product repository governs" in governing.message
