@@ -24,7 +24,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.handlers.handler_local_session_files import LocalSessionFiles
+from omnimarket.handlers.adapter_local_session_files import LocalSessionFiles
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_FILE_NAME,
     OVERLAY_ROOTS_ENV,
