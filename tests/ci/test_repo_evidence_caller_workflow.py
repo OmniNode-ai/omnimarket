@@ -220,6 +220,49 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
     return violations
 
 
+def _violation_item_id(violation: str) -> str:
+    """The evidence item id a `<contract>:<item>: ...` violation names, or ''."""
+    head = violation.split(": ", 1)[0]
+    return head.split(":", 1)[1] if ":" in head else ""
+
+
+def binds_diagnosis(contract: dict[str, Any], violation: str) -> str:
+    """What the binding checker read in the item a violation names.
+
+    OMN-22399: a red `test_every_repo_contract_binds_every_criterion` named the
+    item and nothing else, so each reader re-derived whether the test file, the
+    selector or the check type was the fault. This prints, per check, its type,
+    its command, the path targets read from it and whether each exists in the
+    tree, so the reader sees the cause from the failure alone.
+    """
+    item_id = _violation_item_id(violation)
+    item = next(
+        (i for i in contract.get("dod_evidence", []) if i.get("id") == item_id), None
+    )
+    if item is None:
+        return f"  (no dod_evidence item {item_id!r} in this contract)"
+    lines: list[str] = []
+    for check in item.get("checks", []):
+        kind = check.get("check_type")
+        value = check.get("check_value", "")
+        if kind != "test_passes":
+            lines.append(
+                f"  - check_type={kind!r} is not test_passes, so it binds no test file: {value[:120]}"
+            )
+            continue
+        argv = _pytest_argv(value)
+        if not argv:
+            lines.append(f"  - not a `uv run pytest` command: {value[:120]}")
+            continue
+        targets = [t.split("::", 1)[0] for t in _pytest_targets(argv)]
+        shown = ", ".join(
+            f"{t} ({'exists' if (REPO_ROOT / t).exists() else 'MISSING'})"
+            for t in targets
+        )
+        lines.append(f"  - test_passes targets read: [{shown or 'none'}]")
+    return "\n".join(lines) or "  (item has no checks)"
+
+
 def test_every_repo_contract_binds_every_criterion() -> None:
     assert CALLER_PATH.is_file(), "repo-owned evidence requires the caller workflow"
     contracts = sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml"))
@@ -227,7 +270,12 @@ def test_every_repo_contract_binds_every_criterion() -> None:
     violations: list[str] = []
     for path in contracts:
         contract = yaml.safe_load(path.read_text(encoding="utf-8"))
-        violations.extend(contract_binds_violations(path.name, contract))
+        for violation in contract_binds_violations(path.name, contract):
+            violations.append(
+                f"{violation}\n{binds_diagnosis(contract, violation)}"
+                if _violation_item_id(violation)
+                else violation
+            )
     assert not violations, "\n".join(violations)
 
 
@@ -506,3 +554,77 @@ def test_contract_binds_refuses_a_nonexistent_test_path() -> None:
     assert violations == [
         "OMN-0.yaml:dod-missing-path: binds_ac requires uv run pytest evidence naming an existing repo test file"
     ]
+
+
+def _omn21733_floor_contract_item() -> dict[str, Any]:
+    return {
+        "requirements": [{"acceptance": [{"id": "AC66"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-omn21733-ac66",
+                "binds_ac": ["AC66"],
+                "checks": [
+                    {
+                        "check_type": "test_passes",
+                        "check_value": (
+                            "uv run pytest tests/nodes/node_factory_floor_publish_effect/"
+                            "test_floor_p0_page.py -q --no-cov --tb=line "
+                            "-k memory_gauge_matches_label"
+                        ),
+                        "cwd": "${OMNI_HOME}/omnimarket",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_omn22399_a_k_selector_with_a_foreign_cwd_binds_an_existing_test_file() -> None:
+    """The recorded OMN-21733 AC66 form binds: the file and the `-k` selector exist.
+
+    Evidence (2026-11-03): 21 PRs failed Tests (Split 2/20) with "OMN-21733.yaml:
+    dod-omn21733-ac66: binds_ac requires uv run pytest evidence naming an existing
+    repo test file" (#4980 #4977 #4974 #4973 #4972 #4971 #4953 #4951 #4949 #4947
+    #4942 #4941 #4931 #4923 #4916 #4900 #4896 #4881 #4874 #4858 #4849). The cause
+    was the item's earlier `command` grep check, not the multi-token `-k` form or
+    the `${OMNI_HOME}/omnimarket` cwd, so this form must read as bound.
+    """
+    contract = _omn21733_floor_contract_item()
+    item = contract["dod_evidence"][0]
+    target = "tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py"
+    assert (REPO_ROOT / target).is_file()
+    assert "def test_memory_gauge_matches_label" in (REPO_ROOT / target).read_text(
+        encoding="utf-8"
+    )
+    assert contract_binds_violations("OMN-21733.yaml", contract) == []
+    assert _pytest_targets(_pytest_argv(item["checks"][0]["check_value"])) == [target]
+
+
+def test_omn22399_a_grep_command_binding_fails_and_the_message_names_the_cause() -> (
+    None
+):
+    """The form that reddened dev (a bound `command` grep) still fails, with its cause named."""
+    contract = _omn21733_floor_contract_item()
+    contract["dod_evidence"][0]["checks"] = [
+        {
+            "check_type": "command",
+            "check_value": "grep -q 'Memory used' src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html",
+            "cwd": ".",
+        }
+    ]
+    violations = contract_binds_violations("OMN-21733.yaml", contract)
+    assert len(violations) == 1
+    assert violations[0].startswith("OMN-21733.yaml:dod-omn21733-ac66: ")
+    diagnosis = binds_diagnosis(contract, violations[0])
+    assert "check_type='command' is not test_passes" in diagnosis
+    assert "grep -q 'Memory used'" in diagnosis
+
+
+def test_omn22399_the_diagnosis_marks_a_missing_target() -> None:
+    contract = _omn21733_floor_contract_item()
+    contract["dod_evidence"][0]["checks"][0]["check_value"] = (
+        "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_gone.py -k x"
+    )
+    violations = contract_binds_violations("OMN-21733.yaml", contract)
+    assert len(violations) == 1
+    assert "test_gone.py (MISSING)" in binds_diagnosis(contract, violations[0])
