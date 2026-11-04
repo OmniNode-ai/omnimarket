@@ -124,6 +124,13 @@ class ModelLabAdmission(BaseModel):
         default=None,
         description="Why the live probe could not read the host; the host's capacity is then unread.",
     )
+    probe_owner: str | None = Field(
+        default=None,
+        description=(
+            "The owner action the probe receipt's `LAUNCHER-GAP:<CAUSE> ...; owner: <action>` tag names for an "
+            "unreadable host (the whole tag or the bare action); None when the receipt names none."
+        ),
+    )
     claude_slots: int = Field(
         ge=0, description="`slots` when a Claude lane is admitted, else 0."
     )
