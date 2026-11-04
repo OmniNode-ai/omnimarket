@@ -34,10 +34,12 @@ class ModelLaneDispatchOverlay(BaseModel):
 
 
 class ModelLaneDispatchRequest(BaseModel):
-    """Serialized spec or hashed record, artifact destination and execution intent.
+    """Serialized spec, hashed record or JSON list, destination and execution intent.
 
     A plain spec may omit policy: the effect stamps its authoritative overlay
     policy into the canonical record. An existing envelope must verify unchanged.
+    A list returns an ordered result for each input and requires execute=True;
+    otherwise each item is refused without artifacts or external commands.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -47,12 +49,31 @@ class ModelLaneDispatchRequest(BaseModel):
     execute: bool = False
 
 
+class ModelLaneDispatchItemResult(BaseModel):
+    """One input's outcome; list position survives even an invalid lane identity."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    index: int = Field(ge=0)
+    lane: str
+    status: Literal["placed", "placing", "refused", "crashed"]
+    reason: str = Field(min_length=1)
+    job_id: str = ""
+    content_hash: str = ""
+    record_path: str = ""
+    brief_path: str = ""
+    error_code: str = ""
+    runner_exit: int | None = None
+
+
 class ModelLaneDispatchResult(BaseModel):
     """A checker refusal carries no runnable argv. The hash identifies the job record."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    status: Literal["checked", "submitted", "refused"]
+    status: Literal[
+        "checked", "submitted", "refused", "crashed", "placed", "placing", "batch"
+    ]
     job_id: str = ""
     content_hash: str = ""
     record_path: str = ""
@@ -62,3 +83,4 @@ class ModelLaneDispatchResult(BaseModel):
     error_code: str = ""
     detail: str = ""
     runner_exit: int | None = None
+    results: tuple[ModelLaneDispatchItemResult, ...] = ()

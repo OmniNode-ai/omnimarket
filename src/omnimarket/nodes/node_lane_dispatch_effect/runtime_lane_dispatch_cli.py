@@ -6,6 +6,11 @@ Write a spec as JSON data, then run ``onex-lane-dispatch --spec-file spec.json
 --output-dir out`` to build the canonical hashed record, check the generated
 brief and return the runner argv. Add ``--execute`` to call the runner. An
 already hashed record is accepted only when its hash and policy still match.
+For a JSON list, --execute dispatches each item and returns an ordered ``results``
+array of placed, placing, refused or crashed outcomes with reasons. Without it,
+every list item is refused before any command. Exit codes are 0 for all placed,
+3 for pending placement, 65 for refusal, and 70 for a crash (in that precedence
+order from lowest to highest severity).
 The deployment supplies ``lane_dispatch/overlay.yaml`` through the standard
 overlay roots, including checker/runner argv and the in-memory or Kafka binding.
 """
@@ -14,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -37,6 +43,12 @@ CONTRACT = Path(__file__).with_name("contract.yaml")
 def dispatch(request: ModelLaneDispatchRequest) -> ModelLaneDispatchResult:
     """The CLI invokes the declared node, never a handler side path."""
     overlay = load_dispatch_overlay()
+    try:
+        raw = json.loads(request.record_json)
+    except ValueError:
+        # Malformed single-record input still reaches the node's typed refusal.
+        raw = None
+    item_count = len(raw) if isinstance(raw, list) else 1
     backends: dict[str, str] = {"event_bus": overlay.event_bus}
     binding: contextlib.AbstractContextManager[object] = contextlib.nullcontext()
     if overlay.kafka_bootstrap:
@@ -53,7 +65,10 @@ def dispatch(request: ModelLaneDispatchRequest) -> ModelLaneDispatchResult:
             workflow_path=CONTRACT,
             input_path=input_path,
             state_root=Path(scratch) / "runtime",
-            timeout=600,
+            # Each item can spend one checker budget and two runner budgets
+            # (setup plus placement). A batch must not lose earlier outcomes
+            # to the single-record runtime deadline.
+            timeout=max(600, item_count * overlay.command_timeout_s * 3 + 60),
             backend_overrides=backends,
         )
         outcome = runtime.run()
@@ -87,7 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"DISPATCH-UNREADABLE: {exc}\n")
         return 69
     sys.stdout.write(result.model_dump_json() + "\n")
-    return 65 if result.status == "refused" else 0
+    statuses = {item.status for item in result.results} | {result.status}
+    if "crashed" in statuses:
+        return 70
+    if "refused" in statuses:
+        return 65
+    if "placing" in statuses:
+        return 3
+    return 0
 
 
 if __name__ == "__main__":

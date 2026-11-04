@@ -9,6 +9,8 @@ description: >
   Build or validate a content-addressed lane instruction record against the declared overlay,
   render its brief, require the existing brief checker to accept it, and derive every
   runner argument from the spec. A receipt cites the same record hash and job identity.
+  A serialized list executes in order and returns placed, placing, refused or crashed
+  with a reason for each item; only a lane-matched placement acknowledgement counts as placed.
 input_model:
   module: omnimarket.nodes.node_lane_dispatch_effect.models.model_lane_dispatch_effect
   name: ModelLaneDispatchRequest
@@ -39,7 +41,7 @@ descriptor:
   runtime_profiles: [effects]
   side_effects:
     - writes the canonical job record and generated brief to the request output directory
-    - invokes the existing brief checker and optionally the remote lane runner
+    - invokes the existing brief checker and optionally the remote lane runner, waiting for placement for lists
 metadata:
   ticket: OMN-19998
   transport_type: inmemory

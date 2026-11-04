@@ -10,11 +10,12 @@ authority on generated standing rules, reader output and live ticket ownership.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import ValidationError
 
@@ -26,6 +27,7 @@ from omnimarket.models.lane_dispatch.model_lane_dispatch import (
 )
 
 from ..models.model_lane_dispatch_effect import (
+    ModelLaneDispatchItemResult,
     ModelLaneDispatchOverlay,
     ModelLaneDispatchRequest,
     ModelLaneDispatchResult,
@@ -92,13 +94,17 @@ def render_brief(record: ModelLaneDispatchRecord, record_path: Path) -> str:
     )
 
 
-def runner_arguments(spec: ModelLaneDispatchSpec, brief_path: Path) -> tuple[str, ...]:
+def runner_arguments(
+    spec: ModelLaneDispatchSpec,
+    brief_path: Path,
+    *,
+    placement_wait_s: int | None = None,
+) -> tuple[str, ...]:
     """Existing runner protocol. Sender-controlled argv and host overrides do not exist."""
     owner, repo = spec.repo.split("/", 1)
     argv = [
         "run",
         "--detach",
-        "--no-placement-wait",
         "--brief",
         str(brief_path),
         "--lane",
@@ -132,6 +138,10 @@ def runner_arguments(spec: ModelLaneDispatchSpec, brief_path: Path) -> tuple[str
         "--on-time-box",
         spec.retry_policy.on_time_box.value,
     ]
+    if placement_wait_s is None:
+        argv.append("--no-placement-wait")
+    else:
+        argv.extend(("--placement-wait-s", str(placement_wait_s)))
     if spec.model in spec.policy.runner_effort_models:
         argv.extend(("--effort", spec.effort))
     for pr in spec.pr:
@@ -179,6 +189,49 @@ def supervisor_spec(spec: ModelLaneDispatchSpec, brief: str) -> ModelLabJobSpec:
     )
 
 
+def placement_outcome(
+    lane: str, code: int, output: str
+) -> tuple[Literal["placed", "placing", "refused", "crashed"], str, str]:
+    """Consume the existing runner's detached placement protocol, never its banner.
+
+    Exit zero alone only acknowledges spawning a detached process. Placement
+    requires its final, lane-matched PLACEMENT line with a host and receipt.
+    Runner exit codes and wire states are protocol, not placement policy.
+    """
+    lines = output.splitlines()
+    acknowledgement = next(
+        (
+            line
+            for line in reversed(lines)
+            if line.startswith(f"PLACEMENT lane={lane} status=")
+        ),
+        "",
+    )
+    match = re.match(
+        rf"^PLACEMENT lane={re.escape(lane)} status=(\S+)(?: |$)", acknowledgement
+    )
+    state = match.group(1) if match else ""
+    if code == 0 and state in ("running", "done"):
+        host = re.search(r"\bhost=(\S+)", acknowledgement)
+        receipt = re.search(r"\breceipt=(\S+)", acknowledgement)
+        if host and host.group(1) != "none" and receipt and receipt.group(1) != "none":
+            return "placed", "", output
+    if code == 3 and state == "placing":
+        return "placing", "", output
+    if code in (2, 75) or (code != 0 and state == "pr-ownership-refused"):
+        return (
+            "refused",
+            "REMOTE-LANE-RUNNER-REFUSED",
+            output or f"runner refused with exit {code}",
+        )
+    return (
+        "crashed",
+        "REMOTE-LANE-PLACEMENT-UNCONFIRMED",
+        f"runner exit {code}; no accepted placement acknowledgement; "
+        f"send state unconfirmed: {output or 'no runner output'}",
+    )
+
+
 class HandlerLaneDispatch:
     """The canonical dispatch effect; injected ports exercise the production wiring."""
 
@@ -193,6 +246,70 @@ class HandlerLaneDispatch:
         self._now = now or (lambda: datetime.now(UTC))
 
     def handle(self, request: ModelLaneDispatchRequest) -> ModelLaneDispatchResult:
+        """Dispatch a JSON list in order, isolating refusals and command crashes."""
+        try:
+            raw = json.loads(request.record_json)
+        except ValueError:
+            return self._handle_one(request)
+        if not isinstance(raw, list):
+            return self._handle_one(request)
+        results: list[ModelLaneDispatchItemResult] = []
+        for index, item in enumerate(raw):
+            identity = item.get("spec", item) if isinstance(item, dict) else {}
+            lane = identity.get("lane", "") if isinstance(identity, dict) else ""
+            if not request.execute:
+                results.append(
+                    ModelLaneDispatchItemResult(
+                        index=index,
+                        lane=lane if isinstance(lane, str) else "",
+                        status="refused",
+                        error_code="DISPATCH-EXECUTION-REQUIRED",
+                        reason="list dispatch requires explicit execution intent (--execute)",
+                    )
+                )
+                continue
+            try:
+                result = self._handle_one(
+                    ModelLaneDispatchRequest(
+                        record_json=json.dumps(item),
+                        output_dir=request.output_dir,
+                        execute=True,
+                    ),
+                    wait_for_placement=True,
+                )
+                if result.status not in ("placed", "placing", "refused", "crashed"):
+                    raise RuntimeError("dispatch returned no placement outcome")
+                results.append(
+                    ModelLaneDispatchItemResult(
+                        index=index,
+                        lane=lane if isinstance(lane, str) else "",
+                        status=result.status,
+                        reason=result.detail,
+                        job_id=result.job_id,
+                        content_hash=result.content_hash,
+                        record_path=result.record_path,
+                        brief_path=result.brief_path,
+                        error_code=result.error_code,
+                        runner_exit=result.runner_exit,
+                    )
+                )
+            except Exception as exc:
+                # A command adapter or unexpected item failure cannot erase the
+                # earlier outcomes or prevent the remaining specs being attempted.
+                results.append(
+                    ModelLaneDispatchItemResult(
+                        index=index,
+                        lane=lane if isinstance(lane, str) else "",
+                        status="crashed",
+                        error_code="DISPATCH-CRASHED",
+                        reason=f"{type(exc).__name__}: {exc}",
+                    )
+                )
+        return ModelLaneDispatchResult(status="batch", results=tuple(results))
+
+    def _handle_one(
+        self, request: ModelLaneDispatchRequest, *, wait_for_placement: bool = False
+    ) -> ModelLaneDispatchResult:
         """Fail closed: a rejected checker never yields or executes a runner command."""
         try:
             overlay = self._overlay or load_dispatch_overlay()
@@ -249,12 +366,40 @@ class HandlerLaneDispatch:
                     record_path=str(record_path),
                     brief_path=str(brief_path),
                     error_code="LANE-BRIEF-REFUSED",
-                    detail=detail,
+                    detail=detail or f"brief checker refused with exit {code}",
                 )
-            argv = (*overlay.runner_command, *runner_arguments(spec, brief_path))
+            argv = (
+                *overlay.runner_command,
+                *runner_arguments(
+                    spec,
+                    brief_path,
+                    placement_wait_s=overlay.command_timeout_s
+                    if wait_for_placement
+                    else None,
+                ),
+            )
             runner_exit: int | None = None
             if request.execute:
-                runner_exit, detail = self._command.run(argv, overlay.command_timeout_s)
+                # The deployment's command budget covers setup as well as the
+                # placement wait; the batch does not wait for the lane to finish.
+                timeout_s = overlay.command_timeout_s
+                if wait_for_placement:
+                    timeout_s += overlay.command_timeout_s
+                runner_exit, detail = self._command.run(argv, timeout_s)
+                if wait_for_placement:
+                    status, error_code, reason = placement_outcome(
+                        spec.lane, runner_exit, detail
+                    )
+                    return ModelLaneDispatchResult(
+                        status=status,
+                        job_id=spec.job_id,
+                        content_hash=record.content_hash,
+                        record_path=str(record_path),
+                        brief_path=str(brief_path),
+                        error_code=error_code,
+                        detail=reason,
+                        runner_exit=runner_exit,
+                    )
                 if runner_exit != 0:
                     return ModelLaneDispatchResult(
                         status="refused",
@@ -284,5 +429,7 @@ class HandlerLaneDispatch:
             )
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             return ModelLaneDispatchResult(
-                status="refused", error_code="DISPATCH-UNREADABLE", detail=str(exc)
+                status="crashed" if wait_for_placement else "refused",
+                error_code="DISPATCH-UNREADABLE",
+                detail=f"{type(exc).__name__}: {exc}",
             )
