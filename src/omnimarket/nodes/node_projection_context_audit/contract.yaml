@@ -1,0 +1,104 @@
+---
+name: projection_context_audit
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_context_audit.models.model_context_audit_projection_request.ModelContextAuditProjectionRequest
+description: >
+  Projects the five context-integrity audit topics omniclaude publishes into
+  public.context_audit_events. It replaces the omnibase_infra context-audit
+  consumer module (services/observability/context_audit/consumer.py), writing
+  the same twelve columns from the same five topics. The difference is the
+  plan's falsifier: each row carries a deterministic event_key, derived from the
+  event's Kafka coordinates, and the write is an UPSERT on it, so replaying the
+  same events leaves one row per event.
+
+handler:
+  module: omnimarket.nodes.node_projection_context_audit.handlers.handler_projection_context_audit
+  class: HandlerProjectionContextAudit
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: context_audit_projection_writer
+      handler:
+        name: ContextAuditProjectionWriter
+        module: omnimarket.nodes.node_projection_context_audit.handlers.handler_context_audit_writer
+      handler_module: omnimarket.nodes.node_projection_context_audit.handlers.handler_context_audit_writer
+
+terminal_event: onex.evt.omnimarket.projection-context-audit-applied.v1
+
+golden_path:
+  - "omniclaude publishes a context-integrity audit event to one of the five audit topics"
+  - "The fold maps the event to the twelve context_audit_events columns plus event_key, derived from topic, partition and offset"
+  - "The writer upserts on event_key, so a replayed event updates its row in place and a second replay leaves one row per event"
+  - "An event missing task_id, correlation_id, event_type or enforcement_level is routed to the DLQ, never stored and never dropped"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-context-audit-applied.v1"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_context_audit.py::test_replay_writes_the_same_rows_and_a_second_replay_adds_none
+    description: "Replayed events write one row per key, and a second replay leaves the row count unchanged"
+  - test: tests/test_golden_chain_projection_context_audit.py::test_the_writer_declares_in_process_dispatch
+    description: "An undeclared writer is skipped by the shared runtime and writes zero rows silently"
+  - test: tests/test_projection_context_audit_real_postgres.py::test_replay_against_real_postgres_leaves_one_row_per_key
+    description: "The writer's SQL, against real Postgres, writes the retired module's columns and a second replay leaves one row per key"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked. The table is created by omnibase_infra migration 053; this node's
+    # migration only adds event_key and its unique index.
+    - name: context_audit_events
+      database_ref: application
+      schema: public
+      migration: "0000_add_context_audit_event_key.sql"
+      access: read_write
+      role: context_audit_events
+
+  dedupe_key:
+    - event_key
+  ordering_key: id
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.audit-dispatch-validated.v1
+    - onex.evt.omniclaude.audit-scope-violation.v1
+    - onex.evt.omniclaude.audit-context-budget-exceeded.v1
+    - onex.evt.omniclaude.audit-return-bounded.v1
+    - onex.evt.omniclaude.audit-compression-triggered.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-context-audit-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-context-audit-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-context-audit-applied.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omniclaude.audit-dispatch-validated.v1
+    producer: "omniclaude context-integrity audit emitter (audit event schemas and topics)"
+  - topic: onex.evt.omniclaude.audit-scope-violation.v1
+    producer: "omniclaude context-integrity audit emitter (audit event schemas and topics)"
+  - topic: onex.evt.omniclaude.audit-context-budget-exceeded.v1
+    producer: "omniclaude context-integrity audit emitter (audit event schemas and topics)"
+  - topic: onex.evt.omniclaude.audit-return-bounded.v1
+    producer: "omniclaude context-integrity audit emitter (audit event schemas and topics)"
+  - topic: onex.evt.omniclaude.audit-compression-triggered.v1
+    producer: "omniclaude context-integrity audit emitter (audit event schemas and topics)"
+
+# HANDOVER FROM THE RETIRED GROUP -- NOT YET DECLARABLE.
+# The retired consumer module reads under the literal consumer group
+# `context-audit-postgres` (ConfigContextAuditConsumer.kafka_group_id default;
+# the catalog service and the dev compose files set no override). omnibase_infra's
+# `consumer_group_handover` key (ModelConsumerGroupHandover, extra="forbid")
+# names the retired group by from_service, from_node and from_version and derives
+# `{env}.{service}.{node}.consume.{version}` from them, so it cannot name a
+# literal group. Declaring it with invented segments would copy offsets from a
+# group that never existed and start this node at from_auto_offset_reset over
+# the whole retained topic, and rows the retired module wrote carry a NULL
+# event_key, so that replay would write each of them a second time. The key is
+# added here once omnibase_infra's handover model can name `context-audit-postgres`.
+# The node's tests pin this absence.
+
+metadata:
+  transport_type: kafka
