@@ -44,7 +44,6 @@ from omnibase_infra.runtime.models.model_secret_resolver_config import (
     ModelSecretResolverConfig,
 )
 from omnibase_infra.runtime.secret_resolver import SecretResolver
-from omnibase_infra.secret_stores import AdapterEnvSecretStore
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr, ValidationError
 
@@ -52,6 +51,7 @@ if TYPE_CHECKING:
     from omnibase_infra.handlers.handler_infisical import HandlerInfisical
 
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.handlers.adapter_literal_env_secret_store import LiteralEnvSecretStore
 from omnimarket.inference.local_byok_credential_adapter import (
     local_secret_remediation,
 )
@@ -185,7 +185,7 @@ class _ReadOnlySecretStore:
     async def health_check(self) -> bool:
         return True
 
-    async def close(self, timeout_seconds: float = 30.0) -> None:
+    async def close(self, timeout_seconds: float | None = None) -> None:
         del timeout_seconds
 
 
@@ -239,7 +239,7 @@ class _ConventionFallbackSecretStore(_ReadOnlySecretStore):
     _label = "Convention-fallback"
 
     def __init__(self) -> None:
-        self._literal: ProtocolSecretStore = AdapterEnvSecretStore()
+        self._literal: ProtocolSecretStore = LiteralEnvSecretStore()
         self._convention: ProtocolSecretStore = _MappedSecretStore(
             SecretResolver(
                 config=ModelSecretResolverConfig(enable_convention_fallback=True)
