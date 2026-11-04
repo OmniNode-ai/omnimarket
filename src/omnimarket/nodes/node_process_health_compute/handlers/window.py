@@ -87,6 +87,13 @@ def source_for_window(
             reason=f"the source does not cover this window ({read.reason or 'outside its span'})",
         )
     if hours >= window.hours - _EPSILON_HOURS:
+        if read.status is EnumReadStatus.PARTIAL and not read.gaps:
+            return ModelMetricSource(
+                name=name,
+                status=EnumReadStatus.PARTIAL,
+                covered_hours=round(hours, 3),
+                reason=read.reason or "source only partly read",
+            )
         return ModelMetricSource(
             name=name, status=EnumReadStatus.READ, covered_hours=round(hours, 3)
         )
