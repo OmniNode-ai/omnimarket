@@ -170,8 +170,9 @@ def test_missing_bus_config_names_its_fix(monkeypatch):
 
     @contextlib.asynccontextmanager
     async def refused(_):
-        raise LabRunBusError(detail)
-        yield  # pragma: no cover
+        if detail:
+            raise LabRunBusError(detail)
+        yield
 
     monkeypatch.setattr(ticket_cli, "_open_bus", refused)
     result = CliRunner().invoke(
