@@ -24,8 +24,10 @@ from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_locat
 
 from omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect import (
     AGE_ENV,
+    DETACHED_AGE_ENV,
     HandlerCanonicalCloneDirtyConvergeEffect,
     declared_age_seconds,
+    declared_detached_age_seconds,
     load_declaration,
 )
 from omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_canonical_clone_dirty_converge import (
@@ -309,6 +311,187 @@ def test_a_clone_a_process_works_inside_is_left_alone(staged_case: Planted) -> N
             sleeper.kill()
     assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
     assert "process" in outcome.reason
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
+
+
+# -- a detached HEAD (OMN-20344) -------------------------------------------------------------
+
+DETACHED_AGE = 300
+#: The fake converge script of a detached clone: re-attach to dev, then fast-forward, as the real one does.
+FAKE_REATTACH = """#!/bin/bash
+clone="$1"; shift
+note=""
+while [ $# -gt 0 ]; do case "$1" in --note) note="$2"; shift ;; esac; shift; done
+git -C "$clone" switch --quiet dev
+git -C "$clone" reset --hard --quiet '@{u}'
+echo "2026-11-03T00:00:00Z | STATUS | lane=l | converged $clone; saved: $note." >> "$ROW_FILE"
+"""
+FAKE_UNABLE = """#!/bin/bash
+echo "refusing: no re-attachment target can be derived" >&2
+exit 2
+"""
+
+
+@pytest.fixture
+def detached_case(tmp_path: Path) -> Planted:
+    """A clean canonical clone left on a detached HEAD at an old commit, behind its upstream."""
+    planted = Planted(tmp_path, "omnimarket", {"a.txt": "one\n"})
+    _git("checkout", "--quiet", "--detach", "HEAD", cwd=planted.clone)
+    if not REAL_ROOT:
+        (planted.home / "omniclaude/scripts/converge-canonical-clone.sh").write_text(
+            FAKE_REATTACH
+        )
+    return planted
+
+
+def _report_detached(
+    handler: HandlerCanonicalCloneDirtyConvergeEffect, planted: Planted, seconds: int
+) -> None:
+    """The engine's breach line for the detached clone, after a fetch (the real engine's own work)."""
+    if REAL_ROOT:
+        planted.refuse_for(handler, seconds)
+        return
+    fetch = f"git -C '{planted.clone}' fetch --quiet origin"
+    line = f"REFUSED_TOO_LONG {planted.clone} refused for {seconds}s: detached HEAD"
+    handler._engine_argv = ["/bin/sh", "-c", f"{fetch}; echo '{line}'"]
+
+
+def test_the_detached_age_is_the_contracts_and_the_overlay_replaces_it() -> None:
+    assert declared_detached_age_seconds({}) == 1800
+    assert declared_detached_age_seconds({DETACHED_AGE_ENV: "90"}) == 90
+    assert declared_detached_age_seconds({DETACHED_AGE_ENV: "junk"}) == 1800
+    assert declared_detached_age_seconds({}) < 3600  # inside the hour the ticket allows
+
+
+def test_lab_clone_detached_reconciled_within_bound(detached_case: Planted) -> None:
+    clone = detached_case.clone
+    assert _git("branch", "--show-current", cwd=clone) == ""  # planted detached
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_detached(handler, detached_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert _git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=clone) == "dev"
+    assert _git("rev-parse", "HEAD", cwd=clone) == detached_case.tip
+    assert outcome.converged_to == detached_case.tip
+    assert detached_case.branches() == ["dev"]
+    assert "reattached from a detached HEAD" in detached_case.row_text()
+
+
+def test_lab_clone_detached_reconcile_bound_is_shorter_than_the_dirty_age(
+    detached_case: Planted,
+) -> None:
+    """The engine is handed the smaller bound, so a detached clone is reported before a dirty one would be."""
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    assert min(handler.age, handler.detached_age) == DETACHED_AGE
+    _report_detached(handler, detached_case, DETACHED_AGE + 1)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+
+
+def test_lab_clone_detached_reconcile_that_cannot_fails_loud(
+    detached_case: Planted,
+) -> None:
+    if REAL_ROOT:
+        pytest.skip("drives the fake converge script that refuses")
+    script = detached_case.home / "omniclaude/scripts/converge-canonical-clone.sh"
+    script.write_text(FAKE_UNABLE)
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_detached(handler, detached_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.FAILED
+    assert "still detached" in outcome.reason
+    assert "exit 2" in outcome.reason
+    assert _git("branch", "--show-current", cwd=detached_case.clone) == ""
+
+
+def test_a_detached_clone_an_open_claim_names_is_left_alone(
+    detached_case: Planted, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
+        f"{detached_case.clone} right now\n"
+    )
+    handler = detached_case.handler(
+        **{
+            AGE_ENV: str(AGE),
+            DETACHED_AGE_ENV: str(DETACHED_AGE),
+            "ONEX_LEDGER_PATH": str(ledger),
+        }
+    )
+    _report_detached(handler, detached_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "other-lane" in outcome.reason
+    assert _git("branch", "--show-current", cwd=detached_case.clone) == ""
+
+
+@pytest.mark.parametrize(
+    ("refused_for", "expected_status"),
+    [
+        (DETACHED_AGE - 1, EnumDirtyConvergeStatus.SKIPPED),
+        (DETACHED_AGE, EnumDirtyConvergeStatus.FAILED),
+        (2 * DETACHED_AGE, EnumDirtyConvergeStatus.FAILED),
+    ],
+)
+def test_lab_clone_detached_reconcile_missing_head_commit(
+    detached_case: Planted,
+    refused_for: int,
+    expected_status: EnumDirtyConvergeStatus,
+) -> None:
+    clone = detached_case.clone
+    (clone / "local.txt").write_text("local commit\n")
+    _git("add", "local.txt", cwd=clone)
+    _git("commit", "--quiet", "-m", "local commit", cwd=clone)
+    head = _git("rev-parse", "HEAD", cwd=clone)
+    (clone / ".git/objects" / head[:2] / head[2:]).unlink()
+    missing = subprocess.run(
+        ["git", "cat-file", "-e", f"{head}^{{commit}}"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    assert missing.returncode != 0
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_detached(handler, detached_case, refused_for)
+
+    (outcome,) = handler.tick()
+
+    assert outcome.status is expected_status, outcome
+    assert outcome.clone == str(clone)
+    assert outcome.refused_for_seconds == refused_for
+    if expected_status is EnumDirtyConvergeStatus.FAILED:
+        assert "HEAD does not resolve" in outcome.reason
+    else:
+        assert "below the declared" in outcome.reason
+    assert (clone / ".git/HEAD").read_text().strip() == head
+    assert (clone / "local.txt").read_text() == "local commit\n"
+
+
+def test_a_dirty_clone_refused_only_for_the_detached_bound_is_left_alone(
+    staged_case: Planted,
+) -> None:
+    """Positive control: the shorter detached bound does not shorten the dirty clone's age."""
+    handler = staged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    line = f"REFUSED_TOO_LONG {staged_case.clone} refused for {DETACHED_AGE + 1}s: tracked changes"
+    handler._engine_argv = ["/bin/sh", "-c", f"echo '{line}'"]
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "below the declared" in outcome.reason
     assert (
         _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
     )
