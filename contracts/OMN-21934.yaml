@@ -1,0 +1,31 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-21934
+title: 'The omnimarket application relation ownership manifest declares public.context_audit_events_id_seq'
+summary: 'Declares the context_audit_events id sequence once in scripts/application-relation-ownership.yaml (kind sequence, application database, public schema, domain TENANT, owner the projection migration runner, no writers), so the omnibase_infra SQL ownership gate resolves the sequence grant that its context_audit migration names. This is the manifest half of the context_audit work; the node itself lands separately.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21934-sequence-ownership
+    statement: 'public.context_audit_events_id_seq has exactly one ownership declaration in the omnimarket manifest, under domain TENANT and the projection migration runner'
+    acceptance:
+      - id: AC4
+        statement: 'AC4: public.context_audit_events_id_seq has exactly one ownership declaration in scripts/application-relation-ownership.yaml, under domain TENANT and the projection migration runner -- falsifier: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k context_audit_events_sequence_is_declared_exactly_once -q --no-cov'
+evidence_requirements:
+  - kind: "tests"
+    description: "The sequence is declared exactly once with the expected kind, database, schema, domain, owner and no writers"
+    command: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k context_audit_events_sequence_is_declared_exactly_once -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21934-sequence-ownership"
+    description: 'AC4: the sequence is declared exactly once; the test fails at the merge base, which declares no such sequence'
+    source: "manual"
+    binds_ac: [AC4]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k context_audit_events_sequence_is_declared_exactly_once -q --no-cov --tb=line'
+        cwd: "."
