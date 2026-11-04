@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeTranscriptSessionFactsCompute
+
+name: node_transcript_session_facts_compute
+version: "1.0.0"
+contract_name: node_transcript_session_facts_compute
+node_name: node_transcript_session_facts_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure aggregation of transcript JSONL into deterministic session facts: record and tool counts, stream metadata, source revision, written paths, and the first qualifying prompt hash. Prompt text is never retained. No I/O; the caller supplies the text.
+
+input_model:
+  name: ModelSessionFactsRequest
+  module: omnimarket.nodes.node_transcript_session_facts_compute.models
+
+output_model:
+  name: ModelSessionFacts
+  module: omnimarket.models.work_classification
+
+handler:
+  module: omnimarket.nodes.node_transcript_session_facts_compute.handlers.handler_transcript_session_facts
+  class: HandlerTranscriptSessionFacts
+  input_model: omnimarket.nodes.node_transcript_session_facts_compute.models.ModelSessionFactsRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerTranscriptSessionFacts
+        module: omnimarket.nodes.node_transcript_session_facts_compute.handlers.handler_transcript_session_facts
+      event_model:
+        name: ModelSessionFactsRequest
+        module: omnimarket.nodes.node_transcript_session_facts_compute.models
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+capabilities:
+  - name: transcript.session_facts
+    description: Compute deterministic transcript session facts without retaining prompt text
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.transcript-session-facts-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.transcript-session-facts-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.transcript-session-facts-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.transcript-session-facts-computed.v1
+
+terminal_event: onex.evt.omnimarket.transcript-session-facts-computed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-22259
+  maturity: alpha
+  tags:
+    - transcript
+    - session-facts

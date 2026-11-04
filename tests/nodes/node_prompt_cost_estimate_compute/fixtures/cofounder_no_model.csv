@@ -1,0 +1,4 @@
+prompt,input_tokens,output_tokens
+"write a python function that parses ISO dates and returns UTC",1200,2400
+"review this PR for me",900,150
+"what is the capital of france and why did it become the capital",300,1800
