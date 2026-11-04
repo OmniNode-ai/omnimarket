@@ -8,6 +8,7 @@ Every payload, host name and address below is fixture input written into a tempo
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import re
 import subprocess
@@ -16,6 +17,7 @@ from typing import Any
 
 import pytest
 import yaml
+
 from omnimarket.nodes.node_host_installer_net_units.handlers.handler_net_units import (
     HandlerNetUnits,
 )
@@ -123,7 +125,7 @@ class FakeHost:
         self.facts = facts
         self.sshd_ok = sshd_ok
         self.calls: list[list[str]] = []
-        self.active = False
+        self.states: dict[str, bool] = {"ssh.service": True}
 
     def __call__(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(argv)
@@ -143,18 +145,16 @@ class FakeHost:
                 "" if self.sshd_ok else "bad config\n",
             )
         if name == "systemctl":
-            verb = argv[1]
+            verb, unit = argv[1], argv[-1]
             if verb == "is-active":
+                up = self.states.get(unit, False)
                 return subprocess.CompletedProcess(
-                    argv,
-                    0 if self.active else 3,
-                    "active\n" if self.active else "inactive\n",
-                    "",
+                    argv, 0 if up else 3, "active\n" if up else "inactive\n", ""
                 )
             if verb in ("enable", "start", "restart"):
-                self.active = True
+                self.states[unit] = True
             if verb == "disable":
-                self.active = False
+                self.states[unit] = False
             return subprocess.CompletedProcess(argv, 0, "", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
@@ -209,7 +209,7 @@ def test_host_net_payloads_install_byte_for_byte(
     assert (
         fs / "etc/ssh/sshd_config.d/00-hardening.conf"
     ).read_bytes() == HARDENING.encode()
-    assert host.active is True
+    assert host.states["asserter.service"] is True
 
 
 def test_host_net_payload_that_misses_its_digest_is_refused(
@@ -371,7 +371,6 @@ def test_host_net_idempotent_sshd_is_reloaded_never_restarted(
     tmp_path: Path, overlay: Path
 ) -> None:
     host = FakeHost(H_ONE)
-    host.active = True  # the sshd service
     result = handler(host, tmp_path / "fs").handle(request(overlay, "limits"))
     assert result.status == "success"
     systemctl = [c for c in host.calls if Path(c[0]).name == "systemctl"]
@@ -423,7 +422,7 @@ def test_host_net_idempotent_uninstall_removes_only_the_declared_files(
         fs / "etc/ssh/sshd_config.d/00-hardening.conf"
     ).exists()  # a unit not uninstalled stays
     assert bystander.read_text() == "X\n"
-    assert host.active is False
+    assert host.states["asserter.service"] is False
 
 
 def test_host_net_status_reports_each_file_and_the_service(
@@ -440,3 +439,25 @@ def test_host_net_status_reports_each_file_and_the_service(
     assert ok.exit_code == 0
     assert "identical" in ok.stdout
     assert "active" in ok.stdout
+
+
+def test_host_net_payload_may_be_stored_base64_and_installs_its_decoded_bytes(
+    tmp_path: Path, overlay: Path
+) -> None:
+    (overlay / "sessions.conf.b64").write_text(
+        base64.encodebytes(SESSIONS.encode()).decode()
+    )
+    document = yaml.safe_load((overlay / "units.yaml").read_text())
+    entry = document["units"]["limits"]["files"][0]
+    entry["source"] = "sessions.conf.b64"
+    entry["encoding"] = "base64"
+    (overlay / "units.yaml").write_text(yaml.safe_dump(document))
+    fs = tmp_path / "fs"
+    result = handler(FakeHost(H_ONE), fs).handle(request(overlay, "limits"))
+    assert result.status == "success", result.stderr
+    installed = fs / "etc/ssh/sshd_config.d/10-limits.conf"
+    assert installed.read_bytes() == SESSIONS.encode()
+    entry["encoding"] = "rot13"
+    (overlay / "units.yaml").write_text(yaml.safe_dump(document))
+    refused = handler(FakeHost(H_ONE), fs).handle(request(overlay, "limits"))
+    assert refused.reason == "encoding-not-supported"
