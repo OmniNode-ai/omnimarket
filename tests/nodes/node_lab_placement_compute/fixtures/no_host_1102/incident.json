@@ -1,0 +1,30 @@
+{
+  "source": "OMN-22124 ticket text: receipts under ~/.local/state/omni/remote-lanes read by lane qs-factory on 2026-11-02, window to 14:07Z. Only the fields the ticket quotes are recorded; a lane's own ticket id is not quoted there and is left null.",
+  "holdback_cases": [
+    {
+      "lane": "drive-infra-5553-t6-1102",
+      "receipt": "rlane-drive-infra-5553-t6-1102-7ae1f8.json",
+      "at": "2026-11-02T13:45:35Z",
+      "repo": "omnibase_infra",
+      "ticket": null,
+      "recorded_priority_class": "other",
+      "recorded_refusal": "PRIORITY-HOLDBACK",
+      "pool": {"free_slots": 1, "free_host": "h053", "waiting": ["mvp-landing"]}
+    }
+  ],
+  "no_slot_negative_controls": [
+    {"lane": "t5-labproof-5518-1102", "free_slots": 0},
+    {"lane": "stuck-green-5555-1102", "free_slots": 0},
+    {"lane": "fix-omm-4847-t14-1102b", "free_slots": 0},
+    {"lane": "t16-fix-5578-1102", "free_slots": 0}
+  ],
+  "parity_cases": [
+    {
+      "lane": "controller-defect-5555-1102",
+      "at": "2026-11-02T14:07:40Z",
+      "pinned_to": "h200",
+      "recorded_refusal": "PIN-REFUSED PARITY-FAILED",
+      "installed_minus_shipped": [".orphaned_at"]
+    }
+  ]
+}
