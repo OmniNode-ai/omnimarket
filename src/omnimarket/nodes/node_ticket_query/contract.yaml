@@ -70,7 +70,7 @@ dod_evidence:
   - "test_golden_chain_ticket_query.py passes with EventBusInmemory + mock ProtocolProjectTracker"
   - "HandlerTicketQuery contains zero mcp__linear-server__ references"
   - "uv run onex run node_ticket_query resolves without import errors"
-  - "Entry point registered in pyproject.toml under [project.entry-points.'onex.nodes']"
+  - "Entry point registered in pyproject.toml under the node entry-point group"
 metadata:
   transport_type: "HTTP"
   description: "Ticket query node — ProtocolProjectTracker dispatch layer"
