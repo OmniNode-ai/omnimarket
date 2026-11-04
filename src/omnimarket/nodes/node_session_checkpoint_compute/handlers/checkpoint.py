@@ -416,6 +416,64 @@ def summary(data: dict[str, Any]) -> str:
     )
 
 
+def _session_key(data: dict[str, Any]) -> str:
+    return str(data.get("session_id") or f"lane:{data.get('session_lane', '')}")
+
+
+def prior_lines(
+    directory: Path, scope: ModelSessionScope, data: dict[str, Any]
+) -> list[str]:
+    """The predecessor session's running workflows the newest checkpoint does not carry.
+
+    The recorder carries workflows only within one session, so once a resuming session records
+    its first launch, its checkpoint is the newest and the stopped session's running workflows,
+    the drain drivers among them, hold no CLAIM and appear nowhere else. This names them: the
+    newest checkpoint of the session written just before the current one, when under
+    ``MAX_AGE_HOURS`` older, one ``PRIOR`` line per running or queued workflow that the current
+    checkpoint names by neither task id, run id nor (for a named script) script. Read-only; it
+    resumes nothing, and a member sees only its own checkpoints (``records`` binds the scope).
+    """
+    current = _session_key(data)
+    owned_records = records(directory, scope)
+    first_own = min(
+        (str(d["written_at"]) for d in owned_records if _session_key(d) == current),
+        default=str(data["written_at"]),
+    )
+    prior = next(
+        (
+            d
+            for d in owned_records
+            if _session_key(d) != current and str(d["written_at"]) <= first_own
+        ),
+        None,
+    )
+    if (
+        prior is None
+        or age_hours(prior, parse_stamp(data["written_at"])) > MAX_AGE_HOURS
+    ):
+        return []
+    live = [w for w in data["workflows"] if w.get("status") in ("running", "queued")]
+    carried_ids = {w.get(k) for w in data["workflows"] for k in ("task_id", "run_id")}
+    carried_scripts = {w.get("script") for w in live if w.get("script") != "inline"}
+    lines: list[str] = []
+    for wf in prior["workflows"]:
+        if wf.get("status") not in ("running", "queued"):
+            continue
+        if wf["task_id"] in carried_ids or (
+            wf["run_id"] and wf["run_id"] in carried_ids
+        ):
+            continue
+        if wf["script"] != "inline" and wf["script"] in carried_scripts:
+            continue
+        extra = "".join(f" {k}={wf[k]}" for k in ("ends_at", "start_at") if k in wf)
+        lines.append(
+            f"PRIOR status={wf['status']} task={wf['task_id']} run={wf['run_id']} "
+            f"role={wf['role']}{extra} session_lane={prior['session_lane']} "
+            f"written_at={prior['written_at']} script={wf['script']} purpose={wf['purpose']}"
+        )
+    return lines
+
+
 def read_lines(data: dict[str, Any], path: Path) -> list[str]:
     """One mechanical line per item, in the order the next session acts on them."""
     principal = data.get("principal") or "-"
