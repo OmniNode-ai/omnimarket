@@ -17,11 +17,17 @@ from uuid import uuid4
 import yaml
 from pydantic import BaseModel, Field
 
+from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.guest_ssh import (
+    bind_guest_ip,
+    guest_ssh_argv,
+    require_guest_login,
+)
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.receipt_redaction import (
     redact,
     sanitize_receipt,
 )
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner import (
+    HandlerLocalTart,
     HandlerSshTart,
 )
 from omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.walk_log_parser import (
@@ -80,6 +86,7 @@ class _TartDefaults(BaseModel):
     cpu: int = Field(ge=1)
     memory_gb: int = Field(ge=1)
     tart_path: str = Field(min_length=1)
+    guest_user: str = Field(min_length=1)
 
 
 class _DeclaredStep(BaseModel):
@@ -107,6 +114,7 @@ def resolve_request(request: ModelWalkRequest) -> ModelWalkRequest:
             if request.memory_gb is not None
             else defaults.memory_gb,
             "tart_path": request.tart_path or defaults.tart_path,
+            "guest_user": request.guest_user or defaults.guest_user,
             "vm_name": request.vm_name or f"onex-walk-{uuid4().hex[:8]}",
         }
     )
@@ -192,7 +200,7 @@ def _documented_argv(
     }
     if kind not in guest_commands:
         raise StepNotDocumentedError(f"{kind}: step not documented")
-    return (tart, "exec", vm, "bash", "-lc", guest_commands[kind])
+    return guest_ssh_argv(request, guest_commands[kind])
 
 
 def build_step_argv(
@@ -246,6 +254,13 @@ def _require_success(result: ModelRunnerResult, kind: EnumWalkStepKind) -> None:
         raise RuntimeError(
             f"{kind}: exit {result.exit_code}: {result.stderr or result.stdout}"
         )
+
+
+def select_runner(request: ModelWalkRequest) -> ProtocolTartRunner:
+    """The one place the request's tart_transport picks the Tart runner."""
+    if request.tart_transport == "local":
+        return HandlerLocalTart()
+    return HandlerSshTart(request.tart_host)
 
 
 class HandlerOnboardingCleanVmWalk:
@@ -326,6 +341,7 @@ class HandlerOnboardingCleanVmWalk:
 
         try:
             request = resolve_request(request)
+            require_guest_login(request)
             vm_spec = ModelVmSpec.model_validate(
                 {
                     "image": request.image,
@@ -334,7 +350,7 @@ class HandlerOnboardingCleanVmWalk:
                     "vm_name": request.vm_name,
                 }
             )
-            runner = self._runner or HandlerSshTart(request.tart_host)
+            runner = self._runner or select_runner(request)
             guard = DocumentedStepGuard(request, runner)
             assert request.tart_path is not None
             version = runner.run(
@@ -362,7 +378,8 @@ class HandlerOnboardingCleanVmWalk:
             _require_success(clone, EnumWalkStepKind.TART_CLONE)
             run(EnumWalkStepKind.TART_SET_SPEC)
             run(EnumWalkStepKind.TART_RUN)
-            run(EnumWalkStepKind.TART_IP)
+            request = bind_guest_ip(request, run(EnumWalkStepKind.TART_IP).stdout)
+            guard = DocumentedStepGuard(request, runner)
             for attempt in range(20):
                 fetched = issue(EnumWalkStepKind.GUEST_FETCH_SCRIPT)
                 if fetched.exit_code == 0:
