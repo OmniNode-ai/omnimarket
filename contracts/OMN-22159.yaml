@@ -29,15 +29,44 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: webhook-http-replay-boundary
+    description: >
+      AC1 hosted prerequisite for the first ported route: synthetic signed
+      requests preserve exact raw bytes and responses, reject invalid signatures
+      and oversized bodies, and acknowledge only completed publication. This
+      checks the boundary the recorded replay will exercise, not the T18b
+      recorded set. AC1 remains OPEN; recorded-public-replay-pending separately
+      refuses ticket completion until the actual recorded replay is available.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py -q --no-cov --refuse-skips
+        cwd: .
+  - id: webhook-http-runtime-ownership
+    description: >
+      AC3 hosted prerequisite for the first ported route: a standalone runtime
+      listener discovers the node's contract mount, serves the signed webhook
+      and folds its delivery through the existing consumer, without an API
+      container in the request path. This process-local check does not prove
+      deployment or public-set cutover. AC3 remains OPEN; public-cutover-pending
+      separately refuses ticket completion until the deploy-agent slot replay
+      with the API container stopped is available.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+        cwd: .
   - id: recorded-public-replay-pending
     description: >
       AC1 is OPEN. The recorded public request/response set is not available
       in this implementation. This local Done check deliberately refuses until
       the recorded replay is implemented and its actual evidence replaces it.
-      It is outside the hosted runner's authority to exercise the lab runtime.
+      It is unbound because hosted verification never executes local Done
+      gates; webhook-http-replay-boundary binds the hosted prerequisite.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC1]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
@@ -75,10 +104,10 @@ dod_evidence:
       lab host through lab-work: the in-memory profile and the isolated
       auth-required Redpanda profile. Hosted CI cannot reach the lab, so only
       the local Done gate runs this check. It covers the one ported route, not
-      the replay or the cutover.
+      the replay or the cutover. This local Done gate is unbound; AC2 binds
+      the hosted in-memory and Redpanda profile tests directly.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
@@ -89,9 +118,9 @@ dod_evidence:
       AC3 is OPEN. No running API container was stopped and no deploy-agent slot
       readback was taken. This local Done check deliberately refuses until the
       recorded public replay and the deploy-agent cutover evidence replace it.
+      It is unbound; webhook-http-runtime-ownership binds the hosted prerequisite.
     source: manual
     execution_scope: local_done_gate
-    binds_ac: [AC3]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
