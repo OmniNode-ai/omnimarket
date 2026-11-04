@@ -88,6 +88,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: registered plan_ticket_states requests for 30 and 120 days return every eligible plan and resolved ticket state across all pages from a committed Git listing larger than 4,000 characters, including October 2-8; future and invalid dates are excluded and command reports stay bounded -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov'
+  - id: req-omn19998-host-model-serving
+    statement: A typed lab host declares model serving independently of lane and unit placement, defaulting to its existing availability when omitted.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
   - id: req-omn19998-staged-hook-mode
     statement: A staged prose filename resembling a commit message stays on the staged-content scan path.
     acceptance:
@@ -152,6 +157,24 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov -k test_plan_ticket_states_reads_every_plan_before_filtering_and_paging
+        cwd: .
+  - id: dod-omn19998-host-model-serving
+    description: The recorded two-host reproducer loads through both production resolver paths. The focused tests cover inherited defaults, independent serving and placement values, frozen rows, malformed serving values and unknown-field refusal. This does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-host-model-serving-deploy
+    description: Hosted wiring smoke reads the recorded serving rows through the real overlay and explicit-file resolvers, then exercises the existing placement handler and observes both unavailable hosts refused. It needs no live model endpoint and does not assert a runtime installation or unpinned delegation.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov -k recorded_serving_hosts
         cwd: .
   - id: dod-omn19998-staged-hook-mode
     description: The staged-index regression fails before this change for a message-like prose filename. Existing node parity, genuine commit-message scans and clean controls run in the same focused file. This does not assert the controller timer criteria.
