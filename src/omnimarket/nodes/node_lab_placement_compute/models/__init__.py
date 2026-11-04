@@ -2,6 +2,15 @@
 # SPDX-License-Identifier: MIT
 """Packaged models for node_lab_placement_compute."""
 
+from .model_lab_lane_priority import (
+    PRIORITY_OTHER,
+    ModelLanePriorityRequest,
+    ModelLanePriorityResult,
+    ModelParityRules,
+    ModelPluginParityRequest,
+    ModelPluginParityResult,
+    ModelPriorityRules,
+)
 from .model_lab_placement import (
     CAPABILITY_COLUMNS,
     ModelHostDefaults,
@@ -27,6 +36,7 @@ __all__ = [
     "DEFAULT_MAX_LOAD_PER_CORE",
     "DEFAULT_MIN_FREE_BYTES",
     "LAB_WORK_WEIGHT_ENV",
+    "PRIORITY_OTHER",
     "EnumPlacementDecision",
     "EnumRefusalReason",
     "ModelHostDefaults",
@@ -35,7 +45,13 @@ __all__ = [
     "ModelLabPlacementRequest",
     "ModelLabPlacementResult",
     "ModelLabPoolPlaceRequest",
+    "ModelLanePriorityRequest",
+    "ModelLanePriorityResult",
+    "ModelParityRules",
     "ModelPlacement",
     "ModelPlacementRules",
+    "ModelPluginParityRequest",
+    "ModelPluginParityResult",
+    "ModelPriorityRules",
     "ModelUnitProfile",
 ]

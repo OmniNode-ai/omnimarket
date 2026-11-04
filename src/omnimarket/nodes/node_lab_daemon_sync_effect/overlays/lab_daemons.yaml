@@ -38,7 +38,6 @@ clones:
   url: https://github.com/OmniNode-ai/{repo}.git
   extra_repos_file: ${ONEX_LAB_PRIVATE_CLONES_FILE}
   repos:
-    - omnibase_compat
     - omnibase_core
     - omnibase_spi
     - omnibase_infra

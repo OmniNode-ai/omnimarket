@@ -124,11 +124,7 @@ def _runner(calls: list[list[str]], stdout: str, code: int):
 def test_dry_run_passes_dry_run_flag_and_reports_missing():
     calls: list[list[str]] = []
     handler = HandlerBrokerAclReconcile(_runner(calls, _LISTING, 1), _ENV)
-    result = handler.handle(
-        ModelBrokerAclReconcileRequest(
-            mode="dry_run", reconcile_command=("reconcile-cmd", "--flag")
-        )
-    )
+    result = handler.handle(ModelBrokerAclReconcileRequest(mode="dry_run"))
     assert calls[0][-2:] == ["apply", "--dry-run"]
     assert calls[0][calls[0].index("--ssh-target") + 1] == "broker"
     assert (result.exit_code, result.declared, result.missing) == (1, 10, 6)
@@ -139,11 +135,7 @@ def test_apply_reads_back_zero_missing():
     calls: list[list[str]] = []
     out = _LISTING + "lane=dev declared=10 live=10 missing=0 undeclared=0\n"
     handler = HandlerBrokerAclReconcile(_runner(calls, out, 0), _ENV)
-    result = handler.handle(
-        ModelBrokerAclReconcileRequest(
-            mode="apply", reconcile_command=("reconcile-cmd", "--flag")
-        )
-    )
+    result = handler.handle(ModelBrokerAclReconcileRequest(mode="apply"))
     assert calls[0][-1] == "apply"
     assert (result.exit_code, result.live, result.missing, result.missing_rows) == (
         0,
@@ -158,11 +150,7 @@ def test_unset_principal_is_refused_without_running():
     result = HandlerBrokerAclReconcile(
         _runner(calls, "", 0),
         {k: v for k, v in _ENV.items() if k != "ONEX_ACL_GUARD_PRINCIPAL"},
-    ).handle(
-        ModelBrokerAclReconcileRequest(
-            mode="apply", reconcile_command=("reconcile-cmd", "--flag")
-        )
-    )
+    ).handle(ModelBrokerAclReconcileRequest(mode="apply"))
     assert calls == []
     assert result.exit_code == 2
     assert "ONEX_ACL_GUARD_PRINCIPAL" in result.error
@@ -172,9 +160,7 @@ def test_missing_ssh_target_is_refused_without_running():
     calls: list[list[str]] = []
     env = {k: v for k, v in _ENV.items() if k != "ONEX_LAB_BROKER_SSH_TARGET"}
     result = HandlerBrokerAclReconcile(_runner(calls, "", 0), env).handle(
-        ModelBrokerAclReconcileRequest(
-            mode="apply", reconcile_command=("reconcile-cmd", "--flag")
-        )
+        ModelBrokerAclReconcileRequest(mode="apply")
     )
     assert calls == []
     assert "not set" in result.error
@@ -204,9 +190,7 @@ async def test_effect_command_to_completed_terminal(event_bus: EventBusInmemory)
         await event_bus.publish(
             COMMAND,
             key=None,
-            value=ModelBrokerAclReconcileRequest(
-                mode="apply", reconcile_command=("reconcile-cmd", "--flag")
-            )
+            value=ModelBrokerAclReconcileRequest(mode="apply")
             .model_dump_json()
             .encode(),
         )

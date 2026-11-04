@@ -12,9 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class ModelBrokerAclReconcileRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     mode: Literal["dry_run", "apply"]
-    # An explicit command selects the legacy declaration-file path.
-    # Empty uses the packaged omnimarket driver.
-    reconcile_command: tuple[str, ...] = ()
 
 
 class ModelBrokerAclReconcileResult(BaseModel):

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -154,9 +155,11 @@ class HandlerBrokerAclReconcile:
                 exit_code=2,
                 error=f"{settings['ssh_target_env']} is not set",
             )
-        if not request.reconcile_command:
+        # The program comes only from operator configuration; a bus request never
+        # carries an argv. Without configured command, the packaged driver runs.
+        command = shlex.split(self._environ.get(settings["reconcile_command_env"], ""))
+        if not command:
             return self._apply_driver(request, loaded, target)
-        command = list(request.reconcile_command)
         try:
             rendered = render_declaration(
                 loaded["broker_acl_declaration"], self._environ

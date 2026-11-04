@@ -164,6 +164,10 @@ not_routing_resolution_sites:
     reason: locates the lane census overlay file whose absolute path the census unit carries as the host registry location; the registry lists census hosts, aliases and lanes and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_factory_floor_effect/source_loader.py:find_node_overlay('lab_hosts')"
+    reason: locates the lab host table the floor reads for each machine's cap and whether it is in repair when neither the table variable nor the floor overlay names a file; it is a display read and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_claude_pool_refill_effect/handlers/handler_claude_pool_refill.py:find_node_overlay('lab_hosts')"
+    reason: locates the lab host table whose ssh targets the Claude pool refill copies a token to; the hosts it reaches are the ones the table names and it selects no backend, model or tier for delegated work
   - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"
     reason: names the overlay file in an error message when repos.private_data is not configured; the clone name supplies sandbox writable roots and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/overlay.py:find_node_overlay(overlay_id)"
