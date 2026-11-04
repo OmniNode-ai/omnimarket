@@ -58,11 +58,11 @@ def test_the_node_migration_grants_the_writer_and_the_dashboard_reader_on_skill_
 
     The pin above is already on dev, so it cannot show what this change adds.
     The migration the node ships is what grants the writer its privileges on
-    public.skill_executions and the RLS-scoped dashboard reader its SELECT.
+    public.skill_executions and the byte-identical copy of the omnibase_infra vendored migration.
     """
     sql = " ".join(_MIGRATION.read_text().split())
     assert re.search(
         r"GRANT SELECT, INSERT, UPDATE ON public\.skill_executions TO tenant_projection_writer",
         sql,
     )
-    assert "GRANT SELECT ON public.skill_executions TO app_dashboard;" in sql
+    assert "app_dashboard" not in sql
