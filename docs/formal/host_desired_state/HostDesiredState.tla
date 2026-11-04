@@ -1,321 +1,406 @@
 ------------------------- MODULE HostDesiredState ---------------------------
-(* The desired-state publisher of the host code-deploy mechanism: its durable state
-   file and outbox (the eight steps of one pass, with a crash after each), the layer
-   requests it folds, the layers it releases, the broker that fences older producers,
-   a second publisher on another host, the readers that fold what the topic holds, and
-   the placement gate that admits a lane on a host that answers the held generation.
+(* Durable publisher state and outbox, with bounded, atomic scenario scheduling.
+   The declared publisher is on h1; another publisher on h2 uses the same producer
+   identity. Placement probes use hosts hA and hB.
 
-   One publisher host is declared in the overlay (here "h1", process pa). A second
-   process pb on another host ("h2") is a misconfigured copy: it opens a producer under
-   the same transactional id (fencing pa) and may send one record of its own.
+   Each pass has eight separately crashable steps:
+     1 finish pending first; 2 fetch; 3 read requests in topic order; 4 compute;
+     5 durably write pending (record bytes, tags, decisions, consumed ids, core);
+     6 push tags; 7 publish and await broker acceptance; 8 commit the pending core.
+   A remote tag is accepted only when its commit equals the recorded commit.
+   A crash loses memory, never the state file. Recovery opens a newer producer.
+   One send may remain delayed across recovery until after generation 3. The
+   second publisher also opens a newer producer, fencing the declared publisher.
 
-   The durable state file S holds the generation high-water mark hw, the live layers
-   with their revisions and expiries, the tombstones of released layers, the request ids
-   consumed with their outcomes (applied log), the topic offset read, and one pending
-   generation. A pass:
-     1 if a pending generation exists finish it (steps 6 to 8) before reading anything
-     2 fetch   3 read the layer requests from the topic offset   4 compute
-     5 write the result as pending (exact record, tag, consumed ids)
-     6 push the tag   7 publish the record   8 mark committed
-   A crash may come after any step; the process then boots again and opens a newer
-   producer, which fences every older one at the broker.
+   Invariants and the single constant flipped by each mutant:
+     GenerationMonotone: declared-publisher records in broker order never decrease
+       in generation. Fenced=FALSE permits a delayed, older producer's delivery.
+     OnePublisherAccepted: the reader holds only the declared publisher's record.
+       ReaderFilters=FALSE admits the other publisher into the generation fold.
+     PendingTagsBeforePublish: every declared-publisher delivery had all recorded
+       tags at their exact commits then. TagsFirst=FALSE delays pushing to commit.
+     PendingRepublishedExactly: every declared-publisher bus record equals the
+       FIRST durable pending record for its generation, and every committed core
+       equals that first pending core. ResumeExact=FALSE recomputes on recovery.
+     ReleasedLayerNeverReturns: a released id cannot be live at a strictly later
+       generation, including releases in durable tombstone history. Tombstones=
+       FALSE omits the durable tombstone guard and permits a fresh registration.
+     DependentLeavesWithDependency: every accepted record has no live layer whose
+       dependency is in its cumulative gone set. Cascade=FALSE disables BOTH the
+       transitive cascade and register-time dependency refusal.
+     StaleRequestNeverApplies: each applied request names the live revision at
+       application. CheckRevision=FALSE accepts a stale extend/withdraw revision.
+     NoLaunchOnExpiredLayer: no admitted lane used an expired held record or a
+       host answering a different generation. CheckValidUntil=FALSE checks only
+       host generation, allowing an expired record while the publisher is stopped.
 
-   Requests for one layer arrive in any order, may be duplicated, and the extend and the
-   withdraw both name revision 1 (a race): the topic order decides, the second one names
-   a stale revision. The reader folds records by generation, never by offset, keeps the
-   newest, and ignores a record whose publisher host is not the declared one.
-
-   Invariants (each broken by its own mutant, a flipped constant of Model.cfg):
-     GenerationMonotone         accepted records never go back in generation
-                                (Fenced = FALSE: the broker does not fence older producers)
-     OnePublisherAccepted       every accepted record comes from the declared publisher host
-                                (ReaderFilters = FALSE: the reader accepts any publisher host)
-     PendingTagsBeforePublish   a published record's tag is already on the remote
-                                (TagsFirst = FALSE: the tag is pushed at commit, after publish)
-     PendingRepublishedExactly  a resumed pending generation is published with its exact
-                                bytes: records of one generation are identical
-                                (ResumeExact = FALSE: the resume recomputes)
-     ReleasedLayerNeverReturns  a layer released in one record is live in no later one
-                                (Tombstones = FALSE: a released layer id can register again)
-     DependentLeavesWithDependency  a stacked layer does not outlive its dependency
-                                (Cascade = FALSE: dependents are not released with it)
-     StaleRequestNeverApplies   a request applies only at the revision it names
-                                (CheckRevision = FALSE: the revision is not compared)
-     NoLaunchOnExpiredLayer     no lane is admitted past the held record's valid_until,
-                                or on a host that does not answer the held generation
-                                (CheckValidUntil = FALSE: only the generation is compared) *)
+   Limits:
+   Three layers l1 <- l2 <- l3; three generations; one crash, at any of the eight
+   steps in any pass (step 7 before OR after delivery); bounded time. Each script
+   fixes arrivals, merge and time at pass boundaries. Both orders of the same-
+   revision extend/withdraw race, duplicates and dependency-first reordering are
+   explicit scripts. The resume script adds a request and advances time while
+   pending is durable. The stopped script has NO Boot after Crash and probes
+   both hosts before, at and after expiry. hB answers one generation behind.
+   The lifecycle register/release/attempted-resurrection spans generations 1/2/3.
+   These scripts replace unbounded environment interleavings, not the listed
+   races. No liveness, arbitrary network loss, or unbounded producer population.
+   A record value abstracts canonical serialized bytes; a commit is a symbolic
+   tuple. Matching and conflicting preexisting tags have separate scripts.
+   Histories and error flags are observers, never inputs to publisher decisions.
+   Initial choices are bounded and subsequent scheduling is deterministic;
+   there are no freely interleaving clock, request, reader or second-publisher
+   actions. MaxGen=3 covers the lifecycle without an exponential pass scheduler.
+   With the supplied bounds there are 365 initial schedules, each with fewer
+   than 80 transitions, bounding the design below 30,000 reachable states.
+*)
 EXTENDS Integers, Sequences, FiniteSets
 
-CONSTANTS MaxGen, MaxCrash, MaxT,           Fenced, ReaderFilters, TagsFirst, ResumeExact, Tombstones, Cascade,
+CONSTANTS MaxGen, MaxCrash, MaxT,
+          Fenced, ReaderFilters, TagsFirst, ResumeExact, Tombstones, Cascade,
           CheckRevision, CheckValidUntil
 
-Layers == {"l1", "l2"}
-Hosts  == {"hA"}                       \* a host whose reconciler answers a generation
-Reqs   == {"rg1", "rg2", "ex1", "wd1", "rg1b"}
-Kind   == [rg1 |-> "register", rg2 |-> "register", ex1 |-> "extend",
-           wd1 |-> "withdraw", rg1b |-> "register"]
-LayerOf == [rg1 |-> "l1", rg2 |-> "l2", ex1 |-> "l1", wd1 |-> "l1", rg1b |-> "l1"]
-ExpRev == [rg1 |-> 0, rg2 |-> 0, ex1 |-> 1, wd1 |-> 1, rg1b |-> 0]
-Dep == [l1 |-> "none", l2 |-> "l1"]    \* l2 carries commits of l1 that the base lacks
-INF == MaxT + 3
-\* Orders in which requests reach the topic: a cascade by withdraw, an extend racing a
-\* withdraw on revision 1 (both orders), a register of a released id, a duplicate, a
-\* reordered pair (the dependent first), expiry of stacked layers, a lone layer.
-Scenarios == {<<"rg1", "rg2", "wd1">>, <<"rg1", "ex1", "wd1">>, <<"rg1", "wd1", "ex1">>,
-              <<"rg1", "wd1", "rg1b">>, <<"rg1", "rg1", "wd1">>, <<"rg2", "rg1", "wd1">>,
-              <<"rg1", "rg2", "ex1">>, <<"rg1", "rg2">>, <<"rg1">>}
-NONE == [gen |-> 0]            \* no pending generation / no result in memory
+Layers == {"l1", "l2", "l3"}
+Hosts == {"hA", "hB"}
+Dep == [l1 |-> "none", l2 |-> "l1", l3 |-> "l2"]
+Lifetime == [l1 |-> 2, l2 |-> 3, l3 |-> 4]
+Kind == [rg1 |-> "register", rg2 |-> "register", rg3 |-> "register",
+         rg1b |-> "register", ex1 |-> "extend", ex2 |-> "extend", wd1 |-> "withdraw"]
+LayerOf == [rg1 |-> "l1", rg2 |-> "l2", rg3 |-> "l3", rg1b |-> "l1",
+            ex1 |-> "l1", ex2 |-> "l2", wd1 |-> "l1"]
+ExpRev == [r \in DOMAIN Kind |-> IF Kind[r] = "register" THEN 0 ELSE 1]
+NONE == [gen |-> 0]
 NoRel == [l \in Layers |-> "none"]
+INF == MaxT + 5
+Max(a, b) == IF a >= b THEN a ELSE b
 
-VARIABLES scn,        \* the scenario: the order in which the requests reach the topic
-          S,          \* the publisher's durable state file
-          mem,        \* the publisher's in-memory result of step 4 (lost on a crash)
-          memOff,     \* topic offset read in step 3
-          pc, paAlive, paEpoch, crashes,
-          remoteTags, \* tags on the remote git host (generation numbers)
-          topic,      \* the layer request topic
-          inflight,   \* records sent and not yet delivered or dropped by the broker
-          bus,        \* the desired-state topic: <<[rec, ep]>> in broker order
-          epoch,      \* the broker's current producer epoch for the transactional id
-          pbAlive, pbEpoch, pbSent,
-          mergedSet, now, obs, badLaunch, scn
+Batch(rs, t, merged) == [reqs |-> rs, time |-> t, merged |-> merged]
+Stack == <<"rg1", "rg2", "rg3">>
+Scripts ==
+  [withdraw |-> <<Batch(Stack, 0, {}), Batch(<<"wd1">>, 0, {}), Batch(<<"rg1b">>, 0, {})>>,
+   expiry |-> <<Batch(Stack, 0, {}), Batch(<<>>, 2, {}), Batch(<<"rg1b">>, 2, {})>>,
+   extended |-> <<Batch(Stack, 0, {}), Batch(<<"ex2">>, 1, {}), Batch(<<>>, 2, {})>>,
+   late |-> <<Batch(<<"rg1">>, 0, {}), Batch(<<"wd1">>, 0, {}), Batch(<<"rg2", "rg3">>, 0, {})>>,
+   merged |-> <<Batch(Stack, 0, {}), Batch(<<>>, 0, {"l1"}), Batch(<<>>, 3, {"l1"})>>,
+   extendWithdraw |-> <<Batch(<<"rg1">>, 0, {}), Batch(<<"ex1", "wd1">>, 0, {}), Batch(<<>>, 3, {})>>,
+   withdrawExtend |-> <<Batch(<<"rg1">>, 0, {}), Batch(<<"wd1", "ex1">>, 0, {}), Batch(<<"rg1b">>, 0, {})>>,
+   reordered |-> <<Batch(<<"rg3", "rg2", "rg1", "rg1">>, 0, {}), Batch(<<"wd1">>, 0, {}), Batch(<<>>, 0, {})>>,
+   resume |-> <<Batch(<<"rg1">>, 0, {}), Batch(<<"ex1">>, 1, {}), Batch(<<>>, 2, {})>>,
+   otherEarly |-> <<Batch(Stack, 0, {}), Batch(<<>>, 0, {}), Batch(<<>>, 0, {})>>,
+   otherLate |-> <<Batch(Stack, 0, {}), Batch(<<>>, 0, {}), Batch(<<>>, 0, {})>>,
+   tagMatch |-> <<Batch(Stack, 0, {}), Batch(<<>>, 0, {}), Batch(<<>>, 0, {})>>,
+   tagConflict |-> <<Batch(Stack, 0, {}), Batch(<<>>, 0, {}), Batch(<<>>, 0, {})>>,
+   stopped |-> <<Batch(Stack, 0, {}), Batch(<<>>, 0, {}), Batch(<<>>, 0, {})>>]
 
-vars == <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic, inflight,
-          bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+Faults == {[step |-> 0, pass |-> 1, afterDelivery |-> FALSE]}
+          \cup {[step |-> s, pass |-> g, afterDelivery |-> FALSE] : s \in 1..8, g \in 1..MaxGen}
+          \cup {[step |-> 7, pass |-> g, afterDelivery |-> TRUE] : g \in 1..MaxGen}
 
+\* All operational fields are in v. EXCEPT preserves every unmentioned field.
+\* Histories are separate so their UNCHANGED clauses can be checked directly.
+VARIABLES scn, fault, v, pendingHistory, commitHistory, tombHistory
+vars == <<scn, fault, v, pendingHistory, commitHistory, tombHistory>>
+S == v.state
 EmptyCore == [live |-> {}, rev |-> [l \in Layers |-> 0], exp |-> [l \in Layers |-> 0],
-              tomb |-> {}, consumed |-> {}, applied |-> {}, off |-> 0]
-InitS == [hw |-> 0, core |-> EmptyCore, pending |-> NONE]
+              tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0]
 
+Leave(W, leaving, why) ==
+  [W EXCEPT !.live = @ \ leaving,
+            !.tomb = IF Tombstones THEN @ \cup leaving ELSE @,
+            !.gone = IF why = "merged" THEN @ ELSE @ \cup leaving,
+            !.rel = [l \in Layers |-> IF l \in leaving THEN why ELSE W.rel[l]]]
 
-\* ---- pure compute (step 4) -------------------------------------------------
-\* W is the working record: the core plus rel, the layers released in this pass.
-Leave(W, Sx, why) ==
-  [W EXCEPT !.live = W.live \ Sx,
-            !.tomb = IF Tombstones THEN W.tomb \cup Sx ELSE W.tomb,
-            !.rel  = [l \in Layers |-> IF l \in Sx THEN why ELSE W.rel[l]]]
+Note(W, r, outcome, reason) ==
+  [W EXCEPT !.consumed = @ \cup {r},
+            !.decisions = @ \cup {[id |-> r, outcome |-> outcome, reason |-> reason,
+                                   named |-> ExpRev[r],
+                                   at |-> IF LayerOf[r] \in W.live THEN W.rev[LayerOf[r]] ELSE 0]}]
 
-ApplyReq(W, r, nowv) ==
+ApplyReq(W, r, t) ==
   LET l == LayerOf[r]
-      fresh == r \notin W.consumed
-      okRev == IF CheckRevision THEN W.rev[l] = ExpRev[r] ELSE TRUE
-      revAt == IF l \in W.live THEN W.rev[l] ELSE 0
-      note == [W EXCEPT !.consumed = W.consumed \cup {r},
-                        !.applied = W.applied \cup {[id |-> r, named |-> ExpRev[r], at |-> revAt]}]
-      noted == [W EXCEPT !.consumed = W.consumed \cup {r}]
-  IN IF ~fresh THEN W            \* a request id seen before returns its recorded outcome
+      okRev == ~CheckRevision \/ W.rev[l] = ExpRev[r]
+      applied == Note(W, r, "applied", Kind[r])
+      refused == Note(W, r, "refused", "stale_or_released")
+  IN IF r \in W.consumed THEN W
      ELSE CASE Kind[r] = "register" ->
-                 IF l \notin W.live /\ (~Tombstones \/ l \notin W.tomb) /\ ExpRev[r] = 0
-                   THEN [note EXCEPT !.live = W.live \cup {l},
-                                     !.rev = [W.rev EXCEPT ![l] = 1],
-                                     !.exp = [W.exp EXCEPT ![l] = nowv + 1]]
-                   ELSE noted
-            [] Kind[r] = "extend" ->
-                 IF l \in W.live /\ okRev
-                   THEN [note EXCEPT !.rev = [W.rev EXCEPT ![l] = @ + 1],
-                                     !.exp = [W.exp EXCEPT ![l] = @ + 1]]
-                   ELSE noted
-            [] OTHER ->          \* withdraw
-                 IF l \in W.live /\ okRev
-                   THEN Leave(note, {l}, "withdrawn")
-                   ELSE noted
+            IF Cascade /\ Dep[l] \in W.gone
+              THEN Leave(Note(W, r, "refused", "dependency_released"), {l}, "dependency_released")
+            ELSE IF l \notin W.live /\ (~Tombstones \/ l \notin W.tomb)
+              THEN [applied EXCEPT !.live = @ \cup {l}, !.rev[l] = 1,
+                                   !.exp[l] = t + Lifetime[l]]
+              ELSE refused
+          [] Kind[r] = "extend" ->
+            IF l \in W.live /\ okRev
+              THEN [applied EXCEPT !.rev[l] = @ + 1, !.exp[l] = @ + 1]
+              ELSE refused
+          [] OTHER -> IF l \in W.live /\ okRev THEN Leave(applied, {l}, "withdrawn") ELSE refused
 
 RECURSIVE Fold(_, _, _)
-Fold(W, reqs, nowv) == IF reqs = <<>> THEN W
-                       ELSE Fold(ApplyReq(W, Head(reqs), nowv), Tail(reqs), nowv)
+Fold(W, rs, t) == IF rs = <<>> THEN W ELSE Fold(ApplyReq(W, Head(rs), t), Tail(rs), t)
+
+\* At most |Layers| iterations reaches the dependency fixpoint, including l3.
+RECURSIVE Close(_, _)
+Close(W, n) ==
+  IF n = 0 THEN W
+  ELSE LET leaving == {l \in W.live : Dep[l] \in W.gone}
+       IN Close(Leave(W, leaving, "dependency_released"), n - 1)
 
 MinExp(W) == IF W.live = {} THEN INF
-             ELSE CHOOSE m \in {W.exp[l] : l \in W.live} : \A x \in {W.exp[l] : l \in W.live} : m <= x
+            ELSE CHOOSE m \in {W.exp[l] : l \in W.live} : \A l \in W.live : m <= W.exp[l]
 
-Compute(core, reqs, newOff, nowv, merged, gen) ==
-  LET W0 == [live |-> core.live, rev |-> core.rev, exp |-> core.exp, tomb |-> core.tomb,
-             consumed |-> core.consumed, applied |-> core.applied, rel |-> NoRel]
-      W1 == Fold(W0, reqs, nowv)
+Compute(core, rs, off, t, merged, g) ==
+  LET W0 == [core EXCEPT !.off = off]
+      W1 == Fold([live |-> W0.live, rev |-> W0.rev, exp |-> W0.exp,
+                  tomb |-> W0.tomb, gone |-> W0.gone, consumed |-> W0.consumed,
+                  decisions |-> W0.decisions, off |-> W0.off, rel |-> NoRel], rs, t)
       W2 == Leave(W1, W1.live \cap merged, "merged")
-      W3 == Leave(W2, {l \in W2.live : W2.exp[l] <= nowv}, "expired")
-      dependents == {x \in W3.live : Dep[x] # "none" /\ W3.rel[Dep[x]] \in
-                      {"withdrawn", "expired", "dependency_released"}}
-      W4 == IF Cascade THEN Leave(W3, dependents, "dependency_released") ELSE W3
-      changed == reqs # <<>> \/ \E l \in Layers : W4.rel[l] # "none"
-      newCore == [live |-> W4.live, rev |-> W4.rev, exp |-> W4.exp, tomb |-> W4.tomb,
-                  consumed |-> W4.consumed, applied |-> W4.applied, off |-> newOff]
-      rec == [gen |-> gen, pub |-> "h1", live |-> W4.live, rel |-> W4.rel,
-              vu |-> MinExp(W4), tag |-> gen]
-  IN [changed |-> changed, p |-> [gen |-> gen, core |-> newCore, rec |-> rec]]
+      W3 == Leave(W2, {l \in W2.live : W2.exp[l] <= t}, "expired")
+      W4 == IF Cascade THEN Close(W3, Cardinality(Layers)) ELSE W3
+      coreOut == [live |-> W4.live, rev |-> W4.rev, exp |-> W4.exp, tomb |-> W4.tomb,
+                  gone |-> W4.gone, consumed |-> W4.consumed, decisions |-> W4.decisions, off |-> off]
+      tag == [name |-> g, commit |-> <<g, W4.live, W4.rev, W4.exp>>]
+      rec == [gen |-> g, pub |-> "h1", live |-> W4.live, gone |-> W4.gone, tomb |-> W4.tomb,
+              rel |-> W4.rel, valid_until |-> MinExp(W4), tag |-> tag,
+              decisions |-> W4.decisions, consumed |-> W4.consumed]
+  IN [gen |-> g, core |-> coreOut, rec |-> rec]
 
-\* ---- initial state ----------------------------------------------------------
 Init ==
-  /\ scn \in Scenarios
-  /\ S = InitS /\ mem = NONE /\ memOff = 0
-  /\ pc = "idle" /\ paAlive = TRUE /\ paEpoch = 1 /\ crashes = 0
-  /\ remoteTags = {} /\ topic = <<>> /\ inflight = {} /\ bus = <<>>
-  /\ epoch = 1 /\ pbAlive = FALSE /\ pbEpoch = 0 /\ pbSent = FALSE
-  /\ mergedSet = {} /\ now = 0 /\ obs = [h \in Hosts |-> 0] /\ badLaunch = FALSE
+  /\ scn \in DOMAIN Scripts
+  /\ fault \in IF scn = "stopped"
+                 THEN {[step |-> 8, pass |-> 1, afterDelivery |-> FALSE]} ELSE Faults
+  /\ v = [state |-> [hw |-> 0, core |-> EmptyCore, pending |-> NONE],
+           pass |-> 1, pc |-> 0, mem |-> NONE, memOff |-> 0,
+           alive |-> TRUE, stopped |-> FALSE, crashes |-> 0,
+           epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0,
+           topic |-> Scripts[scn][1].reqs, now |-> 0, merged |-> {},
+           remote |-> [g \in 1..MaxGen |-> <<>>],
+           inflight |-> NONE, deferred |-> NONE, bus |-> <<>>,
+           probe |-> 0, obs |-> [h \in Hosts |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+  /\ pendingHistory = [g \in 1..MaxGen |-> NONE]
+  /\ commitHistory = <<>>
+  /\ tombHistory = [g \in 1..MaxGen |-> {}]
 
-\* ---- the environment --------------------------------------------------------
-Tick == /\ now < MaxT /\ now' = now + 1
-        /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic,
-                       inflight, bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, obs, badLaunch, scn>>
+CrashDue ==
+  /\ v.crashes < MaxCrash /\ fault.step # 0
+  /\ v.pass = fault.pass /\ v.pc = fault.step
+  /\ IF fault.step = 7 THEN (v.inflight = NONE) = fault.afterDelivery ELSE TRUE
+Ready == v.alive /\ v.probe = 0 /\ ~CrashDue
 
-MergePR(l) == /\ l = "l1" /\ l \notin mergedSet /\ mergedSet' = mergedSet \cup {l}
-              /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic,
-                             inflight, bus, epoch, pbAlive, pbEpoch, pbSent, now, obs, badLaunch, scn>>
+Crash ==
+  /\ v.alive /\ v.probe = 0 /\ CrashDue
+  /\ v' = [v EXCEPT !.alive = FALSE, !.stopped = (scn = "stopped"),
+                    !.crashes = @ + 1, !.mem = NONE, !.memOff = 0,
+                    !.pc = IF v.pc = 8 THEN 8 ELSE 0,
+                    !.deferred = IF v.inflight # NONE THEN v.inflight ELSE @,
+                    !.inflight = NONE,
+                    !.topic = IF scn = "resume" /\ v.pass = 1 /\ S.pending # NONE
+                                THEN Append(@, "rg2") ELSE @,
+                    !.now = IF scn = "resume" /\ v.pass = 1 /\ S.pending # NONE THEN 1 ELSE @]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* A request reaches the topic: the scenario fixes the order, the arrival time is free.
-Arrive == /\ Len(topic) < Len(scn)
-          /\ topic' = Append(topic, scn[Len(topic) + 1])
-          /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags,
-                         inflight, bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+Boot ==
+  /\ ~v.alive /\ ~v.stopped
+  /\ v' = [v EXCEPT !.alive = TRUE, !.epoch = @ + 1, !.producerEpoch = v.epoch + 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* ---- the broker -------------------------------------------------------------
-Deliver(m) ==
-  /\ m \in inflight
-  /\ inflight' = inflight \ {m}
-  /\ bus' = IF ~Fenced \/ m.ep = epoch THEN Append(bus, m) ELSE bus
-  /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic, epoch,
-                 pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+\* A fenced publisher reconnects before its next pass (the second publisher has
+\* already delivered its one message). This does not change the durable outbox.
+Reconnect ==
+  /\ Ready /\ v.pc = 0 /\ v.producerEpoch # v.epoch
+  /\ v' = [v EXCEPT !.epoch = @ + 1, !.producerEpoch = v.epoch + 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* ---- the publisher pa -------------------------------------------------------
-Crash == /\ paAlive /\ crashes < MaxCrash
-         /\ paAlive' = FALSE /\ pc' = "idle" /\ mem' = NONE /\ memOff' = 0
-         /\ crashes' = crashes + 1
-         /\ UNCHANGED <<S, paEpoch, remoteTags, topic, inflight, bus, epoch, pbAlive, pbEpoch,
-                        pbSent, mergedSet, now, obs, badLaunch, scn>>
+Start ==
+  /\ Ready /\ v.pc = 0 /\ v.producerEpoch = v.epoch
+  /\ S.pending # NONE \/ S.hw < MaxGen
+  /\ v' = IF S.pending # NONE /\ ResumeExact
+            THEN [v EXCEPT !.mem = S.pending, !.pc = 5]
+            ELSE [v EXCEPT !.mem = NONE, !.pc = 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-Boot == /\ ~paAlive
-        /\ paAlive' = TRUE /\ epoch' = epoch + 1 /\ paEpoch' = epoch + 1
-        /\ UNCHANGED <<S, mem, memOff, pc, crashes, remoteTags, topic, inflight, bus,
-                       pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+Fetch ==
+  /\ Ready /\ v.pc = 1 /\ v' = [v EXCEPT !.pc = 2]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* Step 1: a pending generation is finished first; otherwise the pass fetches.
-Start == /\ paAlive /\ pc = "idle"
-         /\ IF S.pending # NONE /\ ResumeExact
-              THEN /\ pc' = "written" /\ mem' = S.pending
-              ELSE /\ pc' = "fetched" /\ mem' = NONE
-         /\ UNCHANGED <<S, memOff, paAlive, paEpoch, crashes, remoteTags, topic, inflight, bus,
-                        epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+ReadTopic ==
+  /\ Ready /\ v.pc = 2 /\ v' = [v EXCEPT !.memOff = Len(v.topic), !.pc = 3]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-Fetch == /\ paAlive /\ pc = "fetched" /\ pc' = "read"                       \* step 2
-         /\ UNCHANGED <<S, mem, memOff, paAlive, paEpoch, crashes, remoteTags, topic, inflight,
-                        bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
-
-ReadTopic == /\ paAlive /\ pc = "read" /\ pc' = "computed" /\ memOff' = Len(topic)   \* step 3
-             /\ UNCHANGED <<S, mem, paAlive, paEpoch, crashes, remoteTags, topic, inflight, bus,
-                            epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
-
-\* Step 4. A pass with nothing to say ends. A recompute after a resume keeps the pending
-\* generation number (hw is already raised).
 ComputeStep ==
-  /\ paAlive /\ pc = "computed" /\ mem = NONE
-  /\ LET gen == IF S.pending # NONE THEN S.pending.gen ELSE S.hw + 1
-         res == Compute(S.core, SubSeq(topic, S.core.off + 1, memOff), memOff, now, mergedSet, gen)
-     IN /\ gen <= MaxGen
-        /\ IF res.changed THEN mem' = res.p /\ pc' = "computed"
-           ELSE mem' = NONE /\ pc' = "idle"
-  /\ UNCHANGED <<S, memOff, paAlive, paEpoch, crashes, remoteTags, topic, inflight, bus, epoch,
-                 pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+  /\ Ready /\ v.pc = 3
+  /\ LET g == IF S.pending = NONE THEN S.hw + 1 ELSE S.pending.gen
+     IN /\ g <= MaxGen
+        /\ v' = [v EXCEPT !.mem = Compute(S.core, SubSeq(v.topic, S.core.off + 1, v.memOff),
+                                         v.memOff, v.now, v.merged, g), !.pc = 4]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-WritePending == /\ paAlive /\ pc = "computed" /\ mem # NONE                 \* step 5
-                /\ S' = [S EXCEPT !.hw = mem.gen, !.pending = mem]
-                /\ pc' = "written"
-                /\ UNCHANGED <<mem, memOff, paAlive, paEpoch, crashes, remoteTags, topic, inflight,
-                               bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+WritePending ==
+  /\ Ready /\ v.pc = 4
+  /\ LET g == v.mem.gen
+         seed == v.pass = 1 /\ v.remote[g] = <<>>
+     IN /\ v' = [v EXCEPT !.state.hw = g, !.state.pending = v.mem, !.pc = 5,
+                          !.remote[g] = IF seed /\ scn = "tagMatch" THEN v.mem.rec.tag.commit
+                                        ELSE IF seed /\ scn = "tagConflict" THEN <<"unknown writer">>
+                                        ELSE @]
+        /\ pendingHistory' = IF pendingHistory[g] = NONE
+                               THEN [pendingHistory EXCEPT ![g] = v.mem] ELSE pendingHistory
+        /\ tombHistory' = [tombHistory EXCEPT ![g] = @ \cup v.mem.core.tomb
+                                             \cup {l \in Layers : v.mem.rec.rel[l] # "none"}]
+  /\ UNCHANGED <<scn, fault, commitHistory>>
 
-PushTags == /\ paAlive /\ pc = "written"                                     \* step 6
-            /\ remoteTags' = IF TagsFirst THEN remoteTags \cup {mem.rec.tag} ELSE remoteTags
-            /\ pc' = "tagged"
-            /\ UNCHANGED <<S, mem, memOff, paAlive, paEpoch, crashes, topic, inflight, bus, epoch,
-                           pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+\* All remote values are tuples; <<>> is absent, avoiding mixed-type equality.
+TagCompatible == v.remote[v.mem.gen] \in {<<>>, v.mem.rec.tag.commit}
+TagsPresent(rec) == v.remote[rec.tag.name] = rec.tag.commit
 
-Send == /\ paAlive /\ pc = "tagged"                                          \* step 7
-        /\ inflight' = inflight \cup {[rec |-> mem.rec, ep |-> paEpoch]}
-        /\ pc' = "sent"
-        /\ UNCHANGED <<S, mem, memOff, paAlive, paEpoch, crashes, remoteTags, topic, bus, epoch,
-                       pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+PushTags ==
+  /\ Ready /\ v.pc = 5
+  /\ ~TagsFirst \/ TagCompatible
+  /\ v' = [v EXCEPT !.remote[v.mem.gen] = IF TagsFirst THEN v.mem.rec.tag.commit ELSE @,
+                    !.pc = 6]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-Ack == /\ paAlive /\ pc = "sent"
-       /\ \/ /\ \E i \in DOMAIN bus : bus[i].rec = mem.rec /\ bus[i].ep = paEpoch
-             /\ pc' = "published" /\ UNCHANGED <<paAlive, mem>>
-          \/ /\ Fenced /\ paEpoch # epoch                \* fenced: the publish fails, the process ends
-             /\ paAlive' = FALSE /\ pc' = "idle" /\ mem' = NONE
-       /\ UNCHANGED <<S, memOff, paEpoch, crashes, remoteTags, topic, inflight, bus, epoch,
-                      pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+Send ==
+  /\ Ready /\ v.pc = 6
+  /\ v' = [v EXCEPT !.inflight = [gen |-> v.mem.gen, rec |-> v.mem.rec, ep |-> v.producerEpoch], !.pc = 7]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-Commit == /\ paAlive /\ pc = "published"                                     \* step 8
-          /\ S' = [S EXCEPT !.core = mem.core, !.pending = NONE]
-          /\ remoteTags' = IF TagsFirst THEN remoteTags ELSE remoteTags \cup {mem.rec.tag}
-          /\ pc' = "idle" /\ mem' = NONE
-          /\ UNCHANGED <<memOff, paAlive, paEpoch, crashes, topic, inflight, bus, epoch,
-                         pbAlive, pbEpoch, pbSent, mergedSet, now, obs, badLaunch, scn>>
+Deliver ==
+  /\ Ready /\ v.pc = 7 /\ v.inflight # NONE
+  /\ LET m == v.inflight
+         accept == ~Fenced \/ m.ep = v.epoch
+     IN v' = [v EXCEPT !.inflight = NONE,
+                        !.bus = IF accept THEN Append(@, m) ELSE @,
+                        !.badTag = @ \/ (accept /\ ~TagsPresent(m.rec)),
+                        !.probe = IF accept THEN 1 ELSE 0]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* ---- the second publisher pb on another host -----------------------------
-BootB == /\ ~pbAlive /\ pbAlive' = TRUE /\ epoch' = epoch + 1 /\ pbEpoch' = epoch + 1
-         /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic, inflight,
-                        bus, pbSent, mergedSet, now, obs, badLaunch, scn>>
+\* Scheduled between the declared publisher's delivery and commit, once only.
+OtherDue == v.otherStage = 0 /\ v.pc = 7 /\ v.inflight = NONE
+            /\ ((scn = "otherEarly" /\ v.pass = 1) \/ (scn = "otherLate" /\ v.pass = 2))
+OpenOther ==
+  /\ Ready /\ OtherDue
+  /\ v' = [v EXCEPT !.epoch = @ + 1, !.otherEpoch = v.epoch + 1, !.otherStage = 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-SendB(g) == /\ pbAlive /\ ~pbSent /\ pbSent' = TRUE
-            /\ inflight' = inflight \cup {[rec |-> [gen |-> g, pub |-> "h2", live |-> {}, rel |-> NoRel,
-                                                     vu |-> INF, tag |-> g], ep |-> pbEpoch]}
-            /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic, bus,
-                           epoch, pbAlive, pbEpoch, mergedSet, now, obs, badLaunch, scn>>
+PublishOther ==
+  /\ Ready /\ v.otherStage = 1
+  /\ LET g == IF scn = "otherEarly" THEN 2 ELSE 1
+         rec == [gen |-> g, pub |-> "h2", live |-> {}, gone |-> {}, tomb |-> {},
+                 rel |-> NoRel, valid_until |-> INF,
+                 tag |-> [name |-> g, commit |-> <<"unknown writer">>], decisions |-> {}, consumed |-> {}]
+     IN v' = [v EXCEPT !.bus = Append(@, [gen |-> g, rec |-> rec, ep |-> v.otherEpoch]),
+                        !.otherStage = 2, !.probe = 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* ---- readers and placement --------------------------------------------------
-IsAcc(b) == ~ReaderFilters \/ b.rec.pub = "h1"
-AccSeq == SelectSeq(bus, IsAcc)
-HeldRec == CHOOSE r \in {AccSeq[i].rec : i \in DOMAIN AccSeq} :
-             \A x \in {AccSeq[i].rec : i \in DOMAIN AccSeq} : x.gen <= r.gen
+Commit ==
+  /\ Ready /\ v.pc = 7 /\ v.inflight = NONE /\ ~OtherDue /\ v.otherStage # 1
+  /\ \E i \in DOMAIN v.bus : v.bus[i].rec = v.mem.rec /\ v.bus[i].ep = v.producerEpoch
+  /\ ~TagsFirst => TagCompatible
+  /\ v' = [v EXCEPT !.state.core = v.mem.core, !.state.pending = NONE,
+                    !.remote[v.mem.gen] = IF TagsFirst THEN @ ELSE v.mem.rec.tag.commit,
+                    !.mem = NONE, !.pc = 8]
+  /\ commitHistory' = Append(commitHistory, [gen |-> v.mem.gen, core |-> v.mem.core])
+  /\ UNCHANGED <<scn, fault, pendingHistory, tombHistory>>
 
-Observe(h) == /\ AccSeq # <<>> /\ obs' = [obs EXCEPT ![h] = HeldRec.gen]
-              /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic,
-                             inflight, bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, badLaunch, scn>>
+Advance ==
+  /\ Ready /\ v.pc = 8 /\ v.pass < MaxGen /\ v.pass < Len(Scripts[scn])
+  /\ LET b == Scripts[scn][v.pass + 1]
+     IN v' = [v EXCEPT !.pass = @ + 1, !.pc = 0, !.topic = @ \o b.reqs,
+                        !.now = Max(@, b.time), !.merged = b.merged, !.probe = 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-\* Placement admits a host that answers the held generation, while the held record's
-\* valid_until is ahead, however old the record is (the publisher may be stopped).
-Launch(h) == /\ AccSeq # <<>> /\ obs[h] = HeldRec.gen
-             /\ (CheckValidUntil => now < HeldRec.vu)
-             /\ badLaunch' = (badLaunch \/ ~(now < HeldRec.vu /\ obs[h] = HeldRec.gen))
-             /\ UNCHANGED <<S, mem, memOff, pc, paAlive, paEpoch, crashes, remoteTags, topic,
-                            inflight, bus, epoch, pbAlive, pbEpoch, pbSent, mergedSet, now, obs, scn>>
+\* The old generation is delivered after newer records, never folded by offset.
+DeliverDeferred ==
+  /\ Ready /\ v.pc = 8 /\ v.pass = MaxGen /\ v.deferred # NONE
+  /\ LET m == v.deferred
+         accept == ~Fenced \/ m.ep = v.epoch
+     IN v' = [v EXCEPT !.deferred = NONE,
+                        !.bus = IF accept THEN Append(@, m) ELSE @,
+                        !.badTag = @ \/ (accept /\ ~TagsPresent(m.rec)),
+                        !.probe = IF accept THEN 1 ELSE 0]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
 
-Next == Tick \/ Crash \/ Boot \/ Start \/ Fetch \/ ReadTopic \/ ComputeStep \/ WritePending
-        \/ PushTags \/ Send \/ Ack \/ Commit \/ BootB
-        \/ (\E l \in Layers : MergePR(l)) \/ Arrive
-        \/ (\E m \in inflight : Deliver(m)) \/ (\E g \in {1} : SendB(g))
-        \/ (\E h \in Hosts : Observe(h)) \/ (\E h \in Hosts : Launch(h))
+IsAccepted(m) == ~ReaderFilters \/ m.rec.pub = "h1"
+AccSeq == SelectSeq(v.bus, IsAccepted)
+Declared(m) == m.rec.pub = "h1"
+DeclaredSeq == SelectSeq(v.bus, Declared)
 
+RECURSIVE Hold(_, _)
+Hold(ms, held) ==
+  IF ms = <<>> THEN held
+  ELSE Hold(Tail(ms), IF Head(ms).rec.gen > held.gen THEN Head(ms).rec ELSE held)
+HeldRec == Hold(AccSeq, NONE)
+
+\* Each probe reconciles hA to the held generation and leaves hB one behind,
+\* then attempts placement on BOTH. A refused attempt is an explicit transition.
+Observe ==
+  /\ v.probe = 1
+  /\ v' = [v EXCEPT !.obs = [h \in Hosts |-> IF h = "hA" THEN HeldRec.gen ELSE Max(0, HeldRec.gen - 1)],
+                    !.probe = 2]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
+
+TryLaunch(h, nextProbe) ==
+  LET exists == HeldRec # NONE
+      generationOK == v.obs[h] = HeldRec.gen
+      timeOK == IF exists THEN v.now < HeldRec.valid_until ELSE FALSE
+      admitted == exists /\ generationOK /\ (~CheckValidUntil \/ timeOK)
+  IN /\ v' = [v EXCEPT !.badLaunch = @ \/ (admitted /\ (~timeOK \/ ~generationOK)), !.probe = nextProbe]
+     /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
+
+ProbeLaunch == (v.probe = 2 /\ TryLaunch("hA", 3))
+               \/ (v.probe = 3 /\ TryLaunch("hB", 0))
+
+TickStopped ==
+  /\ v.stopped /\ ~v.alive /\ v.probe = 0 /\ v.now < MaxT
+  /\ v' = [v EXCEPT !.now = @ + 1, !.probe = 1]
+  /\ UNCHANGED <<scn, fault, pendingHistory, commitHistory, tombHistory>>
+
+Next == Crash \/ Boot \/ Reconnect \/ Start \/ Fetch \/ ReadTopic \/ ComputeStep
+        \/ WritePending \/ PushTags \/ Send \/ Deliver \/ OpenOther \/ PublishOther
+        \/ Commit \/ Advance \/ DeliverDeferred \/ Observe \/ ProbeLaunch \/ TickStopped
 Spec == Init /\ [][Next]_vars
 
-\* ---- invariants -------------------------------------------------------------
+\* Mutation isolation: broker-order checks exclude h2; release comparisons use
+\* strictly increasing generations, so replaying g1 after g3 is not resurrection.
+\* The only changed recovery inputs are at g1 in resume, before any release;
+\* recomputing there cannot lose an earlier tombstone. The other publisher has
+\* no live layers. Cascade, revision and tombstone mutations still use the exact
+\* outbox and the time gate; tag and time errors are independent history flags.
+\* None of these observers is read by an action to suppress another failure.
 TypeOK ==
-  /\ S.hw \in 0..MaxGen /\ pc \in {"idle", "fetched", "read", "computed", "written", "tagged", "sent", "published"}
-  /\ remoteTags \subseteq 1..MaxGen
-
-AccRecs == [i \in DOMAIN AccSeq |-> AccSeq[i].rec]
+  /\ S.hw \in 0..MaxGen /\ v.pass \in 1..MaxGen /\ v.pc \in 0..8
+  /\ v.now \in 0..MaxT /\ v.crashes \in 0..MaxCrash
+  /\ DOMAIN v.obs = Hosts /\ DOMAIN v.remote = 1..MaxGen
+  /\ S.core.live \subseteq Layers /\ S.core.gone \subseteq Layers
+  /\ DOMAIN pendingHistory = 1..MaxGen /\ DOMAIN tombHistory = 1..MaxGen
 
 GenerationMonotone ==
-  /\ \A i, j \in DOMAIN AccRecs : i < j => AccRecs[i].gen <= AccRecs[j].gen
-  /\ S.pending # NONE => S.hw >= S.pending.gen
+  \A i, j \in DOMAIN DeclaredSeq : i < j => DeclaredSeq[i].rec.gen <= DeclaredSeq[j].rec.gen
 
-OnePublisherAccepted == \A i \in DOMAIN AccRecs : AccRecs[i].pub = "h1"
-
-PendingTagsBeforePublish ==
-  \A i \in DOMAIN bus : bus[i].rec.pub = "h1" => bus[i].rec.tag \in remoteTags
+OnePublisherAccepted == HeldRec = NONE \/ HeldRec.pub = "h1"
+PendingTagsBeforePublish == ~v.badTag
 
 PendingRepublishedExactly ==
-  \A i, j \in DOMAIN bus : (bus[i].rec.pub = "h1" /\ bus[j].rec.pub = "h1"
-                            /\ bus[i].rec.gen = bus[j].rec.gen) => bus[i].rec = bus[j].rec
+  /\ \A i \in DOMAIN DeclaredSeq :
+       LET rec == DeclaredSeq[i].rec
+       IN pendingHistory[rec.gen] # NONE /\ rec = pendingHistory[rec.gen].rec
+  /\ \A i \in DOMAIN commitHistory :
+       LET c == commitHistory[i]
+       IN pendingHistory[c.gen] # NONE /\ c.core = pendingHistory[c.gen].core
 
 ReleasedLayerNeverReturns ==
-  \A i, j \in DOMAIN AccRecs : i < j =>
-    \A l \in Layers : AccRecs[i].rel[l] # "none" => l \notin AccRecs[j].live
+  /\ \A i, j \in DOMAIN AccSeq : AccSeq[i].rec.gen < AccSeq[j].rec.gen =>
+       {l \in Layers : AccSeq[i].rec.rel[l] # "none"} \cap AccSeq[j].rec.live = {}
+  /\ \A g \in 1..MaxGen : \A i \in DOMAIN AccSeq :
+       g < AccSeq[i].rec.gen => tombHistory[g] \cap AccSeq[i].rec.live = {}
 
 DependentLeavesWithDependency ==
-  \A i \in DOMAIN AccRecs : \A x \in AccRecs[i].live :
-    Dep[x] # "none" => AccRecs[i].rel[Dep[x]] \in {"none", "merged"}
+  \A i \in DOMAIN AccSeq : \A l \in AccSeq[i].rec.live : Dep[l] \notin AccSeq[i].rec.gone
 
 StaleRequestNeverApplies ==
-  /\ \A a \in S.core.applied : a.named = a.at
-  /\ (S.pending # NONE => \A b \in S.pending.core.applied : b.named = b.at)
+  /\ \A d \in S.core.decisions : d.outcome = "applied" => d.named = d.at
+  /\ S.pending # NONE =>
+       \A d \in S.pending.core.decisions : d.outcome = "applied" => d.named = d.at
 
-NoLaunchOnExpiredLayer == ~badLaunch      \* set when a lane was admitted past valid_until or on a stale host
+NoLaunchOnExpiredLayer == ~v.badLaunch
 =============================================================================
