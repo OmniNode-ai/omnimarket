@@ -268,9 +268,10 @@ def test_reset_summary_compares_equal_length_windows_around_the_reset() -> None:
     assert summary.before.end == summary.after.start == summary.reset_at
     assert summary.after.end == GENERATED_AT
     by_key = {c.key: c for c in summary.comparisons}
-    assert by_key["andon.hours_stopped"].verdict is EnumVerdict.WORSE
+    assert by_key["andon.hours_stopped"].verdict is EnumVerdict.UNMEASURED
+    assert by_key["andon.hours_stopped"].before is None
     assert by_key["bugs.opened"].after_status is EnumReadStatus.READ
-    assert by_key["lanes.terminals"].verdict is EnumVerdict.INFORMATIONAL
+    assert by_key["lanes.terminals"].verdict is EnumVerdict.UNMEASURED
     informational = sum(
         1 for c in summary.comparisons if c.verdict is EnumVerdict.INFORMATIONAL
     )
@@ -329,3 +330,28 @@ def test_determinism_same_input_gives_byte_identical_json() -> None:
     second = _run().model_dump_json(indent=2)
     assert first == second
     assert json.loads(first)["schema_version"] == 1
+
+
+@pytest.mark.unit
+def test_selected_range_changes_counts() -> None:
+    """The selected window, rather than the fixed reset window, drives the counts."""
+    from omnimarket.models.process_health import ModelTimeSpan
+
+    original = request()
+    selected = original.model_copy(
+        update={"selected_range": ModelTimeSpan(start=at(29, 0), end=at(30, 0))}
+    )
+    shifted = original.model_copy(
+        update={"selected_range": ModelTimeSpan(start=at(28, 0), end=at(29, 0))}
+    )
+    first = HandlerProcessHealth().handle(selected).selected_summary
+    second = HandlerProcessHealth().handle(shifted).selected_summary
+    assert (first.improved, first.worse, first.flat, first.unmeasured) != (
+        second.improved,
+        second.worse,
+        second.flat,
+        second.unmeasured,
+    )
+    assert first.after.start == at(29, 0)
+    assert first.before.start == at(28, 0)
+    assert first.before.end == first.after.start

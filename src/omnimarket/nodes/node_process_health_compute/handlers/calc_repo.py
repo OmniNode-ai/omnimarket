@@ -160,12 +160,12 @@ def _umbrella_tickets(ctx: Context) -> frozenset[str]:
     )
 
 
-def _fixed_forward(ctx: Context, window: Window) -> Computed:
+def fixed_forward_merges(ctx: Context, window: Window) -> list[ModelMergeRecord]:
     """Fix merges in the window whose ticket an earlier merge of another PR in the same repo already carried."""
     umbrellas = _umbrella_tickets(ctx)
     lookback = timedelta(hours=ctx.config.fix_forward_window_hours)
     product = [m for m in ctx.request.merges if merge_kind(ctx, m) == KIND_PRODUCT]
-    repos: Counter[str] = Counter()
+    matched: list[ModelMergeRecord] = []
     for merge in _merges_in(ctx, window):
         if merge_kind(ctx, merge) != KIND_PRODUCT or not re.search(
             ctx.config.fix_subject_pattern, merge.subject
@@ -182,8 +182,13 @@ def _fixed_forward(ctx: Context, window: Window) -> Computed:
                 and merge.committed_at - earlier.committed_at <= lookback
                 and _ticket(ctx, earlier.subject) == ticket
             ):
-                repos[merge.repo] += 1
+                matched.append(merge)
                 break
+    return matched
+
+
+def _fixed_forward(ctx: Context, window: Window) -> Computed:
+    repos = Counter(merge.repo for merge in fixed_forward_merges(ctx, window))
     return Computed(
         float(sum(repos.values())),
         breakdown_of({k: float(v) for k, v in repos.items()}),
