@@ -117,6 +117,9 @@ dod_evidence:
   - AC6
   - AC7
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py -q --no-cov --tb=line -k host_net
+    cwd: .
   - check_type: command
     check_value: |-
       env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
