@@ -1,0 +1,20 @@
+{
+  "source": "rolling work ledger terminal observations; histories are reconstructed interleavings, not captured commit graphs",
+  "cases": [
+    {
+      "failure_shape": "pr-head-moved",
+      "recorded_at": "2026-11-04T12:00:16Z",
+      "recorded_outcome": "failed"
+    },
+    {
+      "failure_shape": "push-non-fast-forward",
+      "recorded_at": "2026-11-04T12:02:48Z",
+      "recorded_outcome": "failed"
+    },
+    {
+      "failure_shape": "push-failed",
+      "recorded_at": "2026-11-04T12:05:12Z",
+      "recorded_outcome": "failed"
+    }
+  ]
+}
