@@ -787,7 +787,6 @@ def _probe_repo_sync() -> ModelHealthDimensionResult:
         "omnibase_core",
         "omnibase_infra",
         "omnibase_spi",
-        "omnibase_compat",
         "omnimarket",
         "omniintelligence",
     ]

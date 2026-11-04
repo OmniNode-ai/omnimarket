@@ -1,0 +1,280 @@
+case: s1_review_not_wired
+variant: observed
+observed_at: '2026-11-03T11:45:00Z'
+derivation: 'ledger: every CLAIM, TERMINAL, MSG, HOLD and RELEASE row with ts <= observed_at whose lane
+  or from cell is one of the lanes of tickets OMN-22176, OMN-22177, OMN-22178 or whose ticket cell is
+  one of them, copied whole from the archive roll or live file; watcher: omnimarket#4946 and #4957 built
+  from the pull request API (state, head at the time from the commit committer dates), omnimarket#4913
+  from its merge record (merged 2026-11-03T10:54:00Z)'
+overlay_file: ../line_board.yaml
+plan_path_contains: []
+sources:
+  pr_watcher: present
+  plans_clone: absent
+  goal_file: absent
+  plans_today: absent
+  linear_snapshot: absent
+  required_contexts: present
+  running_evidence: absent
+  ledger_window: 'present: 47 rows'
+ledger_rows:
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L1156
+  ts: '2026-11-02T21:01:04Z'
+  kind: CLAIM
+  original_sha256: d4eddaf18c2231a0d7f537bcc01b42a68b7e7be70d889860d9d6e76b7e1a0403
+  scrubbed_sha256: af2a28278d10dde385ad152e82c51385efd36b4410e445f24e49f97a5daf9e08
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L1905
+  ts: '2026-11-02T22:25:17Z'
+  kind: MSG
+  original_sha256: 60ab6217e7d650a88f405abc227b68f749257c73c7ebf89dff0ce51db7146b39
+  scrubbed_sha256: 791a65f8a8c450e210a0ed284ee88c3086546bb3cc968fd2c80af1ce4b75493a
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L1906
+  ts: '2026-11-02T22:25:17Z'
+  kind: TERMINAL
+  original_sha256: 1e694c77f622bd7434260509b691642bff7782257f83b57cd017489fd8ad1e1b
+  scrubbed_sha256: 437db86137a8768a499fbc906d4fc2a57d5ee0181ec5d473347a0171db88a810
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L2880
+  ts: '2026-11-03T00:18:55Z'
+  kind: CLAIM
+  original_sha256: 8390a21651babd867ff1b8e3617b1acb1e675913ee30486d2d8c1de86cc9e876
+  scrubbed_sha256: f02d8a601df35f42d67983a701325d14ac3a71b1fee3151c898f70b808af69b4
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L5571
+  ts: '2026-11-03T02:21:22Z'
+  kind: TERMINAL
+  original_sha256: 7f78492f5cfd2aa149906d21615f35cd8bcfd0037d391840fe9df928e7392ce8
+  scrubbed_sha256: 6a0da10680537e9ca666c459e53d1c1fcfbb786637ed34c905c3b04ed268920a
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L5812
+  ts: '2026-11-03T02:46:10Z'
+  kind: CLAIM
+  original_sha256: 14d008c56ddbc462cebf4c1304715b836ae664ba91a5b7fe67ebe09e8834708c
+  scrubbed_sha256: c3543f32fad107c436f2c987edd3b3950fb20293b77ae3171a42231e74d0a370
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L5915
+  ts: '2026-11-03T03:01:51Z'
+  kind: TERMINAL
+  original_sha256: 4b35d50088ef4c065315b213ef9d45ac6cf6ca5982ea535eef127713f1b3392d
+  scrubbed_sha256: 35da1a977fe0b1463f02ffc9d5cf28d5209baf03e4764dad9a3d075db8375586
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L5920
+  ts: '2026-11-03T03:02:10Z'
+  kind: TERMINAL
+  original_sha256: 942f9bd2fb970a91e3b62f2255d8bcfd7b833015f0042a1ad1fa9d022d67e54d
+  scrubbed_sha256: ed488cba3ed48f470970982678b8958018b32eb5399364e51332ada042ec17a9
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L5988
+  ts: '2026-11-03T03:09:52Z'
+  kind: CLAIM
+  original_sha256: 0e1210780fbc24145c373e91c2f384743f6ecd9fad293af5f28a5c370843f8c4
+  scrubbed_sha256: b443d912fea9bd45f09c9e4a6d2a66b94faeb2b4d3fdbb4139e0eb2424b76115
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L5995
+  ts: '2026-11-03T03:10:56Z'
+  kind: CLAIM
+  original_sha256: 86b8b78110dd349d9cac62f6484249f9aaa89f8e2bc88f7f889203b3bcdd367b
+  scrubbed_sha256: c0b5c29ad67613a563769c0352b55265f5145b65c4ea07dfe0c725244624bb77
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6085
+  ts: '2026-11-03T03:23:49Z'
+  kind: MSG
+  original_sha256: 3d6cda1dc15c750917e7ded7bd07249d44e9026ad2bc5595062e3df49fc5fe97
+  scrubbed_sha256: a73465a4470c704d24eb19d77cec730b005757ca48e481543bb612b9ff1b6c3b
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6086
+  ts: '2026-11-03T03:23:55Z'
+  kind: CLAIM
+  original_sha256: a83fde68494465ff7c346eb33e52d1c5f859ed503726f76cd22d689827c6b43c
+  scrubbed_sha256: 14a80b9a10fa0c714b0fcf887fb2acb726a49410318a9e064881026eb2464520
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6202
+  ts: '2026-11-03T03:43:57Z'
+  kind: TERMINAL
+  original_sha256: fec3853a8bcc32708ba8104846865a77b7d6d11d8745400ca083d9d3f0a4f916
+  scrubbed_sha256: c3da769cd78bacb03c7e7a9ccff360ae963096d2bf73cb62159810f992b486f4
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6514
+  ts: '2026-11-03T04:32:57Z'
+  kind: CLAIM
+  original_sha256: b4d45ba02ee517dc1da0fb77dc4a4cb9edda18cfbee5023bc45c26899c5a18ec
+  scrubbed_sha256: 2427a95e714328e4a70b257c7068609ad6c46111e90eb16a1ef867f1c07b8735
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6568
+  ts: '2026-11-03T04:42:18Z'
+  kind: TERMINAL
+  original_sha256: 9c721c2eb011b8100cd067dd9d3cd2b6210c83619ca7679c941c328a13448262
+  scrubbed_sha256: 07822984d7ddebb1447f32ac1e9f570ff7326d708a9354f23dd25da61e7fec53
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7051
+  ts: '2026-11-03T04:45:33Z'
+  kind: MSG
+  original_sha256: 26af24636139cfaa9bbd81da760a7de926ba107b4091af21e0fea0aaa4b0d723
+  scrubbed_sha256: 7a638831c82637f9d27c9eaf664bf23313f0f1bb4fd70f73c11c4b82de978516
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6647
+  ts: '2026-11-03T04:56:29Z'
+  kind: CLAIM
+  original_sha256: ce9973e6e0ce21a7e812a9ff32ce080b8f1b1929cd9d38b6cfc8ad6a6a6099f7
+  scrubbed_sha256: 5099f6f4f5fe754b26ba6cea749eb078d18afd94d6b38b17fa1dae4361425d73
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7054
+  ts: '2026-11-03T05:42:51Z'
+  kind: MSG
+  original_sha256: c0c549fab7189f3643d6775f70fa981eaa7524f35e01c7958be18b08cae29b52
+  scrubbed_sha256: 4f4f3dde76decb6693c29df3d6d744a3626a1b76c437b47565e31bab4c76d7c1
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7034
+  ts: '2026-11-03T05:48:32Z'
+  kind: MSG
+  original_sha256: 130eabeaf5d28b0bb5f59e54d4f6dac847fddf4705369df49bdc539813157364
+  scrubbed_sha256: e92f321804b81f1480a259fc74fafb3ad6e1c17ef79b00791438ad8cd12b2724
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7035
+  ts: '2026-11-03T05:48:48Z'
+  kind: MSG
+  original_sha256: 6f3fa1de9856c5101564aa31f200f159780429e6f55b279cfe8a4a825b98efe5
+  scrubbed_sha256: ce1947394d500fa1813b5521f92c7850d19572123ffca01631e0c8b050117a98
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7056
+  ts: '2026-11-03T05:55:51Z'
+  kind: MSG
+  original_sha256: 19e0da22e51cf64c482ab278a0dc1df7f12c59bb4a259bdebee36a5b793ac97f
+  scrubbed_sha256: 9e19adda295513a9c451be0e72d9ffbb656fba96dd2b8d6b710f38ecbe9bd66d
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7036
+  ts: '2026-11-03T05:56:35Z'
+  kind: MSG
+  original_sha256: d1142f870643b1fbc2d9e702746cc0cf6029dbf028a54bffaabc39424d23907b
+  scrubbed_sha256: 8919e94d3ec9854cdb179b8c7de3ff334d6cb6778f1099e7daedb0ad20d2410d
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7038
+  ts: '2026-11-03T05:56:49Z'
+  kind: MSG
+  original_sha256: bccd9b7530adf4b59f18a7bdd9ca27c984313c08ca1374e3086bcb79094a02ad
+  scrubbed_sha256: 1a0a82487e2816422000333d447f96743811b67edbd54b8515e0e8e23f7977e1
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7039
+  ts: '2026-11-03T05:57:57Z'
+  kind: MSG
+  original_sha256: 4798fa2c0f840f1b6fbb096fdaa236a6c5f049ec43d83d9e1fdb208f535e0b02
+  scrubbed_sha256: b95eaaf4284a3ad997e4525003578cd3a4495dad37a985ddb283d0c608b6cbcd
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7040
+  ts: '2026-11-03T05:57:57Z'
+  kind: TERMINAL
+  original_sha256: 01dbc912cb3a372b5e38742c3809a48ff86ea907dfdb39abae64a35631cab83c
+  scrubbed_sha256: 9ca86d3ecc441077680ac7b683347738af4ac75a1c54a4a0b78542d9fe3e07db
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7063
+  ts: '2026-11-03T06:00:14Z'
+  kind: MSG
+  original_sha256: 26e3edc42e77aab92704f947ebe0de1f3417d2d91d7051c6009dafe18a1f786e
+  scrubbed_sha256: 192f10df3161a66447cdd9691822ec275948ef69fea8bcaefe1c70d2a08f4e33
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7068
+  ts: '2026-11-03T06:01:01Z'
+  kind: TERMINAL
+  original_sha256: a30bd6088113a5734941fdb279f0f26abd025707091a30753254d78e9bd58e41
+  scrubbed_sha256: 8cf8b4c85657fbb62175e8a8c6efd407a6caa858d5be4bcefd8bad170a1ec8d5
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7192
+  ts: '2026-11-03T06:17:12Z'
+  kind: CLAIM
+  original_sha256: dfe6b17ebf83675cb314e366693c35c80dd43385921f349794445ea4294fae16
+  scrubbed_sha256: 14ced46cf8c442a69aef457a52b7a481a2b7a0469118c8f1364cbb7c020d6bc6
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7198
+  ts: '2026-11-03T06:17:56Z'
+  kind: CLAIM
+  original_sha256: 5b69fa43ff982c2d9038da743fecc713e9d23dba3de1fa77f259b698d6ad245d
+  scrubbed_sha256: 6ca69fb844791884ac73c1e286ce86ac5538cf1b2e496e367fced98aaef91938
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7282
+  ts: '2026-11-03T06:23:25Z'
+  kind: MSG
+  original_sha256: 4a45b3620ff733830a57458267e59b2419c3235cc6977cf17b18176a803574ce
+  scrubbed_sha256: 87bfbe0d5d38b817bf8da496265f308c7d2f7a5fd1c42da5dd03593c83b34b50
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7262
+  ts: '2026-11-03T06:24:02Z'
+  kind: CLAIM
+  original_sha256: 171371b0940fd468c17631e4d5602cfd6dbe93ba47aa4d1b6baf1ac0e773bf31
+  scrubbed_sha256: b83e86238b6590a25c55eb057c3e3d09d35b8a03316b4aa700370d7a284465db
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7283
+  ts: '2026-11-03T06:24:25Z'
+  kind: MSG
+  original_sha256: 64fe5ec95d9258a03cbc1d8689ae7e8dec5c048c14969a4769d9aedabf24f3a2
+  scrubbed_sha256: 41ffc0619409c2628498b0955a8067abe3d9cfc397c60bb0afdbfd77d8650e4e
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7691
+  ts: '2026-11-03T06:25:07Z'
+  kind: MSG
+  original_sha256: 01a06bcea0a44dfc39e3d6dc650f1159efee6b508155fdd591d1ca3a50b74873
+  scrubbed_sha256: 4ee08e63b50a885f8d5b94989c104af016e41a889dbadc5f36e6f42f36ed6d40
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7692
+  ts: '2026-11-03T06:25:22Z'
+  kind: MSG
+  original_sha256: bfdf7ed2494ce45c9ee5566bb879eb16d4e6dba0cdf0397903003b328a153203
+  scrubbed_sha256: 46f73fecdc7d9153373287e2928100aaf15736ccf4feb032d5f701549979a66e
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7284
+  ts: '2026-11-03T06:26:17Z'
+  kind: TERMINAL
+  original_sha256: e28533ddd385737a8ea87578c47d0c6a4c96f4b0a59e666350242347a445bdac
+  scrubbed_sha256: 8320fd167c425f00f3bf2d20669c074922471a0a60ab78dcf38f14ea93970088
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7289
+  ts: '2026-11-03T06:27:33Z'
+  kind: TERMINAL
+  original_sha256: f4f015b98f499e6aa142a89e63c60dd05759e9db5a02a6a9ac409890da48d4e6
+  scrubbed_sha256: 3844b0ca318690fb03f72e6faee5c0cdbfb33b9cf58f574223cb13b07e5e188e
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7296
+  ts: '2026-11-03T06:28:21Z'
+  kind: MSG
+  original_sha256: 5620197ffdef408e027f73754147aba209212b22ac8d38435bd3044245d91087
+  scrubbed_sha256: ca5d7972615aa1f282bff3227d4958c309741f2c8f0c14574ad4b5df3a624151
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7695
+  ts: '2026-11-03T07:28:15Z'
+  kind: MSG
+  original_sha256: 4a195849a3269f27f0224f0a184a2ca1c97572a75cf9486e423493010e7be01d
+  scrubbed_sha256: 8ea80cbd04dc14095f85c9f6c122f14042a04a890226fdd2fc2a2d57792e46ee
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7698
+  ts: '2026-11-03T07:29:43Z'
+  kind: TERMINAL
+  original_sha256: c7c667d86373b1810343c55c2f52c483bc762d3bd1a66bf7f9577cc8cdd5ffdb
+  scrubbed_sha256: c0651460a95b8f5ff4fe208a20633091f4a3c4552fa64f299b4fbb1f649abf8a
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7932
+  ts: '2026-11-03T08:20:32Z'
+  kind: HOLD
+  original_sha256: 0edf84b84d4458d1d361e8803d2497cf1c789a1e7e95c5a7b82d8ef1031fb2e4
+  scrubbed_sha256: f83f53bdc48ce3d0baaf58a891efd60d8405acaa678631fd3dc31ee8e3e31eb7
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7934
+  ts: '2026-11-03T08:20:50Z'
+  kind: HOLD
+  original_sha256: 29fe1f49406923c0e200143481e9964466e7531a891bcf9d243a2c203f793cf3
+  scrubbed_sha256: c6bac22de39a18054d6998d2a510a0007baf7601c2468d4eea32cf517c348ec0
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7936
+  ts: '2026-11-03T08:21:08Z'
+  kind: HOLD
+  original_sha256: 3f43b37ecd798d17e3c57eca1ed9453d134c36575fd78ed0e785e1327457d3d7
+  scrubbed_sha256: 2ce1ce329b36e0413c193a55499105e5901ebdc1435c58f4671fa71c5b4c2030
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8772
+  ts: '2026-11-03T11:15:29Z'
+  kind: CLAIM
+  original_sha256: c17a8075f221e1bd4ca508d8559a12671292d047d549dc1b2de4b4d317db1414
+  scrubbed_sha256: df93695a05699d281c02b6667176bfa3dd91060cf8380466845ed4b5e6bf91cf
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8924
+  ts: '2026-11-03T11:30:41Z'
+  kind: CLAIM
+  original_sha256: 776477b9d0ef58dfdd8936b09e0d378d83823f19b98961aff2d1ea54f7627676
+  scrubbed_sha256: 2729d5b6e08da59ed78d23f0978cd377b0b70b19d20b515b6edc20dd39fe51ba
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8971
+  ts: '2026-11-03T11:35:01Z'
+  kind: MSG
+  original_sha256: 4b177bb9e1fb1f260a06b75845aa83a783fc50d0060a81c572a86da30ddb0677
+  scrubbed_sha256: 4f69a920f8c1d859ac997c02a42170609f7e4fe495d7031adb85000881672b61
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L9089
+  ts: '2026-11-03T11:42:17Z'
+  kind: MSG
+  original_sha256: 37f6d9851cc86eaf8057f5d670d8ad4fb780487432c1931db9470427446e6af9
+  scrubbed_sha256: f9ebba6529466666bbaf1be53cdbc2ade49e55bb066baa095481e75ef1d908c9
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L9100
+  ts: '2026-11-03T11:43:10Z'
+  kind: TERMINAL
+  original_sha256: 97507411e1acacfa932840a7307564c92298d97fb184d4b540d02191f77d1bcd
+  scrubbed_sha256: 65ee90732defe6adb499fffb47816165312d95fa0a5ef5d56e64e82e5921cebf
+expected:
+  stops:
+  - line: ticket:OMN-22178
+    kind: lane-ended-partial
+    evidence:
+    - TERMINAL 2026-11-03T11:43:10Z lane=review-delegate-1120
+    sentence_contains: Delegated review path not live yet
+  - line: ticket:OMN-22177
+    kind: handed-off-unmerged
+    evidence:
+    - TERMINAL 2026-11-03T05:57:57Z lane=ticket-omn-22177-1103-r
+    sentence_contains: omnimarket#4946
+  absent:
+  - line: ticket:OMN-22176
+    kind: handed-off-unmerged
+    evidence:
+    - TERMINAL 2026-11-03T06:01:01Z lane=gate-accept-22176-0425
+    why: omnimarket#4913, the pull request this hand-off names through its CLAIM, merged at 2026-11-03T10:54:00Z,
+      before the observation
+  - kind: merged-not-running-counted-as-building
+    why: no merged or building count for the unlanded items
+scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every
+  stored text are replaced (private-repo-N, [scrubbed]). original_sha256 is the digest of the ledger row
+  as the ledger or its archive roll holds it; scrubbed_sha256 is the digest of the row as stored here.'
+plan_note: 'Class 5 (ticket) lines: no plan file is read.'
