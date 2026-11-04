@@ -11,6 +11,10 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 
+from tests.nodes.node_architecture_discovery_orchestrator.broker_overlay_support import (
+    install_broker_overlays,
+)
+
 REPO = Path(__file__).resolve().parents[3]
 
 
@@ -74,7 +78,7 @@ def test_infra_release_floor_accepts_newer_releases_and_refuses_incompatible_pin
 
 
 def test_workspace_validation_carries_invoke_command_before_agent_runs(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from omnibase_infra.models.coding_agent import ModelWorkspaceValidateCommand
 
@@ -121,7 +125,7 @@ def test_workspace_validation_carries_invoke_command_before_agent_runs(
             }
         }
 
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fixture:9092")
+    install_broker_overlays(tmp_path, monkeypatch, {"type": "kafka", "lane": "dev"})
     monkeypatch.setenv("ONEX_CODING_AGENT_WORKSPACE_ROOT", "/allowed")
     with pytest.raises(ValueError, match="workspace rejected"):
         handler_coding_agent_bus.HandlerCodingAgentBus(publish=publish).execute(task)

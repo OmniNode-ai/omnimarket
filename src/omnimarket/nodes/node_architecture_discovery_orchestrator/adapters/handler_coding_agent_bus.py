@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from importlib.resources import files
 from pathlib import Path
@@ -11,10 +10,7 @@ from typing import Any
 
 import jsonschema
 import yaml
-from omnibase_core.cli.cli_run_node import (
-    _resolve_client_security_config,
-    publish_and_poll,
-)
+from omnibase_core.cli.cli_run_node import publish_and_poll
 from omnibase_infra.models.coding_agent import (
     EnumAgentSandbox,
     EnumAgentStatus,
@@ -27,6 +23,9 @@ from omnibase_infra.models.coding_agent import (
 from omnibase_infra.nodes.node_coding_agent_orchestrator.contract_topics import (
     contract_allowed_workspace_roots,
 )
+
+from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
+from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 
 from ..handlers.handler_architecture_discovery import load_contract
 from ..models.model_discovery_result import (
@@ -56,16 +55,21 @@ class HandlerCodingAgentBus:
     """No model subprocess here: the target effect owns invocation and authentication."""
 
     def __init__(
-        self, publish: Callable[..., dict[str, object] | None] | None = None
+        self,
+        publish: Callable[..., dict[str, object] | None] | None = None,
+        resolve_broker: Callable[[str], ModelNodeBroker] | None = None,
     ) -> None:
         self._publish = publish if publish is not None else publish_and_poll
+        self._resolve_broker = (
+            resolve_broker if resolve_broker is not None else resolve_dialable_broker
+        )
 
     def execute(self, task: ModelDiscoveryTask) -> ModelDiscoveryPhaseResult:
-        bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "").strip()
-        if not bootstrap:
-            raise ValueError(
-                "KAFKA_BOOTSTRAP_SERVERS is required for discovery phase execution"
-            )
+        workspace_node = "node_coding_agent_workspace_compute"
+        # Each node is reached on the broker its own contract overlay declares (OMN-22362); a node
+        # that declares none is refused before any command is built.
+        workspace_broker = self._resolve_broker(workspace_node)
+        target_broker = self._resolve_broker(TARGET_NODE)
         target: Any = yaml.safe_load(
             files("omnibase_infra.nodes.node_coding_agent_invoke_effect")
             .joinpath("contract.yaml")
@@ -82,7 +86,6 @@ class HandlerCodingAgentBus:
             raise ValueError(
                 "discovery invocation topics differ from the installed target contract"
             )
-        workspace_node = "node_coding_agent_workspace_compute"
         workspace_contract: Any = yaml.safe_load(
             files("omnibase_infra.nodes." + workspace_node)
             .joinpath("contract.yaml")
@@ -141,11 +144,11 @@ class HandlerCodingAgentBus:
             node_id=workspace_node,
             payload=check_payload,
             timeout=settings.delivery_margin_seconds,
-            bootstrap_servers=bootstrap,
+            bootstrap_servers=workspace_broker.bootstrap_servers or "",
             command_topic=workspace_topic,
             response_topic=workspace_contract["event_bus"]["publish_topics"][0],
             inject_payload_correlation_id=True,
-            client_security=_resolve_client_security_config(workspace_node),
+            client_security=workspace_broker.client_security(),
         )
         if validation_response is None:
             raise TimeoutError(f"{task.label}: no workspace validation terminal")
@@ -165,11 +168,11 @@ class HandlerCodingAgentBus:
             node_id=TARGET_NODE,
             payload=payload,
             timeout=task.timeout_ms // 1000 + settings.delivery_margin_seconds,
-            bootstrap_servers=bootstrap,
+            bootstrap_servers=target_broker.bootstrap_servers or "",
             command_topic=command_topic,
             response_topic=terminal_topic,
             inject_payload_correlation_id=True,
-            client_security=_resolve_client_security_config(TARGET_NODE),
+            client_security=target_broker.client_security(),
         )
         if response is None:
             raise TimeoutError(
