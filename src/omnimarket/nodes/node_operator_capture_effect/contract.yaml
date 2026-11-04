@@ -72,7 +72,7 @@ externally_produced_topics:
 published_events:
   - event_type: ModelOperatorCaptureReceipt
     topic: onex.evt.omnimarket.operator-capture-recorded.v1
-    description: "What the capture did with one operator prompt."
+    description: "What the capture did with one operator prompt, including typed silent-classifier findings. Call command, outcome and observation persist on classification.call in the capture journal."
 env_dependencies:
   ONEX_WORK_LEDGER_OPERATOR_CAPTURE:
     required: false

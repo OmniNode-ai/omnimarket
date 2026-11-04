@@ -40,6 +40,13 @@ requirements:
         statement: 'AC7: every sentence of a mixed operator prompt has a source-linked disposition, including chat, and replay yields no new rows -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_sentence_dispositions.py -q --no-cov -n 0'
       - id: AC8
         statement: 'AC8: operator message arrivals stay unanswered until an explicit reply, and both item-fold nodes publish typed results through installed contract discovery and in-memory runtime wiring -- falsifier: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0'
+  - id: req-omn19998-capture-health-and-carry-over
+    statement: Capture measures delegated call outcomes and carried-over asks use the ordinary transition evidence rule.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: one empty classifier response remains heuristic without an alarm, twenty consecutive heuristic prompts raise a silent-failure finding, and recorded call outcomes distinguish measured observations from unmeasured history -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka" -k "classifier or health or alarm or adapter"'
+      - id: AC10
+        statement: 'AC10: carry-over closes only with ordinary completion evidence, withdraws only through a correction naming a confirmed second-engine label run, and a dry-run replay dispositions every cohort item without writing the source ledger -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka"'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -155,4 +162,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-capture-health-and-carry-over
+    description: Focused fixtures cover measured classifier outcomes, the twenty-prompt alarm, evidence and confirmed-label rules, a read-only 218-item replay, bounded text output and the existing CLI mode. Historical capture causes and the original 218-item cohort remain host readbacks, not asserted by these fixtures.
+    source: manual
+    binds_ac: [AC9, AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka"
+        cwd: .
+  - id: dod-omn19998-carry-over-runtime
+    description: Discovered production contracts and infra auto-wiring carry the typed dry-run request over the real in-memory event bus to its terminal event. The Redpanda variant uses its own declared overlay and requires lab topic provisioning and ACLs; this smoke does not assert that external proof.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka" -k runtime
         cwd: .

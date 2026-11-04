@@ -93,14 +93,19 @@ def test_terminal_done_alone_retains_accountable_owner() -> None:
         ("trust me", "owned"),
     ],
 )
-def test_completion_evidence_accepts_pr_references_and_resource_paths(
+def test_completion_evidence_accepts_measured_merged_pr_references_and_resource_paths(
     evidence: str, expected: str
 ) -> None:
     original = request()
     claim, terminal = original.rows[:2]
     terminal += f" | evidence={evidence}"
     report = HandlerAskState().handle(
-        original.model_copy(update={"rows": (claim, terminal)})
+        original.model_copy(
+            update={
+                "rows": (claim, terminal),
+                "merged_prs": ("example#42", "project#42"),
+            }
+        )
     )
     entry = next(e for e in report.asks if e.item_id == "cap-terminal")
     assert entry.state.value == expected

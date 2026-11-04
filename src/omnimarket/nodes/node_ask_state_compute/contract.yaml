@@ -94,10 +94,10 @@ config:
   ruling_row_kinds: [RULING]
   ruling_closed_audit_states: [acting]
   completion_evidence_patterns:
-    # Recognize a PR reference or resource path without binding evidence to a deployment endpoint.
-    - '\b[\w.-]+#\d+\b|/[\w.-]+/[\w.-]+/pull/\d+\b'
+    # PR citations additionally require a merged-PR fact supplied by the source reader.
     - '\bRULING[ :]+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
     - '\breceipt[:=]\S+'
+  withdrawal_label: not-an-ask
   id_chars: 16
   grace_minutes: 30
   link_window_hours: 24

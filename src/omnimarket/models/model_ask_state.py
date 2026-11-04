@@ -88,6 +88,7 @@ class ModelAskStateConfig(BaseModel):
     ruling_row_kinds: tuple[str, ...]
     ruling_closed_audit_states: tuple[str, ...]
     completion_evidence_patterns: tuple[str, ...]
+    withdrawal_label: str
     id_chars: int = Field(ge=10)
     grace_minutes: int = Field(ge=0)
     link_window_hours: int = Field(ge=1)
@@ -170,6 +171,7 @@ class ModelAskStateRequest(BaseModel):
     now: datetime
     since: datetime
     config: ModelAskStateConfig
+    merged_prs: tuple[str, ...] = ()
     ruling_mechanisms: tuple[ModelRulingMechanismAudit, ...] = ()
 
 

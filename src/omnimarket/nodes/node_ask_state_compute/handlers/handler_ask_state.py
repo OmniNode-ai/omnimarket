@@ -396,11 +396,41 @@ def _cites_answer_row(
     )
 
 
-def _completion_evidence(row: _Row, config: ModelAskStateConfig) -> bool:
-    """TERMINAL alone is never a completion class; the request supplies the accepted evidence grammar."""
+def _pr_identities(text: str) -> frozenset[tuple[str, str]]:
+    return frozenset(
+        (repo or path_repo, number or path_number)
+        for repo, number, path_repo, path_number in re.findall(
+            r"(?<![\w.-])([\w.-]+)#(\d+)\b|/[\w.-]+/([\w.-]+)/pull/(\d+)\b", text
+        )
+    )
+
+
+def _completion_evidence(row: _Row, request: ModelAskStateRequest) -> bool:
+    """The ordinary evidence rule: a PR citation needs a measured merged-PR fact."""
+    evidence = row.cells.get("evidence", "")
+    cited = _pr_identities(evidence)
+    merged = frozenset(
+        identity for ref in request.merged_prs for identity in _pr_identities(ref)
+    )
+    if row.kind == "TERMINAL":
+        cited |= _pr_identities(
+            " ".join(row.cells.get(cell, "") for cell in request.config.pr_cells)
+        )
+    if cited:
+        return bool(cited & merged)
     return any(
-        re.search(pattern, row.cells.get("evidence", ""))
-        for pattern in config.completion_evidence_patterns
+        re.search(pattern, evidence)
+        for pattern in request.config.completion_evidence_patterns
+    )
+
+
+def _confirmed_withdrawal(row: _Row, config: ModelAskStateConfig) -> bool:
+    return (
+        row.kind == "CORRECTION"
+        and row.cells.get("label") == config.withdrawal_label
+        and bool(row.cells.get("label_run"))
+        and bool(row.cells.get("second_engine"))
+        and row.cells.get("confirmed_by") == config.default_owner
     )
 
 
@@ -521,14 +551,13 @@ def _decide(
             )
         )
         if closes_cell or marks_done or answers:
-            if row.kind == "CORRECTION" or (
-                row.lane == config.capture_lane
-                and row.cells.get(config.state_cell) == "dropped"
-            ):
+            if _confirmed_withdrawal(row, config):
                 done = "withdrawn"
+            elif row.kind == "CORRECTION":
+                evidence.pop()
             elif answers:
                 done = "answered"
-            elif _completion_evidence(row, config) or _cites_answer_row(
+            elif _completion_evidence(row, request) or _cites_answer_row(
                 row, config, row_keys
             ):
                 done = "closes-ask"
@@ -554,7 +583,7 @@ def _decide(
                 running = None
                 running_claim = None
             if outcome in config.done_outcomes:
-                if _completion_evidence(row, config):
+                if _completion_evidence(row, request):
                     done = "terminal"
                 # An unfinished obligation stays owned by its last lane, even after its claim ends.
             elif outcome in config.handoff_outcomes:
@@ -585,7 +614,7 @@ def _decide(
             elif not row.cells.get("mechanism-pending"):
                 done = "ruling"
 
-    if ask.kind == config.ruling_kind:
+    if ask.kind == config.ruling_kind and done != "withdrawn":
         # Audit input is authoritative for a ruling's mechanism. A lane terminal cannot substitute for it.
         ruling_stamp = ask.ruling_stamp or next(
             (

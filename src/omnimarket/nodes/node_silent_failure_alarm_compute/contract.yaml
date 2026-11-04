@@ -30,6 +30,12 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
+    - operation: decide_capture_health
+      handler:
+        name: HandlerCaptureHealth
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_capture_health
+      input_model: omnimarket.models.model_capture_health.ModelCaptureHealthRequest
+      output_model: omnimarket.models.model_capture_health.ModelCaptureHealthResult
     - operation: decide_placement_share
       handler:
         name: HandlerPlacementShareAlarm
@@ -94,3 +100,12 @@ metadata:
 
 timeouts:
   fill_interval_seconds: 1200  # Interval between lab-fill runs.
+
+# Supplied to the capture effect through dependency injection; no bound lives in its handler.
+capture_health:
+  unanswered_window: 20
+  fallback_classifier: heuristic
+  alarm: delegated-classifier-silent
+  finding_lane: silent-failure-alarm
+  finding_kind: finding
+  fix: Read classifier call measurements and the delegated runner receipt before remediation.
