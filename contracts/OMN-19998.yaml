@@ -33,6 +33,13 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-snapshot-record-boundary
+    description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-deploy-ledger-additive-wire
     description: Hosted serialization and deployment smoke uses the real bus caller and host with an in-memory transport and the pre-field host model, plus outbox replay and set-field refusal. The future optional-field test fails at the merge base because its null field is serialized. This is a hosted wiring smoke, not a live host installation readback.
     source: manual
