@@ -1502,6 +1502,17 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-21947: the trigger function that keeps a ledger line citation
+  # immutable. A routine identity needs an exact function_signature, and the
+  # supplemental ownership bridge only ever builds TABLE-kind identities, so
+  # the created-object check reads no owner without this row.
+  - name: ledger_line_citation_immutable
+    kind: function
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    function_signature: "()"
 
 relation_evidence:
   - name: consumer_flow_windows
