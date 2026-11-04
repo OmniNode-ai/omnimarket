@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_rule_nomatch_effect
+node_type: effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Send a class-keyed missing-rule case through the installed exception
+  queue emit verb. Queue owns coalescing and triage dispatch.
+input_model: omnimarket.models.error_rule_match.ModelErrorRuleNoMatchRequest
+output_model: omnimarket.models.error_rule_match.ModelErrorRuleNoMatchResult
+handler:
+  module: omnimarket.nodes.node_error_rule_nomatch_effect.handler
+  class: HandlerErrorRuleNoMatch
+  input_model: omnimarket.models.error_rule_match.ModelErrorRuleNoMatchRequest
+  output_model: omnimarket.models.error_rule_match.ModelErrorRuleNoMatchResult
+entrypoint:
+  name: NodeErrorRuleNoMatchEffect
+  module: omnimarket.nodes.node_error_rule_nomatch_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_error_rule_nomatch_effect.handler:HandlerErrorRuleNoMatch
+  handlers:
+  - operation: emit
+    topic: onex.cmd.omnimarket.error-rule-nomatch.v1
+    handler:
+      module: omnimarket.nodes.node_error_rule_nomatch_effect.handler
+      name: HandlerErrorRuleNoMatch
+    input_model: omnimarket.models.error_rule_match.ModelErrorRuleNoMatchRequest
+    event_model:
+      name: ModelErrorRuleNoMatchRequest
+      module: omnimarket.models.error_rule_match
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.error-rule-nomatch-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.error-rule-nomatch.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.error-rule-nomatch.v1
+  publish_topics:
+  - onex.evt.omnimarket.error-rule-nomatch-completed.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.error-rule-nomatch.v1
+  producer: The operator run-node caller supplies the typed request over the configured
+    bus.
+externally_consumed_topics:
+- onex.evt.omnimarket.error-rule-nomatch-completed.v1
+metadata:
+  transport_type: kafka
+protocol_dependencies:
+- name: EMIT
+  protocol: omnimarket.protocols.protocol_error_rule_match:ProtocolErrorRuleExceptionEmitter
+  bind_as: emit
+  required: false
