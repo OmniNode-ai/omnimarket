@@ -403,7 +403,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # they are experimental: 31 -> 33.
     # node_omnidash_host_effect is run by `python -m` on the dashboard host, not
     # by a runtime, so it is experimental with no handler_routing: 33 -> 34.
-    assert summary["skipped"] == 34
+    # node_agent_inbox_spool is called in process with an injected bus and clock
+    # and reads with one stable group per host, not by a bus command, so it is
+    # experimental with no handler_routing: 34 -> 35.
+    assert summary["skipped"] == 35
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
