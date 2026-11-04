@@ -46,6 +46,7 @@ class ModelSweepPhaseRequest(BaseModel):
     phase: str
     task_type: Literal["agent_delegation", "document", "summarization", "reasoning"]
     model: str = ""
+    backend_id: str | None = Field(default=None, pattern=r"^\S+$")
     effort: str = ""
     prompt: str
     max_tokens: int = Field(default=8192, gt=0)
@@ -62,6 +63,7 @@ class ModelSweepPhaseReply(BaseModel):
     failure: str = ""
     content: str = ""
     model_used: str = ""
+    backend_id: str | None = None
     finish_reason: str | None = None
     truncated: bool | None = None
     prompt_tokens: int = 0
@@ -122,3 +124,4 @@ class ModelLinearCommentsSweepResult(BaseModel):
     degraded: bool
     control: str
     written: ModelSweepWritten
+    held_drafts: list[dict[str, JsonValue]] = Field(default_factory=list)

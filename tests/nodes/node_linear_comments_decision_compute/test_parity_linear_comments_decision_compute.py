@@ -149,7 +149,8 @@ def test_held_tally_matches_the_old_block(n: int) -> None:
             {"kind": "tally", "held": held, "needing_count": 1, "accepted_count": 1}
         )
     )
-    assert result.held_by_class == EXPECTED["held_by_class"][n]
+    # The captured block predates the distinct absent-consumer class.
+    assert result.held_by_class == {**EXPECTED["held_by_class"][n], "no_consumer": 0}
 
 
 @pytest.mark.parametrize("n", range(len(CASES["degraded"])))

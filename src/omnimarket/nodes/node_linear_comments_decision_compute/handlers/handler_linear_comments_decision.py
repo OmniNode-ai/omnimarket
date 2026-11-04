@@ -83,10 +83,27 @@ TRUNCATING_FINISH_REASONS = ("length", "max_tokens", "max_output_tokens", "token
 _FLOOR_FAILURE = re.compile(
     r"\bproven floor\b|\bexit(?:ed|s)?(?:\s+code)?\s*[:=]?\s*3\b", _FLAGS
 )
+_NO_CONSUMER_FAILURE = re.compile(
+    r"\bno (?:live )?consumer groups? (?:is|was|were|are) (?:bound|live)\b|"
+    r"\bno service was listening\b|\bDelegateNoConsumerRefusedError\b|\babsent_consumer\b",
+    _FLAGS,
+)
+_RETRYABLE_FAILURE = re.compile(
+    r"\bconnection (?:reset|refused|aborted)\b|\bECONN(?:RESET|REFUSED|ABORTED)\b|"
+    r"\bConnection(?:Reset|Refused|Aborted)?Error\b|"
+    r"\bETIMEDOUT\b|\bTimeoutError\b|\btimed?[ -]?out\b|"
+    r"\bHTTP (?:502|503|504)\b",
+    _FLAGS,
+)
+_PERMANENT_FAILURE = re.compile(
+    r"\b(?:unauthorized|forbidden|permission denied|rate limit|TASK_MISMATCH)\b|"
+    r"\bHTTP (?:400|401|403|404|429)\b",
+    _FLAGS,
+)
 _TIMEOUT_FAILURE = re.compile(
     r"ran about \d+\s*minutes? against a \d+\s*minute shell budget|"
     r"\b(?:shell|delegation|execution) budget\b|\btimed?[ -]?out\b|"
-    r"\bpeer reconcile holds\b|\bbackground time limit\b",
+    r"\bpeer reconcile holds\b|\bbackground time limit\b|\bTimeoutError\b|\bETIMEDOUT\b",
     _FLAGS,
 )
 _TRUNCATED_FAILURE = re.compile(r"cut off mid-sentence|\btruncat", _FLAGS)
@@ -358,6 +375,8 @@ def classify_held(held: ModelHeldInput) -> EnumHeldClass:
     """Total: whatever arrives, one member of the closed set leaves."""
     if _FLOOR_FAILURE.search(held.reason):
         return EnumHeldClass.FLOOR_REFUSED
+    if _NO_CONSUMER_FAILURE.search(held.reason):
+        return EnumHeldClass.NO_CONSUMER
     if _TIMEOUT_FAILURE.search(held.reason):
         return EnumHeldClass.TIMEOUT
     if held.truncated or _TRUNCATED_FAILURE.search(held.reason):
@@ -367,6 +386,26 @@ def classify_held(held: ModelHeldInput) -> EnumHeldClass:
     if held.stage == "verify" and held.reason.strip():
         return EnumHeldClass.UNSOURCED
     return EnumHeldClass.TRANSPORT
+
+
+def retryable_failure(held: ModelHeldInput) -> bool:
+    """Unknown failures are transport for reporting, never evidence to retry.
+
+    Source, quality and verification refusals keep their gates. Only a failed
+    drafting transport with a measured connection, timeout or absent-consumer
+    signature is eligible for one caller-owned retry.
+    """
+    return (
+        held.stage == "delegate"
+        and not held.truncated
+        and classify_held(held)
+        in (EnumHeldClass.TRANSPORT, EnumHeldClass.TIMEOUT, EnumHeldClass.NO_CONSUMER)
+        and not _PERMANENT_FAILURE.search(held.reason)
+        and bool(
+            _NO_CONSUMER_FAILURE.search(held.reason)
+            or _RETRYABLE_FAILURE.search(held.reason)
+        )
+    )
 
 
 def held_by_class(held: Sequence[ModelHeldInput]) -> dict[str, int]:
@@ -480,7 +519,9 @@ class HandlerLinearCommentsDecision:
             and request.held is not None
         ):
             return ModelLinearCommentsDecisionResult(
-                kind=kind, held_classes=tuple(classify_held(h) for h in request.held)
+                kind=kind,
+                held_classes=tuple(classify_held(h) for h in request.held),
+                retryable=tuple(retryable_failure(h) for h in request.held),
             )
         if (
             kind is EnumLinearCommentsDecisionKind.TALLY

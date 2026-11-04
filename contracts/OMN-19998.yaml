@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-hourly-sweep-held-drafts
+    statement: The canonical hourly comment sweep retains visibly unverified held drafts and retries only measured drafting transport failures on a declared next backend.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: every held ask retains an UNVERIFIED DRAFT candidate in the writer payload and typed terminal; source and verifier failures remain held; only measured connection, timeout and absent-consumer failures retry once on the overlay-declared backend, sharing a two-attempt budget with truncation -- falsifier: uv run --frozen pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_held_drafts_and_retry.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -63,6 +68,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-hourly-sweep-held-drafts
+    description: Scoped sweep regression. The initial 18-case file produced 11 failures and 7 passing controls before the change. Covers retained candidates, refusal boundaries, typed retry routing and the shared retry budget. Does not assert the original controller timer or live host installation criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_held_drafts_and_retry.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-hourly-sweep-bus-smoke
+    description: Hosted wiring smoke discovers and auto-wires the real sweep and decision contracts on an in-memory bus. Recorded delegation terminals exercise recovery on the declared next backend and exhausted retries emitting labelled held drafts. No live external tracker or inference call is asserted.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_comments_sweep_orchestrator/test_bus_cycle.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
     source: manual

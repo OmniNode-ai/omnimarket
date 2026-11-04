@@ -126,6 +126,7 @@ class HandlerSweepBus:
             emitted_at=run.emitted_at,
             prompt=phase.prompt,
             task_type=phase.task_type,
+            backend_id=phase.backend_id,
             max_tokens=phase.max_tokens,
             requested_timeout_seconds=(
                 phase.timeout_seconds if phase.task_type == "agent_delegation" else None
@@ -157,6 +158,7 @@ class HandlerSweepBus:
         text = content if isinstance(content, str) else ""
         reason = failure if isinstance(failure, str) else ""
         model_used = payload.get("model_used")
+        backend_id = payload.get("backend_id")
         finish = payload.get("finish_reason")
         truncated = payload.get("truncated")
         return ModelSweepPhaseReply(
@@ -165,6 +167,7 @@ class HandlerSweepBus:
             or ("" if text.strip() else "the delegation returned no content"),
             content=text,
             model_used=model_used if isinstance(model_used, str) else "",
+            backend_id=backend_id if isinstance(backend_id, str) else None,
             finish_reason=finish if isinstance(finish, str) else None,
             truncated=truncated if isinstance(truncated, bool) else None,
             prompt_tokens=_int(payload, "prompt_tokens"),
