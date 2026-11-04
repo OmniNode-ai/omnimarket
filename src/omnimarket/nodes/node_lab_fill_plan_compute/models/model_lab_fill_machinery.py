@@ -16,6 +16,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 SOURCES = ("friction-class", "tick-key", "machinery-ticket")
 MACHINERY_KIND = "machinery"
@@ -113,6 +115,9 @@ class ModelLabFillMachineryCandidatesRequest(BaseModel):
     tick_lines: tuple[ModelLabFillMachineryTickLine, ...] = ()
     tickets: tuple[ModelLabFillMachineryTicket, ...] = ()
     claims: tuple[ModelLabFillMachineryClaim, ...] = ()
+    # HOLD and RELEASE rows: a deploy-drift tick key whose daemon a live scope=retired-units HOLD
+    # names is skipped as held, so the held repair is not dispatched again.
+    hold_rows: tuple[ModelLandingLedgerRow, ...] = ()
     policy: ModelLabFillMachineryPolicy | None = None
 
 
