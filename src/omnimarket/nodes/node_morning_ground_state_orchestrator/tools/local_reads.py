@@ -1117,7 +1117,7 @@ def canonical_clone_health(ctx: ModelMorningToolContext, _: BaseModel) -> Result
             state = "CLEAN"
         if unmerged is None:
             state = "UNKNOWN"
-        if state == "DETACHED":
+        if detached:
             red_rows.append(
                 f"RED detached HEAD: host={host} clone={clone.name} at {head}"
             )
@@ -1152,7 +1152,7 @@ def canonical_clone_health(ctx: ModelMorningToolContext, _: BaseModel) -> Result
         "host": host,
         "clones": cast(JsonValue, rows),
         "wedged": sum(r["state"] == "WEDGED" for r in rows),
-        "detached": sum(r["state"] == "DETACHED" for r in rows),
+        "detached": len(red_rows),
         "dirty": sum(r["state"] == "DIRTY" for r in rows),
         "red_rows": cast(JsonValue, red_rows),
         "standing_control_manifest_present": control.is_dir(),

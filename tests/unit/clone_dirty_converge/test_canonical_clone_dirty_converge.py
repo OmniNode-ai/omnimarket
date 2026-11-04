@@ -434,6 +434,52 @@ def test_a_detached_clone_an_open_claim_names_is_left_alone(
     assert _git("branch", "--show-current", cwd=detached_case.clone) == ""
 
 
+@pytest.mark.parametrize(
+    ("refused_for", "expected_status"),
+    [
+        (DETACHED_AGE - 1, EnumDirtyConvergeStatus.SKIPPED),
+        (DETACHED_AGE, EnumDirtyConvergeStatus.FAILED),
+        (2 * DETACHED_AGE, EnumDirtyConvergeStatus.FAILED),
+    ],
+)
+def test_lab_clone_detached_reconcile_missing_head_commit(
+    detached_case: Planted,
+    refused_for: int,
+    expected_status: EnumDirtyConvergeStatus,
+) -> None:
+    clone = detached_case.clone
+    (clone / "local.txt").write_text("local commit\n")
+    _git("add", "local.txt", cwd=clone)
+    _git("commit", "--quiet", "-m", "local commit", cwd=clone)
+    head = _git("rev-parse", "HEAD", cwd=clone)
+    (clone / ".git/objects" / head[:2] / head[2:]).unlink()
+    missing = subprocess.run(
+        ["git", "cat-file", "-e", f"{head}^{{commit}}"],
+        cwd=clone,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    assert missing.returncode != 0
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_detached(handler, detached_case, refused_for)
+
+    (outcome,) = handler.tick()
+
+    assert outcome.status is expected_status, outcome
+    assert outcome.clone == str(clone)
+    assert outcome.refused_for_seconds == refused_for
+    if expected_status is EnumDirtyConvergeStatus.FAILED:
+        assert "HEAD does not resolve" in outcome.reason
+    else:
+        assert "below the declared" in outcome.reason
+    assert (clone / ".git/HEAD").read_text().strip() == head
+    assert (clone / "local.txt").read_text() == "local commit\n"
+
+
 def test_a_dirty_clone_refused_only_for_the_detached_bound_is_left_alone(
     staged_case: Planted,
 ) -> None:

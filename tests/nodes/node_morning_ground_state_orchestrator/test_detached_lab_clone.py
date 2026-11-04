@@ -101,3 +101,43 @@ def test_ground_state_reports_no_red_row_for_attached_clones(tmp_path: Path) -> 
     result = canonical_clone_health(_ctx(tmp_path, clones), ModelNoInput())
     assert result["detached"] == 0
     assert result["red_rows"] == []
+
+
+def test_ground_state_reports_detached_lab_clone_during_conflicted_rebase(
+    tmp_path: Path,
+) -> None:
+    clones = tmp_path / "clones"
+    _clone(clones, "attached")
+    stuck = _clone(clones, "omnimarket")
+    _git("checkout", "--quiet", "-b", "topic", cwd=stuck)
+    (stuck / "a.txt").write_text("topic\n")
+    _git("commit", "--quiet", "-am", "topic edit", cwd=stuck)
+    _git("checkout", "--quiet", "dev", cwd=stuck)
+    (stuck / "a.txt").write_text("upstream\n")
+    _git("commit", "--quiet", "-am", "upstream edit", cwd=stuck)
+    _git("checkout", "--quiet", "topic", cwd=stuck)
+    rebase = subprocess.run(
+        ["git", "rebase", "dev"],
+        cwd=stuck,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=scrub_git_location_env(os.environ),
+    )
+    assert rebase.returncode == 1, rebase.stderr
+    assert _git("branch", "--show-current", cwd=stuck) == ""
+    assert _git("diff", "--name-only", "--diff-filter=U", cwd=stuck) == "a.txt"
+    head = _git("rev-parse", "--short=12", "HEAD", cwd=stuck)
+
+    result = canonical_clone_health(_ctx(tmp_path, clones), ModelNoInput())
+
+    assert result["wedged"] == 1
+    assert result["detached"] == 1
+    assert result["red_rows"] == [
+        f"RED detached HEAD: host={socket.gethostname()} clone=omnimarket at {head}"
+    ]
+    rows = cast(list[dict[str, Any]], result["clones"])
+    assert rows[0]["clone"] == "omnimarket"
+    assert rows[0]["state"] == "WEDGED"
+    assert rows[0]["unmerged_paths"] == 1
+    assert rows[1]["state"] == "CLEAN"

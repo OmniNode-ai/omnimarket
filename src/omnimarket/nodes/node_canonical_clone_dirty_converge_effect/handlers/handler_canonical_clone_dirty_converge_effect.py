@@ -387,15 +387,19 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         """
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
-        before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
-        git_dir_text = self._out(clone, "rev-parse", "--absolute-git-dir")
-        if not (before and git_dir_text):
-            return outcome(skipped, "HEAD does not resolve")
         if refused_for < self.detached_age:
             return outcome(
                 skipped,
                 f"detached for {refused_for}s, below the declared {int(self.detached_age)}s",
             )
+        # A raw ref can name a missing object. Require the commit before allowing
+        # the converge script to move HEAD and potentially lose its only reference.
+        before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+        if not before:
+            return outcome(failed, "HEAD does not resolve to a commit")
+        git_dir_text = self._out(clone, "rev-parse", "--absolute-git-dir")
+        if not git_dir_text:
+            return outcome(failed, "git directory does not resolve")
         if any((Path(git_dir_text) / marker).exists() for marker in _IN_PROGRESS):
             return outcome(skipped, "a git operation is in progress in the clone")
         lane = self._open_claim_naming(clone)
