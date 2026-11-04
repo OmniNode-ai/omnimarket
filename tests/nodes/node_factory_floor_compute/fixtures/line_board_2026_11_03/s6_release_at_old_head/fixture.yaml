@@ -1,0 +1,47 @@
+case: s6_release_at_old_head
+variant: observed
+observed_at: '2026-11-03T11:30:00Z'
+derivation: 'ledger: CLAIM, TERMINAL, MSG, HOLD and RELEASE rows naming private-repo-3#1511, ticket
+  OMN-22312 or lane fill-zero-0800 since 2026-11-03T00:00Z, ts <= observed_at; watcher: private-repo-3#1511
+  from the pull request API, head 148511fd943c (committer date 10:59:28Z) at observed_at'
+overlay_file: ../line_board.yaml
+plan_path_contains: []
+sources:
+  pr_watcher: present
+  plans_clone: absent
+  goal_file: absent
+  plans_today: absent
+  linear_snapshot: absent
+  required_contexts: present
+  running_evidence: absent
+  ledger_window: 'present: 2 rows'
+ledger_rows:
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7823
+  ts: '2026-11-03T07:59:41Z'
+  kind: CLAIM
+  original_sha256: 52f6cdffba1a7d6751df29020f68b5ff0b787033f9c347c469aee0ee78429fd1
+  scrubbed_sha256: 3f6ff7bf0508d31e3e180fb9e9c8ad1442def1395bf704753582feba34de28db
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8530
+  ts: '2026-11-03T10:25:27Z'
+  kind: RELEASE
+  original_sha256: 73a66e334478780ba97598ae24adf92ac01c903ace96f06dc27fd02f3839af0b
+  scrubbed_sha256: 7c3369ec43ff80e6aae473146b96aeaf0e669d0c0173b9fc4ef256b59f13c82c
+expected:
+  stops:
+  - line: ticket:OMN-22312
+    kind: release-at-old-head
+    pr: private-repo-3#1511
+    evidence:
+    - RELEASE 2026-11-03T10:25:27Z lane=orchestrator-31d9
+    heads:
+    - 4c569a45d7eb
+    - 148511fd943c
+    written: '2026-11-03T10:25:27Z'
+  absent: []
+scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every
+  stored text are replaced (private-repo-N, [scrubbed]). original_sha256 is the digest of the ledger row
+  as the ledger or its archive roll holds it; scrubbed_sha256 is the digest of the row as stored here.'
+second_pair_note: 'The plan''s second pair (private-repo-3#1502, RELEASE 06:53:24Z at 1d0295d3dd37,
+  next 07:37:25Z at cd269b1bb6c1) is not frozen: its head cd269b1bb6c1 has committer date 07:27:45Z, after
+  the plan''s observation time 07:20Z, so at 07:20Z the head equalled the release and no stop exists;
+  a second observation time would be an eighth case.'
