@@ -1086,6 +1086,7 @@
   "tests/nodes/node_linear_comments_sweep_orchestrator/test_golden_chain_linear_comments_sweep_orchestrator.py": 0.09,
   "tests/nodes/node_linear_comments_sweep_orchestrator/test_overlay.py": 0.15,
   "tests/nodes/node_linear_comments_sweep_orchestrator/test_phase_bus.py": 0.22,
+  "tests/nodes/node_linear_snapshot_effect/test_snapshot_json_shape.py": 0.3,
   "tests/nodes/node_linear_ticket_write_effect/test_golden_chain_linear_ticket_write_effect.py": 0.23,
   "tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py": 0.04,
   "tests/nodes/node_linear_ticket_write_effect/test_ticket_cli.py": 0.38,
