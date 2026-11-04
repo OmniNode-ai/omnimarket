@@ -43,6 +43,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ...models.model_operator_message_spool import ModelHookMessageRequest
 from .handlers.handler_access_mode_detect import HandlerAccessModeDetect
 from .handlers.handler_access_mode_state import (
     prune_stale_sessions,
@@ -67,6 +68,7 @@ from .handlers.handler_lab_dispatch_gate import (
     mac_route_count,
     read_lab_pool,
 )
+from .handlers.handler_operator_message_ledger import message_ledger
 from .handlers.handler_operator_reply_check import (
     REPEAT_WINDOW,
     HandlerOperatorReplyCheck,
@@ -292,7 +294,20 @@ def session_opted_in(session_id: str, environ: Mapping[str, str]) -> bool:
     return (directory / session_id).is_file()
 
 
+def _message_rows(
+    event: str, payload: Mapping[str, Any], environ: Mapping[str, str]
+) -> None:
+    try:
+        message_ledger(environ).handle(
+            ModelHookMessageRequest(event=event, payload=dict(payload))
+        )
+    except Exception as exc:
+        # Keep the existing fail-open hook contract, while making persistence failures visible.
+        print(f"[operator-message] {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
 def on_session_start(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("session-start", payload, environ)
     result = resolve(payload, environ)
     if not result.operator_facing:
         return 0
@@ -332,6 +347,7 @@ def on_session_start(payload: Mapping[str, Any], environ: Mapping[str, str]) -> 
 
 
 def on_prompt(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("prompt", payload, environ)
     result = resolve(payload, environ)
     if not result.operator_facing:
         return 0
@@ -407,6 +423,7 @@ def _idle_seconds(state: Mapping[str, Any]) -> float | None:
 
 
 def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("pre-tool", payload, environ)
     tool = payload.get("tool_name")
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
@@ -468,6 +485,7 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
 
 
 def on_stop(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("stop", payload, environ)
     text = payload.get("last_assistant_message")
     if not isinstance(text, str) or not text.strip():
         return 0
@@ -503,7 +521,18 @@ def on_stop(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
     return 0
 
 
+def on_drain(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    from dataclasses import asdict
+
+    result = message_ledger(environ).handle(
+        ModelHookMessageRequest(event="drain", payload={})
+    )
+    print(json.dumps(asdict(result)))
+    return 0 if result.status.depth == 0 and not result.status.errors else 1
+
+
 EVENTS = {
+    "drain": on_drain,
     "session-start": on_session_start,
     "prompt": on_prompt,
     "pre-tool": on_pre_tool,
@@ -593,7 +622,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {"systemMessage": f"{TAG} hook error ({type(exc).__name__}: {exc})"}
             )
         )
-        return 0
+        return 1 if args and args[0] == "drain" else 0
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
+from omnimarket.models.model_operator_message_spool import ModelOperatorSpoolStatus
 from omnimarket.nodes.node_capture_silence_watch_effect.models.model_capture_watch_delivery import (
     ModelCaptureWatchDelivery,
 )
@@ -21,3 +22,5 @@ class ModelCaptureWatchEvaluation(BaseModel):
     deliveries: tuple[ModelCaptureWatchDelivery, ...]
     heartbeat_published: bool
     heartbeat_error: str | None = None
+
+    operator_message_spool: ModelOperatorSpoolStatus | None = None

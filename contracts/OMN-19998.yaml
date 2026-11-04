@@ -41,6 +41,12 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-unanswered-repository-slice
+    statement: Transcript structure and independently appended arrival rows expose unanswered operator messages even when content capture is absent.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: tool-only turns remain unanswered, one-line assistant text covers all preceding operator messages, machine prompts are excluded, arrival replay is idempotent, pending arrivals drain on any session hook and an independent drain invocation, stale spool depth and age reach the capture watch, and private handoff words or a flagged resend request remain available -- falsifier: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q'
+
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -160,4 +166,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov --tb=line -k runner_annotations
+        cwd: .
+
+  - id: dod-omn19998-unanswered-repository-slice
+    description: Focused structural, spool, installed-hook, ledger-host and in-memory runtime falsifiers for this repository slice. Live host-unit installation, the capture-stopped headless session and the real labelled sample of 60 remain separate required lab evidence.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q -n 0 -p no:randomly
         cwd: .

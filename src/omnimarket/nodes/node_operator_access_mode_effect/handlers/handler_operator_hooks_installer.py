@@ -26,6 +26,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from ....models.model_operator_message_spool import (
+    ModelOperatorSpoolUnitRequest,
+    ModelOperatorSpoolUnitResult,
+)
+
 MARKER = "operator-access-mode"
 RETIRED_MARKERS = ("foreground-bash-shape-guard.py",)
 NODE_DIR = Path(__file__).resolve().parents[1]
@@ -66,6 +71,19 @@ def _copy_package(hooks_dir: Path) -> Path:
     (root / "omnimarket" / "nodes" / "__init__.py").write_text(
         '"""Stub: the installed operator-supervision hooks only."""\n', encoding="utf-8"
     )
+    # Shared standard-library semantics and types must accompany the isolated hook copy.
+    package = NODE_DIR.parents[1]
+    for relative in (
+        "handlers/operator_messages.py",
+        "handlers/operator_message_spool.py",
+        "enums/enum_machine_prompt.py",
+        "models/model_operator_message_spool.py",
+        "contracts/operator_message_arrivals.json",
+    ):
+        destination = root / "omnimarket" / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        (destination.parent / "__init__.py").touch()
+        shutil.copy2(package / relative, destination)
     return root
 
 
@@ -137,3 +155,48 @@ def uninstall_operator_hooks(settings: dict[str, Any], hooks_dir: Path) -> None:
     root = copy_root(hooks_dir)
     if root.exists():
         shutil.rmtree(root)
+
+
+class HandlerOperatorSpoolDrainUnit:
+    """Render the independent host unit; the host installer owns loading it."""
+
+    def handle(
+        self, request: ModelOperatorSpoolUnitRequest
+    ) -> ModelOperatorSpoolUnitResult:
+        import plistlib
+
+        from ....handlers.operator_message_spool import load_arrival_policy
+
+        env = dict(request.environment)
+        env["PYTHONPATH"] = request.copy_root
+        if request.overlay_path:
+            env["ONEX_OPERATOR_MESSAGE_OVERLAY"] = request.overlay_path
+        policy = load_arrival_policy(env)
+        argv = [request.python, "-B", "-m", ENTRY_MODULE, "drain"]
+        if request.platform == "launchd":
+            unit = {
+                "Label": policy.drain_label,
+                "ProgramArguments": argv,
+                "StartInterval": policy.drain_interval_seconds,
+                "RunAtLoad": True,
+                "EnvironmentVariables": env,
+                "ProcessType": "Background",
+            }
+            return ModelOperatorSpoolUnitResult(
+                files={
+                    f"{policy.drain_label}.plist": plistlib.dumps(unit).decode("utf-8")
+                }
+            )
+        service = "[Unit]\nDescription=Drain durable operator-message rows\n[Service]\nType=oneshot\n"
+        service += "ExecStart=" + " ".join(shlex.quote(arg) for arg in argv) + "\n"
+        service += "".join(
+            "Environment=" + shlex.quote(f"{key}={value}") + "\n"
+            for key, value in sorted(env.items())
+        )
+        timer = f"[Unit]\nDescription=Drain durable operator-message rows\n[Timer]\nOnBootSec={policy.drain_interval_seconds}s\nOnUnitActiveSec={policy.drain_interval_seconds}s\nUnit={policy.drain_label}.service\n[Install]\nWantedBy=timers.target\n"
+        return ModelOperatorSpoolUnitResult(
+            files={
+                f"{policy.drain_label}.service": service,
+                f"{policy.drain_label}.timer": timer,
+            }
+        )

@@ -1763,6 +1763,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: operator-unanswered-detect
+        name: Operator unanswered-message detector and arrival spool
+        language: system
+        entry: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/(nodes/node_operator_unanswered_compute/|nodes/node_operator_access_mode_effect/|handlers/operator_message|models/operator_unanswered\.py$|models/model_operator_message_spool\.py$|enums/enum_machine_prompt\.py$|contracts/operator_message_arrivals\.json$)|tests/nodes/node_operator_unanswered_compute/)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20905: operator decisions and asks are recorded from the bus by the capture nodes, not by
       # hooks. SYNC with the ci.yml lint step of the same name.
       - id: operator-capture-nodes

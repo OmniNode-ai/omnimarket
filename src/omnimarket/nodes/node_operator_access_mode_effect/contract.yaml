@@ -72,11 +72,44 @@ handler_routing:
       input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_remote_setup_request.ModelRemoteSetupRequest
       output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_remote_setup_request.ModelRemoteSetupResult
 
+    - operation: record_operator_messages
+      handler:
+        name: HandlerOperatorMessageLedger
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_message_ledger
+      input_model: omnimarket.models.model_operator_message_spool.ModelHookMessageRequest
+      output_model: omnimarket.models.model_operator_message_spool.ModelHookMessageResult
+    - operation: render_operator_spool_drain_unit
+      handler:
+        name: HandlerOperatorSpoolDrainUnit
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_hooks_installer
+      input_model: omnimarket.models.model_operator_message_spool.ModelOperatorSpoolUnitRequest
+      output_model: omnimarket.models.model_operator_message_spool.ModelOperatorSpoolUnitResult
+
+operator_message_policy:
+  packaged_overlay: contracts/operator_message_arrivals.json
+  overlay_env: ONEX_OPERATOR_MESSAGE_OVERLAY
+  ledger_node: node_work_ledger_append_effect
+  publisher_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  description: The configured canonical ledger client resolves its principal writer topic from the ledger node contract.
+  rows:
+    arrival: STATUS with kind=operator-message-arrival, item=msg-<id>, session, native_id, content_sha256 and item_state=open; no words.
+    reply: STATUS with kind=operator-message-reply, session and comma-separated answers=msg-<id> values.
+    acknowledgement: Private STATUS with kind=operator-message-acknowledgement, item, session, percent-encoded words and item_state=open.
+  drain:
+    operation: drain
+    module: omnimarket.nodes.node_operator_access_mode_effect.runtime_operator_hook_cli
+    render_handler: HandlerOperatorSpoolDrainUnit
+    platforms: [launchd, systemd]
+    schedule: drain_interval_seconds in the overlay
+    dispatches_lanes: false
+    runs_tick: false
+
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: true
   side_effects:
+    - appends idempotent arrival, reply and private handoff rows through the ledger bus, with a host-wide durable spool
     - writes one state file per session and optional override and silent files under the access-mode state directory
     - refuses a tool call (exit 2) or a turn end (Stop decision block) that breaks a supervision rule
   runtime_profiles: []
