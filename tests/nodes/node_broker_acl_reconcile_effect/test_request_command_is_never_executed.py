@@ -76,7 +76,7 @@ def test_request_command_argv_comes_only_from_the_configured_environment_command
     assert "touch" not in calls[0]
 
 
-def test_request_command_unset_environment_command_is_refused_without_running():
+def test_request_command_unset_environment_command_uses_driver_without_running_argv():
     calls: list[list[str]] = []
     env = {k: v for k, v in _ENV.items() if k != "ONEX_ACL_RECONCILE_COMMAND"}
     result = HandlerBrokerAclReconcile(_recording(calls), env).handle(
@@ -84,7 +84,7 @@ def test_request_command_unset_environment_command_is_refused_without_running():
     )
     assert calls == []
     assert result.exit_code == 2
-    assert "ONEX_ACL_RECONCILE_COMMAND" in result.error
+    assert result.error.startswith("unset:")
 
 
 def test_request_command_operator_entry_point_has_no_command_override(capsys):

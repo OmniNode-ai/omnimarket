@@ -80,6 +80,13 @@ def _sources(home: Path) -> dict[str, str]:
     _put(home, paths["process-health.json"], json.dumps(HEALTH).encode())
     _put(
         home,
+        paths["delegation.json"],
+        json.dumps(
+            {"generated_at": "2026-10-31T15:35:00Z", "status": "read", "windows": {}}
+        ).encode(),
+    )
+    _put(
+        home,
         paths["reports/decision-map/decisions.json"],
         json.dumps(DECISIONS).encode(),
     )
@@ -215,10 +222,13 @@ def test_reports_manifest_states_each_data_age_and_what_it_is_measured_from(
     assert document["published_at"] == "2026-10-31T16:00:00Z"
     reports = _manifest(tmp_path)
     assert list(reports) == [
+        "delegation",
         "factory_floor",
         "process_health",
         "decision_map",
     ]
+    assert reports["delegation"]["refresh"] == "tick"
+    assert reports["delegation"]["data"][0]["remote"] == "delegation.json"
     floor = reports["factory_floor"]["data"][0]
     assert floor["as_of"] == "2026-10-31T15:40:00Z"
     assert floor["status"] == "read"

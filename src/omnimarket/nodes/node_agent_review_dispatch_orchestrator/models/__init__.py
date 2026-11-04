@@ -5,6 +5,7 @@
 from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent_review import (
     EnumAgentReviewOutcome,
     EnumAgentReviewReason,
+    EnumAgentRungOutcome,
     ModelAgentFinding,
     ModelAgentHarnessRung,
     ModelAgentQuorumRequest,
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent
     ModelAgentReviewTerminal,
     ModelAgentReviewTopics,
     ModelAgentRosterSnapshot,
+    ModelAgentRungAttempt,
     ModelAgentSigningKeyStore,
     ModelAgentVoter,
     ModelAgentVoterReview,
@@ -28,6 +30,7 @@ from omnimarket.nodes.node_agent_review_dispatch_orchestrator.models.model_agent
 __all__ = [
     "EnumAgentReviewOutcome",
     "EnumAgentReviewReason",
+    "EnumAgentRungOutcome",
     "ModelAgentFinding",
     "ModelAgentHarnessRung",
     "ModelAgentQuorumRequest",
@@ -43,6 +46,7 @@ __all__ = [
     "ModelAgentReviewTerminal",
     "ModelAgentReviewTopics",
     "ModelAgentRosterSnapshot",
+    "ModelAgentRungAttempt",
     "ModelAgentSigningKeyStore",
     "ModelAgentVoter",
     "ModelAgentVoterReview",

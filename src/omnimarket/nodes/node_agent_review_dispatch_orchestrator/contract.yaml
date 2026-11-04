@@ -6,9 +6,11 @@ runtime_profiles: [effects]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Review one pull request head concurrently through approved roster voters, aggregate
-  the CI gate's quorum verdict, sign and atomically store a receipt, and publish the
-  stored receipt as a pull request review. Replay recorded commands as historical
+  Review one pull request head through a chain of responders: the overlay orders the
+  roster's rungs, the first rung is called alone and each next rung only when the rungs
+  before it left the quorum short, an unavailable voter is skipped and recorded and never
+  a red. Aggregate the CI gate's quorum verdict over the votes the chain gathered, sign
+  and atomically store a receipt, and publish the stored receipt as a pull request review. Replay recorded commands as historical
   terminals. The required deployment overlay supplies every voter, endpoint, threshold
   and deadline; the contract supplies no deployment defaults.
 input_model:
