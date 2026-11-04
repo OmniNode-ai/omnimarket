@@ -112,6 +112,7 @@ capabilities:
   - name: "hook_events_by_correlation_http_read"
     description: "Serve GET /v1/projections/hook-events/by-correlation with tenant-scoped, three-state answers."
 metadata:
+  transport_type: database
   description: "Hook-events by-correlation projection read, served from the runtime."
   author: "OmniNode Team"
   license: "MIT"

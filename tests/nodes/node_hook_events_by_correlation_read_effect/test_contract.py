@@ -57,3 +57,15 @@ def test_contract_says_the_tenant_key_is_the_slug():
 
 def test_the_test_fake_satisfies_the_shared_identity_protocol():
     assert isinstance(FakeIdentity(), ProtocolHttpTenantIdentity)
+
+
+def test_database_adapter_transport_is_declared_in_the_contract():
+    from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
+        NodeComplianceSweep,
+    )
+
+    adapter = CONTRACT_PATH.parent / "handlers" / "http_dependencies.py"
+    violations = NodeComplianceSweep()._check_transport_imports(
+        "omnimarket", adapter.name, CONTRACT_PATH.parent.name, adapter
+    )
+    assert violations == []
