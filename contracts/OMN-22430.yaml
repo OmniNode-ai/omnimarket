@@ -1,0 +1,157 @@
+schema_version: 1.0.0
+ticket_id: OMN-22430
+title: 'Host desired and observed state shapes: models, host roles, the surface overlay schema v2, the four topics and their grants, read-committed readers'
+summary: 'omnimarket part of task T2: the host desired state, observed state and layer models, the optional roles on the lab hosts overlay host row, lab_daemons.yaml schema v2 with its JSON schema, and the ACL node aggregating declared grant blocks (TOPIC, GROUP, CLUSTER, TRANSACTIONAL_ID) through an omnimarket driver. AC9 is omnibase_infra; AC10 is the lab step after merge.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22430-ac1
+  statement: A desired entry whose reference is not a tag is refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A desired entry whose reference is not a tag is refused -- falsifier: `uv run pytest tests/models/test_model_host_desired_state.py -k ref_must_be_tag` fails'
+- id: req-omn22430-ac2
+  statement: Records serialise byte for byte and their keys are `fleet`, `<host>/<surface>` and the layer id.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: Records serialise byte for byte and their keys are `fleet`, `<host>/<surface>` and the layer id -- falsifier: `uv run pytest tests/models -k host_state_roundtrip` fails'
+- id: req-omn22430-ac3
+  statement: A layer request without `expected_revision` or `request_id` is refused.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: A layer request without `expected_revision` or `request_id` is refused -- falsifier: `-k layer_request_requires_revision_and_id` fails'
+- id: req-omn22430-ac4
+  statement: A host table with two publishers, or with none while a role is used, is refused, and a table without roles still loads.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: A host table with two publishers, or with none while a role is used, is refused, and a table without roles still loads -- falsifier: `uv run pytest tests/models -k exactly_one_desired_publisher` fails'
+- id: req-omn22430-ac5
+  statement: A `launcher` row is accepted only with `cap` 0 and without `lab` or `lab-proof`.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: A `launcher` row is accepted only with `cap` 0 and without `lab` or `lab-proof` -- falsifier: `-k launcher_requires_cap_zero_and_no_lane_role` fails'
+- id: req-omn22430-ac6
+  statement: The layer bounds are overlay data and the model enforces them.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: The layer bounds are overlay data and the model enforces them -- falsifier: `uv run pytest tests/models -k layer_life_bounds_from_overlay` fails'
+- id: req-omn22430-ac7
+  statement: Schema v2 loads every v1 daemon with no field lost; a surface naming a host or an absolute path is refused.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: Schema v2 loads every v1 daemon with no field lost; a surface naming a host or an absolute path is refused -- falsifier: `uv run pytest tests/nodes/node_lab_daemon_sync_effect -k schema_v2_superset` fails'
+- id: req-omn22430-ac8
+  statement: The ACL node applies grant blocks declared in other contracts, including transactional ids.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: The ACL node applies grant blocks declared in other contracts, including transactional ids -- falsifier: `uv run pytest tests/nodes/node_broker_acl_reconcile_effect -k aggregates_declared_grants` fails'
+evidence_requirements:
+- kind: tests
+  description: The model, overlay schema and ACL aggregation tests run with the broker never dialed.
+  command: uv run pytest tests/models tests/nodes/node_lab_daemon_sync_effect tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22430-ac1
+  description: AC1 A desired entry whose reference is not a tag is refused. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models/test_model_host_desired_state.py -q --no-cov --tb=line -k ref_must_be_tag
+    cwd: .
+- id: dod-omn22430-ac2
+  description: AC2 Records serialise byte for byte and their keys are `fleet`, `<host>/<surface>` and the layer id. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models -q --no-cov --tb=line -k 'host_state_roundtrip or host_state_keys'
+    cwd: .
+- id: dod-omn22430-ac3
+  description: AC3 A layer request without `expected_revision` or `request_id` is refused. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models -q --no-cov --tb=line -k layer_request_requires_revision_and_id
+    cwd: .
+- id: dod-omn22430-ac4
+  description: AC4 A host table with two publishers, or with none while a role is used, is refused, and a table without roles still loads. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models -q --no-cov --tb=line -k 'exactly_one_desired_publisher or rows_without_roles_load'
+    cwd: .
+- id: dod-omn22430-ac5
+  description: AC5 A `launcher` row is accepted only with `cap` 0 and without `lab` or `lab-proof`. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models -q --no-cov --tb=line -k launcher_requires_cap_zero_and_no_lane_role
+    cwd: .
+- id: dod-omn22430-ac6
+  description: AC6 The layer bounds are overlay data and the model enforces them. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/models -q --no-cov --tb=line -k 'layer_life_bounds_from_overlay or layer_life_hardcoded_default'
+    cwd: .
+- id: dod-omn22430-ac7
+  description: AC7 Schema v2 loads every v1 daemon with no field lost; a surface naming a host or an absolute path is refused. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_daemon_sync_effect -q --no-cov --tb=line -k 'schema_v2_superset or no_host_literals'
+    cwd: .
+- id: dod-omn22430-ac8
+  description: AC8 The ACL node applies grant blocks declared in other contracts, including transactional ids. At the merge base the new models, validators and node functions do not exist, so these tests fail.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect -q --no-cov --tb=line -k 'aggregates_declared_grants or transactional_id_grants_applied'
+    cwd: .
+- id: dod-omn22430-integration-proof
+  description: The pushed head ran the host state model suites, the lab daemon schema v2 suite and the broker ACL aggregation suites together on a lab host through the lab work runner and exited 0. The broker apply of the four topics and their grants is a separate lab step after merge.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22430 -- uv run --frozen pytest tests/models tests/nodes/node_lab_daemon_sync_effect tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn22430-deploy-host-state
+  description: 'Hosted deploy readback: GitHub must serve the new ACL driver at the checked-out commit, and the host state models, role rules, schema v2 and declared grant application must pass their focused behavior tests. No lab service or broker access is required; applying topics and grants to the dev broker remains a separate post-merge step.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - AC5
+  - AC6
+  - AC7
+  - AC8
+  checks:
+  - check_type: command
+    check_value: |
+      bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_broker_acl_reconcile_effect/handlers/driver_broker_acl.py" | grep -Fx "class AclGrant:" > /dev/null'
+    cwd: .
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/models/test_model_host_desired_state.py tests/models/test_model_host_layer.py tests/models/test_model_overlay_host_roles.py tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_schema_v2.py tests/nodes/node_broker_acl_reconcile_effect/test_aggregates_declared_grants.py tests/nodes/node_broker_acl_reconcile_effect/test_request_command_is_never_executed.py tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov --tb=line
+    cwd: .
