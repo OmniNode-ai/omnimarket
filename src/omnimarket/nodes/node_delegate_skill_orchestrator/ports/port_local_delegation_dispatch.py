@@ -987,6 +987,8 @@ def _local_rung_attempt(
         "error_message": failure_message,
         "acceptance_decision": EnumDelegationAcceptanceDecision.CLIMB.value,
         "acceptance_reason": EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value,
+        # OMN-22474: the key this call ran on; the handler keeps a customer key only.
+        "secret_ref": result.secret_ref,
     }
 
 
@@ -2902,6 +2904,8 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
+                        # OMN-22474: the key this call ran on (customer keys only survive).
+                        "secret_ref": transport_result.secret_ref,
                         # OMN-22224: the call's measured time (a timeout carries
                         # the time spent before the bound ended it).
                         "duration_ms": transport_result.latency_ms,
@@ -3363,6 +3367,8 @@ class LocalDelegationDispatchPort:
                     "quality_score": gate_result.quality_score,
                     "error_message": "; ".join(gate_result.failure_reasons),
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-22474: the key this call ran on (customer keys only survive).
+                    "secret_ref": result.secret_ref,
                     # OMN-22224: the call's measured time.
                     "duration_ms": result.latency_ms,
                     # OMN-20717: whether this rung's cost was measured.

@@ -1,0 +1,55 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22474"
+title: "Each customer key a delegation attempt used carries its own secret_ref"
+summary: >-
+  The delegate-skill attempt record declares secret_ref, a minted tenant key
+  reference left out of the dump when absent. Both dispatch ports record the
+  key each call ran on, and the handler keeps only a customer key, so a run
+  that used keys X then Y moves both rows' last_used_at through the existing
+  writer. Step 2 of OMN-19996's two-PR delivery; omniclaude's omnimarket pin
+  already decodes the key.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [events]
+requirements:
+  - id: "req-per-attempt-secret-ref"
+    statement: "Every customer key a run used moves its own last_used_at."
+    acceptance:
+      - id: "AC1"
+        statement: "ModelDelegateSkillAttemptRecord declares an optional secret_ref that both dispatch ports fill on each customer-key attempt and leave out otherwise, so a terminal with no customer-key attempt serialises byte-identical to dev -- falsifier: uv run pytest tests/unit/delegation -q -k per_attempt_secret_ref fails"
+      - id: "AC2"
+        statement: "one run that used customer keys X and then Y moves both credential rows' last_used_at to that run's terminal time, and a house-key or unresolved attempt moves no row -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -q -k two_customer_keys fails"
+      - id: "AC3"
+        statement: "the Wire Compatibility Gate passes against the omnimarket commit omniclaude pins -- falsifier: uv run python scripts/ci/check_wire_compatibility.py exits non-zero"
+evidence_requirements:
+  - kind: "tests"
+    description: "The attempt record keeps a customer key ref and omits an absent one; the handler carries it on both ladder paths and drops a house ref; the local port's rung entry names the call's key."
+    command: "uv run pytest tests/unit/delegation/test_per_attempt_secret_ref_omn22474.py tests/unit/delegation/test_consumer_first_secret_ref_omn19996.py -q -n 0 --no-cov"
+  - kind: "tests"
+    description: "A deployed-path run on keys X then Y moves both rows through the writer; a house-key attempt moves none."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_two_customer_keys_omn22474.py -q -n 0 --no-cov"
+dod_evidence:
+  - id: "dod-omn22474-per-attempt-secret-ref"
+    description: "Unit test pass for the declared per-attempt secret_ref on the record, the handler and the local port."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_per_attempt_secret_ref_omn22474.py tests/unit/delegation/test_consumer_first_secret_ref_omn19996.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22474-two-customer-keys"
+    description: "Unit test pass for a two-key deployed-path run moving both last-used rows."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_two_customer_keys_omn22474.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22474-wire-compat"
+    description: "The wire compatibility tests pass, so the declared attempt key stays decodable by the pinned consumer."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
