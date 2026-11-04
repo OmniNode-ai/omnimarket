@@ -1,0 +1,20 @@
+# The recorded layout of 2026-11-02 (about 15:50Z), neutralised: the h101 clone sat at the home
+# `Code` directory, outside the registry roots a directory scan lists, so the scan-based clone sync
+# exited 0 and moved nothing; the h053 clone sat behind origin. `behind` is how many commits the
+# clone is behind origin at the start of the test. Every name here is a stand-in; the real directory
+# name comes from the `repos.knowledge_base` overlay key.
+repo_dir: kbrepo
+origin_slug: OmniNode-ai/kbrepo
+ref: main
+registry_roots:
+  - registry
+hosts:
+  h101:
+    clone_rel: Code/kbrepo
+    behind: 1
+  h053:
+    clone_rel: data/kbrepo
+    behind: 2
+  h051:
+    clone_rel: data/kbrepo
+    behind: 0
