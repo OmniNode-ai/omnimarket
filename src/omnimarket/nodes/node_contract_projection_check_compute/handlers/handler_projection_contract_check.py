@@ -30,6 +30,9 @@ from omnimarket.nodes.node_contract_projection_check_compute.handlers.check_curs
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.check_dlq import (
     check_dlq,
 )
+from omnimarket.nodes.node_contract_projection_check_compute.handlers.check_typed_entry import (
+    check_typed_entry,
+)
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.findings import (
     RULE_ZERO_SCAN,
     VALIDATOR_ID,
@@ -62,6 +65,8 @@ class HandlerProjectionContractCheck:
             findings.extend(check_access(request.nodes))
         elif request.rule is EnumProjectionContractRule.DLQ:
             findings.extend(check_dlq(request.handlers))
+        elif request.rule is EnumProjectionContractRule.TYPED_ENTRY:
+            findings.extend(check_typed_entry(request.nodes))
         else:
             findings.extend(check_cursor(request.nodes, request.cursor_baseline))
         return ModelValidationReport.from_findings(
