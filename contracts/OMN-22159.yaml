@@ -147,7 +147,6 @@ dod_evidence:
       fails if either is absent from the commit GitHub serves. It checks the
       published artifact and does not attest a running deployment.
     source: manual
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: |-
