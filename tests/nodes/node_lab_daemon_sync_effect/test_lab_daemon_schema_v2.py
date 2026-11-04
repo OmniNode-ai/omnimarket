@@ -78,7 +78,7 @@ def test_schema_v2_superset() -> None:
     [
         {"hosts": ["*"]},
         {"host": "example"},
-        {"repository_paths": ["/Users/x/y"]},  # test-literal-ok
+        {"repository_paths": ["/opt/example"]},
         {"repository_paths": ["plugins/../example"]},
         {"repository_paths": ["plugins/~example"]},
         {"installed": {"kind": "json_file", "path": "/opt/x"}},
