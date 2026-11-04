@@ -99,6 +99,11 @@ class ModelLabHostRow(_ModelOverlayBase):
     ssh_user: SshUser | None = None
     proxy_jump: SshJump | None = None
     ssh_identity: SshIdentity | None = None
+    # The same three cells for the ``fallback_targets`` destinations, which a machine off the lab LAN
+    # reaches by a different route than ``target``. Omitted: the row-level cell applies. Same rules as above.
+    fallback_ssh_user: SshUser | None = None
+    fallback_proxy_jump: SshJump | None = None
+    fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
     available: bool = True
