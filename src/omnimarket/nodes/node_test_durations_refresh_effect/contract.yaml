@@ -84,8 +84,8 @@ replay:
   deterministic: true
 
 metadata:
-  transport_type: local
-  description: "Test durations refresh EFFECT - keeps the durations record ahead of the freshness cap (OMN-22389, no external transport)"
+  transport_type: inmemory
+  description: "Test durations refresh EFFECT - keeps the durations record ahead of the freshness cap (OMN-22389)"
   author: "OmniNode Team"
   created: "2026-11-03"
   tags:
