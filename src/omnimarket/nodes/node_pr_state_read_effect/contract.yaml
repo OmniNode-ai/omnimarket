@@ -58,6 +58,14 @@ handler_routing:
         name: ModelPrStatePageRequest
         module: omnimarket.models.pr_state.model_pr_state_page_fetch
 
+# The one HTTP request the node makes, declared so the compliance sweep sees
+# the transport HandlerPrStatePageSource uses.
+endpoints:
+  projection_page:
+    path: /projection/{topic}
+    method: GET
+    description: "Read-only: one page of the pr_state exposure from the projection API."
+
 # Run from the `onex pr-state` command, not by a bus command: it subscribes to
 # and publishes no topic.
 event_bus:
