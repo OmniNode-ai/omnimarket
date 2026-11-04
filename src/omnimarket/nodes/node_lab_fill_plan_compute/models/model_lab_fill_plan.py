@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from .model_lab_fill_machinery import ModelLabFillMachineryPolicy
 from .model_lab_fill_plan_config import (
     ModelLabFillHeadroomPolicy,
     ModelLabFillPlanConfig,
@@ -90,6 +91,8 @@ class ModelLabFillDispatchItem(BaseModel):
     engine: str
     route: str
     fallback: ModelLabFillFallback | None = None
+    machinery_key: str | None = None
+    priority_class: str | None = None
 
 
 class ModelLabFillSkipEntry(BaseModel):
@@ -112,6 +115,8 @@ class ModelLabFillDispatchPlanRequest(BaseModel):
     capacity: ModelLabFillCapacityResult
     config: ModelLabFillPlanConfig
     fenced: tuple[str, ...] = ()
+    # The machinery tier's ranking policy; left out, the node contract's.
+    machinery: ModelLabFillMachineryPolicy | None = None
 
 
 class ModelLabFillDispatchPlanResult(BaseModel):

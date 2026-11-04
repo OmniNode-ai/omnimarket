@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-22126: gate the import schema and both real runtime profiles.
+#
+# Asserted by CI Summary (EXPECTED_EXTERNAL_CONTEXTS) and so standalone and
+# unconditional: no `paths:` or `branches:` filter, no job-level `if:`, and a
+# `merge_group` trigger, so the context reports on every pull-request and queue
+# shape and is never legitimately absent. Whether the prompt cost estimate node
+# changed is decided by the `scope` step; the steps after it run only when it
+# did, and the job still reports success when it did not.
+name: Prompt Cost Estimate Contract
+on:
+  pull_request:
+  merge_group:
+permissions:
+  contents: read
+# Cancel only superseded pull request runs; a cancelled queue run fails the entry.
+concurrency:
+  group: prompt-cost-estimate-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  prompt-cost-estimate-contract:
+    name: prompt-cost-estimate-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          if grep -Eq '^(src/omnimarket/nodes/node_prompt_cost_estimate_compute/|tests/nodes/node_prompt_cost_estimate_compute/|tests/test_golden_chain_prompt_cost_estimate_omn20388\.py$|\.github/workflows/prompt-cost-estimate-contract\.yml$|\.pre-commit-config\.yaml$)' <<<"${changed}"; then
+            echo "relevant=true" >> "${GITHUB_OUTPUT}"
+            echo "The prompt cost estimate node, its tests or this workflow changed; running the checks."
+          else
+            echo "relevant=false" >> "${GITHUB_OUTPUT}"
+            echo "Nothing the prompt cost estimate checks read changed; reporting success without running them."
+          fi
+      - if: steps.scope.outputs.relevant == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - if: steps.scope.outputs.relevant == 'true'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: "0.8.3"
+      - if: steps.scope.outputs.relevant == 'true'
+        run: uv sync --frozen
+      - name: Import schema, token provenance and uncertainty
+        if: steps.scope.outputs.relevant == 'true'
+        run: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -q --no-cov --refuse-skips
+      - name: In-memory profile
+        if: steps.scope.outputs.relevant == 'true'
+        run: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -q --no-cov -m "not kafka" --refuse-skips
+      - name: Start isolated Redpanda
+        if: steps.scope.outputs.relevant == 'true'
+        id: redpanda
+        run: >-
+          docker run --detach --rm --name prompt-cost-estimate-redpanda
+          --cpus=1 --memory=1536m -p 127.0.0.1:29926:9092
+          docker.redpanda.com/redpandadata/redpanda@sha256:82a69763bef8d8b55ea5a520fa1b38f993908ef68946819ca1aed43541824c48
+          redpanda start --mode dev-container --smp 1 --memory 1G --reserve-memory 0M
+          --kafka-addr 0.0.0.0:9092 --advertise-kafka-addr 127.0.0.1:29926
+      - name: Wait for the isolated broker
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker exec prompt-cost-estimate-redpanda rpk cluster info -X brokers=127.0.0.1:9092; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Compare real Redpanda and in-memory results, including the overlay
+        if: steps.scope.outputs.relevant == 'true'
+        env:
+          PROMPT_COST_TEST_BUS_OVERLAY: tests/nodes/node_prompt_cost_estimate_compute/fixtures/local_redpanda_profile.yaml
+        run: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_two_profile.py -k test_two_profile_same_result -q --no-cov --refuse-skips
+      - name: Stop isolated Redpanda
+        if: always() && steps.redpanda.outcome == 'success'
+        run: docker stop prompt-cost-estimate-redpanda

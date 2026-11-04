@@ -80,6 +80,8 @@ def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
             args += ["--ref", launch.ref]
     if launch.pr:
         args += ["--pr", launch.pr]
+    if launch.priority_class:
+        args += ["--priority-class", launch.priority_class]
     args.append("--detach")
     return args
 

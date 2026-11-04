@@ -228,13 +228,25 @@ def _recording_gateway() -> tuple[object, list[tuple[str, dict[str, object]]]]:
             return {"data": {"viewer": {"id": "viewer-1"}}}
         if "GetIssueByIdentifier" in query:
             return {"data": {"issue": {"id": "parent-uuid"}}}
+        if "GetIssueProject" in query:
+            # The new child inherited no project, so no clear is sent (OMN-21723).
+            return {
+                "data": {
+                    "issue": {
+                        "identifier": "OMN-1",
+                        "createdAt": "",
+                        "labels": {"nodes": []},
+                        "project": None,
+                    }
+                }
+            }
         return {"data": {"issueCreate": {"issue": {"identifier": "OMN-1", "url": "u"}}}}
 
     gateway._post = fake_post  # type: ignore[method-assign]
     return gateway, calls
 
 
-def test_gateway_creates_in_backlog_with_no_project() -> None:
+def test_gateway_creates_in_backlog_with_an_explicit_null_project() -> None:
     gateway, calls = _recording_gateway()
     gateway.create_ticket(  # type: ignore[attr-defined]
         title="t",
@@ -243,12 +255,11 @@ def test_gateway_creates_in_backlog_with_no_project() -> None:
         parent="OMN-5",
         assignee_id=None,
     )
-    query, variables = calls[-1]
-    assert "issueCreate" in query
+    query, variables = next(c for c in calls if "issueCreate" in c[0])
     assert variables["stateId"] == "state-backlog"
     assert variables["parentId"] == "parent-uuid"
     assert "projectId" not in variables
-    assert "projectId" not in query
+    assert "projectId: null" in query
 
 
 def test_gateway_refuses_when_the_team_has_no_backlog_state() -> None:
@@ -360,7 +371,7 @@ def test_gateway_assigns_the_pillar_owner_else_the_viewer() -> None:
     gateway.create_ticket(  # type: ignore[attr-defined]
         title="t", description="d", team="Omninode", parent=None, assignee_id=_DASH
     )
-    assert calls[-1][1]["assigneeId"] == _DASH
+    assert next(c for c in calls if "issueCreate" in c[0])[1]["assigneeId"] == _DASH
     assert not any("GetViewer" in q for q, _ in calls)
 
 
@@ -369,4 +380,6 @@ def test_gateway_without_a_pillar_assigns_the_creator() -> None:
     gateway.create_ticket(  # type: ignore[attr-defined]
         title="t", description="d", team="Omninode", parent=None, assignee_id=None
     )
-    assert calls[-1][1]["assigneeId"] == "viewer-1"
+    assert (
+        next(c for c in calls if "issueCreate" in c[0])[1]["assigneeId"] == "viewer-1"
+    )

@@ -138,19 +138,49 @@ class HandlerHostReconcileCompute:
                 f"no undeclared omnimarket provider in {fact.gate_venv}",
             )
         if fact.kind == "path_shadow":
+            if fact.is_dangling:
+                found = f"a dangling symlink to {fact.resolved} (target missing)"
+            elif fact.is_symlink:
+                found = f"a symlink to {fact.resolved}"
+            else:
+                found = "a regular file"
+            if fact.moved_to and fact.points_to_wrapper:
+                return "MOVED", (
+                    f"{fact.shadow} was {found} and outranked {fact.wrapper}; "
+                    f"moved it to {fact.moved_to}; {fact.shadow} now links to "
+                    f"{fact.wrapper_resolved}"
+                )
             if fact.is_symlink and fact.points_to_wrapper:
                 return "ALREADY_AT_TARGET", (
                     f"{fact.shadow} is a symlink to the canonical wrapper "
                     f"({fact.wrapper_resolved}) — not a shadow"
                 )
-            found = (
-                f"a symlink to {fact.resolved}" if fact.is_symlink else "a regular file"
-            )
+            if fact.moved_to:
+                return "SHADOWED", (
+                    f"{fact.shadow} was {found}; moved it to {fact.moved_to} but "
+                    f"could not link {fact.wrapper} in its place: {fact.link_error}"
+                )
+            if fact.is_dangling:
+                fix = (
+                    "fix: run the host reconcile in repair mode, which moves the "
+                    "dangling link aside and links the wrapper"
+                )
+            elif fact.is_dispatch_link:
+                fix = (
+                    "fix: run the host reconcile in repair mode, which moves the "
+                    "dispatch-venv link aside and links the wrapper"
+                )
+            else:
+                fix = "fix: uv tool uninstall omnibase-core"
             return "SHADOWED", (
                 f"{fact.shadow} exists ({found}) and outranks {fact.wrapper} "
                 f"for every non-interactive onex invocation (the "
-                f"interactive-shell alias never covers those) — "
-                f"fix: uv tool uninstall omnibase-core"
+                f"interactive-shell alias never covers those) — {fix}"
+                + (
+                    f"; the repair could not move it: {fact.link_error}"
+                    if fact.link_error
+                    else ""
+                )
             )
         if fact.drifted:
             return "DRIFT", (
@@ -198,7 +228,11 @@ class HandlerHostReconcileCompute:
         if surface in {"clone-surface", "venv-surface"}:
             return f"restore the missing delegate named in the detail, then {rerun}"
         if surface == "onex-path-shadow":
-            return f"uv tool uninstall omnibase-core, then {rerun}"
+            return (
+                f"uv tool uninstall omnibase-core (a uv tool shim), or {rerun} in repair "
+                f"mode (a dangling symlink is moved aside and the wrapper linked), "
+                f"then {rerun}"
+            )
         if surface == "canonical-guard":
             return (
                 f'OMNI_HOME={root} uv run --project "$OMNIBASE_INTERNAL_HOME" onex-canonical-clone-install '

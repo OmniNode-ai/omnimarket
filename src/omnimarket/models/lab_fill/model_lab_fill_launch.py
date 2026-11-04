@@ -46,3 +46,5 @@ class ModelLabFillLaunch(BaseModel):
     # OMN-21881: ``auto`` lets the runner place a repo-only lane on a lab host first and a
     # cloud session as the overflow; None passes no --placement (the runner's own default).
     placement: Literal["auto"] | None = None
+    # OMN-22413: the runner's queue class for work that fixes the factory itself.
+    priority_class: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_rows_build_compute
+version: "1.0.0"
+description: Builds ledger row argv from typed fields or a supplied JSON request object, returning refusals without running a writer.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_ledger_rows_build_compute: omnimarket.nodes.node_ledger_rows_build_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - omnibase_core>=0.47.28,<0.48.0
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ledger]
+node_role: compute
+pack: "routing"
+display_name: "Ledger Rows Build Compute"

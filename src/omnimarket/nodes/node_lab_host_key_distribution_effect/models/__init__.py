@@ -13,13 +13,27 @@ from .model_lab_host_key_distribution import (
     ModelLabHostKeyDistributionResult,
     ModelPairResult,
 )
+from .model_lab_host_public_keys_install import (
+    PUBLIC_KEYS_OVERLAY_ID,
+    EnumHostInstallStatus,
+    ModelHostInstallResult,
+    ModelLabHostPublicKeysInstallRequest,
+    ModelLabHostPublicKeysInstallResult,
+    ModelLabHostPublicKeysOverlay,
+)
 
 __all__ = [
+    "PUBLIC_KEYS_OVERLAY_ID",
+    "EnumHostInstallStatus",
     "EnumKeyFile",
     "EnumLineState",
     "EnumPairStatus",
+    "ModelHostInstallResult",
     "ModelHostKeyMaterial",
     "ModelLabHostKeyDistributionRequest",
     "ModelLabHostKeyDistributionResult",
+    "ModelLabHostPublicKeysInstallRequest",
+    "ModelLabHostPublicKeysInstallResult",
+    "ModelLabHostPublicKeysOverlay",
     "ModelPairResult",
 ]

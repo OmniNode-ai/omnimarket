@@ -87,10 +87,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_fill_selection_compute",
-    # OMN-20388: the public cost estimator's engine. onex-api calls it in
-    # process on each upload, so it subscribes to no topic and has no
-    # onex.nodes entry point.
-    "node_prompt_cost_estimate_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -401,7 +397,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_overlay_tree_install_effect and node_host_installer_registry_units are
     # called in process by the host installer and declare no handler_routing, so
     # they are experimental: 31 -> 33.
-    assert summary["skipped"] == 33
+    # node_omnidash_host_effect is run by `python -m` on the dashboard host, not
+    # by a runtime, so it is experimental with no handler_routing: 33 -> 34.
+    # node_agent_inbox_spool is called in process with an injected bus and clock
+    # and reads with one stable group per host, not by a bus command, so it is
+    # experimental with no handler_routing: 34 -> 35.
+    assert summary["skipped"] == 35
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

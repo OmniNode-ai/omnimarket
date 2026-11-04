@@ -23,9 +23,16 @@ network or git access.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
+
+from omnimarket.handlers.runtime_proof_close_rules import MERGED_NOT_PROVEN_RUNNING
+from omnimarket.models.runtime_proof.model_runtime_proof_close import (
+    ModelProofCloseDecision,
+)
 
 
 class EnumCloseEvidenceKind(StrEnum):
@@ -67,6 +74,29 @@ class ModelCloseEvidence(BaseModel):
 
     kind: EnumCloseEvidenceKind | None = None
     detail: str = ""
+    # OMN-22334: a merge delivers the change; it does not show the change runs. A
+    # merge-delivery kind is admitted only with an allowed runtime-proof verdict.
+    runtime_proof: ModelProofCloseDecision | None = None
+
+
+#: Kinds whose proof is the merge itself. They close only with runtime proof (OMN-22334).
+MERGE_DELIVERY_KINDS: frozenset[EnumCloseEvidenceKind] = frozenset(
+    {
+        EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
+        EnumCloseEvidenceKind.SUPERSEDED_BY_MERGED_PR,
+    }
+)
+
+
+class RuntimeProofProbe(Protocol):
+    """Source of the runtime-proof verdict for one merge-delivered ticket (OMN-22334).
+
+    ``None`` means no runtime receipt was found; the merge then closes nothing.
+    """
+
+    def proof_for(
+        self, *, ticket_id: str, merged_pr: Mapping[str, str]
+    ) -> ModelProofCloseDecision | None: ...
 
 
 class ModelCloseDecision(BaseModel):
@@ -125,6 +155,32 @@ def evaluate_close_evidence(evidence: ModelCloseEvidence | None) -> ModelCloseDe
     )
 
 
+def _require_runtime_proof(
+    evidence: ModelCloseEvidence, decision: ModelCloseDecision
+) -> ModelCloseDecision:
+    """OMN-22334: a Done WRITE on merge-delivery evidence needs runtime proof.
+
+    Applies at the write chokepoint only. ``evaluate_close_evidence`` keeps judging
+    completions already written, so no past Done is reverted by this rule.
+    """
+    if evidence.kind not in MERGE_DELIVERY_KINDS:
+        return decision
+    if evidence.runtime_proof is not None and evidence.runtime_proof.allowed:
+        return decision
+    why = (
+        evidence.runtime_proof.reason
+        if evidence.runtime_proof is not None
+        else f"{MERGED_NOT_PROVEN_RUNNING}: no runtime receipt was supplied"
+    )
+    return ModelCloseDecision(
+        allowed=False,
+        reason=(
+            f"{why} (evidence kind {evidence.kind.value!r}: a merge alone never "
+            "closes a ticket)"
+        ),
+    )
+
+
 def enforce_close_evidence(
     *, ticket_id: str, evidence: ModelCloseEvidence | None
 ) -> ModelCloseDecision:
@@ -134,6 +190,8 @@ def enforce_close_evidence(
     verdict. On success returns the ALLOW verdict. Pure logic — no I/O.
     """
     decision = evaluate_close_evidence(evidence)
+    if decision.allowed and evidence is not None:
+        decision = _require_runtime_proof(evidence, decision)
     if not decision.allowed:
         raise CloseEvidenceRefusedError(ticket_id, decision)
     return decision
@@ -144,6 +202,7 @@ __all__: list[str] = [
     "EnumCloseEvidenceKind",
     "ModelCloseDecision",
     "ModelCloseEvidence",
+    "RuntimeProofProbe",
     "enforce_close_evidence",
     "evaluate_close_evidence",
 ]

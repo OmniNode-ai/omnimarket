@@ -27,7 +27,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TextIO, cast
 
 from omnimarket.models.claude_code_binding import (
+    EnumAdditiveStartScope,
     EnumClientMaxMode,
+    ModelAdditiveClientBinding,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.additive_start_scope import (
+    AdditiveStartScope,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
     HandlerClaudeCodeHookAdapter,
@@ -35,6 +40,9 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_clau
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import (
     CONTRACT_PATH,
     load_client_section,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.reply_principal import (
+    ReplyPrincipalResolver,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelClientSection,
@@ -111,6 +119,7 @@ def main(
     stderr: TextIO | None = None,
     section: ModelClientSection | None = None,
     clock: Callable[[], float] = time.monotonic,
+    principal_resolver: Callable[[], str] | None = None,
 ) -> int:
     started = clock()
     parent_pid = os.getppid()
@@ -140,6 +149,13 @@ def main(
     except (ValueError, OSError) as exc:
         err.write(f"bad hook input: {exc}\n")
         return EXIT_BAD_INPUT
+    if (
+        isinstance(binding, ModelAdditiveClientBinding)
+        and binding.start_scope is EnumAdditiveStartScope.WORKSPACE
+        and not AdditiveStartScope().contains(hook_input.get("cwd"))
+    ):
+        # Outside the start scope the hook exits at once: no client, no request, no record.
+        return 0
     try:
         receipt_client = client if client is not None else _load_client()
     except (ImportError, AttributeError) as exc:
@@ -154,10 +170,20 @@ def main(
             daemon=True,
         ).start()
     try:
-        remaining_ms = (
-            binding.deadline_ms - round((clock() - started) * 1000) - EXIT_RESERVE_MS
+        # An additive row's budget is the whole of its wait: the process answers (or prints
+        # nothing) within it, so the exit reserve is not taken from it.
+        reserve_ms = (
+            0 if isinstance(binding, ModelAdditiveClientBinding) else EXIT_RESERVE_MS
         )
-        result = HandlerClaudeCodeHookAdapter(receipt_client).handle(
+        remaining_ms = (
+            binding.deadline_ms - round((clock() - started) * 1000) - reserve_ms
+        )
+        result = HandlerClaudeCodeHookAdapter(
+            receipt_client,
+            principal_resolver=principal_resolver
+            if principal_resolver is not None
+            else ReplyPrincipalResolver().resolve,
+        ).handle(
             ModelHookAdapterRequest(
                 binding=binding.model_copy(
                     update={"deadline_ms": max(1, remaining_ms)}
@@ -173,6 +199,13 @@ def main(
     if result.hook_output is not None:
         out.write(json.dumps(result.hook_output))
         out.flush()
+        if isinstance(binding, ModelAdditiveClientBinding):
+            package = result.client_verdict
+            err.write(
+                f"onex-claude-code-hook additive profile={binding.profile} "
+                f"sha256={package.package_sha256} chars={len(package.text)} "
+                f"elapsed_ms={round((clock() - started) * 1000)}\n"
+            )
     return 0
 
 

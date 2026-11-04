@@ -221,6 +221,73 @@ def test_lab_host_key_distribution_unknown_or_unavailable_scope_refused(
     assert fake.calls == []
 
 
+def test_lab_host_key_distribution_reaches_a_named_out_of_placement_host(
+    table: ModelLabHostsTable,
+) -> None:
+    """`available: false` is a placement flag: an operator may name the host to reach anyway."""
+    fake = FakeTransport(table)
+    result = HandlerLabHostKeyDistribution(fake).handle(
+        ModelLabHostKeyDistributionRequest(
+            hosts=("alpha", "delta"), table=table, allow_unavailable=("delta",)
+        )
+    )
+    assert result.refusal is None
+    assert result.exit_code == 0
+    assert [(p.source, p.destination, p.status) for p in result.pairs] == [
+        ("alpha", "delta", EnumPairStatus.OK),
+        ("delta", "alpha", EnumPairStatus.OK),
+    ]
+    assert fake.files["delta"]["authorized_keys"] == [_key("alpha", "user")]
+
+
+def test_lab_host_key_distribution_allow_unavailable_is_limited_to_named_hosts(
+    table: ModelLabHostsTable,
+) -> None:
+    """Allowing one out-of-placement host never admits another, or a host outside the scope."""
+    only_alpha = table.model_copy(
+        update={
+            "hosts": tuple(
+                row.model_copy(update={"available": row.name == "alpha"})
+                for row in table.hosts
+            )
+        }
+    )
+    fake = FakeTransport(only_alpha)
+    handler = HandlerLabHostKeyDistribution(fake)
+    other = handler.handle(
+        ModelLabHostKeyDistributionRequest(
+            hosts=("alpha", "beta", "delta"),
+            table=only_alpha,
+            allow_unavailable=("delta",),
+        )
+    )
+    assert other.exit_code == 2
+    assert other.refusal is not None
+    assert "beta" in other.refusal
+    with pytest.raises(ValidationError, match="outside the scope"):
+        ModelLabHostKeyDistributionRequest(
+            hosts=("alpha",), table=only_alpha, allow_unavailable=("delta",)
+        )
+    assert fake.calls == []
+
+
+def test_lab_host_key_distribution_cli_allow_unavailable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], table: ModelLabHostsTable
+) -> None:
+    path = tmp_path / "table.yaml"
+    path.write_text(yaml.safe_dump(table.model_dump(mode="json")))
+    args = ["--host", "alpha", "--host", "delta", "--table", str(path), "--dry-run"]
+    assert main(args) == 2
+    assert "delta" in capsys.readouterr().err
+    assert main([*args, "--allow-unavailable", "delta"]) != 2
+    assert "refused:" not in capsys.readouterr().err
+    assert (
+        main(["--host", "alpha", "--allow-unavailable", "delta", "--table", str(path)])
+        == 2
+    )
+    assert "outside the scope" in capsys.readouterr().err
+
+
 def test_lab_host_key_distribution_handler_holds_no_host_literal() -> None:
     node = NodeLabHostKeyDistributionEffect.contract_path.parent
     private_ipv4 = re.compile(
@@ -498,7 +565,11 @@ def test_contract_and_models() -> None:
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert contract["runtime_profiles"] == []
     assert contract["descriptor"]["idempotent"] is True
-    assert contract["metadata"]["related_tickets"] == ["OMN-22115", "OMN-20348"]
+    assert contract["metadata"]["related_tickets"] == [
+        "OMN-22115",
+        "OMN-20348",
+        "OMN-22174",
+    ]
     metadata = yaml.safe_load(
         NodeLabHostKeyDistributionEffect.contract_path.with_name(
             "metadata.yaml"

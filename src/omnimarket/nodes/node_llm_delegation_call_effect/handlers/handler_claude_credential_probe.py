@@ -15,12 +15,18 @@ import re
 import signal
 import subprocess
 import time
+from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    declared_handler_dependencies,
+    process_environment,
+    require_dependencies,
+)
 from omnimarket.models.delegation.model_claude_credential_probe import (
     ModelClaudeCredentialProbeReceipt,
     ModelClaudeCredentialProbeRequest,
@@ -71,7 +77,21 @@ def _terminate(process: subprocess.Popen[str], grace: float) -> str:
 class HandlerClaudeCredentialProbe:
     """Run one bounded Claude Code call and return a redacted, typed receipt."""
 
-    def __init__(self, policy: ModelClaudeCredentialProbePolicy | None = None) -> None:
+    def __init__(
+        self,
+        policy: ModelClaudeCredentialProbePolicy | None = None,
+        dependencies: Mapping[str, object] | None = None,
+    ) -> None:
+        bound = (
+            dependencies
+            if dependencies is not None
+            else require_dependencies(
+                declared_handler_dependencies(
+                    "omnimarket.nodes.node_llm_delegation_call_effect"
+                )
+            )
+        )
+        self._environment = process_environment(bound)
         self.policy = (
             policy if policy is not None else load_claude_credential_probe_policy()
         )
@@ -88,7 +108,11 @@ class HandlerClaudeCredentialProbe:
             "--model",
             request.model,
         ]
-        env = {k: v for k, v in os.environ.items() if k not in self.policy.scrubbed_env}
+        env = {
+            k: v
+            for k, v in self._environment.environment().items()
+            if k not in self.policy.scrubbed_env
+        }
         try:
             process = subprocess.Popen(
                 argv,

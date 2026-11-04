@@ -12,8 +12,8 @@ node_version: 1.0.0
 description: >-
   Join plans, their task manifests, the PR watcher state, the ledger's CLAIM, TERMINAL, HOLD, RELEASE and
   gate STATUS rows, the Linear snapshot plans-today writes, the lab placement reading and the landing
-  controller's merges into one assembly-line record per selected plan (line id, name, status pill, percent
-  built, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
+  controller's merges into one assembly-line record per selected plan (line id, name, condition, blocker, progress,
+  gates, line evidence, data age, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
   waiting pull requests, stoppages from the friction report). A plan with no manifest falls back to the
   plans-today task table. Pure and deterministic: the caller supplies every fact, including the time.
 input_model:
@@ -63,6 +63,21 @@ config:
   gate_pass_verdicts: [pass]
   done_outcomes: [done, merged]
   handoff_outcomes: [handed-off]
+  # Done is merged AND running on dev AND integration-proven (the running_evidence input and a STATUS row in this
+  # state); merged without both is integrating, which the built percent does not count.
+  integration_state: integration
+  integration_pass_verdicts: [pass]
+  integration_fail_verdicts: [fail]
+  # Progress: merged work tasks over valid work tasks (gates are counted apart), to this many decimals, rounded half-up.
+  percent_decimals: 1
+  progress_note_known: "{completed} / {total} work tasks complete"
+  progress_note_no_tasks: No work tasks declared
+  progress_note_unscoped: Work task total not read
+  progress_note_duplicate_ids: Work task total not valid, task ids repeat
+  progress_note_under_review: "Scope needs review: {note}"
+  # Merged work exists but the running-on-dev records were not read, so done is unknown: never a known 0.
+  progress_note_running_unread: "{merged} / {total} work tasks merged; running on dev not read"
+  pending_gate_blocker: "All work tasks recorded done; gate {gates} pending"
   blocked_outcomes: [blocked, failed, partial]
   live_claim_minutes: 45
   # How a line's parts become stations: "task" draws every task of the plan as its own station (its state, tickets and
@@ -123,6 +138,22 @@ config:
   stop_outcomes: [blocked]
   ask_recipients: [orchestrator]
   ask_answer_kinds: [ACK, RELEASE]
+  # Evidence for a task is a ledger row whose typed cells bind it: task= names the task, ticket= one of its tickets,
+  # pr= one of its pull requests. A task id that only appears in a row's free text or reason binds nothing.
+  evidence_cells: [task, ticket, pr]
+  # The task-to-ticket map: a STATUS row whose state= cell is this value maps the task in its task= cell, of the plan
+  # whose path contains its subject= cell (any plan when empty), to the ticket in its ticket= cell and the pull request
+  # in its pr= cell. Both join the task's own; an outcome= in done_outcomes records that the mapped work merged.
+  task_map_state: task-map
+  # A built task whose depends_on names a gate that reads a gate_fail_verdicts verdict (the gate STATUS row, its
+  # subject= the gate's wave or id) carries this note, reads wait and does not count toward the line's built percent.
+  built_ahead_of_gate_label: built ahead of gate
+  # The Limits panel (OMN-22010). A reading older than one publish cycle, or never read, is UNKNOWN and carries no number.
+  # The budget applies to every API key whose overlay row names none; the credit expiry is the day the cloud-session credit ends.
+  limits:
+    publish_cycle_minutes: 5
+    api_budget_usd: 200
+    cloud_credit_expiry: "2026-11-05"
 
 # Called in process by node_factory_floor_effect (and by tests) through HandlerFactoryFloor.handle, not by a bus command.
 metadata:

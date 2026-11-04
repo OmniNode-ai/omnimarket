@@ -23,8 +23,10 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from tests.nodes.node_factory_floor_compute.support import (
     merge,
     pr,
+    proven,
     request,
     row,
+    running_on_dev,
 )
 
 pytestmark = pytest.mark.unit
@@ -109,7 +111,7 @@ def test_a_stop_on_the_plans_own_ticket_stops_the_line_when_no_lane_works_on_it(
         request(plans=(plan_of(scoped("T3", "OMN-3")),), ledger=(blocked_stop(),))
     )
     line = result.lines[0]
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
     assert line.andon.flag
     assert not line.andon.hard
     assert "the gate refused" in line.andon.causes[0]
@@ -126,7 +128,7 @@ def test_a_live_lane_on_the_line_keeps_it_building_with_its_stop_still_listed() 
         )
     )
     line = result.lines[0]
-    assert line.status_pill == "building"
+    assert line.condition == "building"
     assert line.andon.flag
     assert line.andon.causes
 
@@ -148,7 +150,7 @@ def test_a_hold_stops_the_line_whatever_runs_on_it() -> None:
     )
     line = result.lines[0]
     assert line.andon.hard
-    assert line.status_pill == "stopped"
+    assert line.condition == "stopped"
 
 
 def test_a_stalled_lane_does_not_keep_a_stopped_line_building() -> None:
@@ -163,7 +165,7 @@ def test_a_stalled_lane_does_not_keep_a_stopped_line_building() -> None:
     )
     lane = next(lane for lane in result.floor.lanes if lane.stalled)
     assert lane.lane == "one-rt-t10-delegation-1101"
-    assert result.lines[0].status_pill == "stopped"
+    assert result.lines[0].condition == "stopped"
 
 
 def test_a_stop_is_over_once_the_pull_request_it_names_has_merged() -> None:
@@ -209,14 +211,16 @@ def test_a_stop_on_a_ticket_whose_parts_are_all_done_is_over() -> None:
                     reason="premise failed",
                     tickets=("OMN-3",),
                 ),
+                *proven("repo#9"),
             ),
             prs=(pr("repo#9", "MERGED"),),
             merges=(merge("repo#9", 30),),
+            running_evidence=running_on_dev("repo#9"),
         )
     )
     line = result.lines[0]
     assert line.andon.causes == ()
-    assert line.status_pill == "done"
+    assert line.condition == "complete"
 
 
 def handed_off(*prs: str) -> Any:
@@ -235,7 +239,8 @@ def test_a_hand_off_is_active_until_its_pull_request_merges_never_done() -> None
         result = compute_factory_floor(
             request(
                 plans=(plan_of(scoped("T10"), scoped("T1")),),
-                ledger=(handed_off("omnimarket#4799"),),
+                ledger=(handed_off("omnimarket#4799"), *proven("omnimarket#4799")),
+                running_evidence=running_on_dev("omnimarket#4799"),
                 **kwargs,
             )
         )
@@ -251,7 +256,8 @@ def test_a_hand_off_is_active_until_its_pull_request_merges_never_done() -> None
     merged = state(
         prs=(pr("omnimarket#4799", "MERGED"),), merges=(merge("omnimarket#4799", 5),)
     )
-    assert merged == ("done", "PRs merged")
+    assert merged[0] == "done"
+    assert merged[1].startswith("PRs merged, running on dev, integration proof passed")
 
 
 def test_a_hand_off_adds_nothing_to_the_percent_built() -> None:
@@ -261,7 +267,7 @@ def test_a_hand_off_adds_nothing_to_the_percent_built() -> None:
             ledger=(handed_off("omnimarket#4799"),),
         )
     )
-    assert result.lines[0].percent_built == 0
+    assert result.lines[0].progress.percent == 0.0
 
 
 def test_a_dotted_task_id_is_the_one_word_a_lane_name_writes() -> None:

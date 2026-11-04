@@ -1,0 +1,25 @@
+name: node_floor_fill_reducer
+version: "0.1.0"
+description: "Floor fill reducer: the stopped-line fill's per-key state as one pure transition function"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_fill_reducer: "omnimarket.nodes.node_floor_fill_reducer"
+capabilities:
+  standalone: true
+  # false until the fill orchestrator calls the handler in the runtime: auto-wiring
+  # prepares this node as SKIPPED, since it has no bus surface of its own.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "floor-fill", "fsm", "pure"]
+pack: "routing"
+display_name: "Floor Fill Reducer"
+node_role: "reducer"

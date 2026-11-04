@@ -12,7 +12,8 @@ node_version:
   patch: 0
 description: Pure definition-B projection contract checks (declared table access
   covers handler operations, validating projection handlers route to a DLQ, every
-  projection_api exposure declares a cursor_column) emitting the canonical OMN-2362
+  projection_api exposure declares a cursor_column, a routed runner of a writing
+  projection keeps its write path; OMN-18883) emitting the canonical OMN-2362
   validation report. Replaces the three scripts under scripts/ci and
   scripts/validation (OMN-20567).
 handler_routing:
@@ -37,7 +38,7 @@ inputs:
   rule:
     type: str
     required: true
-    description: One of access, dlq, cursor.
+    description: One of access, dlq, cursor, typed-entry.
   nodes:
     type: tuple
     required: false

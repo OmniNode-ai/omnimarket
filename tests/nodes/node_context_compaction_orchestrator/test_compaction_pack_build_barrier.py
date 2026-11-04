@@ -44,6 +44,7 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_comp
     build_pack_command,
 )
 
+from .reply_topics import emitted
 from .test_session_barrier_wait import BARRIER, _request, _Source
 from .test_session_barrier_wait import _probe as _base_probe
 
@@ -304,7 +305,7 @@ async def test_compaction_pack_build_barrier_async_wait_leaves_projection_runnin
     output, _ = await asyncio.gather(
         handler.handle_async(_request()), project_missing_record()
     )
-    assert output.events[-1].status == "built"
+    assert emitted(output.events[-1]).status == "built"
     assert len(bus.commands) == 1
 
 

@@ -29,6 +29,10 @@ def main(argv: list[str] | None = None) -> int:
         from .runtime_lane_census_schedule import main as schedule_main
 
         return schedule_main(arguments[1:])
+    if arguments and arguments[0] == "registry":
+        from .runtime_lane_census_schedule import registry_main
+
+        return registry_main(arguments[1:])
     parser = _Parser(description=__doc__)
     parser.add_argument(
         "--omni-home", dest="workspace_root", default=os.environ.get("OMNI_HOME", "")

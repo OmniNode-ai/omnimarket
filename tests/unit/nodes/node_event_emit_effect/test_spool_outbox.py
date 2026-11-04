@@ -198,3 +198,55 @@ def test_non_capture_spool_record_preserves_pre_identity_wire_shape() -> None:
     serialized = json.loads(_record("delivery-id").to_json())
 
     assert "content_event_id" not in serialized
+
+
+# ---------------------------------------------------------------------------
+# Several emitters share one spool directory: a file a peer already took is
+# not an error (OMN-22345). A lost race used to end the emit with a
+# FileNotFoundError, so the delegation event was never published.
+# ---------------------------------------------------------------------------
+
+
+def _vanished(outbox: SpoolOutbox) -> Path:
+    return outbox.spool_dir / "00000000000000000000_peer-took-it.json"
+
+
+@pytest.mark.parametrize(
+    "tier", [EnumDurabilityTier.TELEMETRY, EnumDurabilityTier.DUTY_CRITICAL]
+)
+def test_append_measures_past_a_file_a_peer_took(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tier: EnumDurabilityTier
+) -> None:
+    outbox = SpoolOutbox(tmp_path / "spool")
+    gone = _vanished(outbox)
+    monkeypatch.setattr(outbox, "_tier_paths", lambda _tier: [gone])
+
+    outcome = outbox.append(_record("e1", tier=tier))
+
+    assert outcome.spool_file is not None
+    assert outcome.spool_file.path.is_file()
+
+
+def test_quarantine_of_a_record_a_peer_already_drained_is_not_an_error(
+    tmp_path: Path,
+) -> None:
+    from omnimarket.nodes.node_event_emit_effect.spool.spool_outbox import (
+        ModelQuarantineReason,
+    )
+
+    outbox = SpoolOutbox(tmp_path / "spool")
+    record = _record("e1")
+    reason = ModelQuarantineReason(
+        quarantined_at=datetime.now(UTC),
+        reason_code="topic_authorization_denied",
+        detail="refused",
+        event_id=record.event_id,
+        event_type=record.event_type,
+        topic=record.topic,
+        queued_at=record.queued_at,
+    )
+
+    destination = outbox.quarantine(_vanished(outbox), reason)
+
+    assert not destination.exists()
+    assert outbox.pending_count() == 0

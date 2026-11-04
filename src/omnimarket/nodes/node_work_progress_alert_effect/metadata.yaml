@@ -1,0 +1,29 @@
+name: node_work_progress_alert_effect
+version: "1.0.0"
+description: >
+  Reads lane CLAIM, STATUS and TERMINAL rows on the runtime heartbeat, builds each
+  live lane's current phase entry, asks the work progress compute node which lanes
+  are over budget, and emits one stall event and one Slack publish command per
+  finding under the finding's idempotency key.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_work_progress_alert_effect: omnimarket.nodes.node_work_progress_alert_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - omnibase_infra
+  - "pydantic>=2.11.0"
+  - "pyyaml>=6.0"
+  # The shared read-only Postgres boundary owns the sync driver import.
+  - "psycopg2-binary>=2.9"
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, observability, alerting, stall, progress]
+pack: "liveness"
+display_name: "Effect: Work Progress Alert"
+node_role: "effect"

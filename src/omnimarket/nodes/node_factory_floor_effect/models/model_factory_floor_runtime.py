@@ -51,6 +51,16 @@ class ModelFactoryFloorLaneSources(BaseModel):
     host_table_env: str = Field(min_length=1)
 
 
+class ModelFactoryFloorLimitSources(BaseModel):
+    """Limits status mirrors, relative to the registry home (OMN-22010)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    api_meter_relpath: str = Field(min_length=1)
+    engines_relpath: str = Field(min_length=1)
+    token_pool_glob: str = Field(min_length=1)
+
+
 class ModelFactoryFloorContainerSource(BaseModel):
     """How a host's container listing is read: ssh to the overlay's target, then the listing command (one JSON object per line)."""
 
@@ -90,6 +100,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     heading_task_patterns: tuple[str, ...] = Field(min_length=1)
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
+    limit_sources: ModelFactoryFloorLimitSources
     container_source: ModelFactoryFloorContainerSource
     output: ModelFactoryFloorOutput
 

@@ -17,6 +17,9 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.handlers.container.container_overlay_dependencies import (
+    host_process_environment,
+)
 from omnimarket.models.delegation.model_delegation_target import (
     ModelDelegationTargetRequest,
 )
@@ -83,7 +86,10 @@ def test_environment_drops_every_key_and_adc_route() -> None:
         _antigravity_environment,
     )
 
-    base = {**_agent_environment(), **dict.fromkeys(_KEY_VARIABLES, "x")}
+    base = {
+        **_agent_environment(host_process_environment({})),
+        **dict.fromkeys(_KEY_VARIABLES, "x"),
+    }
     cleaned = _antigravity_environment(base)
     assert not set(_KEY_VARIABLES) & set(cleaned)
     assert cleaned["PATH"] == base["PATH"]
@@ -135,7 +141,7 @@ def _fixture_repo(tmp_path: Path) -> tuple[Path, str]:
     repos = tmp_path / "repos"
     clone = repos / "omnimarket"
     clone.mkdir(parents=True)
-    env = _agent_environment()
+    env = _agent_environment(host_process_environment({}))
 
     def git(*args: str) -> str:
         return subprocess.run(
