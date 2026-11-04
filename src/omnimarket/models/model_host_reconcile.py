@@ -99,6 +99,10 @@ class ModelPathShadowFact(BaseModel):
     is_symlink: bool
     resolved: str
     points_to_wrapper: bool
+    is_dangling: bool = False
+    is_dispatch_link: bool = False
+    moved_to: str = ""
+    link_error: str = ""
 
 
 class ModelGuardFact(BaseModel):

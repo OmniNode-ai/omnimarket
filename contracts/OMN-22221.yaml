@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22221"
+title: "A delegation whose tenant has no tenant_registry_mirror row is refused at the start of the run"
+summary: "The in-process delegation port resolves the tenant a run records under and, before any provider call or row, checks it against the evidence target's tenant_registry_mirror with the same resolver the projection write uses. A tenant the mirror cannot resolve is refused with an error that names the tenant, instead of completing with no delegation_events row and a WARNING. The tenant a remote lane exports on h201 being a row of that host's mirror is a live-table fact outside this repository."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22221-unmirrored-tenant-refused"
+    statement: |-
+      A delegation whose tenant is not a row of the evidence target's tenant_registry_mirror is refused at the start of the run, naming the tenant, and a delegation whose tenant is mirrored completes with its delegation_events row.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a delegation whose tenant has no tenant_registry_mirror row is refused loudly at the start of the run, naming the tenant, instead of completing with no event row -- falsifier: uv run pytest tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q -k unmirrored_refused, a stub mirror without the tenant, which completes with no row today"
+      - id: "AC2"
+        statement: "AC2: the tenant a remote lane exports on h201 is a row of that host's mirror and a completed in-process delegation from a remote lane writes its delegation_events row -- falsifier: uv run pytest tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q -k remote_lane_tenant_mirrored"
+evidence_requirements:
+  - kind: "tests"
+    description: "The unmirrored-tenant refusal and mirrored-tenant control tests pass."
+    command: "uv run pytest tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22221-unmirrored-refused"
+    description: "A delegation naming a slug or a UUID that the evidence store's mirror does not hold raises an error naming the tenant before any provider call and leaves no delegation_events or run-step row."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q --no-cov -k unmirrored_refused"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22221-mirrored-tenant-writes-row"
+    description: "The omnimarket half of AC2: a completed in-process delegation whose tenant is a row of the mirror the evidence is written to leaves its delegation_events row. That the tenant a remote lane exports on h201 is a row of h201's mirror is a live-table fact this repository cannot write; it is stated as a blocker on the pull request, not proven here."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q --no-cov -k remote_lane_tenant_mirrored"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22221-integration-proof"
+    description: "The pushed head ran the unmirrored-tenant refusal and mirrored-tenant control tests on a lab host with real git and its real dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane bug-22221-tenant-unmirrored-1103 -- uv run --frozen pytest tests/unit/handlers/test_tenant_identity_unmirrored_loud.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22221-deploy-artifact-readback"
+    description: "Hosted-runner deploy artifact readback fetches the tenant mirror requirement and dispatch port at the evaluated commit, compares both with this checkout, and requires the tenant refusal and its dispatch call. Missing or mismatched published source fails. This checks published source only; it does not establish a lane rollout or the tenant mirror contents on h201."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          requirement=src/omnimarket/handlers/tenant_mirror_requirement.py;
+          dispatch=src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py;
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$requirement" \
+            --output "$readback_dir/requirement.py";
+          curl --fail --silent --show-error --location --max-time 30 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$dispatch" \
+            --output "$readback_dir/dispatch.py";
+          cmp "$requirement" "$readback_dir/requirement.py";
+          cmp "$dispatch" "$readback_dir/dispatch.py";
+          grep -F 'f"OMN-22221: refusing this delegation at its start: tenant "' "$readback_dir/requirement.py";
+          grep -F 'require_tenant_mirrored(self._evidence_db, resolved_tenant_id)' "$readback_dir/dispatch.py";
+          printf 'tenant refusal deploy artifact readback matched %s\n' "$revision"
+        cwd: "."

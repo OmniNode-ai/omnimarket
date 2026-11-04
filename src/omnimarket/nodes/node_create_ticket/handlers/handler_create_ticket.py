@@ -16,7 +16,7 @@ read and comment on tickets.
   a create), and the write goes through the adapter's ``update_issue``, whose
   own Done-write gate still applies.
 * ``clear_project`` and ``repair_project`` clear a project Linear copied from a parent (OMN-21723);
-  see ``handler_ticket_project``. A create under a parent also clears and reads it back.
+  see ``handler_ticket_project``. Every create sends an explicit null project, reads the new ticket back and clears a project still set.
 * ``read`` and ``comment`` go through the omnibase_infra Linear project-tracker
   adapter (``AdapterLinearGraphQLProjectTracker``), constructed with the
   contract-declared key, so a missing key fails loud instead of reaching a stub.
@@ -71,6 +71,9 @@ from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
+)
+from omnimarket.models.secret_store.model_secret_resolution_error import (
+    SecretResolutionError,
 )
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project import (
@@ -162,7 +165,8 @@ mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $
     parentId: $parentId,
     stateId: $stateId,
     assigneeId: $assigneeId,
-    labelIds: $labelIds
+    labelIds: $labelIds,
+    projectId: null
   }) {
     issue { identifier url }
   }
@@ -584,7 +588,7 @@ class LinearTicketHttpGateway:
 
         # Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
         # created in the Backlog with NO project. The state is set explicitly
-        # rather than trusting the team default, and no projectId is ever sent.
+        # rather than trusting the team default, and the mutation sends an explicit null projectId.
         state_data = self._post(_BACKLOG_STATE_QUERY, {"teamId": team_id})
         state_nodes = (
             state_data.get("data", {}).get("workflowStates", {}).get("nodes", [])
@@ -624,9 +628,11 @@ class LinearTicketHttpGateway:
         issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
         identifier = str(issue.get("identifier", ""))
         url = str(issue.get("url", ""))
-        if identifier and "parentId" in variables:
-            # Linear copies the parent's project onto the new sub-issue (OMN-21723): clear it,
-            # and read it back, before the create is reported.
+        if identifier:
+            # Every create is read back by an independent query and cleared when a project is
+            # still set: Linear copies a parent's project onto a sub-issue even beside an explicit
+            # null, and a create may also be filed without a parent. Success is reported only
+            # when the readback shows an explicit null project.
             clear_inherited_project(self.project_gateway(), identifier)
         return identifier, url
 
@@ -654,7 +660,7 @@ def linear_api_key() -> str:
     linear_ref = contract_secret_ref(_CONTRACT_PATH, "LINEAR_API_KEY")
     secret = resolve_api_key_loop_safe(linear_ref)
     if secret is None:
-        raise RuntimeError(
+        raise SecretResolutionError(
             f"api_key_ref {linear_ref!r} resolved to None — "
             "ensure LINEAR_API_KEY is set in the secret store "
             "(~/.omnibase/.env)."

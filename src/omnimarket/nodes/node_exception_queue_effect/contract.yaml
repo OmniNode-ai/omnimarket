@@ -9,7 +9,11 @@ description: >
   remote-lane runner to mechanize it (a detector, an actor and a friction replay scenario). A row of a class in
   the stop registry of node_andon_stop_reducer also opens an andon stop; stop_event persists a writer's event to it
   through that reducer's rule (a write from a role other than the trigger's is refused and the refusal recorded),
-  and open_stops reads the stops for stop_gate. queue_status.py reaches it
+  and open_stops reads the stops for stop_gate after reconciling ONEX_LEDGER_PATH when bound.
+  sync_ledger_holds detects in-force registered HOLDs, emits as the detector role and grants the
+  named swarm lane's lease. A HOLD id is consumed once across queue resolution and replay;
+  a RELEASE prevents first ingestion but never clears an already opened stop or removes its readback.
+  queue_status.py reaches it
   through --exception (HandlerExceptionCli) and prints its read (HandlerExceptionQueueRead) in every block.
 input_model:
   name: ModelExceptionEmitRequest
@@ -65,6 +69,15 @@ handler_routing:
       handler:
         name: HandlerOpenStops
         module: omnimarket.nodes.node_exception_queue_effect.handler
+    - operation: sync_ledger_holds
+      topic: onex.cmd.omnimarket.andon-ledger-holds-requested.v1
+      event_model:
+        name: ModelAndonLedgerHoldsRequest
+        module: omnimarket.models.model_andon_ledger_holds
+      handler:
+        name: HandlerAndonLedgerHolds
+        module: omnimarket.nodes.node_exception_queue_effect.handlers.handler_andon_ledger_holds
+        input_model: omnimarket.models.model_andon_ledger_holds.ModelAndonLedgerHoldsRequest
 terminal_event: onex.evt.omnimarket.exception-queued.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.exception-emit-requested.v1
@@ -78,6 +91,7 @@ descriptor:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.exception-emit-requested.v1
+    - onex.cmd.omnimarket.andon-ledger-holds-requested.v1
   publish_topics:
     - onex.evt.omnimarket.exception-queued.v1
 metadata:
@@ -85,3 +99,6 @@ metadata:
   related_tickets: [OMN-17427]
 externally_consumed_topics:
 - onex.evt.omnimarket.exception-queued.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.andon-ledger-holds-requested.v1
+    producer: "Operator reconciliation publishers submitting ModelAndonLedgerHoldsRequest to sync_ledger_holds; this manual command is not published by a node contract."

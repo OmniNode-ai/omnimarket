@@ -78,10 +78,8 @@ _CONTRACT = _NODE / "contract.yaml"
 #: The aggregate exposure this ticket is about.
 _AGGREGATE_TOPIC = "onex.snapshot.projection.delegation.savings.v1"
 
-#: The producer's own documented default, mirrored from
-#: ``omnibase_infra/src/omnibase_infra/runtime/models/model_kafka_producer_config.py``.
-#: Pinned as a literal so a silent change to that default is visible here.
-_PRODUCER_DEFAULT_LIMIT = 1_048_588
+#: The runner-owned AIOKafkaProducer's default request limit.
+_PRODUCER_DEFAULT_LIMIT = 1_048_576
 
 #: Measured on the .201 dev lane 2026-09-19T20:20Z, house tenant, 489 sessions.
 #: These are the real widths the ratchet sizes against, not invented ones.

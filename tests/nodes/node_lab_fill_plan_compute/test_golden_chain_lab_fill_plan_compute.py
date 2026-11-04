@@ -74,6 +74,7 @@ def test_contract_declares_the_bus_route_and_compute_shape() -> None:
         "choose_lab_fill_candidates",
         "collect_lab_fill_source_tickets",
         "classify_lab_fill_source_candidates",
+        "classify_lab_fill_machinery_candidates",
         "plan_lab_fill_dispatch",
         "decide_lab_fill_ownership",
         "render_lab_fill_lane",

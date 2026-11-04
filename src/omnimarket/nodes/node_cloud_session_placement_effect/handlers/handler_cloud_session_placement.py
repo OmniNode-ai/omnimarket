@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Account file effects and cloud session text, with caller performed probes."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -245,7 +246,7 @@ class HandlerCloudSessionPlacement:
         elif action == "render_session_script":
             return {
                 "text": ses.cloud_session_script(
-                    r.path_export, r.session_id, r.sessions_api_url
+                    r.path_export, r.session_id, r.sessions_api_url, r.brief
                 )
             }
         elif action == "render_pr_open_script":
@@ -277,18 +278,34 @@ class HandlerCloudSessionPlacement:
             )
             return {"title": title, "text": text}
         elif action == "render_result":
-            return {
-                "text": ses.cloud_result_text(
-                    r.owner,
-                    r.account,
-                    r.session,
-                    r.prs,
-                    r.run_id,
-                    r.ended,
-                    session_branches=r.session_branches,
-                    opened=r.opened,
+            if r.placement_dir and ses.cloud_session_limited(r.ended):
+                assert r.ended is not None
+                rate = r.ended.get("rate")
+                reset = rate.get("resetsAt") if isinstance(rate, dict) else None
+                until = (
+                    datetime.fromtimestamp(reset, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if isinstance(reset, (int, float)) and reset > 0
+                    else ""
                 )
-            }
+                acc.note_cloud_refusal(
+                    pdir,
+                    r.account,
+                    r.run_id,
+                    f"usage limit ending: {r.ended.get('detail') or r.ended.get('needs_action') or ''} resets {until}",
+                    now=r.now,
+                )
+            # OMN-22345: the close (status, outcome) is the node's; a review-only lane's review rides on ``parsed``.
+            return ses.cloud_close(
+                r.owner,
+                r.account,
+                r.session,
+                r.prs,
+                r.run_id,
+                r.ended,
+                r.brief,
+                session_branches=r.session_branches,
+                opened=r.opened,
+            )
         elif action == "parse_start":
             return {
                 "parsed": {

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_work_progress_compute.models.model_work_progress import (
+from omnimarket.models.model_work_progress import (
     ModelWorkProgressBudgets,
     ModelWorkProgressFinding,
     ModelWorkProgressPhase,

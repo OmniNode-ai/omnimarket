@@ -295,6 +295,13 @@ class ModelFloorCloudAccount(BaseModel):
     credit_read_at: str = ""
     rate_status: str = ""
     rate_resets_at: str = ""
+    # The rate headers the runner writes (OMN-22010): the two subscription windows, and when the record was read.
+    rate_read_at: str = ""
+    five_hour_utilization: float | None = None
+    five_hour_resets_at: str = ""
+    seven_day_utilization: float | None = None
+    seven_day_resets_at: str = ""
+    credit_source: str = ""
 
 
 class ModelFloorRunner(BaseModel):
@@ -326,6 +333,93 @@ class ModelFloorLaneKindRule(BaseModel):
     actor_contains: tuple[str, ...] = ()
     lane_contains: tuple[str, ...] = ()
     text_contains: tuple[str, ...] = ()
+
+
+class ModelFloorLimitsConfig(BaseModel):
+    """What the Limits panel judges against, from the contract: never a literal in the handler (OMN-22010)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # A reading older than this many minutes (one publish cycle) is UNKNOWN, never a number.
+    publish_cycle_minutes: int = Field(gt=0)
+    # The month's budget for an API key whose overlay row names none.
+    api_budget_usd: float = Field(gt=0)
+    # The day the cloud-session credit expires (YYYY-MM-DD).
+    cloud_credit_expiry: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class ModelLimitApiKey(BaseModel):
+    """One Anthropic API key as the meter read it: spend so far this calendar month (UTC)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    month_spend_usd: float | None = None
+    read_at: str = ""
+    source: str = Field(min_length=1)
+    # A budget the deployment overlay sets for this key; else the contract's api_budget_usd.
+    budget_usd: float | None = None
+
+
+class ModelLimitEngine(BaseModel):
+    """A usage window of a subscription engine (Codex on ChatGPT, the GLM coding plan)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    used_pct: float | None = None
+    window: str = ""
+    resets_at: str = ""
+    read_at: str = ""
+    source: str = Field(min_length=1)
+
+
+class ModelLimitLabRung(BaseModel):
+    """One local lab model rung: whether it answers and when it last passed a smoke."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    available: bool | None = None
+    last_smoke_at: str = ""
+    last_smoke_ok: bool | None = None
+    read_at: str = ""
+    source: str = Field(min_length=1)
+
+
+class ModelLimitToken(BaseModel):
+    """One token of a host's Claude token pool: a label and its state, never a value."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str = Field(min_length=1)
+    limited_until: str = ""
+    revoked: bool = False
+
+
+class ModelLimitTokenPool(BaseModel):
+    """One lab host's Claude token pool (the pool's status mirror)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    read_at: str = ""
+    source: str = Field(min_length=1)
+    tokens: tuple[ModelLimitToken, ...] = ()
+
+
+class ModelFloorLimitsFacts(BaseModel):
+    """Every limit the caller read. A source that could not be read is None, never empty: the row then says UNKNOWN."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    api_keys: tuple[ModelLimitApiKey, ...] | None = None
+    codex: ModelLimitEngine | None = None
+    glm: ModelLimitEngine | None = None
+    lab_rungs: tuple[ModelLimitLabRung, ...] | None = None
+    token_pools: tuple[ModelLimitTokenPool, ...] | None = None
+    # The day's idle slot-hours, summed by whoever samples the slots; None when nothing sampled them.
+    idle_slot_hours: float | None = None
+    idle_slot_hours_read_at: str = ""
 
 
 class ModelFactoryFloorConfig(BaseModel):
@@ -400,6 +494,7 @@ class ModelFactoryFloorConfig(BaseModel):
     task_map_state: str = Field(min_length=1)
     # The note a built task carries while a gate it depends on reads a fail verdict; such a task is not counted built.
     built_ahead_of_gate_label: str = Field(min_length=1)
+    limits: ModelFloorLimitsConfig
 
 
 class ModelFloorSourceReads(BaseModel):
@@ -451,5 +546,7 @@ class ModelFactoryFloorRequest(BaseModel):
     lane_containers: tuple[ModelLaneContainerBudgetVerdict, ...] | None = None
     # One Phoenix trace reading; None when the Phoenix URL is not configured (the floor draws it unread).
     phoenix_traces: ModelFloorPhoenixTraces | None = None
+    # Every limit read for the Limits panel; a field left None is an unread source (OMN-22010).
+    limits: ModelFloorLimitsFacts = Field(default_factory=ModelFloorLimitsFacts)
 
     _utc = field_validator("generated_at")(_aware)

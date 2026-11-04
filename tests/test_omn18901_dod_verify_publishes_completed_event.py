@@ -225,13 +225,10 @@ async def _dispatch_verification(
     )
     collector = SimpleNamespace(
         collect=lambda *_args, **_kwargs: checks,
-        occ_refresh_outcome=None,
         lookup_failure_cause=(
             EnumDodVerifyUnresolvedCause.PR_LOOKUP_FAILED if unresolved else None
         ),
         lookup_failure_code="PR_LOOKUP_FAILED" if unresolved else None,
-        occ_ref_failure_cause=None,
-        occ_ref_failure_code=None,
     )
     monkeypatch.setattr(HandlerDodVerify, "_make_collector", lambda _self: collector)
     event_model = _contract()["handler_routing"]["handlers"][0]["event_model"]
@@ -720,7 +717,7 @@ def test_the_projection_subscribes_the_topic_this_node_publishes() -> None:
 def test_the_wire_model_ignores_the_fields_the_state_carries_and_it_does_not() -> None:
     """The producer's extra fields are discarded, not rejected.
 
-    The state carries governance provenance and the per-check records that the
+    The state carries the acceptance summary and the per-check records that the
     verdict table deliberately does not store. The wire model must ignore
     them; were it strict, every publish would dead-letter on a field the
     producer is right to send.
@@ -728,12 +725,12 @@ def test_the_wire_model_ignores_the_fields_the_state_carries_and_it_does_not() -
     state = _run(VERIFIED_CHECKS)
     payload = _published_payload(state)
 
-    assert "occ_governance_ref" in payload
+    assert "acceptance_unbound_criteria" in payload
     assert "checks" in payload
 
     event = ModelDodVerdictWire.model_validate(payload)
 
-    assert not hasattr(event, "occ_governance_ref")
+    assert not hasattr(event, "acceptance_unbound_criteria")
     assert not hasattr(event, "checks")
 
 

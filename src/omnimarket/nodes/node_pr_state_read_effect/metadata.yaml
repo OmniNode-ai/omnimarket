@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_state_read_effect
+version: 1.0.0
+description: 'Reads a pull request state from the pr_state projection and refuses a row older than the declared limit; provides the onex pr-state command.'
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_state_read_effect: omnimarket.nodes.node_pr_state_read_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- omnibase_core>=0.39.0
+- httpx>=0.27.0
+- click>=8.1.0
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- pr-state
+- projection
+- cli
+pack: data
+display_name: PR State Read
+node_role: effect

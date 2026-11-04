@@ -70,7 +70,6 @@ _KNOWN_PRODUCERS: frozenset[str] = frozenset(
         "omniintelligence",
         "omnimemory",
         "omninode",
-        "omnibase-compat",
         "github",
         "platform",
         "ui",

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from ipaddress import IPv4Address
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -57,6 +58,9 @@ class ModelWalkRequest(_FrozenModel):
     local_model: str | None = None
     ollama_model: str | None = None
     tart_host: str = Field(min_length=1)
+    # "local": this process already runs on the Tart host and issues its commands
+    # through a local bash instead of ssh to tart_host.
+    tart_transport: Literal["ssh", "local"] = "ssh"
     tart_path: str | None = Field(default=None, min_length=1)
     image: str | None = Field(default=None, min_length=1)
     cpu: int | None = Field(default=None, ge=1)
@@ -64,6 +68,13 @@ class ModelWalkRequest(_FrozenModel):
     vm_name: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     step_timeout_seconds: int = Field(default=3600, ge=1)
     branches_installed: tuple[str, ...] = ()
+    # Guest steps are ssh commands run on the Tart host. The user comes from the
+    # contract; the askpass program (absolute path on the Tart host) prints the
+    # image's documented default login and is never part of the request itself;
+    # the address is the one `tart ip` returned, bound at run time.
+    guest_user: str | None = Field(default=None, pattern=r"^[a-z_][a-z0-9_-]*$")
+    guest_askpass_path: str | None = Field(default=None, pattern=r"^/[A-Za-z0-9_./-]+$")
+    guest_ip: IPv4Address | None = None
 
     @field_validator("tart_host")
     @classmethod
@@ -187,3 +198,24 @@ class ModelWalkReceipt(_FrozenModel):
     hand_fix_steps: tuple[str, ...]
     started_at: str
     finished_at: str
+
+    # The runtime classifies a terminal by its serialized ``status``. Without one a
+    # failed walk was read as a completed run (exit 0) beside outcome "failed".
+    status: Literal["passed", "failed"] = "passed"
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_status(cls, data: object) -> object:
+        if isinstance(data, dict) and "status" not in data and "outcome" in data:
+            outcome = EnumWalkOutcome(data["outcome"])
+            return {
+                **data,
+                "status": "passed" if outcome == EnumWalkOutcome.PASSED else "failed",
+            }
+        return data
+
+    @model_validator(mode="after")
+    def status_matches_outcome(self) -> Self:
+        if self.status != self.outcome.value:
+            raise ValueError("status must equal outcome")
+        return self

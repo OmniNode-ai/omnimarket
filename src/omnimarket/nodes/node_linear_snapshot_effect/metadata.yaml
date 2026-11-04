@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_linear_snapshot_effect
+version: 1.0.0
+description: >-
+  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with title, assignee, labels and description, validated by one typed model, so the lab fill generator reads tickets instead of reporting the snapshot unread.
+pack: operator_tooling
+node_role: effect
+display_name: Linear Snapshot Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_linear_snapshot_effect: omnimarket.nodes.node_linear_snapshot_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_write
+dependencies:
+  - "httpx>=0.27.0"
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- linear-snapshot-effect
+- OMN-22361
