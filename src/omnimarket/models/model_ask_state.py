@@ -60,6 +60,7 @@ class ModelAskPrompt(BaseModel):
     session_id: str
     said_at: datetime
     text: str
+    lane: str | None = Field(default=None, min_length=1)
     items: tuple[ModelAskPromptItem, ...] = ()
 
 
@@ -79,6 +80,15 @@ class ModelAskStateConfig(BaseModel):
 
     schema_id: str = Field(min_length=1)
     tracked_kinds: tuple[str, ...] = Field(min_length=1)
+    kind_aliases: dict[str, str]
+    default_owner: str = Field(min_length=1)
+    session_lanes: dict[str, str]
+    unclassified_kind: str = Field(min_length=1)
+    ruling_kind: str = Field(min_length=1)
+    ruling_row_kinds: tuple[str, ...]
+    ruling_closed_audit_states: tuple[str, ...]
+    completion_evidence_patterns: tuple[str, ...]
+    id_chars: int = Field(ge=10)
     grace_minutes: int = Field(ge=0)
     link_window_hours: int = Field(ge=1)
     min_shared_terms: int = Field(ge=1)
@@ -119,6 +129,9 @@ class ModelAskStateConfig(BaseModel):
     answer_kinds: tuple[str, ...] = Field(
         description="row kinds that deliver an answer; one citing closes-ask= closes the ask by itself",
     )
+    answer_cells: tuple[str, ...]
+    answerable_kinds: tuple[str, ...]
+    operator_recipient: str = Field(min_length=1)
     send_kinds: tuple[str, ...] = Field(
         description="answer kinds that close an ask by citing it with ask= alone: a send is a delivery",
     )
@@ -135,6 +148,18 @@ class ModelAskStateConfig(BaseModel):
     )
 
 
+class ModelRulingMechanismAudit(BaseModel):
+    """One ruling_mechanisms audit result supplied by the caller, never inferred from a terminal."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ruling_stamp: str = Field(min_length=1)
+    audited_at: datetime
+    state: str = Field(min_length=1)
+    owner_lane: str | None = Field(default=None, min_length=1)
+    evidence: tuple[str, ...] = ()
+
+
 class ModelAskStateRequest(BaseModel):
     """Captured prompts, ledger rows, the window start and the time the report is judged at."""
 
@@ -145,6 +170,7 @@ class ModelAskStateRequest(BaseModel):
     now: datetime
     since: datetime
     config: ModelAskStateConfig
+    ruling_mechanisms: tuple[ModelRulingMechanismAudit, ...] = ()
 
 
 class ModelAskEntry(BaseModel):
@@ -161,7 +187,11 @@ class ModelAskEntry(BaseModel):
     subject: str
     confidence: float
     state: EnumAskState
-    owner_lane: str | None = None
+    owner_lane: str = Field(min_length=1)
+    running_lane: str | None = None
+    orphaned: bool = False
+    inferred_ties: int = Field(default=0, ge=0)
+    ruling_audit_state: str | None = None
     tickets: tuple[str, ...] = ()
     park_reason: str | None = None
     park_seq: int | None = None
@@ -269,6 +299,8 @@ class ModelAskStateReport(BaseModel):
     wip: ModelAskWip = ModelAskWip()
     not_tracked: tuple[ModelKindCount, ...] = ()
     unclassified: tuple[ModelUnclassifiedPrompt, ...] = ()
+    orphaned: tuple[str, ...] = ()
+    inferred_ties: int = Field(default=0, ge=0)
     text: str = ""
 
 
@@ -286,5 +318,6 @@ __all__ = [
     "ModelAskWip",
     "ModelKindCount",
     "ModelParkedAsk",
+    "ModelRulingMechanismAudit",
     "ModelUnclassifiedPrompt",
 ]

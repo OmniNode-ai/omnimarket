@@ -1,0 +1,118 @@
+{
+  "now": "2026-11-04T14:00:00Z",
+  "since": "2026-11-04T00:00:00Z",
+  "prompts": [
+    {
+      "capture_id": "terminal",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T10:00:00Z",
+      "text": "Build the reducer.",
+      "items": [
+        {
+          "item_id": "cap-terminal",
+          "kind": "ask",
+          "quote": "Build the reducer.",
+          "subject": "",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "capture_id": "done",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T10:00:00Z",
+      "text": "I will record the receipt.",
+      "items": [
+        {
+          "item_id": "cap-done",
+          "kind": "promise",
+          "quote": "I will record the receipt.",
+          "subject": "",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "capture_id": "ticketed",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T10:00:00Z",
+      "text": "Where is the result?",
+      "items": [
+        {
+          "item_id": "cap-ticketed",
+          "kind": "question",
+          "quote": "Where is the result?",
+          "subject": "",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "capture_id": "parked",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T10:00:00Z",
+      "text": "Please keep this message visible.",
+      "items": [
+        {
+          "item_id": "cap-parked",
+          "kind": "message",
+          "quote": "Please keep this message visible.",
+          "subject": "",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "capture_id": "dropped",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T10:00:00Z",
+      "text": "Check the backlog.",
+      "items": [
+        {
+          "item_id": "cap-dropped",
+          "kind": "ask",
+          "quote": "Check the backlog.",
+          "subject": "",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "capture_id": "new",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T13:55:00Z",
+      "text": "Check the new arrival.",
+      "items": [
+        {
+          "item_id": "cap-new",
+          "kind": "ask",
+          "quote": "Check the new arrival.",
+          "subject": "",
+          "confidence": 1.0
+        }
+      ]
+    },
+    {
+      "capture_id": "bare",
+      "session_id": "session-a",
+      "lane": "capture-session",
+      "said_at": "2026-11-04T10:00:00Z",
+      "text": "Thanks for the update.",
+      "items": []
+    }
+  ],
+  "rows": [
+    "2026-11-04T10:01:00Z | CLAIM | lane=builder | ask=ask-terminal | ticket=OMN-1",
+    "2026-11-04T10:02:00Z | TERMINAL | lane=builder | closes-CLAIM=2026-11-04T10:01:00Z | outcome=done",
+    "2026-11-04T10:03:00Z | STATUS | lane=writer | ask=ask-done | state=done | owner=writer | evidence=receipt:recorded-result",
+    "2026-11-04T10:04:00Z | STATUS | lane=orch | ask=ask-ticketed | state=ticketed | ticket=OMN-2 | owner=reviewer",
+    "2026-11-04T10:05:00Z | STATUS | lane=orch | ask=ask-parked | state=parked | reason=after review | owner=reviewer",
+    "2026-11-04T11:37:59Z | RULING | lane=orchestrator | kind=process | mechanism-pending=error-rule-lookup | \"Map each error to the rule that handles it.\""
+  ]
+}

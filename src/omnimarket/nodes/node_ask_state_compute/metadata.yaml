@@ -1,6 +1,6 @@
 name: node_ask_state_compute
 version: "0.1.0"
-description: "Each operator ask or idea with its state: owned, ticketed, parked, done or dropped"
+description: "Tracked asks, rulings, promises, questions and messages with accountable owners and live claims"
 pack: operator_capture
 node_role: compute
 display_name: "Operator Ask State"
@@ -20,4 +20,4 @@ dependencies:
   - "omnibase_core>=0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["compute", "operator-capture", "work-ledger", "asks"]
+tags: ["compute", "operator-capture", "work-ledger", "asks", "rulings", "promises", "messages"]

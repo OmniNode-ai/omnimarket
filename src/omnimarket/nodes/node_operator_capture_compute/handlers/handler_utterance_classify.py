@@ -20,15 +20,27 @@ hand; the ids are returned as ``drops``.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from typing import Any
 
+from omnimarket.handlers.handler_operator_utterance import (
+    heuristic_kind as heuristic_kind,
+)
+from omnimarket.handlers.handler_operator_utterance import (
+    heuristic_sentences as heuristic_sentences,
+)
+from omnimarket.handlers.handler_operator_utterance import (
+    item_id as item_id,
+)
+from omnimarket.handlers.handler_operator_utterance import (
+    subject_terms as subject_terms,
+)
 from omnimarket.models.operator_capture import (
     EnumClassifierSource,
     EnumPromptOrigin,
     EnumUtteranceKind,
+    ModelSentenceDisposition,
     ModelUtterance,
     ModelUtteranceClassification,
     ModelUtteranceClassifyRequest,
@@ -112,135 +124,6 @@ def _drops_of(text: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(found))
 
 
-_SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)")
-_WORD = re.compile(r"[a-z0-9]+(?:\.[0-9]+)?")
-_STOP = frozenset(
-    [
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "but",
-        "by",
-        "can",
-        "could",
-        "do",
-        "does",
-        "for",
-        "from",
-        "had",
-        "has",
-        "have",
-        "i",
-        "if",
-        "in",
-        "into",
-        "is",
-        "it",
-        "its",
-        "just",
-        "let",
-        "lets",
-        "me",
-        "my",
-        "no",
-        "not",
-        "of",
-        "on",
-        "or",
-        "our",
-        "please",
-        "should",
-        "so",
-        "that",
-        "the",
-        "their",
-        "them",
-        "then",
-        "there",
-        "these",
-        "this",
-        "to",
-        "us",
-        "was",
-        "we",
-        "were",
-        "what",
-        "when",
-        "where",
-        "which",
-        "while",
-        "who",
-        "why",
-        "will",
-        "with",
-        "would",
-        "you",
-        "your",
-        "yes",
-        "also",
-        "all",
-        "any",
-        "some",
-        "about",
-        "need",
-        "needs",
-        "want",
-        "wants",
-        "get",
-        "got",
-        "make",
-        "sure",
-        "okay",
-        "ok",
-    ]
-)
-
-_ASK_START = re.compile(
-    r"^\s*(?:please\s+)?(?:fix|build|create|make|add|remove|delete|check|run|look|investigate|"
-    r"write|move|set|update|merge|ship|dispatch|file|send|draft|find|figure|start|stop|turn|"
-    r"open|close|land|review|test|port|record|track|clean|wire|install|deploy|restart|ask|"
-    r"tell|give|show|put|use|go)\b",
-    re.IGNORECASE,
-)
-_ASK_PHRASE = re.compile(
-    r"\b(?:can you|could you|would you|can we|could we|please|i need you to|i want you to|we need to|"
-    r"need to get|go ahead and|make sure)\b",
-    re.IGNORECASE,
-)
-_PREFERENCE = re.compile(
-    r"\b(?:from now on|always|never|every time|i only want|i want|i prefer|i'd prefer|"
-    r"i would prefer|i don't want|i do not want|i like|going forward|by default)\b",
-    re.IGNORECASE,
-)
-_DECISION = re.compile(
-    r"\b(?:agree|agreed|let's go with|lets go with|go with|decided|decision|approved|"
-    r"approve|should be|should not|shouldn't|must|needs to be|will be|is fine|that's fine|"
-    r"we will|we'll|option [a-d1-9]|number (?:one|two|three)|do it|don't|hold|ship it)\b",
-    re.IGNORECASE,
-)
-_DECISION_START = re.compile(
-    r"^\s*(?:yes|no|nope|approved|agreed)\b[,.!]?\s+\S", re.IGNORECASE
-)
-_IDEA = re.compile(
-    r"\b(?:what if|maybe we|maybe|idea|we could|might be worth|it would be (?:nice|great|cool)|"
-    r"consider|eventually|someday|at some point)\b",
-    re.IGNORECASE,
-)
-_STATUS_START = re.compile(
-    r"^\s*(?:what|where|is|are|did|does|do|has|have|why|how|which|when|who|status)\b",
-    re.IGNORECASE,
-)
-
-
-def item_id(capture_id: str, quote: str) -> str:
-    """Stable id of one item: the same words in the same capture always get the same id."""
-    return "cap-" + hashlib.sha256(f"{capture_id}\0{quote}".encode()).hexdigest()[:10]
-
-
 def is_machine_injection(text: str) -> bool:
     head = text.lstrip().lower()
     return not head or any(head.startswith(p) for p in MACHINE_PREFIXES)
@@ -251,58 +134,47 @@ def build_classify_prompt(text: str) -> str:
     return f"{_INSTRUCTION}\n\nMESSAGE:\n{text}\n"
 
 
-def subject_terms(text: str, limit: int = 6) -> tuple[str, ...]:
-    """Content words in order of first use, stopwords removed; the drift check's vocabulary."""
-    seen: list[str] = []
-    for word in _WORD.findall(text.lower()):
-        if word in _STOP or (len(word) < 2 and not word.isdigit()):
-            continue
-        if word not in seen:
-            seen.append(word)
-        if len(seen) >= limit:
-            break
-    return tuple(seen)
+def sentence_dispositions(
+    utterance: ModelUtterance, items: tuple[ModelUtteranceItem, ...]
+) -> tuple[ModelSentenceDisposition, ...]:
+    """Source order is the identity of a disposition, including repeated chat sentences."""
+    return tuple(
+        ModelSentenceDisposition(
+            sentence=index,
+            quote=quote,
+            item_id=next(
+                (
+                    item.item_id
+                    for item in items
+                    if item.kind is not EnumUtteranceKind.CHAT
+                    and (item.quote in quote or quote in item.quote)
+                ),
+                None,
+            ),
+        )
+        for index, (quote, _) in enumerate(
+            heuristic_sentences(utterance.text, include_chat=True), start=1
+        )
+    )
 
 
-_LEAD = re.compile(
-    r"^\s*(?:(?:also|again|and|then|so|oh|ok|okay|plus|but|now|next|well)\b[,\s]*)+",
-    re.IGNORECASE,
-)
-
-
-def heuristic_kind(sentence: str) -> EnumUtteranceKind:
-    s = _LEAD.sub("", sentence.strip()) or sentence.strip()
-    if _PREFERENCE.search(s):
-        return EnumUtteranceKind.PREFERENCE
-    if s.endswith("?"):
-        if _ASK_PHRASE.search(s):
-            return EnumUtteranceKind.ASK
-        if _STATUS_START.search(s):
-            return EnumUtteranceKind.STATUS_QUESTION
-    if _ASK_START.search(s) or _ASK_PHRASE.search(s):
-        return EnumUtteranceKind.ASK
-    if _IDEA.search(s):
-        return EnumUtteranceKind.IDEA
-    if _DECISION_START.search(s) or _DECISION.search(s):
-        return EnumUtteranceKind.DECISION
-    return EnumUtteranceKind.CHAT
-
-
-def heuristic_sentences(text: str) -> tuple[tuple[str, EnumUtteranceKind], ...]:
-    """Each sentence of a message that the wording classifies as something other than chat."""
-    found: list[tuple[str, EnumUtteranceKind]] = []
-    for match in _SENTENCE.finditer(text):
-        quote = match.group(0).strip()
-        words = len(_WORD.findall(quote.lower()))
-        if words < 1:
-            continue
-        kind = heuristic_kind(quote)
-        if kind is EnumUtteranceKind.CHAT:
-            continue
-        if words < 2 and kind is not EnumUtteranceKind.DECISION:
-            continue
-        found.append((quote, kind))
-    return tuple(found)
+def _complete_items(
+    utterance: ModelUtterance, items: tuple[ModelUtteranceItem, ...]
+) -> tuple[ModelUtteranceItem, ...]:
+    """A delegated answer may omit a sentence; deterministic classification keeps it visible."""
+    complete = list(items)
+    for quote, kind in heuristic_sentences(utterance.text):
+        if not any(item.quote in quote or quote in item.quote for item in complete):
+            complete.append(
+                ModelUtteranceItem(
+                    item_id=item_id(utterance.capture_id, quote),
+                    kind=kind,
+                    quote=quote,
+                    subject=" ".join(subject_terms(quote, 5)),
+                    confidence=0.5,
+                )
+            )
+    return tuple(complete)
 
 
 def _heuristic_items(utterance: ModelUtterance) -> tuple[ModelUtteranceItem, ...]:
@@ -402,6 +274,7 @@ class HandlerUtteranceClassify:
         if request.delegated_response is not None:
             items, problem = _delegated_items(utterance, request.delegated_response)
             if problem is None:
+                items = _complete_items(utterance, items)
                 return ModelUtteranceClassification(
                     capture_id=utterance.capture_id,
                     origin=EnumPromptOrigin.OPERATOR,
@@ -409,17 +282,20 @@ class HandlerUtteranceClassify:
                     classifier_model=request.delegated_model,
                     reason="delegated answer accepted",
                     items=items,
+                    dispositions=sentence_dispositions(utterance, items),
                     drops=drops,
                 )
             reason = f"fallback: {problem}"
         else:
             reason = f"fallback: {request.delegated_error or 'no delegated answer'}"
+        items = _heuristic_items(utterance)
         return ModelUtteranceClassification(
             capture_id=utterance.capture_id,
             origin=EnumPromptOrigin.OPERATOR,
             classifier=EnumClassifierSource.HEURISTIC,
             reason=reason[:300],
-            items=_heuristic_items(utterance),
+            items=items,
+            dispositions=sentence_dispositions(utterance, items),
             drops=drops,
         )
 

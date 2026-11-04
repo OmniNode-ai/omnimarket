@@ -26,6 +26,7 @@
 # An ask no row cites is tied to a CLAIM or verbatim RULING by its words and reported as inferred.
 name: "node_ask_state_compute"
 node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
 contract_version:
   major: 0
   minor: 1
@@ -51,9 +52,17 @@ handler_routing:
   default_handler: "omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state:HandlerAskState"
   handlers:
     - operation: "fold_ask_state"
+      topic: onex.cmd.omnimarket.ask-state-requested.v1
       handler:
         name: "HandlerAskState"
         module: "omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state"
+entrypoint:
+  name: NodeAskStateCompute
+  module: omnimarket.nodes.node_ask_state_compute.node
+terminal_event: onex.evt.omnimarket.ask-state-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ask-state-requested.v1]
+  publish_topics: [onex.evt.omnimarket.ask-state-completed.v1, onex.evt.omnimarket.ask-state-failed.v1]
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.ask-state-requested.v1"
   terminal_events:
@@ -76,7 +85,20 @@ dod_evidence:
 # never read as unlimited.
 config:
   schema_id: omni.ask-state/1
-  tracked_kinds: [ask, idea]
+  tracked_kinds: [ask, idea, ruling, promise, question, message, unclassified]
+  kind_aliases: {decision: ruling, preference: ruling, status_question: question, chat: message}
+  default_owner: orchestrator
+  session_lanes: {}
+  unclassified_kind: unclassified
+  ruling_kind: ruling
+  ruling_row_kinds: [RULING]
+  ruling_closed_audit_states: [acting]
+  completion_evidence_patterns:
+    # Recognize a PR reference or resource path without binding evidence to a deployment endpoint.
+    - '\b[\w.-]+#\d+\b|/[\w.-]+/[\w.-]+/pull/\d+\b'
+    - '\bRULING[ :]+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
+    - '\breceipt[:=]\S+'
+  id_chars: 16
   grace_minutes: 30
   link_window_hours: 24
   min_shared_terms: 2
@@ -103,7 +125,7 @@ config:
   done_outcomes: [done, merged]
   handoff_outcomes: [handed-off]
   capture_lane: operator-capture
-  ask_cells: [ask, asks]
+  ask_cells: [ask, asks, for-item, item, answers]
   closes_ask_cell: closes-ask
   state_cell: state
   parked_state: parked
@@ -115,6 +137,9 @@ config:
   owner_cell: owner
   done_state: done
   answer_kinds: [SENT-ON-BEHALF, MSG]
+  answer_cells: [answers]
+  answerable_kinds: [ask, idea, question, message, unclassified]
+  operator_recipient: operator
   send_kinds: [SENT-ON-BEHALF]
   promote_unclassified: true
   promote_rules:

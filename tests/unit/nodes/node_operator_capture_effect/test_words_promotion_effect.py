@@ -51,7 +51,7 @@ ANSWER = json.dumps(
         "items": [
             {
                 "kind": "decision",
-                "quote": "They should be the main fucking reviewers.",
+                "quote": WORDS,
                 "subject": "main reviewers",
                 "confidence": 0.9,
             }
@@ -140,15 +140,20 @@ def test_reply_then_prompt_appends_a_ruling_after_the_capture_rows(
     assert ledger.rows == []
     receipt = handler.handle(_prompt())
     assert receipt.status is EnumOperatorCaptureStatus.RECORDED
-    assert [r.split(" | ")[1] for r in ledger.rows] == ["STATUS", "RULING"]
-    ruling = ledger.rows[1]
+    assert [r.split(" | ")[1] for r in ledger.rows] == [
+        "STATUS",
+        "STATUS",
+        "STATUS",
+        "RULING",
+    ]
+    ruling = ledger.rows[-1]
     assert f"| lane={LANE} |" in ruling
     assert (
         "| question=Keep the Claude reviewers only as a fallback path behind the lab voters, or "
         "make them the main reviewers? |"
     ) in ruling
     assert f"| session={SESSION} |" in ruling
-    assert ruling.endswith('"They should be the main fucking reviewers."')
+    assert ruling.endswith(f'"{WORDS}"')
 
 
 def test_heuristic_words_go_to_the_orchestrator_inbox(tmp_path: Path) -> None:
@@ -167,15 +172,36 @@ def test_control_no_promotion_lane_writes_capture_rows_only(tmp_path: Path) -> N
     handler = _handler(tmp_path, ledger, lane=None)
     handler.handle(_reply())
     handler.handle(_prompt())
-    assert [r.split(" | ")[1] for r in ledger.rows] == ["STATUS"]
+    assert [r.split(" | ")[1] for r in ledger.rows] == ["STATUS", "STATUS", "STATUS"]
+
+
+def test_captured_session_lane_is_persisted_as_the_default_item_owner(
+    tmp_path: Path,
+) -> None:
+    ledger = FakeLedger()
+    handler = _handler(tmp_path, ledger, lane=None)
+    prompt = ModelOperatorPromptRecord.model_validate(
+        {**_prompt().model_dump(), "lane": "session-owner"}
+    )
+    handler.handle(prompt)
+    record = json.loads(
+        (tmp_path / "store" / "captures.jsonl").read_text().splitlines()[-1]
+    )
+    assert record["lane"] == "session-owner"
+    assert all(" | owner=session-owner | " in row for row in ledger.rows)
 
 
 def test_control_no_reply_goes_to_the_inbox(tmp_path: Path) -> None:
     ledger = FakeLedger()
     handler = _handler(tmp_path, ledger)
     handler.handle(_prompt())
-    assert [r.split(" | ")[1] for r in ledger.rows] == ["STATUS", "MSG"]
-    assert "no joined question" in ledger.rows[1]
+    assert [r.split(" | ")[1] for r in ledger.rows] == [
+        "STATUS",
+        "STATUS",
+        "STATUS",
+        "MSG",
+    ]
+    assert "no joined question" in ledger.rows[-1]
 
 
 def test_reply_after_the_prompt_is_not_its_question(tmp_path: Path) -> None:
@@ -199,13 +225,19 @@ def test_crash_before_the_promotion_row_resumes_without_doubles(tmp_path: Path) 
     failing.fail_after = None
     clock.now = datetime(2026, 10, 18, 3, 40, 0, tzinfo=UTC)
     handler.retry()
-    # The heuristic splits the words into two items: two capture rows, then the one message.
-    assert [r.split(" | ")[1] for r in failing.rows] == ["STATUS", "STATUS", "MSG"]
+    # Two item rows and two source dispositions precede the one message.
+    assert [r.split(" | ")[1] for r in failing.rows] == [
+        "STATUS",
+        "STATUS",
+        "STATUS",
+        "STATUS",
+        "MSG",
+    ]
     items = [
         c for r in failing.rows[:2] for c in r.split(" | ") if c.startswith("item=")
     ]
     assert len(set(items)) == 2
-    msg = failing.rows[2]
+    msg = failing.rows[-1]
     assert msg.startswith("2026-10-18T03:40:00Z | MSG |")
     assert "| id=2026-10-18T03:40:00Z-operator-promotion |" in msg
 

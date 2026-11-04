@@ -235,6 +235,10 @@ GRAMMAR: dict[str, dict[str, object]] = {
             "related",
             "contract-schema",
             "dod-evidence",
+            "for-item",
+            "owner",
+            "answers",
+            "item",
         ],
         "rules": [
             "carries actor= or model= and a rule-4 cost sentence 'est ~N lane-hours; displaces "
@@ -264,6 +268,10 @@ GRAMMAR: dict[str, dict[str, object]] = {
             "relation",
             "subject",
             "object",
+            "for-item",
+            "owner",
+            "answers",
+            "item",
         ],
         "rules": [
             "a countersign of another lane's receipt carries countersigns=<receipt> and verdict="
@@ -374,7 +382,16 @@ GRAMMAR: dict[str, dict[str, object]] = {
     "MSG": {
         "means": "A message from one lane to another lane, to all lanes, or to the operator.",
         "required": ["from", "to", "id"],
-        "optional": ["ticket", "repo", "pr", "re"],
+        "optional": [
+            "ticket",
+            "repo",
+            "pr",
+            "re",
+            "for-item",
+            "owner",
+            "answers",
+            "item",
+        ],
         "rules": [
             "id=<this row's timestamp>-<from lane>",
             "to=<lane>, a comma list of lanes, all, or operator",

@@ -29,7 +29,7 @@ pytestmark = pytest.mark.unit
 
 SINCE = datetime(2026, 10, 31, 0, 0, tzinfo=UTC)
 SAID = datetime(2026, 10, 31, 8, 0, tzinfo=UTC)
-LATER = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)
+LATER = datetime(2026, 10, 31, 16, 0, tzinfo=UTC)
 CONFIG = ModelAskStateConfig.model_validate(
     yaml.safe_load(
         Path(compute_node.__file__)
@@ -117,7 +117,7 @@ def test_young_ask_with_no_row_is_new_not_dropped() -> None:
     assert report.dropped == ()
 
 
-def test_ask_that_spawned_a_lane_is_owned_then_done() -> None:
+def test_ask_that_spawned_a_lane_needs_completion_evidence_after_terminal() -> None:
     claim_row = claim("lane-a", "2026-10-31T08:05:00Z", ask_id(2))
     owned = _run((_prompt(2, "Mint the child ticket"),), (claim_row,))
     entry = _entry(owned, 2)
@@ -130,8 +130,14 @@ def test_ask_that_spawned_a_lane_is_owned_then_done() -> None:
         "lane-a", "2026-10-31T09:00:00Z", "2026-10-31T08:05:00Z", "done"
     )
     done = _run((_prompt(2, "Mint the child ticket"),), (claim_row, done_row))
+    assert _state(done, 2) is EnumAskState.OWNED
+    assert _entry(done, 2).owner_lane == "lane-a"
+    assert _entry(done, 2).running_lane is None
+    evidenced = done_row + " | evidence=receipt:ticket-minted"
+    done = _run((_prompt(2, "Mint the child ticket"),), (claim_row, evidenced))
     assert _state(done, 2) is EnumAskState.DONE
     assert _entry(done, 2).resolution == "terminal"
+    assert _entry(done, 2).owner_lane == "lane-a"
 
 
 def test_failed_lane_with_a_ticket_leaves_the_ask_ticketed_without_one_it_is_dropped() -> (
@@ -298,7 +304,9 @@ def test_ruling_that_quotes_the_ask_closes_it_unless_a_mechanism_is_pending() ->
     assert _state(report, 16) is EnumAskState.TICKETED
 
 
-def test_untracked_kinds_unclassified_prompts_and_old_prompts() -> None:
+def test_rulings_and_unclassified_prompts_are_items_and_old_prompts_are_excluded() -> (
+    None
+):
     old = _prompt(17, "Yesterday ask", said=datetime(2026, 10, 30, 23, tzinfo=UTC))
     decision = _prompt(18, "Go with the hash", kind="decision")
     bare = ModelAskPrompt(
@@ -308,8 +316,9 @@ def test_untracked_kinds_unclassified_prompts_and_old_prompts() -> None:
         text="keep the foreground silent..",
     )
     report = _run((old, decision, bare))
-    assert report.asks == ()
-    assert [(k.kind, k.count) for k in report.not_tracked] == [("decision", 1)]
+    assert {e.kind for e in report.asks} == {"ruling", "unclassified"}
+    assert all(e.owner_lane for e in report.asks)
+    assert report.not_tracked == ()
     assert [u.capture_id for u in report.unclassified] == ["cap-bare"]
     assert "UNCLASSIFIED PROMPTS (1)" in report.text
 
@@ -378,8 +387,9 @@ def test_third_statement_of_a_direction_flags_the_ask_restated() -> None:
     entry = _entry(three, 30)
     assert entry.restated == 3
     assert entry.restated_flag
-    assert three.restated_asks == (ask_id(30),)
-    assert "RESTATED (1)" in three.text
+    assert ask_id(30) in three.restated_asks
+    assert len(three.restated_asks) == 3
+    assert "RESTATED (3)" in three.text
     assert "stated x3 RESTATED" in three.text
 
 
@@ -510,7 +520,9 @@ def test_status_owned_row_names_the_owner() -> None:
     entry = _entry(report, 1)
     assert entry.state is EnumAskState.OWNED
     assert entry.owner_lane == "factory-floor-host-1255"
-    assert report.wip.owned_lanes == ("factory-floor-host-1255",)
+    assert report.wip.owned_lanes == ()
+    assert entry.running_lane is None
+    assert entry.orphaned
 
 
 def test_sent_on_behalf_row_closes_the_ask_it_cites() -> None:
@@ -614,10 +626,12 @@ def test_challenge_and_directive_items_of_untracked_kinds_are_asks(
         ("decision", "Don't worry about racking 51 yet."),
     ],
 )
-def test_plain_questions_and_decisions_stay_untracked(kind: str, quote: str) -> None:
+def test_plain_questions_and_decisions_are_tracked_items(kind: str, quote: str) -> None:
     report = _run((_prompt(1, quote, kind=kind),))
-    assert report.counts.total == 0
-    assert report.not_tracked[0].kind == kind
+    assert report.counts.total == 1
+    assert report.asks[0].kind == CONFIG.kind_aliases[kind]
+    assert report.asks[0].owner_lane == "orchestrator"
+    assert report.not_tracked == ()
 
 
 def test_unclassified_prompt_with_an_ask_sentence_becomes_an_ask() -> None:
@@ -655,6 +669,9 @@ def test_unclassified_prompt_a_row_cites_is_adopted_and_others_stay_listed() -> 
         "state=parked | reason=hardware arrives 2026-11-01 | seq=2 | Gen9 bring-up",
     )
     report = _run((cited, other), rows)
-    assert report.asks[0].ask_id == "ask-0fd74581d1"
-    assert report.asks[0].state is EnumAskState.PARKED
+    cited_entry = next(e for e in report.asks if e.ask_id == "ask-0fd74581d1")
+    assert cited_entry.state is EnumAskState.PARKED
+    assert any(
+        e.kind == "unclassified" and e.owner_lane == "orchestrator" for e in report.asks
+    )
     assert [u.capture_id for u in report.unclassified] == ["95b635443dfbf536"]

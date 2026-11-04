@@ -97,6 +97,7 @@ def read_prompts(captures: Path, since: datetime) -> tuple[ModelAskPrompt, ...]:
             session_id=str(record.get("session_id", "")),
             said_at=said,
             text=str(record.get("text", "")),
+            lane=str(record.get("lane") or record.get("captured_lane") or "") or None,
             items=items,
         )
     return tuple(prompts.values())
@@ -157,6 +158,7 @@ class HandlerAskStateReport:
                 now=request.now,
                 since=request.since,
                 config=config,
+                ruling_mechanisms=request.ruling_mechanisms,
             )
         )
 

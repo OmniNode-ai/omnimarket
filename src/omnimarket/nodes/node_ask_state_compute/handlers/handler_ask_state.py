@@ -1,41 +1,27 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerAskState: what became of each thing the operator asked for (OMN-21713).
+"""Pure tracked-item fold over captured prompts, ledger rows and an evaluating time.
 
-Pure and deterministic: the caller reads the captured prompts and the ledger rows and supplies
-the time. Every vocabulary and limit comes from the request's config; this module holds none.
-
-An ask is a captured prompt item whose kind the config tracks (ask, idea). Its state comes from
-the ledger rows tied to it, folded oldest first:
-
-* ``done``: a row cites ``closes-ask=<id>`` with evidence (a merged pull request, or a TERMINAL,
-  RULING or answer row by stamp), a STATUS ``state=done`` cites the ask with the same evidence, a
-  send row (``send_kinds``) cites the ask or a message row (``answer_kinds``) cites it with
-  ``closes-ask=`` (neither one a pull-request handoff), the operator
-  withdrew it (a capture row ``state=dropped``, or a CORRECTION citing it), a linked lane ended
-  with a done outcome, or a RULING recorded it without a pending mechanism;
-* ``owned``: a linked CLAIM has no closing TERMINAL, the lane ended handed-off, or a STATUS
-  ``state=owned`` names its ``owner=``;
-* ``parked``: a STATUS ``state=parked`` (with ``reason=`` and ``seq=``) or a HOLD cites it;
-* ``ticketed``: a linked row names a ticket and nothing owns or parks the ask;
-* ``dropped``: none of those, once the grace window has passed (inside it the ask is ``new``).
-
-Items of an untracked kind become asks when the config's ``promote_rules`` match their wording
-(a why-challenge, a directive), and a prompt the capture classified into no item is read
-sentence by sentence; a prompt a row cites by ``ask-<first 10 of the capture id>`` is an ask too.
-
-Rows tie to an ask in two ways. Explicit: the row carries ``ask=<id>`` (or ``asks=``). Inferred,
-only for an ask no row cites: a CLAIM inside the link window whose words share enough content
-words with the ask, or a RULING that quotes the ask verbatim. Inferred ties are marked, with the
-shared words, so a reader can audit them.
+Every item retains its accountable owner. A live claim is recorded separately as running_lane;
+open items without one are orphaned. A terminal outcome needs a configured completion evidence
+class, and ruling items take completion from the supplied mechanism audit. Unclassified prompts
+remain review items. Config supplies the vocabulary and thresholds; row stamps and original line
+order decide replay order.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from omnimarket.handlers.handler_operator_ledger import parse_ledger_row
+from omnimarket.handlers.handler_operator_utterance import (
+    heuristic_sentences,
+    item_id,
+    subject_terms,
+)
 from omnimarket.models.model_ask_state import (
     EnumAskLink,
     EnumAskState,
@@ -49,15 +35,6 @@ from omnimarket.models.model_ask_state import (
     ModelKindCount,
     ModelParkedAsk,
     ModelUnclassifiedPrompt,
-)
-from omnimarket.nodes.node_operator_capture_compute.handlers.handler_open_asks import (
-    has_closing_evidence,
-    parse_ledger_row,
-)
-from omnimarket.nodes.node_operator_capture_compute.handlers.handler_utterance_classify import (
-    heuristic_sentences,
-    item_id,
-    subject_terms,
 )
 
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -75,6 +52,7 @@ class _Row:
     rest: str
     cells: dict[str, str]
     at: datetime
+    order: int
 
     @property
     def lane(self) -> str:
@@ -95,6 +73,8 @@ class _Ask:
     subject: str
     confidence: float
     capture_id: str = ""
+    owner: str = ""
+    ruling_stamp: str = ""
 
 
 @dataclass
@@ -149,26 +129,35 @@ def _row_words(row: _Row) -> str:
 
 def _parse_rows(rows: tuple[str, ...]) -> list[_Row]:
     parsed: list[_Row] = []
-    for raw in rows:
+    for order, raw in enumerate(rows):
         got = parse_ledger_row(raw)
         if got is None:
             continue
         stamp, kind, rest, cells = got
-        parsed.append(_Row(stamp, kind, rest, cells, _stamp_time(stamp)))
-    parsed.sort(key=lambda r: r.stamp)
+        try:
+            at = _stamp_time(stamp)
+        except ValueError:
+            continue
+        parsed.append(_Row(stamp, kind, rest, cells, at, order))
+    parsed.sort(key=lambda r: (r.stamp, r.order))
     return parsed
 
 
 def _defines_ask(row: _Row, config: ModelAskStateConfig) -> bool:
     return (
         row.lane == config.capture_lane
-        and row.cells.get("kind") in config.tracked_kinds
+        and config.kind_aliases.get(row.cells.get("kind", ""), row.cells.get("kind"))
+        in config.tracked_kinds
         and "item" in row.cells
     )
 
 
 def _ask_id(item_id: str) -> str:
     return "ask-" + item_id.removeprefix("cap-")
+
+
+def _source_id(kind: str, source: str, config: ModelAskStateConfig) -> str:
+    return kind + "-" + hashlib.sha256(source.encode()).hexdigest()[: config.id_chars]
 
 
 def _promoted(kind: str, quote: str, config: ModelAskStateConfig) -> bool:
@@ -212,6 +201,9 @@ def _unclassified_asks(
                     subject=" ".join(subject_terms(quote, 5)),
                     confidence=0.5,
                     capture_id=prompt.capture_id,
+                    owner=prompt.lane
+                    or config.session_lanes.get(prompt.session_id)
+                    or config.default_owner,
                 )
             )
     if not found and _ask_id(first) in cited:
@@ -226,6 +218,9 @@ def _unclassified_asks(
                 subject="",
                 confidence=0.0,
                 capture_id=prompt.capture_id,
+                owner=prompt.lane
+                or config.session_lanes.get(prompt.session_id)
+                or config.default_owner,
             )
         )
     return found
@@ -240,9 +235,11 @@ def _collect_asks(
     asks: dict[str, _Ask] = {}
     untracked: dict[str, int] = {}
     unclassified: list[ModelUnclassifiedPrompt] = []
-    for prompt in sorted(request.prompts, key=lambda p: _aware(p.said_at)):
+    for prompt in sorted(
+        request.prompts, key=lambda p: (_aware(p.said_at), p.capture_id)
+    ):
         said = _aware(prompt.said_at)
-        if said < since:
+        if said < since or said > _aware(request.now):
             continue
         if not prompt.items:
             found = _unclassified_asks(prompt, said, cited, config)
@@ -250,23 +247,42 @@ def _collect_asks(
                 asks.setdefault(ask.item_id, ask)
             if not found:
                 unclassified.append(_unclassified(prompt, config))
+                identity = _source_id(
+                    config.unclassified_kind, prompt.capture_id, config
+                )
+                asks.setdefault(
+                    identity,
+                    _Ask(
+                        ask_id=identity,
+                        item_id=identity,
+                        kind=config.unclassified_kind,
+                        said_at=said,
+                        session_id=prompt.session_id,
+                        words=prompt.text,
+                        subject="",
+                        confidence=0.0,
+                        capture_id=prompt.capture_id,
+                        owner=config.default_owner,
+                    ),
+                )
             continue
         for item in prompt.items:
+            kind = config.kind_aliases.get(item.kind, item.kind)
             tracked = (
-                item.kind in config.tracked_kinds
+                kind in config.tracked_kinds
                 or _promoted(item.kind, item.quote, config)
                 or _ask_id(item.item_id) in cited
             )
             if not tracked:
                 untracked[item.kind] = untracked.get(item.kind, 0) + 1
-                continue
+                kind = config.unclassified_kind
             asks.setdefault(
                 item.item_id,
                 _Ask(
                     ask_id=_ask_id(item.item_id),
                     item_id=item.item_id,
-                    kind=item.kind
-                    if item.kind in config.tracked_kinds
+                    kind=kind
+                    if kind in config.tracked_kinds
                     else config.tracked_kinds[0],
                     said_at=said,
                     session_id=prompt.session_id,
@@ -274,9 +290,42 @@ def _collect_asks(
                     subject=item.subject,
                     confidence=item.confidence,
                     capture_id=prompt.capture_id,
+                    owner=(
+                        config.default_owner
+                        if kind == config.unclassified_kind
+                        else prompt.lane
+                        or config.session_lanes.get(prompt.session_id)
+                        or config.default_owner
+                    ),
                 ),
             )
     for row in rows:
+        if row.kind in config.ruling_row_kinds and since <= row.at <= _aware(
+            request.now
+        ):
+            identity = _source_id(
+                config.ruling_kind, row.stamp + "\0" + row.lane, config
+            )
+            quoted = _QUOTED.findall(row.rest)
+            asks.setdefault(
+                identity,
+                _Ask(
+                    ask_id=identity,
+                    item_id=identity,
+                    kind=config.ruling_kind,
+                    said_at=row.at,
+                    session_id=row.cells.get("session", ""),
+                    words=quoted[-1] if quoted else row.cells.get("question", row.rest),
+                    subject=row.cells.get("question", ""),
+                    confidence=1.0,
+                    capture_id=row.cells.get("capture") or identity,
+                    owner=row.cells.get(config.owner_cell)
+                    or row.lane
+                    or config.default_owner,
+                    ruling_stamp=row.stamp,
+                ),
+            )
+            continue
         if row.kind != "STATUS" or not _defines_ask(row, config):
             continue
         item_id = row.cells["item"]
@@ -285,7 +334,7 @@ def _collect_asks(
             said = _stamp_time(said_cell) if said_cell else row.at
         except ValueError:
             said = row.at
-        if item_id in asks or said < since:
+        if item_id in asks or said < since or said > _aware(request.now):
             continue
         quoted = _QUOTED.findall(row.rest)
         try:
@@ -295,16 +344,23 @@ def _collect_asks(
         asks[item_id] = _Ask(
             ask_id=row.cells.get(config.ask_cells[0], "") or _ask_id(item_id),
             item_id=item_id,
-            kind=row.cells["kind"],
+            kind=config.kind_aliases.get(row.cells["kind"], row.cells["kind"]),
             said_at=said,
             session_id=row.cells.get("session", ""),
             words=quoted[-1] if quoted else "",
             subject=row.cells.get("subject", ""),
             confidence=min(max(confidence, 0.0), 1.0),
             capture_id=row.cells.get("capture", ""),
+            owner=row.cells.get(config.owner_cell)
+            or config.session_lanes.get(row.cells.get("session", ""))
+            or config.default_owner,
         )
     kinds = [ModelKindCount(kind=k, count=n) for k, n in sorted(untracked.items())]
-    return sorted(asks.values(), key=lambda a: a.said_at), kinds, unclassified
+    return (
+        sorted(asks.values(), key=lambda a: (a.said_at, a.item_id)),
+        kinds,
+        unclassified,
+    )
 
 
 def _unclassified(
@@ -337,6 +393,14 @@ def _cites_answer_row(
             rf"\b{re.escape(kind)}[ :=]+(\d{{4}}-\d{{2}}-\d{{2}}T\d{{2}}:\d{{2}}:\d{{2}}Z)",
             evidence,
         )
+    )
+
+
+def _completion_evidence(row: _Row, config: ModelAskStateConfig) -> bool:
+    """TERMINAL alone is never a completion class; the request supplies the accepted evidence grammar."""
+    return any(
+        re.search(pattern, row.cells.get("evidence", ""))
+        for pattern in config.completion_evidence_patterns
     )
 
 
@@ -402,10 +466,14 @@ def _decide(
             if terminal is not None and id(terminal) not in seen:
                 seen.add(id(terminal))
                 events.append(_Event(terminal, event.explicit))
-    events.sort(key=lambda e: e.row.stamp)
+    events.sort(key=lambda e: (e.row.stamp, e.row.order))
 
     done: str | None = None
     owner: str | None = None
+    accountable = ask.owner or config.default_owner
+    running: str | None = None
+    running_claim: str | None = None
+    ruling_audit_state: str | None = None
     base: EnumAskState | None = None
     reason: str | None = None
     seq: int | None = None
@@ -422,8 +490,15 @@ def _decide(
         for ticket in _tickets(row):
             if ticket not in tickets:
                 tickets.append(ticket)
-        closes_cell = ask.ask_id in _ids(row.cells.get(config.closes_ask_cell, ""))
-        cites = event.explicit and ask.ask_id in _explicit_refs(row, config)
+        if row.cells.get(config.owner_cell):
+            accountable = row.cells[config.owner_cell]
+        identities = {ask.ask_id, ask.item_id}
+        closes_cell = bool(
+            identities.intersection(_ids(row.cells.get(config.closes_ask_cell, "")))
+        )
+        cites = event.explicit and bool(
+            identities.intersection(_explicit_refs(row, config))
+        )
         marks_done = (
             row.kind == "STATUS"
             and cites
@@ -431,8 +506,19 @@ def _decide(
         )
         answers = (
             row.kind in config.answer_kinds
+            and ask.kind in config.answerable_kinds
             and not _pr_refs(row, config.pr_cells)
-            and (closes_cell or (cites and row.kind in config.send_kinds))
+            and (
+                closes_cell
+                or (cites and row.kind in config.send_kinds)
+                or (
+                    config.operator_recipient in row.cells.get("to", "").split(",")
+                    and any(
+                        identities.intersection(_ids(row.cells.get(cell, "")))
+                        for cell in config.answer_cells
+                    )
+                )
+            )
         )
         if closes_cell or marks_done or answers:
             if row.kind == "CORRECTION" or (
@@ -442,34 +528,53 @@ def _decide(
                 done = "withdrawn"
             elif answers:
                 done = "answered"
-            elif has_closing_evidence(
-                row.cells.get("evidence", "")
-            ) or _cites_answer_row(row, config, row_keys):
+            elif _completion_evidence(row, config) or _cites_answer_row(
+                row, config, row_keys
+            ):
                 done = "closes-ask"
             else:
                 evidence.pop()
+            if done is not None:
                 continue
-            break
         if row.kind == "CLAIM":
             owner = row.lane
+            accountable = row.cells.get(config.owner_cell) or row.lane or accountable
+            running = row.lane or None
+            running_claim = row.stamp
+            base = None
         elif row.kind == "TERMINAL":
             outcome = row.cells.get("outcome", "")
+            if (
+                running == row.lane
+                and row.cells.get("closes-CLAIM")
+                and row.cells["closes-CLAIM"] != running_claim
+            ):
+                continue
+            if running == row.lane:
+                running = None
+                running_claim = None
             if outcome in config.done_outcomes:
-                done = "terminal"
-                break
-            if outcome in config.handoff_outcomes:
+                if _completion_evidence(row, config):
+                    done = "terminal"
+                # An unfinished obligation stays owned by its last lane, even after its claim ends.
+            elif outcome in config.handoff_outcomes:
                 owner = row.cells.get("handed_to") or row.lane
+                accountable = owner or accountable
             else:
                 owner = None
         elif row.kind == "STATUS":
             row_state = row.cells.get(config.state_cell, "")
             if row_state == config.owned_state:
                 owner = row.cells.get(config.owner_cell) or row.lane
+                accountable = owner or accountable
+                base = None
             elif row_state == config.parked_state:
+                owner = None
                 base = EnumAskState.PARKED
                 reason = row.cells.get(config.reason_cell) or reason
                 seq = _seq(row.cells.get(config.seq_cell, "")) or seq
             elif row_state == config.ticketed_state:
+                owner = None
                 base = EnumAskState.TICKETED
         elif row.kind == "HOLD":
             base = EnumAskState.PARKED
@@ -477,9 +582,35 @@ def _decide(
         elif row.kind == "RULING":
             if row.cells.get("mechanism-ticket"):
                 base = EnumAskState.TICKETED
-            else:
+            elif not row.cells.get("mechanism-pending"):
                 done = "ruling"
-                break
+
+    if ask.kind == config.ruling_kind:
+        # Audit input is authoritative for a ruling's mechanism. A lane terminal cannot substitute for it.
+        ruling_stamp = ask.ruling_stamp or next(
+            (
+                e.row.stamp
+                for e in reversed(events)
+                if e.row.kind in config.ruling_row_kinds
+            ),
+            "",
+        )
+        audits = sorted(
+            (
+                a
+                for a in request.ruling_mechanisms
+                if a.ruling_stamp == ruling_stamp and _aware(a.audited_at) <= now
+            ),
+            key=lambda a: _aware(a.audited_at),
+        )
+        audit = audits[-1] if audits else None
+        done = None
+        if audit is not None:
+            ruling_audit_state = audit.state
+            accountable = audit.owner_lane or accountable
+            evidence.extend(audit.evidence)
+            if audit.state in config.ruling_closed_audit_states and audit.evidence:
+                done = "ruling-mechanism"
 
     age = max((now - ask.said_at).total_seconds() / 60.0, 0.0)
     state: EnumAskState
@@ -515,7 +646,11 @@ def _decide(
         subject=ask.subject,
         confidence=ask.confidence,
         state=state,
-        owner_lane=owner if state is EnumAskState.OWNED else None,
+        owner_lane=accountable,
+        running_lane=running if state is not EnumAskState.DONE else None,
+        orphaned=state is not EnumAskState.DONE and running is None,
+        inferred_ties=sum(not e.explicit for e in events if e.row.at >= ask.said_at),
+        ruling_audit_state=ruling_audit_state,
         tickets=tuple(tickets),
         park_reason=reason,
         park_seq=seq,
@@ -523,7 +658,7 @@ def _decide(
         resolution=done,
         evidence=tuple(evidence),
         shared_terms=tuple(shared) if link is EnumAskLink.INFERRED else (),
-        age_minutes=round(age, 1),
+        age_minutes=age,
     )
 
 
@@ -539,6 +674,8 @@ def _statements(request: ModelAskStateRequest, rows: list[_Row]) -> list[_Statem
     config = request.config
     found: list[_Statement] = []
     for prompt in request.prompts:
+        if _aware(prompt.said_at) > _aware(request.now):
+            continue
         for item in prompt.items:
             if item.kind in config.restate_kinds:
                 stems = frozenset(_stems(f"{item.quote} {item.subject}", config))
@@ -551,7 +688,12 @@ def _statements(request: ModelAskStateRequest, rows: list[_Row]) -> list[_Statem
             text = f"{row.cells.get('question', '')} {words}"
             found.append(
                 _Statement(
-                    row.at, frozenset(_stems(text, config)), "RULING " + row.stamp
+                    row.at,
+                    frozenset(_stems(text, config)),
+                    row.cells.get("capture")
+                    or _source_id(
+                        config.ruling_kind, row.stamp + "\0" + row.lane, config
+                    ),
                 )
             )
     return found
@@ -715,13 +857,7 @@ def _parked_queue(
 
 
 def _wip(entries: list[ModelAskEntry], limit: int | None) -> ModelAskWip:
-    lanes = tuple(
-        dict.fromkeys(
-            e.owner_lane
-            for e in entries
-            if e.state is EnumAskState.OWNED and e.owner_lane
-        )
-    )
+    lanes = tuple(dict.fromkeys(e.running_lane for e in entries if e.running_lane))
     if limit is None:
         return ModelAskWip(owned_lanes=lanes, limit=None, status="unknown")
     return ModelAskWip(
@@ -771,6 +907,9 @@ def render_text(report: ModelAskStateReport, excerpt_chars: int) -> str:
         f"{c.dropped} DROPPED, {c.new} new, {c.parked} parked, {c.owned} owned, "
         f"{c.ticketed} ticketed, {c.done} done. {wip_text}."
     ]
+    lines.append(
+        f"Inferred ties: {report.inferred_ties}; orphaned open items: {len(report.orphaned)}."
+    )
     flagged = [e for e in report.asks if e.restated_flag]
     if flagged:
         lines.append("")
@@ -829,6 +968,11 @@ def _entry_line(e: ModelAskEntry, excerpt_chars: int) -> str:
     parts = [e.ask_id, said]
     if e.owner_lane:
         parts.append(f"lane={e.owner_lane}")
+    if e.running_lane:
+        parts.append(f"running={e.running_lane}")
+    if e.orphaned:
+        parts.append("orphaned")
+    parts.append(f"age={e.age_minutes:g}m")
     if e.tickets:
         parts.append("ticket=" + ",".join(e.tickets))
     if e.resolution:
@@ -848,16 +992,26 @@ class HandlerAskState:
 
     def handle(self, request: ModelAskStateRequest) -> ModelAskStateReport:
         config = request.config
-        rows = _parse_rows(request.rows)
+        rows = [r for r in _parse_rows(request.rows) if r.at <= _aware(request.now)]
         asks, not_tracked, unclassified = _collect_asks(request, rows)
-        by_id = {a.ask_id: a for a in asks}
+        by_id = {identity: a for a in asks for identity in (a.ask_id, a.item_id)}
         explicit: dict[str, list[_Event]] = {a.ask_id: [] for a in asks}
         for row in rows:
             if _defines_ask(row, config):
                 continue
             for ref in dict.fromkeys(_explicit_refs(row, config)):
                 if ref in by_id:
-                    explicit[ref].append(_Event(row, True))
+                    target = by_id[ref].ask_id
+                    if not any(e.row is row for e in explicit[target]):
+                        explicit[target].append(_Event(row, True))
+        for ask in asks:
+            if ask.ruling_stamp:
+                explicit[ask.ask_id].extend(
+                    _Event(row, True)
+                    for row in rows
+                    if row.stamp == ask.ruling_stamp
+                    and row.kind in config.ruling_row_kinds
+                )
         terminals = _terminal_index(rows)
         row_keys = frozenset((r.kind, r.stamp) for r in rows)
         claim_stems = {
@@ -914,6 +1068,8 @@ class HandlerAskState:
             wip=wip,
             not_tracked=tuple(not_tracked),
             unclassified=tuple(unclassified),
+            orphaned=tuple(e.ask_id for e in entries if e.orphaned),
+            inferred_ties=sum(e.inferred_ties for e in entries),
         )
         return report.model_copy(
             update={"text": render_text(report, config.excerpt_chars)}

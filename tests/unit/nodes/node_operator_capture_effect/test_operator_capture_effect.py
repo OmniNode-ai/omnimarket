@@ -117,15 +117,16 @@ def _process(root: Path, ledger: Path, delegate: Any, append: FakeLedger) -> Any
     )
 
 
-def test_a_decision_and_an_ask_become_two_rows_with_words_session_and_drift(
+def test_a_decision_and_an_ask_have_item_and_disposition_rows_with_words_session_and_drift(
     tmp_path: Path, ledger: Path
 ) -> None:
     root = tmp_path / "store"
     assert _ingest(root) is not None
     append = FakeLedger()
     result = _process(root, ledger, _delegate(), append)
-    assert (result.processed, result.rows_appended, result.pending) == (1, 2, 0)
-    decision, ask = append.rows
+    assert (result.processed, result.rows_appended, result.pending) == (1, 4, 0)
+    decision, ask = append.rows[:2]
+    assert all("kind=disposition" in row for row in append.rows[2:])
     assert "kind=decision" in decision
     assert '"There should be no cloud work in M4."' in decision
     assert (
@@ -166,8 +167,9 @@ def test_a_model_outage_still_records_through_the_fallback(
     _ingest(root)
     append = FakeLedger()
     result = _process(root, ledger, _delegate(None), append)
-    assert result.rows_appended == 2
-    assert all("classifier=heuristic" in row for row in append.rows)
+    assert result.rows_appended == 4
+    assert all("classifier=heuristic" in row for row in append.rows[:2])
+    assert all("kind=disposition" in row for row in append.rows[2:])
 
 
 def test_a_failed_append_keeps_the_prompt_and_the_retry_writes_no_row_twice(
@@ -183,11 +185,13 @@ def test_a_failed_append_keeps_the_prompt_and_the_retry_writes_no_row_twice(
     append.fail_after = None
     delegate = _delegate()
     second = _process(root, ledger, delegate, append)
-    assert (second.rows_appended, second.pending, second.processed) == (2, 0, 1)
+    assert (second.rows_appended, second.pending, second.processed) == (4, 0, 1)
     assert delegate.calls == []
     assert [("kind=decision" in r, "kind=ask" in r) for r in append.rows] == [
         (True, False),
         (False, True),
+        (False, False),
+        (False, False),
     ]
 
 
@@ -287,7 +291,7 @@ def test_a_crash_before_the_append_resumes_from_the_plan_without_reclassifying(
     resumed = FakeLedger()
     delegate = _delegate()
     result = _process(root, ledger, delegate, resumed)
-    assert (result.processed, result.rows_appended, result.pending) == (1, 2, 0)
+    assert (result.processed, result.rows_appended, result.pending) == (1, 4, 0)
     assert delegate.calls == []
     assert resumed.calls == 1
     assert "kind=decision" in resumed.rows[0]

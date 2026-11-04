@@ -67,6 +67,10 @@ handler_routing:
       handler:
         name: "HandlerWordsPromotion"
         module: "omnimarket.nodes.node_operator_capture_compute.handlers.handler_words_promotion"
+config:
+  capture_rows:
+    disposition_kind: disposition
+    chat_item: chat
 dod_evidence:
   PYTEST:
     description: "operator capture decisions on this week's sample messages, closure and drift"
