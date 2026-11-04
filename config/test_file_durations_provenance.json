@@ -62,5 +62,12 @@
     "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
     "runner": "lab host h051, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "8fecf3caec1062e4d7fd4557f5d0bcf809deb344"
+  },
+  "supplement_omn22200": {
+    "recorded_on": "2026-11-04",
+    "files_added": 48,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300; existing entries left as they were",
+    "runner": "lab host h101, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "e7e987f35b627d0a2e7bd0009c570933476f93a7"
   }
 }
