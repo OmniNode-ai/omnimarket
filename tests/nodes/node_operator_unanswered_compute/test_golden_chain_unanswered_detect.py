@@ -522,7 +522,7 @@ async def test_unanswered_detect_installed_bus_wiring():
     completed = asyncio.Queue()
 
     async def collect(message):
-        await completed.put(json.loads(message.value))
+        await completed.put((message.topic, json.loads(message.value)))
 
     await bus.start()
     try:
@@ -558,9 +558,59 @@ async def test_unanswered_detect_installed_bus_wiring():
                 envelope.model_dump_json().encode(),
                 None,
             )
-            event = await asyncio.wait_for(completed.get(), timeout=5)
+            terminal_topic, event = await asyncio.wait_for(completed.get(), timeout=5)
+            assert (
+                terminal_topic == "onex.evt.omnimarket.operator-unanswered-completed.v1"
+            )
             assert event["correlation_id"] == str(correlation)
             assert len(event["payload"]["unanswered"]) == count
+        # The auxiliary operations are public bus entry points as well as
+        # direct pure handlers. Exercise the same discovery and dispatch path.
+        operations = {
+            entry["operation"]: entry for entry in raw["handler_routing"]["handlers"]
+        }
+        cases = [
+            (
+                "resolve_answer_words",
+                {
+                    "message_id": "msg-u1",
+                    "content_store_words": "Please answer",
+                    "resend_text": "Please resend.",
+                },
+                "words",
+                "Please answer",
+            ),
+            (
+                "measure_structural_misses",
+                {
+                    "sample_id": "labelled",
+                    "labels": [
+                        {
+                            "message_id": f"msg-{i}",
+                            "assistant_text_addresses_message": True,
+                        }
+                        for i in range(60)
+                    ],
+                },
+                "sample_size",
+                60,
+            ),
+        ]
+        for operation, payload, field, expected in cases:
+            topic = operations[operation]["topic"]
+            correlation = uuid4()
+            envelope = ModelEventEnvelope[object](
+                payload=payload,
+                correlation_id=correlation,
+                event_type=topic.removeprefix("onex.cmd.").removesuffix(".v1"),
+            )
+            await bus.publish(topic, None, envelope.model_dump_json().encode(), None)
+            terminal_topic, event = await asyncio.wait_for(completed.get(), timeout=5)
+            assert (
+                terminal_topic == "onex.evt.omnimarket.operator-unanswered-completed.v1"
+            )
+            assert event["correlation_id"] == str(correlation)
+            assert event["payload"][field] == expected
     finally:
         await bus.close()
 

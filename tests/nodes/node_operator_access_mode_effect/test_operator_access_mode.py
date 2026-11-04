@@ -682,6 +682,24 @@ def test_stop_hook_asks_for_one_rewrite_and_never_loops(tmp_path: Path) -> None:
         "stop_hook_active": False,
         "last_assistant_message": "OMN-20892 is merged.",
     }
+    # This regression concerns reply rewrites after an answered operator turn.
+    # Give the independent unanswered guard the same answered transcript.
+    transcript = tmp_path / "answered.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {"type": "user", "uuid": "prompt", "message": {"content": "Status?"}}
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": stop["last_assistant_message"]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    stop["transcript_path"] = str(transcript)
     blocked = _run("stop", stop, environ)
     assert blocked.returncode == 0
     body = json.loads(blocked.stdout)

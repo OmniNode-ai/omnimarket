@@ -49,6 +49,11 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.operator-unanswered-completed.v1
 terminal_event: onex.evt.omnimarket.operator-unanswered-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.operator-answer-words-requested.v1
+    producer: Canonical run-node clients resolving private answer words for an answer lane.
+  - topic: onex.cmd.omnimarket.operator-structural-sample-requested.v1
+    producer: Canonical run-node measurement clients submitting a labelled structural sample.
 externally_consumed_topics:
   - onex.evt.omnimarket.operator-unanswered-completed.v1
 runtime_dispatch:
