@@ -24,7 +24,8 @@ def test_precommit_wiring() -> None:
     )
     assert hook["entry"] == ENTRY
     assert hook["pass_filenames"] is False
-    assert hook["stages"] == ["pre-commit"]
+    # OMN-22364: manual stage; the required CI job is its enforcement.
+    assert hook["stages"] == ["manual"]
     for filename in (
         "contract.yaml",
         "docker-compose.yml",

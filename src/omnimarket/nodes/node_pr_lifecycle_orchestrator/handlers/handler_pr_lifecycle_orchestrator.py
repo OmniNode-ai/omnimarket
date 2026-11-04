@@ -217,7 +217,7 @@ class ModelPrLifecycleStartCommand(BaseModel):
     )
     use_dag_ordering: bool = Field(
         default=True,
-        description="Merge PRs in repo dependency order (omnibase_compat first, omnidash last).",
+        description="Merge PRs in repo dependency order (omnibase_spi first, omnidash last).",
     )
     enable_trivial_comment_resolution: bool = Field(
         default=True,

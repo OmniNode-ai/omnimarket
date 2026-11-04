@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
@@ -843,6 +844,19 @@ def resolve_dir(environ: Mapping[str, str], env_name: str, fallback: str) -> Pat
     """The directory ``env_name`` names, else ``fallback`` under the user's home."""
     value = environ.get(env_name, "").strip()
     return Path(value) if value else Path.home() / fallback
+
+
+def resolve_host_table(
+    environ: Mapping[str, str], env_name: str, home: Path, relpath: str
+) -> Path | None:
+    """The shared lab host table: the file ``env_name`` names, else ``relpath`` under ``home`` when the floor overlay
+    declares one, else the ``lab_hosts`` overlay found through the overlay roots. None when none supplies it."""
+    value = environ.get(env_name, "").strip()
+    if value:
+        return Path(value)
+    if relpath:
+        return home / relpath
+    return find_node_overlay("lab_hosts", environ)
 
 
 def split_reading(text: str) -> list[str]:
