@@ -45,7 +45,10 @@ class HandlerContractProjectionGather:
         rule = EnumProjectionContractRule(request.rule)
         nodes: list[ModelProjectionNodeSources] = []
         handlers: list[ModelSourceFile] = []
-        if rule is EnumProjectionContractRule.ACCESS:
+        if rule in {
+            EnumProjectionContractRule.ACCESS,
+            EnumProjectionContractRule.TYPED_ENTRY,
+        }:
             nodes = self._nodes(root, "*/contract.yaml", with_modules=True)
         elif rule is EnumProjectionContractRule.CURSOR:
             nodes = self._nodes(root, "node_*/contract.yaml", with_modules=False)

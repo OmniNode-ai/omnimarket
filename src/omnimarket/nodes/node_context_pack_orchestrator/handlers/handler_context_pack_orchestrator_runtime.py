@@ -9,8 +9,21 @@ HandlerContextPackOrchestrator() itself unwired.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 
+from omnibase_core.enums.enum_context_factor import EnumContextFactor
+
+from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
+from omnimarket.models.context_pack_orchestrator import (
+    ModelContextPackBuilt,
+    ModelContextPackCommand,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.additive_answer import (
+    answer_additive,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.enabled_additive_profiles import (
+    load_enabled_additive_profiles,
+)
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     HandlerContextPackOrchestrator,
 )
@@ -53,7 +66,34 @@ def resolve_tier_source(node_name: str) -> ProtocolContextTierSource:
 
 
 class HandlerContextPackOrchestratorRuntime(HandlerContextPackOrchestrator):
-    """Bind contract-declared sources when the runtime constructs the handler."""
+    """Bind contract-declared sources and the enabled additive profiles when the runtime builds it.
 
-    def __init__(self) -> None:
-        super().__init__(load_tier_sources(resolve=resolve_tier_source))
+    ``sources`` and ``enabled_additive_profiles`` default to the contract's own; they are
+    arguments only so a test can bind fixtures through this same class.
+    """
+
+    def __init__(
+        self,
+        sources: Mapping[EnumContextFactor, ProtocolContextTierSource] | None = None,
+        *,
+        enabled_additive_profiles: Collection[str] | None = None,
+        implementation_identity: Callable[[], Mapping[str, str]] | None = None,
+    ) -> None:
+        super().__init__(
+            load_tier_sources(resolve=resolve_tier_source)
+            if sources is None
+            else sources,
+            implementation_identity=implementation_identity,
+        )
+        self._enabled_additive_profiles = frozenset(
+            load_enabled_additive_profiles()
+            if enabled_additive_profiles is None
+            else enabled_additive_profiles
+        )
+
+    def handle(self, command: ModelContextPackCommand) -> ModelContextPackBuilt:
+        if command.request.binding_kind is not EnumContextBindingKind.ADDITIVE:
+            return super().handle(command)
+        return answer_additive(
+            command, enabled=self._enabled_additive_profiles, build=super().handle
+        )
