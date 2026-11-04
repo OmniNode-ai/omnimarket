@@ -185,3 +185,110 @@ def test_ac1_live_cause_of_2026_10_09_replayed_through_the_bus_path() -> None:
         cause_key("OmniNode-ai/omnibase_infra", normalize_signature(LIVE_CHECK, text))
         == LIVE_KEY
     )
+
+
+# One check name, two different first failure annotations: a check-level key would
+# put all six PRs in one cause, the annotation-level key separates them into two.
+COLLIDE_REPO = "OmniNode-ai/omnimarket"
+COLLIDE_CHECK = "repo-evidence / dod-verify"
+COLLIDE_TEXT = {
+    "missing-contract": "pull request cites OMN-17292 but carries no contracts/OMN-17292.yaml",
+    "missing-evidence": "RECEIPT GATE FAILED: PR body is missing required 'Evidence-Source:' line",
+}
+COLLIDE_PRS = {
+    "missing-contract": (101, 102, 103),
+    "missing-evidence": (104, 105, 106),
+}
+
+
+def _collide_facts(annotated: bool) -> ModelLandingFacts:
+    prs = []
+    for kind, numbers in COLLIDE_PRS.items():
+        for number in numbers:
+            pr = {
+                "pr": f"{COLLIDE_REPO}#{number}",
+                "head_sha": f"{number:040x}",
+                "state": "open",
+                "ci": "red",
+                "created_at": f"2026-10-02T12:{number % 60:02d}:00+00:00",
+                "red_class": "product",
+                "red_checks": [COLLIDE_CHECK],
+            }
+            if annotated:
+                pr["red_annotations"] = {COLLIDE_CHECK: COLLIDE_TEXT[kind]}
+            prs.append(pr)
+    return ModelLandingFacts.model_validate(
+        {
+            "tick": 1,
+            "observed_at": "2026-10-03T12:05:00+00:00",
+            "policy": {"max_workers": 18},
+            "state": {"records": []},
+            "prs": prs,
+            "probes": [],
+            "results": [],
+        }
+    )
+
+
+def _controller_causes(facts: ModelLandingFacts) -> dict[str, set[str]]:
+    """The controller's cause keys for the tick, each with its member PRs."""
+    decision = decide_landing(facts)
+    out: dict[str, set[str]] = {}
+    for action in decision.actions:
+        if action.kind.value == "dispatch_worker" and action.subject.startswith(
+            "cause:"
+        ):
+            assert action.cause_brief is not None
+            out[action.subject] = {m.pr for m in action.cause_brief.members}
+    return out
+
+
+def _bus_causes(facts: ModelLandingFacts, annotated: bool) -> dict[str, set[str]]:
+    red = [p for p in facts.prs if p.ci.value == "red" and p.state.value == "open"]
+    out: dict[str, set[str]] = {}
+    for p in red:
+        facts_for_pr = _bus_facts(p, red)
+        if not annotated:
+            facts_for_pr = facts_for_pr.model_copy(
+                update={
+                    "annotations": {},
+                    "peer_annotations": {},
+                    "annotations_read": False,
+                }
+            )
+        result = classify_ci_red(facts_for_pr)
+        assert result.red_class == EnumCiRedClass.SHARED_CAUSE, p.pr
+        assert result.cause_key is not None
+        out.setdefault(result.cause_key, set()).add(p.pr)
+    return out
+
+
+@pytest.mark.unit
+def test_ac1_one_check_two_annotations_gets_two_equal_keys_where_check_level_collides() -> (
+    None
+):
+    annotated = _collide_facts(annotated=True)
+    controller = _controller_causes(annotated)
+    bus = _bus_causes(annotated, annotated=True)
+    keys = {
+        kind: cause_key(
+            COLLIDE_REPO, normalize_signature(COLLIDE_CHECK, COLLIDE_TEXT[kind])
+        )
+        for kind in COLLIDE_TEXT
+    }
+    assert keys["missing-contract"] != keys["missing-evidence"]
+    expected = {
+        keys[kind]: {f"{COLLIDE_REPO}#{n}" for n in numbers}
+        for kind, numbers in COLLIDE_PRS.items()
+    }
+    # Equal keys, and equal members, from both paths.
+    assert controller == expected
+    assert bus == expected
+
+    # Control: with the annotations unread, the bus path puts the same six PRs under one
+    # check-level key, which is neither of the annotation-level keys. The annotation-level
+    # key is what separates them.
+    all_six = {f"{COLLIDE_REPO}#{n}" for ns in COLLIDE_PRS.values() for n in ns}
+    check_level = _bus_causes(_collide_facts(annotated=False), annotated=False)
+    assert list(check_level.values()) == [all_six]
+    assert set(check_level).isdisjoint(keys.values())

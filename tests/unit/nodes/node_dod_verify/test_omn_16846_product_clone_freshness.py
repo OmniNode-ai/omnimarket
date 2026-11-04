@@ -7,8 +7,7 @@ Two independent unsoundnesses in the LOCAL ``dod_verify`` path, both
 reproduced by execution 2026-08-28 and both pinned here.
 
 **D2 — no freshness assertion on the product clone.** ``node_dod_verify``
-refreshes the CONTRACT repo and stamps ``occ_refresh_outcome`` /
-``occ_resolved_sha`` on the receipt. It asserted nothing whatsoever about the
+refreshes the CONTRACT repo. It asserted nothing whatsoever about the
 clone the ``test_passes`` commands actually execute in, and recorded no tree
 SHA for it. Verifying OMN-16037, the canonical ``omnibase_core`` clone sat 2
 commits behind ``origin/dev`` and did not contain the merge under adjudication
@@ -35,11 +34,15 @@ assumed.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -78,6 +81,7 @@ def _git(repo: Path, *args: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        env=scrub_git_location_env(os.environ),
     )
     return proc.stdout.strip()
 

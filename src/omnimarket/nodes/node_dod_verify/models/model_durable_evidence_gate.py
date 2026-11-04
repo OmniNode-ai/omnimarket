@@ -6,8 +6,7 @@
 The DurableEvidenceGate refuses to allow a Linear ticket to transition to Done
 when the durable evidence trail is local-only, cites a non-merged PR, or points
 at a contract version that does not yet live on the ticket's governing source:
-the product repository the ticket's PRs merged into, or ``onex_change_control``
-for a ticket whose contract is only there.
+the product repository the ticket's PRs merged into.
 
 This module is pure schema — no I/O, no env reads, no time calls.
 """
@@ -45,13 +44,13 @@ class EnumDurableEvidenceCheck(StrEnum):
     # the remediation is different: cut a release, not fix a receipt.
     RELEASED_ON_PUBLISHING_REPO = "released_on_publishing_repo"
     # The ticket's contract is on its governing source and declares the bound
-    # checks. OMN-20071: the governing source is the product repository first
+    # checks. OMN-20071: the governing source is the product repository
     # (``contracts/<TICKET>.yaml`` at the merge commit of the newest merged PR
     # per repository, verified by a green ``repo-evidence / dod-verify`` run on
-    # that PR's head, binding every labelled criterion of the ticket), and the
-    # onex_change_control governance ref only for a ticket none of whose merged
-    # PRs carries an adopted repo contract. The id keeps its historical name
-    # because receipts and contracts already match on it.
+    # that PR's head, binding every labelled criterion of the ticket). OMN-20074:
+    # a ticket none of whose merged PRs carries an adopted repo contract is
+    # refused on this check. The id keeps its historical name because receipts
+    # and contracts already match on it.
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
     DEFECT_PREVENTION_GATE = "defect_prevention_gate"
     DONE_CLASS_LABEL = "done_class_label"
@@ -269,10 +268,6 @@ class ModelDurableEvidenceGateRunCommand(BaseModel):
         ),
     )
     merged_prs: tuple[ModelTicketMergedPr, ...] = Field(default=())
-    occ_repo_path: str = Field(
-        default="", description="The OCC clone; empty when none resolves."
-    )
-    occ_governance_ref: str = Field(default="origin/dev")
 
 
 class ModelDurableEvidenceGateRun(BaseModel):

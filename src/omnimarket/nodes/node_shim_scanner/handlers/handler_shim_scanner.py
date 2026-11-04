@@ -32,7 +32,6 @@ _SHIM_DECORATOR_NAME = "shim"
 
 # Repo directories under OMNI_HOME that are scanned when no explicit paths are given.
 _DEFAULT_SCAN_REPOS = [
-    "omnibase_compat",
     "omnibase_core",
     "omnibase_spi",
     "omnibase_infra",

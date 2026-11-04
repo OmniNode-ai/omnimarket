@@ -30,11 +30,6 @@ node_adr_draft_generation_compute run_id
 node_adr_draft_generation_compute status
 node_authorize onex.evt.omnimarket.authorize-completed.v1
 node_authorize onex.evt.omnimarket.authorize-failed.v1
-node_budget_policy_compute action
-node_budget_policy_compute dimensions_exceeded
-node_budget_policy_compute onex.evt.omnimarket.budget-policy-completed.v1
-node_budget_policy_compute reason
-node_budget_policy_compute recommended_action
 node_chain_diff_compute onex.evt.omnimarket.chain-diff-completed.v1
 node_close_out onex.evt.omnimarket.close-out-skipped.v1
 node_codebase_intelligence_bridge_effect onex.evt.omnimarket.codebase-intelligence-query-response.v1
@@ -55,7 +50,6 @@ node_demo_cost_compute onex.evt.omnimarket.demo-cost-computed.v1
 node_demo_fanout_orchestrator onex.cmd.omnimarket.demo-inference-request.v1
 node_demo_fanout_orchestrator onex.evt.omnimarket.demo-fanout-completed.v1
 node_demo_fix_dispatcher onex.evt.omnimarket.demo-fixes-dispatched.v1
-node_deployment_evidence_reducer reduced
 node_design_plan_context_compute onex.evt.omnimarket.design-plan-context-completed.v1
 node_dispatch_worker_execution_effect onex.cmd.omnimarket.delegation-request.v1
 node_dispatch_worker_execution_effect onex.evt.omnimarket.dispatch-worker-execution-completed.v1
@@ -224,10 +218,5 @@ node_ticket_research_enrichment_compute onex.evt.omnimarket.ticket-research-enri
 node_ticket_work extra_status
 node_ticket_work phase_reached
 node_ticketing_insights_compute onex.evt.omnimarket.ticketing-insights-completed.v1
-node_tool_reuse_matcher_compute candidate_tools
-node_tool_reuse_matcher_compute failure_reason
-node_tool_reuse_matcher_compute match_strategy_used
-node_tool_reuse_matcher_compute onex.evt.omnimarket.tool-reuse-matched.v1
-node_tool_reuse_matcher_compute onex.evt.omnimarket.tool-reuse-no-match.v1
 node_worker_stall_recovery onex.evt.omnimarket.worker-stall-recovery-complete.v1
 node_worker_stall_recovery onex.evt.omnimarket.worker-stall-recovery-result.v1

@@ -72,7 +72,6 @@ PUBLISHING_REPO_DISTRIBUTIONS: Final[dict[str, str]] = {
     "OmniNode-ai/omnibase_core": "omnibase-core",
     "OmniNode-ai/omnibase_infra": "omnibase-infra",
     "OmniNode-ai/omnibase_spi": "omnibase-spi",
-    "OmniNode-ai/omnibase_compat": "omnibase-compat",
     "OmniNode-ai/omnimarket": "omnimarket",
     "OmniNode-ai/omnimemory": "omninode-memory",
     "OmniNode-ai/omniintelligence": "omninode-intelligence",

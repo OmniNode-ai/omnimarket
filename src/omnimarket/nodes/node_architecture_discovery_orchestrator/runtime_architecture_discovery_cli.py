@@ -10,9 +10,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import yaml
-from omnibase_core.cli.cli_run_node import (
-    _resolve_client_security_config,
-    publish_and_poll,
+from omnibase_core.cli.cli_run_node import publish_and_poll
+
+from omnimarket.handlers.bus_binding.node_broker import (
+    NodeBrokerResolutionError,
+    resolve_dialable_broker,
 )
 
 from .handlers.handler_architecture_discovery import load_contract
@@ -42,18 +44,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--workspace or ONEX_ARCHITECTURE_DISCOVERY_WORKSPACE is required")
     if not args.overlay:
         parser.error("--overlay or ONEX_ARCHITECTURE_DISCOVERY_OVERLAY is required")
-    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "").strip()
-    if not bootstrap:
-        parser.error(
-            "KAFKA_BOOTSTRAP_SERVERS is required; discovery runs over the event bus"
-        )
+    try:
+        broker = resolve_dialable_broker(NODE)
+    except NodeBrokerResolutionError as exc:
+        parser.error(str(exc))
+    overlay = yaml.safe_load(Path(args.overlay).read_text(encoding="utf-8"))
+    if isinstance(overlay, dict):
+        # The broker declaration is read from the node's contract overlay by the resolver; the
+        # request's overlay holds only the operator-private facts the node takes from its caller.
+        overlay.pop("event_bus", None)
     request = ModelDiscoveryRequest(
         date=args.date,
         workspace_path=args.workspace,
         write_state=args.write_state,
         profiles=json.loads(args.profiles),
         fences=args.fence,
-        overlay=yaml.safe_load(Path(args.overlay).read_text(encoding="utf-8")),
+        overlay=overlay,
     )
     contract = load_contract()
     payload = request.model_dump(mode="json", by_alias=True)
@@ -62,11 +68,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         node_id=NODE,
         payload=payload,
         timeout=args.timeout,
-        bootstrap_servers=bootstrap,
+        bootstrap_servers=broker.bootstrap_servers or "",
         command_topic=contract.runtime_dispatch["command_topic"],
         response_topic=contract.terminal_event,
         inject_payload_correlation_id=True,
-        client_security=_resolve_client_security_config(NODE),
+        client_security=broker.client_security(),
     )
     if response is None:
         raise TimeoutError("no architecture discovery terminal before the deadline")
