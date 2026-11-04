@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_net_units
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install, inspect and remove the root-owned files of a Linux pool host that a lane would otherwise install by hand:
+  a systemd system service with its script, and sshd drop-in files. The units are declared as data in an overlay
+  (`units.yaml` beside the payload files), never in this node: each declares the hosts it may install on, its
+  destinations, modes and the sha256 its rendered bytes must have, and this node installs the bytes unchanged, writes
+  nothing when the installed bytes and mode already match, validates sshd with `sshd -t` after placing a drop-in and
+  restores the previous file when the check fails, and reloads sshd (never restarts it). A payload that is rendered
+  from the host takes the interface that carries the lowest-metric IPv4 default route. Any host that is not Linux is
+  refused with a typed reason.
+input_model:
+  name: ModelNetUnitsRequest
+  module: omnimarket.nodes.node_host_installer_net_units.models.model_net_units
+output_model:
+  name: ModelNetUnitsResult
+  module: omnimarket.nodes.node_host_installer_net_units.models.model_net_units
+handler:
+  name: HandlerNetUnits
+  module: omnimarket.nodes.node_host_installer_net_units.handlers.handler_net_units
+entrypoint:
+  name: NodeHostInstallerNetUnits
+  module: omnimarket.nodes.node_host_installer_net_units.node
+execution:
+  deterministic: false
+  side_effects: true
+# The overlay file this node reads: `<overlay_root>/units.yaml`, schema `host_net_units.v1`.
+overlay:
+  units_file: units.yaml
+  schema: host_net_units.v1
+# What an overlay unit may be. A destination outside its kind's roots is refused, so an overlay cannot make this root
+# installer write anywhere else.
+unit_kinds:
+  systemd-system-service:
+    destination_roots: [/usr/local/sbin/, /etc/systemd/system/]
+    needs_service: true
+  sshd-dropin:
+    destination_roots: [/etc/ssh/sshd_config.d/]
+    destination_suffix: .conf
+    needs_service: false
+# `render: interface` fills this placeholder with the interface that carries the lowest-metric IPv4 default route
+# (`ip -4 route show default`), which must also carry an IPv4 address (`ip -4 -o addr show dev <it>`).
+render:
+  interface:
+    placeholder: __INTERFACE__
+sshd:
+  binary: /usr/sbin/sshd
+  services: [ssh.service, sshd.service]
