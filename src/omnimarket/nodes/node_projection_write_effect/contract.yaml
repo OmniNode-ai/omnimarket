@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_projection_write_effect
+contract_name: node_projection_write_effect
+node_name: node_projection_write_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The generic projection write (OMN-18883). Persists a pure projection fold's
+  typed result, ModelProjectionFoldResult, as one targeted-column UPSERT per
+  row. The database handle is the handler's constructor dependency and the
+  envelope metadata is a typed field of ModelProjectionWriteRequest, so no
+  database handle or envelope key is injected into an event dict. Reports the
+  rows the database returned as rows_upserted.
+
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - effects
+runtime_profiles:
+- effects
+
+handler:
+  module: omnimarket.nodes.node_projection_write_effect.handlers.handler_projection_write
+  class: HandlerProjectionWrite
+  input_model: omnimarket.models.model_projection_write.ModelProjectionWriteRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_write
+      handler:
+        name: HandlerProjectionWrite
+        module: omnimarket.nodes.node_projection_write_effect.handlers.handler_projection_write
+      handler_module: omnimarket.nodes.node_projection_write_effect.handlers.handler_projection_write
+      event_model: omnimarket.models.model_projection_write.ModelProjectionWriteRequest
+
+input_model:
+  name: ModelProjectionWriteRequest
+  module: omnimarket.models.model_projection_write
+  description: A fold result (table, conflict key, rows) and its envelope metadata.
+
+output_model:
+  name: ModelProjectionWriteResult
+  module: omnimarket.models.model_projection_write
+  description: The table, the envelope id and the rows the database reported written.
+
+terminal_event: onex.evt.omnimarket.projection-written.v1
+
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.projection-write-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.projection-written.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.projection-write-requested.v1
+
+# No node contract subscribes to the terminal yet; it leaves the node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-written.v1
