@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-22346
+title: 'T18c group 2: serve the API service liveness (GET / and GET /health) by the runtime''s own /health'
+summary: AC1 and AC2 (the plan text, namely the decision, the list of callers and probes, the status-only replay rule and its named mask) are proven in a pull request to the repository that owns the plan, merged before this change, and are not bound here because their evidence cannot be re-run from this repository, so this contract binds AC3 only. This change adds the test that pins the plan's statement that no caller reads a body field the runtime's health reply lacks, against the runtime's real /health handler and its declared reply model. No runtime source changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22346-health-contract
+  statement: The runtime's health reply carries every field that a listed caller reads, declared in the runtime's own health contract with no hard-coded value.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the runtime''s health reply carries every field that a listed caller reads, declared in the runtime''s own health contract with no hard-coded value, or the PR states that no caller reads a field the runtime lacks -- falsifier: a pytest over the runtime health contract that fails when a field named in the plan''s caller list is absent from the reply'
+evidence_requirements:
+- kind: tests
+  description: The runtime's real GET /health handler (ServiceHealth) is driven over a stub runtime and its JSON reply is checked against the listed caller fields; no network or broker is used.
+  command: uv run pytest tests/test_omn22346_runtime_health_liveness_contract.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22346-ac3
+  description: AC3 the runtime's real /health reply and its failure reply carry the one body field a listed caller reads (status), the field is declared required on the reply model, and the check reports a listed field the reply lacks. The plan's list names no field the runtime lacks, so the runtime gains no field.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn22346_runtime_health_liveness_contract.py -q --no-cov --tb=line
+    cwd: .

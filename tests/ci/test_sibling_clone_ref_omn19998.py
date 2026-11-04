@@ -33,8 +33,8 @@ version = "0.47.58"
 source = {{ git = "https://github.com/OmniNode-ai/omnibase_core.git?tag={DEV_TAG}#97c5d1c2802acbdd13940c1a4ab1b07cf4fb7418" }}
 
 [[package]]
-name = "omnibase-compat"
-version = "0.5.7"
+name = "omnibase-spi"
+version = "0.23.5"
 source = {{ registry = "https://pypi.org/simple" }}
 
 [[package]]
@@ -69,7 +69,7 @@ def test_git_tag_pin_clones_the_pinned_tag(tmp_path: Path) -> None:
 
 
 def test_registry_release_clones_its_version_tag(tmp_path: Path) -> None:
-    assert _clone_ref("omnibase-compat", tmp_path) == "v0.5.7"
+    assert _clone_ref("omnibase-spi", tmp_path) == "v0.23.5"
 
 
 def test_git_source_without_a_tag_clones_its_version_tag(tmp_path: Path) -> None:
