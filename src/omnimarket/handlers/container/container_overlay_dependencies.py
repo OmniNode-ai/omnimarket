@@ -127,6 +127,51 @@ FACTORIES: dict[str, Callable[[Mapping[str, str]], object]] = {
     "file_overlay_documents": file_overlay_documents,
 }
 
+
+def _memory_standing_rules_io(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.standing_rules_io import (
+        memory_standing_rules_io,
+    )
+
+    return memory_standing_rules_io(config)
+
+
+def _file_standing_rules_io(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.standing_rules_io import (
+        file_standing_rules_io,
+    )
+
+    return file_standing_rules_io(config)
+
+
+FACTORIES.update(
+    memory_standing_rules_io=_memory_standing_rules_io,
+    file_standing_rules_io=_file_standing_rules_io,
+)
+
+
+def _memory_cause_claim_store(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.cause_claim_store import (
+        memory_cause_claim_store,
+    )
+
+    return memory_cause_claim_store(config)
+
+
+def _sqlite_cause_claim_store(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_dispatch_standing_rules_effect.handlers.cause_claim_store import (
+        sqlite_cause_claim_store,
+    )
+
+    return sqlite_cause_claim_store(config)
+
+
+FACTORIES.update(
+    memory_cause_claim_store=_memory_cause_claim_store,
+    sqlite_cause_claim_store=_sqlite_cause_claim_store,
+)
+
+
 _installed: list[ModelOverlayBindings] = []
 
 

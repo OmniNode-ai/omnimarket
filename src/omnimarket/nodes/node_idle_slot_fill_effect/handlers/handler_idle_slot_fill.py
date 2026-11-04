@@ -125,12 +125,21 @@ from omnimarket.models.model_backlog_item import (
     backlog_item_refusal,
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.models.standing_rules.model_rule_cause_idle import (
+    ModelProcessFixInput,
+    ModelProcessFixQueueNotice,
+    ModelProcessFixStopRequest,
+)
 from omnimarket.models.stop_gate import (
     REPOSITORY_SCOPE_KIND,
     EnumStopExemptionKind,
     EnumStopGateOutcome,
     ModelStopExemptionClaim,
     ModelStopScope,
+)
+from omnimarket.nodes.node_dispatch_standing_rules_compute import (
+    HandlerProcessFixStop,
+    eligible_process_fixes,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
@@ -344,11 +353,24 @@ def candidates(
     generated: Iterable[dict[str, Any]] = (),
     *,
     out_of_scope: Collection[str] = (),
+    process_fixes: ModelProcessFixInput | None = None,
 ) -> list[dict[str, Any]]:
     """The standing pillar backlog in fill order: the tick's unowned process-fix PRs, its unowned shared reds, then
     the backlog file's items. An item names kind, key, repo and title; the tick's own line is its fact. An item of a
     repository in ``out_of_scope`` (the merge sweep's scope setting, retired repositories included) is none."""
     out: list[dict[str, Any]] = []
+    if process_fixes is not None:
+        for process_item in eligible_process_fixes(process_fixes):
+            work = process_item.work.model_dump(exclude_none=True)
+            out.append(
+                {
+                    **work,
+                    "key": process_item.item_id,
+                    "for_item": process_item.item_id,
+                    "name": _slug(process_item.item_id),
+                    "fact": str(work.get("title") or process_item.item_id),
+                }
+            )
     for line in lines:  # a broken lab piece first: it refuses or misplaces every other lane (MSG 2026-10-18T21:39:09Z)
         m = _REPAIR.match(line)
         if m:
@@ -444,9 +466,11 @@ def candidates(
                     "required_engine": item.get("required_engine"),
                 }
             )
-    return [
-        item for item in out if not item["repo"] or item["repo"] not in out_of_scope
-    ]
+    unique: dict[str, dict[str, Any]] = {}
+    for item in out:
+        if not item["repo"] or item["repo"] not in out_of_scope:
+            unique.setdefault(item["key"], item)
+    return list(unique.values())
 
 
 _PR_REF = re.compile(r"(?<![\w.-])(?:[\w.-]+/)?(?P<repo>[A-Za-z0-9_.-]+)#(?P<n>\d+)\b")
@@ -670,7 +694,12 @@ def brief(
         f"Opens PR in: {item['repo'] or 'none'}\n"
         f"Parent: {parent or 'orchestrator'}. Ticket: {ticket}. Repo: {item['repo'] or 'none'}.\n"
         f"{required}"
-        f'Authority: {RULING}: "fill those 27 shots and get things fixed"; the throughput tick dispatched this lane '
+        + (
+            f"CLAIM binding: for-item={item['for_item']}\n"
+            if item.get("for_item")
+            else ""
+        )
+        + f'Authority: {RULING}: "fill those 27 shots and get things fixed"; the throughput tick dispatched this lane '
         "by itself into a free lab slot (the lab is never idle).\n"
         f"Fact at dispatch (the tick's own line, verbatim):\n{item['fact']}\n"
         f"Kind {item['kind']}: {work}\n"
@@ -820,6 +849,7 @@ class HandlerIdleSlotFill:
             request.lines,
             request.backlog,
             request.generated,
+            process_fixes=request.process_fixes,
         ):
             # OMN-21475 (T-S3, SM-00): an item that is not a backlog item, a prose engine above all, is
             # counted and skipped; the fill never picks an engine for it.
@@ -1078,6 +1108,7 @@ class HandlerIdleSlotFill:
                 {
                     "kind": item["kind"],
                     "key": item["key"],
+                    **({"for_item": item["for_item"]} if item.get("for_item") else {}),
                     "lane": lane,
                     "model": model,
                     "effort": EFFORT,
@@ -1089,6 +1120,29 @@ class HandlerIdleSlotFill:
                     **({"host": pin} if pin else {}),
                 }
             )
+        sent_items = {send.get("for_item") for send in sends}
+        notices = (
+            tuple(
+                ModelProcessFixQueueNotice(
+                    item_id=item.item_id,
+                    position=position,
+                    reason=next(
+                        (
+                            row["why"]
+                            for row in [*skipped, *dropped]
+                            if row["key"] == item.item_id
+                        ),
+                        "not started this tick",
+                    ),
+                )
+                for position, item in enumerate(
+                    eligible_process_fixes(request.process_fixes), 1
+                )
+                if item.item_id not in sent_items
+            )
+            if request.process_fixes is not None
+            else ()
+        )
         return ModelIdleSlotFillResult(
             claude,
             codex_only,
@@ -1099,6 +1153,7 @@ class HandlerIdleSlotFill:
             dropped,
             backlog_mismatched,
             stop_observed,
+            notices,
         )
 
 
@@ -1173,10 +1228,32 @@ class HandlerIdleTurnGuard:
                 m = _FILL.match(line)
                 if m:
                     filled = m["idle"] == "0"
+        if request.process_fixes is not None:
+            # Multiple ticks in a turn are observations of the same pool. Take
+            # the maximum per host, never sum the same host twice.
+            hosts: dict[str, int] = {}
+            for line in headroom:
+                match = _HEADROOM.match(line)
+                slots = re.search(
+                    r"free (?:Claude|Codex|GLM) slots (\d+)", line, re.IGNORECASE
+                )
+                if match and slots:
+                    hosts[match["host"]] = max(
+                        hosts.get(match["host"], 0), int(slots[1])
+                    )
+            checked = HandlerProcessFixStop().handle(
+                ModelProcessFixStopRequest(
+                    process_fixes=request.process_fixes,
+                    free_slots=sum(hosts.values()),
+                    accepted_starts=request.accepted_starts,
+                )
+            )
+            if checked.refuse:
+                return ModelIdleTurnGuardResult(True, checked.reason, headroom)
         if filled:
             headroom = []
         shown = [*headroom, *unowned, *broken]
-        if not shown or dispatched(request.tool_uses):
+        if not shown or dispatched(request.tool_uses) or request.accepted_starts:
             return ModelIdleTurnGuardResult(False, "", shown)
         what = " and ".join(
             part
@@ -2209,6 +2286,20 @@ class HandlerLabFill:
         scope_unread = scope if isinstance(scope, str) else ""
         holds, holds_unread = read_fixer_holds(request.now, os.environ)
         wip_sources = request.sources or default_sources(request.now, os.environ)
+        process_fixes = request.process_fixes
+        if (
+            process_fixes is None
+            and wip_sources is not None
+            and wip_sources.process_fixes is not None
+        ):
+            # Read once, before choosing any backlog work; an unread fold raises.
+            process_fixes = wip_sources.process_fixes()
+        if (
+            process_fixes is not None
+            and not request.read_only
+            and request.record is None
+        ):
+            raise ValueError("R-D queue notice writer is unbound; no lane sent")
         wip_refusal, wip_finding = fill_wip_gate(
             ledger_tickets=wip_sources.ledger_tickets if wip_sources else None,
             watcher_state=watcher,
@@ -2239,6 +2330,7 @@ class HandlerLabFill:
                 fixer_holds_unread=holds_unread,
                 repo_required_kinds=overlay.repo_required_kinds(),
                 wip_refusal=wip_refusal,
+                process_fixes=process_fixes,
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
@@ -2307,6 +2399,7 @@ class HandlerLabFill:
                         fixer_holds_unread=holds_unread,
                         repo_required_kinds=overlay.repo_required_kinds(),
                         wip_refusal=wip_refusal,
+                        process_fixes=process_fixes,
                     )
                 )
         if decision.dropped:
@@ -2340,6 +2433,23 @@ class HandlerLabFill:
                             f"make {state} writable ({LAB_FILL_STATE_ENV} names another)",
                         )
                     )
+        for notice in decision.queue_notices:
+            found.append(
+                (
+                    "note",
+                    f"process-fix-queue:{notice.item_id}",
+                    f"process-fix-queue | for-item={notice.item_id} | position={notice.position} | {notice.reason}",
+                    "",
+                )
+            )
+            if not request.read_only and request.record is not None:
+                error = request.record(
+                    "process-fix-queue",
+                    notice.item_id,
+                    f"position={notice.position}; {notice.reason}",
+                )
+                if error:
+                    raise OSError(f"R-D queue notice was not recorded: {error}")
         if decision.claude_free + decision.codex_only_free + decision.glm_only_free < 1:
             return ModelLabFillResult(found)
         names: list[str] = []
@@ -2390,6 +2500,33 @@ class HandlerLabFill:
                         )
                     )
             else:
+                if send.get("for_item"):
+                    position = (
+                        next(
+                            n
+                            for n, item in enumerate(
+                                eligible_process_fixes(process_fixes), 1
+                            )
+                            if item.item_id == send["for_item"]
+                        )
+                        if process_fixes is not None
+                        else 1
+                    )
+                    detail_notice = f"position={position}; runner refused: {detail}"
+                    found.append(
+                        (
+                            "note",
+                            f"process-fix-queue:{send['for_item']}",
+                            detail_notice,
+                            "",
+                        )
+                    )
+                    if request.record is not None:
+                        error = request.record(
+                            "process-fix-queue", send["for_item"], detail_notice
+                        )
+                        if error:
+                            raise OSError(f"R-D queue notice was not recorded: {error}")
                 found.append(
                     (
                         "unknown",

@@ -25,6 +25,11 @@ from omnimarket.models.model_backlog_item import (
 from omnimarket.models.model_backlog_item import (
     backlog_item_refusal as backlog_item_refusal,
 )
+from omnimarket.models.standing_rules.model_rule_cause_idle import (
+    ModelAcceptedItemStart,
+    ModelProcessFixInput,
+    ModelProcessFixQueueNotice,
+)
 from omnimarket.models.stop_gate import ModelStopGateFacts
 
 
@@ -41,6 +46,7 @@ class ModelBacklogSources:
     experiments: Callable[[], list[dict[str, Any]]] | None = None
     ledger_tickets: Callable[[], tuple[set[str], dict[str, str]]] | None = None
     ticket_rule: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    process_fixes: Callable[[], ModelProcessFixInput] | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +93,7 @@ class ModelIdleSlotFillRequest:
     # selects no lane for that engine or repository and the skip names the stop and its swarm lane; a class
     # in ``observe`` refuses nothing. None: no gate is installed.
     stop_gate: ModelStopGateFacts | None = None
+    process_fixes: ModelProcessFixInput | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +111,8 @@ class ModelIdleSlotFillResult:
     # ``stop_gate``'s line for each lane sent into a scope an observed stop names (it refuses nothing).
     stop_observed: list[dict[str, str]] = field(default_factory=list)
 
+    queue_notices: tuple[ModelProcessFixQueueNotice, ...] = ()
+
 
 @dataclass(frozen=True)
 class ModelIdleTurnGuardRequest:
@@ -112,6 +121,8 @@ class ModelIdleTurnGuardRequest:
 
     tool_uses: list[dict[str, Any]]
     tool_results: list[dict[str, Any]]
+    process_fixes: ModelProcessFixInput | None = None
+    accepted_starts: tuple[ModelAcceptedItemStart, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -150,6 +161,7 @@ class ModelLabFillRequest:
     queue_reserved: Mapping[str, int] = field(
         default_factory=dict
     )  # reserved against this tick's lab_headroom snapshot
+    process_fixes: ModelProcessFixInput | None = None
 
 
 @dataclass(frozen=True)

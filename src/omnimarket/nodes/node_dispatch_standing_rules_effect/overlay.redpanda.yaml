@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+dependencies:
+- protocol: omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+  implementation: file_overlay_documents
+  config:
+    standing_rules: standing_rules.yaml
+- protocol: omnimarket.protocols.protocol_standing_rules_io.ProtocolStandingRulesIO
+  implementation: file_standing_rules_io
+  config: {}
+- protocol: omnimarket.protocols.protocol_cause_claim_store.ProtocolCauseClaimStore
+  implementation: sqlite_cause_claim_store
+  config:
+    path: cause-claims.sqlite3
+    timeout_seconds: '30'
+announcer_bus:
+  protocol: announcer_bus
+  implementation: unbuilt_announcer_bus
+catalog_store:
+  protocol: catalog_store
+  implementation: unbuilt_catalog_store
+lazy_start_budget_seconds: 30

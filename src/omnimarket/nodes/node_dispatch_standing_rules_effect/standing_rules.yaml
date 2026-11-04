@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+rules:
+- id: R-A
+  source_ruling:
+    stamp: '2026-11-04T12:57:20Z'
+    lane: orchestrator-31d9
+  dispatch_kinds:
+  - agent
+  - workflow
+  - runner
+  - lab
+  check: cloud_first
+  expires_from:
+    kind: fact
+    fact: cloud_credit
+  mode: route
+  models:
+  - sonnet
+  - opus
+  - claude-sonnet
+  - claude-opus
+  credit_fact: cloud_credit
+  slot_fact: cloud_slot
+  order:
+  - cloud
+  - lab
+  fix: 'FIX: --placement cloud|auto'
+- id: R-C
+  check: cause_unique
+  source_ruling: {stamp: '2026-11-04T12:57:20Z', lane: orchestrator-31d9}
+  dispatch_kinds: [agent, workflow, runner, lab]
+  fix: Join the holder's canonical cause before starting another lane.
+- id: R-D
+  check: process_fill
+  source_ruling: {stamp: '2026-11-04T12:57:20Z', lane: orchestrator-31d9}
+  dispatch_kinds: [agent, workflow, runner, lab]
+  item_kinds: [ask, idea, promise, ruling]
+  ruling_kind: process
+  closed_states: [done, withdrawn]
+  item_fold_path: process-items.json
+  fix: Fill free slots with eligible process-fix items and queue every remainder by position.
+ledger:
+  path: ledger.md
+  read: read the source ruling from the configured ledger
+audit_path: standing-rules-audit.jsonl
+facts:
+  cloud_credit:
+    path: cloud-credit.json
+    read: read the configured cloud credit record
+  cloud_slot:
+    path: cloud-slot.json
+    read: read the configured cloud slot offer

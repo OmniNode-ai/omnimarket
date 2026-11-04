@@ -28,6 +28,7 @@ capabilities:
 dependencies:
 - PyYAML>=6.0
 - omnimarket.nodes.node_ruling_mechanism_owed_compute
+- omnimarket.nodes.node_dispatch_standing_rules_compute
 authors:
 - OmniNode Platform Team
 license: MIT

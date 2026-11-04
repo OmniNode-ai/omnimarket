@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_standing_rules_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Standing-rule admission over typed dispatch facts.
+input_model:
+  name: ModelStandingRulesSnapshot
+  module: omnimarket.models.standing_rules.model_standing_rules
+output_model:
+  name: ModelStandingRulesResult
+  module: omnimarket.models.standing_rules.model_standing_rules
+handler:
+  module: omnimarket.nodes.node_dispatch_standing_rules_compute.handlers.handler_dispatch_standing_rules
+  class: HandlerDispatchStandingRules
+  input_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesSnapshot
+  output_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dispatch_standing_rules_compute.handlers.handler_dispatch_standing_rules:HandlerDispatchStandingRules
+  handlers:
+  - operation: evaluate_standing_rules
+    handler:
+      name: HandlerDispatchStandingRules
+      module: omnimarket.nodes.node_dispatch_standing_rules_compute.handlers.handler_dispatch_standing_rules
+    input_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesSnapshot
+    output_model: omnimarket.models.standing_rules.model_standing_rules.ModelStandingRulesResult
+    topic: onex.cmd.omnimarket.dispatch-standing-rules-compute-requested.v1
+  - operation: check_process_idle
+    handler:
+      name: HandlerProcessFixStop
+      module: omnimarket.nodes.node_dispatch_standing_rules_compute.handlers.handler_rule_process_fixes
+    input_model: omnimarket.models.standing_rules.model_rule_cause_idle.ModelProcessFixStopRequest
+    output_model: omnimarket.models.standing_rules.model_rule_cause_idle.ModelProcessFixStopResult
+    topic: onex.cmd.omnimarket.process-fix-stop-requested.v1
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dispatch-standing-rules-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dispatch-standing-rules-compute-completed.v1
+    failure: onex.evt.omnimarket.dispatch-standing-rules-compute-failed.v1
+published_events:
+- event_type: ModelStandingRulesResult
+  topic: onex.evt.omnimarket.dispatch-standing-rules-compute-completed.v1
+  description: Binding admission answer and remediation.
+externally_consumed_topics:
+- onex.evt.omnimarket.dispatch-standing-rules-compute-completed.v1
+- onex.evt.omnimarket.dispatch-standing-rules-compute-failed.v1
+metadata:
+  transport_type: kafka
+  description: Standing-rule admission
+  author: OmniNode Team
+  tags:
+  - compute
+  - dispatch
+terminal_event: onex.evt.omnimarket.dispatch-standing-rules-compute-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.dispatch-standing-rules-compute-requested.v1
+  - onex.cmd.omnimarket.process-fix-stop-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.dispatch-standing-rules-compute-completed.v1
+  - onex.evt.omnimarket.dispatch-standing-rules-compute-failed.v1
+entrypoint:
+  name: NodeDispatchStandingRulesCompute
+  module: omnimarket.nodes.node_dispatch_standing_rules_compute.node
