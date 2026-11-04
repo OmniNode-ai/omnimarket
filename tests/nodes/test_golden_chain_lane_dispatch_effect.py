@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.models.lane_dispatch.model_lane_dispatch import ModelLaneDispatchRecord
 from omnimarket.nodes.node_lane_dispatch_effect.runtime_lane_dispatch_cli import (
@@ -27,6 +28,21 @@ def test_declared_node_over_inmemory_overlay(
     assert (
         result.content_hash
         == ModelLaneDispatchRecord.model_validate_json(request.record_json).content_hash
+    )
+
+
+def test_declared_completed_topic_is_terminal_and_published() -> None:
+    contract = yaml.safe_load(
+        (
+            Path(__file__).parents[2]
+            / "src/omnimarket/nodes/node_lane_dispatch_effect/contract.yaml"
+        ).read_text()
+    )
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.lane-dispatch-completed.v1"
+    ]
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.lane-dispatch-completed.v1"
     )
 
 
