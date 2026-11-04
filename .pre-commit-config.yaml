@@ -24,6 +24,13 @@
 repos:
   - repo: local
     hooks:
+      - id: landing-placement-reverse-substitution
+        name: Landing placement reverse-substitution exception controls
+        entry: uv run --frozen pytest tests/nodes/node_landing_placement_effect/test_reverse_substitution.py -q --no-cov
+        language: system
+        files: ^(tests/nodes/node_landing_placement_effect/.*|contracts/OMN-21408\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: github-webhook-http
         name: GitHub webhook runtime HTTP boundary
         entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov

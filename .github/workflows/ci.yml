@@ -371,6 +371,8 @@ jobs:
       # OMN-22156: strict lint gates CI Summary even for docs-only changes.
       - name: Morning phase tools guard and wiring
         run: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+      - name: Landing placement reverse-substitution exception controls
+        run: uv run --frozen pytest tests/nodes/node_landing_placement_effect/test_reverse_substitution.py -q --no-cov
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
       - name: Retired model references (including dated history)
