@@ -46,6 +46,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: a newest-checkpoint read prints one PRIOR line for each running or queued workflow of the prior session that the current checkpoint does not carry by task id, run id or named script; relaunched, stopped and stale prior workflows are not named, and the stopped session''s own read has no PRIOR lines -- falsifier: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute/test_resume_names_prior_drivers.py -q --no-cov'
+  - id: req-omn19998-plan-ticket-window
+    statement: The plan-state tool reads every tracked plan before filtering its date window and paginating the results.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: registered plan_ticket_states requests for 30 and 120 days return every eligible plan and resolved ticket state across all pages from a committed Git listing larger than 4,000 characters, including October 2-8; future and invalid dates are excluded and command reports stay bounded -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -64,9 +69,20 @@ dod_evidence:
   - id: dod-omn19998-plan-ticket-window
     description: The November 1 recorded 30/120-day requests run through the registered tool server against a committed plan tree exceeding the command-report tail. October 2–8 plans are returned, the larger window adds older plans, page totals and ticket states remain complete, and command reports retain their output bound. This proof does not assert the controller timer criteria or a live host installation.
     source: manual
+    binds_ac:
+      - AC8
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-plan-ticket-window-deploy
+    description: Hosted runtime smoke calls plan_ticket_states through the registered tool server against a committed Git tree exceeding the command-report tail, with only Linear GraphQL replaced at its boundary. Both requested windows, pagination and resolved ticket states are checked. No lab endpoint, credential or live installation is required or asserted.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov -k test_plan_ticket_states_reads_every_plan_before_filtering_and_paging
         cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
