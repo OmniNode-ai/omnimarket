@@ -20,6 +20,9 @@ WIRING = "tests/test_morning_phase_tools_wiring.py"
 
 @pytest.mark.unit
 def test_morning_phase_tools_wiring_pre_commit() -> None:
+    # OMN-22364: the guard left the commit stage (stages: [manual]); the required
+    # CI lint step pinned below is its enforcement, and
+    # tests/ci/test_precommit_commit_budget.py registers it.
     config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
     hooks = [
         hook
@@ -33,7 +36,7 @@ def test_morning_phase_tools_wiring_pre_commit() -> None:
         assert WIRING in shlex.split(hook["entry"])
         assert hook["always_run"] is True
         assert hook["pass_filenames"] is False
-        assert hook["stages"] == ["pre-commit"]
+        assert hook["stages"] == ["manual"]
         assert "files" not in hook
         assert "exclude" not in hook
     assert not config.get("files")
