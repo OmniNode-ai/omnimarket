@@ -41,6 +41,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-census-alias-parity
+    statement: The census host alias parity rule runs as a node with both registries supplied as data.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: exact alias parity refuses missing, extra or different host aliases; adding matching manifest and alarm data for the recorded hp-gen8 host passes without code edits; installed discovery dispatches both verdicts over the contract topics -- falsifier: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -160,4 +165,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov --tb=line -k runner_annotations
+        cwd: .
+  - id: dod-omn19998-census-alias-parity
+    description: The frozen assertion's exact host-id conversion and alias equality are preserved with explicit deployment data. The recorded hp-gen8 addition refuses until its matching alarm alias data is supplied. This migration does not assert the controller timer criteria or repair the live host service.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-census-alias-parity-deploy
+    description: Hosted installed-package smoke discovers the node and auto-wires its declared command and completion topics on an in-memory bus. Both the missing h051 alias and the data-only repair reach the typed handler and publish correlated verdicts. No sibling checkout, broker or live lab service is needed or asserted.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov -k runtime_command
         cwd: .
