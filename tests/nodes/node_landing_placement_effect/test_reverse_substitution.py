@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal, cast
 
 import pytest
 import yaml
@@ -71,8 +72,10 @@ def test_other_lint_fixes_are_not_exceptions() -> None:
 
 
 @pytest.mark.parametrize("kind", ["wiring", "assertion", "loader"])
-def test_pre_enumerated_exact_edits_still_pass(kind: str) -> None:
-    change = EnumeratedChange(kind, "left", "expected")  # type: ignore[arg-type]
+def test_pre_enumerated_exact_edits_still_pass(
+    kind: Literal["wiring", "assertion", "loader"],
+) -> None:
+    change = EnumeratedChange(kind, "left", "expected")
     assert_reverse_substitution(
         ORIGINAL,
         ORIGINAL.replace("left", "expected"),
@@ -89,7 +92,9 @@ def test_literal_reverse_substitution_precedes_comparison() -> None:
 
 
 def test_unlisted_class_is_refused() -> None:
-    change = EnumeratedChange("cleanup", "left", "expected")  # type: ignore[arg-type]
+    change = EnumeratedChange(
+        cast(Literal["wiring", "assertion", "loader"], "cleanup"), "left", "expected"
+    )
     with pytest.raises(ValueError, match="unapproved enumerated class"):
         assert_reverse_substitution(ORIGINAL, ORIGINAL, enumerated_changes=(change,))
 

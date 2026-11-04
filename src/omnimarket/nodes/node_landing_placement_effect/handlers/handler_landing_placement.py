@@ -3964,6 +3964,8 @@ def read_pool(
     ``hook_trees`` names plugin trees under each host's ``$HOME`` the probe parse-checks beside the installed plugins (OMN-20961).
     ``need_clones`` names registry clones the probe reads beyond each host's row (the plugin repository's and
     the knowledge base's always, OMN-21470: lab clones of it were 8 to 10 days old); a unit that needs one says so in ``ParityNeeds.clones``."""
+    if not hosts:
+        return []
     extra = tuple(
         dict.fromkeys(
             (

@@ -85,7 +85,22 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests -q -k landing_placement_unconfigured"
+        check_value: "uv run --frozen pytest tests/nodes/node_landing_placement_effect/test_landing_placement_unconfigured.py -q --no-cov"
+  - id: "dod-omn21408-deploy-empty-pool"
+    description: "Hosted deployment smoke invokes the packaged placement node through the local runtime with an in-memory bus and an explicitly empty pool. Its typed receipt must report success and zero hosts without private overlays. This does not claim a live host-pool comparison."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          smoke_root="$(mktemp -d)";
+          trap 'rm -rf "$smoke_root"' EXIT;
+          uv run --frozen python -c 'import json, sys; from pathlib import Path; Path(sys.argv[1]).write_text(json.dumps({"environ": {"LANDING_POOL_HOSTS": "[]"}}))' "$smoke_root/input.json";
+          env PYTHONDONTWRITEBYTECODE=1 .venv/bin/onex node node_landing_placement_effect --input "$smoke_root/input.json" --backend event_bus=inmemory --state-root "$smoke_root/state" --output receipt --timeout 30 > "$smoke_root/receipt.json";
+          uv run --frozen python -c 'import json, sys; receipt = json.load(open(sys.argv[1])); assert receipt["status"] == "success"; assert receipt["result_model"] == "omnimarket.nodes.node_landing_placement_effect.models.model_landing_placement.ModelLandingPlacementResult"; assert receipt["result"] == {"exit_code": 0, "message": "read 0 host(s) from LANDING_POOL_HOSTS", "pool_source": "LANDING_POOL_HOSTS", "hosts": []}' "$smoke_root/receipt.json"
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_landing_placement_effect/test_runtime_smoke.py -q --no-cov"
   - id: "dod-omn21408-moved-tests"
     description: "The tests moved with the handler pass against it, with neutral host names and documentation-range addresses."
     source: "manual"
