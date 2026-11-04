@@ -109,3 +109,20 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: 'uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k context_audit_events_sequence_is_declared_exactly_once -q --no-cov --tb=line'
         cwd: "."
+  - id: "dod-omn21934-integration-proof"
+    description: >-
+      Run the pushed head on a lab host through the bus, exercising the
+      context-audit writer against real PostgreSQL and replaying the golden
+      chain. This live integration proof remains required at the local Done
+      gate; declaring the command does not record a completed lab run.
+      Hosted CI cannot reach the lab surface.
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket
+          --sha "$(git rev-parse HEAD)" --lane pr-4808-1532 --
+          uv run --frozen pytest tests/test_golden_chain_projection_context_audit.py
+          tests/test_projection_context_audit_real_postgres.py -q --no-cov
+        cwd: "."
