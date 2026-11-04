@@ -68,6 +68,8 @@ dod_evidence:
 
 # Where the command line reads. The ledger path comes from the environment or --ledger, never a default.
 runtime:
+  workspace_root_env: OMNIBASE_PATH
+  completion_source_node: node_ask_state_transition_effect
   ledger_env: ONEX_LEDGER_PATH
   captures_file: captures.jsonl
   archive_dir: archive

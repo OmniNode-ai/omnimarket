@@ -110,9 +110,19 @@
   "rows": [
     "2026-11-04T10:01:00Z | CLAIM | lane=builder | ask=ask-terminal | ticket=OMN-1",
     "2026-11-04T10:02:00Z | TERMINAL | lane=builder | closes-CLAIM=2026-11-04T10:01:00Z | outcome=done",
-    "2026-11-04T10:03:00Z | STATUS | lane=writer | ask=ask-done | state=done | owner=writer | evidence=receipt:recorded-result",
+    "2026-11-04T10:02:30Z | CLAIM | lane=writer | for-item=ask-done | owner=writer | run=receipt-run | revision=0a0648229aa133bd4d20e639faae947280e5e5446fac1c16a6559d10301c2c00",
+    "2026-11-04T10:03:00Z | STATUS | lane=writer | ask=ask-done | state=done | owner=writer | evidence=receipt:recorded-result | run=receipt-run | revision=0a0648229aa133bd4d20e639faae947280e5e5446fac1c16a6559d10301c2c00",
     "2026-11-04T10:04:00Z | STATUS | lane=orch | ask=ask-ticketed | state=ticketed | ticket=OMN-2 | owner=reviewer",
     "2026-11-04T10:05:00Z | STATUS | lane=orch | ask=ask-parked | state=parked | reason=after review | owner=reviewer",
     "2026-11-04T11:37:59Z | RULING | lane=orchestrator | kind=process | mechanism-pending=error-rule-lookup | \"Map each error to the rule that handles it.\""
+  ],
+  "completion_checks": [
+    {
+      "reference": "receipt:recorded-result",
+      "evidence_class": "receipt",
+      "verified": true,
+      "revision": "0a0648229aa133bd4d20e639faae947280e5e5446fac1c16a6559d10301c2c00",
+      "run_id": "receipt-run"
+    }
   ]
 }

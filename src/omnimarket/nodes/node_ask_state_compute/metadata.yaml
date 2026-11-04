@@ -1,6 +1,6 @@
 name: node_ask_state_compute
 version: "0.1.0"
-description: "Tracked asks, rulings, promises, questions and messages with accountable owners and live claims"
+description: "Tracked asks, rulings, promises, questions and messages with accountable owners, revision-fenced claims and checked completion evidence"
 pack: operator_capture
 node_role: compute
 display_name: "Operator Ask State"

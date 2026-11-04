@@ -11,6 +11,8 @@ import pytest
 import yaml
 
 import omnimarket.nodes.node_ask_state_compute as compute_node
+from omnimarket.handlers.handler_operator_ledger import item_content_revision
+from omnimarket.models.model_ask_state import ModelAskCompletionCheck
 from omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state import (
     HandlerAskState,
 )
@@ -68,10 +70,16 @@ def _run(
     rows: tuple[str, ...] = (),
     now: datetime = LATER,
     config: ModelAskStateConfig = CONFIG,
+    completion_checks: tuple[ModelAskCompletionCheck, ...] = (),
 ) -> ModelAskStateReport:
     return HandlerAskState().handle(
         ModelAskStateRequest(
-            prompts=prompts, rows=rows, now=now, since=SINCE, config=config
+            prompts=prompts,
+            rows=rows,
+            now=now,
+            since=SINCE,
+            config=config,
+            completion_checks=completion_checks,
         )
     )
 
@@ -134,27 +142,41 @@ def test_ask_that_spawned_a_lane_needs_completion_evidence_after_terminal() -> N
     assert _entry(done, 2).owner_lane == "lane-a"
     assert _entry(done, 2).running_lane is None
     evidenced = done_row + " | evidence=receipt:ticket-minted"
-    done = _run((_prompt(2, "Mint the child ticket"),), (claim_row, evidenced))
+    done = _run(
+        (_prompt(2, "Mint the child ticket"),),
+        (claim_row, evidenced),
+        completion_checks=(
+            ModelAskCompletionCheck(
+                reference="receipt:ticket-minted",
+                evidence_class="receipt",
+                verified=True,
+                revision=item_content_revision("Mint the child ticket"),
+                run_id="2026-10-31T08:05:00Z",
+            ),
+        ),
+    )
     assert _state(done, 2) is EnumAskState.DONE
     assert _entry(done, 2).resolution == "terminal"
     assert _entry(done, 2).owner_lane == "lane-a"
 
 
-def test_failed_lane_with_a_ticket_leaves_the_ask_ticketed_without_one_it_is_dropped() -> (
-    None
-):
+def test_failed_lane_retains_accountable_owner_with_or_without_a_ticket() -> None:
     claim_row = claim("lane-a", "2026-10-31T08:05:00Z", ask_id(3), ticket="OMN-77")
     blocked = terminal(
         "lane-a", "2026-10-31T09:00:00Z", "2026-10-31T08:05:00Z", "blocked"
     )
     report = _run((_prompt(3, "Fix the swap"),), (claim_row, blocked))
     entry = _entry(report, 3)
-    assert entry.state is EnumAskState.TICKETED
+    assert entry.state is EnumAskState.OWNED
+    assert entry.owner_lane == "lane-a"
+    assert entry.running_lane is None
     assert entry.tickets == ("OMN-77",)
 
     bare_claim = claim_row.replace("ticket=OMN-77", "ticket=none")
     report = _run((_prompt(3, "Fix the swap"),), (bare_claim, blocked))
-    assert _state(report, 3) is EnumAskState.DROPPED
+    assert _state(report, 3) is EnumAskState.OWNED
+    assert _entry(report, 3).owner_lane == "lane-a"
+    assert _entry(report, 3).running_lane is None
 
 
 def test_handed_off_lane_still_owns_the_ask() -> None:
@@ -221,7 +243,20 @@ def test_closes_ask_needs_evidence_withdrawal_needs_none() -> None:
     )
 
     merged = f"2026-10-31T09:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=omnimarket#4700"
-    report = _run((_prompt(10, "Do a thing"),), (merged,))
+    binding = claim("orch", "2026-10-31T08:05:00Z", ask_id(10))
+    report = _run(
+        (_prompt(10, "Do a thing"),),
+        (binding, merged),
+        completion_checks=(
+            ModelAskCompletionCheck(
+                reference="omnimarket#4700",
+                evidence_class="merged-pr",
+                verified=True,
+                revision=item_content_revision("Do a thing"),
+                run_id="2026-10-31T08:05:00Z",
+            ),
+        ),
+    )
     assert _state(report, 10) is EnumAskState.DONE
     assert _entry(report, 10).resolution == "closes-ask"
 

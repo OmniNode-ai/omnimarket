@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ask_state_transition_effect
+node_type: EFFECT_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: 0.1.0
+lifecycle: experimental
+description: Append fenced item STATUS rows through the existing ledger writer.
+input_model:
+  name: ModelAskStateTransitionRequest
+  module: omnimarket.models.model_ask_state_transition
+output_model:
+  name: ModelAskStateTransitionResult
+  module: omnimarket.models.model_ask_state_transition
+handler:
+  module: omnimarket.nodes.node_ask_state_transition_effect.handlers.handler_ask_state_transition
+  class: HandlerAskStateTransition
+  input_model: omnimarket.models.model_ask_state_transition.ModelAskStateTransitionRequest
+  output_model: omnimarket.models.model_ask_state_transition.ModelAskStateTransitionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ask_state_transition_effect.handlers.handler_ask_state_transition:HandlerAskStateTransition
+  handlers:
+    - operation: transition_ask_state
+      topic: onex.cmd.omnimarket.ask-state-transition-requested.v1
+      handler:
+        name: HandlerAskStateTransition
+        module: omnimarket.nodes.node_ask_state_transition_effect.handlers.handler_ask_state_transition
+entrypoint:
+  name: NodeAskStateTransitionEffect
+  module: omnimarket.nodes.node_ask_state_transition_effect.node
+terminal_event: onex.evt.omnimarket.ask-state-transition-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ask-state-transition-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.ask-state-transition-completed.v1
+    failure: onex.evt.omnimarket.ask-state-transition-failed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ask-state-transition-requested.v1]
+  publish_topics: [onex.evt.omnimarket.ask-state-transition-completed.v1, onex.evt.omnimarket.ask-state-transition-failed.v1]
+externally_consumed_topics:
+  - onex.cmd.omnimarket.ask-state-transition-requested.v1
+published_events:
+  - event_type: ModelAskStateTransitionResult
+    topic: onex.evt.omnimarket.ask-state-transition-completed.v1
+    description: Append receipts and item state after the accepted STATUS rows.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 180000
+runtime:
+  workspace_root_env: OMNIBASE_PATH
+  ledger_id: rolling-work-ledger
+  append_timeout_seconds: 60
+# The deployment binds event_bus in this node's overlay. The canonical ledger
+# caller resolves the writer topics from the existing append node's contract.
+# It adds no writer, lease, lock or second claim authority.
+consumed_events:
+  - event_type: ModelAskStateTransitionRequest
+    topic: onex.cmd.omnimarket.ask-state-transition-requested.v1
+    description: Current item sources and optional explicit owned, parked or done intents.
+dod_evidence:
+  PYTEST:
+    command: uv run pytest tests/unit/nodes/node_ask_state_transition_effect/test_item_transition_effect.py -q --no-cov -n 0
+    pass_criteria: replay, evidence, revision fence and canonical-writer race cases pass

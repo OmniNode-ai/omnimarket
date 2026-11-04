@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT
 """Shared read-only ledger parsing for capture and operator item folds."""
 
+import hashlib
 import re
 
 _ROW = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) \| ([A-Z][A-Z-]*) \| (.*)$")
+
+
+def item_content_revision(words: str) -> str:
+    """Full content digest carried by an item's CLAIM and every transition answering it."""
+    return hashlib.sha256(words.encode("utf-8")).hexdigest()
 
 
 def parse_ledger_row(row: str) -> tuple[str, str, str, dict[str, str]] | None:

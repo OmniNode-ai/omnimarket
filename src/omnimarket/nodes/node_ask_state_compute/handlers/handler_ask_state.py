@@ -16,7 +16,10 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.handlers.handler_operator_ledger import parse_ledger_row
+from omnimarket.handlers.handler_operator_ledger import (
+    item_content_revision,
+    parse_ledger_row,
+)
 from omnimarket.handlers.handler_operator_utterance import (
     heuristic_sentences,
     item_id,
@@ -75,6 +78,7 @@ class _Ask:
     capture_id: str = ""
     owner: str = ""
     ruling_stamp: str = ""
+    revision: str = ""
 
 
 @dataclass
@@ -276,27 +280,24 @@ def _collect_asks(
             if not tracked:
                 untracked[item.kind] = untracked.get(item.kind, 0) + 1
                 kind = config.unclassified_kind
-            asks.setdefault(
-                item.item_id,
-                _Ask(
-                    ask_id=_ask_id(item.item_id),
-                    item_id=item.item_id,
-                    kind=kind
-                    if kind in config.tracked_kinds
-                    else config.tracked_kinds[0],
-                    said_at=said,
-                    session_id=prompt.session_id,
-                    words=item.quote,
-                    subject=item.subject,
-                    confidence=item.confidence,
-                    capture_id=prompt.capture_id,
-                    owner=(
-                        config.default_owner
-                        if kind == config.unclassified_kind
-                        else prompt.lane
-                        or config.session_lanes.get(prompt.session_id)
-                        or config.default_owner
-                    ),
+            previous = asks.get(item.item_id)
+            asks[item.item_id] = _Ask(
+                ask_id=_ask_id(item.item_id),
+                item_id=item.item_id,
+                kind=kind if kind in config.tracked_kinds else config.tracked_kinds[0],
+                said_at=previous.said_at if previous else said,
+                session_id=prompt.session_id,
+                words=item.quote,
+                subject=item.subject,
+                confidence=item.confidence,
+                revision=item.revision or item_content_revision(item.quote),
+                capture_id=prompt.capture_id,
+                owner=(
+                    config.default_owner
+                    if kind == config.unclassified_kind
+                    else prompt.lane
+                    or config.session_lanes.get(prompt.session_id)
+                    or config.default_owner
                 ),
             )
     for row in rows:
@@ -350,6 +351,7 @@ def _collect_asks(
             words=quoted[-1] if quoted else "",
             subject=row.cells.get("subject", ""),
             confidence=min(max(confidence, 0.0), 1.0),
+            revision=row.cells.get(config.transition.revision_cell, ""),
             capture_id=row.cells.get("capture", ""),
             owner=row.cells.get(config.owner_cell)
             or config.session_lanes.get(row.cells.get("session", ""))
@@ -396,11 +398,18 @@ def _cites_answer_row(
     )
 
 
-def _completion_evidence(row: _Row, config: ModelAskStateConfig) -> bool:
-    """TERMINAL alone is never a completion class; the request supplies the accepted evidence grammar."""
+def _completion_evidence(
+    row: _Row, request: ModelAskStateRequest, revision: str, run_id: str | None
+) -> bool:
+    """A reference is evidence only after its adapter checked this content and run."""
+    policy = request.config.transition
     return any(
-        re.search(pattern, row.cells.get("evidence", ""))
-        for pattern in config.completion_evidence_patterns
+        check.verified
+        and check.reference == row.cells.get(policy.evidence_cell, "")
+        and check.evidence_class in policy.verified_completion_classes
+        and check.revision == revision
+        and check.run_id == run_id
+        for check in request.completion_checks
     )
 
 
@@ -473,16 +482,45 @@ def _decide(
     accountable = ask.owner or config.default_owner
     running: str | None = None
     running_claim: str | None = None
+    claim_run: str | None = None
+    claim_lane: str | None = None
+    modern_claim = False
+    revision = ask.revision or item_content_revision(ask.words)
     ruling_audit_state: str | None = None
     base: EnumAskState | None = None
     reason: str | None = None
     seq: int | None = None
+    review_by: datetime | None = None
     tickets: list[str] = []
     evidence: list[str] = []
     shared: list[str] = []
     for event in events:
         row = event.row
         if row.at < ask.said_at:
+            continue
+        policy = config.transition
+        row_revision = row.cells.get(policy.revision_cell)
+        row_run = row.cells.get(policy.run_cell)
+        if row_revision is not None and row_revision != revision:
+            continue
+        # A modern claim is content-bound. Legacy rows remain readable, but cannot
+        # impersonate the completion of a modern run by omitting its fence.
+        if row.kind == "CLAIM" and row_run and row_revision != revision:
+            continue
+        if (
+            row.kind in {"STATUS", "TERMINAL"}
+            and (row_run or modern_claim)
+            and (row_run != claim_run or row_revision != revision)
+        ):
+            continue
+        if row.kind == "TERMINAL" and (
+            claim_run is None
+            or row.lane != claim_lane
+            or (
+                row.cells.get("closes-CLAIM")
+                and row.cells["closes-CLAIM"] != running_claim
+            )
+        ):
             continue
         evidence.append(row.ref())
         used.append(row)
@@ -528,51 +566,58 @@ def _decide(
                 done = "withdrawn"
             elif answers:
                 done = "answered"
-            elif _completion_evidence(row, config) or _cites_answer_row(
-                row, config, row_keys
-            ):
+            elif _completion_evidence(
+                row, request, revision, claim_run
+            ) or _cites_answer_row(row, config, row_keys):
                 done = "closes-ask"
             else:
                 evidence.pop()
             if done is not None:
+                running = None
                 continue
         if row.kind == "CLAIM":
             owner = row.lane
             accountable = row.cells.get(config.owner_cell) or row.lane or accountable
             running = row.lane or None
             running_claim = row.stamp
+            claim_run = row_run or row.stamp
+            claim_lane = row.lane
+            modern_claim = bool(row_run)
+            done = None
             base = None
         elif row.kind == "TERMINAL":
             outcome = row.cells.get("outcome", "")
-            if (
-                running == row.lane
-                and row.cells.get("closes-CLAIM")
-                and row.cells["closes-CLAIM"] != running_claim
-            ):
-                continue
+            done = None
             if running == row.lane:
                 running = None
-                running_claim = None
             if outcome in config.done_outcomes:
-                if _completion_evidence(row, config):
+                if _completion_evidence(row, request, revision, claim_run):
                     done = "terminal"
                 # An unfinished obligation stays owned by its last lane, even after its claim ends.
             elif outcome in config.handoff_outcomes:
                 owner = row.cells.get("handed_to") or row.lane
                 accountable = owner or accountable
             else:
-                owner = None
+                owner = accountable
         elif row.kind == "STATUS":
             row_state = row.cells.get(config.state_cell, "")
             if row_state == config.owned_state:
                 owner = row.cells.get(config.owner_cell) or row.lane
                 accountable = owner or accountable
                 base = None
+                done = None
             elif row_state == config.parked_state:
                 owner = None
+                running = None
                 base = EnumAskState.PARKED
                 reason = row.cells.get(config.reason_cell) or reason
                 seq = _seq(row.cells.get(config.seq_cell, "")) or seq
+                review = row.cells.get(policy.review_by_cell)
+                try:
+                    review_by = _stamp_time(review) if review else None
+                except ValueError:
+                    review_by = None
+                done = None
             elif row_state == config.ticketed_state:
                 owner = None
                 base = EnumAskState.TICKETED
@@ -648,12 +693,15 @@ def _decide(
         state=state,
         owner_lane=accountable,
         running_lane=running if state is not EnumAskState.DONE else None,
+        revision=revision,
+        claim_run_id=claim_run,
         orphaned=state is not EnumAskState.DONE and running is None,
         inferred_ties=sum(not e.explicit for e in events if e.row.at >= ask.said_at),
         ruling_audit_state=ruling_audit_state,
         tickets=tuple(tickets),
         park_reason=reason,
         park_seq=seq,
+        review_by=review_by if state is EnumAskState.PARKED else None,
         link=link,
         resolution=done,
         evidence=tuple(evidence),

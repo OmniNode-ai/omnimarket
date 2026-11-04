@@ -9,7 +9,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.models.model_ask_state import ModelRulingMechanismAudit
+from omnimarket.models.model_ask_state import (
+    ModelAskCompletionCheck,
+    ModelRulingMechanismAudit,
+)
 
 
 class ModelAskStateReadRequest(BaseModel):
@@ -23,6 +26,7 @@ class ModelAskStateReadRequest(BaseModel):
     now: datetime
     archives: bool = True
     ruling_mechanisms: tuple[ModelRulingMechanismAudit, ...] = ()
+    completion_checks: tuple[ModelAskCompletionCheck, ...] = ()
 
 
 __all__ = ["ModelAskStateReadRequest"]

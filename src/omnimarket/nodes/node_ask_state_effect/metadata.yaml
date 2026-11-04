@@ -1,6 +1,6 @@
 name: node_ask_state_effect
 version: "0.1.0"
-description: "Read the operator capture store and the ledger and report each operator ask with its state"
+description: "Read operator captures, ledger rows and checked completion evidence for each ask"
 pack: operator_capture
 node_role: effect
 display_name: "Operator Ask State Report"

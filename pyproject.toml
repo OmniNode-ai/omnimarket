@@ -877,6 +877,7 @@ node_operator_capture_compute = "omnimarket.nodes.node_operator_capture_compute"
 node_ask_state_compute = "omnimarket.nodes.node_ask_state_compute"
 node_operator_message_state_compute = "omnimarket.nodes.node_operator_message_state_compute"
 node_ask_state_effect = "omnimarket.nodes.node_ask_state_effect"
+node_ask_state_transition_effect = "omnimarket.nodes.node_ask_state_transition_effect"
 # OMN-21883: pure host bring-up plan over the declared target graph.
 node_host_bringup_plan_compute = "omnimarket.nodes.node_host_bringup_plan_compute"
 node_host_bringup_orchestrator = "omnimarket.nodes.node_host_bringup_orchestrator"

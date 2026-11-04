@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.handler_operator_ledger import item_content_revision
+from omnimarket.models.model_ask_state import ModelAskCompletionCheck
 from omnimarket.nodes.node_ask_state_compute.models.model_ask_state import (
     EnumAskState,
 )
@@ -111,7 +113,20 @@ def test_golden_chain_chat_only_lane_owned_done_and_parked(tmp_path: Path) -> No
         + "2026-10-31T10:01:00Z | STATUS | lane=lane-a | closes-ask=ask-0000000002 | evidence=receipt:child-ticket-created\n",
         encoding="utf-8",
     )
-    done = handler.handle(_request(tmp_path))
+    request = _request(tmp_path).model_copy(
+        update={
+            "completion_checks": (
+                ModelAskCompletionCheck(
+                    reference="receipt:child-ticket-created",
+                    evidence_class="receipt",
+                    verified=True,
+                    revision=item_content_revision("Mint the child ticket"),
+                    run_id="2026-10-31T08:05:00Z",
+                ),
+            )
+        }
+    )
+    done = handler.handle(request)
     assert {e.ask_id: e.state for e in done.asks}["ask-0000000002"] is EnumAskState.DONE
 
 
@@ -125,3 +140,53 @@ def test_error_leg_machine_record_is_no_ask_and_missing_source_is_refused(
     (tmp_path / "store" / "captures.jsonl").unlink()
     with pytest.raises(AskStateSourceError):
         handler.handle(_request(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("pr_state", "expected"),
+    [("OPEN", EnumAskState.OWNED), ("MERGED", EnumAskState.DONE)],
+)
+def test_item_transition_report_checks_watcher_without_caller_flags(
+    tmp_path: Path, pr_state: str, expected: EnumAskState
+) -> None:
+    from omnimarket.handlers.handler_ask_completion_evidence import (
+        FileCompletionChecker,
+    )
+    from omnimarket.models.model_ask_state_transition import ModelAskCompletionSources
+
+    revision = item_content_revision("Mint the child ticket")
+    _run(
+        tmp_path,
+        [_record(2, 8, "Mint the child ticket")],
+        [
+            f"2026-10-31T08:05:00Z | CLAIM | lane=lane-a | ask=ask-0000000002 | run=run-a | revision={revision}",
+            f"2026-10-31T10:00:00Z | TERMINAL | lane=lane-a | ask=ask-0000000002 | closes-CLAIM=2026-10-31T08:05:00Z | run=run-a | revision={revision} | outcome=done | evidence=sample#42",
+        ],
+    )
+    watcher = tmp_path / "watcher.json"
+    watcher.write_text(
+        json.dumps(
+            {
+                "last_tick": "2026-10-31T12:00:00Z",
+                "prs": {
+                    "sample#42": {
+                        "facts": {
+                            "state": pr_state,
+                            "merged_at": "2026-10-31T10:00:00Z"
+                            if pr_state == "MERGED"
+                            else "",
+                        }
+                    }
+                },
+            }
+        )
+    )
+    checker = FileCompletionChecker(
+        ModelAskCompletionSources(watcher_state_path=watcher, max_age_seconds=480)
+    )
+    report = HandlerAskStateReport(completion_checker=checker).handle(
+        _request(tmp_path)
+    )
+    assert (
+        next(e for e in report.asks if e.ask_id == "ask-0000000002").state is expected
+    )

@@ -49,6 +49,11 @@ class ModelAskPromptItem(BaseModel):
     quote: str = Field(min_length=1)
     subject: str
     confidence: float = Field(ge=0.0, le=1.0)
+    revision: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Content digest supplied by the core item model; legacy captures use their words' digest.",
+    )
 
 
 class ModelAskPrompt(BaseModel):
@@ -73,6 +78,21 @@ class ModelAskPromoteRule(BaseModel):
     pattern: str = Field(min_length=1)
 
 
+class ModelAskTransitionPolicy(BaseModel):
+    """Ledger cell names and accepted evidence classes, supplied by the contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    revision_cell: str = Field(min_length=1)
+    run_cell: str = Field(min_length=1)
+    evidence_cell: str = Field(min_length=1)
+    review_by_cell: str = Field(min_length=1)
+    row_id_cell: str = Field(min_length=1)
+    row_id_prefix: str = Field(min_length=1)
+    item_cell: str = Field(min_length=1)
+    verified_completion_classes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelAskStateConfig(BaseModel):
     """Vocabularies and limits. The handler holds none; the contract's config block supplies them."""
 
@@ -88,6 +108,7 @@ class ModelAskStateConfig(BaseModel):
     ruling_row_kinds: tuple[str, ...]
     ruling_closed_audit_states: tuple[str, ...]
     completion_evidence_patterns: tuple[str, ...]
+    transition: ModelAskTransitionPolicy
     id_chars: int = Field(ge=10)
     grace_minutes: int = Field(ge=0)
     link_window_hours: int = Field(ge=1)
@@ -160,6 +181,18 @@ class ModelRulingMechanismAudit(BaseModel):
     evidence: tuple[str, ...] = ()
 
 
+class ModelAskCompletionCheck(BaseModel):
+    """An evidence adapter's check, scoped to the item content and CLAIM run it answers."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reference: str = Field(min_length=1)
+    evidence_class: str = Field(min_length=1)
+    verified: bool
+    revision: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+
+
 class ModelAskStateRequest(BaseModel):
     """Captured prompts, ledger rows, the window start and the time the report is judged at."""
 
@@ -171,6 +204,7 @@ class ModelAskStateRequest(BaseModel):
     since: datetime
     config: ModelAskStateConfig
     ruling_mechanisms: tuple[ModelRulingMechanismAudit, ...] = ()
+    completion_checks: tuple[ModelAskCompletionCheck, ...] = ()
 
 
 class ModelAskEntry(BaseModel):
@@ -189,12 +223,18 @@ class ModelAskEntry(BaseModel):
     state: EnumAskState
     owner_lane: str = Field(min_length=1)
     running_lane: str | None = None
+    revision: str = ""
+    claim_run_id: str | None = Field(
+        default=None,
+        description="Last accepted CLAIM run, retained for replay receipts; running_lane denotes its live binding.",
+    )
     orphaned: bool = False
     inferred_ties: int = Field(default=0, ge=0)
     ruling_audit_state: str | None = None
     tickets: tuple[str, ...] = ()
     park_reason: str | None = None
     park_seq: int | None = None
+    review_by: datetime | None = None
     link: EnumAskLink = EnumAskLink.NONE
     resolution: str | None = Field(
         default=None,
@@ -307,6 +347,7 @@ class ModelAskStateReport(BaseModel):
 __all__ = [
     "EnumAskLink",
     "EnumAskState",
+    "ModelAskCompletionCheck",
     "ModelAskCounts",
     "ModelAskEntry",
     "ModelAskPromoteRule",
@@ -315,6 +356,7 @@ __all__ = [
     "ModelAskStateConfig",
     "ModelAskStateReport",
     "ModelAskStateRequest",
+    "ModelAskTransitionPolicy",
     "ModelAskWip",
     "ModelKindCount",
     "ModelParkedAsk",

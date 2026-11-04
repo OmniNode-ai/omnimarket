@@ -17,6 +17,7 @@ from typing import Any
 import yaml
 
 import omnimarket.nodes.node_ask_state_compute as compute_node
+from omnimarket.handlers.handler_ask_completion_evidence import OverlayCompletionChecker
 from omnimarket.models.model_ask_state import (
     ModelAskPrompt,
     ModelAskPromptItem,
@@ -29,6 +30,9 @@ from omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state import (
 )
 from omnimarket.nodes.node_ask_state_effect.models.model_ask_state_read import (
     ModelAskStateReadRequest,
+)
+from omnimarket.protocols.protocol_ask_completion_checker import (
+    ProtocolAskCompletionChecker,
 )
 
 EFFECT_CONTRACT = Path(__file__).parent.parent / "contract.yaml"
@@ -88,6 +92,7 @@ def read_prompts(captures: Path, since: datetime) -> tuple[ModelAskPrompt, ...]:
                 quote=str(item["quote"]),
                 subject=str(item.get("subject", "")),
                 confidence=float(item.get("confidence", 0.0)),
+                revision=str(item["revision"]) if item.get("revision") else None,
             )
             for item in classification.get("items", [])
             if item.get("quote")
@@ -137,29 +142,45 @@ def read_ledger_rows(
 class HandlerAskStateReport:
     """Read the sources named by the request and return the compute node's report."""
 
+    def __init__(
+        self, completion_checker: ProtocolAskCompletionChecker | None = None
+    ) -> None:
+        self._completion_checker = completion_checker
+
     def handle(self, request: ModelAskStateReadRequest) -> ModelAskStateReport:
         runtime = load_contract()["runtime"]
         config = load_config()
         # Restatements and dependency edges look back past the window; the compute node reports
         # only the asks stated at or after ``since``.
         floor = request.since - timedelta(days=config.restate_lookback_days)
+        snapshot = ModelAskStateRequest(
+            prompts=read_prompts(
+                request.captures_dir / runtime["captures_file"], floor
+            ),
+            rows=read_ledger_rows(
+                request.ledger_path,
+                floor,
+                archive_glob=runtime["archive_glob"],
+                archive_dir=runtime["archive_dir"],
+                archives=request.archives,
+            ),
+            now=request.now,
+            since=request.since,
+            config=config,
+            ruling_mechanisms=request.ruling_mechanisms,
+            completion_checks=request.completion_checks,
+        )
+        checker = self._completion_checker or OverlayCompletionChecker(
+            runtime["workspace_root_env"], runtime["completion_source_node"]
+        )
+        try:
+            checks = checker.checks(snapshot)
+        except (OSError, RuntimeError, ValueError, KeyError):
+            # Without an evidence binding, explicit checked input can still drive
+            # the read-only report. Missing evidence never completes an item.
+            checks = request.completion_checks
         return HandlerAskState().handle(
-            ModelAskStateRequest(
-                prompts=read_prompts(
-                    request.captures_dir / runtime["captures_file"], floor
-                ),
-                rows=read_ledger_rows(
-                    request.ledger_path,
-                    floor,
-                    archive_glob=runtime["archive_glob"],
-                    archive_dir=runtime["archive_dir"],
-                    archives=request.archives,
-                ),
-                now=request.now,
-                since=request.since,
-                config=config,
-                ruling_mechanisms=request.ruling_mechanisms,
-            )
+            snapshot.model_copy(update={"completion_checks": checks})
         )
 
 

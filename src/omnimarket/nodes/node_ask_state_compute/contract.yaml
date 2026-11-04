@@ -93,6 +93,15 @@ config:
   ruling_kind: ruling
   ruling_row_kinds: [RULING]
   ruling_closed_audit_states: [acting]
+  transition:
+    revision_cell: revision
+    run_cell: run
+    evidence_cell: evidence
+    review_by_cell: review_by
+    row_id_cell: id
+    row_id_prefix: item-transition
+    item_cell: for-item
+    verified_completion_classes: [merged-pr, receipt, ruling]
   completion_evidence_patterns:
     # Recognize a PR reference or resource path without binding evidence to a deployment endpoint.
     - '\b[\w.-]+#\d+\b|/[\w.-]+/[\w.-]+/pull/\d+\b'
@@ -118,7 +127,7 @@ config:
   after_cell: after
   pr_cells: [pr, prs, handed-off]
   reference_cells: [existing, blocked-by, blocked_by, related]
-  blocked_outcomes: [blocked, failed, partial]
+  blocked_outcomes: [blocked, failed, lane-error, partial]
   friction_kind: FRICTION
   leverage_reason_edges: 4
   min_quote_chars: 24
