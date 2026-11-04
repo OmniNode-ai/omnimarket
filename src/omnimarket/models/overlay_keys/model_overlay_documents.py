@@ -106,6 +106,10 @@ class ModelLabHostRow(_ModelOverlayBase):
         tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
     ) = None
     unavailable_reason: str | None = None
+    # Model serving is independent of lane/unit placement. Omitted: inherit the validated
+    # ``available`` value, preserving the existing policy for every row without this column.
+    # Keep this after ``available``: Pydantic passes preceding validated fields to the factory.
+    model_serving: bool = Field(default_factory=lambda data: data["available"])
     # A collaborator machine: it takes no lane bound to a lane the non-contributor rows bind, only
     # one bound to its own ``lane_binding``, and only while ``lane_ready`` says that lane can take a
     # lane (the remote-lane placement node judges it).
