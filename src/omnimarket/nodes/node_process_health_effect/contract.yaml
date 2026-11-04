@@ -50,6 +50,10 @@ descriptor:
 # The handler reads each path as env_var (when set) else default, then joins the file name. A path
 # whose directory is missing makes that source unread with the reason, never an empty read.
 runtime_io:
+  # Optional YAML overlay: process_health: {range_history_days: 62, graph_bucket_hours: 6}.
+  # Merged with the compute contract and validated as ModelProcessHealthConfig; unknown keys refuse.
+  config_overlay:
+    env_var: "PROCESS_HEALTH_CONFIG_OVERLAY"
   output:
     env_var: "ONEX_PROCESS_HEALTH_OUTPUT"
     default: "${ONEX_STATE_DIR}/process-health/process-health.json"

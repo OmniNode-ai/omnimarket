@@ -16,7 +16,7 @@ capabilities:
 dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "process-health", "factory-floor"]
+tags: ["range-overlay", "effect", "process-health", "factory-floor"]
 pack: "routing"
 display_name: "Process Health Effect"
 node_role: "effect"

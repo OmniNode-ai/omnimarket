@@ -41,6 +41,7 @@ class ModelExceptionEmitRequest:
     parent: str | None = None
     role: str = ""  # the writer's role; a row of a stop-registry class opens a stop only from the contract's opener
     idempotency_key: str = ""  # persists across resolution, unlike class/key coalescing
+    ticket_text: str = ""  # the text of the ticket the mechanize lane runs under; its Class line sets --priority-class
 
 
 @dataclass(frozen=True)
