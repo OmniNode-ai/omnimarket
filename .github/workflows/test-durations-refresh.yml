@@ -137,7 +137,7 @@ jobs:
             -m "chore(OMN-22389): record the durations of ${UNRECORDED} unrecorded test files" \
             -m "Ticket: OMN-22389" \
             --trailer "Onex-Workflow: ${GITHUB_WORKFLOW}" \
-            --trailer "Onex-Run: ${RUN_URL}"
+            --trailer "Onex-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           # The branch is rebuilt from dev's tip on every run, so the one PR always
           # carries the current dev plus this record change and nothing stale.
           git push --force origin "refs/heads/${REFRESH_BRANCH}"
