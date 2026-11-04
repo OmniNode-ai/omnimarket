@@ -1,0 +1,10 @@
+# Exactness check: each mutant run with TLC -continue (the whole reachable state space), violated invariants and the number of violating states found.
+# A mutant passes when exactly one invariant is listed and it is the mutant's own.
+mut_DependentLeavesWithDependency: DependentLeavesWithDependency(2237) 
+mut_GenerationMonotone: GenerationMonotone(96) 
+mut_NoLaunchOnExpiredLayer: NoLaunchOnExpiredLayer(2243) 
+mut_OnePublisherAccepted: OnePublisherAccepted(996) 
+mut_PendingRepublishedExactly: PendingRepublishedExactly(37) 
+mut_PendingTagsBeforePublish: PendingTagsBeforePublish(13572) 
+mut_ReleasedLayerNeverReturns: ReleasedLayerNeverReturns(462) 
+mut_StaleRequestNeverApplies: StaleRequestNeverApplies(739) 

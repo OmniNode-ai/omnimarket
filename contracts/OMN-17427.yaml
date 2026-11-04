@@ -4476,3 +4476,12 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-17427 -- uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute -q --no-cov"
         cwd: "."
+
+  - id: dod-omn17427-record-supplement
+    source: manual
+    binds_ac: [AC4400]
+    description: The five measured files still absent from dev e06f3c94 are recorded with finite positive durations. All five parameter cases fail against that record and pass against the supplemented record.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/test_ci_duration_record_supplement.py -q --no-cov -p no:randomly --refuse-skips
+      cwd: .

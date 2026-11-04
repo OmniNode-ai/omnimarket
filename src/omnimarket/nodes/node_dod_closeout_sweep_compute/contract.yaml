@@ -78,6 +78,7 @@ inputs:
   outcome_changed_since_reversal: {type: bool, required: false}
   all_prs_merged: {type: bool, required: false}
   released: {type: str, required: false, enum: [released, merged-unreleased, indeterminate, not-applicable]}
+  runtime_proof: {type: object, required: false, description: "flip_decision: the merged change, the runtime receipts read for it and, for a docs or plan ticket, the proof its definition of done names; absent holds the ticket as merged, not yet proven running."}
   project_name: {type: str, required: false, description: "report: the sprint name and window."}
   scope_counts: {type: object, required: false, description: "report: the counts plan_scope returned."}
   chunk_results: {type: list, required: false, description: "report: every chunk with its verify results, audit and reverts."}
