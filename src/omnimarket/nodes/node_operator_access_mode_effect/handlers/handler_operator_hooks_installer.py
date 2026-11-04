@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Install the operator-supervision hooks into a Claude Code settings file (OMN-20892).
 
-Copies this node package into ``<hooks dir>/operator-access-mode/`` (under two stub package
-files, so the copy imports without the rest of omnimarket and without a venv) and registers
-one command per event, each ``PYTHONPATH=<copy> <python> -B -m <entry module> <event>``:
+Copies this node package and its overlay-declared dependency closure into ``<hooks dir>/operator-access-mode/`` (under two stub package
+files, so it imports without the repository). Stop uses core and Pydantic from the
+runtime Python supplied to the installer; prompt and drain keep their standard-library
+bootstrap. Registers one command per event, each ``PYTHONPATH=<copy> <python> -B -m <entry module> <event>``:
 
 * SessionStart (startup, resume, clear, compact): ``session-start``;
 * UserPromptSubmit: ``prompt``;
@@ -71,15 +72,25 @@ def _copy_package(hooks_dir: Path) -> Path:
     (root / "omnimarket" / "nodes" / "__init__.py").write_text(
         '"""Stub: the installed operator-supervision hooks only."""\n', encoding="utf-8"
     )
-    # Shared standard-library semantics and types must accompany the isolated hook copy.
+    # The isolated copy is an import closure, not just the hook's node. Node
+    # shells are not executed here; stub their package exports to avoid loading
+    # a runtime simply to import a pure dependency handler.
+    import json
+
+    policy = json.loads((NODE_DIR / "unanswered_guard.overlay.json").read_text())
     package = NODE_DIR.parents[1]
-    for relative in (
-        "handlers/operator_messages.py",
-        "handlers/operator_message_spool.py",
-        "enums/enum_machine_prompt.py",
-        "models/model_operator_message_spool.py",
-        "contracts/operator_message_arrivals.json",
-    ):
+    for relative in policy["dependency_packages"]:
+        destination = root / "omnimarket" / relative
+        shutil.copytree(
+            package / relative,
+            destination,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+        (destination / "__init__.py").write_text(
+            '"""Installed hook dependency; contract resolves its handler."""\n',
+            encoding="utf-8",
+        )
+    for relative in policy["dependency_files"]:
         destination = root / "omnimarket" / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         (destination.parent / "__init__.py").touch()

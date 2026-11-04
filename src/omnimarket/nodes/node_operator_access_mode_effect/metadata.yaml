@@ -13,7 +13,7 @@ entry_points:
     node_operator_access_mode_effect: omnimarket.nodes.node_operator_access_mode_effect
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: true
   requires_repo: false
   requires_secrets: false
@@ -21,6 +21,8 @@ capabilities:
   side_effect_class: publish_event
 dependencies:
 - omnibase_core>=0.39.0
+- pydantic>=2.0
+- PyYAML>=6.0
 license: MIT
 tags:
 - effect

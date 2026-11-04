@@ -7,6 +7,7 @@
 name: operator_access_mode_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
+runtime_profiles: [effects]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
@@ -18,15 +19,43 @@ description: >
   local paths in remote mode), the attention-only push gate, and the remote setup check at
   session start. Silent turns allow only single-line attention items across all assistant text blocks.
   Agent and Workflow Mac routes are refused while the lab has free slots.
+  The unanswered Stop gate reads the transcript and independent arrival rows, never the
+  capture list. GateBlock refuses each message up to overlay max_blocks (2); GateHandoff
+  permits EndTurn only after AckRequired is durable, names the owner, and a cause claim
+  with a running answer lane exists for every unanswered message. Any later assistant
+  text answers all earlier operator messages. Transcript/store failures and timeouts
+  pass with exactly one alarm row and the hook's own visible session message naming
+  the unanswered messages. Silence ticks and machine-only turns pass. The other Stop
+  checks retain one rewrite; repeated-reply checks still run on every Stop.
   Installed as user-level Claude Code hooks by onex-user-hooks-install.
 
 handler:
-  module: omnimarket.handlers
-  class: HandlerLocalAccessMode
-  input_model: omnimarket.models.model_local_access_mode_request.ModelLocalAccessModeRequest
-  output_model: omnimarket.models.model_local_access_mode_result.ModelLocalAccessModeResult
+  module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_unanswered_guard
+  class: HandlerUnansweredGuard
+  input_model: omnimarket.models.model_operator_stop_gate.ModelUnansweredGuardRequest
+  output_model: omnimarket.models.model_operator_stop_gate.ModelUnansweredGuardResult
+
+input_model:
+  name: ModelUnansweredGuardRequest
+  module: omnimarket.models.model_operator_stop_gate
+output_model:
+  name: ModelUnansweredGuardResult
+  module: omnimarket.models.model_operator_stop_gate
 
 handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_unanswered_guard:HandlerUnansweredGuard
+  handlers:
+    - operation: guard_unanswered
+      topic: onex.cmd.omnimarket.operator-unanswered-stop-requested.v1
+      handler:
+        name: HandlerUnansweredGuard
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_unanswered_guard
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_unanswered_guard_request.ModelUnansweredGuardRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_unanswered_guard_request.ModelUnansweredGuardResult
+# These are hook-local operations. They have no bus topic and must not inherit
+# the unanswered command's topic when the bus auto-wires the gate.
+hook_handler_routing:
   routing_strategy: operation_match
   handlers:
     - operation: detect_access_mode
@@ -112,16 +141,39 @@ descriptor:
     - appends idempotent arrival, reply and private handoff rows through the ledger bus, with a host-wide durable spool
     - writes one state file per session and optional override and silent files under the access-mode state directory
     - refuses a tool call (exit 2) or a turn end (Stop decision block) that breaks a supervision rule
-  runtime_profiles: []
+  runtime_profiles: [effects]
 
 runtime_dispatch:
   external_trigger: "Claude Code hooks and the onex-access-mode CLI invoke the detector locally with session facts."
+  command_topic: onex.cmd.omnimarket.operator-unanswered-stop-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.operator-unanswered-stop-completed.v1
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.operator-unanswered-stop-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.operator-unanswered-stop-completed.v1
 
-# A Claude Code hook entry reached through its command line, not a bus topic.
+terminal_event: onex.evt.omnimarket.operator-unanswered-stop-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.operator-unanswered-stop-completed.v1
+
+unanswered_guard_policy:
+  overlay: unanswered_guard.overlay.json
+  override_env: ONEX_UNANSWERED_GUARD_OVERLAY
+  counter_scope: session_id and message_id in the access-mode state directory
+  acknowledgement: fsynced owner-naming row in the independent ledger outbox
+  handoff_binding: canonical onex run-node command in the host overlay
+  handoff_request: session_id, message_id, cause=answer@<session>@<message_id>, words
+  handoff_receipt: cause, owner, claim_id, lane_id, running
+  dependencies:
+    - node_operator_unanswered_compute
+    - Part A atomic cause-claim store and answer lane shared by hook, age rule and S5
+  install_closure: overlay dependency_packages and dependency_files plus runtime Python dependencies
+  miss_rate: node_operator_unanswered_compute measure_structural_misses publishes the labelled sample
+
+# The hook is an edge adapter; the guard also has a canonical command/terminal pair.
 lifecycle: experimental
 
 metadata:

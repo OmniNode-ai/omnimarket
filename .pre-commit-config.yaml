@@ -1763,6 +1763,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: operator-unanswered-stop-gate
+        name: Bounded unanswered Stop gate
+        language: system
+        entry: uv run pytest tests/nodes/node_operator_access_mode_effect/test_unanswered_guard.py -q -n 0 -p no:randomly
+        files: ^(src/omnimarket/(nodes/node_operator_access_mode_effect/|models/model_operator_stop_gate\.py$|handlers/handler_operator_unanswered_bus\.py$)|tests/nodes/node_operator_access_mode_effect/test_unanswered_guard\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: operator-unanswered-detect
         name: Operator unanswered-message detector and arrival spool
         language: system
