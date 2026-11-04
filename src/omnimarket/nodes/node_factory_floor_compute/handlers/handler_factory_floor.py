@@ -1358,12 +1358,19 @@ def _floor(
         )[: request.config.stoppage_limit]
     )
     scopes = {_line_id(plan): _scope(plan) for plan in plans}
-    lanes = build_lanes(request, lines, scopes)
+    inventory = build_lanes(request, lines, scopes)
+    lanes = tuple(
+        lane for lane in inventory if lane.liveness not in {"dead", "finished"}
+    )[: request.config.lane_limit]
+    inactive = tuple(
+        lane for lane in inventory if lane.liveness in {"dead", "finished"}
+    )[: request.config.lane_limit]
     machines = build_machines(request, lanes)
     return ModelFloorSection(
         machines=machines,
         cloud=build_cloud(request),
         lanes=lanes,
+        inactive_lanes=inactive,
         stall_minutes=request.config.stall_minutes,
         lane_window_minutes=request.config.lane_live_window_minutes,
         bays=build_bays(machines),
@@ -1434,6 +1441,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
             host_table_read=request.host_table is not None,
             placement_markers_read=request.placed is not None,
             receipts_read=request.receipts is not None,
+            lane_processes_read=request.lane_processes is not None,
             running_evidence_read=request.running_evidence is not None,
             cloud_accounts_read=request.cloud_accounts is not None,
             runner_fleet_read=request.runner_fleet is not None,

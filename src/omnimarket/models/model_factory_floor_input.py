@@ -167,6 +167,7 @@ class ModelFloorLedgerRow(BaseModel):
     model: str = ""
     actor: str = ""
     to: str = ""
+    run_id: str = ""
 
     _utc = field_validator("ts")(_aware)
 
@@ -278,8 +279,24 @@ class ModelFloorReceipt(BaseModel):
     result: str = ""
     session_detail: str = ""
     session_needs: str = ""
+    # The receipt's pid belongs to its launching host, where the floor reader runs.
+    runner_alive: bool | None = None
 
     _utc = field_validator("started_at")(_aware)
+
+
+class ModelFloorLaneProcess(BaseModel):
+    """A controller worker's existing group/tag probe, read on the controller host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    started_at: datetime
+    observed_at: datetime
+    alive: bool | None
+    detail: str
+
+    _utc = field_validator("started_at", "observed_at")(_aware)
 
 
 class ModelFloorCloudAccount(BaseModel):
@@ -538,6 +555,7 @@ class ModelFactoryFloorRequest(BaseModel):
     host_table: tuple[ModelFloorHostRow, ...] | None = None
     placed: tuple[ModelFloorPlacedHost, ...] | None = None
     receipts: tuple[ModelFloorReceipt, ...] | None = None
+    lane_processes: tuple[ModelFloorLaneProcess, ...] | None = None
     cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
     runner_fleet: ModelFloorRunnerFleet | None = None
     # Why runner_fleet is None, in the reader's own words; empty when it was read.

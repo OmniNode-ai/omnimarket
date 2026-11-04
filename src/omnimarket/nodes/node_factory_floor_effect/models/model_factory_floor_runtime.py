@@ -49,6 +49,9 @@ class ModelFactoryFloorLaneSources(BaseModel):
     lane_marker_min_id: int = Field(gt=0)
     cloud_accounts_file: str = Field(min_length=1)
     host_table_env: str = Field(min_length=1)
+    controller_dir_env: str = Field(min_length=1)
+    controller_dir_fallback: str = Field(min_length=1)
+    process_start_grace_seconds: int = Field(ge=0)
 
 
 class ModelFactoryFloorLimitSources(BaseModel):

@@ -47,6 +47,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_engines,
     load_host_table,
     load_lane_containers,
+    load_lane_processes,
     load_linear,
     load_placed,
     load_placement,
@@ -167,6 +168,16 @@ class HandlerFactoryFloorEffect:
         fleet_path = home / src.runner_fleet_relpath
         runner_fleet = load_runner_fleet(fleet_path)
         watcher = load_watcher(home / src.watcher_relpath, now, rt.watcher_max_age_min)
+        ledger = read_ledger_rows(
+            window_days=rt.ledger_window_days,
+            cut_chars=rt.ledger_cut_chars,
+            timeout_seconds=rt.ledger_timeout_seconds,
+            plugin_root=Path(plugin_root) if plugin_root else None,
+            plugin_root_env=rt.plugin_root_env,
+            ledger_rows_file=Path(request.ledger_rows_file)
+            if request.ledger_rows_file
+            else None,
+        )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -192,15 +203,16 @@ class HandlerFactoryFloorEffect:
                 task_links=overlay.plan_task_links if overlay is not None else (),
             ),
             watcher=watcher,
-            ledger=read_ledger_rows(
-                window_days=rt.ledger_window_days,
-                cut_chars=rt.ledger_cut_chars,
-                timeout_seconds=rt.ledger_timeout_seconds,
+            ledger=ledger,
+            lane_processes=load_lane_processes(
+                ledger,
+                directory=resolve_dir(
+                    os.environ, ls.controller_dir_env, ls.controller_dir_fallback
+                ),
                 plugin_root=Path(plugin_root) if plugin_root else None,
-                plugin_root_env=rt.plugin_root_env,
-                ledger_rows_file=Path(request.ledger_rows_file)
-                if request.ledger_rows_file
-                else None,
+                now=now,
+                grace_seconds=ls.process_start_grace_seconds,
+                window_minutes=config.lane_live_window_minutes,
             ),
             linear=merge_linear_titles(
                 load_linear(linear_snapshot),

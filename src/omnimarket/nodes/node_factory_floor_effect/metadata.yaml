@@ -4,7 +4,7 @@ name: node_factory_floor_effect
 version: 1.0.0
 description: >-
   Read the factory floor's sources, call node_factory_floor_compute with them and write its JSON to the path
-  the contract declares.
+  the contract declares. Reads launcher pids and the controller's existing worker group/tag probe for occupancy.
 pack: operator_tooling
 node_role: effect
 display_name: Factory Floor Effect

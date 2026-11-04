@@ -893,6 +893,7 @@ function renderMachines(floor){
     ? (floor.stall_minutes ? `A worker is marked stalled after ${floor.stall_minutes} minutes without a log entry of any kind, and is no longer drawn after ${floor.lane_window_minutes} minutes.` : "")
     : "The record lists no machines: the deployment lists none, or the record was written before machines were recorded.";
   const cards = ms.map(m => machineHTML(m, byId));
+  if ((floor.inactive_lanes || []).length) cards.push(`<article class="mbay"><b>Workers no longer occupying slots</b><ul>${floor.inactive_lanes.map(l => `<li>${esc(l.lane)} · ${esc(l.liveness)} · ${esc(l.liveness_detail)}</li>`).join("")}</ul></article>`);
   cards.push(cloudHTML(floor.cloud, lanes));
   if (unplaced.length){
     const groups = {};
