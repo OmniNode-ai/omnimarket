@@ -1067,6 +1067,11 @@ requirements:
     acceptance:
       - id: "AC1742732"
         statement: "AC1742732: ModelLabHostRow accepts ssh_user, proxy_jump and ssh_identity (each omitted by default), a table carrying them loads through load_host_table, and a login, jump host or key file that begins with a dash, holds a space or shell syntax, or has a '..' segment is refused -- falsifier: uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -k login_jump_host fails at the merge base, where the row model forbids the three fields"
+  - id: "req-live-unread-receipt-owner-and-reader"
+    statement: "A lab-headroom UNKNOWN line for an unreadable host leads with the owner action the probe receipt's LAUNCHER-GAP tag names, says a rerun clears nothing for any gap the launcher recorded (auth refused, name unresolved, sshd refused, no route), and sends the operator to the hosts-probe receipt readings, the read_pool reading the tick itself used, instead of the listing onex_lab_run.py --hosts prints."
+    acceptance:
+      - id: "AC1742733"
+        statement: "AC1742733: ModelLabAdmission accepts probe_owner; h101 and h053 (AUTH-REFUSED) and h106 (NAME-UNRESOLVED) lines lead with the receipt's owner action and no rerun advice, an sshd-refused gap says a rerun clears nothing, a receipt with no owner keeps the regex-derived owner, and an unclassified timeout keeps the rerun advice and names the receipt readings -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap' fails at the merge base, where probe_owner is refused as an extra field"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4513,3 +4518,11 @@ dod_evidence:
     - check_type: test_passes
       check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/test_ci_duration_record_supplement.py -q --no-cov -p no:randomly --refuse-skips
       cwd: .
+  - id: "dod-omn17427-receipt-owner-and-reader"
+    description: "The tick's UNKNOWN lab-headroom FIX leads with the owner action the probe receipt names and reads the receipt readings, for the recorded h101, h053 and h106 receipts and an sshd-refused gap. These tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC1742733"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap'"
+        cwd: "${OMNI_HOME}/omnimarket"
