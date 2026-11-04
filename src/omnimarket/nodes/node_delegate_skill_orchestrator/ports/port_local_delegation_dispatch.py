@@ -811,7 +811,7 @@ def _record_run_step_calls(
     for earlier in result.earlier_model_attempts:
         recorder.provider_call(
             started_at=started_at,
-            duration_ms=None,
+            duration_ms=earlier.duration_ms,
             backend_id=backend.backend_id,
             model_id=earlier.model_id,
             failure_cause=earlier.failure_class.value,
@@ -980,6 +980,7 @@ def _local_rung_attempt(
         "host": endpoint_host(backend.endpoint_ref),
         "configuration": configuration,
         "size_band": size_band,
+        "duration_ms": result.latency_ms,
         "http_status": result.http_status,
         "provider_code": result.provider_code,
         "error_message": failure_message,
@@ -2448,6 +2449,8 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": 0.0,
+                        # OMN-22224: never sent, so it took no provider time.
+                        "duration_ms": 0,
                         "failure_class": (
                             EnumDelegationFailureClass.CONTEXT_TOO_LARGE.value
                         ),
@@ -2893,6 +2896,9 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
+                        # OMN-22224: the call's measured time (a timeout carries
+                        # the time spent before the bound ended it).
+                        "duration_ms": transport_result.latency_ms,
                         # OMN-20717: whether this rung's cost was measured.
                         "usage_source": transport_result.usage_source.value,
                         "failure_class": (
@@ -3313,6 +3319,8 @@ class LocalDelegationDispatchPort:
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": 0.0,
+                        # OMN-22224: measured by the effect that made the call.
+                        "duration_ms": earlier.duration_ms,
                         "failure_class": earlier.failure_class.value,
                         "provider_id": _attempt_provider_id(backend.endpoint_ref),
                         "host": endpoint_host(backend.endpoint_ref),
@@ -3349,6 +3357,8 @@ class LocalDelegationDispatchPort:
                     "quality_score": gate_result.quality_score,
                     "error_message": "; ".join(gate_result.failure_reasons),
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-22224: the call's measured time.
+                    "duration_ms": result.latency_ms,
                     # OMN-20717: whether this rung's cost was measured.
                     "usage_source": result.usage_source.value,
                     # OMN-20154: the provider answered; a rung the gate did not
@@ -4842,6 +4852,7 @@ class LocalDelegationDispatchPort:
                 success=False,
                 failure_class=EnumDelegationFailureClass.TIMEOUT,
                 error_message=failure_message,
+                latency_ms=max(0, int((time.monotonic() - call_started) * 1000)),
                 endpoint_healthy=False,
                 served_model_id=(
                     observations[-1].model_id
@@ -4877,12 +4888,16 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
+        # OMN-22224: a result that reports no latency is timed from the call.
+        elapsed_ms = max(0, int((time.monotonic() - call_started) * 1000))
+        if not result.latency_ms:
+            result = result.model_copy(update={"latency_ms": elapsed_ms})
         _record_run_step_calls(
             run_steps,
             backend,
             result,
             call_started_at,
-            result.latency_ms or max(0, int((time.monotonic() - call_started) * 1000)),
+            result.latency_ms or elapsed_ms,
         )
         if not result.success:
             return _AttemptOutcome(

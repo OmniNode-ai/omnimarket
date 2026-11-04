@@ -12,6 +12,7 @@ prints the verdict. Run from the repository root.
     python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule access
     python -m ... --rule dlq [handler.py ...]
     python -m ... --rule cursor [--write-baseline [--allow-growth]]
+    python -m ... --rule typed-entry
 
 ``--report-json PATH`` writes the canonical OMN-2362 report. Exit 0 only on PASS;
 a full-tree run that gathered nothing is an ERROR finding and exits non-zero.
@@ -40,6 +41,7 @@ from omnimarket.nodes.node_contract_projection_check_compute.handlers.findings i
     RULE_CURSOR_MISSING,
     RULE_CURSOR_SHRINKABLE,
     RULE_DLQ,
+    RULE_TYPED_ENTRY,
 )
 from omnimarket.nodes.node_contract_projection_check_compute.handlers.handler_projection_contract_check import (
     HandlerProjectionContractCheck,
@@ -123,6 +125,29 @@ def _run_dlq(report: ModelValidationReport) -> int:
             _emit(f"  - {message}", file=sys.stderr)
         return 1
     _emit("Projection-DLQ gate OK: all validating projection handlers route to DLQ.")
+    return 0
+
+
+def _run_typed_entry(report: ModelValidationReport) -> int:
+    failing = _emit_errors(report)
+    if failing is not None:
+        return failing
+    violations = _messages(report, RULE_TYPED_ENTRY)
+    if violations:
+        _emit(
+            "Projection typed-entry gate FAILED (OMN-18883) -- a routed entry of a "
+            "contract that writes a db_io table can never write: the runtime wires "
+            "its typed handle on the typed arm, so it validates, returns and stores "
+            "nothing while the consumer commits every offset:",
+            file=sys.stderr,
+        )
+        for message in violations:
+            _emit(f"  - {message}", file=sys.stderr)
+        return 1
+    _emit(
+        "Projection typed-entry gate OK: every routed entry of a writing projection "
+        "can reach its write path."
+    )
     return 0
 
 
@@ -274,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_access(root, report)
     if rule is EnumProjectionContractRule.DLQ:
         return _run_dlq(report)
+    if rule is EnumProjectionContractRule.TYPED_ENTRY:
+        return _run_typed_entry(report)
     return _run_cursor(
         report,
         root,
