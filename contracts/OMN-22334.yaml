@@ -80,6 +80,9 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/runtime_proof_close_rules.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def evaluate_proof_close\")' | grep -qx true"
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/test_runtime_proof_close.py -q -p no:randomly --no-cov"
+        cwd: "."
     binds_ac: ["AC1", "AC2", "AC3", "AC4"]
   - id: "dod-omn22334-deploy-probe-sweep"
     description: "Deploy probe: the closeout sweep handler GitHub serves at the checked-out commit holds a merged ticket on the runtime-proof block; the block is absent at the merge base, so the content read fails there."
@@ -88,7 +91,18 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_closeout_sweep_compute/handlers/handler_dod_closeout_sweep.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"BLOCK_MERGED_NOT_PROVEN_RUNNING\")' | grep -qx true"
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k merged_only_does_not_close -q -p no:randomly --no-cov"
+        cwd: "."
     binds_ac: ["AC1"]
+  - id: "dod-omn22334-ac5-hosted-predicate"
+    description: "AC5 hosted runtime check: discover the installed closeout contract, wire its handler through MessageDispatchEngine and send flip commands over the in-memory bus at the checked-out revision. The separate local integration item still requires the lab run; this hosted check does not attest installation of callers in other repositories."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_runtime_wiring_dod_closeout_sweep_compute.py -k runtime_proof_controls_the_installed_sweep_over_the_bus -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC5"]
   - id: "dod-omn22334-integration-proof"
     description: "AC5: the pushed head ran the predicate suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
@@ -97,4 +111,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22334 -- uv run --frozen pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -q -p no:randomly --no-cov"
         cwd: "."
-    binds_ac: ["AC5"]
