@@ -10,9 +10,10 @@ core tag, the two sources disagree and the Sibling Release Compatibility Gate
 package omnibase-core". Eight core-only bump PRs (omnimarket#4588 to #4624)
 stalled on exactly that.
 
-``INFRA_CORE_TAGS`` records, oldest first, each omnibase_infra commit this
-repository has pinned and the core dev merge tag that commit's pyproject.toml
-pins, spelled here so the test runs without reading another clone. The order
+``INFRA_CORE_TAGS`` records, oldest first, each supported omnibase_infra commit
+and the core dev merge tag that commit's pyproject.toml pins, spelled here so
+the test runs without reading another clone. A recorded compatible pair stays
+valid when another pair is added. The order
 that works is: omnibase_infra moves its core tag, then one omnimarket change
 moves both tags, relocks and adds the row below.
 """
@@ -36,12 +37,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 3f93a2cc6f6c: omnibase_infra#5536, which moves infra to core 5bb91ae7e720.
 # 858c2c689461: omnibase_infra dev at the core 2080333acfaf pin (OMN-21826).
 # beb08a83c93e: omnibase_infra#5602 (OMN-19986, OMN-19991), same core pin.
+# 24ef3b66b19d: omnibase_infra#5579 (OMN-21920), which pins core 7e087d566f24.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
     ("3f93a2cc6f6c", "dev-20261031202655-5bb91ae7e720"),
     ("858c2c689461", "dev-20261101203942-2080333acfaf"),
     ("beb08a83c93e", "dev-20261101203942-2080333acfaf"),
+    ("24ef3b66b19d", "dev-20261102080237-7e087d566f24"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -110,9 +113,14 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
     assert core_tag_conflict(infra_sha, core_tag) is None
 
 
-def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra beb08a83c93e and core 2080333acfaf."""
-    infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
-    core_tag, _ = _locked_dev_tag("omnibase-core")
-    assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261102181416-beb08a83c93e"
+@pytest.mark.parametrize(("infra_sha", "core_tag"), INFRA_CORE_TAGS)
+def test_each_recorded_pair_accepts_only_its_declared_core_tag(
+    infra_sha: str,
+    core_tag: str,
+) -> None:
+    """Adding a reviewed pair preserves older pairs and rejects incompatible tags."""
+    assert core_tag_conflict(infra_sha, core_tag) is None
+    for other_core_tag in {tag for _, tag in INFRA_CORE_TAGS} - {core_tag}:
+        assert "move both pins in one change" in (
+            core_tag_conflict(infra_sha, other_core_tag) or ""
+        )

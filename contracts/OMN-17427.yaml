@@ -1062,6 +1062,11 @@ requirements:
     acceptance:
       - id: "AC1742731"
         statement: "AC1742731: a probe_error carrying 'Permission denied (publickey' yields a FIX telling the host owner to add the launching host's public key to the via= hop's authorized_keys, without the rerun or --hosts --lane advice, and a timed-out probe still yields the rerun advice -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k publickey_refusal fails at the merge base, where every unreadable probe gets the rerun advice"
+  - id: "req-recorded-compatible-pin-pairs"
+    statement: "The sibling pin-pair check accepts reviewed compatible infra/core pairs without requiring every branch to pin the last recorded pair."
+    acceptance:
+      - id: "AC1742732"
+        statement: "The source and lock agree, the selected infra/core pair matches its reviewed mapping, and every recorded pair accepts its core tag while rejecting every other recorded core tag. The infra 24ef3b66b19d pair uses core dev-20261102080237-7e087d566f24, as declared at that infra revision."
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4475,4 +4480,22 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-17427 -- uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute -q --no-cov"
+        cwd: "."
+  - id: "dod-omn17427-recorded-compatible-pin-pairs"
+    description: "Each reviewed infra/core pair remains accepted and mismatched recorded core tags remain refused. The new parameterized test is absent at the merge base. The source/lock and selected-pair checks also run."
+    source: "manual"
+    binds_ac: ["AC1742732"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py::test_each_recorded_pair_accepts_only_its_declared_core_tag -q --no-cov"
+        cwd: "."
+  - id: "dod-omn17427-recorded-pin-pairs-deploy-probe"
+    description: "Hosted checkout readback of the pin-pair check: the packaged check accepts each reviewed compatible pair and rejects every other recorded core tag without a broker, database, lab route or credentials. The merge base lacks this entry point."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py::test_each_recorded_pair_accepts_only_its_declared_core_tag -q --no-cov"
         cwd: "."
