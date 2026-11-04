@@ -837,9 +837,6 @@ def _attempt_records(
                         if raw.get("quality_score") is not None
                         else None
                     ),
-                    duration_ms=_as_optional_int(
-                        raw.get("duration_ms", raw.get("latency_ms"))
-                    ),
                     cost_usd=_as_float(raw.get("cost_usd")),
                     usage_source=_as_usage_source(raw.get("usage_source")),
                     failure_class=(
@@ -877,7 +874,6 @@ def _attempt_records(
                     if raw.get("quality_score") is not None
                     else None
                 ),
-                duration_ms=_as_optional_int(raw.get("duration_ms")),
                 cost_usd=_as_float(raw.get("cost_usd")),
                 usage_source=_as_usage_source(raw.get("usage_source")),
                 failure_class=(

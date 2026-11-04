@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22224
 title: 'Deployed-lane delegation run steps reach the run_trace projection and every attempt record carries a duration'
-summary: A test drives the steps the deployed lane's port derives from a terminal through the bus envelope and the standalone run-trace writer's project_event against a stand-in pool, and finds the rows written (AC1 already held at dev for the rows themselves; this change makes the run-trace provider_call row of an earlier model of one customer route carry the duration the effect measured, which dev wrote as null). The earlier-model attempt (ModelEarlierModelAttempt), the local dispatch port's attempt records and the bus ladder's latency gain duration_ms, measured from the call (0 for a rung never sent) (AC2). The wire attempt record (ModelDelegateSkillAttemptRecord) declares duration_ms and retains it through validation and serialization. The response handler copies local duration_ms and bus escalation_history duration_ms or latency_ms into each typed attempt. Changes are in omnimarket.models, node_llm_delegation_call_effect and node_delegate_skill_orchestrator; no new node.
+summary: A test drives the steps the deployed lane's port derives from a terminal through the bus envelope and the standalone run-trace writer's project_event against a stand-in pool, and finds the rows written (AC1 already held at dev for the rows themselves; this change makes the run-trace provider_call row of an earlier model of one customer route carry the duration the effect measured, which dev wrote as null). The earlier-model attempt (ModelEarlierModelAttempt), the local dispatch port's attempt records and the bus ladder's latency gain duration_ms, measured from the call (0 for a rung never sent) (AC2). The wire attempt record (ModelDelegateSkillAttemptRecord) accepts and drops duration_ms as a consumer-first key (step 1 of 2, because the Wire Compatibility Gate refuses declaring it while omniclaude's pin forbids extras); a later change declares the field once the pin carries this consumer. Changes are in omnimarket.models, node_llm_delegation_call_effect and node_delegate_skill_orchestrator; no new node.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -35,7 +35,7 @@ dod_evidence:
         check_value: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q -n 0 -p no:randomly --no-cov -k deployed_run_steps_projected
         cwd: .
   - id: dod-omn22224-ac2
-    description: AC2 reads duration_ms on the earlier-model attempt and every local dispatch attempt record, and verifies that the wire attempt record and response handler retain it through validation and serialization.
+    description: AC2 reads duration_ms on the earlier-model attempt and every local dispatch attempt record, and reads that the wire attempt record accepts and drops the consumer-first key.
     source: manual
     binds_ac:
       - AC2
@@ -57,7 +57,7 @@ dod_evidence:
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "duration_ms=earlier.duration_ms" > /dev/null'
         cwd: .
   - id: dod-omn22224-deploy-probe-ac2
-    description: 'Deploy probe for AC2: the delegate-skill wire model GitHub serves at the checked-out commit declares duration_ms as a retained attempt field, which the merge base does not.'
+    description: 'Deploy probe for AC2: the delegate-skill wire model GitHub serves at the checked-out commit lists duration_ms among the attempt keys it accepts consumer-first, which the merge base does not.'
     source: manual
     binds_ac:
       - AC2
@@ -67,7 +67,7 @@ dod_evidence:
         cwd: .
       - check_type: command
         check_value: |-
-          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "duration_ms: int | None = Field(" > /dev/null'
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "\"duration_ms\", \"gate_record\"" > /dev/null'
         cwd: .
   - id: dod-omn22224-integration-proof
     description: The pushed head ran the OMN-22224 focused tests, the delegation attempt-record tests and the run-trace writer tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

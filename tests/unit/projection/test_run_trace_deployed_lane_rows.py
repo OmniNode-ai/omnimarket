@@ -11,9 +11,9 @@ pool that keeps rows by (tenant, run, sequence). No database is read or written.
 AC1 also projects the local port's earlier and final provider calls, retaining
 the duration the effect measured for an earlier model of one customer route.
 
-AC2 checks that validation and serialization retain ``duration_ms`` on attempt
-payloads, including a rung that was never sent (0), and that both dispatch
-records and bus escalation history reach the typed response with their timing.
+AC2 checks that the consumer accepts and drops ``duration_ms`` on attempt
+payloads, including a rung that was never sent (0). The wire declaration is
+step 2 of 2, deferred until omniclaude's pin carries this consumer.
 """
 
 from __future__ import annotations
@@ -297,26 +297,19 @@ async def test_deployed_run_steps_projected_carry_the_duration_of_an_earlier_mod
     assert final_call["duration_ms"] == 910
 
 
-@pytest.mark.parametrize("duration_ms", [0, 2140, None])
-def test_attempt_has_duration_on_the_wire_record(duration_ms: int | None) -> None:
-    assert "duration_ms" not in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
-    assert "duration_ms" in ModelDelegateSkillAttemptRecord.model_fields
+def test_attempt_has_duration_on_the_wire_record() -> None:
+    assert "duration_ms" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    assert "duration_ms" not in ModelDelegateSkillAttemptRecord.model_fields
     payload = {
         "tier": "local",
         "backend_id": "local-qwen",
         "model_id": "model-a",
         "quality_gate_passed": False,
-        "duration_ms": duration_ms,
+        "duration_ms": 2140,
     }
     record = ModelDelegateSkillAttemptRecord.model_validate(payload)
     assert record.model_id == "model-a"
-    assert record.duration_ms == duration_ms
-    assert record.model_dump()["duration_ms"] == duration_ms
-    assert json.loads(record.model_dump_json())["duration_ms"] == duration_ms
-    assert (
-        ModelDelegateSkillAttemptRecord.model_validate_json(record.model_dump_json())
-        == record
-    )
+    assert "duration_ms" not in record.model_dump()
     with pytest.raises(ValidationError, match="unknown_key"):
         ModelDelegateSkillAttemptRecord.model_validate(payload | {"unknown_key": 1})
 
@@ -360,7 +353,7 @@ def test_attempt_has_duration_at_every_dispatch_site() -> None:
     assert not missing, f"attempt records built without duration_ms at lines {missing}"
 
 
-def test_attempt_has_duration_from_the_port_record_is_retained() -> None:
+def test_attempt_has_duration_from_the_port_record_is_accepted_and_dropped() -> None:
     from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
         _attempt_records,
     )
@@ -383,61 +376,9 @@ def test_attempt_has_duration_from_the_port_record_is_retained() -> None:
     ]
     port_rungs = _attempt_records({"attempts": attempts})
     assert [rung.model_id for rung in port_rungs] == ["m", "n"]
-    # The handler and wire boundary must retain the same measured durations.
+    # Validate the same payloads at the consumer boundary too: the merge-base
+    # handler already ignored duration_ms, but its wire model still forbids it.
     assert port_rungs == [
         ModelDelegateSkillAttemptRecord.model_validate(raw) for raw in attempts
     ]
-    assert [rung.duration_ms for rung in port_rungs] == [0, 31]
-    assert [
-        json.loads(rung.model_dump_json())["duration_ms"] for rung in port_rungs
-    ] == [0, 31]
-
-
-def test_attempt_has_duration_rejects_a_negative_measurement() -> None:
-    with pytest.raises(ValidationError, match="duration_ms"):
-        ModelDelegateSkillAttemptRecord(
-            tier="local",
-            backend_id="a",
-            model_id="m",
-            quality_gate_passed=False,
-            duration_ms=-1,
-        )
-
-
-def test_attempt_has_duration_legacy_payload_is_unknown() -> None:
-    record = ModelDelegateSkillAttemptRecord(
-        tier="local",
-        backend_id="a",
-        model_id="m",
-        quality_gate_passed=False,
-    )
-    assert record.duration_ms is None
-
-
-def test_attempt_has_duration_from_bus_history_is_retained() -> None:
-    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-        _attempt_records,
-    )
-
-    records = _attempt_records(_deployed_terminal())
-    assert [rung.duration_ms for rung in records] == [2140, 910]
-    assert [json.loads(rung.model_dump_json())["duration_ms"] for rung in records] == [
-        2140,
-        910,
-    ]
-
-
-def test_attempt_has_duration_explicit_bus_duration_takes_precedence() -> None:
-    from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-        _attempt_records,
-    )
-
-    records = _attempt_records(
-        {
-            "escalation_history": [
-                {"model_id": "a", "duration_ms": 0, "latency_ms": 100},
-                {"model_id": "b"},
-            ]
-        }
-    )
-    assert [rung.duration_ms for rung in records] == [0, None]
+    assert all("duration_ms" not in rung.model_dump() for rung in port_rungs)
