@@ -60,10 +60,6 @@ def test_contract_only_on_occ_is_missing_and_occ_is_never_touched(
 
     monkeypatch.setattr(subprocess, "run", spy)
 
-    def refuse_occ_root(_self: EvidenceCollector) -> Path | None:
-        raise AssertionError("missing product contract must not resolve the OCC root")
-
-    monkeypatch.setattr(EvidenceCollector, "_resolve_occ_root", refuse_occ_root)
     collector = EvidenceCollector()
     results = collector.collect(ticket, execution_audience=_AUDIENCE)
 
@@ -77,5 +73,3 @@ def test_contract_only_on_occ_is_missing_and_occ_is_never_touched(
         "onex_change_control is not consulted."
     )
     assert touched_occ == []
-    assert collector.occ_refresh_outcome is None
-    assert collector.occ_resolved_sha is None

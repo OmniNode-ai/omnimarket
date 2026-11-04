@@ -79,7 +79,6 @@ HandlerCategory = Literal["COMPUTE"]
 # Canonical dependency order (repo slug -> priority tier, lower = earlier).
 # Add new repos here with the appropriate tier number.
 _REPO_DEPENDENCY_TIERS: dict[str, int] = {
-    "omnibase_compat": 0,
     "omnibase_spi": 1,
     "omnibase_core": 2,
     "omnibase_infra": 3,
