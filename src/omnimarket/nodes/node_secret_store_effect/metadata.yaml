@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_secret_store_effect
 version: "1.0.0"
-description: "Resolves a secret by reference or folder and key, creates one create-only, and lists a folder's key names, through the secret store the private overlay names; never logs or publishes a value"
+description: "Resolves a secret by reference or folder and key (and a house model key from the house folder), creates one create-only, and lists a folder's key names, through the secret store the private overlay names; never logs or publishes a value"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

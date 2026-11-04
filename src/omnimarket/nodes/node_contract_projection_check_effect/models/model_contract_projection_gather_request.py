@@ -10,7 +10,7 @@ class ModelContractProjectionGatherRequest(BaseModel):
     root: str = Field(
         description="Repository root; every gathered path is relative to it."
     )
-    rule: str = Field(description="One of access, dlq, cursor.")
+    rule: str = Field(description="One of access, dlq, cursor, typed-entry.")
     filenames: tuple[str, ...] = Field(
         default=(), description="dlq rule: explicit handler paths (pre-commit mode)."
     )

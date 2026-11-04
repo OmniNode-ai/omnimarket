@@ -97,6 +97,8 @@ def test_redact_leaves_every_documented_command_alone() -> None:
                 "local_model": "test model",
                 "tart_host": "192.0.2.1",
                 "vm_name": "onex-walk-1234abcd",
+                "guest_askpass_path": "/opt/walk/askpass",
+                "guest_ip": "192.0.2.77",
             }
         )
     )

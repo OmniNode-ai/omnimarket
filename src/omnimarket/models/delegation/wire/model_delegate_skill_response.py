@@ -121,8 +121,12 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # entry and publishes it to the quality-gate-result topic; this consumer
 # accepts and drops it first (OMN-18868 consumer-first), and the declared
 # field lands once omniclaude's pin carries this consumer.
+#
+# OMN-22224 adds ``duration_ms``: how long a rung took, 0 for a rung never
+# sent. This consumer-first step 1 of 2 accepts and drops it; a later change
+# declares the field once omniclaude's pin carries this consumer.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"backend_pinned", "gate_record", "secret_ref"}
+    {"backend_pinned", "duration_ms", "gate_record", "secret_ref"}
 )
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(

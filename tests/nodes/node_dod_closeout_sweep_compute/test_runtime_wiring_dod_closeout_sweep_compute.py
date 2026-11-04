@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ import pytest
 import pytest_asyncio
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts
@@ -146,6 +149,60 @@ async def test_a_plan_scope_command_reaches_a_decided_chunk_plan(
     decision = (await wired.decided_for(correlation_id))["payload"]
     assert decision["kind"] == "plan_scope"
     assert decision["chunks"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("receipt_contains_change", [None, True, False])
+async def test_runtime_proof_controls_the_installed_sweep_over_the_bus(
+    wired: WiredBus, receipt_contains_change: bool | None
+) -> None:
+    repo = Path(__file__).resolve().parents[3]
+    revision = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        env=scrub_git_location_env(os.environ),
+    ).stdout.strip()
+    proof: dict[str, Any] = {
+        "ticket_id": "OMN-1",
+        "change_merged": True,
+        "change_sha": revision,
+        "repo_path": str(repo),
+        "receipts": [],
+    }
+    if receipt_contains_change is not None:
+        proof["receipts"] = [
+            {
+                "kind": "lab_pass",
+                "passed": True,
+                "revision": revision if receipt_contains_change else "f" * 40,
+            }
+        ]
+    correlation_id = await wired.command(
+        {
+            "kind": "flip_decision",
+            "date": FICTIONAL_DATE,
+            "ticket_id": "OMN-1",
+            "total_checks": 1,
+            "verified_count": 1,
+            "behavior_proving_count": 1,
+            "criteria": ["AC1"],
+            "bound_criteria": ["AC1"],
+            "all_prs_merged": True,
+            "runtime_proof": proof,
+        }
+    )
+    decision = (await wired.decided_for(correlation_id))["payload"]
+    assert decision["predicate_met"] is (receipt_contains_change is True)
+    if receipt_contains_change is True:
+        assert decision["action"] == "flipped-done"
+        assert decision["unmet"] == []
+    else:
+        assert decision["action"] == "held-gap"
+        assert decision["primary_blocker"] == "proof:merged-not-yet-proven-running"
+        assert decision["reason"].startswith("merged, not yet proven running")
 
 
 @pytest.mark.asyncio

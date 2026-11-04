@@ -735,12 +735,15 @@ def test_regular_shadow_does_not_resolve_broken_wrapper(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = setup_workspace(tmp_path, monkeypatch)
-    wrapper = root / "omnibase_infra/scripts/onex"
-    wrapper.symlink_to(wrapper)
+    # The retirement scan refuses symbolic inputs in a checkout's script
+    # directories before any delegate runs, so the wrapper breaks while the venv
+    # delegate runs: after that scan, before the path-shadow guard.
+    write_venv_delegate(root, 'ln -s onex "$(dirname "$0")/onex"\n')
     shadow = Path(os.environ["HOME"]) / ".local/bin/onex"
     shadow.parent.mkdir(parents=True)
     shadow.write_text("shadow\n")
     result = handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root))
+    assert (root / "omnibase_infra/scripts/onex").is_symlink()
     assert result.exit_code == 2
     assert result.surfaces[-1].verdict == "SHADOWED"
     assert "a regular file" in result.surfaces[-1].detail

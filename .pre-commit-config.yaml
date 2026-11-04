@@ -1296,6 +1296,20 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      # OMN-18883 (trap one): a routed entry of a contract that writes a db_io
+      # table reaches BaseProjectionRunner but overrides handle with a typed
+      # request whose result reports no rows_upserted; the runtime wires a typed
+      # handle on the typed arm and the write path is never called. Pre-fix
+      # instance: node_projection_lab_lane_health (OMN-18769 C2). SYNC with
+      # ci.yml `lint` step "Projection typed-entry gate".
+      - id: projection-typed-entry
+        name: Projection typed-entry gate (OMN-18883)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry
+        files: ^src/omnimarket/(nodes/.*/(contract\.yaml|.*\.py)|models/contract_projection_check/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14768 / F-11: renaming an OPEN PR's head branch closes the PR. Scan
       # the whole merge-controller tree whenever any of its files (or the gate
       # itself) changes. SYNC with the ci.yml `lint` job step
@@ -2176,6 +2190,14 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: retired-repository-reconcile
+        name: Retired repository bundles and registry targets (OMN-21284)
+        language: system
+        entry: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q -p no:randomly --no-cov -m 'not kafka'
+        files: ^(src/omnimarket/.*|scripts/.*|config/.*|[^/]+\.(yaml|yml|json)|tests/test_retired_repository_reconcile\.py|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: class3-installed-copy-drift
         name: Class 3 installed-copy drift node regression (OMN-20865)
         language: system
@@ -2695,6 +2717,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: prompt-cost-import-schema
+        name: Prompt cost import schema and uncertainty contract
+        entry: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_prompt_cost_estimate_compute/|tests/nodes/node_prompt_cost_estimate_compute/|\.pre-commit-config\.yaml$)
+        stages: [pre-commit]
       - id: compaction-arm-assignment
         name: Compaction arm assignment and native-binding controls
         entry: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov

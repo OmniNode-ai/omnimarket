@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_cause_ticket_unresolved_effect
+version: 1.0.0
+description: "Resolve a cause-ticket-unresolved exception when the lane_dispatch overlay names an open standing ticket; emit only what cannot be resolved."
+pack: operator_tooling
+node_role: effect
+display_name: Cause Ticket Unresolved Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_cause_ticket_unresolved_effect: omnimarket.nodes.node_cause_ticket_unresolved_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - node_exception_queue_effect
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- exception-queue
+- merge-sweep
+- OMN-22143

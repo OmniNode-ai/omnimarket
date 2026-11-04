@@ -40,6 +40,23 @@ consumer_group_guard:
       - '^onex\.gateway-session\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     protected_patterns:
       - 'host_drift_fleet\.h[0-9]+(\.__t\..*)?$'
+schedule:
+  # The node's own timer (OMN-22194). The host installer cannot take the lab form as data, so
+  # this node renders a systemd user timer the way node_host_reconcile_effect does:
+  # `python -m omnimarket.nodes.node_consumer_group_guard_effect schedule <verb>`. The cadence is
+  # a first pass, then every `interval` after the previous run began. The service has no start
+  # timeout, because the launchd unit this replaces has none. The hosts, and the bus lane and
+  # workspace config root each runs with, are rows of the node overlay.
+  unit_name: onex-consumer-group-guard
+  dispatch_venv: .onex-dispatch-venv
+  state_directory: .onex_state/consumer-group-guard
+  cadence:
+    first_pass: 1s
+    interval_seconds: 300
+    accuracy: 1s
+    description: a first pass at install, then every 300 s
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
 input_model:
   name: ModelConsumerGroupGuardRequest
   module: omnimarket.models.consumer_group_guard
