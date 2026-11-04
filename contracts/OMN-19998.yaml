@@ -33,6 +33,9 @@ requirements:
         statement: 'AC5: the default bound equals the runner-owned producer limit; keys, headers and record framing count toward the bound; recorded oversized records are refused before producer creation, exact-limit records are accepted, and the source advances only after durable quarantine -- falsifier: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov'
 evidence_requirements:
   - kind: tests
+    description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
+    command: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
+  - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
     command: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov
   - kind: tests
@@ -43,6 +46,13 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-plan-ticket-window
+    description: The November 1 recorded 30/120-day requests run through the registered tool server against a committed plan tree exceeding the command-report tail. October 2–8 plans are returned, the larger window adds older plans, page totals and ticket states remain complete, and command reports retain their output bound. This proof does not assert the controller timer criteria or a live host installation.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
     source: manual
