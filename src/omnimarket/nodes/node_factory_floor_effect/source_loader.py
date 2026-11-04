@@ -58,6 +58,9 @@ from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets impor
     merge_task_links,
     prose_task_tickets,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
+    with_table_evidence as _with_table_evidence,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorContainerHost,
     ModelFactoryFloorContainerSource,
@@ -631,20 +634,6 @@ def is_section_heading(label: str, text: str) -> bool:
     return (
         re.search(rf"^#{{1,6}}\s+{re.escape(label)}(?![\w.])", text, re.MULTILINE)
         is not None
-    )
-
-
-def _with_table_evidence(
-    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
-) -> ModelFloorManifestTask:
-    """A written task with the tickets and pull requests the plans-today row of the same label found for it."""
-    if row is None:
-        return task
-    return task.model_copy(
-        update={
-            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
-            "prs": tuple(sorted({*task.prs, *row.prs})),
-        }
     )
 
 

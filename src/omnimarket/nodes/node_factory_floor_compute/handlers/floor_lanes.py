@@ -503,7 +503,8 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     if request.cloud_accounts is None:
         return ModelFloorCloud(
             state="unread",
-            note="the cloud accounts file could not be read",
+            note=request.cloud_accounts_cause
+            or "the cloud accounts file could not be read",
             accounts=(),
             sessions=sessions,
             lamps=lamps,
@@ -512,12 +513,13 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     ready = [
         a
         for a in sorted(request.cloud_accounts, key=lambda a: a.name)
-        if a.name in declared and a.login in config.cloud_ready_logins
+        if a.identity == "account"
+        or (a.name in declared and a.login in config.cloud_ready_logins)
     ]
     accounts = tuple(
         ModelFloorCloudAccountOut(
             name=a.name,
-            ready=True,
+            ready=a.login in config.cloud_ready_logins,
             login=a.login,
             cap=a.cap,
             open_sessions=open_by_account[a.name]
@@ -536,12 +538,16 @@ def build_cloud(request: ModelFactoryFloorRequest) -> ModelFloorCloud:
     others = sum(
         1
         for a in request.cloud_accounts
-        if a.name in declared and a.login not in config.cloud_ready_logins
+        if a.identity == "machine"
+        and a.name in declared
+        and a.login not in config.cloud_ready_logins
     )
     undeclared = sum(
         1
         for a in request.cloud_accounts
-        if a.name not in declared and a.login in config.cloud_ready_logins
+        if a.identity == "machine"
+        and a.name not in declared
+        and a.login in config.cloud_ready_logins
     )
     notes = [
         text

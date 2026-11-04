@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-19998
 title: A plain ledger append names no optional field it does not use
-summary: Ledger append requests omit optional fields whose value is None, so an older host can validate a plain append from a newer writer. Set fields remain on the wire and are refused by a host that cannot honor them. Queued requests and the bus caller use the same serialization. Earlier heal-read retry criteria and evidence remain unchanged.
+summary: Ledger append requests omit optional fields whose value is None, so an older host can validate a plain append from a newer writer. Set fields remain on the wire and are refused by a host that cannot honor them. Queued requests and the bus caller use the same serialization. Earlier heal-read retry criteria and evidence remain unchanged. The factory floor reads a typed cloud account snapshot and distinguishes recorded gate failures from unrelated dependency pull requests.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-floor-cloud-source
+    statement: The floor reads current cloud account state through the existing cloud placement node and records the evidence behind stopped lines.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the read-only node snapshot exposes selected account fields from v2 state, supports a reachable host command, and keeps failures unread without publishing diagnostics; dependency release-note links do not stop unrelated tasks, a ticket-linked red PR still stops its task, and a failed gate names its recorded cause and date -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -63,6 +68,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-floor-cloud-source
+    description: Focused tests exercise the existing cloud node handler, source command boundary and floor compute handler, including selected-field output, read-only state, malformed input, diagnostic suppression and positive controls for real red PRs. This evidence does not assert a live publisher installation or the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_floor_cloud_source.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
     source: manual
