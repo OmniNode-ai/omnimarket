@@ -56,6 +56,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the recorded completed session with rejected weekly telemetry and 167 credit remains eligible; the recorded weekly-limit error session closes limited and records a hold; zero recorded credit excludes an account, while rate-only readings and migrated inferred holds do not -- falsifier: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect'
+  - id: req-omn19998-source-row-runtime-probe
+    statement: The morning node contract binds the source-row HTTP runtime probe to its typed handler and models.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the packaged contract resolves the phase tool handler and its request/result models; real loopback HTTP readbacks preserve source binding, reject mismatches and refuse unsafe commands -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -234,6 +239,7 @@ dod_evidence:
   - id: dod-omn19998-source-row-runtime-probe
     description: The four recorded reconciliation failures now have a source-bound runtime probe through the phase tool server. A local HTTP runtime exercises version equality, mismatches, source changes and unsafe-probe refusals. This evidence covers the HTTP probe repair, not the ticket's controller timer criterion or unsupported non-HTTP probes.
     source: manual
+    binds_ac: [AC8]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov
@@ -241,7 +247,16 @@ dod_evidence:
   - id: dod-omn19998-source-row-runtime-probe-deploy
     description: Hosted wiring smoke invokes the reconciliation phase tool server against a real loopback HTTP runtime and reads its source-bound output. HTTP failures, stale sources and unsupported commands remain unverified. This smoke requires no lab network or credential and is not a live installation readback.
     source: manual
+    binds_ac: [AC8]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -k "row_probe or readback or probe_refuses or probe_refuses_mutations"
+        cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-contract
+    description: The installed node contract resolves the same handler and typed input model as the phase tool catalog and resolves the handler's actual return model. The binding regression fails before the contract includes the runtime probe operation.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov
         cwd: .

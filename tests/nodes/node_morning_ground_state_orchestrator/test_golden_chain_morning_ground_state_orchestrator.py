@@ -15,7 +15,7 @@ import inspect
 import json
 from importlib.resources import files
 from pathlib import Path
-from typing import cast
+from typing import cast, get_type_hints
 
 import pytest
 import yaml
@@ -51,6 +51,7 @@ def test_golden_chain_morning_ground_state_orchestrator() -> None:
     assert [entry["operation"] for entry in entries] == [
         "morning_ground_state",
         "morning_phase_session_files",
+        "morning_runtime_probe",
     ]
     entry = entries[0]
     handler_ref = cast(dict[str, str], entry["handler"])
@@ -73,6 +74,28 @@ def test_golden_chain_morning_ground_state_orchestrator() -> None:
     assert isinstance(result, result_type)
     assert result.phases_run == ["GroundState", "Triage", "Reconcile", "Integrate"]
     assert gateway.calls[-1]["phase"] == "Goal"
+
+
+def test_runtime_probe_contract_resolves_the_phase_tool_handler() -> None:
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_runtime_probe import (
+        RUNTIME_PROBE_TOOL,
+        HandlerMorningRuntimeProbe,
+    )
+
+    routing = cast(dict[str, JsonValue], _contract()["handler_routing"])
+    entries = cast(list[dict[str, JsonValue]], routing["handlers"])
+    entry = next(e for e in entries if e["operation"] == "morning_runtime_probe")
+    handler_ref = cast(dict[str, str], entry["handler"])
+    handler_type = getattr(
+        importlib.import_module(handler_ref["module"]), handler_ref["name"]
+    )
+    assert handler_type is HandlerMorningRuntimeProbe
+    annotations = get_type_hints(handler_type.handle)
+    for field, annotation in (("input_model", "request"), ("output_model", "return")):
+        module, _, name = str(entry[field]).rpartition(".")
+        model_type = getattr(importlib.import_module(module), name)
+        assert model_type is annotations[annotation]
+    assert annotations["request"] is RUNTIME_PROBE_TOOL.input_model
 
 
 def test_contract_declares_every_topic_and_the_terminal() -> None:
