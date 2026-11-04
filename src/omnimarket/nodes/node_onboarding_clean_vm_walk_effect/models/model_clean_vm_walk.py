@@ -198,3 +198,24 @@ class ModelWalkReceipt(_FrozenModel):
     hand_fix_steps: tuple[str, ...]
     started_at: str
     finished_at: str
+
+    # The runtime classifies a terminal by its serialized ``status``. Without one a
+    # failed walk was read as a completed run (exit 0) beside outcome "failed".
+    status: Literal["passed", "failed"] = "passed"
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_status(cls, data: object) -> object:
+        if isinstance(data, dict) and "status" not in data and "outcome" in data:
+            outcome = EnumWalkOutcome(data["outcome"])
+            return {
+                **data,
+                "status": "passed" if outcome == EnumWalkOutcome.PASSED else "failed",
+            }
+        return data
+
+    @model_validator(mode="after")
+    def status_matches_outcome(self) -> Self:
+        if self.status != self.outcome.value:
+            raise ValueError("status must equal outcome")
+        return self

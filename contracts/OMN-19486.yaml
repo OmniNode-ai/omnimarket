@@ -1,0 +1,73 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19486"
+title: "GitHub PR state T1.5: A read surface lanes can use from the Mac, with a staleness refusal"
+summary: "The pr_state projection is declared as a projection_api exposure on node_projection_pr_state, and node_pr_state_read_effect reads it for onex pr-state read and onex pr-state wait. A row older than the contract-declared limit is returned as a typed STALE result that names the row age and observed_at and carries none of the row; wait polls the exposure for rows observed after the last page and returns on a fresh terminal verdict or a typed TIMEOUT. The command makes no GitHub request."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19486-pr-state-read"
+    statement: |-
+      Lanes read a pull request's state from the pr_state projection through a typed read surface that refuses a stale row and waits on the projection instead of polling GitHub.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a stale row is refused with a typed STALE result, never printed as current -- falsifier: `uv run pytest tests/cli/test_pr_state.py -k stale -q`"
+      - id: "AC2"
+        statement: "AC2: `wait` returns within 60 s of the projection changing and makes no GitHub request -- falsifier: the lab step with the process sampler on shows no `gh` and no connection to GitHub from the CLI"
+      - id: "AC3"
+        statement: "AC3: the output carries head sha, labels, draft flag, required verdict and `observed_at` -- falsifier: the suite's schema assertion on the command's JSON"
+evidence_requirements:
+  - kind: "tests"
+    description: "The read surface suite, run against the in-memory bus and projection; the kafka-marked test runs the same assertions against Redpanda."
+    command: "uv run pytest tests/cli/test_pr_state.py -q --no-cov -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19486-ac1"
+    description: "AC1 stale refusal tests pass."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/cli/test_pr_state.py -q --no-cov --tb=line -k stale"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19486-ac2"
+    description: "AC2 wait returns on the terminal verdict within the poll bound and requests only the projection."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/cli/test_pr_state.py -q --no-cov --tb=line -k 'wait and not stale'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19486-ac3"
+    description: "AC3 the command's JSON carries head sha, labels, draft flag, required verdict and observed_at."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/cli/test_pr_state.py -q --no-cov --tb=line -k read_surface_inmemory"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19486-deploy-probe"
+    description: "Deploy probe. The handler file that GitHub serves at the checked-out commit declares HandlerPrStateRead, the entry this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_state_read_effect/handlers/handler_pr_state_read.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerPrStateRead:'"
+  - id: "dod-omn19486-integration-proof"
+    description: "Run the read surface suite, including the ASGI-served projection API legs, on a lab host at the pushed head. The suite imports node_pr_state_read_effect, which does not exist at the merge base, so it is red there. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-19486 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/cli/test_pr_state.py -q --no-cov -m 'not kafka'"
+        cwd: "."
+  - id: "dod-omn19486-registry-parity"
+    description: "The new exposure and the CLI-run read node are recorded in the repo's registries: the projection topic and cursor counts include pr-state.v1, node_pr_state_read_effect declares no handler_routing so the runtime neither routes it nor quarantines HandlerPrStateWait at boot, and the generated relation inventory lists the node as a pr_state reader. Each test is red at the PR head before this change and green after."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py tests/test_handler_routing_boot_resolvable.py tests/unit/validation/test_omn_18043_cursor_declared_ratchet.py tests/unit/projection/test_projection_discovery.py::TestOmn15800ExposureParity tests/unit/scripts/test_application_relation_inventory.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
