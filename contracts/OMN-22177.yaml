@@ -51,6 +51,11 @@ requirements:
   acceptance:
   - id: DOD1
     statement: 'DOD1: Merged in omnimarket and the overlay repository, and the node is registered and answers on the lab dev lane at the release tag the lab deploys from -- falsifier: the required context `CI Summary` is not green on the merged omnimarket PR head, or the required context `ci` is not green on the merged overlay repository PR head, or the dev lane reports a tag older than the merge commit'
+- id: req-omn22177-ac9
+  statement: 'AC9: The gate-accept step, which holds the receipt key, runs in the omniintelligence clone with python -P, never in the checkout under review'
+  acceptance:
+  - id: AC9
+    statement: 'AC9: The gate-accept step, which holds the receipt key, runs in the omniintelligence clone with python -P, never in the checkout under review -- falsifier: `uv run pytest tests/ci/test_hostile_review_accept_step_shape.py -v -rs` passes with the step run in the checkout under review (no working-directory, or python -m without -P), where uv builds an empty environment from the pull request pyproject.toml and a root-level module of the pull request can shadow an import'
 evidence_requirements:
 - kind: tests
   description: The node suite under both profiles, the parity test, the literal scan and the operation-table check.
@@ -60,6 +65,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn22177-ac9
+  description: 'AC9: the step-shape tests pin the gate-accept step to working-directory ../omniintelligence and python -P -m. At the merge base the step runs python -m in the checkout under review, so the test fails there (measured on job 126160569597: no module named pydantic, decision=unchanged).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_hostile_review_accept_step_shape.py -q -n 0 -p no:randomly --no-cov --tb=line -k never_runs_in_the_checkout_under_review
+    cwd: .
 - id: dod-omn22177-ac1
   description: 'AC1: the contention, stored-receipt, failed-run and crash-at-each-step tests find one stored receipt, every posted review carrying its id, and no lab call for a stored head.'
   source: manual

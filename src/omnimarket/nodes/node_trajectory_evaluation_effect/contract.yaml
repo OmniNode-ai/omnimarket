@@ -128,13 +128,18 @@ published_events:
 # The Dharma evaluator's credentials, resolved through the secret store at the
 # effect boundary with no environment fallback. On the dev lane the runtime
 # policy maps both refs (omnibase_infra runtime_policy.contract.yaml).
+# Not required for the node to run: only the dharma_full setting reads them,
+# and the handler refuses backend_misconfigured when they do not resolve. The
+# runtime skips any contract whose required secrets it does not hold
+# (OMN-21423), so marking them required kept the node out of every lane
+# without a Dharma key, off and in_memory included (OMN-20090).
 secrets:
   dharma.api_key:
-    description: "Dharma organization bearer token (scopes evals:run, evals:read)."
-    required: true
+    description: "Dharma organization bearer token (scopes evals:run, evals:read); read only when the setting is dharma_full."
+    required: false
   dharma.org_id:
-    description: "Dharma organization id the token is bound to."
-    required: true
+    description: "Dharma organization id the token is bound to; read only when the setting is dharma_full."
+    required: false
 
 # The Dharma origin comes from omnimarket.config.service_endpoints
 # (DHARMA_API_URL); no URL lives in this contract. The evaluator calls only the

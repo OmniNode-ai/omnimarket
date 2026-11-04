@@ -26,6 +26,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     parse_ledger_text,
     parse_pool_reading,
     resolve_dir,
+    resolve_host_table,
     split_reading,
 )
 
@@ -400,3 +401,25 @@ def test_titles_come_from_the_json_snapshot_and_status_types_from_the_text_file(
         ("OMN-1", "The first", "started"),
         ("OMN-2", "Second", "completed"),
     ]
+
+
+def test_the_host_table_is_the_pinned_file_then_the_floor_overlay_relpath_then_the_lab_hosts_overlay(
+    tmp_path: Path,
+) -> None:
+    roots = tmp_path / "overlays"
+    write(roots / "lab_hosts" / "overlay.yaml", "hosts: []\n")
+    environ = {"ONEX_SKILL_OVERLAY_ROOTS": str(roots)}
+    pinned = {**environ, "TABLE": str(tmp_path / "pinned.yaml")}
+    assert (
+        resolve_host_table(pinned, "TABLE", tmp_path, "rel.yaml")
+        == tmp_path / "pinned.yaml"
+    )
+    assert (
+        resolve_host_table(environ, "TABLE", tmp_path, "rel.yaml")
+        == tmp_path / "rel.yaml"
+    )
+    assert (
+        resolve_host_table(environ, "TABLE", tmp_path, "")
+        == roots / "lab_hosts" / "overlay.yaml"
+    )
+    assert resolve_host_table({}, "TABLE", tmp_path, "") is None
