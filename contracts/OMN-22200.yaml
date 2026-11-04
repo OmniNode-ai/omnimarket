@@ -111,6 +111,13 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_fill_reducer -q --no-cov -m "floor_fill_parity and kafka"
     cwd: .
+- id: dod-omn22200-deploy-probe
+  description: 'Deploy probe for the pure reducer: load its packaged contract and execute the golden reserve, confirm and expiry scenario in process. The hosted runner needs no lab broker or runtime service.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py -q --no-cov --tb=line -k 'the_contract_loads_and_names_the_node or golden_scenario_one_startable_line'
+    cwd: .
 - id: dod-omn22200-ac9-focused
   description: >-
     AC9 by its own second branch, the one this node takes: the task's lab step is
