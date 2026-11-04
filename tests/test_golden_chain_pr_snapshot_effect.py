@@ -302,7 +302,7 @@ class TestHandlerPrSnapshotGoldenChain:
 
     def test_default_repos_contains_all_org_repos(self) -> None:
         """DEFAULT_REPOS includes all expected OmniNode-ai repos."""
-        assert len(DEFAULT_REPOS) == 11
+        assert len(DEFAULT_REPOS) == 10
         assert all(r.startswith("OmniNode-ai/") for r in DEFAULT_REPOS)
         assert "OmniNode-ai/omniclaude" in DEFAULT_REPOS
         assert "OmniNode-ai/omnimarket" in DEFAULT_REPOS

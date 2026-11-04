@@ -59,7 +59,6 @@ ORG_PACKAGES: tuple[str, ...] = (
     "omnibase_core",
     "omnibase_infra",
     "omnibase_spi",
-    "omnibase_compat",
     "omniintelligence",
     "omniclaude",
     "omnimemory",
