@@ -1,0 +1,96 @@
+schema_version: 1.0.0
+ticket_id: OMN-18883
+title: Retire the per-projection writer classes; route projection writes through a generic effect node so rule 7a holds with no exception
+summary: node_projection_write_effect persists a pure fold's typed result (ModelProjectionFoldResult) as one targeted-column UPSERT per row through the core upsert plan. The database handle is the handler's constructor dependency and the envelope metadata is a typed field of ModelProjectionWriteRequest, so no key is injected into a payload dict. The projection contract check node gains the typed-entry rule (trap one). On a contract that writes a db_io table, a routed class that reaches BaseProjectionRunner but overrides handle with a typed request whose result declares no rows_upserted is refused, because the runtime wires a typed handle on the typed arm and the runner's write path is never called. The rule runs as a pre-commit hook and as a step of the CI lint job.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn18883-generic-write-node
+  statement: A generic projection-write effect node persists a fold's typed result through the effect boundary.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A generic projection-write effect node persists the fold''s typed result, taking the database handle and envelope metadata through the effect boundary rather than through keys injected into a payload dict. -- falsifier: an integration test under the repo''s real-Postgres idiom drives the effect node with a fold result and asserts the row exists, and a companion test asserts the fold module imports no database adapter.'
+- id: req-omn18883-trap-one-gate
+  statement: A mechanical check catches a projection entry that takes a typed def-B request and so never writes, wired as a CI gate plus a pre-commit hook.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: A mechanical check catches trap one — a handler reached by the projection wiring path whose `handle` takes a typed def-B request rather than the injected dict, so it validates and returns without writing — and that check is wired as a pre-merge CI gate plus a pre-commit hook in the same PR, per Operating Rule 5. -- falsifier: a checker that walks every contract declaring `db_io.db_tables`, resolves the handler entry owning topics in this process, and exits non-zero when that class does not subclass the projection runner base while its `handle` is annotated with a model type; proved by a red control over the pre-fix `node_projection_lab_lane_health` shape, plus the checker''s name appearing in the repo''s required CI job and in `.pre-commit-config.yaml`.'
+evidence_requirements:
+- kind: tests
+  description: The unit tests drive the handler with a recording database; the integration test drives it through a real AsyncpgAdapter against Postgres and reads the rows back.
+  command: uv run pytest tests/test_golden_chain_projection_write_effect.py tests/test_omn18883_projection_write_effect_real_postgres.py -q --no-cov
+- kind: tests
+  description: The focused test drives the compute handler and the runtime entrypoint over the pre-fix lab lane-health shape (red) and the post-fix two-class shape (green), runs the gate over the live tree, and reads the hook and the CI step back from their files.
+  command: uv run pytest tests/ci/test_projection_typed_entry_omn18883.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn18883-ac1-unit
+  description: AC1 the handler renders one UPSERT per row, binds a TIMESTAMPTZ as a datetime, passes the envelope tenant to the adapter, refuses an unsafe identifier before any statement, the request model has no injected keys, and the fold-result model module imports no database adapter. At the merge base the node does not exist, so these fail on import.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_write_effect.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn18883-ac1-real-postgres
+  description: AC1 the effect node writes a fold result through a real AsyncpgAdapter and the rows exist in Postgres, with UUID, TIMESTAMPTZ and JSONB columns bound as their own types and a second write updating in place.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn18883_projection_write_effect_real_postgres.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn18883-deploy-probe
+  description: 'Deploy probe: the node contract GitHub serves at the checked-out commit names HandlerProjectionWrite, which the merge base lacks. Deploy probe: the pre-commit configuration GitHub serves at the checked-out commit names the projection-typed-entry hook, which the merge base lacks.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_write_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class: HandlerProjectionWrite" > /dev/null'''
+    cwd: .
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/.pre-commit-config.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "id: projection-typed-entry" > /dev/null'''
+    cwd: .
+- id: dod-omn18883-integration-proof
+  description: The pushed head ran the generic projection-write node's tests, the real-Postgres write included, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-pf-drive-OMN-18883-20261103T2315Z -- uv run --frozen pytest tests/test_golden_chain_projection_write_effect.py tests/test_omn18883_projection_write_effect_real_postgres.py -q --no-cov
+    cwd: .
+- id: dod-omn18883-ac4-typed-entry-gate
+  description: AC4 the typed-entry rule refuses the pre-fix node_projection_lab_lane_health shape and exits 1 through the entrypoint, passes the post-fix two-class shape and the live tree, and the hook id projection-typed-entry and the CI lint step both run it. At the merge base the rule does not exist, so these fail on import.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_projection_typed_entry_omn18883.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn18883-ac4-live-tree
+  description: AC4 the gate runs over every node contract of the checked-out tree and exits 0.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_projection_typed_entry_omn18883.py::test_the_live_tree_passes_and_the_scan_is_not_vacuous -q --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry
+    cwd: .
+- id: dod-omn18883-ac4-integration-proof
+  description: The pushed head ran the typed-entry gate over the whole tree and its focused tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-pf-drive-OMN-18883-20261104T0232Z -- bash -c 'uv run --frozen python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry && uv run --frozen pytest tests/ci/test_projection_typed_entry_omn18883.py -q --no-cov'
+    cwd: .

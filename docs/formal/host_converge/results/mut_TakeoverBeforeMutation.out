@@ -1,0 +1,986 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 65 and seed -6243090470503955992 with 4 workers on 56 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /w/HostConverge.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module HostConverge
+Starting... (2026-11-04 01:51:39)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Computed 8 initial states...
+Computed 16 initial states...
+Finished computing initial states: 25 distinct states generated at 2026-11-04 01:51:40.
+Error: Invariant TakeoverBeforeMutation is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ s = [ foreign |-> FALSE,
+  epoch |-> [ll |-> 0, os |-> 0],
+  dg |-> 1,
+  rs |-> [ll |-> "down", os |-> "down"],
+  roleLock |-> "none",
+  brokerEpoch |-> 0,
+  hostSeq |-> [ll |-> 0, os |-> 0],
+  publishFailed |-> {},
+  fence |-> {},
+  pc |-> [ll |-> "idle", os |-> "idle"],
+  pq |-> [ll |-> <<>>, os |-> <<>>],
+  done |-> [ll |-> {}, os |-> {}],
+  active |-> [ll |-> "T", os |-> "T"],
+  target |-> [ll |-> 1, os |-> 1],
+  since |-> [ll |-> [T |-> 0, I |-> 0], os |-> [T |-> 0, I |-> 0]],
+  maint |-> [ll |-> FALSE, os |-> FALSE],
+  trees |-> [t1 |-> "absent", t2 |-> "absent"],
+  tamper |-> [t1 |-> FALSE, t2 |-> FALSE],
+  old |-> {},
+  instGen |-> 0,
+  failedI |-> FALSE,
+  rb |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  pub |->
+      [ T |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        I |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  bus |->
+      { [ epoch |-> 0,
+          seq |-> 3,
+          rec |->
+              [ status |-> "NONE",
+                tree |-> "none",
+                gen |-> 0,
+                rbd |-> FALSE,
+                fgn |-> FALSE ],
+          role |-> "reconciler",
+          surface |-> "I" ] },
+  wrote |-> {},
+  refused |-> {},
+  sf |->
+      [ m |-> 0,
+        seq |-> 0,
+        r |-> 0,
+        records |->
+            [ T |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ],
+              I |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ] ] ],
+  wpc |->
+      ( <<"ll", "pass">> :> "idle" @@
+        <<"ll", "republish">> :> "idle" @@
+        <<"os", "pass">> :> "idle" @@
+        <<"os", "republish">> :> "idle" ),
+  wcopy |->
+      ( <<"ll", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"ll", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] ),
+  lockHolder |-> <<"none", "none">>,
+  rpc |-> [ll |-> "idle", os |-> "idle"],
+  rx |-> [ll |-> "T", os |-> "T"],
+  reserve |-> [ll |-> 0, os |-> 0],
+  outgoing |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  dm |-> 0,
+  dr |-> 0,
+  crashes |-> 0,
+  lst |-> [a |-> "out", b |-> "out"],
+  plan |-> [a |-> "none", b |-> "none"],
+  pin |->
+      [ a |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1],
+        b |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1] ],
+  liveStart |-> [a |-> 0, b |-> 0],
+  badLaunch |-> FALSE,
+  removedPinned |-> FALSE,
+  orphanSurvived |-> FALSE,
+  mutNoTake |-> FALSE ]
+/\ todo = << {[a |-> "ll", x |-> "", op |-> "boot"]},
+   { [a |-> "ll", x |-> "", op |-> "epoch"],
+     [a |-> "ll", x |-> "", op |-> "role"],
+     [a |-> "ll", x |-> "", op |-> "recover"],
+     [a |-> "ll", x |-> "", op |-> "take"],
+     [a |-> "ll", x |-> "", op |-> "install"],
+     [a |-> "ll", x |-> "", op |-> "readback"],
+     [a |-> "ll", x |-> "", op |-> "pread"],
+     [a |-> "ll", x |-> "", op |-> "pwrite"],
+     [a |-> "ll", x |-> "", op |-> "release"],
+     [a |-> "ll", x |-> "", op |-> "begin"] } >>
+
+State 2: <Next line 486, col 3 to line 490, col 57 of module HostConverge>
+/\ s = [ foreign |-> FALSE,
+  epoch |-> [ll |-> 0, os |-> 0],
+  dg |-> 1,
+  rs |-> [ll |-> "booted", os |-> "down"],
+  roleLock |-> "none",
+  brokerEpoch |-> 0,
+  hostSeq |-> [ll |-> 0, os |-> 0],
+  publishFailed |-> {},
+  fence |-> {},
+  pc |-> [ll |-> "idle", os |-> "idle"],
+  pq |-> [ll |-> <<>>, os |-> <<>>],
+  done |-> [ll |-> {}, os |-> {}],
+  active |-> [ll |-> "T", os |-> "T"],
+  target |-> [ll |-> 1, os |-> 1],
+  since |-> [ll |-> [T |-> 0, I |-> 0], os |-> [T |-> 0, I |-> 0]],
+  maint |-> [ll |-> FALSE, os |-> FALSE],
+  trees |-> [t1 |-> "absent", t2 |-> "absent"],
+  tamper |-> [t1 |-> FALSE, t2 |-> FALSE],
+  old |-> {},
+  instGen |-> 0,
+  failedI |-> FALSE,
+  rb |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  pub |->
+      [ T |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        I |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  bus |->
+      { [ epoch |-> 0,
+          seq |-> 3,
+          rec |->
+              [ status |-> "NONE",
+                tree |-> "none",
+                gen |-> 0,
+                rbd |-> FALSE,
+                fgn |-> FALSE ],
+          role |-> "reconciler",
+          surface |-> "I" ] },
+  wrote |-> {},
+  refused |-> {},
+  sf |->
+      [ m |-> 0,
+        seq |-> 0,
+        r |-> 0,
+        records |->
+            [ T |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ],
+              I |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ] ] ],
+  wpc |->
+      ( <<"ll", "pass">> :> "idle" @@
+        <<"ll", "republish">> :> "idle" @@
+        <<"os", "pass">> :> "idle" @@
+        <<"os", "republish">> :> "idle" ),
+  wcopy |->
+      ( <<"ll", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"ll", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] ),
+  lockHolder |-> <<"none", "none">>,
+  rpc |-> [ll |-> "idle", os |-> "idle"],
+  rx |-> [ll |-> "T", os |-> "T"],
+  reserve |-> [ll |-> 0, os |-> 0],
+  outgoing |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  dm |-> 0,
+  dr |-> 0,
+  crashes |-> 0,
+  lst |-> [a |-> "out", b |-> "out"],
+  plan |-> [a |-> "none", b |-> "none"],
+  pin |->
+      [ a |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1],
+        b |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1] ],
+  liveStart |-> [a |-> 0, b |-> 0],
+  badLaunch |-> FALSE,
+  removedPinned |-> FALSE,
+  orphanSurvived |-> FALSE,
+  mutNoTake |-> FALSE ]
+/\ todo = << { [a |-> "ll", x |-> "", op |-> "epoch"],
+     [a |-> "ll", x |-> "", op |-> "role"],
+     [a |-> "ll", x |-> "", op |-> "recover"],
+     [a |-> "ll", x |-> "", op |-> "take"],
+     [a |-> "ll", x |-> "", op |-> "install"],
+     [a |-> "ll", x |-> "", op |-> "readback"],
+     [a |-> "ll", x |-> "", op |-> "pread"],
+     [a |-> "ll", x |-> "", op |-> "pwrite"],
+     [a |-> "ll", x |-> "", op |-> "release"],
+     [a |-> "ll", x |-> "", op |-> "begin"] } >>
+
+State 3: <Next line 486, col 3 to line 490, col 57 of module HostConverge>
+/\ s = [ foreign |-> FALSE,
+  epoch |-> [ll |-> 0, os |-> 0],
+  dg |-> 1,
+  rs |-> [ll |-> "booted", os |-> "down"],
+  roleLock |-> "none",
+  brokerEpoch |-> 0,
+  hostSeq |-> [ll |-> 0, os |-> 0],
+  publishFailed |-> {},
+  fence |-> {},
+  pc |-> [ll |-> "ready", os |-> "idle"],
+  pq |-> [ll |-> <<"T", "I">>, os |-> <<>>],
+  done |-> [ll |-> {}, os |-> {}],
+  active |-> [ll |-> "T", os |-> "T"],
+  target |-> [ll |-> 1, os |-> 1],
+  since |-> [ll |-> [T |-> 0, I |-> 0], os |-> [T |-> 0, I |-> 0]],
+  maint |-> [ll |-> FALSE, os |-> FALSE],
+  trees |-> [t1 |-> "absent", t2 |-> "absent"],
+  tamper |-> [t1 |-> FALSE, t2 |-> FALSE],
+  old |-> {},
+  instGen |-> 0,
+  failedI |-> FALSE,
+  rb |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  pub |->
+      [ T |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        I |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  bus |->
+      { [ epoch |-> 0,
+          seq |-> 3,
+          rec |->
+              [ status |-> "NONE",
+                tree |-> "none",
+                gen |-> 0,
+                rbd |-> FALSE,
+                fgn |-> FALSE ],
+          role |-> "reconciler",
+          surface |-> "I" ] },
+  wrote |-> {},
+  refused |-> {},
+  sf |->
+      [ m |-> 0,
+        seq |-> 0,
+        r |-> 0,
+        records |->
+            [ T |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ],
+              I |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ] ] ],
+  wpc |->
+      ( <<"ll", "pass">> :> "idle" @@
+        <<"ll", "republish">> :> "idle" @@
+        <<"os", "pass">> :> "idle" @@
+        <<"os", "republish">> :> "idle" ),
+  wcopy |->
+      ( <<"ll", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"ll", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] ),
+  lockHolder |-> <<"none", "none">>,
+  rpc |-> [ll |-> "idle", os |-> "idle"],
+  rx |-> [ll |-> "T", os |-> "T"],
+  reserve |-> [ll |-> 0, os |-> 0],
+  outgoing |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  dm |-> 0,
+  dr |-> 0,
+  crashes |-> 0,
+  lst |-> [a |-> "out", b |-> "out"],
+  plan |-> [a |-> "none", b |-> "none"],
+  pin |->
+      [ a |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1],
+        b |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1] ],
+  liveStart |-> [a |-> 0, b |-> 0],
+  badLaunch |-> FALSE,
+  removedPinned |-> FALSE,
+  orphanSurvived |-> FALSE,
+  mutNoTake |-> FALSE ]
+/\ todo = << { [a |-> "ll", x |-> "", op |-> "epoch"],
+     [a |-> "ll", x |-> "", op |-> "role"],
+     [a |-> "ll", x |-> "", op |-> "recover"],
+     [a |-> "ll", x |-> "", op |-> "take"],
+     [a |-> "ll", x |-> "", op |-> "install"],
+     [a |-> "ll", x |-> "", op |-> "readback"],
+     [a |-> "ll", x |-> "", op |-> "pread"],
+     [a |-> "ll", x |-> "", op |-> "pwrite"],
+     [a |-> "ll", x |-> "", op |-> "release"] } >>
+
+State 4: <Next line 486, col 3 to line 490, col 57 of module HostConverge>
+/\ s = [ foreign |-> FALSE,
+  epoch |-> [ll |-> 0, os |-> 0],
+  dg |-> 1,
+  rs |-> [ll |-> "booted", os |-> "down"],
+  roleLock |-> "none",
+  brokerEpoch |-> 0,
+  hostSeq |-> [ll |-> 0, os |-> 0],
+  publishFailed |-> {},
+  fence |-> {"ll"},
+  pc |-> [ll |-> "install", os |-> "idle"],
+  pq |-> [ll |-> <<"T", "I">>, os |-> <<>>],
+  done |-> [ll |-> {}, os |-> {}],
+  active |-> [ll |-> "T", os |-> "T"],
+  target |-> [ll |-> 1, os |-> 1],
+  since |-> [ll |-> [T |-> 0, I |-> 0], os |-> [T |-> 0, I |-> 0]],
+  maint |-> [ll |-> FALSE, os |-> FALSE],
+  trees |-> [t1 |-> "absent", t2 |-> "absent"],
+  tamper |-> [t1 |-> FALSE, t2 |-> FALSE],
+  old |-> {},
+  instGen |-> 0,
+  failedI |-> FALSE,
+  rb |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  pub |->
+      [ T |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        I |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  bus |->
+      { [ epoch |-> 0,
+          seq |-> 3,
+          rec |->
+              [ status |-> "NONE",
+                tree |-> "none",
+                gen |-> 0,
+                rbd |-> FALSE,
+                fgn |-> FALSE ],
+          role |-> "reconciler",
+          surface |-> "I" ] },
+  wrote |-> {},
+  refused |-> {},
+  sf |->
+      [ m |-> 0,
+        seq |-> 0,
+        r |-> 0,
+        records |->
+            [ T |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ],
+              I |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ] ] ],
+  wpc |->
+      ( <<"ll", "pass">> :> "idle" @@
+        <<"ll", "republish">> :> "idle" @@
+        <<"os", "pass">> :> "idle" @@
+        <<"os", "republish">> :> "idle" ),
+  wcopy |->
+      ( <<"ll", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"ll", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] ),
+  lockHolder |-> <<"none", "none">>,
+  rpc |-> [ll |-> "idle", os |-> "idle"],
+  rx |-> [ll |-> "T", os |-> "T"],
+  reserve |-> [ll |-> 0, os |-> 0],
+  outgoing |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  dm |-> 0,
+  dr |-> 0,
+  crashes |-> 0,
+  lst |-> [a |-> "out", b |-> "out"],
+  plan |-> [a |-> "none", b |-> "none"],
+  pin |->
+      [ a |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1],
+        b |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1] ],
+  liveStart |-> [a |-> 0, b |-> 0],
+  badLaunch |-> FALSE,
+  removedPinned |-> FALSE,
+  orphanSurvived |-> FALSE,
+  mutNoTake |-> FALSE ]
+/\ todo = << { [a |-> "ll", x |-> "", op |-> "epoch"],
+     [a |-> "ll", x |-> "", op |-> "role"],
+     [a |-> "ll", x |-> "", op |-> "recover"],
+     [a |-> "ll", x |-> "", op |-> "install"],
+     [a |-> "ll", x |-> "", op |-> "readback"],
+     [a |-> "ll", x |-> "", op |-> "pread"],
+     [a |-> "ll", x |-> "", op |-> "pwrite"],
+     [a |-> "ll", x |-> "", op |-> "release"] } >>
+
+State 5: <Next line 486, col 3 to line 490, col 57 of module HostConverge>
+/\ s = [ foreign |-> FALSE,
+  epoch |-> [ll |-> 0, os |-> 0],
+  dg |-> 1,
+  rs |-> [ll |-> "booted", os |-> "down"],
+  roleLock |-> "none",
+  brokerEpoch |-> 0,
+  hostSeq |-> [ll |-> 0, os |-> 0],
+  publishFailed |-> {},
+  fence |-> {"ll"},
+  pc |-> [ll |-> "readback", os |-> "idle"],
+  pq |-> [ll |-> <<"T", "I">>, os |-> <<>>],
+  done |-> [ll |-> {}, os |-> {}],
+  active |-> [ll |-> "T", os |-> "T"],
+  target |-> [ll |-> 1, os |-> 1],
+  since |-> [ll |-> [T |-> 0, I |-> 0], os |-> [T |-> 0, I |-> 0]],
+  maint |-> [ll |-> FALSE, os |-> FALSE],
+  trees |-> [t1 |-> "verified", t2 |-> "absent"],
+  tamper |-> [t1 |-> FALSE, t2 |-> FALSE],
+  old |-> {},
+  instGen |-> 0,
+  failedI |-> FALSE,
+  rb |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  pub |->
+      [ T |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        I |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  bus |->
+      { [ epoch |-> 0,
+          seq |-> 3,
+          rec |->
+              [ status |-> "NONE",
+                tree |-> "none",
+                gen |-> 0,
+                rbd |-> FALSE,
+                fgn |-> FALSE ],
+          role |-> "reconciler",
+          surface |-> "I" ] },
+  wrote |-> {},
+  refused |-> {},
+  sf |->
+      [ m |-> 0,
+        seq |-> 0,
+        r |-> 0,
+        records |->
+            [ T |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ],
+              I |->
+                  [ status |-> "NONE",
+                    tree |-> "none",
+                    gen |-> 0,
+                    rbd |-> FALSE,
+                    fgn |-> FALSE ] ] ],
+  wpc |->
+      ( <<"ll", "pass">> :> "idle" @@
+        <<"ll", "republish">> :> "idle" @@
+        <<"os", "pass">> :> "idle" @@
+        <<"os", "republish">> :> "idle" ),
+  wcopy |->
+      ( <<"ll", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"ll", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "pass">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] @@
+        <<"os", "republish">> :>
+            [ m |-> 0,
+              seq |-> 0,
+              r |-> 0,
+              records |->
+                  [ T |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ],
+                    I |->
+                        [ status |-> "NONE",
+                          tree |-> "none",
+                          gen |-> 0,
+                          rbd |-> FALSE,
+                          fgn |-> FALSE ] ] ] ),
+  lockHolder |-> <<"none", "none">>,
+  rpc |-> [ll |-> "idle", os |-> "idle"],
+  rx |-> [ll |-> "T", os |-> "T"],
+  reserve |-> [ll |-> 0, os |-> 0],
+  outgoing |->
+      [ ll |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ],
+        os |->
+            [ status |-> "NONE",
+              tree |-> "none",
+              gen |-> 0,
+              rbd |-> FALSE,
+              fgn |-> FALSE ] ],
+  dm |-> 0,
+  dr |-> 0,
+  crashes |-> 0,
+  lst |-> [a |-> "out", b |-> "out"],
+  plan |-> [a |-> "none", b |-> "none"],
+  pin |->
+      [ a |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1],
+        b |-> [tree |-> "none", exists |-> FALSE, start |-> 0, boot |-> 1] ],
+  liveStart |-> [a |-> 0, b |-> 0],
+  badLaunch |-> FALSE,
+  removedPinned |-> FALSE,
+  orphanSurvived |-> FALSE,
+  mutNoTake |-> TRUE ]
+/\ todo = << { [a |-> "ll", x |-> "", op |-> "epoch"],
+     [a |-> "ll", x |-> "", op |-> "role"],
+     [a |-> "ll", x |-> "", op |-> "recover"],
+     [a |-> "ll", x |-> "", op |-> "readback"],
+     [a |-> "ll", x |-> "", op |-> "pread"],
+     [a |-> "ll", x |-> "", op |-> "pwrite"],
+     [a |-> "ll", x |-> "", op |-> "release"] } >>
+
+526 states generated, 512 distinct states found, 17 states left on queue.
+The depth of the complete state graph search is 25.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 1).
+Finished in 01s at (2026-11-04 01:51:40)
+exit=12
