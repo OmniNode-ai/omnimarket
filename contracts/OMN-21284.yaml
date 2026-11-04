@@ -1,0 +1,73 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21284"
+title: "Retired repositories leave every sync script, registry list and lab host"
+summary: >-
+  The scheduled host reconcile effect verifies a bundle before removing a retired clone and refuses retired repository targets in sync scripts and registry lists.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-retired-repositories"
+    statement: "Retired repositories leave every sync script, registry list and lab host"
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the host reconcile pass deletes a retired repository's clone on its host after writing a bundle backup -- falsifier: pytest of the reconcile handler over a temporary tree holding a retired clone
+      - id: "AC2"
+        statement: >-
+          AC2: a registry-wide test refuses a retired repository named in any sync script or registry list -- falsifier: pytest over fixture sync scripts naming onex_change_control
+evidence_requirements:
+  - kind: "tests"
+    description: "Retirement falsifiers and in-memory event delivery through the host reconcile handler."
+    command: "uv run --frozen pytest tests/test_retired_repository_reconcile.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-retired-clone-bundle"
+    description: "AC1: restore the deleted clone's HEAD, tags and branches from its verified bundle."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run --frozen pytest tests/test_retired_repository_reconcile.py -k 'retired_clone_is_deleted_after_a_restorable_bundle or detached_head_tags_and_other_branches_survive_in_the_bundle' -q -p no:randomly --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-retired-registry-targets"
+    description: "AC2: refuse the fixture sync scripts and registry lists before invoking a sync delegate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run --frozen pytest tests/test_retired_repository_reconcile.py -k 'registry_wide_refusal or host_refuses_a_retired_target' -q -p no:randomly --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-retirement-deploy-head"
+    description: >-
+      The hosted runner reads the changed handler at the checked-out head. The base lacks the retirement effect and fails this probe; the behavior is checked separately above.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF 'def _retire_clone('
+  - id: "dod-retirement-integration-proof"
+    description: >-
+      The pushed head ran the retirement, schedule and host reconcile suites on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane rm-retire-21284-1102-r-land -- uv run --frozen pytest tests/test_retired_repository_reconcile.py tests/test_host_reconcile_schedule.py tests/test_host_reconcile_effect.py -q --no-cov -p no:randomly
+        cwd: "."
+  - id: "dod-retirement-installed-dev-integration"
+    description: >-
+      The deploy agent installs the revision on dev, records its installed revision, and supplies ONEX_RECONCILE_INSTALLED_PYTHON. This named check invokes that installed entry point outside the checkout and reads its completion events from the declared dev Redpanda overlay. It checks both bundle restoration and registry refusal using temporary clones and isolated topics. Run through the deploy agent only.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run --frozen pytest tests/integration/test_retired_repository_reconcile_redpanda.py -q -p no:randomly --no-cov -m kafka --refuse-skips
+        cwd: "${OMNI_HOME}/omnimarket"
