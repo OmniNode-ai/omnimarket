@@ -13,7 +13,7 @@ requirements:
       - id: AC10
         statement: 'AC10: omnibase_spi.protocols.lane exports ProtocolLaneHostTransport (five operations), ProtocolLaneHostPool and ProtocolWorkLedgerStore, and ProtocolSecretStore.close defaults timeout_seconds to None -- falsifier: uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q fails at the merge base'
       - id: AC11
-        statement: 'AC11: the strict type check of the package is clean at the new pin -- falsifier: uv run mypy src/omnimarket/ --strict reports 12 errors in 5 files at the new pin with the secret-store edits removed'
+        statement: 'AC11: every secret store of this repository implements close(timeout_seconds=None) as the pinned ProtocolSecretStore does, so the strict type check of the package is clean at the new pin -- falsifier: uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q -k secret_store_implementations fails at the merge base, where the six implementations still default timeout_seconds to 30.0'
 evidence_requirements:
   - kind: "tests"
     description: "The pinned spi tag exports the lane host protocols and the optional close timeout"
@@ -32,12 +32,27 @@ dod_evidence:
         check_value: 'uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q --no-cov --tb=line'
         cwd: "."
   - id: "dod-002"
-    description: 'AC11: the strict type check of the package is clean at the new pin'
+    description: 'AC11: every secret store implementation defaults close timeout_seconds to None (the test fails at the merge base, where they default to 30.0)'
     source: "manual"
     binds_ac: [AC11]
     checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py -q --no-cov --tb=line -k secret_store_implementations'
+        cwd: "."
+  - id: "dod-003"
+    description: 'The strict type check of the package is clean at the new pin. It also passes at the merge base, so it binds no criterion and carries no control.'
+    source: "manual"
+    checks:
       - check_type: "command"
         check_value: 'uv run mypy src/omnimarket/ --strict'
+        cwd: "."
+  - id: "dod-omn22198-hosted-deploy-probe"
+    description: "Hosted deployment content probe: the PR head exposes the SPI tag carrying the lane host protocols. The merge base carries the previous tag and fails the assertion. No lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'curl --fail --silent --show-error --location "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/pyproject.toml" | python3 -c '\''import sys, tomllib; p = tomllib.loads(sys.stdin.read()); assert p["tool"]["uv"]["sources"]["omnibase-spi"]["tag"] == "dev-20261103062530-3580a8d986fd"'\'''
         cwd: "."
   - id: "dod-omn22198-integration-proof"
     description: "The pushed head ran the pin test and the secret-store node tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
@@ -45,5 +60,5 @@ dod_evidence:
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
-        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22198 -- uv run --frozen pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py tests/nodes/node_local_secret_store_effect -q --no-cov -m "not kafka"
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22198 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_spi_pin_lane_host_transport_omn22198.py tests/nodes/node_local_secret_store_effect -q --no-cov -m "not kafka"
         cwd: "."
