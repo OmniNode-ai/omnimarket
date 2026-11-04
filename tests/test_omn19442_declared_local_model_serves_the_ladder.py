@@ -48,6 +48,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallResult,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 
 pytestmark = pytest.mark.unit
 
@@ -135,6 +136,7 @@ def clean_install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[P
 def _dispatch(
     tmp_path: Path, effect: _RecordingEffect, *, tenant_id: str, prompt: str
 ) -> dict[str, object]:
+    mirror_tenant_in_store(tmp_path / "evidence.sqlite", tenant_id)
     port = LocalDelegationDispatchPort(
         effect_handler=effect,
         evidence_db_path=tmp_path / "evidence.sqlite",

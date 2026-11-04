@@ -1,0 +1,24 @@
+name: node_work_intent_classify_effect
+version: "1.0.0"
+description: "The lab-model fallback for a unit no rule decided"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_work_intent_classify_effect: "omnimarket.nodes.node_work_intent_classify_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "work-type", "fallback", "local-only"]
+pack: "pipeline"
+display_name: "Work Intent Classify Effect"
+node_role: "effect"
+tickets: ["OMN-22263"]
