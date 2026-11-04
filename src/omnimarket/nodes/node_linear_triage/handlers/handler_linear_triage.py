@@ -69,7 +69,6 @@ from omnimarket.nodes.node_linear_triage.services.local_github_pr_reads import (
 
 # Known OmniNode repos used for PR lookup
 KNOWN_REPOS = [
-    "omnibase_compat",
     "omnibase_core",
     "omniclaude",
     "omnibase_infra",
@@ -78,7 +77,6 @@ KNOWN_REPOS = [
     "omnimemory",
     "omninode_infra",
     "omnibase_spi",
-    "onex_change_control",
     "omnimarket",
 ]
 

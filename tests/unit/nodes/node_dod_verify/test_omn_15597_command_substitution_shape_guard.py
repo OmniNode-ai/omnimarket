@@ -1050,7 +1050,7 @@ _BUILTIN_WORD_RE = re.compile(
 
 
 def _occ_root() -> Path | None:
-    """Same resolution order as ``EvidenceCollector._resolve_occ_root``."""
+    """The contract repository directory named by ``CONTRACT_REPO_DIR``, if any."""
     explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
     if explicit and Path(explicit).is_dir():
         return Path(explicit)

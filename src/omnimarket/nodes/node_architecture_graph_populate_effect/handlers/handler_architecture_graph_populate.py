@@ -561,13 +561,11 @@ class HandlerArchitectureGraphPopulate:
             "omnibase_core",
             "omnibase_infra",
             "omnibase_spi",
-            "omnibase_compat",
             "omnimarket",
             "omniclaude",
             "omnimemory",
             "omniintelligence",
             "omninode_infra",
-            "onex_change_control",
             "omnidash",
         ]
     )

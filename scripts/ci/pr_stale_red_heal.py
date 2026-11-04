@@ -96,6 +96,7 @@ import os
 import re
 import subprocess  # fixed argv, no shell, trusted gh binary
 import sys
+import time
 import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -124,6 +125,18 @@ MAX_HEAL_RUN_ATTEMPT: Final[int] = 5
 
 _PAGE_SIZE: Final[int] = 100
 _OPEN_PR_LIMIT: Final[int] = 2000
+
+#: A read answered with a gateway error (502, 503, 504) is tried again: the
+#: open-PR list is one GraphQL query for every open PR's merge state, and
+#: GitHub times it out for minutes at a time while many PRs are open. Without
+#: a retry every scheduled pass in that stretch went red on one 504. The
+#: delays (seconds) are 5, 15, 45; a read still failing after that goes red
+#: with GitHub's own error. Writes are never retried: a re-run or a branch
+#: update that timed out may have been applied.
+_READ_ATTEMPTS: Final[int] = 4
+_READ_BACKOFF_SECONDS: Final[float] = 5.0
+_GATEWAY_ERROR: Final[re.Pattern[str]] = re.compile(r"\bHTTP 50[234]\b")
+_sleep = time.sleep
 
 #: The refusal line of omnibase_core's ``check-release-identity`` hook. Both versions are
 #: captured: the first is the merge ref's ``project.version``, the second the
@@ -814,6 +827,11 @@ class GhCli:
 
     def _json(self, args: list[str]) -> object:
         completed = self._run(args)
+        for attempt in range(1, _READ_ATTEMPTS):
+            if completed.returncode == 0 or not _GATEWAY_ERROR.search(completed.stderr):
+                break
+            _sleep(_READ_BACKOFF_SECONDS * 3 ** (attempt - 1))
+            completed = self._run(args)
         if completed.returncode != 0:
             raise RuntimeError(
                 f"gh {' '.join(args)} exited {completed.returncode}: "
@@ -1353,9 +1371,16 @@ def main(argv: list[str] | None = None, *, gh: GhPort | None = None) -> int:
             print(f"::warning::could not update #{window.pr_number}: {exc}")
 
     rerun_prs = 0
-    for parity in decisions.vendor_parity:
-        print(f"vendor-parity {parity.outcome.value}: {parity.detail}")
-        if not parity.act or args.dry_run:
+    # Vendor-parity re-runs whole runs; release staleness only the failed
+    # jobs of its run.
+    plans = [("vendor-parity", d, d.run_ids, False) for d in decisions.vendor_parity]
+    plans += [
+        ("release-staleness", d, d.failed_run_ids, True)
+        for d in decisions.release_staleness
+    ]
+    for label, decision, run_ids, failed_only in plans:
+        print(f"{label} {decision.outcome.value}: {decision.detail}")
+        if not decision.act or args.dry_run:
             continue
         if rerun_prs >= MAX_RERUN_PRS_PER_PASS:
             print(f"  deferred to the next pass ({MAX_RERUN_PRS_PER_PASS}-PR cap)")
@@ -1363,51 +1388,27 @@ def main(argv: list[str] | None = None, *, gh: GhPort | None = None) -> int:
         rerun_prs += 1
         # The gate first, then CI Summary: the poller then sees the gate
         # queued or running and waits for it instead of reading the old red.
-        for run_id in parity.run_ids:
+        for kind, number in [("run", n) for n in run_ids] + [
+            ("job", n) for n in decision.job_ids
+        ]:
+            what = (
+                f"failed jobs of run {number}"
+                if failed_only and kind == "run"
+                else f"{kind} {number}"
+            )
             attempted += 1
             try:
-                client.rerun_run(repo=args.repo, run_id=run_id)
+                if kind == "job":
+                    client.rerun_job(repo=args.repo, job_id=number)
+                elif failed_only:
+                    client.rerun_failed(repo=args.repo, run_id=number)
+                else:
+                    client.rerun_run(repo=args.repo, run_id=number)
                 reruns += 1
-                print(f"  re-ran run {run_id}")
+                print(f"  re-ran {what}")
             except RuntimeError as exc:
-                failures.append(f"run {run_id}: {exc}")
-                print(f"::warning::could not re-run run {run_id}: {exc}")
-        for job_id in parity.job_ids:
-            attempted += 1
-            try:
-                client.rerun_job(repo=args.repo, job_id=job_id)
-                reruns += 1
-                print(f"  re-ran job {job_id}")
-            except RuntimeError as exc:
-                failures.append(f"job {job_id}: {exc}")
-                print(f"::warning::could not re-run job {job_id}: {exc}")
-
-    for staleness in decisions.release_staleness:
-        print(f"release-staleness {staleness.outcome.value}: {staleness.detail}")
-        if not staleness.act or args.dry_run:
-            continue
-        if rerun_prs >= MAX_RERUN_PRS_PER_PASS:
-            print(f"  deferred to the next pass ({MAX_RERUN_PRS_PER_PASS}-PR cap)")
-            continue
-        rerun_prs += 1
-        for run_id in staleness.failed_run_ids:
-            attempted += 1
-            try:
-                client.rerun_failed(repo=args.repo, run_id=run_id)
-                reruns += 1
-                print(f"  re-ran failed jobs of run {run_id}")
-            except RuntimeError as exc:
-                failures.append(f"run {run_id}: {exc}")
-                print(f"::warning::could not re-run failed jobs of run {run_id}: {exc}")
-        for job_id in staleness.job_ids:
-            attempted += 1
-            try:
-                client.rerun_job(repo=args.repo, job_id=job_id)
-                reruns += 1
-                print(f"  re-ran job {job_id}")
-            except RuntimeError as exc:
-                failures.append(f"job {job_id}: {exc}")
-                print(f"::warning::could not re-run job {job_id}: {exc}")
+                failures.append(f"{kind} {number}: {exc}")
+                print(f"::warning::could not re-run {what}: {exc}")
 
     considered = max(
         len(decisions.release_window),

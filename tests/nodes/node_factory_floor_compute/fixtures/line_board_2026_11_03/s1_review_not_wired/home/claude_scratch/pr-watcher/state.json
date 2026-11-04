@@ -1,0 +1,67 @@
+{
+ "last_tick": "2026-11-03T11:45:00Z",
+ "merges": {
+  "omnimarket#4913": {
+   "base": "dev",
+   "head_ref": "omn-22176-agent-review-gate-accept",
+   "head_sha": "b15163da57b509ef93a3c88289c5e0e94f553891",
+   "merged_at": "2026-11-03T10:54:00Z",
+   "number": 4913,
+   "repo": "omnimarket",
+   "title": "feat(OMN-22176): typed credit_exhausted gateway reply and the agent review gate-accept node"
+  }
+ },
+ "prs": {
+  "omnimarket#4946": {
+   "ci": {
+    "read_at": "2026-11-03T11:45:00Z",
+    "red": [],
+    "red_facts": [],
+    "runs": [],
+    "sha": "85f41d99ddaedc5e49da5fd43e8a06cb33e5165d",
+    "verdict": "NONE"
+   },
+   "cls": "green",
+   "facts": {
+    "base": "dev",
+    "created_at": "2026-11-03T05:56:19Z",
+    "draft": false,
+    "head_ref": "omn-22177-agent-review-dispatch-node",
+    "head_sha": "85f41d99ddaedc5e49da5fd43e8a06cb33e5165d",
+    "merged_at": "",
+    "number": 4946,
+    "repo": "omnimarket",
+    "state": "OPEN",
+    "title": "feat(OMN-22177): agent review dispatch node and the pr_review_post operation"
+   },
+   "first_seen": "2026-11-03T05:56:19Z"
+  },
+  "omnimarket#4957": {
+   "ci": {
+    "last_red_completed_at": "",
+    "read_at": "2026-11-03T11:45:00Z",
+    "red": [],
+    "red_facts": [],
+    "runs": [],
+    "sha": "7364f780b816df2d250b61dd425e3bfd62bcecb5",
+    "total": 0,
+    "verdict": "GREEN"
+   },
+   "cls": "green",
+   "facts": {
+    "base": "dev",
+    "created_at": "2026-11-03T07:18:07Z",
+    "draft": true,
+    "head_ref": "omn-22178-agent-review-proof-record",
+    "head_sha": "7364f780b816df2d250b61dd425e3bfd62bcecb5",
+    "merged_at": "",
+    "number": 4957,
+    "repo": "omnimarket",
+    "state": "OPEN",
+    "title": "feat(OMN-22178): agent review fallback proof record and its record-shape test"
+   },
+   "first_seen": "2026-11-03T07:18:07Z"
+  }
+ },
+ "schema": 1
+}

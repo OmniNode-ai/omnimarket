@@ -78,6 +78,18 @@ dependencies:
     description: The BYOK catalogue's anthropic api_native endpoint (the native Messages API, OMN-20910).
     required: true
 
+# OMN-22343: which blocks of a review request the provider caches, and for how
+# long. Read by handlers/review_prompt_cache.py; the handler holds no TTL. The
+# system blocks (rubric and catalog, then the repository's standing rules) are
+# the stable prefix and carry the longer TTL; the diff block follows them with
+# the shorter one; the voter's persona text is last and never cached. At most
+# four breakpoints (the provider's limit); a longer TTL must precede a shorter.
+config:
+  prompt_cache:
+    system_ttl: "1h"
+    diff_ttl: "5m"
+    max_breakpoints: 4
+
 configuration:
   overlay_id: claude_review_gateway
   overlay_file_env: ONEX_REVIEW_GATEWAY_OVERLAY

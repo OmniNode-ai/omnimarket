@@ -80,28 +80,6 @@ def _only_registry_root(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
 
 
 @pytest.mark.unit
-def test_omni_home_alone_does_not_locate_occ_root(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _write_contract(tmp_path)
-    _only_registry_root(monkeypatch, tmp_path)
-
-    assert EvidenceCollector()._resolve_occ_root() is None
-
-
-@pytest.mark.unit
-def test_onex_cc_repo_path_locates_occ_root(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    # Positive control: the explicit locator still resolves.
-    _write_contract(tmp_path)
-    _only_registry_root(monkeypatch, tmp_path)
-    monkeypatch.setenv("CONTRACT_REPO_DIR", str(tmp_path / "onex_change_control"))
-
-    assert EvidenceCollector()._resolve_occ_root() == tmp_path / "onex_change_control"
-
-
-@pytest.mark.unit
 def test_omni_home_alone_does_not_locate_contract_repo_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
