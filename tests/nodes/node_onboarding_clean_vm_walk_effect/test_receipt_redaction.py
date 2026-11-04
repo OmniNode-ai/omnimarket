@@ -29,6 +29,8 @@ pytestmark = pytest.mark.unit
 LLM_HOST = "llm.example.invalid"
 GIT_HOST = "git.example.invalid"
 VM_NAME = "onex-walk-feedc0de"
+GUEST_IP = "192.0.2.77"
+GUEST_ASKPASS = "/opt/walk/askpass"
 
 
 def fake(*parts: str) -> str:
@@ -85,6 +87,8 @@ def request(**overrides: object) -> ModelWalkRequest:
             "local_model": "test model",
             "tart_host": "192.0.2.1",
             "vm_name": VM_NAME,
+            "guest_askpass_path": GUEST_ASKPASS,
+            "guest_ip": GUEST_IP,
             **overrides,
         }
     )
@@ -117,6 +121,8 @@ class ScriptedRunner:
                 raise outcome
             return outcome
         stdout = ""
+        if kind == EnumWalkStepKind.TART_IP:
+            stdout = f"{GUEST_IP}\n"
         if kind in (EnumWalkStepKind.GUEST_RUN_SCRIPT, EnumWalkStepKind.GUEST_READ_LOG):
             stdout = self.log
         if kind in (
