@@ -160,12 +160,18 @@ class HandlerHostReconcileCompute:
                     f"{fact.shadow} was {found}; moved it to {fact.moved_to} but "
                     f"could not link {fact.wrapper} in its place: {fact.link_error}"
                 )
-            fix = (
-                "fix: run the host reconcile in repair mode, which moves the "
-                "dangling link aside and links the wrapper"
-                if fact.is_dangling
-                else "fix: uv tool uninstall omnibase-core"
-            )
+            if fact.is_dangling:
+                fix = (
+                    "fix: run the host reconcile in repair mode, which moves the "
+                    "dangling link aside and links the wrapper"
+                )
+            elif fact.is_dispatch_link:
+                fix = (
+                    "fix: run the host reconcile in repair mode, which moves the "
+                    "dispatch-venv link aside and links the wrapper"
+                )
+            else:
+                fix = "fix: uv tool uninstall omnibase-core"
             return "SHADOWED", (
                 f"{fact.shadow} exists ({found}) and outranks {fact.wrapper} "
                 f"for every non-interactive onex invocation (the "

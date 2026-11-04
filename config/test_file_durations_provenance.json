@@ -83,5 +83,12 @@
     "files_added": 1,
     "basis": "Summed per-test seconds from pytest --store-durations --no-cov for tests/unit/test_ci_duration_record_supplement.py",
     "runner": "lab host h053, lane ev-5031-0635"
+  },
+  "supplement_omn19486": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Summed measured pytest setup, call and teardown seconds for tests/cli/test_pr_state.py from a serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h053, lane pr-4928-1157; the next CI refresh replaces this entry",
+    "base_sha": "10e4469489ac04ec863a0f00dc7cbc92bf7095c8"
   }
 }

@@ -26,9 +26,9 @@ runtime_profiles:
   - effects
 contract_version:
   major: 1
-  minor: 0
-  patch: 1
-node_version: "0.1.1"
+  minor: 1
+  patch: 0
+node_version: "0.2.0"
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -57,15 +57,11 @@ event_bus:
     - "onex.evt.github.workflow-run.v1"
     - "onex.evt.github.dev-merge-tag.v1"
     - "onex.evt.github.webhook-delivery-refused.v1"
-# The delivery is not produced by any node contract: the onex-api door
-# (POST /v1/github/webhook) publishes it and omnibase_infra's
-# node_bus_forwarder_effect carries it onto the lab bus. omnibase_infra 0.38.72
-# no longer carries its own copy of this node's contract (0.38.71 did), and the
-# contract-topic-graph gate then flags this subscription as orphaned, so the
-# edge is declared here.
+# HTTP deliveries enter through the runtime's mount below. Deployments still
+# using a remote HTTP door may also forward this input onto the runtime bus.
 externally_produced_topics:
   - topic: "onex.cmd.github.webhook-delivery.v1"
-    producer: "the onex-api door (POST /v1/github/webhook), forwarded onto the lab bus by omnibase_infra node_bus_forwarder_effect"
+    producer: "the contract-declared POST /v1/github/webhook HTTP mount or a forwarded signed delivery"
 consumed_events:
   - topic: "onex.cmd.github.webhook-delivery.v1"
     event_type: "GitHubWebhookDelivery"
@@ -126,6 +122,29 @@ config:
   # these get their verdict from the reconciler (OMN-19493).
   summary_check_names:
     - "CI Summary"
+
+# Runtime-owned HTTP boundary. The existing delivery consumer remains the
+# signature-verifying fold; the HTTP handler publishes to its declared input.
+http_mount:
+  factory: "omnimarket.nodes.node_github_webhook_ingress_effect.handlers.http_app:create_app"
+  path_prefix: "/v1/github"
+http_ingress:
+  handler:
+    name: HandlerGitHubWebhookHttp
+    module: omnimarket.nodes.node_github_webhook_ingress_effect.handlers.handler_github_webhook_http
+  path: "/v1/github/webhook"
+  methods: [POST]
+  delivery_topic: "onex.cmd.github.webhook-delivery.v1"
+  event_type: "github.webhook-delivery"
+  source_tool: "runtime-github-webhook"
+  max_body_bytes: 700000
+  publish_timeout_seconds: 10
+  environment:
+    secret: GITHUB_WEBHOOK_SECRET
+    tenant_id: GITHUB_WEBHOOK_TENANT_ID
+    tenant_slug: GITHUB_WEBHOOK_TENANT_SLUG
+    principal_id: GITHUB_WEBHOOK_TENANT_PRINCIPAL_ID
+    bootstrap_servers: KAFKA_BOOTSTRAP_SERVERS
 dependencies:
   - name: "secret_resolver"
     type: "service"
@@ -134,6 +153,8 @@ dependencies:
     description: "Built by omnibase_infra's service_kernel from the lane's rendered resolver config when it maps the logical name github.webhook.secret (the onexbot-pr-reader App webhook HMAC secret; secret store key dev:/shared/env/GITHUB_WEBHOOK_SECRET). Absent means every delivery is refused."
     required: false
 capabilities:
+  - name: "github_webhook_http"
+    description: "Serve the signed delivery HTTP boundary on the runtime's port and publish accepted delivery commands."
   - name: "github_webhook_signature_verification"
     description: "Constant-time HMAC-SHA256 verification of X-Hub-Signature-256 over the raw body."
   - name: "github_pr_state_fold"
