@@ -86,14 +86,20 @@ printf 'added\n'
 class SshHostKeyTransport:
     """Send fixed scripts with all variable data on standard input."""
 
-    def __init__(self) -> None:
+    def __init__(self, local_host: str | None = None, timeout_s: int = 30) -> None:
         self._requests: dict[str, ModelLabHostKeyDistributionRequest] = {}
+        self._local_host = local_host
+        self._timeout_s = timeout_s
 
     def _run(self, host: ModelLabHostRow, script: str, stdin: str) -> str:
         if _SAFE_TARGET.fullmatch(host.target) is None:
             raise HostTransportError("invalid SSH target")
         request = self._requests.get(host.name)
-        local = host.local or (request is not None and request.local_host == host.name)
+        local = (
+            host.local
+            or host.name == self._local_host
+            or (request is not None and request.local_host == host.name)
+        )
         argv = (
             ["bash", "-c", script]
             if local
@@ -113,7 +119,7 @@ class SshHostKeyTransport:
                 input=stdin,
                 capture_output=True,
                 text=True,
-                timeout=request.timeout_s if request else 30,
+                timeout=request.timeout_s if request else self._timeout_s,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:

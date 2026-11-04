@@ -13,6 +13,13 @@ from .model_lane_reader_inputs import (
     ModelLaneReaderInputsRequest,
     ModelLaneReaderInputsResult,
 )
+from .model_lane_toolchain import (
+    ModelHostToolchainReading,
+    ModelLaneToolchainFailure,
+    ModelLaneToolchainRequest,
+    ModelLaneToolchainResult,
+    ModelToolReading,
+)
 from .model_pr_create_placement import (
     EnumPrCreateRefusal,
     ModelHostReading,
@@ -27,11 +34,16 @@ __all__ = [
     "ModelHostCapabilityRequest",
     "ModelHostCapabilityResult",
     "ModelHostReading",
+    "ModelHostToolchainReading",
     "ModelLaneReaderFailure",
     "ModelLaneReaderHost",
     "ModelLaneReaderInputsRequest",
     "ModelLaneReaderInputsResult",
+    "ModelLaneToolchainFailure",
+    "ModelLaneToolchainRequest",
+    "ModelLaneToolchainResult",
     "ModelPrCreateHostVerdict",
     "ModelPrCreatePlacementRequest",
     "ModelPrCreatePlacementResult",
+    "ModelToolReading",
 ]
