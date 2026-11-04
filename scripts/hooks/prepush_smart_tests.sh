@@ -906,7 +906,7 @@ fi
 # =============================================================================
 # Ambient-PYTHONPATH sanitization (OMN-14420 / OMN-15019)
 # =============================================================================
-# omnibase_core / omnibase_infra / omnibase_spi / omnibase_compat are
+# omnibase_core / omnibase_infra / omnibase_spi are
 # THIRD-PARTY pinned dependencies in this repo, resolved from THIS repo's own
 # .venv/site-packages via uv.lock -- never from a worktree src/ directory. An
 # ambient PYTHONPATH exported by the parent shell/session (e.g. pointing at a

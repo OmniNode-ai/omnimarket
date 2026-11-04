@@ -1,0 +1,171 @@
+# Deployment data for the lean line board (OMN-22366, plan private-repo-2#1661 section 5 T1 and T3;
+# RULING 2026-11-03T15:20:04Z). The hand-run skill lean_line_board reads these four keys now, and the floor effect
+# reads the same file when T3 lands, so both forms share one configuration.
+#
+# Why this is a file beside overlay.yaml and not four keys in it: the floor effect's overlay model
+# (ModelFactoryFloorOverlay) forbids any key it does not know, and the overlay reader raises on an unknown key, so a
+# key added to overlay.yaml before the model learns it stops the five-minute floor publish. The same ordering was
+# recorded for another overlay key (HOLD 2026-11-03T15:31:12Z, private-repo-3#1530 after omnimarket#4981). The
+# effect finds this file in the same overlay directory it finds overlay.yaml in. T3 teaches the model these four keys
+# and, in the same change, may fold the file into overlay.yaml.
+#
+# Every value below is read from a ledger row, a launchd job definition, a repository workflow or the registry and is
+# cited beside it. A value that could not be read is left out and named under "Not declared" at the end of the file.
+# No value is a guess. No person is named: a role is a role.
+
+# --- processes -------------------------------------------------------------------------------------------------
+# A factory process drawn as the line process:<name>. A process with a run_record writes a ledger row each time it
+# runs; the board reads K consecutive rows (K is the compute contract's process_did_nothing_runs, 3) at the declared
+# interval that all match did_nothing as a stop. A process with run_record null writes no ledger row per run, so
+# silence_detectable is false and the board prints "silence not detectable" for it and writes no stop.
+#
+# outcomes_covered lists the outcomes the run record is seen to carry in the ledger, not the outcomes its node
+# contract proves. silence_detectable is true only for a process whose own contract declares a run record on every
+# outcome with a test; none of the six does today, so none is true.
+processes:
+  # The lab fill. launchd job ai.omninode.lab-fill, StartCalendarInterval minutes 10, 30 and 50, so every 20 minutes
+  # (the run= cells 1150Z, 1210Z, 1230Z, 1250Z, 1310Z of 2026-11-03 are the same grid). Its did-nothing run is a
+  # FRICTION row class=lab-idle with actor launchd:lab-fill (ledger 2026-11-03T11:59:06Z, 12:16:04Z, 12:41:40Z,
+  # 13:01:10Z, 13:15:55Z); the same actor writes a STATUS row with run= for a run summary (2026-11-03T14:52:42Z) and a
+  # FRICTION row class=lab-enumerate-unreadable or lab-source-unreadable when a source is unreadable
+  # (2026-11-03T15:45:25Z, 16:03:39Z). eligible=0 is in every lab-idle row's tier-reasons text, free-slots= is a cell.
+  - name: lab-fill
+    launchd_label: ai.omninode.lab-fill
+    actor: launchd:lab-fill
+    interval_minutes: 20
+    run_record:
+      kind: FRICTION
+      lane: lab-fill
+      actor: launchd:lab-fill
+      run_cell: run
+    did_nothing:
+      class: lab-idle
+      text_contains: eligible=0
+      cell_greater_than:
+        free-slots: 0
+    outcomes_covered: [did-nothing, run-summary, source-unreadable]
+    silence_detectable: false
+
+  # The throughput tick. launchd job ai.omninode.throughput-tick, StartInterval 600. Its output is a text record and an
+  # attention file; the only ledger rows it writes are STATUS rows (lane throughput-tick, action=lab-fill) when it
+  # dispatches a fill lane, so a run that dispatched nothing leaves no row.
+  - name: throughput-tick
+    launchd_label: ai.omninode.throughput-tick
+    actor: script:throughput-tick
+    interval_minutes: 10
+    run_record: null
+    did_nothing: null
+    outcomes_covered: []
+    silence_detectable: false
+
+  # The factory floor publish. launchd job ai.omninode.factory-floor-publish, StartInterval 300. Its run record is the
+  # published floor record's generated_at, not a ledger row.
+  - name: floor-publish
+    launchd_label: ai.omninode.factory-floor-publish
+    actor: null
+    interval_minutes: 5
+    run_record: null
+    did_nothing: null
+    outcomes_covered: []
+    silence_detectable: false
+
+  # The queue-status tick. launchd job ai.omninode.queue-status-tick, StartInterval 1800. Its output is a stdout log
+  # and saved state (required-contexts.json); it writes no ledger row per run.
+  - name: queue-status-tick
+    launchd_label: ai.omninode.queue-status-tick
+    actor: null
+    interval_minutes: 30
+    run_record: null
+    did_nothing: null
+    outcomes_covered: []
+    silence_detectable: false
+
+  # The pull request watcher. launchd job ai.omninode.pr-watcher, KeepAlive (a long-running serve process, no start
+  # interval). Its liveness is the age of its state file, which the board already reads as a dependency
+  # (source_max_age_min watcher 90), so no interval is declared here.
+  - name: pr-watcher
+    launchd_label: ai.omninode.pr-watcher
+    actor: launchd:pr-watcher
+    interval_minutes: null
+    run_record: null
+    did_nothing: null
+    outcomes_covered: []
+    silence_detectable: false
+
+  # The landing controller. launchd job ai.omninode.landing-controller, StartInterval 300. It writes CLAIM, TERMINAL and
+  # FRICTION rows per lease (actor script:landing-controller), not one row per tick, so a tick that acted on nothing
+  # leaves no row.
+  - name: landing-controller
+    launchd_label: ai.omninode.landing-controller
+    actor: script:landing-controller
+    interval_minutes: 5
+    run_record: null
+    did_nothing: null
+    outcomes_covered: []
+    silence_detectable: false
+
+# --- roles -----------------------------------------------------------------------------------------------------
+# A blocker sentence on a line (a TERMINAL, MSG, STATUS or held reason) that contains any of a role's phrases (case
+# folded) names that role. ask_to lists the ledger addressing tokens that an ask to the role is written with (a MSG
+# to=<token>); a role with an empty ask_to has no token the ledger shows an ask being written to, so a sentence that
+# names it can only be person-blocker-unverified, never blocked-on-person. This is the safe direction: the board
+# never states that a person is blocking work without an ask row behind it.
+#
+# Sources: the phrases are the ones the ledger's own blocker text uses (counts over the 2026-10-23 to 2026-11-03
+# window: "the operator" and "operator" in "needs", "blocked on" and "waiting on" sentences, "cloud owner",
+# "collaborator", "pillar owner"). operator is the only role with addressing tokens in the window (MSG to=operator,
+# 227 rows). The registry's people list is private to the operator and is not copied here; a token that is a
+# person's own name is left out on purpose, so an ask written to a person by name is not seen.
+roles:
+  - role: operator
+    phrases: [the operator, operator]
+    ask_to: [operator]
+  - role: cloud owner
+    phrases: [cloud owner]
+    ask_to: []
+  - role: collaborator
+    phrases: [collaborator]
+    ask_to: []
+  - role: pillar owner
+    phrases: [pillar owner]
+    ask_to: []
+
+# --- release_required_repos --------------------------------------------------------------------------------------
+# A repository where a pull request needs a RELEASE row (a scoped release, re= the ruling, pr=, head=) before the
+# landing controller treats it as released from a freeze. A RELEASE written at one head does not release a later head,
+# which is the release-at-old-head stop.
+#
+# RULING 2026-10-26T17:22:56Z freezes private-repo-3 and private-repo-6 (no new pull request, lane or
+# controller worker). RULING 2026-10-28T06:20:24Z lets fix-only pull requests land in private-repo-3, and the
+# RELEASE rows that do it carry re=2026-10-28T06:20:24Z, a pr= and a head= (2026-11-03T14:40:51Z, 15:01:27Z and
+# 15:19:00Z are three of them). Both repositories carry such RELEASE rows in the window (206 and 69). RULING
+# 2026-10-28T13:33:13Z exempts the hourly ledger-row pull requests to private-repo-6; they carry no RELEASE row, so
+# they never reach this stop.
+#
+# omnimarket, omnibase_infra and the other repositories also have RELEASE rows in the window, but those lift a HOLD
+# (a review-context window or a slot lease), not a freeze, so they are not listed.
+release_required_repos:
+  - private-repo-3
+  - private-repo-6
+
+# --- held_gates ------------------------------------------------------------------------------------------------
+# The check names of the review gates that hold a pull request. A pull request held by one of these that also fails a
+# context that is required for its repository, and is not one of these, is held-with-real-red.
+#
+# Both names are read from the throughput tick of 2026-11-03T16:01Z and the repositories' workflows:
+#   "Hostile Reviewer (adversarial gate)" is the hold reason on omnibase_infra#5623 and omniclaude#3118 (held: lines).
+#   "Hostile Review Gate" is the shared red on 28 open omnibase_infra pull requests (repo-status line).
+# Both are jobs named in the workflows of omnibase_infra, omniclaude and omnimarket.
+held_gates:
+  - Hostile Reviewer (adversarial gate)
+  - Hostile Review Gate
+
+# --- Not declared (named, not guessed) ---------------------------------------------------------------------------
+# - Ask addressing tokens for the cloud owner, collaborators and pillar owners: the ledger shows none that is not a
+#   person's own name, so those roles can only produce person-blocker-unverified until an addressing token is ruled.
+# - "Hostile Review Thread Gate" (omnibase_infra): a review gate, but no hold on it was read in the window, so it is not
+#   listed. Add it when a held: line names it.
+# - A run record that proves every outcome for any process: none of the six nodes' contracts declares one with a test
+#   (silence_detectable stays false). The fill's three ledger outcomes are read, not proven.
+# - An interval for the pull request watcher: it is a KeepAlive service.
+# - A ledger actor for the floor publish and the queue-status tick: neither writes a ledger row, so none was read.
