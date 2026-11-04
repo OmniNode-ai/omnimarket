@@ -129,3 +129,54 @@ def test_fallback_targets_refuses_a_repeated_name() -> None:
 def test_fallback_targets_refuses_an_empty_name() -> None:
     with pytest.raises(ValidationError):
         ModelLabHostRow(name="h1", target="host-1", fallback_targets=("a", " "))
+
+
+# A row may declare the login, the jump host and the key file its destination needs (OMN-17427). The launcher's table gains the
+# three columns; the row model forbids extras, so a table that carries them would be refused whole by this reader until it knows them.
+ROUTED_TABLE = """\
+bus_lane: dev
+hosts:
+  - name: h106
+    target: host-106.example.invalid
+    fallback_targets: [192.0.2.106]
+    ssh_user: lab-user
+    proxy_jump: jump-host
+    ssh_identity: ~/.ssh/id_lab
+    cap: 1
+"""
+
+
+def test_lab_host_table_accepts_the_declared_login_jump_host_and_key(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lab_run_hosts.yaml"
+    path.write_text(ROUTED_TABLE, encoding="utf-8")
+    [row] = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)}).hosts
+    assert (row.ssh_user, row.proxy_jump, row.ssh_identity) == (
+        "lab-user",
+        "jump-host",
+        "~/.ssh/id_lab",
+    )
+
+
+def test_the_login_jump_host_and_key_default_to_none() -> None:
+    row = ModelLabHostRow(name="h1", target="host-1")
+    assert (row.ssh_user, row.proxy_jump, row.ssh_identity) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("ssh_user", "-oProxyCommand=x"),
+        ("ssh_user", "a b"),
+        ("proxy_jump", "-oProxyCommand=x"),
+        ("proxy_jump", "a;b"),
+        ("ssh_identity", "-oX=y"),
+        ("ssh_identity", "~/../etc/passwd"),
+    ],
+)
+def test_a_login_jump_host_or_key_ssh_would_read_as_an_option_is_refused(
+    column: str, value: str
+) -> None:
+    with pytest.raises(ValidationError):
+        ModelLabHostRow(name="h1", target="host-1", **{column: value})
