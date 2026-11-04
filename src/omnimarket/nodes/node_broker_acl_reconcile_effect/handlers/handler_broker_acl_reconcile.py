@@ -1,19 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Apply the contract's declared consumer-group DELETE ACL rows to the dev broker.
-
-The rows, the reconcile command and the ssh-target variable are all read from this
-node's ``contract.yaml``. The handler renders the rows into a declaration file in the
-lab broker ACL reconcile command's format and runs that command's own
-``apply`` (``--dry-run`` first): it lists the live rows, creates only the missing ones
-and lists again, so the readback is the broker's listing, not a local assumption.
-"""
+"""Aggregate contract ACL declarations and reconcile them with the broker."""
 
 from __future__ import annotations
 
 import os
 import re
-import shlex
 import subprocess
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
@@ -27,6 +19,7 @@ from omnimarket.models.broker_acl_reconcile import (
     ModelBrokerAclReconcileRequest,
     ModelBrokerAclReconcileResult,
 )
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers import driver_broker_acl
 
 _NODE = "node_broker_acl_reconcile_effect"
 _REPORT = re.compile(r"declared=(\d+) live=(\d+) missing=(\d+) undeclared=(\d+)")
@@ -86,6 +79,52 @@ def render_declaration(
     return rendered
 
 
+def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, str]]:
+    """Merge this node's declaration with grant blocks from every packaged node.
+
+    Malformed declarations fail closed and identify the contract to fix. Duplicate
+    rows collapse before sorting by principal, resource type, pattern, name and operation.
+    """
+    root = (
+        nodes_root
+        if nodes_root is not None
+        else Path(str(resources.files("omnimarket.nodes")))
+    )
+    own_path = resources.files(f"omnimarket.nodes.{_NODE}").joinpath("contract.yaml")
+    blocks: list[tuple[str, object]] = [
+        (str(own_path), contract()["broker_acl_declaration"]["principals"])
+    ]
+    for path in sorted(root.rglob("contract.yaml")):
+        try:
+            loaded = yaml.load(
+                path.read_text(encoding="utf-8"),
+                Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader),
+            )
+            if not isinstance(loaded, dict):
+                raise ValueError("contract must be a mapping")
+            if "broker_acl_grants" in loaded:
+                blocks.append((str(path), loaded["broker_acl_grants"]))
+        except (ValueError, OSError, yaml.YAMLError) as error:
+            raise ValueError(f"{path}: {error}") from error
+    keys = ("principal", "resource_type", "pattern", "name", "operation")
+    rows: set[tuple[str, ...]] = set()
+    for source, block in blocks:
+        try:
+            # Placeholder principals are checked again as concrete identities after rendering.
+            checked = render_declaration(
+                {"principals": block},
+                dict.fromkeys(
+                    _PLACEHOLDER.findall(yaml.safe_dump(block)), "User:placeholder"
+                ),
+            )
+            driver_broker_acl.load_principals(checked["principals"])
+            for row in declared_grants({"principals": block}):
+                rows.add(tuple(row[key] for key in keys))
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(f"{source}: {error}") from error
+    return [dict(zip(keys, row, strict=True)) for row in sorted(rows)]
+
+
 def _run(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv), capture_output=True, text=True, timeout=timeout, check=False
@@ -97,8 +136,10 @@ class HandlerBrokerAclReconcile:
         self,
         runner: Runner = _run,
         environ: Mapping[str, str] | None = None,
+        remote_runner: driver_broker_acl.RemoteRunner | None = None,
     ) -> None:
         self._runner = runner
+        self._remote_runner = remote_runner
         self._environ = os.environ if environ is None else environ
 
     def handle(
@@ -113,16 +154,9 @@ class HandlerBrokerAclReconcile:
                 exit_code=2,
                 error=f"{settings['ssh_target_env']} is not set",
             )
-        command = list(
-            request.reconcile_command
-            or shlex.split(self._environ.get(settings["reconcile_command_env"], ""))
-        )
-        if not command:
-            return ModelBrokerAclReconcileResult(
-                mode=request.mode,
-                exit_code=2,
-                error=f"{settings['reconcile_command_env']} is not set",
-            )
+        if not request.reconcile_command:
+            return self._apply_driver(request, loaded, target)
+        command = list(request.reconcile_command)
         try:
             rendered = render_declaration(
                 loaded["broker_acl_declaration"], self._environ
@@ -154,6 +188,38 @@ class HandlerBrokerAclReconcile:
                     mode=request.mode, exit_code=2, error=str(error)
                 )
         return self._result(request, completed)
+
+    def _apply_driver(
+        self,
+        request: ModelBrokerAclReconcileRequest,
+        loaded: Mapping[str, Any],
+        target: str,
+    ) -> ModelBrokerAclReconcileResult:
+        try:
+            declaration = dict(loaded["broker_acl_declaration"])
+            declaration["rows"] = aggregate_declared_grants()
+            rendered = render_declaration(declaration, self._environ)
+            timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
+            connection = driver_broker_acl.AclConnection.from_mapping(
+                rendered, target, timeout
+            )
+            grants = [driver_broker_acl.AclGrant(**row) for row in rendered["rows"]]
+
+            def run_remote(ssh_target: str, script: str) -> str:
+                return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
+
+            output = driver_broker_acl.apply(
+                grants, connection, request.mode, self._remote_runner or run_remote
+            )
+            reports = _REPORT.findall(output)
+            code = int(bool(int(reports[-1][2])))
+            return self._result(
+                request, subprocess.CompletedProcess([], code, output, "")
+            )
+        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode, exit_code=2, error=str(error)
+            )
 
     @staticmethod
     def _result(
