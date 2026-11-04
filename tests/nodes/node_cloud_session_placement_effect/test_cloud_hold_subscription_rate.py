@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Cloud sessions draw on the cloud credit: a subscription rate reading never gates placement."""
+"""Recorded rejected usage limits hold cloud placement until their reset."""
 
 import json
 import shutil
@@ -15,7 +15,13 @@ from omnimarket.models.cloud_session_placement import (
     ModelCloudTransport,
 )
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
+    HandlerCloudSessionPlacement,
+)
+from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     cloud_accounts as acc,
+)
+from omnimarket.nodes.node_cloud_session_placement_effect.models import (
+    ModelCloudSessionPlacementRequest,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "cloud_accounts_h200_2026-11-02.json"
@@ -60,10 +66,10 @@ def _account(pdir: Path, name: str = "host_a") -> dict[str, Any]:
     return dict(json.loads((pdir / acc.CLOUD_STATE_FILE).read_text())["accounts"][name])
 
 
-def test_cloud_hold_subscription_rate_recorded_h200_offers_slots(
+def test_cloud_hold_subscription_rate_recorded_h200_holds_slots_and_pick(
     tmp_path: Path,
 ) -> None:
-    """The h200 record of 2026-11-02 (seven_day rejected, hold to 2026-11-04T22:00Z, credit 244) offers slots."""
+    """Replay the recorded rejected seven-day reading despite positive cloud credit."""
     shutil.copy(FIXTURE, tmp_path / acc.CLOUD_LEGACY_STATE_FILE)
     recorded = json.loads(FIXTURE.read_text())["accounts"]["h200"]
     registry = _registry("lab-primary", legacy=("h200",))
@@ -72,19 +78,32 @@ def test_cloud_hold_subscription_rate_recorded_h200_offers_slots(
     assert recorded["rate"]["status"] == "rejected"
     assert recorded["rate_refused_until"] == "2026-11-04T22:00:00Z"
     assert recorded["credit"]["remaining"] == 244.0
-    assert _slots(tmp_path, registry) == {"lab-primary": 17}
-    assert acc.cloud_account_skip(recorded, NOW) is None
+    assert _slots(tmp_path, registry) == {"lab-primary": 0}
+    assert "2026-11-04T22:00:00Z" in str(acc.cloud_account_skip(recorded, NOW))
     assert (
         acc.cloud_slots(tmp_path, registry, None, fresh_s=FRESH_S, now=NOW)["caps"][
             "lab-primary"
         ]["held"]
-        is None
+        is not None
+    )
+    transports = [ModelCloudTransport(name="on_lab-primary")]
+    picked = acc.cloud_pick(tmp_path, registry, transports, fresh_s=FRESH_S, now=NOW)
+    assert picked["account"] is None
+    reset = datetime(2026, 11, 4, 22, tzinfo=UTC)
+    _logged_in(tmp_path, registry, reset)
+    assert (
+        acc.cloud_pick(tmp_path, registry, transports, fresh_s=FRESH_S, now=reset)[
+            "account"
+        ]
+        == "lab-primary"
     )
 
 
 @pytest.mark.parametrize("status", ["allowed", "allowed_warning", "rejected"])
 @pytest.mark.parametrize("kind", ["five_hour", "seven_day"])
-def test_cloud_rate_reading_never_holds(tmp_path: Path, kind: str, status: str) -> None:
+def test_cloud_rate_reading_holds_only_rejected(
+    tmp_path: Path, kind: str, status: str
+) -> None:
     resets = (NOW + timedelta(days=2)).timestamp()
     acc.record_cloud_credit(
         tmp_path, "host_a", 244.0, "usage reading", now=NOW - timedelta(hours=1)
@@ -96,26 +115,34 @@ def test_cloud_rate_reading_never_holds(tmp_path: Path, kind: str, status: str) 
         {"rateLimitType": kind, "status": status, "resetsAt": resets},
         now=NOW,
     )
-    assert held is None
+    assert held == ("2026-11-04T12:22:00Z" if status == "rejected" else None)
     entry = _account(tmp_path)
-    # The reading stays as telemetry, and no key that gates placement was written.
     assert entry["rate"]["type"] == kind
     assert entry["rate"]["status"] == status
-    assert not {"limited_until", "limited_why", "rate_refused_until"} & set(entry)
-    assert acc.cloud_account_skip(entry, NOW) is None
-    assert _slots(tmp_path, _registry("host_a")) == {"host_a": acc.CLOUD_CAP_START}
+    if status == "rejected":
+        assert entry["limited_until"] == held
+        assert entry["limited_source"] == acc.CLOUD_HOLD_STAMP
+        assert acc.cloud_account_skip(entry, NOW) is not None
+    else:
+        assert "limited_until" not in entry
+        assert acc.cloud_account_skip(entry, NOW) is None
+    assert _slots(tmp_path, _registry("host_a")) == {
+        "host_a": 0 if status == "rejected" else acc.CLOUD_CAP_START
+    }
 
 
 @pytest.mark.parametrize("status", ["allowed", "allowed_warning", "rejected"])
 @pytest.mark.parametrize("kind", ["five_hour", "seven_day"])
-def test_cloud_rate_reading_never_holds_when_the_credit_is_unread(
+def test_cloud_rate_reading_holds_rejected_when_the_credit_is_unread(
     tmp_path: Path, kind: str, status: str
 ) -> None:
-    """Only the credit gates: an account with no credit reading is not held by a rate header either."""
+    """A rejected reading also holds an account without a credit reading."""
     acc.record_cloud_rate(
         tmp_path, "host_a", {"rateLimitType": kind, "status": status}, now=NOW
     )
-    assert acc.cloud_account_skip(_account(tmp_path), NOW) is None
+    assert (acc.cloud_account_skip(_account(tmp_path), NOW) is not None) == (
+        status == "rejected"
+    )
 
 
 def test_cloud_rate_reading_never_holds_the_credit_gate_stays(tmp_path: Path) -> None:
@@ -204,3 +231,198 @@ def test_cloud_measured_refusal_holds_a_deliberate_mark_is_honored(
 ) -> None:
     acc.mark_cloud_limited(tmp_path, "host_a", "2099-01-01T00:00:00Z", "operator hold")
     assert "operator hold" in str(acc.cloud_account_skip(_account(tmp_path), NOW))
+
+
+def test_record_rate_handler_persists_before_return_and_all_rejected_wait(
+    tmp_path: Path,
+) -> None:
+    registry = _registry("host_a", "host_b")
+    _logged_in(tmp_path, registry, NOW)
+    handler = HandlerCloudSessionPlacement()
+    for account in registry:
+        result = handler.handle(
+            ModelCloudSessionPlacementRequest(
+                action="record_rate",
+                placement_dir=str(tmp_path),
+                account=account.label,
+                now=NOW,
+                rate={
+                    "rateLimitType": "seven_day",
+                    "status": "rejected",
+                    "resetsAt": (NOW + timedelta(days=2)).timestamp(),
+                },
+            )
+        )
+        assert result.error is None
+        assert result.held == "2026-11-04T12:22:00Z"
+        assert _account(tmp_path, account.label)["limited_until"] == result.held
+    assert _slots(tmp_path, registry) == {"host_a": 0, "host_b": 0}
+    picked = acc.cloud_pick(
+        tmp_path,
+        registry,
+        [ModelCloudTransport(name=f"on_{a.label}") for a in registry],
+        fresh_s=FRESH_S,
+        now=NOW,
+        run_id="must-wait",
+    )
+    assert picked["account"] is None
+    assert all(
+        "must-wait" not in _account(tmp_path, a.label).get("active", {})
+        for a in registry
+    )
+
+
+def test_rejected_rate_does_not_shorten_an_existing_hold_or_outlive_reset(
+    tmp_path: Path,
+) -> None:
+    acc.mark_cloud_limited(
+        tmp_path, "host_a", "2026-11-05T00:00:00Z", "recorded refusal"
+    )
+    held = acc.record_cloud_rate(
+        tmp_path,
+        "host_a",
+        {
+            "status": "rejected",
+            "resetsAt": (NOW + timedelta(hours=1)).timestamp(),
+        },
+        now=NOW,
+    )
+    assert held == "2026-11-05T00:00:00Z"
+    assert _account(tmp_path)["limited_why"] == "recorded refusal"
+    for seconds in (-1, 0):
+        acc.record_cloud_rate(
+            tmp_path,
+            "host_b",
+            {
+                "status": "rejected",
+                "resetsAt": (NOW + timedelta(seconds=seconds)).timestamp(),
+            },
+            now=NOW,
+        )
+        assert acc.cloud_account_skip(_account(tmp_path, "host_b"), NOW) is None
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [
+        {
+            "status": "idle",
+            "rate": {"status": "rejected", "rateLimitType": "seven_day"},
+        },
+        {
+            "status": "requires_action",
+            "detail": "Weekly limit reached, resets 2026-11-04T22:00:00Z",
+        },
+        {
+            "status": "idle",
+            "needs_action": "You've hit your limit · resets Nov 5 at 9am (UTC)",
+        },
+        {"status": "archived", "bucket": "usage_limit"},
+    ],
+)
+@pytest.mark.parametrize("brief", ["Lane kind: ticket", "Lane kind: review-only"])
+def test_terminal_usage_limit_is_limited_through_handler(
+    tmp_path: Path, ended: dict, brief: str
+) -> None:
+    result = HandlerCloudSessionPlacement().handle(
+        ModelCloudSessionPlacementRequest(
+            action="render_result",
+            owner="owner",
+            account="host_a",
+            run_id="run-a",
+            session={"url": "session-url"},
+            ended=ended,
+            brief=brief,
+        )
+    )
+    assert result.error is None
+    assert result.status == "limited"
+    assert result.outcome == "blocked"
+    assert "usage limit" in str(result.text).lower()
+    assert "watcher showed no" not in str(result.text)
+    assert "LANE_RESULT outcome=blocked" in str(result.text)
+
+
+@pytest.mark.parametrize(
+    "ended",
+    [
+        {
+            "status": "idle",
+            "detail": "Finished the work",
+            "rate": {"status": "allowed"},
+        },
+        {"status": "idle", "detail": "too many concurrent sessions"},
+        {"status": "running", "detail": "weekly limit"},
+    ],
+)
+def test_other_sessions_still_close_without_a_pr(tmp_path: Path, ended: dict) -> None:
+    result = HandlerCloudSessionPlacement().handle(
+        ModelCloudSessionPlacementRequest(
+            action="render_result",
+            owner="owner",
+            account="host_a",
+            run_id="run-a",
+            session={"url": "session-url"},
+            ended=ended,
+        )
+    )
+    assert result.status == "cloud-no-pr"
+
+
+def test_a_pr_keeps_its_handoff_when_session_ends_limited(tmp_path: Path) -> None:
+    result = HandlerCloudSessionPlacement().handle(
+        ModelCloudSessionPlacementRequest(
+            action="render_result",
+            owner="owner",
+            account="host_a",
+            run_id="run-a",
+            session={"url": "session-url"},
+            ended={"status": "idle", "detail": "weekly limit"},
+            prs=({"pr": "repo#1", "head": "abc"},),
+        )
+    )
+    assert result.status == "done"
+    assert "LANE_RESULT outcome=handed-off" in str(result.text)
+
+
+def test_recorded_pool_session_rates_offer_only_the_allowed_account(
+    tmp_path: Path,
+) -> None:
+    receipt = json.loads(
+        (FIXTURE.parent / "cloud_session_rates_2026-11-04.json").read_text()
+    )
+    now = datetime.fromisoformat(receipt["observed_at"])
+    registry = _registry(*receipt["sessions"])
+    _logged_in(tmp_path, registry, now)
+    handler = HandlerCloudSessionPlacement()
+    for label, session in receipt["sessions"].items():
+        parsed = handler.handle(
+            ModelCloudSessionPlacementRequest(
+                action="parse_session", text="CLOUD-SESSION " + json.dumps(session)
+            )
+        )
+        assert parsed.error is None
+        assert parsed.parsed is not None
+        recorded = handler.handle(
+            ModelCloudSessionPlacementRequest(
+                action="record_rate",
+                placement_dir=str(tmp_path),
+                account=label,
+                rate=parsed.parsed["rate"],
+                now=now,
+            )
+        )
+        assert recorded.error is None
+        assert recorded.held == (
+            "2026-11-05T13:00:00Z" if label == "lab-h053" else None
+        )
+    slots = acc.cloud_slots(tmp_path, registry, None, fresh_s=FRESH_S, now=now)
+    assert slots["accounts"] == {"lab-h051": acc.CLOUD_CAP_START, "lab-h053": 0}
+    picked = acc.cloud_pick(
+        tmp_path,
+        registry,
+        [ModelCloudTransport(name=f"on_{a.label}") for a in registry],
+        fresh_s=FRESH_S,
+        now=now,
+    )
+    assert picked["account"] == "lab-h051"

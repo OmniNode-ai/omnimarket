@@ -181,9 +181,7 @@ def cloud_account_free(account: Mapping[str, Any], now: datetime) -> int:
 
 
 def cloud_account_skip(account: Mapping[str, Any], now: datetime) -> str | None:
-    """Why an account starts no cloud session now, or None. Cloud sessions draw on the cloud credit, so a
-    subscription rate reading never gates: only the credit, a recorded hold (a start the platform refused, or
-    ``mark_cloud_limited``) and the concurrency cap do."""
+    """Why an account starts no session: credit, a recorded hold, a rejected rate or concurrency."""
     if account.get("exhausted_at"):
         return f"credit read zero at {account['exhausted_at']}"
     until = str(account.get("limited_until") or "")
@@ -194,6 +192,9 @@ def cloud_account_skip(account: Mapping[str, Any], now: datetime) -> str | None:
     ):
         why = account.get("limited_why")
         return f"limited until {until}" + (f" ({why})" if why else "")
+    rate_until = reg.rejected_rate_until(account.get("rate"), now)
+    if rate_until:
+        return f"limited until {rate_until} (recorded usage limit rejected)"
     if cloud_account_free(account, now) < 1:
         return f"at its cap: {cloud_account_running(account, now)} running (cap {cloud_account_cap(account)})"
     return None
@@ -283,9 +284,7 @@ def record_cloud_rate(
     *,
     now: datetime | None = None,
 ) -> str | None:
-    """Record the subscription rate reading a session of the account carried (``rateLimitType``, ``status``,
-    ``resetsAt``) as telemetry. A cloud session draws on the cloud credit, never on that subscription limit, so no
-    reading holds the account: the answer is always None (a hold comes from a refused start, ``note_cloud_refusal``)."""
+    """Persist the session's rate reading and any rejected hold before returning its effective reset."""
     if not isinstance(rate, Mapping):
         return None
     now = now or datetime.now(UTC)
@@ -295,14 +294,27 @@ def record_cloud_rate(
         if isinstance(resets, (int, float)) and resets > 0
         else f"{now + timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}"
     )
+    held = None
     with _cloud_state(pdir) as state:
-        state["accounts"].setdefault(account, {})["rate"] = {
+        entry = state["accounts"].setdefault(account, {})
+        entry["rate"] = {
             "type": str(rate.get("rateLimitType") or ""),
             "status": str(rate.get("status") or ""),
             "resets_at": until,
             "read_at": f"{now:%Y-%m-%dT%H:%M:%SZ}",
         }
-    return None
+        held = reg.rejected_rate_until(entry["rate"], now)
+        if held:
+            previous = str(entry.get("limited_until") or "")
+            if entry.get("limited_source") == CLOUD_HOLD_STAMP and previous >= held:
+                held = previous
+            else:
+                entry.update(
+                    limited_until=held,
+                    limited_source=CLOUD_HOLD_STAMP,
+                    limited_why=f"{entry['rate']['type'] or 'usage'} limit rejected",
+                )
+    return held
 
 
 @dataclass(frozen=True)

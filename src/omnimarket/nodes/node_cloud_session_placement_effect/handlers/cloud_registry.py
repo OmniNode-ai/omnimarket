@@ -42,6 +42,14 @@ def parse_moment(text: str) -> datetime | None:
     return None
 
 
+def rejected_rate_until(rate: Any, now: datetime) -> str | None:
+    """The future reset of a recorded rejected reading, including pre-migration readings."""
+    if not isinstance(rate, Mapping) or rate.get("status") != "rejected":
+        return None
+    reset = parse_moment(str(rate.get("resets_at") or ""))
+    return stamp_of(reset) if reset is not None and reset > now else None
+
+
 def hash10(value: str) -> str:
     """The first 10 hex of the sha256 of ``value``: how an org id or an email is named in the registry."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:HASH_LEN]
@@ -257,6 +265,13 @@ def _merge_legacy(
     if rates:
         newest_rate = max(rates, key=lambda r: str(r.get("read_at") or ""))
         out["rate"] = dict(newest_rate)
+        until = rejected_rate_until(newest_rate, now)
+        if until and until > str(out.get("limited_until") or ""):
+            out.update(
+                limited_until=until,
+                limited_source=hold_stamp,
+                limited_why=f"{newest_rate.get('type') or 'usage'} limit rejected",
+            )
     runs = [r for e in entries for r in (e.get("runs") or []) if isinstance(r, dict)]
     if runs:
         out["runs"] = runs[-runs_kept:]

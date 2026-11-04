@@ -369,7 +369,7 @@ def _legacy_file(tmp: Path, extra: dict[str, Any] | None = None) -> dict[str, An
     return data
 
 
-def test_migration_keeps_newest_credit_drops_unsourced_hold_and_renames_the_old_file(
+def test_migration_keeps_newest_credit_restores_rejected_rate_hold_and_renames_file(
     tmp_path: Path,
 ) -> None:
     a = _account(legacy_hosts=("h200", "h201"))
@@ -381,9 +381,10 @@ def test_migration_keeps_newest_credit_drops_unsourced_hold_and_renames_the_old_
     assert (
         entry["credit"]["remaining"] == 198.5
     )  # h201's reading is newer than h200's 244.0
-    # h200's hold has no recorded stamp
-    assert "limited_until" not in entry
-    assert "limited_source" not in entry
+    # The unexpired rejected reading supplies evidence even without an old hold stamp.
+    assert entry["limited_until"] == "2026-11-04T22:00:00Z"
+    assert entry["limited_source"] == "recorded"
+    assert acc.cloud_account_skip(entry, NOW) is not None
     assert entry["cap"] == 7  # the lower cap
     assert list(entry["active"]) == ["run_old"]  # union of unexpired active runs
     assert state["last"] == "lab-primary"

@@ -142,6 +142,21 @@ if d.get("session_status") in ENDED:
 """
 CLOUD_SESSION_ENDED = frozenset({"idle", "requires_action", "archived"})
 CLOUD_ENDED_GRACE_S = 300.0
+USAGE_LIMIT_RE = re.compile(
+    r"usage[ _-]limit|weekly[ _-]limit|rate[ _-]?limit|quota|hit your limit|limit reached",
+    re.IGNORECASE,
+)
+
+
+def cloud_session_limited(ended: Mapping[str, Any] | None) -> bool:
+    """Whether a terminal session reports a usage rejection rather than completed work."""
+    if not ended or ended.get("status") not in CLOUD_SESSION_ENDED:
+        return False
+    rate = ended.get("rate")
+    return (isinstance(rate, Mapping) and rate.get("status") == "rejected") or any(
+        USAGE_LIMIT_RE.search(str(ended.get(key) or ""))
+        for key in ("bucket", "detail", "needs_action")
+    )
 
 
 def cloud_session_program(review_only: bool) -> str:
@@ -413,7 +428,11 @@ def cloud_result_text(
         lines.append(
             f"PR: {service_endpoint_url('github.web_url')}/{owner}/{repo}/pull/{number} head={p['head']}"
         )
-    if not prs:
+    if not prs and cloud_session_limited(ended):
+        lines.append(
+            f"BLOCKER: cloud session ended on a usage limit on account {account}"
+        )
+    elif not prs:
         when = "after the session ended" if ended else "before the lane deadline"
         lines.append(
             f"BLOCKER: the PR watcher showed no changed or new PR {when} for "
@@ -515,7 +534,8 @@ def cloud_close(
 ) -> dict[str, Any]:
     """The lane's result text and the close the runner makes on it: a review-only lane closes on its review, any
     other lane ``done`` with a PR and ``cloud-no-pr``/``blocked`` without one."""
-    if lane_kind(brief) == REVIEW_ONLY_KIND:
+    limited = not prs and cloud_session_limited(ended)
+    if lane_kind(brief) == REVIEW_ONLY_KIND and not limited:
         return cloud_review_result(account, session, run_id, ended, brief)
     text = cloud_result_text(
         owner,
@@ -532,7 +552,10 @@ def cloud_close(
         **(
             {"status": "done", "outcome": "done"}
             if prs
-            else {"status": "cloud-no-pr", "outcome": "blocked"}
+            else {
+                "status": "limited" if limited else "cloud-no-pr",
+                "outcome": "blocked",
+            }
         ),
     }
 
