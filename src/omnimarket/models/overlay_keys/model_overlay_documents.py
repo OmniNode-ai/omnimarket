@@ -47,6 +47,29 @@ RelPath = Annotated[
 ]
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
+# The login, jump host and key file a lab host row may declare for its ssh destination (OMN-17427). The rules are the launcher's
+# and the placement plugin's: none may read to ssh as an option or hold a space or shell syntax.
+SshUser = Annotated[str, StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")]
+SshJump = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^[A-Za-z0-9_][A-Za-z0-9_.@:\[\]-]*(,[A-Za-z0-9_][A-Za-z0-9_.@:\[\]-]*)*$"
+    ),
+]
+
+
+def _identity_path(value: str) -> str:
+    if ".." in value.split("/"):
+        raise ValueError("must not hold a '..' segment")
+    return value
+
+
+SshIdentity = Annotated[
+    str,
+    StringConstraints(pattern=r"^(~/|/)[A-Za-z0-9_./+-]+$"),
+    AfterValidator(_identity_path),
+]
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -70,6 +93,12 @@ class ModelLabHostRow(_ModelOverlayBase):
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The login every destination of the row is reached as, the jump host (ssh ``-J``) it is reached through, and the key file
+    # offered to it (OMN-17427). Omitted: ssh's own defaults, as before. The probe and the launcher pass them; this model only
+    # keeps a table that carries them from being refused whole.
+    ssh_user: SshUser | None = None
+    proxy_jump: SshJump | None = None
+    ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
     available: bool = True

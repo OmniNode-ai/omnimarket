@@ -16,6 +16,16 @@ requirements:
     acceptance:
       - id: AC2
         statement: 'AC2: plain and queued requests omit unset optional fields and reach an older host through the bus caller; a set optional field survives serialization and is refused by an older host; the rule also applies to a future optional field -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_request_additive_wire.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-code-edit-scope-move
+    statement: The installed scope node derives exact named tracked files and checks through its declared command and completed event.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: scope derivation preserves first-mention order, deduplication, the 20-file cap, unknown-path refusal and declared checks; installed discovery and infra auto-wiring publish the result on the declared completed topic for both named and unknown files -- falsifier: uv run pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov'
+  - id: req-omn19998-pool-probe-overlay
+    statement: The Claude pool refill passes a lane overlay to the credential probe that requires it.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the refill probe writes a lane overlay binding the host process environment and file overlay documents and passes it with --overlay to runtime_claude_probe; typed probe receipts remain classified as ok, limited, timeout or unavailable -- falsifier: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov -k "probe"'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -53,4 +63,40 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19998 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-code-edit-scope-move
+    description: The scope node preserves the six derivation cases and its installed contract routes a bus request to a completed event. This migration check does not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-code-edit-scope-deploy
+    description: Hosted deployment smoke discovers the installed scope entry point, auto-wires its contract through infra, and checks completed event payloads for named and unknown files on the declared topic using an in-memory bus.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov --tb=line -k runtime_command
+        cwd: .
+  - id: dod-omn19998-pool-probe-overlay
+    description: The refill tests check the required overlay argument and both dependency bindings, typed receipt classification, token rotation and dry-run behavior. The overlay regression test fails before this PR's handler change because the probe command supplies no --overlay.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-pool-probe-overlay-deploy
+    description: Hosted deployment smoke checks that the generated remote probe script invokes the credential probe with a lane overlay binding the host environment and file documents, and that typed receipts are read and classified. It needs no lab access or live credential and does not claim a live host installation readback.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
         cwd: .
