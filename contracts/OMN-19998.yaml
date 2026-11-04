@@ -52,6 +52,9 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_work_host_table.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/handlers/test_node_overlay_reader_structured.py tests/test_routing_sources_omn20601.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-workspace-lab-hosts-deploy
     description: Hosted wiring smoke invokes the lab-work run command over an in-memory bus with capacity advertisements. Workspace discovery places the eligible host and refuses the unavailable host with exit 75. No live host install or current pool capacity is asserted.
     source: manual

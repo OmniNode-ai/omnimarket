@@ -30,7 +30,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_ROOTS_ENV,
     NodeOverlayError,
-    find_node_overlay,
+    NodeOverlayNotFoundError,
     load_structured_overlay,
     not_configured_message,
 )
@@ -149,8 +149,6 @@ def _table_from_file(spec: OverlayKeySpec, path_text: str) -> ModelLabHostsTable
 
 def _lab_hosts_environment(env: Mapping[str, str]) -> Mapping[str, str]:
     """Append the declared workspace's overlays after the caller's overlay roots."""
-    if find_node_overlay("lab_hosts", env) is not None:
-        return env
     workspace = env.get("OMNI_HOME", "").strip()
     config = env.get("ONEX_WORKSPACE_CONFIG_ROOT", "").strip()
     if not workspace and not config:
@@ -188,13 +186,24 @@ def resolve_lab_hosts_table(
     pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
     if pinned:
         return _table_from_file(spec, pinned)
-    document = load_structured_overlay(
-        spec.overlay_id,
-        OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
-        _lab_hosts_environment(env),
-        missing_message=not_configured_message(spec.overlay_id, spec.key, spec.env_vars)
-        + "; or declare ONEX_WORKSPACE_CONFIG_ROOT with config/onex/overlays/lab_hosts/overlay.yaml",
+    missing_message = (
+        not_configured_message(spec.overlay_id, spec.key, spec.env_vars)
+        + "; or declare ONEX_WORKSPACE_CONFIG_ROOT with config/onex/overlays/lab_hosts/overlay.yaml"
     )
+    try:
+        document = load_structured_overlay(
+            spec.overlay_id,
+            OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+            env,
+            missing_message=missing_message,
+        )
+    except NodeOverlayNotFoundError:
+        document = load_structured_overlay(
+            spec.overlay_id,
+            OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+            _lab_hosts_environment(env),
+            missing_message=missing_message,
+        )
     if not isinstance(document, ModelLabHostsTable):
         raise NodeOverlayError(
             f"{spec.key}: the {spec.overlay_id} overlay is not a host table"
