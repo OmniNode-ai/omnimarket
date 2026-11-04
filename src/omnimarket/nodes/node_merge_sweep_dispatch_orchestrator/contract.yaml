@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_sweep_dispatch_orchestrator
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+description: Bind the reader's planned lane identities to serialized dispatch records and send them through the lane dispatch bus ingress.
+input_model:
+  module: omnimarket.nodes.node_merge_sweep_dispatch_orchestrator.models.model_merge_sweep_dispatch
+  name: ModelMergeSweepDispatchRequest
+output_model:
+  module: omnimarket.nodes.node_merge_sweep_dispatch_orchestrator.models.model_merge_sweep_dispatch
+  name: ModelMergeSweepDispatchResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dispatch_sweep
+      handler:
+        name: HandlerMergeSweepDispatch
+        module: omnimarket.nodes.node_merge_sweep_dispatch_orchestrator.handlers.handler_merge_sweep_dispatch
+      input_model: omnimarket.nodes.node_merge_sweep_dispatch_orchestrator.models.model_merge_sweep_dispatch.ModelMergeSweepDispatchRequest
+      output_model: omnimarket.nodes.node_merge_sweep_dispatch_orchestrator.models.model_merge_sweep_dispatch.ModelMergeSweepDispatchResult
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.merge-sweep-dispatch-requested.v1]
+  publish_topics: [onex.evt.omnimarket.merge-sweep-dispatch-completed.v1]
+terminal_event: onex.evt.omnimarket.merge-sweep-dispatch-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.merge-sweep-dispatch-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.merge-sweep-dispatch-completed.v1
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: merge_sweep_dispatch
+      workflow_version: {major: 1, minor: 0, patch: 0}
+      description: Submit prepared lanes through the canonical dispatch contract.
+    execution_graph:
+      nodes:
+        - node_id: dispatch_lane
+          node_type: EFFECT_GENERIC
+          description: Validate and dispatch each immutable lane record over the bus.
+          step_config:
+            node: node_lane_dispatch_effect
+            operation: dispatch
+            for_each: lanes
+    coordination_rules:
+      execution_mode: sequential
+      parallel_execution_allowed: false
+      failure_recovery_strategy: fail_fast
+      recovery_enabled: false
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: false
+  runtime_profiles: [effects]
+  timeout_ms: 7200000
+# The reader's workflow kinds map to the existing contract's declared kinds.
+dispatch_kinds:
+  fix: conflict-fix
+  close: ticket
+  land-chain-head: ticket
+  diagnose: review-only
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory

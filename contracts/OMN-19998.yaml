@@ -41,6 +41,16 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-lane-dispatch-contract
+    statement: Lane dispatch uses a frozen serialized spec, a verified canonical record, declared bus topics and deployment-bound grant roles.
+    acceptance:
+      - id: AC8
+        statement: 'AC6: the dispatch contract round-trips canonical JSON, refuses invalid policy and admission facts, preserves runner arguments and routes through its declared node; machine topic roles resolve only when bound by the overlay -- falsifiers: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka" and uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov'
+  - id: req-omn19998-sweep-dispatch-move
+    statement: Planned merge sweep lanes use the serialized dispatch node and preserve their repository, ticket, parent and host pin.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: a planned lane without a repo is refused before the runner; valid lanes preserve identity through the declared runtime bus, and edited identities and record hashes are refused -- falsifier: uv run --frozen pytest tests/nodes/test_golden_chain_merge_sweep_dispatch.py -q -n 0 --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -53,6 +63,41 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-lane-dispatch-contract
+    description: Frozen model, canonical record, policy refusals and runner arguments are exercised in the focused dispatch suite. This does not assert the original controller timer criteria or a live broker grant.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka"
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov
+        cwd: .
+  - id: dod-omn19998-lane-dispatch-deploy
+    description: Hosted deployment smoke invokes the declared node through RuntimeLocal with an in-memory overlay and checker/runner protocol adapters. The real Redpanda proof remains subject to deployment topic and group authorization; this smoke does not claim a live installation.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_golden_chain_lane_dispatch_effect.py -q -n 0 --no-cov -k declared_node_over_inmemory_overlay
+        cwd: .
+  - id: dod-omn19998-sweep-dispatch-move
+    description: Scoped dispatch refusal and identity checks plus a nested RuntimeLocal bus cycle using protocol checker and runner adapters. This does not assert the original timer criteria, a live lane launch or a skill installation.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_golden_chain_merge_sweep_dispatch.py -q -n 0 --no-cov
+        cwd: .
+  - id: dod-omn19998-sweep-dispatch-deploy
+    description: Hosted smoke sends a sweep request through its declared command and terminal topics, then the lane dispatch contract through its own runtime bus, preserving the host and repository in the runner adapter call.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_golden_chain_merge_sweep_dispatch.py -q -n 0 --no-cov -k sweep_dispatch_node
+        cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
     source: manual
