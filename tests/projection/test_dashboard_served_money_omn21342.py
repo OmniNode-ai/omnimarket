@@ -21,16 +21,28 @@ the contract-declared topic map.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import socket
+import sys
 from decimal import Decimal
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 import pytest
+import uvicorn
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
+    HandlerLocalDashboardServe,
     create_dashboard_app,
+)
+from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
+    ModelLocalDashboardServeRequest,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
@@ -351,3 +363,100 @@ def test_an_install_with_no_tenant_refuses_the_money_read(tmp_path: Path) -> Non
     response = client.get("/money/window?start=2026-11-01&end=2026-11-02")
     assert response.status_code == 422
     assert response.json()["error"] == "tenant_not_configured"
+
+
+def test_deploy_dashboard_money_over_live_http(tmp_path: Path) -> None:
+    """Exercise the serving handler, its token guard and the real SQLite reader."""
+    (tmp_path / "index.html").write_text("<html>dashboard test pages</html>")
+    source = SqliteTableRowSource(_store(tmp_path))
+    # This synthetic token belongs only to the test's short-lived server.
+    token = "dashboard-money-test-token"
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+
+        def read(path: str, *, authenticated: bool = True) -> dict[str, object]:
+            headers = {"Authorization": f"Bearer {token}"} if authenticated else {}
+            request = Request(f"http://127.0.0.1:{port}{path}", headers=headers)
+            with urlopen(request, timeout=5) as response:
+                assert response.status == 200
+                body: dict[str, object] = json.load(response)
+                return body
+
+        async def serve(app: FastAPI, host: str, bound_port: int) -> None:
+            assert host == "127.0.0.1"
+            assert bound_port == port
+            server = uvicorn.Server(
+                uvicorn.Config(app, host=host, port=port, log_level="warning")
+            )
+            task = asyncio.create_task(server.serve(sockets=[listener]))
+            try:
+                for _ in range(500):
+                    if server.started or task.done():
+                        break
+                    await asyncio.sleep(0.01)
+                assert server.started, "the dashboard HTTP listener did not start"
+                window_path = "/money/window?start=2026-11-01&end=2026-11-02"
+                with pytest.raises(HTTPError) as denied:
+                    await asyncio.to_thread(read, window_path, authenticated=False)
+                assert denied.value.code == 401
+                assert json.load(denied.value)["error"] == "token_required"
+                money = await asyncio.to_thread(read, window_path)
+                assert money["tenant"] == _TENANT
+                totals = money["window_totals"]
+                assert isinstance(totals, dict)
+                assert totals["spend_usd"] == "1.35"
+                assert totals["savings_usd"] == "2.70"
+                assert totals["runs_total"] == 5
+                runs = await asyncio.to_thread(read, f"/projection/{_DECISIONS}")
+                costs = runs["run_manifest_costs"]
+                assert isinstance(costs, dict)
+                assert costs[_PRICED]["manifest_cost_usd"] == _price(
+                    "gemini-2.5-flash", 1200, 300
+                )
+                assert costs[_ESCALATED]["manifest_cost_usd"] == _price(
+                    "claude-sonnet-5-5", 2000, 500
+                )
+                with pytest.raises(HTTPError) as conflict:
+                    await asyncio.to_thread(read, window_path + "&tenant=someone-else")
+                assert conflict.value.code == 422
+                assert json.load(conflict.value)["error"] == "tenant_conflict"
+            finally:
+                server.should_exit = True
+                await asyncio.wait_for(task, timeout=5)
+
+        handler = HandlerLocalDashboardServe(
+            topic_map=_TOPICS, row_source=source, serve=serve, pages=tmp_path
+        )
+        result = asyncio.run(
+            handler.handle(
+                ModelLocalDashboardServeRequest(
+                    host="127.0.0.1", port=port, tenant_id=_TENANT, access_token=token
+                )
+            )
+        )
+        assert result.tenant_id == _TENANT
+
+
+if __name__ == "__main__":
+    # The contract's curl probe owns this process and its temporary seeded store.
+    probe_dir = Path(sys.argv[1])
+    (probe_dir / "index.html").write_text("<html>dashboard test pages</html>")
+    with socket.socket() as probe_listener:
+        probe_listener.bind(("127.0.0.1", 0))
+        probe_port = probe_listener.getsockname()[1]
+    (probe_dir / "port").write_text(str(probe_port))
+    asyncio.run(
+        HandlerLocalDashboardServe(
+            topic_map=_TOPICS,
+            row_source=SqliteTableRowSource(_store(probe_dir)),
+            pages=probe_dir,
+        ).handle(
+            ModelLocalDashboardServeRequest(
+                host="127.0.0.1",
+                port=probe_port,
+                tenant_id=_TENANT,
+                access_token="dashboard-money-test-token",
+            )
+        )
+    )

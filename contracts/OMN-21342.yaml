@@ -36,3 +36,57 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov --tb=line -k "window or spend or tenant"
     cwd: .
+- id: dod-omn21342-deploy-dashboard-money
+  description: Start the dashboard serving handler on an ephemeral loopback port over seeded SQLite. Use curl to read the window totals and manifest-priced runs with the dashboard token, and assert that missing credentials and another tenant are refused. This hosted-runner probe requires no external service and does not claim a production rollout.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      probe_dir="$(mktemp -d)"
+      uv run python tests/projection/test_dashboard_served_money_omn21342.py "$probe_dir" > "$probe_dir/server.log" 2>&1 &
+      probe_pid=$!
+      trap 'kill "$probe_pid"; wait "$probe_pid" || test "$?" -eq 143; rm -rf "$probe_dir"' EXIT
+      for attempt in $(seq 1 600); do
+        test -s "$probe_dir/port" && break
+        if ! kill -0 "$probe_pid"; then cat "$probe_dir/server.log"; exit 1; fi
+        sleep 0.1
+      done
+      if ! test -s "$probe_dir/port"; then cat "$probe_dir/server.log"; exit 1; fi
+      probe_url="http://127.0.0.1:$(cat "$probe_dir/port")"
+      curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --max-time 5 -H 'Authorization: Bearer dashboard-money-test-token' "$probe_url/money/window?start=2026-11-01&end=2026-11-02" > "$probe_dir/money.json"
+      curl --fail --silent --show-error --max-time 5 -H 'Authorization: Bearer dashboard-money-test-token' "$probe_url/projection/onex.snapshot.projection.delegation.decisions.v1" > "$probe_dir/runs.json"
+      test "$(curl --silent --show-error --max-time 5 -o "$probe_dir/denied.json" -w '%{http_code}' "$probe_url/money/window?start=2026-11-01&end=2026-11-02")" = 401
+      test "$(curl --silent --show-error --max-time 5 -o "$probe_dir/conflict.json" -w '%{http_code}' -H 'Authorization: Bearer dashboard-money-test-token' "$probe_url/money/window?start=2026-11-01&end=2026-11-02&tenant=someone-else")" = 422
+      uv run python - "$probe_dir" <<'PY'
+      import json
+      import sys
+      from decimal import Decimal
+      from pathlib import Path
+      from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
+      root = Path(sys.argv[1])
+      money = json.loads((root / "money.json").read_text())
+      assert money["tenant"] == "bc08ff01-9d50-442c-aca1-7ad2e687db70", money
+      totals = money["window_totals"]
+      assert totals["spend_usd"] == "1.35", totals
+      assert totals["savings_usd"] == "2.70", totals
+      assert totals["runs_total"] == 5, totals
+      runs = json.loads((root / "runs.json").read_text())
+      priced = runs["run_manifest_costs"]["6a0b5a8c-1d1c-4c43-9a7e-6b0f3f0c2a01"]
+      entry = ModelPricingTable.from_yaml().get_entry("gemini-2.5-flash")
+      assert entry is not None
+      expected = (1200 * Decimal(str(entry.input_cost_per_1k)) + 300 * Decimal(str(entry.output_cost_per_1k))) / 1000
+      assert Decimal(priced["manifest_cost_usd"]) == expected, priced
+      assert json.loads((root / "denied.json").read_text())["error"] == "token_required"
+      assert json.loads((root / "conflict.json").read_text())["error"] == "tenant_conflict"
+      print("dashboard live HTTP deploy probe: PASS")
+      PY
+    cwd: .
+- id: dod-omn21342-integration-proof-dashboard-money
+  description: Run the same live HTTP proof through lab-work at the checked-out revision, using the serving handler, its authentication middleware and the projection reader over seeded SQLite.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21342 -- uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov -n 0 -k deploy_dashboard_money_over_live_http
+    cwd: .
