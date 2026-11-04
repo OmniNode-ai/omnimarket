@@ -41,6 +41,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-host-model-serving
+    statement: A typed lab host declares model serving independently of lane and unit placement, defaulting to its existing availability when omitted.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -53,6 +58,24 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-host-model-serving
+    description: The recorded two-host reproducer loads through both production resolver paths. The focused tests cover inherited defaults, independent serving and placement values, frozen rows, malformed serving values and unknown-field refusal. This does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-host-model-serving-deploy
+    description: Hosted wiring smoke reads the recorded serving rows through the real overlay and explicit-file resolvers, then exercises the existing placement handler and observes both unavailable hosts refused. It needs no live model endpoint and does not assert a runtime installation or unpinned delegation.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov -k recorded_serving_hosts
+        cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
     source: manual
