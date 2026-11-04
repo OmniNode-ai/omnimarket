@@ -51,6 +51,7 @@ def empty(tmp_path: Path) -> dict[str, str]:
         (overlay.always_out, "idle_slot_fill.always_out_roles"),
         (overlay.cloud_backlog, "idle_slot_fill.cloud_backlog"),
         (overlay.experiment_designs, "idle_slot_fill.experiment_designs"),
+        (overlay.stay_out, "idle_slot_fill.lab_fill_stay_out"),
         (cloud_backlog.load_declaration, "idle_slot_fill.cloud_backlog"),
     ],
 )
@@ -74,6 +75,7 @@ def test_a_present_overlay_that_omits_a_key_refuses_naming_it(
         "process_fix_roles": overlay.process_fix_repos,
         "always_out_roles": overlay.always_out,
         "experiment_designs": overlay.experiment_designs,
+        "lab_fill_stay_out": overlay.stay_out,
     }
     with pytest.raises(NodeOverlayError, match=rf"idle_slot_fill\.{key}"):
         reads[key](env)

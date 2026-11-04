@@ -88,6 +88,17 @@ EXPERIMENT_DESIGNS: list[dict[str, str]] = [
     },
 ]
 
+LAB_FILL_STAY_OUT: list[dict[str, Any]] = [
+    {
+        "name": "dashboard",
+        "ruling": "RULING 2026-10-01T10:53:36Z lane=dashboard-stayout",
+        "tickets": ["OMN-19969"],
+        "criteria": ["C31", "C32"],
+        "repos": ["omnidash"],
+        "terms": ["dashboard", "omnidash"],
+    }
+]
+
 IDLE_SLOT_FILL: dict[str, Any] = {
     "process_fix_roles": ["private_data", "plugin_source"],
     "mvp_repos": [
@@ -100,6 +111,7 @@ IDLE_SLOT_FILL: dict[str, Any] = {
     "always_out_roles": ["deploy"],
     "cloud_backlog": CLOUD_BACKLOG,
     "experiment_designs": EXPERIMENT_DESIGNS,
+    "lab_fill_stay_out": LAB_FILL_STAY_OUT,
 }
 
 

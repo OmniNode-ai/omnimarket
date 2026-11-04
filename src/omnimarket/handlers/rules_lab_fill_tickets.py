@@ -10,12 +10,12 @@ The rule reads no file, network or clock; all facts arrive in the request.
 The live gate re-applies the closed and other-owner exclusions to Linear read just
 before the send, because the snapshot is read once a day.
 
-Kept exclusions, each with its ruling: closed tickets; tickets assigned to someone other
-than the operator; tickets a live CLAIM or an open PR already carries; repositories the
-caller puts in ``out_of_scope`` (the merge sweep's scope setting, parked and retired by
-RULING 2026-10-18T05:25:04Z, plus the repository RULING 2026-10-17T20:42:15Z keeps out
-of M4, which the caller names because this public repository does not); dashboard work
-(RULING 2026-10-01T10:53:36Z, OMN-19969).
+Kept exclusions: closed tickets; tickets assigned to someone other than the operator;
+tickets a live CLAIM or an open PR already carries; repositories the caller puts in
+``out_of_scope`` (the merge sweep's scope setting and the registry's always-out roles);
+and each stay-out set in ``stay_out``, which the caller reads from the registry with the
+ruling id that keeps lab-fill out of it. No repository, ticket or criterion set is spelled
+here, so changing a registry set changes the drops with no code change.
 """
 
 from __future__ import annotations
@@ -30,15 +30,13 @@ from omnimarket.models.lab_fill import (
     ModelLabFillLiveFacts,
     ModelLabFillLivePlan,
     ModelLabFillLiveVerdict,
+    ModelLabFillStayOut,
     ModelLabFillTicketDrop,
     ModelLabFillTicketFacts,
     ModelLabFillTicketItem,
     ModelLabFillTicketPlan,
 )
 
-# RULING 2026-10-01T10:53:36Z: dashboard stay-out (OMN-19969).
-DASHBOARD_TICKETS = frozenset({"OMN-19969"})
-DASHBOARD_CRITERIA = frozenset({"C31", "C32"})
 SPRINT_RE = re.compile(
     r"^Sprint\s+(?P<start>\d{4}-\d{2}-\d{2})\s*(?:→|->|to)\s*"
     r"(?P<end>\d{4}-\d{2}-\d{2})(?=\s|:|$)",
@@ -119,14 +117,37 @@ def parse_criteria(description: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(labels))
 
 
+def _word(term: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![\w-]){re.escape(term)}(?![\w-])", re.IGNORECASE)
+
+
+def stay_out_match(
+    stay_out: tuple[ModelLabFillStayOut, ...],
+    *,
+    ticket: str,
+    repo: str,
+    text: str,
+    carriers: tuple[str, ...] = (),
+) -> ModelLabFillStayOut | None:
+    """The first registry stay-out set the ticket falls in, or ``None``."""
+    lowered = text.lower()
+    for entry in stay_out:
+        if (
+            ticket in entry.tickets
+            or set(entry.criteria).intersection(carriers)
+            or repo in entry.repos
+            or any(term.lower() in lowered for term in entry.terms)
+            or any(_word(name).search(text) for name in entry.repos)
+        ):
+            return entry
+    return None
+
+
 def plan_ticket_backlog(facts: ModelLabFillTicketFacts) -> ModelLabFillTicketPlan:
     """Apply first-match gates to every issue, then stably rank admitted sources."""
     today = date.fromisoformat(facts.today)
     excluded = set(facts.out_of_scope)
-    excluded_patterns = {
-        repo: re.compile(rf"(?<![\w-]){re.escape(repo)}(?![\w-])", re.IGNORECASE)
-        for repo in sorted(excluded)
-    }
+    excluded_patterns = {repo: _word(repo) for repo in sorted(excluded)}
     open_pr = set(facts.open_pr)
     claimed = set(facts.claimed)
     live_text = {entry.id: entry.description for entry in facts.live_descriptions}
@@ -194,16 +215,19 @@ def plan_ticket_backlog(facts: ModelLabFillTicketFacts) -> ModelLabFillTicketPla
                 )
             )
             continue
-        if (
-            issue.id in DASHBOARD_TICKETS
-            or DASHBOARD_CRITERIA.intersection(carriers)
-            or issue.repo == "omnidash"
-            or "dashboard" in text.lower()
-            or "omnidash" in text.lower()
-        ):
+        stay = stay_out_match(
+            facts.stay_out,
+            ticket=issue.id,
+            repo=issue.repo,
+            text=text,
+            carriers=carriers,
+        )
+        if stay is not None:
             drops.append(
                 ModelLabFillTicketDrop(
-                    id=issue.id, reason=EnumLabFillTicketDrop.DASHBOARD
+                    id=issue.id,
+                    reason=EnumLabFillTicketDrop.STAY_OUT,
+                    detail=f"{stay.name}: {stay.ruling}",
                 )
             )
             continue

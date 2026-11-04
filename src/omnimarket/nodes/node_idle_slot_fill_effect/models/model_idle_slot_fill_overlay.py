@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.lab_fill import ModelLabFillStayOut
+
 
 class ModelReposRoles(BaseModel):
     """The role fields of the shared ``repos`` overlay; its other fields belong to other readers."""
@@ -53,3 +55,5 @@ class ModelIdleSlotFillOverlay(BaseModel):
     repo_required_kinds: list[str] | None = None
     cloud_backlog: ModelCloudBacklogOverlay | None = None
     experiment_designs: list[dict[str, Any]] | None = None
+    # The lab-fill stay-out sets, each with the ruling id that keeps lab-fill out of it.
+    lab_fill_stay_out: list[ModelLabFillStayOut] | None = None

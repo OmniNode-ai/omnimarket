@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The 21 private-value overlay keys: every key resolves from a fixture and refuses when nothing supplies it."""
+"""The 22 private-value overlay keys: every key resolves from a fixture and refuses when nothing supplies it."""
 
 from __future__ import annotations
 
@@ -78,6 +78,16 @@ FIXTURE_DOCUMENTS: dict[str, dict[str, Any]] = {
                 "measure": "Record the count of passes.",
             }
         ],
+        "lab_fill_stay_out": [
+            {
+                "name": "example-stay-out",
+                "ruling": "RULING 2026-01-01T00:00:00Z lane=example",
+                "tickets": ["OMN-1"],
+                "criteria": ["C1"],
+                "repos": ["repo-two"],
+                "terms": ["example"],
+            }
+        ],
     },
     "throughput_tick": {
         "host_tick_fix": "reinstall it through the host installer",
@@ -130,9 +140,9 @@ def _env(root: Path | None, **extra: str) -> dict[str, str]:
 ALL_KEYS = [spec.key for spec in OVERLAY_KEYS]
 
 
-def test_overlay_keys_are_the_21_of_the_inventory() -> None:
-    assert len(ALL_KEYS) == 21
-    assert len(set(ALL_KEYS)) == 21
+def test_overlay_keys_are_the_22_of_the_inventory() -> None:
+    assert len(ALL_KEYS) == 22
+    assert len(set(ALL_KEYS)) == 22
     assert sorted(OVERLAY_DOCUMENT_MODELS) == [
         "hygiene_vocab",
         "idle_slot_fill",

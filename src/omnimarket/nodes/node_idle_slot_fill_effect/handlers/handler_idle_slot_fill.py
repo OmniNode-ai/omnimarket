@@ -22,7 +22,8 @@ the file's order within a kind). Once the file backlog is spent the fill generat
 operator's open delegation-pillar and M4-carrier tickets with no live CLAIM and no open PR, from the session's Linear
 snapshot plans-today keeps; tickets whose triage TERMINAL is blocked on a missing readback; the checked-in delegation
 experiment designs, least recently sent first. It skips retired and out-of-scope repositories, other owners,
-deploy-repository and dashboard work (RULING 2026-10-01T10:53:36Z); OMNI_LAB_FILL_GENERATE=off turns it off. A key sent
+deploy-repository work and each registry stay-out set (``idle_slot_fill.lab_fill_stay_out``, each with its ruling
+id); OMNI_LAB_FILL_GENERATE=off turns it off. A key sent
 inside the window is skipped, so the tick sends one lane per item, not one per tick. A repository the merge sweep's one
 scope setting rules out (``sweep_scope.json``: parked, and retired by RULING 2026-10-18T05:25:04Z) is no candidate of any
 kind; with that setting unread, no lane that names a repository is sent (an unread scope is never an empty one). A
@@ -101,7 +102,10 @@ from omnimarket.handlers.handler_lab_fill_live_tickets import (
     linear_post,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
+from omnimarket.handlers.rules_lab_fill_tickets import (
+    plan_ticket_backlog,
+    stay_out_match,
+)
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
 from omnimarket.handlers.rules_stop_gate import (
     engine_stop_scopes,
@@ -157,9 +161,6 @@ FACT_MAX_AGE = timedelta(hours=48)
 EXPERIMENT_RERUN_AFTER = timedelta(hours=24)
 EFFORT = "high"
 GENERATED_KINDS = ("ticket", "readback", "experiment-design")
-DASHBOARD_RULING = "RULING 2026-10-01T10:53:36Z lane=dashboard-stayout (OMN-19969)"
-DASHBOARD_CRITERIA = frozenset({"C31", "C32"})
-DASHBOARD_TICKETS = frozenset({"OMN-19969"})
 LIVE_CLAIM = timedelta(
     minutes=120
 )  # a remote lane runs up to 90 minutes and the runner closes its CLAIM
@@ -1503,7 +1504,7 @@ def _closed(issue: dict[str, Any]) -> bool:
 def _scope_reason(
     issue: dict[str, Any], criteria: list[str], out_of_scope: set[str]
 ) -> str | None:
-    """Repository exclusions precede the dashboard stay-out ruling (OMN-17427)."""
+    """Repository exclusions precede the registry stay-out sets and their rulings (OMN-17427)."""
     text = " ".join(
         str(v) for v in (issue["title"], *issue["labels"], issue["project"])
     ).lower()
@@ -1514,13 +1515,16 @@ def _scope_reason(
     ):
         return "out-of-scope"
     if (
-        issue["id"] in DASHBOARD_TICKETS
-        or DASHBOARD_CRITERIA.intersection(criteria)
-        or issue["repo"] == "omnidash"
-        or "dashboard" in text
-        or "omnidash" in text
+        stay_out_match(
+            overlay.stay_out(),
+            ticket=issue["id"],
+            repo=issue["repo"],
+            text=text,
+            carriers=tuple(criteria),
+        )
+        is not None
     ):
-        return "dashboard"
+        return EnumLabFillTicketDrop.STAY_OUT.value
     return None
 
 
@@ -1572,6 +1576,9 @@ def generate_backlog(
                 "claimed": sorted(claimed),
                 "open_pr": sorted(open_pr),
                 "out_of_scope": sorted(out_of_scope | overlay.always_out()),
+                "stay_out": [
+                    entry.model_dump(mode="json") for entry in overlay.stay_out()
+                ],
             }
         )
         for drop in plan["drops"]:
@@ -1631,7 +1638,9 @@ def generate_backlog(
         ),
     ):
         repo = d.get("repo") or ""
-        if repo in out_of_scope | overlay.always_out() | {"omnidash"}:
+        if repo in out_of_scope | overlay.always_out() or any(
+            repo in entry.repos for entry in overlay.stay_out()
+        ):
             skip("out-of-scope")
             continue
         fact = f"Delegation experiment design {d['id']}: {d['title']}. Design: {d['design']}"
