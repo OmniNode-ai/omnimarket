@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from omnimarket.adapters.local_session_files import LocalSessionFiles
+from omnimarket.handlers.handler_local_session_files import LocalSessionFiles
 from omnimarket.handlers.session_scope import bind_session_scope
 from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 

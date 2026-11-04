@@ -35,7 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from omnimarket.adapters.local_session_files import LocalSessionFiles
+from omnimarket.handlers.handler_local_session_files import LocalSessionFiles
 from omnimarket.models.session_scope import ModelSessionScope
 from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
