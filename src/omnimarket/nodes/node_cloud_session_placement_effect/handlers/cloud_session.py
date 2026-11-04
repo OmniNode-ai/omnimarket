@@ -136,18 +136,55 @@ if d.get("session_status") in ENDED:
             after = page.get("last_id") if isinstance(page, dict) and page.get("has_more") else None
             if not after:
                 break
-        print("CLOUD-SESSION-REVIEW " + json.dumps(review_texts(events, REVIEW_FILE, LIMIT)))
+        result = None
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") == "user":
+                result = None
+            elif event.get("type") == "result":
+                result = {key: event[key] for key in ("type", "subtype", "is_error", "terminal_reason", "result", "errors") if key in event}
+        print("CLOUD-SESSION-RESULT " + json.dumps({"result": result}))
+        if review:
+            print("CLOUD-SESSION-REVIEW " + json.dumps(review_texts(events, REVIEW_FILE, LIMIT)))
     except Exception as exc:
         print("CLOUD-SESSION-REVIEW-UNREAD " + type(exc).__name__ + ": " + str(exc)[:200])
 """
 CLOUD_SESSION_ENDED = frozenset({"idle", "requires_action", "archived"})
 CLOUD_ENDED_GRACE_S = 300.0
+USAGE_LIMIT_RE = re.compile(
+    r"usage[ _-]limit|weekly[ _-]limit|rate[ _-]?limit|quota|hit your limit|limit reached",
+    re.IGNORECASE,
+)
+
+
+def cloud_session_limited(ended: Mapping[str, Any] | None) -> bool:
+    """A terminal limit ending; successful results outrank rejected rate telemetry."""
+    if not ended or ended.get("status") not in CLOUD_SESSION_ENDED:
+        return False
+    result = ended.get("result")
+    result = result if isinstance(result, Mapping) else {}
+    if result.get("is_error") is not True and (
+        result.get("subtype") == "success"
+        or result.get("terminal_reason") == "completed"
+    ):
+        return False
+    texts = [ended.get(key) for key in ("bucket", "detail", "needs_action")]
+    texts += [
+        result.get(key) for key in ("result", "errors", "subtype", "terminal_reason")
+    ]
+    if any(USAGE_LIMIT_RE.search(str(text or "")) for text in texts):
+        return True
+    rate = ended.get("rate")
+    return bool(
+        result.get("is_error") is True
+        and isinstance(rate, Mapping)
+        and rate.get("status") == "rejected"
+    )
 
 
 def cloud_session_program(review_only: bool) -> str:
-    """The session read; a review-only lane's also reads the ended session's final message and review file."""
-    if not review_only:
-        return CLOUD_SESSION_PROGRAM.strip()
+    """Read terminal results for every lane and review text for review-only lanes."""
     head = "\n".join(
         [
             CLOUD_REVIEW_TEXTS_PROGRAM.strip(),
@@ -210,6 +247,18 @@ def _review_texts(stdout: str) -> dict[str, str]:
     return {}
 
 
+def _session_result(stdout: str) -> dict[str, Any]:
+    for line in stdout.splitlines():
+        if line.startswith("CLOUD-SESSION-RESULT "):
+            try:
+                found = json.loads(line[len("CLOUD-SESSION-RESULT ") :])
+            except ValueError:
+                continue
+            if isinstance(found, dict):
+                return found
+    return {}
+
+
 def parse_cloud_session(stdout: str) -> dict[str, Any] | str:
     """The session state the read printed, or why it could not be read. A review-only read's texts ride on it."""
     for line in stdout.splitlines():
@@ -219,7 +268,7 @@ def parse_cloud_session(stdout: str) -> dict[str, Any] | str:
             except ValueError as exc:
                 return f"unparsed answer: {exc}"
             return (
-                {**found, **_review_texts(stdout)}
+                {**found, **_review_texts(stdout), **_session_result(stdout)}
                 if isinstance(found, dict)
                 else "unparsed answer"
             )
@@ -413,7 +462,11 @@ def cloud_result_text(
         lines.append(
             f"PR: {service_endpoint_url('github.web_url')}/{owner}/{repo}/pull/{number} head={p['head']}"
         )
-    if not prs:
+    if not prs and cloud_session_limited(ended):
+        lines.append(
+            f"BLOCKER: cloud session ended on a usage limit on account {account}"
+        )
+    elif not prs:
         when = "after the session ended" if ended else "before the lane deadline"
         lines.append(
             f"BLOCKER: the PR watcher showed no changed or new PR {when} for "
@@ -515,7 +568,8 @@ def cloud_close(
 ) -> dict[str, Any]:
     """The lane's result text and the close the runner makes on it: a review-only lane closes on its review, any
     other lane ``done`` with a PR and ``cloud-no-pr``/``blocked`` without one."""
-    if lane_kind(brief) == REVIEW_ONLY_KIND:
+    limited = not prs and cloud_session_limited(ended)
+    if lane_kind(brief) == REVIEW_ONLY_KIND and not limited:
         return cloud_review_result(account, session, run_id, ended, brief)
     text = cloud_result_text(
         owner,
@@ -532,7 +586,10 @@ def cloud_close(
         **(
             {"status": "done", "outcome": "done"}
             if prs
-            else {"status": "cloud-no-pr", "outcome": "blocked"}
+            else {
+                "status": "limited" if limited else "cloud-no-pr",
+                "outcome": "blocked",
+            }
         ),
     }
 
