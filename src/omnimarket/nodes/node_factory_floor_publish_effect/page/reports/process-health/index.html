@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Process before and after</title>
+<title>Process over time</title>
 <link rel="icon" href="data:,">
 <style>
 /* Layout: header with the reset and the headline count, then what changed most (worse first, then better), then the
@@ -36,7 +36,7 @@ h2{font-size:1.5rem;font-weight:800;line-height:1.1}
 h3{font-size:1.1rem;font-weight:600;letter-spacing:.03em}
 p{margin:0}
 a{color:var(--link)}
-a:focus-visible,summary:focus-visible{outline:2px solid var(--safety);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--safety);outline-offset:2px}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .eyebrow{font:600 .8125rem/1.3 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
@@ -88,6 +88,22 @@ details summary{cursor:pointer;color:var(--muted);font-size:.875rem}
 details.sources>summary{font-size:1.1rem;font-weight:700;color:var(--ink);padding:6px 0}
 details.sources[open]>summary{margin-bottom:8px}
 footer{font-size:.9rem;color:var(--muted);display:grid;gap:8px}
+button,input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:4px;min-height:44px;padding:8px 10px;min-width:0;max-width:100%}
+button{cursor:pointer}button[aria-pressed="true"]{background:var(--link);color:var(--panel);border-color:var(--link);font-weight:700}
+[hidden]{display:none!important}
+.segments{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.segments button{padding:8px 4px;font-size:.875rem}.segments button:nth-child(5),.segments button:nth-child(6){grid-column:span 2}
+@media(min-width:640px){.segments{grid-template-columns:repeat(4,minmax(0,1fr)) 2fr 1.3fr}.segments button:nth-child(5),.segments button:nth-child(6){grid-column:span 1}}
+#custom-range{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;align-items:end}
+label{display:grid;gap:6px;font-weight:600}input,select{width:100%}.measure-picker{max-width:38rem}#range-error{grid-column:1/-1;color:var(--stop-ink)}
+.timeline{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:12px;min-width:0}
+#timeline{display:block;width:100%;height:270px;touch-action:pan-y}
+#timeline text{fill:var(--muted);font:12px var(--f-body)}
+#timeline .trace{fill:none;stroke:var(--link);stroke-width:2.5;stroke-linejoin:round}
+#timeline .grid{stroke:var(--rule)}#timeline .reset{stroke:var(--warn-ink);stroke-width:2;stroke-dasharray:5 4}
+#timeline .dot{fill:var(--panel);stroke:var(--link);stroke-width:2}#timeline .inspect{stroke:var(--muted);stroke-dasharray:2 3}
+#point-detail{min-height:4.5em;font-size:.9rem;overflow-wrap:anywhere}#point-index{padding:0;accent-color:var(--link)}
+.range-note{font-size:.9rem;color:var(--muted)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}@media(min-width:700px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
 </style>
 <style>html.embed .hazard,html.embed .nav,html.embed h1{display:none}html.embed .wrap{padding-block:14px 20px}</style>
 </head>
@@ -97,14 +113,31 @@ footer{font-size:.9rem;color:var(--muted);display:grid;gap:8px}
     <div class="hazard" aria-hidden="true"></div>
     <nav class="nav"><a href="../">All reports</a><a href="../../">Factory floor</a></nav>
     <div class="eyebrow" id="stamp">Reading the process-health series</div>
-    <h1>Process before and after</h1>
-    <p class="lede" id="lede">How the factory's day-to-day work has gone since 15 October, with the factory reset marked, and a comparison of the hours before the reset with the same number of hours after it. Quality comes first; busyness and cost are context.</p>
+    <h1>Process over time</h1>
+    <p class="lede" id="lede">Choose a range to see how the factory's work changed. Each measure compares that range with the same length of time immediately before it. Quality comes first; busyness and cost are context.</p>
   </header>
   <div class="banner" id="banner" hidden></div>
+  <section aria-label="Range and measure" id="controls" hidden>
+    <div class="segments" role="group" aria-label="Time range">
+      <button type="button" data-range="1d" aria-pressed="false">1d</button>
+      <button type="button" data-range="3d" aria-pressed="false">3d</button>
+      <button type="button" data-range="7d" aria-pressed="false">7d</button>
+      <button type="button" data-range="month" aria-pressed="false">Month</button>
+      <button type="button" data-range="reset" aria-pressed="true">Since the reset</button>
+      <button type="button" data-range="custom" aria-pressed="false">Custom</button>
+    </div>
+    <form id="custom-range" hidden>
+      <label>Start (Eastern)<input type="datetime-local" id="range-start" required></label>
+      <label>End (Eastern)<input type="datetime-local" id="range-end" required></label>
+      <button type="submit">Apply range</button>
+      <p id="range-error" role="alert"></p>
+    </form>
+    <label class="measure-picker">Measure<select id="measure"></select></label>
+  </section>
   <div id="body"><p class="muted">Reading the series.</p></div>
   <footer>
     <div class="hazard" aria-hidden="true"></div>
-    <p>The series is computed by the process-health node from the work log, the landing controller's records, the repository status events, the merge history and the Linear snapshot. Quality measures come first; merges, delegation and cost are context, kept in a separate grey block. A source that could not be read, or only partly, is shown as unread or partial and its measure is never drawn as a zero. A hollow point on a chart is a day whose sources were only partly read.</p>
+    <p>The series is computed by the process-health node from the work log, the landing controller's records, the repository status events, the merge history and the Linear snapshot. Quality measures come first; merges, delegation and cost are context, kept in a separate grey block. A source that could not be read, or only partly, is shown as unread or partial and its measure is never drawn as a zero. Gaps in a line mean unmeasured. Tap the graph or move the inspection slider to read a point. All displayed times are Eastern; custom times use Eastern even when your device uses another zone.</p>
   </footer>
 </div>
 <script>
@@ -118,7 +151,7 @@ const POLARITY = {lower_is_better:"lower is better", higher_is_better:"higher is
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const el = id => document.getElementById(id);
 // Plain words (the board's glossary) and Eastern times with a relative age; UTC stays in the hover title.
-const GLOSSARY = [[/andon cords? pulled/gi,"stopped"],[/\ban andon\b/gi,"a stop"],[/\bandon\b/gi,"stop"],[/ledger rows?/gi,m=>/s$/i.test(m)?"log entries":"log entry"],[/\blanes\b/gi,"workers"],[/\blane\b/gi,"worker"],[/\bCI red\b/gi,"failing checks"],[/\bPRs\b/g,"changes"],[/\bPR\b/g,"change"]];
+const GLOSSARY = [[/andon stops started/gi,"stops started"],[/hours stopped by an andon/gi,"hours the line was stopped"],[/andon cords? pulled/gi,"stopped"],[/\ban andon\b/gi,"a stop"],[/\bandon\b/gi,"stop"],[/ledger rows?/gi,m=>/s$/i.test(m)?"log entries":"log entry"],[/\blanes\b/gi,"workers"],[/\blane\b/gi,"worker"],[/\bCI red\b/gi,"failing checks"],[/\bPRs\b/g,"changes"],[/\bPR\b/g,"change"]];
 const plain = s => GLOSSARY.reduce((t,[re,to]) => t.replace(re, (m, ...r) => { const off = r[r.length-2], whole = r[r.length-1], v = typeof to === "function" ? to(m) : to; const start = off === 0 || /[.!?:]\s*$/.test(whole.slice(0, off)); return start || /^[A-Z][a-z]/.test(m) ? v.charAt(0).toUpperCase() + v.slice(1) : v; }), String(s == null ? "" : s));
 const ISO_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z\b/g;
 function etText(iso){
@@ -151,12 +184,12 @@ function fmtNum(v, kind){
   return v.toLocaleString("en-US", {maximumFractionDigits: 1});
 }
 function fmtValue(v, status, c){
-  if (v == null || status === "unread") return `<span class="unread">unread</span>`;
+  if (v == null || status !== "read") return `<span class="unread">unmeasured</span>`;
   const unit = c.kind === "ratio" ? "" : " " + pl(c.comparable_unit || c.unit || "");
   return esc(fmtNum(v, c.kind)) + `<small>${unit}${status === "partial" ? " (partial)" : ""}</small>`;
 }
 function fmtDelta(c){
-  if (c.delta == null || c.before_status === "unread" || c.after_status === "unread") return `<span class="unread">unread</span>`;
+  if (c.delta == null || c.before_status !== "read" || c.after_status !== "read") return `<span class="unread">unread</span>`;
   const sign = c.delta > 0 ? "+" : c.delta < 0 ? "-" : "";
   const abs = fmtNum(Math.abs(c.delta), c.kind === "ratio" ? "ratio" : "count");
   const pct = c.delta_ratio != null && c.kind !== "ratio" ? `<small> (${c.delta_ratio > 0 ? "+" : c.delta_ratio < 0 ? "-" : ""}${Math.abs(c.delta_ratio*100).toFixed(0)}%)</small>` : "";
@@ -166,26 +199,6 @@ const areaOf = key => key.split(".")[0];
 const isGrey = c => GREY_PREFIXES.some(p => c.key.startsWith(p));
 const dirOf = c => POLARITY[c.polarity] || "";
 
-function chart(days, c){
-  const pts = days.map(d => {
-    const m = ((d.window || {}).metrics || []).find(x => x.key === c.key);
-    return m && m.value != null && m.status !== "unread" ? {v: m.value, part: m.status !== "read" || d.partial} : null;
-  });
-  const vals = pts.filter(Boolean).map(p => p.v);
-  const dir = dirOf(c);
-  const head = `<div class="t">${pl(c.label)}</div>${dir ? `<div class="dir">${c.polarity === "lower_is_better" ? "↓" : "↑"} ${esc(dir)}</div>` : ""}`;
-  if (!vals.length) return `<div class="chart">${head}<span class="unread">unread on every day</span></div>`;
-  const lo = Math.min(0, ...vals), hi = Math.max(...vals), w = 240, h = 64, span = hi - lo || 1;
-  const x = i => 6 + i*(w-12)/Math.max(1, pts.length-1), y = v => h-6 - (v-lo)/span*(h-12);
-  let path = "", pen = false;
-  pts.forEach((p,i) => { if (!p){ pen = false; return; } path += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(p.v).toFixed(1); pen = true; });
-  const resetI = days.findIndex(d => d.is_reset_day);
-  const svg = `<svg class="s" viewBox="0 0 ${w} ${h}" role="img" aria-label="${pl(c.label)} by day, ${days.length} days${dir ? ", " + esc(dir) : ""}">
-    <line class="gap" x1="6" y1="${y(0).toFixed(1)}" x2="${w-6}" y2="${y(0).toFixed(1)}"/>
-    ${resetI >= 0 ? `<line class="rs" x1="${x(resetI).toFixed(1)}" y1="0" x2="${x(resetI).toFixed(1)}" y2="${h}"/>` : ""}
-    <path class="ln" d="${path}"/>${pts.map((p,i) => p ? `<circle class="pt${p.part?" part":""}" cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2.5"/>` : "").join("")}</svg>`;
-  return `<div class="chart">${head}${svg}<div class="r"><span>${esc(dayShort(days[0].date))}</span><span>peak <b class="mono">${esc(fmtNum(hi, c.kind))}</b> ${pl(c.kind === "ratio" ? "" : c.unit || "")}</span><span>${esc(dayShort(days[days.length-1].date))}</span></div></div>`;
-}
 
 function compTable(list){
   let lastArea = "";
@@ -199,7 +212,7 @@ function compTable(list){
       <td class="num">${fmtValue(c.before, c.before_status, c)}</td><td class="num">${fmtValue(c.after, c.after_status, c)}</td>
       <td class="num">${fmtDelta(c)}</td><td><span class="verdict ${cls}">${esc(label)}</span></td></tr>`;
   }).join("");
-  return `<div class="tw"><table><thead><tr><th>Measure</th><th>Before reset</th><th>After reset</th><th>Change</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="tw"><table><thead><tr><th>Measure</th><th>Previous range</th><th>Selected range</th><th>Change</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // One plain line per measure: what it was, what it is now, how much it moved.
@@ -211,7 +224,7 @@ function moveLine(c){
 }
 const magnitude = c => c.delta_ratio != null ? Math.abs(c.delta_ratio) : Math.abs(c.delta || 0);
 function moves(quality){
-  const usable = c => c.before != null && c.after != null && c.before_status !== "unread" && c.after_status !== "unread";
+  const usable = c => c.before != null && c.after != null && c.before_status === "read" && c.after_status === "read";
   const top = verdict => quality.filter(c => c.verdict === verdict && usable(c)).sort((a, b) => magnitude(b) - magnitude(a)).slice(0, 5);
   const worse = top("worse"), better = top("improved");
   const box = (cls, title, list, none) => `<div class="move ${cls}"><h3>${title}</h3>${list.length ? `<ul>${list.map(moveLine).join("")}</ul>` : `<p class="muted">${none}</p>`}</div>`;
@@ -226,58 +239,230 @@ function sourceTable(sources){
   return `<div class="tw"><table><thead><tr><th>Source</th><th>Status</th><th>Covers</th><th>Gaps</th><th>Records</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function render(h){
-  const gen = Date.parse(h.generated_at);
-  el("stamp").innerHTML = "Process health · computed " + whenEt(h.generated_at, true);
-  const sm = h.summary || {}, days = h.days || [], comps = sm.comparisons || [];
-  const quality = comps.filter(c => !isGrey(c)), other = comps.filter(isGrey);
-  const measured = sm.measured !== false;
-  const before = sm.before || {}, after = sm.after || {};
-  let html = "";
-  if (!measured){
-    html += `<section><div class="banner">The before and after comparison is not measured: ${pl(sm.reason || "no reason given")}. The daily series below is still shown.</div></section>`;
-  } else {
-    html += `<section><h2>${esc(resetTitle(h.reset_label))}</h2>
-      <p class="muted">Compared: the <span class="mono">${esc(fmtNum(sm.window_hours, "count"))}</span> hours before the reset (${whenEt(before.start, false)} to ${whenEt(before.end, false)}) with the same number of hours after it (${whenEt(after.start, false)} to ${whenEt(after.end, false)}). Each figure is a rate per day or a share, so the two windows compare even where a source covers them unequally.</p>
-      <div class="tiles">
-        <div class="tile better"><b>${esc(sm.improved ?? 0)}</b><span>✓ measures better</span></div>
-        <div class="tile worse"><b>${esc(sm.worse ?? 0)}</b><span>▼ measures worse</span></div>
-        <div class="tile"><b>${esc(sm.flat ?? 0)}</b><span>– flat</span></div>
-        <div class="tile"><b>${esc(sm.unmeasured ?? 0)}</b><span>? unmeasured</span></div>
-      </div></section>`;
-    html += `<section><h2>What changed most</h2><p class="muted">The measures that moved furthest since the reset, with the direction that counts as good.</p>${moves(quality)}</section>`;
-  }
-  if (measured){
-    html += `<section><h2>Quality, before and after</h2><p class="muted">Each row shows how a measure stood before the reset, how it stands after, and whether that is better.</p>${compTable(quality)}</section>`;
-  }
-  html += `<section><h2>Quality by day</h2><p class="muted">One small chart per measure, one point per day.</p>
-    <div class="legend"><span>Dashed line: the reset day</span><span>Hollow point: a day with only part of its sources read</span><span>Gap in a line: unread</span></div>
-    <div class="series">${quality.map(c => chart(days, c)).join("")}</div></section>`;
-  if (measured){
-    html += `<section class="grey"><h2>Throughput and cost</h2><p>Context only. These are not quality: a faster or busier factory is not a better one.</p>${compTable(other)}</section>`;
-  }
-  html += `<section class="grey"><h2>Throughput and cost by day</h2><div class="series">${other.map(c => chart(days, c)).join("")}</div></section>`;
-  html += `<section><details class="sources"><summary>Sources and what was read</summary><p class="muted">Where each figure came from, what period each source covers, and whether it was read in full.</p>${sourceTable(h.sources || [])}</details></section>`;
-  el("body").innerHTML = html;
+// The overlay contains contributions, not daily averages. All queries use [start, end).
+const HOUR = 3600000, DAY = 24*HOUR;
+let health = null, selectedRange = "reset", customRange = null, measureKey = "", activePoints = [], activeExtent = null;
+const numericTime = t => typeof t === "number" ? t : Date.parse(t);
+function measureDefinitions(h){
+  const list = h.days?.[h.days.length-1]?.window?.metrics || [];
+  return [...list].sort((a,b) => Number(isGrey(a))-Number(isGrey(b)) || a.label.localeCompare(b.label));
 }
-
+function rangeFor(h){
+  const end = Date.parse(h.generated_at);
+  if (selectedRange === "custom" && customRange) return customRange;
+  if (selectedRange === "reset") return {start:Date.parse(h.reset_at), end};
+  if (selectedRange === "month") {
+    // One calendar month in Eastern, clamping the date at the target month's end.
+    const p = easternParts(end), day = Number(p.day), month = Number(p.month)-1;
+    const last = new Date(Date.UTC(Number(p.year), month, 0)).getUTCDate();
+    const date = new Date(Date.UTC(Number(p.year), month-1, Math.min(day,last)));
+    const local = date.toISOString().slice(0,10)+"T"+p.hour+":"+p.minute;
+    return {start:fromEastern(local,true), end};
+  }
+  return {start:end-Number(selectedRange.slice(0,-1))*DAY, end};
+}
+function easternParts(t){
+  const p = {};
+  new Intl.DateTimeFormat("en-CA", {timeZone:"America/New_York", year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(t)).forEach(x=>p[x.type]=x.value);
+  return p;
+}
+function easternInput(t){const p=easternParts(t);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+function fromEastern(value, preset=false){
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return NaN;
+  const wanted = Date.parse(value+"Z");
+  // Derive the offsets from the zone database on either side of the date.
+  const offsets = [...new Set([-DAY,DAY].map(shift=>{
+    const t=wanted+shift, p=easternParts(t);
+    return Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}Z`)-t;
+  }))];
+  const candidates=offsets.map(offset=>wanted-offset).sort((a,b)=>a-b);
+  const matches=candidates.filter(t=>easternInput(t)===value);
+  if(matches.length===1) return matches[0];
+  if(preset) return matches[0] ?? candidates[candidates.length-1];
+  return NaN;
+}
+function sourceReason(h, names, start, end){
+  for (const name of names){
+    const s=(h.sources||[]).find(s=>s.name===name);
+    if (!s || s.status==="unread") return plain(s?.reason || name+": source unread");
+    if (Date.parse(s.covered_from)>start || Date.parse(s.covered_to)<end || !s.covered_from || !s.covered_to) return plain(name+": source only partly covers this range");
+    if ((s.gaps||[]).some(g=>Date.parse(g.start)<end && Date.parse(g.end)>start)) return plain(name+": a recorded gap intersects this range");
+    if (s.status==="partial" && !(s.gaps||[]).length) return plain(s.reason || name+": source partial");
+  }
+  return "";
+}
+function valueFor(h, definition, start, end, enforceBucket=true){
+  const overlay=h.range_overlay, measure=overlay?.measures.find(m=>m.key===definition.key);
+  const unavailable = reason=>({value:null,status:"unread",reason});
+  if (!measure) return unavailable("Range observations are not published yet.");
+  if (end<=start) return unavailable("The end must follow the start.");
+  if (enforceBucket && end-start < overlay.bucket_hours*HOUR) return unavailable(`Range shorter than the data's ${overlay.bucket_hours}-hour bucket.`);
+  if (start<Date.parse(overlay.start) || end>Date.parse(overlay.end)) return unavailable("Range extends beyond the retained observations.");
+  const reason=measure.unavailable_reason || sourceReason(h,(definition.sources||[]).map(s=>s.name),start,end);
+  if (reason) return unavailable(reason);
+  const intervals=measure.reducer==="hours" || measure.reducer==="union_hours";
+  let observations=measure.observations.filter(o=>intervals ? numericTime(o.at)<end && numericTime(o.end)>start : numericTime(o.at)>=start && numericTime(o.at)<end);
+  if(observations.some(o=>o.unmeasured_reason)) return unavailable(observations.find(o=>o.unmeasured_reason).unmeasured_reason);
+  const unique=new Map();
+  observations.forEach((o,i)=>{
+    const key=o.identity || "point-"+i, prior=unique.get(key);
+    // Terminal priority is encoded only for terminal-based series; weights of
+    // weighted-mean samples retain their statistical meaning below.
+    if (!prior || (o.weight||1)>=(prior.weight||1)) unique.set(key,o);
+  });
+  observations=[...unique.values()];
+  let value;
+  if (intervals){
+    const spans=observations.map(o=>[Math.max(start,numericTime(o.at)),Math.min(end,numericTime(o.end))]).sort((a,b)=>a[0]-b[0]);
+    let total=0, edge=-Infinity;
+    for (const [a,b] of spans){total+=Math.max(0,b-(measure.reducer==="union_hours"?Math.max(a,edge):a));edge=Math.max(edge,b);}
+    value=total/HOUR;
+  } else if (measure.reducer==="median"){
+    const values=observations.map(o=>o.value).sort((a,b)=>a-b), n=values.length;
+    value=n ? (values[Math.floor((n-1)/2)]+values[Math.floor(n/2)])/2 : null;
+  } else if (measure.reducer==="ratio"){
+    value=observations.length ? observations.reduce((sum,o)=>sum+o.value,0)/observations.length : null;
+  } else if (measure.reducer==="weighted_mean"){
+    const weight=observations.reduce((sum,o)=>sum+o.weight,0);
+    value=weight ? observations.reduce((sum,o)=>sum+o.value*o.weight,0)/weight : null;
+  } else value=observations.reduce((sum,o)=>sum+o.value,0);
+  if (value==null) return unavailable("No measured observations in this range.");
+  value=Math.round(value*1000)/1000;
+  if (["count","hours","minutes"].includes(definition.kind)) value=value/(end-start)*DAY;
+  return {value,status:"read",reason:""};
+}
+function compareRange(h, range){
+  const length=range.end-range.start, counts={improved:0,worse:0,flat:0,unmeasured:0};
+  const comparisons=measureDefinitions(h).map(c=>{
+    const before=valueFor(h,c,range.start-length,range.start), after=valueFor(h,c,range.start,range.end);
+    const delta=before.value==null || after.value==null ? null : after.value-before.value;
+    const ratio=before.value ? delta/before.value : null;
+    let verdict="unmeasured";
+    if (delta!=null){
+      if (c.polarity==="neutral") verdict="informational";
+      else if (delta===0 || (ratio!=null && Math.abs(ratio)<=h.range_overlay.flat_threshold_ratio)) verdict="flat";
+      else verdict=(c.polarity==="lower_is_better" ? delta<0 : delta>0) ? "improved" : "worse";
+    }
+    if (verdict in counts) counts[verdict]++;
+    return {...c,before:before.value,after:after.value,before_status:before.status,after_status:after.status,delta,delta_ratio:ratio,verdict,
+      comparable_unit:["count","hours","minutes"].includes(c.kind)?c.unit+" per day":c.unit,
+      note:[before.reason && "Previous range: "+before.reason,after.reason && "Selected range: "+after.reason,c.method].filter(Boolean).join(" ")};
+  });
+  return {...counts,comparisons};
+}
+function render(h){
+  health=h;
+  el("stamp").innerHTML="Process health · computed "+whenEt(h.generated_at,true);
+  if (!h.range_overlay){
+    el("controls").hidden=true;
+    el("body").innerHTML='<p class="banner">Range observations are not published yet. Range details are unmeasured until the next process-health refresh.</p>';
+    return;
+  }
+  el("controls").hidden=false;
+  const definitions=measureDefinitions(h), keys=new Set(definitions.map(c=>c.key));
+  if (!keys.has(measureKey)) measureKey=definitions.find(c=>!isGrey(c))?.key || definitions[0]?.key || "";
+  el("measure").innerHTML=[false,true].map(grey=>`<optgroup label="${grey?"Throughput and cost · context":"Quality"}">${definitions.filter(c=>isGrey(c)===grey).map(c=>`<option value="${esc(c.key)}" ${c.key===measureKey?"selected":""}>${pl(c.label)}</option>`).join("")}</optgroup>`).join("");
+  const range=rangeFor(h), sm=compareRange(h,range), quality=sm.comparisons.filter(c=>!isGrey(c)), other=sm.comparisons.filter(isGrey);
+  const beforeStart=range.start-(range.end-range.start), iso=t=>new Date(t).toISOString();
+  const chosen=sm.comparisons.find(c=>c.key===measureKey);
+  const duration=(range.end-range.start)/HOUR;
+  el("body").innerHTML=`<section class="timeline"><h2 id="graph-title">${pl(chosen?.label || "Measure over time")}</h2>
+    <p class="range-note">${chosen?esc(dirOf(chosen)):""}${chosen?" · "+pl(chosen.comparable_unit):""}. One point per ${esc(h.range_overlay.bucket_hours)}-hour bucket; gaps mean unmeasured.</p>
+    <svg id="timeline" role="img" aria-labelledby="graph-title graph-description"></svg>
+    <p id="graph-description" class="range-note">${duration<h.range_overlay.bucket_hours?`Range shorter than the data's ${esc(h.range_overlay.bucket_hours)}-hour bucket. `:""}Factory reset: ${whenEt(h.reset_at,false)}${numericTime(h.reset_at)<range.start || numericTime(h.reset_at)>range.end?" (outside this range)":" · dashed marker on graph"}.</p>
+    <label for="point-index">Inspect a point · tap the graph or use this slider</label><input id="point-index" type="range" min="0" max="0" value="0" aria-describedby="point-detail">
+    <output id="point-detail" aria-live="polite"></output></section>
+    <section><h2>Selected range compared with the previous range</h2>
+    <p class="muted" id="comparison-windows">Selected: ${whenEt(iso(range.start),false)} to ${whenEt(iso(range.end),false)} (${esc(fmtNum(duration,"count"))} hours). Previous: ${whenEt(iso(beforeStart),false)} to ${whenEt(iso(range.start),false)}. Both windows have the same elapsed length. Counts and durations are rates per day; shares and medians retain their units. Incomplete coverage is unmeasured.</p>
+    <div class="tiles" id="range-counts">${[["improved","better","✓ measures better"],["worse","worse","▼ measures worse"],["flat","","– flat"],["unmeasured","","? unmeasured"]].map(([key,cls,label])=>`<div class="tile ${cls}" data-count="${key}"><b>${sm[key]}</b><span>${label}</span></div>`).join("")}</div></section>
+    <section><h2>What changed most</h2><p class="muted">Quality measures that moved furthest between these windows. Unmeasured figures do not count as better or worse.</p>${moves(quality)}</section>
+    <section><h2>Quality, before and after</h2>${compTable(quality)}</section>
+    <section class="grey"><h2>Throughput and cost</h2><p>Context only. These are not quality: a faster or busier factory is not a better one.</p>${compTable(other)}</section>
+    <section><details class="sources"><summary>Sources and what was read</summary>${sourceTable(h.sources||[])}</details></section>`;
+  document.querySelectorAll("[data-range]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.range===selectedRange)));
+  el("custom-range").hidden=selectedRange!=="custom";
+  drawTimeline(h,chosen,range);
+}
+function drawTimeline(h,c,range){
+  if (!c) return;
+  const step=h.range_overlay.bucket_hours*HOUR;
+  activePoints=[];
+  const retained=range.start>=Date.parse(h.range_overlay.start) && range.end<=Date.parse(h.range_overlay.end);
+  for(let start=range.start;retained && start<range.end;start+=step){
+    const end=Math.min(start+step,range.end), result=valueFor(h,c,start,end);
+    activePoints.push({start,end,at:(start+end)/2,...result});
+  }
+  const svg=el("timeline"), width=Math.max(270,svg.clientWidth||600), height=270;
+  const pad={left:48,right:16,top:30,bottom:44}, right=width-pad.right, bottom=height-pad.bottom;
+  const values=activePoints.filter(p=>p.value!=null).map(p=>p.value), hi=Math.max(1,...values), lo=0;
+  const x=t=>pad.left+(t-range.start)/(range.end-range.start)*(right-pad.left), y=v=>bottom-(v-lo)/(hi-lo)*(bottom-pad.top);
+  activeExtent={x,width,pad,right};
+  let path="",pen=false;
+  activePoints.forEach(p=>{if(p.value==null){pen=false;return;}path+=(pen?"L":"M")+x(p.at).toFixed(1)+" "+y(p.value).toFixed(1);pen=true;});
+  const reset=Date.parse(h.reset_at), marked=reset>=range.start && reset<=range.end;
+  svg.setAttribute("viewBox",`0 0 ${width} ${height}`);
+  const axisDate=t=>new Date(t).toLocaleDateString("en-US",{timeZone:"America/New_York",month:"short",day:"numeric"});
+  const axisTime=t=>new Date(t).toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"numeric",minute:"2-digit"});
+  const last=activePoints.findLast(p=>p.value!=null);
+  svg.innerHTML=`<desc>${pl(c.label)} in the selected range. ${values.length} measured points, ${activePoints.length-values.length} unmeasured. ${pl(dirOf(c))}.</desc>
+    ${[0,.5,1].map(f=>`<line class="grid" x1="${pad.left}" x2="${right}" y1="${y(hi*f)}" y2="${y(hi*f)}"/><text x="${pad.left-7}" y="${y(hi*f)+4}" text-anchor="end">${esc(fmtNum(hi*f,c.kind))}</text>`).join("")}
+    ${marked?`<line class="reset" x1="${x(reset)}" x2="${x(reset)}" y1="${pad.top}" y2="${bottom}"/><text x="${Math.max(pad.left+4,Math.min(right-40,x(reset)+5))}" y="16">Reset</text>`:""}
+    <path class="trace" d="${path}"/>
+    ${activePoints.filter(p=>p.value!=null).map(p=>`<circle class="dot" cx="${x(p.at)}" cy="${y(p.value)}" r="${activePoints.length>40?1.5:3}"/>`).join("")}
+    ${last?`<text x="${Math.min(right-4,Math.max(pad.left+25,x(last.at)))}" y="${Math.max(pad.top+14,y(last.value)-9)}" text-anchor="end">${esc(fmtNum(last.value,c.kind))}</text>`:`<text x="${(pad.left+right)/2}" y="125" text-anchor="middle">Unmeasured in this range</text>`}
+    ${[0,.5,1].map(f=>{const t=range.start+(range.end-range.start)*f;return `<text x="${x(t)}" y="${bottom+19}" text-anchor="${f===0?"start":f===1?"end":"middle"}">${esc(axisDate(t))}<tspan x="${x(t)}" dy="16">${esc(axisTime(t))} ET</tspan></text>`;}).join("")}
+    <line id="inspection-line" class="inspect" y1="${pad.top}" y2="${bottom}"/>`;
+  const slider=el("point-index"); slider.disabled=!activePoints.length; slider.max=String(Math.max(0,activePoints.length-1));slider.value=slider.max;
+  const inspect=()=>{
+    const p=activePoints[Number(slider.value)];if(!p){el("point-detail").textContent="Unmeasured: range extends beyond the retained observations.";return;}
+    el("inspection-line").setAttribute("x1",x(p.at));el("inspection-line").setAttribute("x2",x(p.at));
+    const reading=p.value==null?"Unmeasured — "+p.reason:fmtNum(p.value,c.kind)+" "+plain(c.comparable_unit);
+    el("point-detail").textContent=etText(p.start)+" to "+etText(p.end)+": "+reading;
+    slider.setAttribute("aria-valuetext",el("point-detail").textContent);
+  };
+  slider.oninput=inspect;inspect();
+  svg.onpointerdown=event=>{
+    const rect=svg.getBoundingClientRect(), position=(event.clientX-rect.left)/rect.width*width;
+    const time=range.start+(position-pad.left)/(right-pad.left)*(range.end-range.start);
+    slider.value=String(Math.max(0,Math.min(activePoints.length-1,Math.floor((time-range.start)/step))));inspect();
+  };
+}
+el("measure").onchange=()=>{measureKey=el("measure").value;render(health);};
+document.querySelectorAll("[data-range]").forEach(button=>button.onclick=()=>{
+  selectedRange=button.dataset.range;
+  if(selectedRange==="custom" && !customRange){
+    const now=Date.parse(health.generated_at);customRange={start:now-3*DAY,end:now};
+    el("range-start").value=easternInput(customRange.start);el("range-end").value=easternInput(customRange.end);
+  }
+  render(health);
+});
+el("custom-range").onsubmit=event=>{
+  event.preventDefault();
+  const start=fromEastern(el("range-start").value),end=fromEastern(el("range-end").value);
+  if(!Number.isFinite(start) || !Number.isFinite(end)){el("range-error").textContent="Use a valid, unambiguous Eastern time. During the fall clock change, choose a time outside the repeated hour.";return;}
+  if(end<=start){el("range-error").textContent="End must be after start.";return;}
+  if(end>Date.parse(health.generated_at)){el("range-error").textContent="End must be at or before the data's computed time.";return;}
+  el("range-error").textContent="";customRange={start,end};render(health);
+};
+let resizeTimer;
+if(typeof window!=="undefined") window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(health)render(health);},100);});
 async function load(){
-  const banner = el("banner");
-  try {
-    const r = await fetch(DATA_FILE, {cache:"no-store"});
-    if (r.status === 404) throw new Error("the series is not published");
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const h = await r.json();
-    if (!h || typeof h.generated_at !== "string" || !Array.isArray(h.days) || !h.summary) throw new Error("not a process-health series");
-    banner.hidden = true;
-    render(h);
-  } catch (e) {
-    banner.hidden = false;
-    banner.textContent = "The process-health series is unread (" + e.message + "). No figure is shown rather than a zero. Retrying every minute.";
+  const banner=el("banner");
+  try{
+    const r=await fetch(DATA_FILE,{cache:"no-store"});
+    if(r.status===404)throw new Error("the series is not published");
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const h=await r.json();
+    if(!h || typeof h.generated_at!=="string" || !Array.isArray(h.days) || !h.summary)throw new Error("not a process-health series");
+    banner.hidden=true;render(h);
+  }catch(e){
+    banner.hidden=false;
+    banner.textContent="The process-health series is unread ("+e.message+"). Retrying every minute.";
+    el("body").innerHTML="";el("controls").hidden=true;health=null;
   }
 }
 load();
-setInterval(load, POLL_MS);
+setInterval(load,POLL_MS);
 </script>
 </body>
 </html>

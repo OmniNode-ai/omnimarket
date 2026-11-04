@@ -74,7 +74,11 @@ def test_contract_declares_dispatch_and_bound_operations() -> None:
     entries = {
         entry["operation"]: entry for entry in contract["handler_routing"]["handlers"]
     }
-    assert set(entries) == {"resolve_remote_lane_ref", "retain_finished_remote_run"}
+    assert set(entries) == {
+        "resolve_remote_lane_ref",
+        "retain_finished_remote_run",
+        "publish_remote_lane_commit",
+    }
     entry = entries["resolve_remote_lane_ref"]
     assert entry["operation"] == "resolve_remote_lane_ref"
     handler = getattr(
