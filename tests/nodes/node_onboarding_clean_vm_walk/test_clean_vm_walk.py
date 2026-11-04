@@ -230,6 +230,7 @@ def test_receipt_has_every_field_typed() -> None:
         "hand_fix_steps",
         "started_at",
         "finished_at",
+        "status",
     }
     assert isinstance(receipt.vm_spec, ModelVmSpec)
     assert (receipt.vm_spec.cpu, receipt.vm_spec.memory_gb) == (4, 8)
@@ -693,3 +694,62 @@ def test_cli_prints_receipt(
     receipt = ModelWalkReceipt.model_validate_json(capsys.readouterr().out)
     assert receipt.outcome == EnumWalkOutcome.PASSED
     assert receipt.vm_deleted
+
+
+def test_walk_runs_through_canonical_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay the CLI failure before Tart was invoked, through the real bus adapter."""
+    from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+
+    from tests.runtime_local_compat import RuntimeLocal
+
+    runner = StubTartRunner()
+    monkeypatch.setattr(walk, "select_runner", lambda _: runner)
+    input_path = tmp_path / "input.json"
+    input_path.write_text(request().model_dump_json())
+    hosted = RuntimeLocal(
+        workflow_path=CONTRACT,
+        state_root=tmp_path / "state",
+        input_path=input_path,
+        timeout=5,
+    )
+    assert hosted.run() == EnumWorkflowResult.COMPLETED
+    assert runner.calls
+    result = hosted.handler_result
+    assert isinstance(result, ModelWalkReceipt)
+    assert result.outcome == EnumWalkOutcome.PASSED
+    assert result.vm_deleted
+
+
+def test_failed_walk_is_a_failed_run_through_canonical_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded walk: the guide-pinned script exits 3 at preflight, so the run fails."""
+    from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+
+    from tests.runtime_local_compat import RuntimeLocal
+
+    runner = StubTartRunner()
+    runner.scripted[EnumWalkStepKind.GUEST_RUN_SCRIPT] = [
+        ModelRunnerResult(
+            exit_code=3,
+            stdout="This Mac is below the minimum requirements: 17 GB free disk (needs 20)",
+            stderr="",
+        )
+    ]
+    monkeypatch.setattr(walk, "select_runner", lambda _: runner)
+    input_path = tmp_path / "input.json"
+    input_path.write_text(request().model_dump_json())
+    hosted = RuntimeLocal(
+        workflow_path=CONTRACT,
+        state_root=tmp_path / "state",
+        input_path=input_path,
+        timeout=5,
+    )
+    assert hosted.run() == EnumWorkflowResult.FAILED
+    result = hosted.handler_result
+    assert isinstance(result, ModelWalkReceipt)
+    assert result.outcome == EnumWalkOutcome.FAILED
+    assert result.vm_deleted
+    assert result.model_dump(mode="json")["status"] == "failed"
