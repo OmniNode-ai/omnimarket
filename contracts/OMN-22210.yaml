@@ -1,0 +1,65 @@
+schema_version: '1.0.0'
+ticket_id: OMN-22210
+title: The quality gate refuses a correct decimal answer of 7 or more digits as an ungrounded commit sha
+summary: The commit_sha identifier class matched any decimal number of 7 or more digits, so a correct numeric answer absent from the prompt was refused UNGROUNDED; the class now also requires at least one hex letter, and a real hex sha absent from the source is still refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-decimal-not-sha
+    statement: A pure decimal number of 7 or more digits in a delegated answer is not read as a commit sha by the quality gate's identifier grounding check, while a hex sha absent from the source is still refused.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a correct answer that is a decimal number of 7 or more digits and is not a commit sha is not refused UNGROUNDED -- falsifier: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q -k decimal_not_sha, answers 5736396 and 7006652, which are refused today'
+      - id: AC2
+        statement: 'AC2: a real 7 to 40 character hex sha that is absent from the source is still refused UNGROUNDED -- falsifier: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q -k hex_sha_still_refused'
+      - id: AC3
+        statement: 'AC3: a regression test built from the recorded runs da8e0025 and fdcbbb0f (scrubbed) fails on the current contract and passes on the fix -- falsifier: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q -k receipt_da8e0025'
+evidence_requirements:
+  - kind: tests
+    description: Focused identifier grounding cases for decimal answers, hex shas and the scrubbed recorded receipts.
+    command: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22210-decimal-not-sha
+    description: The answers 5736396 and 7006652 are not refused UNGROUNDED by the grounding check or the gate; both were refused on the merge base.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q --no-cov -k decimal_not_sha
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn22210-hex-sha-still-refused
+    description: A 7, 10 and 40 character hex sha absent from the source is still refused UNGROUNDED, and the same sha present in the source is grounded.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q --no-cov -k hex_sha_still_refused
+        cwd: .
+    binds_ac: [AC2]
+  - id: dod-omn22210-receipts
+    description: The scrubbed receipts of runs da8e0025 and fdcbbb0f are refused under the pre-fix commit_sha pattern and accepted under the contract as fixed.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q --no-cov -k receipt_da8e0025
+        cwd: .
+    binds_ac: [AC3]
+  - id: dod-omn22210-deploy-probe
+    description: 'Deploy probe: the quality gate contract GitHub serves at the checked-out commit declares the hex-letter lookahead on the commit_sha class; the lookahead is absent at the merge base, so the content read finds nothing there.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_quality_gate_reducer/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F '(?P<token>(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])' > /dev/null
+        cwd: .
+  - id: dod-omn22210-integration-proof
+    description: The pushed head ran the focused identifier grounding file on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane pg-mkt-4-0735 -- uv run --frozen pytest tests/unit/delegation/test_gate_identifier_grounding_decimals.py -q --no-cov
+        cwd: .
