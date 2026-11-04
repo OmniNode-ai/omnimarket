@@ -92,6 +92,8 @@ def _write(path: Path, content: str | dict[str, Any] | list[Any]) -> Path:
 @pytest.fixture(autouse=True)
 def _own_lane_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The machine and lane sources are named by the environment; no test reads the real home's."""
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
+    monkeypatch.delenv("ONEX_FACTORY_FLOOR_OVERLAY", raising=False)
     monkeypatch.setenv("ONEX_REMOTE_LANE_DIR", str(tmp_path / "remote-lanes"))
     monkeypatch.setenv("LANDING_PLACEMENT_DIR", str(tmp_path / "placement"))
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "no-such-hosts.yaml"))
@@ -255,7 +257,7 @@ def test_determinism_or_cli_writes_json_to_the_contract_declared_path(
     assert wave["andon"]["flag"] is True
     assert wave["andon"]["causes"] == [
         "HOLD 2026-10-31T11:41:00Z-lane-a: andon:gate:0:W0.2",
-        "GATE G0 failed",
+        "GATE G0 failed (last recorded): gate failed 2026-10-31T11:50:00Z: Gate G0 FAIL.",
     ]
     # Every task of the plan is its own station, its wave kept as the station's group.
     stations = {st["id"]: st for st in wave["stations"]}
@@ -577,8 +579,12 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         },
     )
     _write(
-        tmp / "placement" / "cloud-accounts.json",
-        {"accounts": {"h201": {"login": "ok", "cap": 3}, "h999": {"login": "ok"}}},
+        tmp / "placement" / "cloud-accounts-v2.json",
+        {
+            "version": 2,
+            "accounts": {"account-a": {"cap": 3}, "account-unread": {}},
+            "logins": {"account-a": {"h201": {"cloud_ok": True}}},
+        },
     )
     ledger = tmp / "ledger-lanes.txt"
     ledger.write_text(
@@ -613,7 +619,12 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         "pushed the fix",
         "claude",
     )
-    assert [a["name"] for a in floor["cloud"]["accounts"]] == ["h201"]
+    assert floor["cloud"]["state"] == "read"
+    assert [a["name"] for a in floor["cloud"]["accounts"]] == [
+        "account-a",
+        "account-unread",
+    ]
+    assert [a["ready"] for a in floor["cloud"]["accounts"]] == [True, False]
     sources = document["sources"]
     assert (
         sources["host_table_read"],

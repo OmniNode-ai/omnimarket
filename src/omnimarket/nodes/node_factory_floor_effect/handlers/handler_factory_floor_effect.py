@@ -28,6 +28,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import (
     draft_plan_refs,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.handler_cloud_account_source import (
+    read_cloud_account_source,
+)
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
     ModelFactoryFloorRunResult,
@@ -41,7 +44,6 @@ from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
     load_api_keys,
-    load_cloud_accounts,
     load_compute_config,
     load_contract,
     load_engines,
@@ -178,6 +180,11 @@ class HandlerFactoryFloorEffect:
             if request.ledger_rows_file
             else None,
         )
+        cloud_accounts, cloud_cause = read_cloud_account_source(
+            home,
+            rt.cloud_source,
+            overlay.cloud_accounts_node_command if overlay is not None else (),
+        )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -243,7 +250,8 @@ class HandlerFactoryFloorEffect:
                 glob=ls.receipt_glob,
                 result_chars=ls.result_chars,
             ),
-            cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
+            cloud_accounts=cloud_accounts,
+            cloud_accounts_cause=cloud_cause,
             limits=ModelFloorLimitsFacts(
                 api_keys=load_api_keys(home / limit_sources.api_meter_relpath),
                 codex=codex,

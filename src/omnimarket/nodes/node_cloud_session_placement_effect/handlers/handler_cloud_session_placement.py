@@ -14,6 +14,7 @@ from . import cloud_accounts as acc
 from . import cloud_registry as reg
 from . import cloud_session as ses
 from .cloud_routing import cloud_refusal, placement_order
+from .handler_cloud_floor_snapshot import read_floor_snapshot
 
 _ACCOUNT_ACTIONS = frozenset(
     {
@@ -128,12 +129,26 @@ class HandlerCloudSessionPlacement:
                 return ModelCloudSessionPlacementResult(action=r.action, error=refused)
         try:
             return ModelCloudSessionPlacementResult(action=r.action, **self._handle(r))
-        except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
-            return ModelCloudSessionPlacementResult(action=r.action, error=str(exc))
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            OverflowError,
+            AttributeError,
+        ) as exc:
+            return ModelCloudSessionPlacementResult(
+                action=r.action,
+                error=f"cloud account snapshot unread ({type(exc).__name__})"
+                if r.action == "floor_snapshot"
+                else str(exc),
+            )
 
     def _handle(self, r: ModelCloudSessionPlacementRequest) -> dict[str, Any]:
         pdir = Path(r.placement_dir)
         action = r.action
+        if action == "floor_snapshot":
+            return {"floor_accounts": read_floor_snapshot(r.placement_dir)}
         if action == "route":
             return {
                 "refusal": cloud_refusal(

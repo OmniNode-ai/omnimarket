@@ -305,6 +305,7 @@ class ModelFloorCloudAccount(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str = Field(min_length=1)
+    identity: Literal["machine", "account"] = "machine"
     login: str = ""
     cap: int | None = None
     active: tuple[str, ...] = ()
@@ -557,6 +558,7 @@ class ModelFactoryFloorRequest(BaseModel):
     receipts: tuple[ModelFloorReceipt, ...] | None = None
     lane_processes: tuple[ModelFloorLaneProcess, ...] | None = None
     cloud_accounts: tuple[ModelFloorCloudAccount, ...] | None = None
+    cloud_accounts_cause: str = ""
     runner_fleet: ModelFloorRunnerFleet | None = None
     # Why runner_fleet is None, in the reader's own words; empty when it was read.
     runner_fleet_cause: str = ""
