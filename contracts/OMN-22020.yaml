@@ -100,6 +100,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_factory_floor_effect/tests -k view_document -q --no-cov
+  execution_scope: local_done_gate
   status: pending
 - id: dod-omn22020-ac4
   description: 'Pending remaining S3 work: AC4: node_view_compose_compute (new, generic, pure) gives the same digest
@@ -111,6 +112,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_view_compose_compute/tests -k determinism_or_schema_invalid
       -q --no-cov
+  execution_scope: local_done_gate
   status: pending
 - id: dod-omn22020-ac5
   description: 'Pending remaining S3 work: AC5: VS-01, VS-02 and VS-04 are measured, each with its section 10.3
@@ -125,6 +127,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k 'vs_01 or vs_02 or vs_04'
       -q --no-cov
+  execution_scope: local_done_gate
   status: pending
 - id: dod-omn22020-ac6
   description: 'Pending remaining S3 work: AC6: VS-17 is measured and a caller feeds the seam readings to node_throughput_tick_decision_compute
@@ -140,6 +143,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_readings_runtime_caller
       -q --no-cov
+  execution_scope: local_done_gate
   status: pending
 - id: dod-omn22020-ac7
   description: 'Pending remaining S3 work: AC7: after one publish tick on the lab the served board document and
