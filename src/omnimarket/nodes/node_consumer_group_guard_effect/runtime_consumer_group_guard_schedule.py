@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Sequence
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 
+from .guard_cutover import verify_cutover
 from .guard_schedule import GuardScheduler, load_overlay, load_schedule
 from .guard_schedule_models import ModelGuardScheduleResult
 
@@ -42,6 +44,9 @@ def _parser() -> argparse.ArgumentParser:
             )
         if verb == "install":
             sub.add_argument("--dry-run", action="store_true")
+    cutover = verbs.add_parser("verify-cutover")
+    cutover.add_argument("--host", required=True)
+    cutover.add_argument("--evidence", required=True, type=Path)
     return parser
 
 
@@ -52,6 +57,15 @@ def main(argv: Sequence[str]) -> int:
         sys.stderr.write(f"INDETERMINATE: {exc}\n")
         return 3
     try:
+        if args.verb == "verify-cutover":
+            result = verify_cutover(
+                json.loads(args.evidence.read_text(encoding="utf-8")),
+                host=args.host,
+                interval_seconds=load_schedule().cadence.interval_seconds,
+            )
+            sys.stdout.write(result.stdout)
+            sys.stderr.write(result.stderr)
+            return result.exit_code
         scheduler = GuardScheduler(
             schedule=load_schedule(),
             overlay=load_overlay(),
