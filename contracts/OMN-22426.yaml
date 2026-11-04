@@ -29,6 +29,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/test_host_drift_fold.py -q --no-cov --tb=line
     cwd: .
+- id: dod-omn22426-contract-routing
+  description: The packaged local contract resolves both handlers and their request models, folds a drift observation and escalates its open item at four bounds.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_launchd_drift_contract.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22426-deploy-published-fold
+  description: 'Hosted deploy artifact readback: the fold source published at the checked-out commit contains the moved handler and detected, resolved and heartbeat transitions. The source path is absent at the merge base; this reads published code and does not claim a host rollout.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: >-
+      bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_launchd_drift_effect/handlers/handler_host_drift_fold.py" | python3 -c '\''import sys; source = sys.stdin.read(); assert all(symbol in source for symbol in ("class HandlerHostDriftFold:", "ModelHostDriftDetectedEvent(", "ModelHostDriftResolvedEvent(", "ModelHostDriftHeartbeatEvent(")), "Published host-drift fold is incomplete"'\'''
+    cwd: .
 - id: dod-omn22426-integration-proof
   description: AC1 the pushed head, run on a lab host, passes the moved fold suite. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
   source: manual
