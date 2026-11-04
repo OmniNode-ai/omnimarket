@@ -77,7 +77,6 @@ KNOWN_REPOS = [
     "omnimemory",
     "omninode_infra",
     "omnibase_spi",
-    "onex_change_control",
     "omnimarket",
 ]
 

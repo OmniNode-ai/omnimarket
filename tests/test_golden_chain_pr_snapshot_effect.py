@@ -304,6 +304,7 @@ class TestHandlerPrSnapshotGoldenChain:
         """DEFAULT_REPOS includes all expected OmniNode-ai repos."""
         assert len(DEFAULT_REPOS) == 10
         assert all(r.startswith("OmniNode-ai/") for r in DEFAULT_REPOS)
+        assert "OmniNode-ai/omnibase_compat" not in DEFAULT_REPOS
         assert "OmniNode-ai/omniclaude" in DEFAULT_REPOS
         assert "OmniNode-ai/omnimarket" in DEFAULT_REPOS
 
