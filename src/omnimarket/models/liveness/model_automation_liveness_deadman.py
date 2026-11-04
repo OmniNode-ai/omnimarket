@@ -6,11 +6,17 @@ The dead-man is the watchdog in a narrow mode (plan 4.8): it watches the
 primary's heartbeat and the broker, turns every opened and closed alarm episode
 into one ledger row, and checks the daily canary episode. This compute is its
 pure half. The effect that ticks it reads the heartbeat, the episode events and
-the clock, and writes the ledger rows; nothing here reads a clock or a file.
+the clock, and writes the ledger rows; nothing here reads a clock.
+
+The heartbeat bound and the delivery and canary budgets are policy values
+(OMN-22019): a request that does not name one takes it from the controller
+policy overlay, read when the request is built, so a raised bound changes the
+next tick's verdict with no release.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from enum import StrEnum
 from typing import Annotated
@@ -33,17 +39,23 @@ from omnimarket.models.liveness.model_automation_liveness import (
     NonEmptyStr,
     ProcessId,
 )
+from omnimarket.models.policy_values.model_controller_policy_overlay import (
+    load_controller_policy_overlay,
+)
 
-#: The primary's heartbeat is silent once older than this (the bus silence bound).
-PRIMARY_HEARTBEAT_BOUND_SECONDS = 10 * 60
-#: Delivery budget the dead-man's own alarms carry (the watchdog's default).
-DELIVERY_BUDGET_SECONDS = 120
 #: The declared process whose daily injected episode proves the alarm path.
 CANARY_PROCESS_ID = "liveness-canary"
-#: The fixed hour (UTC) the canary injects its three no-work-with-demand runs.
-CANARY_INJECTION_HOUR_UTC = 5
-#: How long after the injection the episode may take to be delivered and recorded.
-CANARY_RECEIPT_BUDGET_SECONDS = 15 * 60
+
+
+def _policy(name: str) -> Callable[[], int]:
+    """The dead-man policy value ``name`` from the overlay as it stands now."""
+
+    def read() -> int:
+        section = load_controller_policy_overlay().automation_liveness_deadman
+        return int(getattr(section, name).value)
+
+    return read
+
 
 OmnTicket = Annotated[str, StringConstraints(pattern=r"^OMN-\d+$")]
 
@@ -106,10 +118,16 @@ class ModelAutomationLivenessDeadmanRequest(BaseModel):
     #: Where the canary is emitted; the host an ALARM_PATH_BROKEN alarm names.
     canary_host: NonEmptyStr
     primary_last_heartbeat_at: AwareDatetime | None = None
-    primary_heartbeat_bound_seconds: PositiveInt = PRIMARY_HEARTBEAT_BOUND_SECONDS
+    #: The primary's heartbeat is silent once older than this (the bus silence bound).
+    primary_heartbeat_bound_seconds: PositiveInt = Field(
+        default_factory=_policy("primary_heartbeat_bound_seconds")
+    )
     #: Whether this host can reach the broker; False selects the direct route.
     broker_reachable: bool = True
-    delivery_budget_seconds: PositiveInt = DELIVERY_BUDGET_SECONDS
+    #: Delivery budget the dead-man's own alarms carry (the watchdog's default).
+    delivery_budget_seconds: PositiveInt = Field(
+        default_factory=_policy("delivery_budget_seconds")
+    )
     #: Alarm episodes consumed since the last tick (a replay is harmless).
     opened: tuple[ModelAutomationAlarmRaised, ...] = ()
     closed: tuple[ModelAutomationAlarmCleared, ...] = ()
@@ -121,8 +139,14 @@ class ModelAutomationLivenessDeadmanRequest(BaseModel):
     ledger_ticket: OmnTicket = "OMN-20769"
     #: The days whose canary episode this tick judges.
     canary_dates: tuple[date, ...] = ()
-    canary_injection_hour_utc: int = Field(CANARY_INJECTION_HOUR_UTC, ge=0, le=23)
-    canary_receipt_budget_seconds: PositiveInt = CANARY_RECEIPT_BUDGET_SECONDS
+    #: The fixed hour (UTC) the canary injects its three no-work-with-demand runs.
+    canary_injection_hour_utc: int = Field(
+        default_factory=_policy("canary_injection_hour_utc"), ge=0, le=23
+    )
+    #: How long after the injection the episode may take to be delivered and recorded.
+    canary_receipt_budget_seconds: PositiveInt = Field(
+        default_factory=_policy("canary_receipt_budget_seconds")
+    )
 
 
 class ModelAutomationLivenessDeadmanResult(BaseModel):
@@ -138,11 +162,7 @@ class ModelAutomationLivenessDeadmanResult(BaseModel):
 
 
 __all__ = [
-    "CANARY_INJECTION_HOUR_UTC",
     "CANARY_PROCESS_ID",
-    "CANARY_RECEIPT_BUDGET_SECONDS",
-    "DELIVERY_BUDGET_SECONDS",
-    "PRIMARY_HEARTBEAT_BOUND_SECONDS",
     "EnumDeadmanDeliveryRoute",
     "EnumDeadmanPhase",
     "ModelAutomationLivenessDeadmanRequest",
