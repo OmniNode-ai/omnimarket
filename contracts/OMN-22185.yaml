@@ -1,7 +1,7 @@
 schema_version: '1.0.0'
 ticket_id: OMN-22185
 title: Lander P0 third pull request, append_if_absent on the ledger append node
-summary: The ledger append node takes an optional row id on its one append request; the row is appended only when no ledger row already carries that id cell, and the check and the append run under one flock beside the ledger, so two concurrent calls of one row id leave one row.
+summary: This repository implements AC3 of OMN-22185. AC1 is bound by the contract in omnibase_spi (PR 435) and AC2 by the contract in omnibase_core (PR 2246). The ledger append node takes an optional row id on its one append request; the row is appended only when no ledger row already carries that id cell, and the check and the append run under one flock beside the ledger, so two concurrent calls of one row id leave one row.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -9,10 +9,6 @@ requirements:
   - id: req-append-if-absent
     statement: The ledger append node appends a row by row id atomically, with its names, lock suffix and lock wait declared in its contract.
     acceptance:
-      - id: AC1
-        statement: 'AC1: Every protocol and validator a later task names exists, with a conformance suite that its in-memory and real adapters both pass -- falsifier: the conformance suites, each with a positive control (uv run pytest on the suites in omnibase_spi and omnibase_core)'
-      - id: AC2
-        statement: 'AC2: A mutated overlay violating R1 or R2 is refused naming the relation -- falsifier: uv run pytest on the omnibase_core validator tests, each with a positive control that the unmutated overlay passes'
       - id: AC3
         statement: 'AC3: Two concurrent append_if_absent calls of one row id leave one row -- falsifier: uv run pytest on the node_work_ledger_append_effect concurrency test in omnimarket, with a positive control that two different ids leave two rows'
 evidence_requirements:
@@ -48,7 +44,6 @@ dod_evidence:
       - check_type: command
         check_value: bash -o pipefail -c 'gh api repos/OmniNode-ai/omnibase_spi/pulls/435 --jq .merged_at | grep -E "^20"'
         cwd: .
-    binds_ac: [AC1]
   - id: dod-omn22185-core-half
     description: The omnibase_core pull request of this ticket (the overlay_constraints validator for R1 and R2) is merged. Only the local Done gate runs this unbound check.
     source: manual
@@ -57,7 +52,14 @@ dod_evidence:
       - check_type: command
         check_value: bash -o pipefail -c 'gh api repos/OmniNode-ai/omnibase_core/pulls/2246 --jq .merged_at | grep -E "^20"'
         cwd: .
-    binds_ac: [AC2]
+  - id: dod-omn22185-deploy-smoke
+    description: Hosted deployment smoke loads the packaged node contract through the serve handler, requires the declared lock beside the ledger, and appends once under concurrent processes. This checks the local serve wiring without a lab endpoint or broker; it is not a live deployment readback.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_append_if_absent.py -q --no-cov -k 'serve_wiring or two_concurrent_processes'
+        cwd: .
+    binds_ac: [AC3]
   - id: dod-omn22185-integration-proof
     description: The pushed head ran the append node and ledger bus tests, concurrency cases included, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual
