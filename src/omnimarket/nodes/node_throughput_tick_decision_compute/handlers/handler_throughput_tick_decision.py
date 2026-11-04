@@ -922,16 +922,35 @@ LIVE_AUTH_REFUSED_FIX = (
     "or `onex_lab_run.py --hosts` reads the same refused hop and clears nothing; a host that cannot be read is "
     "a lab fault to name to the operator, never free and never full"
 )
-_SSH_KEY_REFUSAL = re.compile(r"Permission denied \(publickey")
+LIVE_NAME_UNRESOLVED_FIX = (
+    "the host owner must make {host}'s name resolvable from the launching host (power the machine on, join it to a "
+    "network this host sees, or correct its address in the host table); rerunning the tick or "
+    "`onex_lab_run.py --hosts` resolves the same name and clears nothing; a host that cannot be read is a lab fault "
+    "to name to the operator, never free and never full"
+)
+# The fragments ssh prints when the host answered and refused this host's credentials, and when its name is on no network
+# this host sees; the same spellings the host-pool alarm classifies as AUTH-REFUSED and NAME-UNRESOLVED.
+_SSH_KEY_REFUSAL = re.compile(
+    r"Permission denied|Too many authentication failures|No supported authentication methods",
+    re.IGNORECASE,
+)
+_SSH_NAME_UNRESOLVED = re.compile(
+    r"Could not resolve hostname|Name or service not known|nodename nor servname|"
+    r"No address associated with hostname|Temporary failure in name resolution",
+    re.IGNORECASE,
+)
 _SSH_HOP = re.compile(r"\bvia=(\S+)")
 
 
 def _live_unread_fix(host: str, why: str) -> str:
-    """An SSH public-key refusal is cleared only by the hop owner adding the launching host's key; any other
-    unreadable probe (timeout, dropped connection) is transient and keeps the rerun advice."""
+    """An SSH credential refusal is cleared only by the hop owner adding the launching host's key, and an unresolvable
+    name only by the host owner; neither moves on a rerun. Any other unreadable probe (timeout, dropped
+    connection) is transient and keeps the rerun advice (OMN-17427)."""
     if _SSH_KEY_REFUSAL.search(why):
         hop = _SSH_HOP.search(why)
         return LIVE_AUTH_REFUSED_FIX.format(hop=hop.group(1) if hop else host)
+    if _SSH_NAME_UNRESOLVED.search(why):
+        return LIVE_NAME_UNRESOLVED_FIX.format(host=host)
     return LIVE_UNREAD_FIX.format(host=host)
 
 
