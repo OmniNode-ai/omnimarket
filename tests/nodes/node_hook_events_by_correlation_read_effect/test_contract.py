@@ -31,8 +31,7 @@ def test_contract_binds_the_handler_and_the_mount_factory():
     )
     assert config.methods == ("GET",)
     assert contract["http_mount"]["factory"].endswith("handlers.http_app:create_app")
-    handler_entry = contract["handler_routing"]["handlers"][0]["handler"]
-    assert handler_entry["name"] == "HandlerHookEventsByCorrelation"
+    assert "handler_routing" not in contract  # the HTTP factory supplies dependencies
     assert "event_bus" not in contract  # a read route owns no topic
 
 

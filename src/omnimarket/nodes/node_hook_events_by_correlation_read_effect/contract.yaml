@@ -49,24 +49,6 @@ input_model:
   name: "ModelHookEventsReadRequest"
   module: "omnimarket.nodes.node_hook_events_by_correlation_read_effect.models"
   description: "One tenant-scoped read: resolved tenant slug, correlation id, limit and the payload opt-in."
-handler_routing:
-  routing_strategy: "operation_match"
-  handlers:
-    - operation: "hook_events.read_by_correlation"
-      event_model:
-        name: "ModelHookEventsReadRequest"
-        module: "omnimarket.nodes.node_hook_events_by_correlation_read_effect.models"
-      event_type: "hook-events.read-by-correlation"
-      message_category: "COMMAND"
-      handler:
-        name: "HandlerHookEventsByCorrelation"
-        module: "omnimarket.nodes.node_hook_events_by_correlation_read_effect.handlers.handler_hook_events_by_correlation"
-      supported_operations:
-        - "hook_events.read_by_correlation"
-      description: "Read the caller tenant's hook_events rows for one correlation id."
-  execution_mode: "single"
-  max_timeout_seconds: 30
-
 # Runtime-owned HTTP boundary. The prefix equals the route path, so a sibling
 # route under /v1/projections can be mounted later without an overlap.
 http_mount:
