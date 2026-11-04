@@ -405,8 +405,9 @@ def node_tarball(version: str) -> tuple[bytes, str]:
     import hashlib
     import platform
 
+    os_name = {"Linux": "linux", "Darwin": "darwin"}[platform.system()]
     arch = {"x86_64": "x64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
-    name = f"node-v{version}-linux-{arch}"
+    name = f"node-v{version}-{os_name}-{arch}"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:xz") as tar:
         payload = b"#!/bin/sh\n"
@@ -646,16 +647,26 @@ def test_omnidash_host_floor_page_has_no_links_area() -> None:
 
 
 @pytest.mark.parametrize(
-    ("machine", "arch"),
-    [("x86_64", "x64"), ("aarch64", "arm64"), ("arm64", "arm64")],
+    ("system", "machine", "suffix"),
+    [
+        ("Linux", "x86_64", "linux-x64"),
+        ("Linux", "aarch64", "linux-arm64"),
+        ("Darwin", "arm64", "darwin-arm64"),
+        ("Darwin", "x86_64", "darwin-x64"),
+    ],
 )
-def test_omnidash_host_node_archive_names_the_distribution_for_each_machine(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, machine: str, arch: str
+def test_omnidash_host_node_archive_names_the_distribution_for_each_system_and_machine(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    system: str,
+    machine: str,
+    suffix: str,
 ) -> None:
     import platform
 
+    monkeypatch.setattr(platform, "system", lambda: system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
-    assert node_archive(row(tmp_path)) == f"node-v22.13.0-linux-{arch}"
+    assert node_archive(row(tmp_path)) == f"node-v22.13.0-{suffix}"
 
 
 def test_omnidash_host_node_archive_refuses_an_unknown_machine(
@@ -663,6 +674,18 @@ def test_omnidash_host_node_archive_refuses_an_unknown_machine(
 ) -> None:
     import platform
 
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
     monkeypatch.setattr(platform, "machine", lambda: "riscv64")
     with pytest.raises(ValueError, match="no node distribution"):
+        node_archive(row(tmp_path))
+
+
+def test_omnidash_host_node_archive_refuses_an_unknown_system(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import platform
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    with pytest.raises(ValueError, match="no node distribution for system"):
         node_archive(row(tmp_path))
