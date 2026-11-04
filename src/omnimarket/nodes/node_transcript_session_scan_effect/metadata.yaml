@@ -1,0 +1,26 @@
+name: node_transcript_session_scan_effect
+version: "1.0.0"
+description: "List transcript files under overlay-named roots through the transcript store port into one manifest"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_transcript_session_scan_effect: "omnimarket.nodes.node_transcript_session_scan_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_read
+dependencies:
+  - "omnibase_core>=0.47.44"
+  - "omnibase-spi>=0.23.3"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "transcript", "manifest", "scan"]
+pack: "pipeline"
+display_name: "Transcript Session Scan Effect"
+node_role: "effect"
+tickets: ["OMN-22259"]
