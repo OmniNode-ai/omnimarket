@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_onex_pillar_owner_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decide the pillar owner command and cache environment from caller-supplied resolver and executable facts.
+  Pure behaviour-preserving decisions; the caller performs all I/O.
+input_model:
+  name: ModelOnexPillarOwnerRequest
+  module: omnimarket.nodes.node_onex_pillar_owner_compute.models.model_onex_pillar_owner
+output_model:
+  name: ModelOnexPillarOwnerResult
+  module: omnimarket.nodes.node_onex_pillar_owner_compute.models.model_onex_pillar_owner
+handler:
+  module: omnimarket.nodes.node_onex_pillar_owner_compute.handlers.handler_onex_pillar_owner
+  class: HandlerOnexPillarOwner
+  input_model: omnimarket.nodes.node_onex_pillar_owner_compute.models.model_onex_pillar_owner.ModelOnexPillarOwnerRequest
+  output_model: omnimarket.nodes.node_onex_pillar_owner_compute.models.model_onex_pillar_owner.ModelOnexPillarOwnerResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_onex_pillar_owner_compute.handlers.handler_onex_pillar_owner:HandlerOnexPillarOwner
+  handlers:
+    - operation: resolve
+      handler:
+        name: HandlerOnexPillarOwner
+        module: omnimarket.nodes.node_onex_pillar_owner_compute.handlers.handler_onex_pillar_owner
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: false, enum: [resolve], description: Decide the execution plan.}
+  project_path: {type: str, required: false, description: Resolved project path.}
+  resolve_error: {type: str, required: false, description: Resolver failure text.}
+  uv_path: {type: str, required: true, description: Located uv executable or null if unavailable.}
+  uv_cache_dir: {type: str, required: false, description: Existing UV_CACHE_DIR value or null if unset.}
+  tempdir_path: {type: str, required: true, description: Temporary directory reported by the caller.}
+  argv: {type: list, required: false, description: Arguments to pass through unchanged.}
+outputs:
+  operation: {type: str}
+  command: {type: list}
+  env_overrides: {type: object}
+  exit_code: {type: int}
+  message: {type: str}
+terminal_event: onex.evt.omnimarket.onex-pillar-owner-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.onex-pillar-owner-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.onex-pillar-owner-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.onex-pillar-owner-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.onex-pillar-owner-completed.v1
+metadata:
+  transport_type: inmemory
+  description: onex-pillar-owner decisions
+  author: OmniNode Team
+  created: "2026-11-03"
