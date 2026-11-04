@@ -210,3 +210,39 @@ def test_a_hook_past_the_timeout_is_an_error(tmp_path: Path) -> None:
     )
     assert result.status == "error"
     assert "timeout" in result.error_tail
+
+
+def test_the_report_carries_the_failing_keys_a_lane_preflight_takes(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(
+        tmp_path, pre_push_hook("boundary", "sh -c 'echo new edge a-to-b >&2; exit 1'")
+    )
+    commit_change(repo)
+    report = evaluate(repo).report
+    assert report["outcome"] == "failing"
+    assert report["hook"] == "boundary"
+    assert report["failing"] == ["boundary"]
+    assert report["error_tail"].startswith("pre-push boundary (exit 1): ")
+    assert "new edge a-to-b" in report["error_tail"]
+    assert report["prepush"]["status"] == "refused"
+
+
+def test_the_report_of_a_clean_range_names_no_outcome(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, pre_push_hook("fine", "true"))
+    commit_change(repo)
+    assert set(evaluate(repo).report) == {"prepush"}
+
+
+def test_the_landing_branch_is_origin_head_when_the_request_names_no_base(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, pre_push_hook("boundary", "false"))
+    git(repo, "update-ref", "refs/remotes/origin/main", "main")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    commit_change(repo)
+    result = HandlerPrepushPreflight().handle(
+        ModelPrepushPreflightRequest(worktree=str(repo))
+    )
+    assert result.status == "refused"
+    assert result.range_from == git(repo, "rev-parse", "main")

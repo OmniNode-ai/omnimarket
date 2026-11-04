@@ -143,6 +143,9 @@ class HandlerPrepushPreflight:
 
     def _range(self, worktree: Path, base_ref: str | None) -> tuple[str, str] | None:
         """(from, to) of the pending push, or None when no start can be named."""
+        base_ref = base_ref or self._git(
+            worktree, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"
+        )
         upstream = self._git(
             worktree, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"
         )

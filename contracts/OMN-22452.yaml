@@ -10,7 +10,7 @@ requirements:
   statement: A lane learns of a pre-push hook refusal, with the hook id and its finding, before it pushes.
   acceptance:
   - id: AC1
-    statement: 'AC1: the handler runs the repository''s pre-push stage hooks against the pending push range and reports each refusal with its hook id and finding -- falsifier: uv run pytest tests/nodes/node_prepush_preflight_effect -q --no-cov -k "refusing_pre_push or staged_change or passing or commit_stage"'
+    statement: 'AC1: the handler runs the repository''s pre-push stage hooks against the pending push range and reports each refusal with its hook id and finding -- falsifier: uv run pytest tests/nodes/node_prepush_preflight_effect -q --no-cov -k "refusing_pre_push or staged_change or passing or commit_stage or report or landing_branch"'
   - id: AC2
     statement: 'AC2: a transcript carrying the recorded refusals of check-node-boundary-imports and ticket-contract-prerequisite yields both refusals, and a skip variable in the environment skips nothing -- falsifier: uv run pytest tests/nodes/node_prepush_preflight_effect -q --no-cov -k "recorded_refusals or skip_variable or capped"'
 evidence_requirements:
@@ -29,7 +29,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_prepush_preflight_effect -q --no-cov --tb=line -k "refusing_pre_push or staged_change or passing or commit_stage"
+    check_value: uv run pytest tests/nodes/node_prepush_preflight_effect -q --no-cov --tb=line -k "refusing_pre_push or staged_change or passing or commit_stage or report or landing_branch"
     cwd: .
 - id: dod-omn22452-ac2
   description: AC2 the recorded refusals of the two hooks are both parsed, and SKIP in the environment does not skip a hook.
