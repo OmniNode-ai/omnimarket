@@ -217,12 +217,15 @@ def test_the_contract_names_the_handlers_and_their_topics():
         "read": "HandlerExceptionQueueRead",
         "stop_event": "HandlerStopEvent",
         "open_stops": "HandlerOpenStops",
+        "sync_ledger_holds": "HandlerAndonLedgerHolds",
     }
     assert contract["event_bus"]["subscribe_topics"] == [
-        contract["runtime_dispatch"]["command_topic"]
+        contract["runtime_dispatch"]["command_topic"],
+        "onex.cmd.omnimarket.andon-ledger-holds-requested.v1",
     ]
     for h in contract["handler_routing"]["handlers"]:
-        assert hasattr(handler, h["handler"]["name"])
+        module = importlib.import_module(h["handler"]["module"])
+        assert hasattr(module, h["handler"]["name"])
 
 
 def test_the_cli_handler_emits_lists_and_resolves_through_the_node(
