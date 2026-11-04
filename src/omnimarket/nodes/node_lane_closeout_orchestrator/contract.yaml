@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_closeout_orchestrator
+lifecycle: experimental
+node_type: orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Lane end: inventory the trees under a lane directory, then guard and close out each one, through the sibling effect nodes' own contracts.
+input_model:
+  name: ModelLaneCloseoutRunRequest
+  module: omnimarket.models.lane_closeout.model_lane_closeout_run_request
+output_model:
+  name: ModelLaneCloseoutRunResult
+  module: omnimarket.models.lane_closeout.model_lane_closeout_run_result
+handler:
+  module: omnimarket.nodes.node_lane_closeout_orchestrator.handlers.handler_lane_closeout_run
+  class: HandlerLaneCloseoutRun
+  input_model: omnimarket.models.lane_closeout.model_lane_closeout_run_request.ModelLaneCloseoutRunRequest
+  output_model: omnimarket.models.lane_closeout.model_lane_closeout_run_result.ModelLaneCloseoutRunResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: run_lane_closeout
+      handler:
+        name: HandlerLaneCloseoutRun
+        module: omnimarket.nodes.node_lane_closeout_orchestrator.handlers.handler_lane_closeout_run
+      event_model:
+        name: ModelLaneCloseoutRunRequest
+        module: omnimarket.models.lane_closeout.model_lane_closeout_run_request
+      subscribe_topic: onex.cmd.omnimarket.lane-closeout-run-requested.v1
+      topic: onex.cmd.omnimarket.lane-closeout-run-requested.v1
+      publish_topic: onex.evt.omnimarket.lane-closeout-run-completed.v1
+      message_category: command
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: lane_closeout
+      workflow_version: {major: 1, minor: 0, patch: 0}
+      description: Inventory the lane's trees, then guard and close out each tree.
+    execution_graph:
+      nodes:
+        - node_id: inventory_trees
+          node_type: EFFECT_GENERIC
+          description: One line per tree under the lane directory.
+          step_config:
+            node: node_lane_tree_inventory_effect
+            operation: inventory_lane_trees
+        - node_id: close_tree
+          node_type: EFFECT_GENERIC
+          description: Guard, WIP-push and remove each inventoried tree.
+          step_config:
+            node: node_lane_closeout_effect
+            operation: close_lane_tree
+    coordination_rules:
+      execution_mode: sequential
+      parallel_execution_allowed: false
+      failure_recovery_strategy: fail_fast
+      recovery_enabled: false
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lane-closeout-run-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-closeout-run-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-closeout-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-closeout-run-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-closeout-run-completed.v1
+metadata:
+  ticket: OMN-22191
+  transport_type: kafka
