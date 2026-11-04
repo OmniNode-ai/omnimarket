@@ -921,6 +921,8 @@
   "tests/nodes/node_host_drift_fleet/test_host_drift_fleet_redpanda.py": 0.01,
   "tests/nodes/node_host_drift_fleet/test_host_drift_fleet_replays.py": 0.65,
   "tests/nodes/node_host_drift_fleet/test_stale_state.py": 0.02,
+  "tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py": 1.46,
+  "tests/nodes/node_host_installer_net_units/test_host_net_units.py": 0.21,
   "tests/nodes/node_host_installer_registry_units/test_golden_chain_host_installer_registry_units.py": 0.04,
   "tests/nodes/node_host_installer_registry_units/test_registry_units.py": 0.47,
   "tests/nodes/node_host_memory_admission_compute/test_golden_chain_host_memory_admission_compute.py": 0.01,
