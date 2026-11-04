@@ -30,6 +30,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.models.model_andon_ledger_holds import (
+    ModelAndonLedgerHoldsRequest,
+    ModelAndonLedgerHoldsResult,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -102,6 +106,10 @@ def _read_queue(state_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, A
                         held["stop"] = row["stop"]
             elif "stop_refused" in row:
                 continue
+            elif "emit_receipt" in row:
+                for held in rows:
+                    if held["id"] == row["emit_receipt"]:
+                        held.setdefault("idempotency_keys", []).append(row["key"])
             else:
                 rows.append(row)
                 opened.append(row)
@@ -285,17 +293,44 @@ class HandlerExceptionEmit:
         with _locked(request.state_dir):
             rows, opened = _read_queue(request.state_dir)
             same_class = [r for r in rows if r["cls"] == row.cls]
+            if request.idempotency_key:
+                prior = next(
+                    (
+                        r
+                        for r in rows
+                        if request.idempotency_key in r.get("idempotency_keys", [])
+                    ),
+                    None,
+                )
+                if prior is not None:
+                    return ModelExceptionEmitResult(
+                        "repeat",
+                        prior["id"],
+                        len(same_class),
+                        "",
+                        "idempotency_replay",
+                        f"repeat:{prior['id']}"
+                        if prior.get("stop")
+                        else "none:class_not_registered",
+                    )
             existing = next(
                 (r for r in opened if r["cls"] == row.cls and r["key"] == row.key), None
             )
             stop_note = "none:class_not_registered"
             if existing is not None:
                 status, row_id = "repeat", existing["id"]
+                if request.idempotency_key:
+                    _append(
+                        request.state_dir,
+                        {"emit_receipt": row_id, "key": request.idempotency_key},
+                    )
                 if stop_class is not None:
                     stop_note = f"repeat:{row_id}"
             else:
                 row_id = f"{request.now}-{row.cls}-{hashlib.sha1(row.key.encode('utf-8')).hexdigest()[:8]}"
                 stored = {"id": row_id, "at": request.now, **asdict(row)}
+                if request.idempotency_key:
+                    stored["idempotency_keys"] = [request.idempotency_key]
                 if stop_class is not None:
                     from omnimarket.models.stop_gate import (
                         OPEN_ROLE_KEY,
@@ -451,9 +486,36 @@ class HandlerStopEvent:
 class HandlerOpenStops:
     """The stops not yet cleared or declared false, and the recorded refusals, for ``stop_gate`` and the read."""
 
+    def __init__(self, *, ledger_path: Path | None = None) -> None:
+        self._ledger_path = ledger_path
+
     def handle(self, request: ModelOpenStopsRequest) -> ModelOpenStopsResult:
         from omnimarket.models.stop_gate import ModelStopRecord
 
+        reports: tuple[str, ...] = ()
+        ledger_path = request.ledger_path or self._ledger_path
+        if ledger_path is not None:
+            from omnimarket.models.model_andon_ledger_holds import (
+                ModelAndonLedgerHoldsRequest,
+            )
+
+            from .container.container_exception_queue_effect import (
+                create_handler_andon_ledger_holds,
+            )
+
+            reports = (
+                create_handler_andon_ledger_holds()
+                .handle(
+                    ModelAndonLedgerHoldsRequest(
+                        state_dir=request.state_dir,
+                        ledger_path=ledger_path,
+                        now=request.now
+                        if request.now is not None
+                        else datetime.now(UTC),
+                    )
+                )
+                .reports
+            )
         with _locked(request.state_dir):
             _, opened = _read_queue(request.state_dir)
             path = request.state_dir / QUEUE_FILE
@@ -472,6 +534,7 @@ class HandlerOpenStops:
                 if r.get("stop")
             ),
             refusals,
+            reports,
         )
 
 
@@ -718,3 +781,53 @@ class HandlerExceptionCli:
             )
         sys.stdout.write(out + "\n")
         return ModelExceptionCliResult(code, out)
+
+
+class HandlerExceptionQueueDispatch:
+    """Dispatch the exception queue's typed requests to its bound handlers."""
+
+    def handle(
+        self,
+        request: ModelExceptionEmitRequest
+        | ModelExceptionQueueRequest
+        | ModelExceptionResolveRequest
+        | ModelExceptionQueueReadRequest
+        | ModelStopEventRequest
+        | ModelOpenStopsRequest
+        | ModelAndonLedgerHoldsRequest,
+    ) -> (
+        ModelExceptionEmitResult
+        | ModelExceptionQueueResult
+        | ModelExceptionResolveResult
+        | ModelExceptionQueueRead
+        | ModelStopEventResult
+        | ModelOpenStopsResult
+        | ModelAndonLedgerHoldsResult
+    ):
+        from .container.container_exception_queue_effect import (
+            create_handler_andon_ledger_holds,
+            create_handler_exception_emit,
+            create_handler_exception_queue,
+            create_handler_exception_queue_read,
+            create_handler_exception_resolve,
+            create_handler_open_stops,
+            create_handler_stop_event,
+        )
+
+        if isinstance(request, ModelExceptionEmitRequest):
+            return create_handler_exception_emit().handle(request)
+        if isinstance(request, ModelExceptionQueueRequest):
+            return create_handler_exception_queue().handle(request)
+        if isinstance(request, ModelExceptionQueueReadRequest):
+            return create_handler_exception_queue_read().handle(request)
+        if isinstance(request, ModelExceptionResolveRequest):
+            return create_handler_exception_resolve().handle(request)
+        if isinstance(request, ModelStopEventRequest):
+            return create_handler_stop_event().handle(request)
+        if isinstance(request, ModelOpenStopsRequest):
+            return create_handler_open_stops().handle(request)
+        if isinstance(request, ModelAndonLedgerHoldsRequest):
+            return create_handler_andon_ledger_holds().handle(request)
+        raise TypeError(
+            f"Unsupported exception queue request: {type(request).__name__}"
+        )

@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_network_graph_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  The structure half of the node network graph. Given contract texts (each with
+  its repo and repo-relative path), the overlay (command_segment,
+  domain_segment_index, window) and a reference time, it returns vertices keyed
+  repo/name and one edge per (publisher, topic, subscriber) among the topics the
+  contracts declare. It reads every topic dialect in its own pure code. A contract
+  with a node_type key that does not parse is one vertex, state unknown with the
+  cause contract-unreadable. Every list of the document is sorted by key.
+  Containers and the state rules beyond contract-unreadable are separate work.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: network_graph_compute
+    handler:
+      name: HandlerNetworkGraphCompute
+      module: omnimarket.nodes.node_network_graph_compute.handlers.handler_network_graph_compute
+handler:
+  module: omnimarket.nodes.node_network_graph_compute.handlers.handler_network_graph_compute
+  class: HandlerNetworkGraphCompute
+  input_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphRequest
+  output_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphDocument
+input_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphRequest
+output_model: omnimarket.models.network_graph.model_network_graph.ModelNetworkGraphDocument
+descriptor:
+  node_archetype: compute
+  purity: pure  # contract texts in, document out; no I/O library is imported
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+  - main
+inputs:
+  contracts:
+    type: tuple
+    required: true
+    description: Contract files, each with its repo and repo-relative path.
+  overlay:
+    type: ModelNetworkGraphOverlay
+    required: true
+    description: command_segment, domain_segment_index and window, handed in by the caller.
+  reference_time:
+    type: datetime
+    required: true
+    description: The reference time the document is generated at.
+outputs:
+  generated_at:
+    type: datetime
+  overlay:
+    type: ModelNetworkGraphOverlay
+  vertices:
+    type: tuple
+  edges:
+    type: tuple
+terminal_event: onex.evt.omnimarket.network-graph-computed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.network-graph-compute-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.network-graph-computed.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.network-graph-compute-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.network-graph-computed.v1

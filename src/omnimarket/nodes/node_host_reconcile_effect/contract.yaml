@@ -17,6 +17,26 @@ node_version:
   minor: 0
   patch: 0
 description: Host-local reconciliation with content-proven surfaces and dispatch floor eligibility.
+retirement:
+  retired_repositories:
+  - onex_change_control
+  - ycbench_onex
+  - omnibase_compat
+  # Deployment-specific names extend this policy through the node overlay.
+  backup_directory: .onex_state/retired-repository-bundles
+  sync_directories: [scripts, systemd, launchd, deploy]
+  source_sync_glob: '*sync*.py'
+  registry_file_globs:
+  - '*.yaml'
+  - '*.yml'
+  - '*repos*.json'
+  - '*registry*.json'
+  - 'config/**/*.yaml'
+  - 'config/**/*.yml'
+  - 'config/**/*.json'
+  registry_key_pattern: '^(repos|repositories|.*_repos)$'
+  registry_constant_pattern: "^_?(REPOS|REPOSITORIES|SIBLING_CLONE_MANIFEST|\
+    (DEFAULT|LANDING|SYNC|CLONE|SCAN|FILL|FLEET|CI|OTHER|KNOWN|ORG|ALL|WATCH|TARGET|REGISTRY|CANONICAL)(_[A-Z]+)*_REPOS)$"
 input_model: omnimarket.models.model_host_reconcile.ModelHostReconcileCommand
 output_model: omnimarket.models.model_host_reconcile.ModelHostReconcileRunResult
 handler:

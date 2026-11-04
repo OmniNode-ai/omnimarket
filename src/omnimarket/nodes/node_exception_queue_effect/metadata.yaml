@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_exception_queue_effect
 version: 1.0.0
-description: "Keep the exception queue: emit a row, list the decision and open rows, resolve a row, and start the mechanize runner once per case."
+description: "Keep the exception queue: emit cases, detect registered ledger HOLDs, retain readback-gated stops, resolve rows and start the mechanize runner once per case."
 pack: operator_tooling
 node_role: effect
 display_name: Exception Queue Effect

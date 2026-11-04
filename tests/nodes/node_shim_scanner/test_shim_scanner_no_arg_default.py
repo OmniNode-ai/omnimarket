@@ -60,6 +60,19 @@ class TestResolvePathsHelper:
         assert any("omnibase_core" in p and p.endswith("src") for p in resolved)
         assert any("omnimarket" in p and p.endswith("src") for p in resolved)
 
+    def test_none_with_omni_home_skips_the_retired_repository(
+        self, tmp_path: Path
+    ) -> None:
+        """A retired clone left on a host is not scanned by default (OMN-21284)."""
+        (tmp_path / "omnibase_compat" / "src").mkdir(parents=True)
+        (tmp_path / "omnimarket" / "src").mkdir(parents=True)
+
+        with mock.patch.dict(os.environ, {"OMNI_HOME": str(tmp_path)}):
+            resolved = _resolve_paths(None)
+
+        assert not any("omnibase_compat" in p for p in resolved)
+        assert any("omnimarket" in p and p.endswith("src") for p in resolved)
+
     def test_none_without_omni_home_returns_empty(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
