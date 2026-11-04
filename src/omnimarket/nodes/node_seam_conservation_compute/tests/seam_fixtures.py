@@ -25,9 +25,9 @@ from omnimarket.models.seam_reading import (
 NODES = Path(__file__).resolve().parents[2]
 ORCHESTRATOR_CONTRACT = NODES / "node_seam_read_orchestrator" / "contract.yaml"
 GRAPH_NAME = "view_seam_read"
-COUNT_TOPIC = "onex.evt.omnimarket.view-seam-counted.v1"
-CLOSE_TOPIC = "onex.evt.omnimarket.view-seam-window-closed.v1"
-READING_TOPIC = "onex.evt.omnimarket.view-seam-reading-recorded.v1"
+COUNT_TOPIC = "onex.evt.omnimarket.view-seam-counted.v1"  # onex-topic-allow: test fixture mirrors emitter contract topics
+CLOSE_TOPIC = "onex.evt.omnimarket.view-seam-window-closed.v1"  # onex-topic-allow: test fixture mirrors emitter contract topics
+READING_TOPIC = "onex.evt.omnimarket.view-seam-reading-recorded.v1"  # onex-topic-allow: test fixture mirrors emitter contract topics
 T0 = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 WINDOW = ModelSeamWindow(start=T0, end=T0 + timedelta(minutes=10))
 TICK = "tick-1"
