@@ -85,7 +85,10 @@ DECLARED: dict[str, dict[str, float]] = {
         "readback_poll_interval_seconds": 5,
         "readback_deadline_seconds": 60,
     },
-    "node_canonical_clone_refresh_effect": {"sync_timeout_seconds": 300},
+    "node_canonical_clone_refresh_effect": {
+        "sync_timeout_seconds": 300,
+        "declared_clone_timeout_seconds": 120,
+    },
     "node_captured_secret_store_effect": {
         "store_call_timeout_seconds": 5.0,
         "credential_close_timeout_seconds": 30.0,

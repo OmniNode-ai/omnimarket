@@ -6,6 +6,7 @@ Frozen dataclasses keep the queue_status.py import usable with only the standard
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +38,7 @@ class ModelExceptionEmitRequest:
     runner: Path | None = None  # the remote-lane runner; None never dispatches
     parent: str | None = None
     role: str = ""  # the writer's role; a row of a stop-registry class opens a stop only from the contract's opener
+    idempotency_key: str = ""  # persists across resolution, unlike class/key coalescing
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,8 @@ class ModelStopEventResult:
 @dataclass(frozen=True)
 class ModelOpenStopsRequest:
     state_dir: Path
+    ledger_path: Path | None = None
+    now: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -132,3 +136,4 @@ class ModelOpenStopsResult:
         ModelStopRecord, ...
     ]  # every stop not yet cleared or declared false, for stop_gate
     refusals: tuple[dict[str, Any], ...]  # the recorded refusals of writes to stops
+    reports: tuple[str, ...] = ()  # ledger rows the detector could not turn into stops
