@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# test-literal-ok: fixtures are the foreign local paths the scrub must reject
 """Regression shapes from the recorded scrub and publish failures."""
 
 import json
