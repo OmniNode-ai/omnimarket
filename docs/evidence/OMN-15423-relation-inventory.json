@@ -6246,7 +6246,7 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_work_ledger"
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_work_ledger/migrations/0007_work_ledger_history_import.sql"
@@ -6256,7 +6256,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml"
+        "scripts/application-relation-ownership.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -6268,7 +6268,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_ledger_line_citation_row"
       ],
@@ -6288,10 +6290,12 @@
       "owner_declaration": "node_projection_work_ledger",
       "partitioning": [],
       "producer": "node_projection_work_ledger",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_work_ledger"
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

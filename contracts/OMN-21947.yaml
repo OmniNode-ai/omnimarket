@@ -84,8 +84,8 @@ dod_evidence:
           readback_dir="$(mktemp -d)"
           trap 'rm -rf "$readback_dir"' EXIT
           revision="$(git rev-parse HEAD)"
-          for module in migrations/0007_work_ledger_history_import.sql handlers/work_ledger_history_import.py handlers/work_ledger_citation.py; do
-            path="src/omnimarket/nodes/node_projection_work_ledger/$module"
+          node_path="src/omnimarket/nodes/node_projection_work_ledger"
+          for path in "$node_path/migrations/0007_work_ledger_history_import.sql" "$node_path/handlers/work_ledger_history_import.py" "$node_path/handlers/work_ledger_citation.py" "$node_path/contract.yaml" scripts/application-relation-ownership.yaml; do
             curl --fail --silent --show-error --location --max-time 10 \
               "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
               --output "$readback_dir/source.out"
@@ -106,11 +106,14 @@ dod_evidence:
           uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ledger-l3b-1102 -- uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger tests/unit/nodes/node_work_ledger_query_effect -q --no-cov
         cwd: .
   - id: dod-omn21947-ac4-relation-inventory
-    description: AC4's ledger_line_citation table is declared in node_projection_work_ledger's db_io, so the source-derived relation inventory builds and the checked-in inventory is current with it.
+    description: AC4's ledger_line_citation table is declared in the migration service ownership manifest for the standalone history importer. The source-derived relation inventory remains current, and the live projection writer resolves against every packaged topology profile without requiring the import-only table.
     source: manual
     binds_ac:
       - AC4
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov --tb=line
+        cwd: .
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_runtime_bindings.py -q --no-cov --tb=line
         cwd: .
