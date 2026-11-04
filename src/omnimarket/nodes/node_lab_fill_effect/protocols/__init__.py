@@ -18,6 +18,7 @@ from .protocol_lab_fill_effect import (
     ProtocolLabFillReceiptReader,
     ProtocolLabFillResultWriter,
     ProtocolLabFillStatusAppender,
+    ProtocolLabFillTicketFacts,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "ProtocolLabFillReceiptReader",
     "ProtocolLabFillResultWriter",
     "ProtocolLabFillStatusAppender",
+    "ProtocolLabFillTicketFacts",
 ]

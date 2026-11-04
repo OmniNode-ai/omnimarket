@@ -17,7 +17,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_work_progress_compute.models.model_work_progress import (
+from omnimarket.models.model_work_progress import (
     ModelWorkProgressBudgets,
     ModelWorkProgressPhase,
 )

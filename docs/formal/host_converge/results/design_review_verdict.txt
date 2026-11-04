@@ -1,0 +1,44 @@
+# Design-review verdict: host converge (the reconciler, the host mutation fence, the runner's admission, pins and writers of the installed manifest)
+
+Reviewed by a read-only Codex run at high effort against the model, its cfg files and the committed TLC output in this directory.
+Evidence is the recorded TLC 2.19 run (tla2tools.jar sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88) of the design configuration and every mutant,
+plus results/EXACTNESS.txt (each mutant re-run with -continue over the whole reachable state space). sha256 of the model: 00a27af29f657e895bf46735e06ece3e04e29974722e94e1d3f0d5ea9c51e629.
+Blocking findings of an earlier review round (assumed takeover, atomic install and readback, a readback mutant that did not break the ordering, an ownership invariant narrower than its scope, a mutant violating two invariants) were fixed in the model before this round.
+
+No blocking defects found within the requested bounded scenario scope. The actors and named races are represented, and the nine invariants have meaningful state-based checks rather than tests of their mutant constants.
+
+The design log reports 25 initial scenarios and 843 reachable states without errors. Every mutant cfg changes exactly one constant; all first-violation logs and [EXACTNESS.txt](results/EXACTNESS.txt) identify only the intended invariant. These are reviewed pinned results, not newly executed checks.
+
+Line references below refer to [HostConverge.tla](HostConverge.tla).
+
+| Invariant | Result | Reason |
+|---|---|---|
+| NoObservedBeforeReadback | PASS | `Readback` supplies evidence carried through state and publication; the early-publication mutant omits it (291–375, 504). |
+| NoLaneOnUnverifiedTree | PASS | `Launch` checks actual existence, verification and tamper state under the fence; its history flag records unsafe admission (406–414). |
+| PinnedTreeNeverRemoved | PASS | `Collect` records whether a pin existed at removal, independently of its pin-respect switch (383–389). |
+| OrphanPinReleased | PASS | `Sweep` checks surviving pins against lane state; PID reuse exercises the separate start-time check (390–398, 423–429). |
+| OwnedSurfaceOneWriter | PASS | Actual known-writer history is checked; enabling the unguarded fix produces a foreign known writer (431–440, 508). |
+| ForeignWriteReported | PASS | Readback mismatch evidence is retained independently of the comparison switch and checked in published records (310–319, 509). |
+| TakeoverBeforeMutation | PASS | Mutation history records incomplete takeover across physical and state-file writes; the mutant permits work while merely booted (243–244, 510). |
+| StateWritesSerialised | PASS | Independent committed-write counters expose stale snapshot overwrites when the state lock is disabled (321–337, 353–368, 511). |
+| EverySurfaceWithinTwoPasses | PASS | Completed-pass counters track omitted surfaces; disabling wait ordering causes budget starvation (246–247, 345–351, 512). |
+
+Counterexample spot-checks show meaningful mechanism failures:
+
+- `mut_NoLaneOnUnverifiedTree.out`, states 24–27: planning selects `t1`, tampering follows, then admission and launch proceed without the final check.
+- `mut_OrphanPinReleased.out`, states 29–34: lane `a` ends normally; lane `b` crashes, its PID is reused with start value 2, and the sweep incorrectly retains its start-1 pin.
+- `mut_StateWritesSerialised.out`, states 24–28: pass and republish snapshot the same state; republish subsequently restores `sf.m=2` after the pass has raised the committed count to `dm=3`.
+- `mut_ForeignWriteReported.out`, states 21–29: an unknown manifest write precedes readback; disabling comparison publishes `CONVERGED` with `fgn=TRUE`.
+
+Blocking defects: none identified.
+
+Conditions the builders must keep:
+
+- **Finite scenario coverage.** `Script` and `Next` constrain ordering outside each event block (122–214, 485–491). Results cover those partial orders, not arbitrary workload combinations. The bounds reach the named scenarios: takeover overlap, state RMW overlap, foreign-write windows, two pins on same/different trees, PID reuse, and crashes after all six surface steps.
+- **Atomic filesystem refinement.** `Install` atomically produces a verified tree; state writes replace a complete snapshot; `Launch` atomically creates the pin and running identity (291–309, 328–337, 406–414). Partial builds, torn writes, and failures inside those operations require implementation guarantees or further modeling.
+- **Snapshot reporting.** `ForeignWriteReported` means no published success contains a mismatch observed at readback. It does not promise immediate detection of every foreign write or freshness through publication. Repair and reporting require later visits and publication.
+- **Sweep-based release.** `OrphanPinReleased` means no orphan survives a completed sweep. `Spec` supplies no fairness or eventual-sweep guarantee; similarly, the two-pass property counts completed passes rather than elapsed time.
+- **Established ownership and cooperative fencing.** `Guarded` assumes the host is already owned and refuses guarded alternatives (432–438). All known unguarded manifest writers must remain disabled. Unknown writers deliberately bypass ownership.
+- **Small identity and data domains.** Two generations, two surfaces, two lanes, one boot, one PID reuse, event-based aging, and abstract hashes establish no reboot, real-time, transport, or byte-integrity guarantees (50–67).
+
+VERDICT: PASS

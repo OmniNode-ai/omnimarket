@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_policy_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Judge whether a pull request author's pull request lands like the operator's and whether the landing
+  controller can land it. Every author lands like the operator's (operator RULING 2026-10-14T02:24:46Z); only a
+  pull request that names no author lands for nobody. Rebuilt from the plugin's landing_policy.py.
+input_model:
+  name: ModelLandingPolicyRequest
+  module: omnimarket.nodes.node_landing_policy_compute.models.model_landing_policy
+output_model:
+  name: ModelLandingPolicyVerdict
+  module: omnimarket.nodes.node_landing_policy_compute.models.model_landing_policy
+handler:
+  module: omnimarket.nodes.node_landing_policy_compute.handlers.handler_landing_policy
+  class: HandlerLandingPolicy
+  input_model: omnimarket.nodes.node_landing_policy_compute.models.model_landing_policy.ModelLandingPolicyRequest
+  output_model: omnimarket.nodes.node_landing_policy_compute.models.model_landing_policy.ModelLandingPolicyVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_landing_policy_compute.handlers.handler_landing_policy:HandlerLandingPolicy
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLandingPolicy
+      module: omnimarket.nodes.node_landing_policy_compute.handlers.handler_landing_policy
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with a pull request author.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Landing policy - every author's pull request lands like the operator's."
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - compute
+  - landing-policy-compute
+  - OMN-22192
+  related_tickets:
+  - OMN-22192

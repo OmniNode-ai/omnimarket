@@ -40,6 +40,20 @@ handler_routing:
       handler:
         name: "HandlerTicketQuery"
         module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_query"
+    # OMN-22418: a ticket's workflow state type and assignee id, for a launch decision.
+    - operation: "read_ticket_facts"
+      handler:
+        name: "HandlerTicketFacts"
+        module: "omnimarket.nodes.node_ticket_query.handlers.handler_ticket_facts"
+secrets:
+  # OMN-22418: the tracker key is resolved in process from the secret store by
+  # node_secret_store_effect (reference built from folder + key), never from the
+  # environment and never from a key file.
+  tracker_api_key:
+    description: "Project tracker API key, resolved from the secret store at the effect boundary."
+    required: true
+    store_folder: "/shared/env"
+    key: "LINEAR_API_KEY"
 dependencies:
   - name: "ProtocolProjectTracker"
     type: "protocol"
@@ -56,8 +70,9 @@ dod_evidence:
   - "test_golden_chain_ticket_query.py passes with EventBusInmemory + mock ProtocolProjectTracker"
   - "HandlerTicketQuery contains zero mcp__linear-server__ references"
   - "uv run onex run node_ticket_query resolves without import errors"
-  - "Entry point registered in pyproject.toml under [project.entry-points.'onex.nodes']"
+  - "Entry point registered in pyproject.toml under the node entry-point group"
 metadata:
+  transport_type: "HTTP"
   description: "Ticket query node — ProtocolProjectTracker dispatch layer"
   author: "OmniNode Team"
   created: "2026-04-14"
