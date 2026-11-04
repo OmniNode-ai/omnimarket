@@ -905,6 +905,23 @@ def _delegation_shape_reason(line: str) -> str | None:
     )
 
 
+_DISPOSITION_PLACEHOLDERS = PLACEHOLDER_VALUES | {"pending", "unknown", "null"}
+
+
+def _is_explicit_disposition(value: object) -> bool:
+    """A disposition counts only when it records an answer, never a placeholder.
+
+    A string must name a value other than a placeholder; a mapping (a structured
+    disposition record) must be non-empty. Anything else, booleans included,
+    records no answer and leaves the receipt undisposed.
+    """
+    if isinstance(value, str):
+        return value.strip().lower().rstrip(".") not in _DISPOSITION_PLACEHOLDERS
+    if isinstance(value, dict):
+        return bool(value)
+    return False
+
+
 def _undisposed_receipt_reason(line: str) -> str | None:
     """Refuse named successful delegation receipts that have no disposition."""
     row = _governed_terminal_row(line)
@@ -938,7 +955,7 @@ def _undisposed_receipt_reason(line: str) -> str | None:
             receipt.get("schema") != "delegation-receipt/2"
             or engine not in ("lab", "glm", "codex", "jev")
             or receipt.get("status") not in ("ok", "incumbent")
-            or receipt.get("disposition")
+            or _is_explicit_disposition(receipt.get("disposition"))
         ):
             continue
         id_key = {

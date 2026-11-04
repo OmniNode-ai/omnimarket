@@ -112,3 +112,28 @@ def test_na_and_script_rows_are_not_checked(home: Path) -> None:
         f"{TS} | TERMINAL | lane={LANE} | actor=script:drain | friction=none | {cells}"
     )
     assert g.delegation_cell_reason(script) is None
+
+
+@pytest.mark.parametrize(
+    "placeholder", ["none", "None", "n/a", "tbd", "-", "pending", "unknown", " "]
+)
+def test_placeholder_disposition_is_still_undisposed(
+    home: Path, placeholder: str
+) -> None:
+    """A disposition cell that records no answer is not an explicit disposition."""
+    p = receipt(home, "r5", disposition=placeholder)
+    reason = g.delegation_cell_reason(
+        f"{TERMINAL} | delegated=1 runs={RUN} lab=1 glm=0"
+    )
+    assert reason is not None
+    assert "undisposed" in reason
+    assert p.name in reason
+
+
+def test_non_string_disposition_is_still_undisposed(home: Path) -> None:
+    receipt(home, "r6", disposition=True)
+    reason = g.delegation_cell_reason(
+        f"{TERMINAL} | delegated=1 runs={RUN} lab=1 glm=0"
+    )
+    assert reason is not None
+    assert "undisposed" in reason
