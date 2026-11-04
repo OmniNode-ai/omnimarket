@@ -26,6 +26,13 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: the refill probe writes a lane overlay binding the host process environment and file overlay documents and passes it with --overlay to runtime_claude_probe; typed probe receipts remain classified as ok, limited, timeout or unavailable -- falsifier: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov -k "probe"'
+  - id: req-omn19998-quiet-host-capture-repair
+    statement: The migrated alarm effect keeps quiet-host findings while independently observing and safely repairing capture per declared host.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: recorded quiet-host incidents retain their alarm; each safe host repair preserves backlog, persists a cooldown and requires a newer post-attempt event for capture recovery; unknown reads, cycling broker failures, failed installs and stale or future readbacks never report recovery -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_golden_chain_quiet_host_repair.py -q --no-cov -n 0'
+      - id: AC6
+        statement: 'AC6: the installed alarm node is discovered and routes its declared bus command to a correlated terminal event; the existing registry installer renders its clean branch checkout, configuration path and revision -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_golden_chain_quiet_host_repair.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -99,4 +106,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
+        cwd: .
+  - id: dod-omn19998-quiet-host-repair
+    description: Recorded-row regressions and negative controls exercise the migrated source readers, independent drainer safety decision, installer environment, per-host state and readback. This does not assert the landing controller timer criteria.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_golden_chain_quiet_host_repair.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-quiet-host-deploy
+    description: Hosted wiring smoke discovers the installed entry point, wires all declared topics and reads a correlated terminal through an in-memory bus. A host-boundary fixture checks branch path and revision rendering through the existing installer; live installation remains separate evidence.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_effect/test_golden_chain_quiet_host_repair.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"
         cwd: .

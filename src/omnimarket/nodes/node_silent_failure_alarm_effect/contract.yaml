@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_silent_failure_alarm_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+lifecycle: experimental
+description: >
+  Read the host alarm sources and retain placement, tick liveness, throughput, quiet-host,
+  drainer and job-exit alarms. For each quiet host, independently observe its declared drainer
+  and call the existing backlog-preserving installer only for a safe failure. Unknown supervisors,
+  cycling broker failures and undeclared targets never reinstall. Persist per-host attempts before
+  installation and bound retries with a cooldown. Read the hook-event source again after repairs;
+  only an event newer than that host's attempt and previous event records capture recovery.
+  Installation success never clears the triggering alarm. Host paths and commands are server-bound
+  deployment data; bus requests cannot supply an installer or an execution target.
+input_model:
+  name: ModelSilentFailureAlarmRequest
+  module: omnimarket.nodes.node_silent_failure_alarm_effect.models
+output_model:
+  name: ModelSilentFailureAlarmResult
+  module: omnimarket.nodes.node_silent_failure_alarm_effect.models
+handler:
+  module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm
+  class: HandlerSilentFailureAlarm
+  input_model: omnimarket.nodes.node_silent_failure_alarm_effect.models.ModelSilentFailureAlarmRequest
+  output_model: omnimarket.nodes.node_silent_failure_alarm_effect.models.ModelSilentFailureAlarmResult
+entrypoint:
+  name: NodeSilentFailureAlarmEffect
+  module: omnimarket.nodes.node_silent_failure_alarm_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm:HandlerSilentFailureAlarm
+  handlers:
+    - operation: tick
+      topic: onex.cmd.omnimarket.silent-failure-alarm-requested.v1
+      handler:
+        name: HandlerSilentFailureAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm
+    - operation: drainer-observe
+      topic: onex.cmd.omnimarket.silent-failure-drainer-observe-requested.v1
+      handler:
+        name: HandlerSilentFailureAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm
+    - operation: drainer-repair
+      topic: onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1
+      handler:
+        name: HandlerSilentFailureAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm
+terminal_event: onex.evt.omnimarket.silent-failure-alarm-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.silent-failure-alarm-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.silent-failure-alarm-requested.v1
+    - onex.cmd.omnimarket.silent-failure-drainer-observe-requested.v1
+    - onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1
+  publish_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 900000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
