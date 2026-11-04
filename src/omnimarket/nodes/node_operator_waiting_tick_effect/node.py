@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from omnimarket.models.model_operator_item_render import (
+        ModelOperatorItemRenderRequest,
+        ModelOperatorItemsReadRequest,
+    )
+
     from .models import ModelOperatorWaiting, ModelOperatorWaitingRequest
 
 CONTRACT = Path(__file__).with_name("contract.yaml")
@@ -18,6 +23,15 @@ class NodeOperatorWaitingTickEffect:
         from .handler import HandlerOperatorWaitingTick
 
         return HandlerOperatorWaitingTick().handle(request)
+
+    def read_items(
+        self, request: ModelOperatorItemsReadRequest
+    ) -> ModelOperatorItemRenderRequest:
+        from omnimarket.nodes.node_operator_items_read_effect import (
+            NodeOperatorItemsReadEffect,
+        )
+
+        return NodeOperatorItemsReadEffect().handle(request)
 
 
 def ask_question(cells: list[str]) -> str:

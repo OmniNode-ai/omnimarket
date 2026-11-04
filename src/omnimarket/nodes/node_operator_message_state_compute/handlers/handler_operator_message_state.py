@@ -5,7 +5,7 @@
 import hashlib
 from datetime import UTC, datetime
 
-from omnimarket.handlers.handler_operator_ledger import parse_ledger_row
+from omnimarket.handlers.operator_ledger import parse_ledger_row
 from omnimarket.models.model_operator_message_state import (
     ModelOperatorMessageEntry,
     ModelOperatorMessageStateReport,

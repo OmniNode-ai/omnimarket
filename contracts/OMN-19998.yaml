@@ -55,6 +55,28 @@ requirements:
         statement: 'AC9: every sentence of a mixed operator prompt has a source-linked disposition, including chat, and replay yields no new rows -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_sentence_dispositions.py -q --no-cov -n 0'
       - id: AC10
         statement: 'AC10: operator message arrivals stay unanswered until an explicit reply, and both item-fold nodes publish typed results through installed contract discovery and in-memory runtime wiring -- falsifier: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0'
+  - id: req-omn19998-capture-health-and-carry-over
+    statement: Capture measures delegated call outcomes and carried-over asks use the ordinary transition evidence rule.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: one empty classifier response remains heuristic without an alarm, twenty consecutive heuristic prompts raise a silent-failure finding, and recorded call outcomes distinguish measured observations from unmeasured history -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka" -k "classifier or health or alarm or adapter"'
+      - id: AC12
+        statement: 'AC12: carry-over closes only with ordinary completion evidence, withdraws only through a correction naming a confirmed second-engine label run, and a dry-run replay dispositions every cohort item without writing the source ledger -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka"'
+  - id: req-omn19998-open-item-render
+    statement: Every tick surfaces the tracked open items through one pure renderer.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: waiting and throughput ticks print the same exhaustive owner-grouped block over one ledger snapshot, including old items on otherwise OK ticks; unread or absent snapshots print UNKNOWN open-items and prevent OK -- falsifier: uv run pytest tests/nodes/node_operator_item_render_compute/test_item_render.py -k item_render -m "not kafka" -q --no-cov'
+
+  - id: req-omn19998-orchestrator-promise-capture
+    statement: Stop assistant replies retain promise items, source sentence dispositions and uncertain review candidates without duplicate replay rows.
+    acceptance:
+      - id: AC14
+        statement: 'AC14: orchestrator Stop replies yield exact-quote promise items and one source-linked disposition per sentence; ten commitments remain distinct, replay creates no new row, machine replies yield none and low-confidence items retain an owner and a visible review count -- falsifier: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_classify.py -k promise_classify -q --no-cov -n 0'
+      - id: AC15
+        statement: 'AC15: the labelled-sample measurement reports precision and recall with counts and Wilson intervals, refuses a below-bar or missing-bar activation and keeps candidate words out of tick output -- falsifier: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_bar.py -k promise_bar -q --no-cov -n 0'
+      - id: AC16
+        statement: 'AC16: installed promise nodes accept typed requests and emit typed results through production runtime discovery and in-memory bus dispatch -- falsifier: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_golden_chain_promise_runtime.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -216,4 +238,52 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_operator_message_state_compute/test_message_state.py tests/unit/nodes/node_ask_state_compute/test_tracked_items.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-capture-health-and-carry-over
+    description: Focused fixtures cover measured classifier outcomes, the twenty-prompt alarm, evidence and confirmed-label rules, a read-only 218-item replay, bounded text output and the existing CLI mode. Historical capture causes and the original 218-item cohort remain host readbacks, not asserted by these fixtures.
+    source: manual
+    binds_ac: [AC11, AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka"
+        cwd: .
+  - id: dod-omn19998-carry-over-runtime
+    description: Discovered production contracts and infra auto-wiring carry the typed dry-run request over the real in-memory event bus to its terminal event. The Redpanda variant uses its own declared overlay and requires lab topic provisioning and ACLs; this smoke does not assert that external proof.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_ask_state_effect/test_carry_over.py -q -m "not kafka" -k runtime
+        cwd: .
+  - id: dod-omn19998-open-item-render
+    description: Focused replay covers 212 items, both ticks over one fixture ledger, failed reads, overlay limits, order, clipping and NEW marks, plus installed entry point discovery and production in-memory runtime wiring. The separate broker test compares the same renderer input across in-memory and Redpanda overlays. Caller migration and installed plugin sentinel proof are separate remaining work.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_item_render_compute/test_item_render.py -k item_render -m "not kafka" -q --no-cov
+        cwd: .
+  - id: dod-omn19998-promise-capture
+    description: Focused synthetic regressions exercise Stop wire assembly, durable replay, session ownership, machine exclusion, exact source dispositions and shadow tick count output. This is not a live corpus measurement or a running orchestrator tick.
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_classify.py -k promise_classify -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-promise-bar
+    description: Sixty explicitly synthetic labelled replies exercise confusion counts, 95 percent Wilson intervals, unset and failed bars, distinct-source requirements and policy-bound activation. Synthetic measurement cannot authorize activation; the operator corpus and decision-1 values remain required.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_promise_bar.py -k promise_bar -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-promise-runtime-deploy
+    description: Hosted deployment smoke discovers the installed promise contracts and wires the real runtime to an in-memory event bus with an injected durable effect store. This asserts no Redpanda replay, corpus measurement or live installation.
+    source: manual
+    binds_ac: [AC16]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_orchestrator_promise_classify_compute/test_golden_chain_promise_runtime.py -q --no-cov -n 0
         cwd: .

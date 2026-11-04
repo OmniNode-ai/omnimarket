@@ -24,16 +24,16 @@ import json
 import re
 from typing import Any
 
-from omnimarket.handlers.handler_operator_utterance import (
+from omnimarket.handlers.operator_utterance import (
     heuristic_kind as heuristic_kind,
 )
-from omnimarket.handlers.handler_operator_utterance import (
+from omnimarket.handlers.operator_utterance import (
     heuristic_sentences as heuristic_sentences,
 )
-from omnimarket.handlers.handler_operator_utterance import (
+from omnimarket.handlers.operator_utterance import (
     item_id as item_id,
 )
-from omnimarket.handlers.handler_operator_utterance import (
+from omnimarket.handlers.operator_utterance import (
     subject_terms as subject_terms,
 )
 from omnimarket.models.operator_capture import (

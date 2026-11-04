@@ -1,13 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
 name: node_ask_state_compute
-version: "0.1.0"
-description: "Tracked asks, rulings, promises, questions and messages with accountable owners and live claims"
+version: 0.1.0
+description: Tracked asks, rulings, promises, questions and messages with accountable
+  owners and live claims
 pack: operator_capture
 node_role: compute
-display_name: "Operator Ask State"
-omnibase_core_compat: ">=0.39.0,<1.0.0"
+display_name: Operator Ask State
+omnibase_core_compat: '>=0.39.0,<1.0.0'
 entry_points:
   onex.nodes:
-    node_ask_state_compute: "omnimarket.nodes.node_ask_state_compute"
+    node_ask_state_compute: omnimarket.nodes.node_ask_state_compute
 capabilities:
   standalone: true
   full_runtime: true
@@ -17,7 +20,16 @@ capabilities:
   requires_docker: false
   side_effect_class: read_only
 dependencies:
-  - "omnibase_core>=0.39.0"
-authors: ["OmniNode Platform Team"]
-license: "MIT"
-tags: ["compute", "operator-capture", "work-ledger", "asks", "rulings", "promises", "messages"]
+- omnibase_core>=0.39.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- operator-capture
+- work-ledger
+- asks
+- rulings
+- promises
+- messages
+- typed-failure-terminal

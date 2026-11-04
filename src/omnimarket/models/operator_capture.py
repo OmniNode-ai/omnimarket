@@ -17,6 +17,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_capture_health import (
+    ModelCaptureHealthFinding,
+    ModelClassifierCall,
+)
+
 
 class EnumUtteranceKind(StrEnum):
     """What one item of an operator message is."""
@@ -112,6 +117,7 @@ class ModelUtteranceClassification(BaseModel):
     origin: EnumPromptOrigin
     classifier: EnumClassifierSource
     classifier_model: str | None = None
+    call: ModelClassifierCall | None = None
     reason: str
     items: tuple[ModelUtteranceItem, ...] = ()
     dispositions: tuple[ModelSentenceDisposition, ...] = ()
@@ -242,6 +248,8 @@ class ModelCaptureProcessRequest(BaseModel):
 
 class ModelCaptureProcessResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    findings: tuple[ModelCaptureHealthFinding, ...] = ()
 
     processed: int = 0
     rows_appended: int = 0

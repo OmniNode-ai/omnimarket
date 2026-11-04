@@ -5,17 +5,22 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.models.model_carry_over import ModelCarryOverRequest
 from omnimarket.nodes.node_ask_state_effect.handlers.handler_ask_state_report import (
     AskStateSourceError,
     HandlerAskStateReport,
     load_contract,
     parse_time,
+)
+from omnimarket.nodes.node_ask_state_effect.handlers.handler_carry_over import (
+    HandlerCarryOver,
 )
 from omnimarket.nodes.node_ask_state_effect.models.model_ask_state_read import (
     ModelAskStateReadRequest,
@@ -47,38 +52,74 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--no-archives", action="store_true", help="read the live ledger only"
     )
+    parser.add_argument(
+        "--carry-over",
+        type=Path,
+        help="JSON cohort with ask_ids, optional evidence and second-engine labels",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="propose and refold; never append to the ledger",
+    )
+    parser.add_argument(
+        "--merged-prs",
+        type=Path,
+        help="JSON list of PR references measured merged in the watcher",
+    )
     args = parser.parse_args(argv)
+    if args.carry_over and not args.dry_run:
+        parser.error(
+            "--carry-over requires --dry-run; apply uses the accepted-ledger node port"
+        )
     try:
         since = parse_time(args.since)
         now = parse_time(args.now) if args.now else datetime.now(UTC)
         runtime = load_contract()["runtime"]
         ledger = args.ledger or Path(os.environ[runtime["ledger_env"]])
         captures = args.captures_dir or store_dir()
-        report = HandlerAskStateReport().handle(
-            ModelAskStateReadRequest(
-                captures_dir=captures,
-                ledger_path=ledger,
-                since=since,
-                now=now,
-                archives=not args.no_archives,
-            )
+        read = ModelAskStateReadRequest(
+            captures_dir=captures,
+            ledger_path=ledger,
+            since=since,
+            now=now,
+            archives=not args.no_archives,
+            merged_prs=json.loads(args.merged_prs.read_text())
+            if args.merged_prs
+            else (),
         )
+        if args.carry_over:
+            cohort = json.loads(args.carry_over.read_text())
+            result = HandlerCarryOver().handle(
+                ModelCarryOverRequest.model_validate(
+                    {
+                        **cohort,
+                        "read": read,
+                        "dry_run": True,
+                    }
+                )
+            )
+            rendered = result.model_dump_json(indent=2)
+            text = result.text
+            dropped = 0
+        else:
+            report = HandlerAskStateReport().handle(read)
+            rendered = report.model_dump_json(indent=2)
+            text = report.text
+            dropped = report.counts.dropped
     except KeyError as missing:
         sys.stderr.write(
             f"ask-state: required environment variable {missing} is not set\n"
         )
         return 2
-    except (AskStateSourceError, ValueError) as error:
+    except (AskStateSourceError, OSError, ValueError) as error:
         sys.stderr.write(f"ask-state: {error}\n")
         return 2
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    sys.stdout.write(
-        (report.model_dump_json(indent=2) if args.format == "json" else report.text)
-        + "\n"
-    )
-    return 1 if report.counts.dropped else 0
+        args.out.write_text(rendered + "\n", encoding="utf-8")
+    sys.stdout.write((rendered if args.format == "json" else text) + "\n")
+    return 1 if dropped else 0
 
 
 __all__ = ["main"]

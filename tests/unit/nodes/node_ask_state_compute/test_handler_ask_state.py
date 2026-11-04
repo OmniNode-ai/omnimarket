@@ -68,10 +68,16 @@ def _run(
     rows: tuple[str, ...] = (),
     now: datetime = LATER,
     config: ModelAskStateConfig = CONFIG,
+    merged_prs: tuple[str, ...] = (),
 ) -> ModelAskStateReport:
     return HandlerAskState().handle(
         ModelAskStateRequest(
-            prompts=prompts, rows=rows, now=now, since=SINCE, config=config
+            prompts=prompts,
+            rows=rows,
+            now=now,
+            since=SINCE,
+            config=config,
+            merged_prs=merged_prs,
         )
     )
 
@@ -213,7 +219,7 @@ def test_ticketed_status_row_makes_the_ask_ticketed() -> None:
     assert entry.tickets == ("OMN-500",)
 
 
-def test_closes_ask_needs_evidence_withdrawal_needs_none() -> None:
+def test_closes_ask_needs_evidence_withdrawal_needs_confirmed_label() -> None:
     no_evidence = f"2026-10-31T09:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=trust me"
     assert (
         _state(_run((_prompt(10, "Do a thing"),), (no_evidence,)), 10)
@@ -221,13 +227,19 @@ def test_closes_ask_needs_evidence_withdrawal_needs_none() -> None:
     )
 
     merged = f"2026-10-31T09:00:00Z | STATUS | lane=orch | closes-ask={ask_id(10)} | evidence=omnimarket#4700"
-    report = _run((_prompt(10, "Do a thing"),), (merged,))
+    assert (
+        _state(_run((_prompt(10, "Do a thing"),), (merged,)), 10)
+        is EnumAskState.DROPPED
+    )
+    report = _run(
+        (_prompt(10, "Do a thing"),), (merged,), merged_prs=("omnimarket#4700",)
+    )
     assert _state(report, 10) is EnumAskState.DONE
     assert _entry(report, 10).resolution == "closes-ask"
 
     withdrawn = (
-        f"2026-10-31T09:00:00Z | STATUS | lane=operator-capture | closes-ask={ask_id(10)} | "
-        'state=dropped | evidence=operator-drop | "drop it"'
+        f"2026-10-31T09:00:00Z | CORRECTION | lane=orchestrator | closes-ask={ask_id(10)} | "
+        "label=not-an-ask | label_run=label-run-a | second_engine=classifier-b | confirmed_by=orchestrator"
     )
     report = _run((_prompt(10, "Do a thing"),), (withdrawn,))
     assert _entry(report, 10).resolution == "withdrawn"

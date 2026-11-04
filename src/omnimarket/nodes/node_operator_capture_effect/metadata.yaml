@@ -1,6 +1,6 @@
 name: node_operator_capture_effect
 version: "0.1.0"
-description: "Operator capture effects: operator prompts from the bus, the delegated classification, the ledger rows, and the open-ask digest and push"
+description: "Operator capture effects: operator prompts from the bus, measured delegated classification, silent-classifier findings, ledger rows, and the open-ask digest and push"
 pack: operator_capture
 node_role: effect
 display_name: "Operator Capture"

@@ -20,13 +20,13 @@ handler:
   output_model: omnimarket.models.model_operator_message_state.ModelOperatorMessageStateReport
 handler_routing:
   routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_operator_message_state_compute.handlers.handler_operator_message_state:HandlerOperatorMessageState
+  default_handler: omnimarket.nodes.node_operator_message_state_compute.handlers.handler_terminal:HandlerOperatorMessageState
   handlers:
     - operation: fold_operator_message_state
       topic: onex.cmd.omnimarket.operator-message-state-requested.v1
       handler:
         name: HandlerOperatorMessageState
-        module: omnimarket.nodes.node_operator_message_state_compute.handlers.handler_operator_message_state
+        module: omnimarket.nodes.node_operator_message_state_compute.handlers.handler_terminal
 entrypoint:
   name: NodeOperatorMessageStateCompute
   module: omnimarket.nodes.node_operator_message_state_compute.node

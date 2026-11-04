@@ -1,10 +1,7 @@
-"""The operator-waiting tick's list and its acting row (OMN-16177, OMN-19854).
+"""The waiting tick shares the exhaustive renderer and records its acting STATUS row.
 
-RULING 2026-10-14T18:04:24Z: what waits on the operator is a ledger query on a tick, not a separate list. The tick
-prints into a session, so the ruling audit (ruling_mechanisms.py) read the installed hook as NOT-ACTING: it counts a
-mechanism acting only by a ledger row of its own. A run that prints at least one open ask therefore also appends one
-STATUS row, ``actor=script:operator-waiting-tick``, through the plugin's row writer. A refused write is one NOTE line
-after the list and never hides it.
+A refused row write never hides a rendered item. Source failures return UNKNOWN and
+never write a successful acting row for a list that was not read.
 """
 
 from __future__ import annotations
@@ -12,12 +9,15 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
-from datetime import datetime
+
+from omnimarket.nodes.node_operator_item_render_compute import (
+    NodeOperatorItemRenderCompute,
+)
+from omnimarket.protocols.protocol_operator_items import ProtocolOperatorItemRenderer
 
 from .models import ModelOperatorWaiting, ModelOperatorWaitingRequest
 
 ACTOR = "script:operator-waiting-tick"
-DAY_MINUTES = 24 * 60
 QUESTION_CELL_KEY = "question="
 ASK_TEXT_CUT = 160
 
@@ -42,62 +42,59 @@ def ask_question(cells: list[str]) -> str:
     return ""
 
 
-def ask_age(stamp: str, now: datetime) -> str:
-    then = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=now.tzinfo)
-    minutes = max(0, int((now - then).total_seconds() // 60))
-    days, rest = divmod(minutes, DAY_MINUTES)
-    hours, mins = divmod(rest, 60)
-    if days:
-        return f"{days}d{hours:02d}h"
-    return f"{hours}h{mins:02d}m" if hours else f"{mins}m"
-
-
-def render(asks: list[dict[str, str]], new: frozenset[str], now: datetime) -> list[str]:
-    groups: dict[str, list[dict[str, str]]] = {}
-    for ask in sorted(asks, key=lambda a: (a["stamp"], a["id"])):
-        groups.setdefault(ask["ticket"], []).append(ask)
-    oldest = ask_age(min(a["stamp"] for a in asks), now) if asks else "none"
-    lines = [
-        f"WAITING-ON-OPERATOR n={len(asks)} tickets={len(groups)} oldest={oldest} new={len(new)} "
-        f"as_of={now.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-    ]
-    for (
-        ticket,
-        items,
-    ) in groups.items():  # insertion order: each group by its oldest ask
-        lines.append(f"{ticket} ({len(items)})")
-        for a in items:
-            mark = " NEW" if a["id"] in new else ""
-            lines.append(
-                f"  {ask_age(a['stamp'], now)} L{a['line']} {a['id']}{mark}: {a['text']}"
-            )
-    return lines
-
-
 class HandlerOperatorWaitingTick:
-    def handle(self, request: ModelOperatorWaitingRequest) -> ModelOperatorWaiting:
-        lines = render(request.asks, request.new, request.now)
-        if not request.asks:
-            return ModelOperatorWaiting(lines, None)
-        oldest = ask_age(min(a["stamp"] for a in request.asks), request.now)
-        tickets = len({a["ticket"] for a in request.asks})
-        text = (
-            f"operator-waiting tick surfaced {len(request.asks)} open asks to the operator, {len(request.new)} new, "
-            f"oldest {oldest}, across {tickets} tickets"
+    def __init__(self, renderer: ProtocolOperatorItemRenderer | None = None) -> None:
+        self._renderer = (
+            renderer if renderer is not None else NodeOperatorItemRenderCompute()
         )
-        why = self._append(request, text, oldest, tickets)
+
+    def handle(self, request: ModelOperatorWaitingRequest) -> ModelOperatorWaiting:
+        rendered = self._renderer.handle(request.items)
+        lines = list(rendered.lines)
+        if not rendered.known:
+            return ModelOperatorWaiting(lines=lines, exit_code=1)
+        if not rendered.count:
+            return ModelOperatorWaiting(lines=lines)
+        report = request.items.report
+        assert report is not None
+        assert request.items.config is not None
+        opened = [
+            item
+            for item in report.asks
+            if item.state not in request.items.config.closed_states
+        ]
+        tickets = len({ticket for item in opened for ticket in item.tickets})
+        new_count = sum(
+            item.ask_id in request.items.new
+            or item.state in request.items.config.new_states
+            for item in opened
+        )
+        text = (
+            f"operator-waiting tick surfaced {rendered.count} open items, {new_count} new, "
+            f"oldest {rendered.oldest}, across {tickets} tickets"
+        )
+        why = self._append(
+            request, text, rendered.oldest or "none", tickets, rendered.count, new_count
+        )
         if why is not None:
             lines.append(f"NOTE operator-waiting: the tick row was not recorded: {why}")
-        return ModelOperatorWaiting(lines, why)
+        return ModelOperatorWaiting(
+            lines=lines, not_recorded=why, exit_code=int(why is not None)
+        )
 
     @staticmethod
     def _append(
-        request: ModelOperatorWaitingRequest, text: str, oldest: str, tickets: int
+        request: ModelOperatorWaitingRequest,
+        text: str,
+        oldest: str,
+        tickets: int,
+        count: int,
+        new_count: int,
     ) -> str | None:
         cells = {
             "actor": ACTOR,
-            "open": len(request.asks),
-            "new": len(request.new),
+            "open": count,
+            "new": new_count,
             "tickets": tickets,
             "oldest": oldest,
         }

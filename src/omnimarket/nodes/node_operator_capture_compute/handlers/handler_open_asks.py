@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from omnimarket.handlers.handler_operator_ledger import (
+from omnimarket.handlers.operator_ledger import (
     parse_ledger_row as parse_ledger_row,
 )
 from omnimarket.models.operator_capture import (

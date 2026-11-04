@@ -36,10 +36,12 @@ def test_the_contract_names_its_handler_command_topic_and_terminal_event() -> No
         == "onex.evt.omnimarket.operator-waiting-tick-completed.v1"
     )
     assert contract["event_bus"]["publish_topics"] == [
-        "onex.evt.omnimarket.operator-waiting-tick-completed.v1"
+        "onex.evt.omnimarket.operator-waiting-tick-completed.v1",
+        "onex.evt.omnimarket.operator-items-read-completed.v1",
     ]
     assert contract["externally_consumed_topics"] == [
-        "onex.evt.omnimarket.operator-waiting-tick-completed.v1"
+        "onex.evt.omnimarket.operator-waiting-tick-completed.v1",
+        "onex.evt.omnimarket.operator-items-read-completed.v1",
     ]
     assert (
         "onex.cmd.omnimarket.operator-waiting-tick-requested.v1"

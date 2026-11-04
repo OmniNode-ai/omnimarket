@@ -1,0 +1,6 @@
+# Synthetic transport proof; deployment policy is supplied separately.
+event_bus:
+  type: inmemory
+proof_topics:
+  command: onex.cmd.omnimarket.promise-lab-{run_id}.v1
+  terminal: onex.evt.omnimarket.promise-lab-{run_id}.v1

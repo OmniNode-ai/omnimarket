@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
+from omnimarket.models.model_operator_item_render import ModelOperatorItemRenderRequest
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
 
@@ -370,6 +371,10 @@ class ModelThroughputTickRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    operator_items: ModelOperatorItemRenderRequest | None = Field(
+        default=None,
+        description="Canonical tracked fold and render overlay, read once by the waiting-tick read_items operation. Omission is UNKNOWN and refuses an OK status.",
+    )
     now: str = Field(pattern=_TS)
     engine_experiments: list[ModelEngineExperimentRow] | None = Field(
         default=None,

@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_operator_items_read_effect
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: 0.1.0
+lifecycle: experimental
+description: Read the live ledger and fold one operator-item snapshot for waiting
+  and throughput ticks.
+input_model:
+  name: ModelOperatorItemsReadRequest
+  module: omnimarket.models.model_operator_item_render
+output_model:
+  name: ModelOperatorItemRenderRequest
+  module: omnimarket.models.model_operator_item_render
+handler:
+  module: omnimarket.nodes.node_operator_items_read_effect.handlers.handler_operator_items_read
+  class: HandlerOperatorItemsRead
+  input_model: omnimarket.models.model_operator_item_render.ModelOperatorItemsReadRequest
+  output_model: omnimarket.models.model_operator_item_render.ModelOperatorItemRenderRequest
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_operator_items_read_effect.handlers.handler_operator_items_read:HandlerOperatorItemsRead
+  handlers:
+  - operation: read_items
+    topic: onex.cmd.omnimarket.operator-items-read-requested.v1
+    handler:
+      name: HandlerOperatorItemsRead
+      module: omnimarket.nodes.node_operator_items_read_effect.handlers.handler_operator_items_read
+entrypoint:
+  name: NodeOperatorItemsReadEffect
+  module: omnimarket.nodes.node_operator_items_read_effect.node
+terminal_event: onex.evt.omnimarket.operator-items-read-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.operator-items-read-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.operator-items-read-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.operator-items-read-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+  - effects
+config: {}
+dod_evidence:
+  PYTEST:
+    command: uv run pytest tests/nodes/node_operator_item_render_compute/test_item_render.py
+      -k read_operation -q
+    pass_criteria: the installed read node emits the same live ledger snapshot as
+      the direct caller
+externally_consumed_topics:
+- onex.evt.omnimarket.operator-items-read-completed.v1
