@@ -42,3 +42,11 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -k every_repo_contract_binds"
         cwd: "."
     binds_ac: ["AC2"]
+  - id: "dod-omn22403-deploy-probe"
+    description: "Deploy probe: the module GitHub serves at the checked-out commit carries scoped_item_binding_violation, which the merge base does not."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_verify/services/scoped_item_binding.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def scoped_item_binding_violation" > /dev/null'
+        cwd: "."
