@@ -225,10 +225,10 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "for SIBLING git pins whose pinned commit is NOT an ancestor of that "
         "sibling's dev line, and returns the violations. The handler must define "
         "`def handle(input_data):` reading the source text from input_data['source']. "
-        "Scan line by line. A SIBLING is one of exactly these three package names: "
-        "omnibase-core, omnibase-spi, omnibase-compat (the hyphenated distribution "
-        "names; also accept the underscore repo form omnibase_core/omnibase_spi/"
-        "omnibase_compat that appears inside the git URL). A line is a sibling GIT "
+        "Scan line by line. A SIBLING is one of exactly these two package names: "
+        "omnibase-core, omnibase-spi (the hyphenated distribution "
+        "names; also accept the underscore repo form omnibase_core/omnibase_spi "
+        "that appears inside the git URL). A line is a sibling GIT "
         "PIN when it names one of those siblings AND carries a git revision in ANY of "
         'these three syntaxes: (a) pyproject [tool.uv.sources] form `rev = "<sha>"`, '
         "(b) PEP-508 form `@<sha>` after a git+https URL, (c) uv.lock form "
@@ -243,7 +243,7 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "resolved — fail CLOSED). A pin annotated `# pin-ancestry: ancestor` must NOT "
         "be flagged. "
         "Do NOT flag CLEAN lines: a git pin for a NON-sibling package (any package "
-        "name that is not one of the three siblings, e.g. some-thirdparty-lib) must "
+        "name that is not one of the two siblings, e.g. some-thirdparty-lib) must "
         "NOT be flagged even if annotated orphan — it is out of scope; a sibling "
         "pinned by a published VERSION RANGE with no git rev at all (e.g. "
         '`"omnibase-core>=0.44.0,<0.47.0"`) is not a git pin and must NOT be flagged; '
