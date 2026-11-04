@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+ticket_id: OMN-22146
+title: Host reconcile replaces a dangling ~/.local/bin/onex with the sanctioned wrapper link
+summary: On h101 the bare onex resolved to a brew python@3.12 console script that cannot import omnibase_core, because the first PATH entry, ~/.local/bin/onex, was a dangling symlink into an unmounted volume and bash skips it. The host reconcile effect now reports that shape as a dangling symlink and, in repair mode, moves it aside and links the canonical wrapper, then reads the link back.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22146-bare-onex
+  statement: A bare onex on a lab host reaches the sanctioned wrapper through the host reconcile, and the failing h101 shape is a regression test.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a recorded measurement of which interpreter and install path the bare onex resolves to on h101, and why it lacks omnibase_core, is in the PR body -- falsifier: the PR body names the resolved path and the import error line from onex_lab_run output on h101'
+  - id: AC2
+    statement: 'AC2: a bare `onex scm pr-threads --help` run on h101 through onex_lab_run exits 0 after the fix is installed through the declared installer, with no hand edit of the host -- falsifier: the lab-run receipt for that command on h101 shows exit 0'
+  - id: AC3
+    statement: 'AC3: a regression test or an installer check built from the recorded h101 failure (the import error text, fixture path in the PR) fails on the broken install and passes on the fix -- falsifier: uv run pytest on the named test in the repository that owns the installer'
+evidence_requirements:
+- kind: tests
+  description: The h101 dangling-link shape is reported in check mode, replaced by the wrapper link in repair mode, idempotent, and still failing loudly when the link cannot be made.
+  command: uv run pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_compute.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22146-ac1
+  description: AC1 the recorded h101 shape (a dangling symlink into the unmounted volume, with the brew console script behind it) is the fixture the reconcile reports as a dangling symlink in check mode and leaves untouched.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k dangling_shadow_is_reported_in_check_mode
+    cwd: .
+- id: dod-omn22146-ac2
+  description: AC2 local repair regression moves the dangling link aside and the bare path resolves to the wrapper. The h101 lab-run readback after installation remains pending.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k dangling_shadow_repair_links_the_wrapper
+    cwd: .
+- id: dod-omn22146-ac3
+  description: AC3 the dangling-link regression set fails on the unfixed source (five failures) and passes on the fix, with the compute verdicts covered.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_compute.py -q --no-cov --tb=line -k "dangling or remedies or path_shadow"
+    cwd: .
+- id: dod-omn22146-integration-proof
+  description: The host reconcile effect and compute suites run on a lab host. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The h101 readback of a bare onex after installation remains pending.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22146 -- uv run --frozen pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_compute.py -q --no-cov
+    cwd: .
+- id: dod-omn22146-deploy-source-readback
+  description: Hosted-runner source-artifact readback requires the published handler at the evaluated commit to match this checkout, contain dangling-link repair, and name no deployment host. This checks the source artifact; it does not claim the fix is installed on a host.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      readback_dir="$(mktemp -d)";
+      trap 'rm -rf "$readback_dir"' EXIT;
+      revision="$(git rev-parse HEAD)";
+      path=src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py;
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+        --output "$readback_dir/handler.py";
+      cmp "$path" "$readback_dir/handler.py";
+      grep -F 'def replace_dangling_shadow(' "$readback_dir/handler.py";
+      grep -F 'self.replace_dangling_shadow(shadow, wrapper)' "$readback_dir/handler.py";
+      if grep -En '\bh[0-9]{3}\b' "$readback_dir/handler.py"; then exit 1; fi;
+      printf 'host reconcile handler source readback matched %s\n' "$revision"
+    cwd: .

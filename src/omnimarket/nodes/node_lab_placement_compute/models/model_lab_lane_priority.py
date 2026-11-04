@@ -1,0 +1,147 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Models of lane priority and plugin parity judgement (OMN-22124).
+
+The rules (``ModelPriorityRules``, ``ModelParityRules``) are read from this node's ``contract.yaml``;
+nothing about a repository, a ticket or a marker file is a literal in code.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+#: The class a unit of no named class takes, and the last of the contract's classes.
+PRIORITY_OTHER = "other"
+
+
+class ModelPriorityRules(BaseModel):
+    """The ``priority`` block of the node contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    classes: tuple[str, ...] = Field(..., min_length=1)
+    repos: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    tickets: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> ModelPriorityRules:
+        if len(set(self.classes)) != len(self.classes):
+            raise ValueError("priority.classes repeats a class")
+        if self.classes[-1] != PRIORITY_OTHER:
+            raise ValueError(f"priority.classes must end with {PRIORITY_OTHER}")
+        for section, mapping in (("repos", self.repos), ("tickets", self.tickets)):
+            unknown = sorted(set(mapping) - set(self.classes))
+            if unknown:
+                raise ValueError(
+                    f"priority.{section} names {unknown}, not classes of {list(self.classes)}"
+                )
+        return self
+
+    def with_repos(self, extra: Mapping[str, tuple[str, ...]]) -> ModelPriorityRules:
+        """These rules with ``extra`` (class -> repositories, from the private overlay) added; a class that is not one of the contract's is refused."""
+        merged = {cls: tuple(names) for cls, names in self.repos.items()}
+        for cls, names in extra.items():
+            merged[cls] = (*merged.get(cls, ()), *names)
+        return ModelPriorityRules(
+            classes=self.classes, repos=merged, tickets=self.tickets
+        )
+
+    def class_of_repo(self, repo: str | None) -> str:
+        """The class the contract lists ``repo`` (``owner/name``, ``name`` or ``name#n``) under, else ``other``."""
+        name = str(repo or "").split("#", 1)[0].rsplit("/", 1)[-1].strip().lower()
+        if not name:
+            return PRIORITY_OTHER
+        for cls in self.classes:
+            if name in {r.lower() for r in self.repos.get(cls, ())}:
+                return cls
+        return PRIORITY_OTHER
+
+    def class_of_ticket(self, ticket: str | None, parent: str | None = None) -> str:
+        """The class the contract lists ``ticket``, else ``parent``, under, else ``other``."""
+        for candidate in (ticket, parent):
+            key = str(candidate or "").strip().upper()
+            if not key:
+                continue
+            for cls in self.classes:
+                if key in {t.upper() for t in self.tickets.get(cls, ())}:
+                    return cls
+        return PRIORITY_OTHER
+
+
+class ModelParityRules(BaseModel):
+    """The ``parity`` block of the node contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ignored_top_level: tuple[str, ...] = ()
+
+
+class ModelLanePriorityRequest(BaseModel):
+    """One lane and, when the pool reading is known, what the pool has free."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str | None = Field(None, description="owner/name or the bare repository name")
+    ticket: str | None = None
+    parent: str | None = None
+    #: The class the caller declared (``--priority-class`` or the lab-fill environment); a name that is not a class is no declaration.
+    declared: str | None = None
+    #: Repositories of a class that the private overlay lists (class -> names); added to the contract's.
+    private_repos: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+    #: Free slots across the pool; None: the pool is not judged, only the class.
+    free_slots: int | None = Field(None, ge=0)
+    #: Classes with a unit waiting for a slot.
+    waiting: tuple[str, ...] = ()
+
+
+class ModelLanePriorityResult(BaseModel):
+    """The lane's class, where it came from, and whether the pool admits it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    priority_class: str
+    #: ``declared``, ``ticket``, ``repository`` or ``default``.
+    source: str
+    #: ``PRIORITY-HOLDBACK: ...`` or ``NO-FREE-SLOT: ...`` when the pool refuses the lane, else None.
+    refusal: str | None = None
+
+    @property
+    def admitted(self) -> bool:
+        return self.refusal is None
+
+
+class ModelPluginParityRequest(BaseModel):
+    """An installed plugin tree and its shipped revision's, each ``path -> blob id``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    installed: Mapping[str, str]
+    shipped: Mapping[str, str]
+
+
+class ModelPluginParityResult(BaseModel):
+    """``ok`` when the trees agree outside the runtime markers, else ``modified`` with the paths."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: str
+    added: tuple[str, ...] = ()
+    removed: tuple[str, ...] = ()
+    changed: tuple[str, ...] = ()
+    #: Runtime markers present in the installed tree and left out of the comparison.
+    ignored: tuple[str, ...] = ()
+
+    @property
+    def detail(self) -> str:
+        parts = [
+            f"{label} {', '.join(paths)}"
+            for label, paths in (
+                ("added", self.added),
+                ("removed", self.removed),
+                ("changed", self.changed),
+            )
+            if paths
+        ]
+        return "; ".join(parts) or "identical"

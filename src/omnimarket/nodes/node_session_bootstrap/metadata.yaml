@@ -15,7 +15,6 @@ capabilities:
   side_effect_class: mutating
 dependencies:
   - "omnibase_core>=0.39.0"
-  - "omnibase_compat"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["bootstrap", "orchestrator", "overnight", "session", "contract"]
