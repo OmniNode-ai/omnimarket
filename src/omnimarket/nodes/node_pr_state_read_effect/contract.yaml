@@ -66,7 +66,10 @@ event_bus:
 runtime_dispatch:
   external_trigger: "onex pr-state read | onex pr-state wait, which builds the handlers in process and prints their typed results"
 metadata:
-  transport_type: http
+  # This describes how the node is invoked. The CLI calls its typed handlers
+  # in process; HTTP belongs to HandlerPrStatePageSource above. Declaring http
+  # here makes runtime discovery require command/terminal topics it cannot use.
+  transport_type: local
   description: Reads pull request state from the pr_state projection through the onex pr-state command.
 
 descriptor:
