@@ -120,7 +120,43 @@ def file_overlay_documents(config: Mapping[str, str]) -> object:
     return _FileDocuments(config)
 
 
+def memory_item_recovery_store(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_item_state_check_effect.handlers.item_recovery_store import (
+        memory_item_recovery_store as factory,
+    )
+
+    return factory(config)
+
+
+def sqlite_item_recovery_store(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_item_state_check_effect.handlers.item_recovery_store import (
+        sqlite_item_recovery_store as factory,
+    )
+
+    return factory(config)
+
+
+def memory_item_dispatch(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_item_state_check_effect.handlers.item_dispatch import (
+        memory_item_dispatch as factory,
+    )
+
+    return factory(config)
+
+
+def bus_item_dispatch(config: Mapping[str, str]) -> object:
+    from omnimarket.nodes.node_item_state_check_effect.handlers.item_dispatch import (
+        bus_item_dispatch as factory,
+    )
+
+    return factory(config)
+
+
 FACTORIES: dict[str, Callable[[Mapping[str, str]], object]] = {
+    "memory_item_recovery_store": memory_item_recovery_store,
+    "sqlite_item_recovery_store": sqlite_item_recovery_store,
+    "memory_item_dispatch": memory_item_dispatch,
+    "bus_item_dispatch": bus_item_dispatch,
     "memory_process_environment": memory_process_environment,
     "host_process_environment": host_process_environment,
     "memory_overlay_documents": memory_overlay_documents,

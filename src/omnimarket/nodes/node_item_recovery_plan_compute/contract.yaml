@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_item_recovery_plan_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+lifecycle: experimental
+description: 'ItemRecoveryPlanCompute: item response checks and one recovery family.'
+input_model:
+  name: ModelItemRecoveryRequest
+  module: omnimarket.models.item_state_check
+  description: Typed item snapshot and policy facts.
+output_model:
+  name: ModelItemRecoveryPlan
+  module: omnimarket.models.item_state_check
+  description: Typed item state result.
+handler:
+  module: omnimarket.nodes.node_item_recovery_plan_compute.handlers.handler_item_recovery_plan
+  class: HandlerItemRecoveryPlan
+  input_model: omnimarket.models.item_state_check.ModelItemRecoveryRequest
+  output_model: omnimarket.models.item_state_check.ModelItemRecoveryPlan
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_item_recovery_plan_compute.handlers.handler_item_recovery_plan:HandlerItemRecoveryPlan
+  handlers:
+  - operation: item_recovery_plan_compute
+    topic: onex.cmd.omnimarket.item-recovery-plan-compute-requested.v1
+    handler:
+      name: HandlerItemRecoveryPlan
+      module: omnimarket.nodes.node_item_recovery_plan_compute.handlers.handler_item_recovery_plan
+terminal_event: onex.evt.omnimarket.item-recovery-plan-compute-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.item-recovery-plan-compute-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.item-recovery-plan-compute-completed.v1
+  - onex.evt.omnimarket.item-recovery-plan-compute-failed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.item-recovery-plan-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.item-recovery-plan-compute-completed.v1
+    failure: onex.evt.omnimarket.item-recovery-plan-compute-failed.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  author: OmniNode Team
+  description: ItemRecoveryPlanCompute
+  created: '2026-11-04'
+  tags:
+  - operator-items
+  - state-check
