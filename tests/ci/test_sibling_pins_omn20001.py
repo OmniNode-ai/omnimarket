@@ -27,7 +27,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 SIBLINGS = (
     "omnibase_core",
-    "omnibase_compat",
     "omnibase_spi",
     "omnibase_infra",
     "omnimemory",
@@ -38,7 +37,6 @@ SIBLINGS = (
 OWNED_ELSEWHERE_JOBS = {("ci.yml", "event-registry-drift")}
 LOCK_PACKAGE = {
     "omnibase_core": "omnibase-core",
-    "omnibase_compat": "omnibase-compat",
     "omnibase_spi": "omnibase-spi",
     "omnibase_infra": "omnibase-infra",
     "omnimemory": "omninode-memory",
