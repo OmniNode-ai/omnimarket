@@ -50,6 +50,7 @@ import logging
 import os
 from typing import Any, Literal, Protocol
 
+from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.config.settings import Settings
@@ -72,14 +73,9 @@ __all__ = [
     "resolve_snapshot_max_payload_bytes",
 ]
 
-# OMN-18851: the producer's own default, mirrored from
-# ``omnibase_infra/src/omnibase_infra/runtime/models/model_kafka_producer_config.py``
-# (``os.getenv("KAFKA_MAX_REQUEST_SIZE", str(1_048_588))``). Mirrored rather
-# than imported: this module is deliberately importable without the runtime
-# (see "WHAT THIS MODULE IS NOT" above), and the sync publish seam must be
-# usable from a plain handler that holds no runtime. The value is pinned
-# against that source by ``test_bound_defaults_to_the_producer_limit``.
-_DEFAULT_MAX_REQUEST_SIZE = 1_048_588
+# BaseProjectionRunner constructs AIOKafkaProducer with its default 1 MiB
+# request limit, rather than the runtime transport's slightly larger default.
+_DEFAULT_MAX_REQUEST_SIZE = 1_048_576
 
 #: The env var the PRODUCER reads. The guard reads the same one on purpose, so
 #: an operator who moves the producer's limit moves the refusal with it rather
@@ -182,15 +178,10 @@ def resolve_snapshot_max_payload_bytes() -> int:
 def assert_snapshot_within_bound(
     message: ModelSnapshotDeltaMessage, *, limit_bytes: int
 ) -> None:
-    """Refuse an over-bound snapshot delta before it reaches the producer.
-
-    A tombstone (``value is None``) is always within bound: it carries no body,
-    and ``len(None)`` would be a ``TypeError`` raised from inside a guard,
-    which is the least useful place for one.
-    """
-    if message.value is None:
-        return
-    size = len(message.value)
+    """Bound the complete record using the producer's own size calculation."""
+    size = DefaultRecordBatchBuilder.estimate_size_in_bytes(
+        message.key, message.value, list(message.headers)
+    )
     if size > limit_bytes:
         raise SnapshotPayloadTooLargeError(
             topic=message.topic, size_bytes=size, limit_bytes=limit_bytes
