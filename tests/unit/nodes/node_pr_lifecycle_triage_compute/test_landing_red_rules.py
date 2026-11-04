@@ -103,9 +103,7 @@ def test_classify_red_reviewer_pool_is_never_product() -> None:
     runs = [[n, "completed", "failure", ""] for n in HR]
     assert lf.classify_red(HR, runs, companion_merged=False) == "reviewer_pool"
     assert (
-        lf.classify_red(
-            ["call-x / Hostile Review Thread Gate"], runs, companion_merged=False
-        )
+        lf.classify_red(["call-x / Hostile Review Gate"], runs, companion_merged=False)
         == "reviewer_pool"
     )
     # a real red beside it is the class of the real red, graded without the reviewer names
@@ -125,6 +123,58 @@ def test_classify_red_reviewer_pool_is_never_product() -> None:
         )
         == "cascade"
     )
+
+
+THREAD_GATE = "Hostile Review Thread Gate"
+# The red sets of the twenty open omnibase_infra pull requests whose thread gate was red in the watcher snapshot of
+# 2026-11-02T02:59:16Z (OMN-21917), each with the checks beside it.
+THREAD_GATE_REDS = [
+    [THREAD_GATE],
+    ["CI Summary", THREAD_GATE],
+    ["call-x / " + THREAD_GATE],
+    ["CI Summary", THREAD_GATE, "repo-evidence / dod-verify"],
+    ["CI Summary", "Core Validators (OMN-21538)", THREAD_GATE],
+    [THREAD_GATE, "deploy-gate / deploy-gate"],
+    ["CI Summary", THREAD_GATE, "Integration Test Coverage"],
+]
+
+
+@pytest.mark.parametrize("red", THREAD_GATE_REDS)
+def test_thread_gate_red_is_the_pull_requests_own_red(red: list[str]) -> None:
+    """A finding with no ``fixed-in`` or ``rejected:`` reply is no reviewer-pool health red (OMN-21917).
+
+    The reviewer-pool class gets a reviewer rerun that cannot answer a thread, and the worker's brief drops the
+    name, so no worker is told to reply: 20 of 20 red pull requests of the snapshot carried an unanswered thread.
+    """
+    runs = [[n, "completed", "failure", ""] for n in red]
+    assert lf.classify_red(red, runs, companion_merged=False) == "product"
+    assert any(n.endswith(THREAD_GATE) for n in lf.worker_reds(red, runs))
+    assert lf.cascade_only(red, runs) is False
+
+
+def test_thread_gate_red_is_never_presented_as_a_reviewer_rerun() -> None:
+    """The reviewer-pool rule reruns only ``reviewer_pool`` heads, and the thread gate is not one."""
+    red = ["CI Summary", THREAD_GATE]
+    runs = [[n, "completed", "failure", ""] for n in red]
+    prs = [
+        {
+            "pr": "OmniNode-ai/omnibase_infra#1",
+            "head_sha": H,
+            "created_at": "2026-11-02T00:00:00Z",
+            "ci": "red",
+            "red_class": lf.classify_red(red, runs, companion_merged=False),
+            "red_checks": red,
+        }
+    ]
+    out = lf.apply_reviewer_pool(prs, state_records=[], in_flight=0)
+    assert out[0]["red_class"] == "product"
+    assert out[0]["red_checks"] == red
+
+
+def test_hostile_review_family_is_still_set_aside_beside_the_thread_gate() -> None:
+    red = ["Hostile Review Gate", "Hostile Reviewer (adversarial gate)", THREAD_GATE]
+    runs = [[n, "completed", "failure", ""] for n in red]
+    assert lf.worker_reds(red, runs) == (THREAD_GATE,)
 
 
 CANCELLED = [

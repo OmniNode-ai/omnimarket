@@ -131,7 +131,6 @@ INSTALLED_PACKAGES: tuple[str, ...] = (
     "omnibase_core",
     "omnimarket",
     "omnibase_spi",
-    "omnibase_compat",
     "omnimemory",
 )
 
