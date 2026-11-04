@@ -82,21 +82,21 @@ documented_steps:
 - kind: tart_ip
   description: Wait up to 120 seconds for the VM IP.
 - kind: guest_fetch_script
-  description: Fetch the pinned participant script into $HOME/walk; retry agent/connect readiness failures.
+  description: Over ssh to the tart ip, fetch the pinned participant script into $HOME/walk; retry connect readiness failures.
 - kind: guest_verify_checksum
-  description: Verify the documented SHA-256 checksum before running the script.
+  description: Over ssh to the tart ip, verify the documented SHA-256 checksum before running the script.
 - kind: guest_run_script
-  description: Run bash lab-onboarding.sh with participant provider flags, capturing stdout in $HOME/walk-run.log.
+  description: Over ssh to the tart ip, run bash lab-onboarding.sh with participant provider flags, capturing stdout in $HOME/walk-run.log.
 - kind: guest_read_log
-  description: Read the captured participant log, including after a failed script.
+  description: Over ssh to the tart ip, read the captured participant log, including after a failed script.
 - kind: guest_dashboard_start
-  description: Start onex dashboard separately, saving its PID and URL log.
+  description: Over ssh to the tart ip, start onex dashboard separately, saving its PID and URL log.
 - kind: guest_dashboard_probe_root
-  description: Wait for the dashboard URL and probe its authenticated root without printing the token.
+  description: Over ssh to the tart ip, wait for the dashboard URL and probe its authenticated root without printing the token.
 - kind: guest_dashboard_probe_projections
-  description: Probe /projections with the dashboard token query without printing the token.
+  description: Over ssh to the tart ip, probe /projections with the dashboard token query without printing the token.
 - kind: guest_dashboard_stop
-  description: Stop only the dashboard PID recorded at startup.
+  description: Over ssh to the tart ip, stop only the dashboard PID recorded at startup.
 - kind: tart_stop
   description: Stop the cloned VM during cleanup.
 - kind: tart_delete
@@ -106,10 +106,17 @@ tart:
   cpu: 4
   memory_gb: 8
   tart_path: ~/.local/bin/tart
+  # The stock image's documented default login. Its password is printed by the
+  # askpass program named in the request (guest_askpass_path) on the Tart host.
+  guest_user: admin
 # The Tart transport this node owns beside its walk handler. A descriptive
 # binding only; handler_routing above is what routes.
 transport_bindings:
   tart_ssh:
     handler:
       name: HandlerSshTart
+      module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner
+  tart_local:
+    handler:
+      name: HandlerLocalTart
       module: omnimarket.nodes.node_onboarding_clean_vm_walk_effect.handlers.ssh_tart_runner

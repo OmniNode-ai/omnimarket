@@ -1,0 +1,141 @@
+schema_version: 1.0.0
+ticket_id: OMN-22200
+title: 'node_floor_fill_reducer: the stopped-line fill''s per-key state (reserve, confirm, expire, attempt count) as one pure transition function with a conformance table and property tests'
+summary: A new pure definition-B reducer node, node_floor_fill_reducer, holds the stopped-line fill's per-key state as one transition function over the row (seq and the entries by key) and five observations, with its transition table held equal to a fixture and its invariants held over generated observation sequences.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22200-floor-fill-reducer
+  statement: The fill's state is one pure transition function (no clock, no I/O) that reserves, confirms, times out and expires per-key entries, drops an observation that does not belong to the entry and names the reason.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: Every row of the transition table is taken by its fixture and no other transition exists -- falsifier: `-k transition_conformance`, which reads the contract''s `state_machine` block and the fixture and fails on a missing, extra or differently-guarded row; the `check-fsm-handler-drift` and `analyze_fsm` hooks pass.'
+  - id: AC2
+    statement: 'AC2: I1 to I6 hold over generated observation sequences (duplicates, reorderings and late answers of earlier attempts included) -- falsifier: `-k invariants`, fixed seed, at least 200 sequences, zero violations.'
+  - id: AC3
+    statement: 'AC3: A dropped observation leaves state and `seq` unchanged and names the reason -- falsifier: `-k admission_drops`, cases for a late answer of an earlier attempt, a wrong lane, a wrong state (`ReservedChecked`, `StartFailed` and `SentChecked` each against an entry in the other state) and a `ReserveRequested` against a `RESERVED` entry and against a live `SENT` entry (typed refusal `held`) and against an ended `SENT` entry past its window (`uncleared`), `seq` unchanged in each.'
+  - id: AC4
+    statement: 'AC4: The lane name is a function of the key and the attempt: replay gives the same name, attempt 2 differs from attempt 1, and the keys `floor:a-b:c` and `floor:a:b-c` get different names -- falsifier: `-k lane_name_deterministic` and `-k lane_name_concatenation_pair`. AC4b: A late `ReservedChecked` with no CLAIM that arrives after the same attempt became `SENT` is dropped and the entry stays `SENT` -- falsifier: `-k late_check_after_confirm_dropped`.'
+  - id: AC5
+    statement: 'AC5: A `RESERVED` entry past the timeout with no CLAIM is cleared, keeps its ticket and attempt, and is offered again as attempt n+1; with the CLAIM it is `SENT`; with an unreadable ledger it is untouched; a `StartFailed` clears it at once -- falsifier: `-k reserved_resolution`, four cases.'
+  - id: AC6
+    statement: 'AC6: An `ended` `SENT` entry inside the window holds its own key but uses no capacity, so a different ready task on the line is reserved; a `SENT` entry whose lane has not ended stays and counts toward capacity even past the window; once the window has passed and the lane has ended only the dispatch state is removed, and a reoffer is attempt n+1 that a historical CLAIM does not match -- falsifier: `-k ended_entry_holds_key_not_capacity`, `-k sent_entry_outlives_window_while_live` and `-k reoffer_after_expiry_new_attempt`.'
+  - id: AC7
+    statement: 'AC7: G-NODE holds, the node reads no clock and does no I/O (the core `no_io_outside_effects` and `contracts_and_di` hooks pass), and the in-memory and Redpanda legs are equal on the golden scenario -- falsifier: `-m floor_fill_parity -k reducer` with the Redpanda receipt in the PR body.'
+  - id: AC9
+    statement: 'AC9: the task''s lab step has been run and its output is in the pull request''s Lab line (host, command, exit code, observation), or the step is none for a pure node -- falsifier: handoff_row.sh (the pr-handoff lab-line check) accepts the pull request at its live head, and uv run pytest over the task''s focused command exits 0 on a lab host through lab-run'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the floor fill reducer node.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22200-ac1
+  description: AC1 the contract's state_machine block equals the conformance fixture, the handler table equals both, and every fixture row is taken.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k transition_conformance
+    cwd: .
+- id: dod-omn22200-ac2
+  description: AC2 the invariants I1 to I6 hold over 250 generated sequences at a fixed seed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k invariants
+    cwd: .
+- id: dod-omn22200-ac3
+  description: AC3 each dropped observation leaves state and seq unchanged and names its reason.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k admission_drops
+    cwd: .
+- id: dod-omn22200-ac4
+  description: AC4 and AC4b the lane name is a function of the key and the attempt, the concatenation pair differs, and a late check with no CLAIM after the confirm is dropped and the entry stays SENT.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k lane_name
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k late_check_after_confirm_dropped
+    cwd: .
+- id: dod-omn22200-ac5
+  description: AC5 a reserved entry resolves four ways.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k reserved_resolution
+    cwd: .
+- id: dod-omn22200-ac6
+  description: AC6 an ended entry holds its key but not capacity, a live entry outlives the window, and a reoffer after expiry is a new attempt.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k "ended_entry_holds_key_not_capacity or sent_entry_outlives_window_while_live or reoffer_after_expiry_new_attempt"
+    cwd: .
+- id: dod-omn22200-ac7
+  description: AC7 the node reads no clock and does no I/O, injects no protocol, loads its contract, follows its configured values, refuses a missing key, and the in-memory leg of the parity run is equal to the in-process decisions.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_fill_reducer -q --no-cov --tb=line -m floor_fill_parity -k reducer
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line -k "no_clock or config_variation or missing_key_refused or seams_in_spi or contract_loads"
+    cwd: .
+- id: dod-omn22200-ac7-redpanda
+  description: AC7 the Redpanda leg equals the in-memory leg on the golden scenario. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate; its receipt is in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_fill_reducer -q --no-cov -m "floor_fill_parity and kafka"
+    cwd: .
+- id: dod-omn22200-deploy-probe
+  description: 'Deploy probe for the pure reducer: load its packaged contract and execute the golden reserve, confirm and expiry scenario in process. The hosted runner needs no lab broker or runtime service.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer/tests/test_floor_fill_reducer.py -q --no-cov --tb=line -k 'the_contract_loads_and_names_the_node or golden_scenario_one_startable_line'
+    cwd: .
+- id: dod-omn22200-ac9-focused
+  description: >-
+    AC9 by its own second branch, the one this node takes: the task's lab step is
+    none for a pure node, so the focused command is the proof and it runs here.
+    pytest over the node's own tests exits 0 at this head and exits 4 at the merge
+    base, where src/omnimarket/nodes/node_floor_fill_reducer does not exist.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22200-ac9-integration-proof
+  description: AC9 the focused command exits 0 on a lab host through lab-run; the task's lab step is none for a pure node. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate, like dod-omn22200-ac7-redpanda above.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-focused-22200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_reducer -q --no-cov
+    cwd: .
