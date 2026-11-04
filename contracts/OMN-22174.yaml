@@ -49,19 +49,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC4"]
     checks:
-      - check_type: "command"
-        check_value: |-
-          set -eu;
-          probe_dir="$(mktemp -d)";
-          trap 'rm -rf "$probe_dir"' EXIT;
-          mkdir "$probe_dir/empty";
-          python -c 'import json, sys; from pathlib import Path; Path(sys.argv[1]).write_text(json.dumps({"hosts": [{"name": "probe-a", "target": "a.example.invalid"}]}))' "$probe_dir/table.yaml";
-          rc=0;
-          ONEX_SKILL_OVERLAY_ROOTS="$probe_dir/empty" uv run --frozen onex-host-key-distribution --declared-keys --table "$probe_dir/table.yaml" --dry-run > "$probe_dir/out.txt" 2> "$probe_dir/err.txt" || rc=$?;
-          test "$rc" = 2;
-          grep -q 'lab_host_public_keys' "$probe_dir/err.txt";
-          test ! -s "$probe_dir/out.txt";
-          echo '{"probe": "lab_host_public_keys_missing_overlay_refusal", "exit_code": 2}'
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py -q --no-cov -k lab_host_public_keys_cli_declared_keys_refuses_without_overlay"
         cwd: "."
   - id: "dod-omn22174-lab-ssh"
     description: "From h051 and from h053, ssh as jonah to the two named lab hosts succeeds non-interactively. Needs the lab network and the private host table, so only the local Done gate runs it; it takes its targets from the lab host table at run time, not from this file."
