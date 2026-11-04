@@ -252,7 +252,9 @@ def _friction_minutes(ctx: Context, window: Window, bucket: str) -> Computed:
             continue
         minutes[_friction_class(ctx, row)] += value
     note = f"{unparsed} rows in this bucket carry no parseable cost" if unparsed else ""
-    return Computed(sum(minutes.values()), breakdown_of(dict(minutes)), note)
+    return Computed(
+        sum(minutes.values()), breakdown_of(dict(minutes)), partial_reason=note
+    )
 
 
 def _delegation_share(ctx: Context, window: Window) -> Computed:
