@@ -2,8 +2,13 @@
 # SPDX-License-Identifier: MIT
 """The ledger host's append command and file reader (OMN-20275)."""
 
+import fcntl
 import os
 import subprocess
+import threading
+import time
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Protocol
 
@@ -24,6 +29,63 @@ class ProtocolLedgerAppendRunner(Protocol):
 
 class ProtocolLedgerReader(Protocol):
     def read_text(self) -> str: ...
+
+
+class ProtocolLedgerAppendLock(Protocol):
+    """Mutual exclusion around one check-then-append step (OMN-22185)."""
+
+    def hold(self) -> AbstractContextManager[None]: ...
+
+
+class LedgerLockTimeoutError(TimeoutError):
+    """The append lock was not free within its declared wait."""
+
+
+class InMemoryLedgerAppendLock:
+    """In-process adapter: threads of one process exclude each other."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+
+    @contextmanager
+    def hold(self) -> Iterator[None]:
+        with self._lock:
+            yield
+
+
+class LocalLedgerAppendLock:
+    """flock on a lock file beside the ledger: processes and threads exclude each other.
+
+    Each hold opens its own descriptor, so two holds in one process conflict as two
+    processes do. The wait is bounded; the lock file stays, empty, between holds.
+    """
+
+    _POLL_S = 0.005
+
+    def __init__(self, path: Path, wait_s: float) -> None:
+        if wait_s <= 0:
+            raise ValueError("wait_s must be positive")
+        self._path = path
+        self._wait_s = wait_s
+
+    @contextmanager
+    def hold(self) -> Iterator[None]:
+        deadline = time.monotonic() + self._wait_s
+        with self._path.open("a+") as stream:
+            while True:
+                try:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise LedgerLockTimeoutError(
+                            f"ledger append lock {self._path} not free within {self._wait_s}s"
+                        ) from None
+                    time.sleep(self._POLL_S)
+            try:
+                yield
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 class LocalLedgerAppendCommand:
