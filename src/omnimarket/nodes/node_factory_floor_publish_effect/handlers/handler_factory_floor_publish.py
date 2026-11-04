@@ -42,6 +42,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegat
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
     run_process as run_process,
 )
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_fleet_observation_source import (
+    HandlerFleetObservationSource,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
     ModelDelegationReportRequest,
 )
@@ -55,6 +58,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelPublishHistory,
     ModelPublishStep,
     ModelPublishStepResult,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_observation_source import (
+    ModelFleetObservationSourceRequest,
 )
 
 NODE_NAME = "node_factory_floor_publish_effect"
@@ -418,6 +424,23 @@ class HandlerFactoryFloorPublish:
             if 0 <= age < step.fresh_seconds:
                 return ModelPublishStepResult(name=step.name, status="ok")
         try:
+            if step.kind == "runner_fleet":
+                if step.output_relpath is None:
+                    raise ValueError("a fleet source step names an output")
+                reading = (
+                    HandlerFleetObservationSource(self._run)
+                    .handle(
+                        ModelFleetObservationSourceRequest(
+                            timeout_seconds=step.timeout_seconds
+                        ),
+                        environ=env,
+                    )
+                    .document
+                )
+                write_atomic(home / step.output_relpath, json.dumps(reading).encode())
+                if reading["status"] != "read":
+                    return failed("producer unread", str(reading["reason"]))
+                return ModelPublishStepResult(name=step.name, status="ok")
             if step.kind == "copy":
                 if step.source_relpath is None or step.output_relpath is None:
                     raise ValueError("a copy step names a source and an output")

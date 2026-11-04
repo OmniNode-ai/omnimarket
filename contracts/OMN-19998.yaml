@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-floor-source-wiring
+    statement: The floor reuses the existing fleet observation and delegation projection producers across publishing hosts.
+    acceptance:
+      - id: AC8
+        statement: 'The publisher mirrors the deployed runner projection file before computing the floor, records a failed read as unread, and the floor renders projection delegation windows with exact zero counts and escaped unread causes; standalone fleet delivery saves the same observation file.'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -207,4 +212,26 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
+        cwd: .
+  - id: dod-omn19998-floor-source-wiring
+    description: The publisher reads the existing runtime producer before computing the floor. Read failures replace previous local fleet counts with an unread cause. Invalid producer data never supplies counts. This does not assert live producer event delivery or controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_source.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_omn18768_runner_fleet_writer.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-floor-source-deploy
+    description: Hosted source wiring smoke uses the publisher handler and the floor's real file loader, with the remote producer boundary replaced by a recorded observation. It needs no lab access and does not claim an installed revision or live host readback.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_source.py -q --no-cov -k source_is_refreshed
         cwd: .
