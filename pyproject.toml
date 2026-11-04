@@ -151,18 +151,10 @@ dependencies = [
     # on the wire Literal; omnibase_infra d20586c7d pins 0.47.48 (INFRA_CORE_PINS).
     # OMN-21264: floor raised 0.47.48 -> 0.47.53, the first release whose terminal
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
-    "omnibase-core>=0.47.53,<0.48.0",
-    # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
-    # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
-    # and this emitter share one zero-dep vocabulary): the single seam
-    # omnibase_compat.contracts.pr_occ_stamp.
-    # OMN-18159: 0.5.6 -> 0.5.7, forced by the omnibase-infra floor above.
-    # omnibase-infra 0.38.22 declares `omnibase-compat==0.5.7` exactly. Because
-    # this pin is also a [tool.uv] override it does not conflict -- it silently
-    # WINS, installing 0.5.6 underneath an infra release built against 0.5.7,
-    # which is the masked-incompatibility failure the paragraph above warns
-    # about. The two move together or the override hides the break.
-    "omnibase-compat==0.5.7",
+    # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
+    # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
+    # Raised in BOTH places.
+    "omnibase-core>=0.47.60,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
@@ -316,6 +308,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 node_host_state_effect = "omnimarket.nodes.node_host_state_effect"
 node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
+node_network_graph_compute = "omnimarket.nodes.node_network_graph_compute"
 node_ilo_redfish_effect = "omnimarket.nodes.node_ilo_redfish_effect"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
 node_codex_gitlink_compute = "omnimarket.nodes.node_codex_gitlink_compute"
@@ -381,6 +374,7 @@ node_friction_rollup_compute = "omnimarket.nodes.node_friction_rollup_compute"
 node_factory_floor_compute = "omnimarket.nodes.node_factory_floor_compute"
 node_factory_floor_effect = "omnimarket.nodes.node_factory_floor_effect"
 node_floor_fill_candidates_compute = "omnimarket.nodes.node_floor_fill_candidates_compute"
+node_floor_fill_reducer = "omnimarket.nodes.node_floor_fill_reducer"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_merged_running_count_compute = "omnimarket.nodes.node_merged_running_count_compute"
 node_merged_running_count_effect = "omnimarket.nodes.node_merged_running_count_effect"
@@ -404,6 +398,7 @@ node_product_floor_verdict_compute = "omnimarket.nodes.node_product_floor_verdic
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
 node_measured_model_selection_compute = "omnimarket.nodes.node_measured_model_selection_compute"
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
+node_projection_write_effect = "omnimarket.nodes.node_projection_write_effect"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 node_worktree_lease_compute = "omnimarket.nodes.node_worktree_lease_compute"
 node_host_reconcile_compute = "omnimarket.nodes.node_host_reconcile_compute"
@@ -1497,7 +1492,10 @@ override-dependencies = [
     # on the wire Literal; omnibase_infra d20586c7d pins 0.47.48 (INFRA_CORE_PINS).
     # OMN-21264: floor raised 0.47.48 -> 0.47.53, the first release whose terminal
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
-    "omnibase-core>=0.47.53,<0.48.0",
+    # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
+    # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
+    # Raised in BOTH places.
+    "omnibase-core>=0.47.60,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
@@ -1558,7 +1556,6 @@ override-dependencies = [
     # chains resolve a topic through the one fixture in omnibase_infra. 0.38.75
     # also carries migration 0003 (infra#5036), so the dev-tag git source is gone.
     "omnibase-infra>=0.38.75,<0.39.0",
-    "omnibase-compat==0.5.7",
 ]
 
 # OMN-16024: the security floors for the five TRANSITIVE packages flagged by
@@ -1748,10 +1745,6 @@ namespace_packages = true
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = "omnibase_compat.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "omnibase_infra.*"
 ignore_missing_imports = true
 
@@ -1836,9 +1829,9 @@ markers = [
     "integration: Integration tests that test multiple components together",
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
-    "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus",
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
     "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
     "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
+    "floor_fill_parity: the stopped-line fill nodes decide the same on the in-memory bus and on a Redpanda bus (needs FLOOR_FILL_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]

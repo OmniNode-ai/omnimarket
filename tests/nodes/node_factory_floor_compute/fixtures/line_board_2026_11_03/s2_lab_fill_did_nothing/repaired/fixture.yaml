@@ -1,0 +1,166 @@
+case: s2_lab_fill_did_nothing
+variant: repaired
+observed_at: '2026-11-03T14:53:00Z'
+derivation: same selection as the observed variant, extended to observed_at 14:53Z
+overlay_file: ../../line_board.yaml
+plan_path_contains: []
+sources:
+  pr_watcher: present
+  plans_clone: absent
+  goal_file: absent
+  plans_today: absent
+  linear_snapshot: absent
+  required_contexts: present
+  running_evidence: absent
+  ledger_window: 'present: 28 rows'
+ledger_rows:
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7899
+  ts: '2026-11-03T08:16:41Z'
+  kind: FRICTION
+  original_sha256: e948564afc7049bd11c87d87ee3d6752d622331c1454e6e49722d524c51497c1
+  scrubbed_sha256: e9346fd44002cafef1feaa4882635b11384334652a980107362a72f907e7a370
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L7933
+  ts: '2026-11-03T08:20:38Z'
+  kind: FRICTION
+  original_sha256: 82cc0e4d27b4fbb8116e05802e9f756e70d82fed6f159452c722776792e1c5e9
+  scrubbed_sha256: c50786f07317fe3419ce6f25eb8ea82fbd6d789d4fc54667d5a6724d46f4e6ab
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8024
+  ts: '2026-11-03T08:35:55Z'
+  kind: FRICTION
+  original_sha256: 942bb4e7f5264c6a0dfb038154a09fec14e309b2f2e0bb64b088309c045ba1a2
+  scrubbed_sha256: cadfd5c28f00af196a78dead9013d8bc883fd19f5620a8cca70493a284f0ac5a
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8127
+  ts: '2026-11-03T08:57:45Z'
+  kind: FRICTION
+  original_sha256: d177306a3082c1098230bb5c19b2731c139a9e6a7d837d5ffad9ea095f014610
+  scrubbed_sha256: e1dbf79604288388e5607e9757fafb820a41988303375cd3a7485b1ffdbf4d85
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8214
+  ts: '2026-11-03T09:17:34Z'
+  kind: FRICTION
+  original_sha256: cfcb977652894ed5ddd22c2ea986db13d3bd46bbbb945173d01a02d85c5a71c7
+  scrubbed_sha256: 145a69af302b8475173d8a30ded2deac09becf85c6c8dc54122a03bcea902454
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8331
+  ts: '2026-11-03T09:41:10Z'
+  kind: FRICTION
+  original_sha256: 509a096d59395fec141a39dd20446f2f12442812ece685ec28e8f43df2e5c8fa
+  scrubbed_sha256: 999a8203994a2b1f2f55622157113ea72a5dd6718b66f82e58c121317009d39a
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8386
+  ts: '2026-11-03T10:00:08Z'
+  kind: FRICTION
+  original_sha256: 633e9b0fb8d593fd7a613a38d392c34d14b8aca153fc153a6a1552c175032d29
+  scrubbed_sha256: 16561aa7fef1217f15e180bd058b0875ad596bee5f088aca3f33595bcf69368e
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8399
+  ts: '2026-11-03T10:05:16Z'
+  kind: FRICTION
+  original_sha256: b109867afd5d4438981d9e2a4b523f70a99059f98725c7cacc097bbbc2d6ec5b
+  scrubbed_sha256: 7aa7c5d825029129682f3387556fa5416b98f8a37a5512c5f6e91f0daa4c2c9e
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8451
+  ts: '2026-11-03T10:16:56Z'
+  kind: FRICTION
+  original_sha256: 911625f1df55c73d8a2558c0d41b7cf904f5b75a55bfc5822e3623a3df42d7ea
+  scrubbed_sha256: 0660b41a914b8eea867c99120ebe132f59208abaa62c6ff03e4799972c86dee0
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8572
+  ts: '2026-11-03T10:35:52Z'
+  kind: FRICTION
+  original_sha256: ed82d7191a4c8005ff9cb853f1f4db1f00df6e8ab8742a81464fd5f6b2db6d6f
+  scrubbed_sha256: 691645b1ba8b070df2f72a5a1947a36c362345d03f62ca4bb99224cce5c92205
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8652
+  ts: '2026-11-03T10:55:44Z'
+  kind: FRICTION
+  original_sha256: 2e14eeee439e1ebcebcaf8cf6b6b69ea92ac986fb4e33fb1e40cd96182f136a7
+  scrubbed_sha256: d0c77cbaf14c4efd6251a64b4bdf15d8f91d8615d3b5872eb2fac3eadca595f5
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8838
+  ts: '2026-11-03T11:22:19Z'
+  kind: FRICTION
+  original_sha256: 4eb7ee569f4e1d21f788f844e3b21c344d97132937af19ee26e423dccbc6383a
+  scrubbed_sha256: 3cf4bb3a24a8c1ea453479d02eb39d5aa7aec8dd5536f4b2ae56f22ccef0cb0f
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L9066
+  ts: '2026-11-03T11:40:31Z'
+  kind: FRICTION
+  original_sha256: 74334033baf8adddd2a10c3f846963913e11ac651d3951e017ecd3c4ebbc5e1b
+  scrubbed_sha256: 127d2814adcf07b6ffe67ffaeb17df771c435a52b6a5898e2da882061c3af01b
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L9088
+  ts: '2026-11-03T11:42:00Z'
+  kind: FRICTION
+  original_sha256: e44a8c59a76bbeeabe74042f5c9086dc16ae17caf6a60b549e7f748ae56a4b6c
+  scrubbed_sha256: 897fb3abad66057d28bd7f4bc4626c0ea3a6bf6b796ba2c3e665f80488b8d4be
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L9192
+  ts: '2026-11-03T11:59:06Z'
+  kind: FRICTION
+  original_sha256: 5e0a673d5620083ce5d33d186333bfa10bc0c63b91f6cf8595e052120360237f
+  scrubbed_sha256: 849162baa2d05b655a7fc5a4c7f33ff704da743b76256c081bcfabe427c1637a
+- ref: ROLLING_WORK_LEDGER.md:L429
+  ts: '2026-11-03T12:09:32Z'
+  kind: STATUS
+  original_sha256: 44a2d2a7fa3518d27fab9d76a96ce9874350c8a41a0b31d613e17bd1500e935c
+  scrubbed_sha256: ae0448ef8a76d8505482e57076e82d5ac3d22765d9082e75d7b13c09b55e8ef2
+- ref: ROLLING_WORK_LEDGER.md:L435
+  ts: '2026-11-03T12:10:08Z'
+  kind: MSG
+  original_sha256: 7d4688b1ee6a6d12e21d2053e6bca7b2ca17d8a3fce503a917011df11e03a31b
+  scrubbed_sha256: f23ea5248cc249f603078ba0ec55c38feb7714e098316bbca062fbc0737983e1
+- ref: ROLLING_WORK_LEDGER.md:L437
+  ts: '2026-11-03T12:10:08Z'
+  kind: TERMINAL
+  original_sha256: f9539066eede6ee734e3cca0933157d2034185e99448fcd5c0418b674dd483b7
+  scrubbed_sha256: 7b0dff4996337736802465531719d6b5aae22c0be12e6e3cda499a32e9411673
+- ref: ROLLING_WORK_LEDGER.md:L440
+  ts: '2026-11-03T12:10:40Z'
+  kind: STATUS
+  original_sha256: 75dfc485c365027d107ada64bcba00c4a71d7fccb3945c3c387518775a03d5ea
+  scrubbed_sha256: 72fa20c0a85f0410f5f4fb0cb708af749b6a938d5fc18e0d21194af07cd573bf
+- ref: ROLLING_WORK_LEDGER.md:L484
+  ts: '2026-11-03T12:16:04Z'
+  kind: FRICTION
+  original_sha256: a49d2addbd20d4e564a001acd3e32b564344cd1dbbb5756967bb35d752969143
+  scrubbed_sha256: 60820fb844a33dae83561384be062ef887ca9d5a27f5b63ba6b73d8a997ff42a
+- ref: ROLLING_WORK_LEDGER.md:L730
+  ts: '2026-11-03T12:41:40Z'
+  kind: FRICTION
+  original_sha256: f8abf9ae828e3295fabb85722445510996a2c0a12d4c35f2d6f38e742b319fbf
+  scrubbed_sha256: 1092338daaae3b47cc4ab58bf5fbcc46a319cdcd95f22d0e443134cf2e2ab8e8
+- ref: ROLLING_WORK_LEDGER.md:L911
+  ts: '2026-11-03T13:01:10Z'
+  kind: FRICTION
+  original_sha256: f7e7e0ee7ab2769a1845014b37dfa19621295151976b85c2aa931150a6f1495b
+  scrubbed_sha256: 010ceda7a0117019c1c856a7200bf252a166a5921c3a173b8771a4c0f49ca9dd
+- ref: ROLLING_WORK_LEDGER.md:L1071
+  ts: '2026-11-03T13:15:55Z'
+  kind: FRICTION
+  original_sha256: 11e4033b403684ed4602f38b630fa5368f427673a39c0c965ccbbfc0b340acaa
+  scrubbed_sha256: b1a0c8e0a94dd1d42bff0c79bf9037289247dacd8635eb3b0b44e7101a0664c6
+- ref: ROLLING_WORK_LEDGER.md:L1338
+  ts: '2026-11-03T13:43:13Z'
+  kind: FRICTION
+  original_sha256: a5be67891ce276619c4f5fea6d70d34c48f3362d00c8970578282e1c57a1a370
+  scrubbed_sha256: 51a94c9f018c25cce2eba40fbfb12365fd8512548d6ebd34dbe005cac057b080
+- ref: ROLLING_WORK_LEDGER.md:L1553
+  ts: '2026-11-03T14:02:32Z'
+  kind: FRICTION
+  original_sha256: b223fe99f9a8dc228b3b997aa8378886b0b1056e94263d4e7d9ec7e808b37292
+  scrubbed_sha256: aebf74c4cf0c509acbc08fa0616d723045a76e3b95536134cde511b37b0d0913
+- ref: ROLLING_WORK_LEDGER.md:L1675
+  ts: '2026-11-03T14:16:49Z'
+  kind: FRICTION
+  original_sha256: d3e145ae63ff3e309f2eba6583a769d470cfaa30dc249aec02d1685b1b69514f
+  scrubbed_sha256: e44a124194f4fdc7df348255fb524557cf6e480e217e1239f0277003ffb0b3dd
+- ref: ROLLING_WORK_LEDGER.md:L1885
+  ts: '2026-11-03T14:38:37Z'
+  kind: FRICTION
+  original_sha256: 304c462a554494186354d3be004428020a87af6fe1e998988c485851a31409fe
+  scrubbed_sha256: bbba795bdb36ec38428ac228afd9876d0979996d44b850dcd20d825fe6dba507
+- ref: ROLLING_WORK_LEDGER.md:L2043
+  ts: '2026-11-03T14:52:42Z'
+  kind: STATUS
+  original_sha256: eec1ddfec0a9c8e117bb9eeb5a5a343450efb0a0aa9f40c78cba7a4111f8c9b5
+  scrubbed_sha256: 08c10743ce38d73774c61f0156db7e8473141eefec230ba86c8e7a168870a703
+expected:
+  stops: []
+  absent:
+  - line: process:lab-fill
+    kind: process-did-nothing
+scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every
+  stored text are replaced (private-repo-N, [scrubbed]). original_sha256 is the digest of the ledger row
+  as the ledger or its archive roll holds it; scrubbed_sha256 is the digest of the row as stored here.'
+repaired_basis: 'observed: the newest run record (STATUS run=2026-11-03T1450Z, 14:52:42Z) is not a did-nothing
+  run, so the last three records do not all match; the 1330Z run was lab-enumerate-unreadable.'
