@@ -5,15 +5,11 @@
 from pathlib import Path
 
 from .handlers.handler_worktree_report_publish import HandlerWorktreeReportPublish
-from .models import ModelWorktreeReportPublishRequest, ModelWorktreeReportPublishResult
 
 CONTRACT = Path(__file__).with_name("contract.yaml")
 
 
-class NodeWorktreeReportPublishEffect:
-    contract_path = CONTRACT
+class NodeWorktreeReportPublishEffect(HandlerWorktreeReportPublish):
+    """Expose the publication handler through the installed node entrypoint."""
 
-    def handle(
-        self, request: ModelWorktreeReportPublishRequest
-    ) -> ModelWorktreeReportPublishResult:
-        return HandlerWorktreeReportPublish().handle(request)
+    contract_path = CONTRACT

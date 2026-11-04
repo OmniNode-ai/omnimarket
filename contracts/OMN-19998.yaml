@@ -123,3 +123,12 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k installed_contract
         cwd: .
+  - id: dod-omn19998-worktree-report-entrypoint
+    description: The installed node entrypoint uses the publication handler with an injected host for success, push refusal and handoff refusal; the runtime smoke asserts the declared completion topic before routing both outcomes through the bus.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k 'node_entrypoint or installed_contract'
+        cwd: .

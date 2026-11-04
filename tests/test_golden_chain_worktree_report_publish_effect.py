@@ -328,6 +328,26 @@ def test_bad_request_is_refused_before_any_write(
         ModelWorktreeReportPublishRequest.model_validate(data)
 
 
+@pytest.mark.parametrize("failure", ["", "push", "handoff"])
+def test_node_entrypoint_publishes_with_injected_host(
+    tmp_path: Path, failure: str
+) -> None:
+    from omnimarket.nodes.node_worktree_report_publish_effect import (
+        NodeWorktreeReportPublishEffect,
+    )
+
+    request = request_at(tmp_path)
+    shell = RecordingShell(request, failure)
+    result = NodeWorktreeReportPublishEffect(ReportPublishHost(shell)).handle(request)
+    assert result.correlation_id == request.correlation_id
+    assert result.outcome == ("failed" if failure else "handed-off")
+    assert result.friction_recorded is bool(failure)
+    assert result.page_delivered is bool(failure)
+    if not failure:
+        assert result.pr_number == 742
+        assert result.head == HEAD
+
+
 async def test_installed_contract_routes_publish_and_failure_through_bus(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -354,6 +374,8 @@ async def test_installed_contract_routes_publish_and_failure_through_bus(
     raw = yaml.safe_load(CONTRACT.read_text())
     command_topic = raw["runtime_dispatch"]["command_topic"]
     completed_topic = raw["terminal_event"]
+    assert completed_topic == "onex.evt.omnimarket.worktree-report-publish-completed.v1"
+    assert raw["event_bus"]["publish_topics"] == [completed_topic]
     completed: asyncio.Queue[dict[str, object]] = asyncio.Queue()
     bus = EventBusInmemory(environment="local", group="report-publish-wiring")
     await bus.start()
