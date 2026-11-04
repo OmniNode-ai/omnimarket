@@ -852,6 +852,10 @@ jobs:
       - name: Patch apply dispatch node (OMN-17427)
         run: uv run --frozen pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q -p no:randomly --no-cov
 
+      # OMN-21284: SYNC with pre-commit hook retired-repository-reconcile.
+      - name: Retired repository bundles and registry targets (OMN-21284)
+        run: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q -p no:randomly --no-cov -m 'not kafka'
+
       # OMN-20865: SYNC with pre-commit hook class3-installed-copy-drift.
       - name: Class 3 installed-copy drift node regression (OMN-20865)
         run: uv run --frozen pytest tests/test_host_reconcile_class3_import_drift.py -q -p no:randomly

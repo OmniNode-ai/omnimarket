@@ -22,6 +22,9 @@ from omnimarket.nodes.node_merge_sweep_plan_compute.handlers import (
     HandlerMergeSweepRetry,
     handler_merge_sweep_retry,
 )
+from omnimarket.nodes.node_merge_sweep_plan_compute.handlers.handler_merge_sweep_plan import (
+    FLEET_REPOS,
+)
 from omnimarket.nodes.node_merge_sweep_plan_compute.models import (
     ModelMergeSweepPlanRequest,
     ModelMergeSweepRetryRequest,
@@ -32,10 +35,23 @@ CASES = json.loads(
 )
 
 
-def _planned(case: dict[str, Any]) -> Any:
-    return HandlerMergeSweepPlan().handle(
-        ModelMergeSweepPlanRequest.model_validate(case["request"])
-    )
+# The fleet the old tools planned against when the cases were recorded. A reading with no
+# scope falls back to the fleet, so parity replays it under this set. The live fleet has
+# since retired omnibase_compat (OMN-21284); the test below pins that difference.
+RECORDED_FLEET = FLEET_REPOS | {"omnibase_compat"}
+
+
+def _planned(case: dict[str, Any], *, recorded_fleet: bool = True) -> Any:
+    request = ModelMergeSweepPlanRequest.model_validate(case["request"])
+    if recorded_fleet and not request.reading.scope:
+        request = request.model_copy(
+            update={
+                "reading": request.reading.model_copy(
+                    update={"scope": sorted(RECORDED_FLEET)}
+                )
+            }
+        )
+    return HandlerMergeSweepPlan().handle(request)
 
 
 def _drive(case: dict[str, Any]) -> tuple[list[str], int]:
@@ -105,6 +121,32 @@ def test_plan_matches_the_sweep_rules_and_the_workflow_cap(index: int) -> None:
     assert len(result.dispatch) == expected["dispatched"]
     assert result.deferred == expected["deferred"]
     assert result.dispatch == result.lanes[: expected["dispatched"]]
+
+
+def test_the_live_fleet_skips_the_retired_repository() -> None:
+    """With no scope, a retired repository's PR the old fleet planned is now skipped as out of scope."""
+    changed = 0
+    for case in CASES["plan"]:
+        if case["request"]["reading"].get("scope"):
+            continue
+        recorded = _planned(case)
+        live = _planned(case, recorded_fleet=False)
+        planned = {
+            pr.pr
+            for lane in recorded.lanes
+            for pr in lane.prs
+            if pr.pr.startswith("omnibase_compat#")
+        } | {
+            s.pr
+            for s in recorded.skipped
+            if s.pr.startswith("omnibase_compat#") and s.why != "out-of-scope-repo"
+        }
+        assert all(lane.repo != "omnibase_compat" for lane in live.lanes)
+        live_skips = {s.pr: s.why for s in live.skipped}
+        for key in planned:
+            assert live_skips.get(key) == "out-of-scope-repo", (key, case["request"])
+        changed += len(planned)
+    assert changed > 0
 
 
 @pytest.mark.parametrize("index", range(len(CASES["cap"])))
