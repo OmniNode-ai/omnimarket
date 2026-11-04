@@ -31,6 +31,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    TENANT_OVERLAY_TABLE,
+    resolve_tenant_overlay,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -46,10 +50,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import (
-    TENANT_OVERLAY_TABLE,
-    resolve_tenant_overlay,
-)
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -310,7 +310,7 @@ def test_a_house_overlay_decision_is_not_labelled_customer_byok() -> None:
     cost surface, which is a reporting defect rather than a routing one, and is
     exactly the kind of thing that is invisible until someone reads a bill.
     """
-    from omnimarket.routing.tenant_overlay_resolver import (
+    from omnimarket.handlers.routing.tenant_overlay_resolver import (
         HOUSE_OVERLAY_COST_TIER,
     )
 

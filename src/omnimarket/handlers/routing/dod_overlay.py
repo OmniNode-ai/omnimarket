@@ -73,14 +73,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.projection.tenant_isolation import (
-    TENANT_GUC,
-    TenantContextMissingError,
-    UnmappedTenantIdentityError,
-    resolve_rls_read_tenant,
-    resolve_tenant_uuid,
-)
-from omnimarket.routing.roi_overlay import (
+from omnimarket.handlers.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     ModelTierRoiSignal,
     apply_recency_window,
@@ -88,6 +81,13 @@ from omnimarket.routing.roi_overlay import (
     resolve_roi_min_samples,
     resolve_roi_success_floor,
     resolve_roi_window_seconds,
+)
+from omnimarket.projection.tenant_isolation import (
+    TENANT_GUC,
+    TenantContextMissingError,
+    UnmappedTenantIdentityError,
+    resolve_rls_read_tenant,
+    resolve_tenant_uuid,
 )
 
 if TYPE_CHECKING:

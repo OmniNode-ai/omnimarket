@@ -1517,7 +1517,7 @@ repos:
         name: Delegation model registry drift gate
         language: system
         entry: uv run pytest tests/unit/test_generated_llm_routing_constants.py -q
-        files: ^(src/omnimarket/(data/model_registry/model_registry_v1\.yaml|routing/generated_llm_routing_constants\.py|configs/routing_tiers\.yaml)|scripts/generate_llm_routing_constants\.py|tests/unit/test_generated_llm_routing_constants\.py)$
+        files: ^(src/omnimarket/(data/model_registry/model_registry_v1\.yaml|handlers/routing/generated_llm_routing_constants\.py|configs/routing_tiers\.yaml)|scripts/generate_llm_routing_constants\.py|tests/unit/test_generated_llm_routing_constants\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

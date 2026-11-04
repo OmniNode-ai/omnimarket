@@ -23,7 +23,12 @@ _DEFAULT_REGISTRY = (
     / "model_registry_v1.yaml"
 )
 _DEFAULT_OUTPUT = (
-    _REPO_ROOT / "src" / "omnimarket" / "routing" / "generated_llm_routing_constants.py"
+    _REPO_ROOT
+    / "src"
+    / "omnimarket"
+    / "handlers"
+    / "routing"
+    / "generated_llm_routing_constants.py"
 )
 _DEFAULT_TOPOLOGY = (
     _REPO_ROOT.parent / "omnibase_infra" / "contracts" / "llm_endpoints.yaml"

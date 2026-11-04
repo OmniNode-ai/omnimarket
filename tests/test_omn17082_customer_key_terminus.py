@@ -70,6 +70,9 @@ from omnimarket.handlers.routing.customer_key_terminus import (
     EnumDelegationSurface,
     is_customer_attributed,
 )
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    ModelTenantRoutingOverlayBackend,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
 )
@@ -84,9 +87,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     house_credential_refs,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import (
-    ModelTenantRoutingOverlayBackend,
-)
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 

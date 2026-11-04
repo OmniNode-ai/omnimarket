@@ -5,7 +5,7 @@
 Reads ``delegation_routing_tenant_overlay`` (migration 0001 under
 ``node_delegation_routing_reducer/migrations``) and resolves a tenant's
 BACKEND BINDING override for one ``task_type`` -- the tenant-scoped
-counterpart to :mod:`omnimarket.routing.roi_overlay`, following the identical
+counterpart to :mod:`omnimarket.handlers.routing.roi_overlay`, following the identical
 architecture for the identical reason:
 
     The routing reducer (``node_delegation_routing_reducer``) is a REDUCER --
@@ -69,7 +69,7 @@ from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
 logger = logging.getLogger(__name__)
 
-#: Same DSN the sibling ROI overlay reads (omnimarket.routing.roi_overlay) --
+#: Same DSN the sibling ROI overlay reads (omnimarket.handlers.routing.roi_overlay) --
 #: one canonical Postgres this package talks to for routing-time reads.
 _ENV_TENANT_OVERLAY_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 
@@ -138,7 +138,7 @@ def resolve_tenant_overlay_db() -> ProtocolTenantOverlayReader | None:
     """Resolve a read-only adapter for ``delegation_routing_tenant_overlay``.
 
     Gated on the same ``OMNIDASH_ANALYTICS_DB_URL`` DSN
-    :func:`omnimarket.routing.roi_overlay.resolve_context_roi_db` reads.
+    :func:`omnimarket.handlers.routing.roi_overlay.resolve_context_roi_db` reads.
     Returns ``None`` when the DSN is unset or construction fails, so the
     caller falls through to the unchanged platform-default resolution path
     (fail-OPEN for outage — this mirrors the ROI overlay's posture: a

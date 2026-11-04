@@ -62,6 +62,10 @@ from omnimarket.handlers.routing.customer_key_terminus import (
     EnumCustomerKeyRefusalReason,
     EnumDelegationSurface,
 )
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
+    TENANT_OVERLAY_TABLE,
+    resolve_tenant_overlay,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -71,10 +75,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.routing.tenant_overlay_resolver import (
-    TENANT_OVERLAY_TABLE,
-    resolve_tenant_overlay,
-)
 
 _CUSTOMER = "0e263b9c-withdrawn-credential-tenant"
 _TASK_TYPE = "code_generation"

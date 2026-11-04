@@ -591,11 +591,6 @@ src/omnimarket/review/pr_review_io.py
 src/omnimarket/review/pr_review_node_io.py
 src/omnimarket/review/prompt_builder.py
 src/omnimarket/review/response_parser.py
-src/omnimarket/routing/__init__.py
-src/omnimarket/routing/dod_overlay.py
-src/omnimarket/routing/generated_llm_routing_constants.py
-src/omnimarket/routing/roi_overlay.py
-src/omnimarket/routing/tenant_overlay_resolver.py
 src/omnimarket/rsd/__init__.py
 src/omnimarket/rsd/b1_projection_binding.py
 src/omnimarket/rsd/container_bootstrap_artifact_evidence_v5.py

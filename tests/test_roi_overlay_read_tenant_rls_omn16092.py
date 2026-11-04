@@ -42,6 +42,10 @@ import pytest
 psycopg2 = pytest.importorskip("psycopg2", reason="psycopg2 required for RLS proof")
 
 from omnimarket.config.settings import Settings  # noqa: E402
+from omnimarket.handlers.routing.roi_overlay import (  # noqa: E402
+    CONTEXT_ROI_TABLE,
+    resolve_roi_overlay,
+)
 from omnimarket.projection import (  # noqa: E402
     tenant_isolation as tenant_isolation_module,
 )
@@ -50,10 +54,6 @@ from omnimarket.projection.postgres_read_database import (  # noqa: E402
 )
 from omnimarket.projection.tenant_isolation import (  # noqa: E402
     TenantContextMissingError,
-)
-from omnimarket.routing.roi_overlay import (  # noqa: E402
-    CONTEXT_ROI_TABLE,
-    resolve_roi_overlay,
 )
 
 pytestmark = pytest.mark.integration

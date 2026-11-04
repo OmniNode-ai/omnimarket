@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from omnimarket.routing.tenant_overlay_resolver import (
+from omnimarket.handlers.routing.tenant_overlay_resolver import (
     BYOK_ALL_TASK_TYPES,
     TENANT_CREDENTIALS_TABLE,
     TENANT_OVERLAY_TABLE,

@@ -17,13 +17,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from omnimarket.ranges import REQUIRED_FALSE_PASS_CLASSES
-from omnimarket.routing.dod_overlay import (
+from omnimarket.handlers.routing.dod_overlay import (
     EVAL_LINE_MET,
     ModelRoutingDodOverlay,
     ProtocolEvalLineReader,
     resolve_dod_overlay,
 )
+from omnimarket.ranges import REQUIRED_FALSE_PASS_CLASSES
 
 TENANT_ID = "820272f9-4aaf-5add-a2df-0af942852ab2"
 TASK_TYPE = "document"
@@ -138,7 +138,7 @@ def test_eval_gate_keeps_the_evidence_for_the_log() -> None:
 def test_postgres_eval_line_reader_reads_the_latest_replayed_all_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.routing import dod_overlay
+    from omnimarket.handlers.routing import dod_overlay
 
     executed: list[tuple[str, object]] = []
 
@@ -188,7 +188,7 @@ def test_postgres_eval_line_reader_reads_the_latest_replayed_all_row(
 def test_eval_line_reader_resolution_needs_the_projection_dsn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.routing import dod_overlay
+    from omnimarket.handlers.routing import dod_overlay
 
     monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
     assert dod_overlay.resolve_eval_line_reader() is None

@@ -59,11 +59,11 @@ import asyncpg
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.handlers.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection import (
     HandlerTenantCredentialsProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
-from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -785,6 +785,9 @@ class TestRealPostgresRoutingOverlayWritePath:
             EnumCustomerKeyRefusalReason,
             EnumDelegationSurface,
         )
+        from omnimarket.handlers.routing.tenant_overlay_resolver import (
+            resolve_tenant_overlay,
+        )
         from omnimarket.nodes.node_delegation_orchestrator.models import (
             ModelDelegationRequest,
         )
@@ -793,9 +796,6 @@ class TestRealPostgresRoutingOverlayWritePath:
         )
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
-        )
-        from omnimarket.routing.tenant_overlay_resolver import (
-            resolve_tenant_overlay,
         )
 
         async with _provisioned_runner() as (runner, _admin_conn, schema):
@@ -909,6 +909,9 @@ class TestRealPostgresRoutingOverlayWritePath:
         proof spans the actual write and the actual read, not two fakes that
         agree with each other.
         """
+        from omnimarket.handlers.routing.tenant_overlay_resolver import (
+            resolve_tenant_overlay,
+        )
         from omnimarket.nodes.node_delegation_orchestrator.models import (
             ModelDelegationRequest,
         )
@@ -917,9 +920,6 @@ class TestRealPostgresRoutingOverlayWritePath:
         )
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
-        )
-        from omnimarket.routing.tenant_overlay_resolver import (
-            resolve_tenant_overlay,
         )
 
         async with _provisioned_runner() as (runner, _admin_conn, schema):
@@ -1129,11 +1129,11 @@ class TestRealPostgresKeyPoolSelection:
     async def test_k1_k2_live_keys_spread_and_the_expired_key_is_never_chosen(
         self,
     ) -> None:
+        from omnimarket.handlers.routing.tenant_overlay_resolver import (
+            resolve_tenant_overlay,
+        )
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
-        )
-        from omnimarket.routing.tenant_overlay_resolver import (
-            resolve_tenant_overlay,
         )
 
         async with _provisioned_runner() as (runner, _admin_conn, schema):

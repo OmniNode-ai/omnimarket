@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for omnimarket.routing.dod_overlay (ticket OMN-19528)."""
+"""Unit tests for omnimarket.handlers.routing.dod_overlay (ticket OMN-19528)."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
-    LocalDelegationDispatchPort,
-)
-from omnimarket.routing.dod_overlay import (
+from omnimarket.handlers.routing.dod_overlay import (
     ModelDodModelSignal,
     ModelRoutingDodOverlay,
     build_dod_overlay,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
 )
 
 TENANT_ID = "820272f9-4aaf-5add-a2df-0af942852ab2"
@@ -579,7 +579,7 @@ def _patch_connect(
 
 @pytest.mark.unit
 def test_pure_join_matches_text_run_ids_to_uuid_verdicts() -> None:
-    from omnimarket.routing.dod_overlay import join_delegations_to_verdicts
+    from omnimarket.handlers.routing.dod_overlay import join_delegations_to_verdicts
 
     run = str(uuid.uuid4())
     other = str(uuid.uuid4())
@@ -628,7 +628,7 @@ def test_pure_join_matches_text_run_ids_to_uuid_verdicts() -> None:
 def test_reader_reads_verdicts_then_the_tenant_scoped_delegations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
+    from omnimarket.handlers.routing.dod_overlay import PostgresDodOutcomeReader
 
     run = str(uuid.uuid4())
     verdict_conn = _FakeConn(
@@ -684,7 +684,7 @@ def test_reader_reads_verdicts_then_the_tenant_scoped_delegations(
 def test_reader_with_no_linked_verdict_never_reads_delegations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
+    from omnimarket.handlers.routing.dod_overlay import PostgresDodOutcomeReader
 
     verdict_conn = _FakeConn(rows=[])
     delegation_conn = _FakeConn(rows=[])
@@ -699,7 +699,7 @@ def test_reader_with_no_linked_verdict_never_reads_delegations(
 
 @pytest.mark.unit
 def test_reader_refuses_an_unsafe_relation() -> None:
-    from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
+    from omnimarket.handlers.routing.dod_overlay import PostgresDodOutcomeReader
 
     with pytest.raises(ValueError, match="unsafe relation"):
         PostgresDodOutcomeReader(
@@ -711,7 +711,7 @@ def test_reader_refuses_an_unsafe_relation() -> None:
 def test_reader_failure_returns_none_so_routing_stays_static(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.routing.dod_overlay import (
+    from omnimarket.handlers.routing.dod_overlay import (
         PostgresDodOutcomeReader,
         resolve_dod_overlay,
     )
@@ -743,9 +743,9 @@ def test_reader_failure_returns_none_so_routing_stays_static(
 def test_reader_missing_tenant_under_enforcement_raises_before_any_sql(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from omnimarket.handlers.routing.dod_overlay import resolve_dod_overlay
     from omnimarket.projection import tenant_isolation
     from omnimarket.projection.tenant_isolation import TenantContextMissingError
-    from omnimarket.routing.dod_overlay import resolve_dod_overlay
 
     class _Settings:
         onex_tenant_id = ""
@@ -768,11 +768,11 @@ def test_reader_missing_tenant_under_enforcement_raises_before_any_sql(
 
 @pytest.mark.unit
 def test_reader_tenant_slug_maps_to_its_uuid_and_unknown_slug_skips_the_read() -> None:
-    from omnimarket.projection.tenant_isolation import UnmappedTenantIdentityError
-    from omnimarket.routing.dod_overlay import (
+    from omnimarket.handlers.routing.dod_overlay import (
         resolve_dod_overlay,
         resolve_dod_read_tenant,
     )
+    from omnimarket.projection.tenant_isolation import UnmappedTenantIdentityError
 
     assert resolve_dod_read_tenant("omninode") == TENANT_ID
     assert resolve_dod_read_tenant(TENANT_ID.upper()) == TENANT_ID
@@ -801,7 +801,7 @@ def test_reader_tenant_slug_maps_to_its_uuid_and_unknown_slug_skips_the_read() -
 def test_reader_resolution_needs_both_lane_dsns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.routing.dod_overlay import (
+    from omnimarket.handlers.routing.dod_overlay import (
         PostgresDodOutcomeReader,
         resolve_dod_outcome_reader,
     )
@@ -820,6 +820,7 @@ def test_port_selection_wires_the_dod_read_into_the_local_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AC4: the bus-less port consults the same DoD signal as the deployed lane."""
+    from omnimarket.handlers.routing import dod_overlay
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
         evidence_db_resolution,
     )
@@ -827,7 +828,6 @@ def test_port_selection_wires_the_dod_read_into_the_local_port(
         select_delegation_dispatch_port,
     )
     from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-    from omnimarket.routing import dod_overlay
 
     rows = [_row(verdict_outcome="refused") for _ in range(5)]
 
