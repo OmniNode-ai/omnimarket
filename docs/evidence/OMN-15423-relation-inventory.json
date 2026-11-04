@@ -4684,6 +4684,7 @@
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
+        "node_factory_floor_publish_effect",
         "node_lab_secret_store_override_effect",
         "node_llm_delegation_call_effect",
         "node_measured_model_selection_compute",
