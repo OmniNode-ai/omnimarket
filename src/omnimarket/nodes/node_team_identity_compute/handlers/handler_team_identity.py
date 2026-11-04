@@ -24,12 +24,14 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.adapter_local_session_files import LocalSessionFiles
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_FILE_NAME,
     OVERLAY_ROOTS_ENV,
     NodeOverlayError,
     not_configured_message,
 )
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 from ..models.model_team_identity import (
     TEAM_IDENTITY_SCHEMA_VERSION,
@@ -74,9 +76,9 @@ def find_team_identity_sources(roots: Sequence[str]) -> tuple[Path, ...]:
     )
 
 
-def _read(path: Path) -> bytes:
+def _read(path: Path, *, fs: ProtocolSessionFiles | None = None) -> bytes:
     try:
-        return path.read_bytes()
+        return (fs or LocalSessionFiles()).read_bytes(path)
     except OSError as exc:
         raise TeamIdentityError(
             f"{OVERLAY_ROOTS_ENV}: overlay {path} is unreadable ({type(exc).__name__})"

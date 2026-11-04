@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_closeout_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Guard one lane tree (verdict ok, wip or keep), push unpushed commits to a WIP branch, and remove a tree nothing would be lost from; returns the TERMINAL worktree cell.
+input_model:
+  name: ModelLaneCloseoutRequest
+  module: omnimarket.models.lane_closeout.model_lane_closeout_request
+output_model:
+  name: ModelLaneCloseoutResult
+  module: omnimarket.models.lane_closeout.model_lane_closeout_result
+handler:
+  module: omnimarket.nodes.node_lane_closeout_effect.handlers.handler_lane_closeout
+  class: HandlerLaneCloseout
+  input_model: omnimarket.models.lane_closeout.model_lane_closeout_request.ModelLaneCloseoutRequest
+  output_model: omnimarket.models.lane_closeout.model_lane_closeout_result.ModelLaneCloseoutResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: close_lane_tree
+      handler:
+        name: HandlerLaneCloseout
+        module: omnimarket.nodes.node_lane_closeout_effect.handlers.handler_lane_closeout
+      event_model:
+        name: ModelLaneCloseoutRequest
+        module: omnimarket.models.lane_closeout.model_lane_closeout_request
+      subscribe_topic: onex.cmd.omnimarket.lane-closeout-requested.v1
+      topic: onex.cmd.omnimarket.lane-closeout-requested.v1
+      publish_topic: onex.evt.omnimarket.lane-closeout-completed.v1
+      message_category: command
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lane-closeout-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-closeout-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-closeout-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-closeout-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-closeout-completed.v1
+metadata:
+  ticket: OMN-22191
+  transport_type: kafka

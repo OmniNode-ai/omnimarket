@@ -26,7 +26,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.adapter_local_session_files import LocalSessionFiles
 from omnimarket.models.session_scope import ModelSessionScope
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 from . import checkpoint as ckpt
 
@@ -79,9 +81,13 @@ def applies(
     return Path(transcript).parent.name == project_slug(project_home)
 
 
-def _env_values(path: Path) -> dict[str, str]:
+def _env_values(
+    path: Path, *, fs: ProtocolSessionFiles | None = None
+) -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in (
+        (fs or LocalSessionFiles()).read_text(path, encoding="utf-8").splitlines()
+    ):
         key, sep, value = line.partition("=")
         if sep:
             values.setdefault(key.strip(), value.strip())

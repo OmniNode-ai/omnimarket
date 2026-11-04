@@ -174,7 +174,11 @@ identifier_grounding:
     - class_name: commit_sha
       # `(?=[0-9a-f]*\d)` requires at least one digit, so hex-alphabet English
       # words ("defaced", "facade", "added") are not read as shas.
-      pattern: '(?<![\w])(?P<token>(?=[0-9a-f]*\d)[0-9a-f]{7,40})(?![\w])'
+      # `(?=[0-9a-f]*[a-f])` requires at least one hex letter, so a decimal
+      # number of 7+ digits (a correct arithmetic answer such as 7006652) is
+      # not read as an ungrounded sha (OMN-22210). An all-digit abbreviated
+      # sha is not checked; refusing correct numbers costs more than missing it.
+      pattern: '(?<![\w])(?P<token>(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40})(?![\w])'
       grounding_form: "{token}"
       prefix_match: true
       description: "Abbreviated or full lowercase git commit sha."
