@@ -1,0 +1,10 @@
+profile: inmemory
+answer_policy: {}
+bindings:
+  store: sqlite-memory
+  source: operator-arrival-state
+  lanes: part-a-lease
+  reply: operator-reply-check
+  channel: alert-channel-send
+  ledger: work-ledger-emit
+  printer: prompt-hook

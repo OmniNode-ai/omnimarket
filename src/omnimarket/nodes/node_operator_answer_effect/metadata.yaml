@@ -1,0 +1,25 @@
+name: node_operator_answer_effect
+version: "1.0.0"
+description: Headless answer lanes, deadline recovery and accepted delivery evidence.
+node_role: effect
+pack: operator_capture
+display_name: Operator Answer Delivery
+omnibase_core_compat: ">=0.47.67,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_operator_answer_effect: omnimarket.nodes.node_operator_answer_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - omnibase-core>=0.47.67
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, operator, answers, delivery]

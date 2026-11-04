@@ -83,6 +83,26 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: through the registered morning_readme tool, a normalized exact heading wins in either document order, ambiguous substring and duplicate exact matches are refused, and unique substring, missing-heading, listing and section-boundary behavior are covered -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -k readme'
+  - id: req-omn19998-answer-lane
+    statement: 'Task 5.3: headless answer dispatch and durable delivery, with independent work ownership.'
+    acceptance:
+    - id: AC531
+      statement: With a five-minute tick and one lane miss per message, arrival-to-delivered-row age stays at most 55 minutes; the replay prints its longest age and
+        fails above 60.
+    - id: AC532
+      statement: The identical answer replay with the tick stopped fails the delivery bound, including messages for which no lane was started.
+    - id: AC533
+      statement: The core validator refuses an answer overlay whose dispatch age plus tick interval plus both lane deadlines exceeds 60 minutes.
+    - id: AC534
+      statement: The real alert-channel library delivers without a session or another prompt; next-turn printing records delivery after printing; a refused channel
+        leaves the message unanswered and reports UNREAD.
+    - id: AC535
+      statement: A durable intended row precedes sending; crash-after-acceptance recovery sends at most two identical tagged copies and records delivery by the tick
+        after the first deadline.
+    - id: AC536
+      statement: A missed answer lease is reaped and replaced once, its miss is pushed once, and the replacement still delivers within one hour.
+    - id: AC537
+      statement: The headless answer brief exposes only item, ledger and live-state reads, reply checking and delivery; it cannot write code or start a worker.
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -329,3 +349,75 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -q --no-cov
         cwd: .
+  - id: dod-omn19998-answer-ac53age
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC531
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'replay_with_one_miss'
+      cwd: .
+  - id: dod-omn19998-answer-ac53tick
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC532
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'mut_no_tick'
+      cwd: .
+  - id: dod-omn19998-answer-ac53overlay
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC533
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'bad_overlay'
+      cwd: .
+  - id: dod-omn19998-answer-ac53delivery
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC534
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'real_alert_library or actual_print or refused_channel'
+      cwd: .
+  - id: dod-omn19998-answer-ac53intent
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC535
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'crash'
+      cwd: .
+  - id: dod-omn19998-answer-ac53miss
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC536
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'slow_lease'
+      cwd: .
+  - id: dod-omn19998-answer-ac53tools
+    description: Focused answer-lane falsifier. This does not assert the legacy controller criteria or a live scheduled host installation.
+    source: manual
+    binds_ac:
+    - AC537
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -m 'not kafka' -k 'brief_tools'
+      cwd: .
+  - id: dod-omn19998-answer-deploy-wiring
+    description: Hosted typed runtime and in-memory bus dispatch smoke. Redpanda authorization and the real five-minute unit/full-clock readback remain deployment integration work.
+    source: manual
+    binds_ac:
+    - AC534
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/nodes/node_operator_answer_effect/test_golden_chain_answer_lane.py -q --no-cov -k 'real_runtime_typed_dispatch or inmemory_overlay_bus or unbound_runtime'
+      cwd: .

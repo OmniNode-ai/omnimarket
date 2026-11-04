@@ -1,0 +1,82 @@
+name: operator_answer_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Headless answer lanes with bounded deadlines and durable at-least-once delivery.
+runtime_profiles: [main]
+input_model: omnimarket.models.operator_answer.ModelAnswerRequest
+output_model: omnimarket.models.operator_answer.ModelAnswerResult
+handler:
+  module: omnimarket.nodes.node_operator_answer_effect.handlers.handler_operator_answer
+  class: HandlerOperatorAnswer
+entrypoint:
+  module: omnimarket.nodes.node_operator_answer_effect.node
+  name: NodeOperatorAnswerEffect
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: operator_answer_requested
+      topic: onex.cmd.omnimarket.operator-answer-requested.v1
+      event_model: omnimarket.models.operator_answer.ModelAnswerRequest
+      handler:
+        module: omnimarket.nodes.node_operator_answer_effect.handlers.handler_operator_answer
+        name: HandlerOperatorAnswer
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.operator-answer-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.operator-answer-completed.v1
+terminal_event: onex.evt.omnimarket.operator-answer-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.operator-answer-requested.v1]
+  publish_topics: [onex.evt.omnimarket.operator-answer-completed.v1]
+answer_policy: &answer_policy
+  dispatch_age_minutes: 30
+  tick_interval_minutes: 5
+  lane_deadline_minutes: 10
+  replacement_deadline_minutes: 10
+  max_age_minutes: 60
+  answer_key_prefix: 'answer:'
+  effect_prefix: 'answer-effect:'
+  category: operator-answer
+  miss_category: operator-answer-miss
+  alert_timeout_seconds: 60
+  brief:
+    kind: answer
+    headless: true
+    tools: [read_item, read_ledger, read_live_state, check_operator_reply, deliver_answer]
+    instructions: >-
+      Read the item, ledger and needed live state. Reply in plain words, naming ids.
+      Run the operator reply check for phone delivery, then deliver through this node.
+      Write no code and start no worker. An ask still needs a separate work lane.
+      Use the lease deadline; the lease service reaps a missed deadline.
+overlay_constraints:
+  relations:
+    - relation_name: AgeBound
+      expression: dispatch_age_minutes + tick_interval_minutes + lane_deadline_minutes + replacement_deadline_minutes <= max_age_minutes
+    - relation_name: LaneSLA
+      expression: lane_deadline_minutes <= 10
+    - relation_name: LaneMiss
+      expression: replacement_deadline_minutes <= 10
+    - relation_name: OneHour
+      expression: max_age_minutes <= 60
+    - relation_name: PositiveDispatch
+      expression: dispatch_age_minutes > 0
+    - relation_name: PositiveTick
+      expression: tick_interval_minutes > 0
+    - relation_name: PositiveLane
+      expression: lane_deadline_minutes > 0
+    - relation_name: PositiveReplacement
+      expression: replacement_deadline_minutes > 0
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.operator-answer-completed.v1
+
+overlay_values:
+  answer: *answer_policy
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+  runtime_profiles: [main]
