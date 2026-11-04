@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: node_route_line_parse_compute (OMN-22263, plan task T4)
+
+name: node_route_line_parse_compute
+version: "1.0.0"
+contract_name: node_route_line_parse_compute
+node_name: node_route_line_parse_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Parse a ROUTE line from text against the routing contract's data (marker, dimension names, band edges). Returns band, score and the dimensions with the score equal to their sum; a line whose score differs, whose band sits below the band the score implies or that does not match the grammar is refused naming the offending field; text with no line returns no route and no default band.
+
+input_model:
+  name: ModelRouteLineParseRequest
+  module: omnimarket.nodes.node_route_line_parse_compute.models
+
+output_model:
+  name: ModelRouteLineParseResult
+  module: omnimarket.nodes.node_route_line_parse_compute.models
+
+handler:
+  module: omnimarket.nodes.node_route_line_parse_compute.handlers.handler_route_line_parse
+  class: HandlerRouteLineParse
+  input_model: omnimarket.nodes.node_route_line_parse_compute.models.ModelRouteLineParseRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: route_line_parse
+      handler:
+        name: HandlerRouteLineParse
+        module: omnimarket.nodes.node_route_line_parse_compute.handlers.handler_route_line_parse
+      event_model:
+        name: ModelRouteLineParseRequest
+        module: omnimarket.nodes.node_route_line_parse_compute.models
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+# Every dependency is an overlay key read by the caller and injected through the request or the
+# constructor; no value below is held in code.
+overlay_keys:
+  routing_contract_path: path of the routing contract whose marker, dimensions and band edges the ROUTE parse reads
+
+capabilities:
+  - name: work.route_line_parse
+    description: Parse a ROUTE line from text against the routing contract's data (marker, dimension names, band edges)
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.route-line-parse-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.route-line-parsed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.route-line-parse-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.route-line-parsed.v1
+
+terminal_event: onex.evt.omnimarket.route-line-parsed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-22263
+  maturity: alpha
+  tags:
+    - compute
+    - route
+    - classification

@@ -1,0 +1,183 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-22263
+title: 'T4 first slice: rubric data, ROUTE parse, rules, brief strata, unit cell, report and the local-only lab-model fallback'
+summary: Adds the work-classification models, the work-type rubric and run-style rules as data, three nodes (route line parse compute, work classify compute, work intent classify effect), and the fixtures
+  that prove them. The orchestrator, the projection reducer with its migration, the profile parity falsifier, the sample over real units and the lab step are not in this pull request; the ticket stays open.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-t4-first-slice
+  statement: Rules, parse, fallback and unit cell as listed in the acceptance statements; AC9 and AC13 are not claimed here.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the ROUTE line parse returns band, score and seven dimensions with the score equal to their sum, refuses a differing score naming the field, and a rubric id the enum lacks fails the
+      load naming the id -- falsifier: the tests fail on the base branch and pass on the branch.'
+  - id: AC2
+    statement: 'AC2: the enum and the rubric''s declared ids are equal sets -- falsifier: delete one id from either; the load test fails naming it.'
+  - id: AC3
+    statement: 'AC3: no number, threshold or id list appears in handler code -- falsifier: the literal scan over the handlers is empty and a planted literal is reported.'
+  - id: AC4
+    statement: 'AC4: rule-set precision on the labelled sample is at least the bar overall and per kept rule -- falsifier: a planted wrong rule drops precision and the load refuses the rubric.'
+  - id: AC5
+    statement: 'AC5: the lab-model step is reachable only for undetermined -- falsifier: a unit decided by a rule produces no delegation request.'
+  - id: AC6
+    statement: 'AC6: the route is local-only -- falsifier: an overlay naming a cloud backend is refused at load naming the key, and the request log holds no host outside the declared lab hosts.'
+  - id: AC7
+    statement: 'AC7: no prompt text is in any projection -- falsifier: a fixture prompt containing a unique token is absent from every result.'
+  - id: AC8
+    statement: 'AC8: an existing classifier is a rule input only if its measured precision reaches the bar -- falsifier: below the bar it is excluded and the exclusion is a recorded result.'
+  - id: AC10
+    statement: 'AC10: every model is frozen with no default for a fact the source may lack -- falsifier: a unit without a ROUTE line carries route None, not a default band.'
+  - id: AC11
+    statement: 'AC11: identical inputs give one stored fallback result -- falsifier: sequential and concurrent calls store one work type and a different second result is refused and counted.'
+  - id: AC12
+    statement: 'AC12: a lane whose later session ran on a different model keeps the root session''s cell -- falsifier: a Sonnet root and an Opus second session land in the Sonnet cell and add the second
+      session''s tokens.'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the three nodes.
+  command: uv run pytest tests/nodes/node_route_line_parse_compute tests/nodes/node_work_classify_compute tests/nodes/node_work_intent_classify_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22263-ac1
+  description: 'AC1: the ROUTE line parse returns band, score and seven dimensions with the score equal to their sum, refuses a differing score naming the field, and a rubric id the enum lacks fails the
+    load naming the id'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_route_line_parse_compute -q -p no:randomly --no-cov
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_rubric_load.py -q -p no:randomly --no-cov -k 'enum_lacks'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_route_line_parse_compute/test_route_line_parse.py -q -p no:randomly --no-cov -k 'template_before or prose_before or later_one_is_valid or first_valid_one_wins or no_marker_validates'
+  binds_ac:
+  - AC1
+- id: dod-omn22263-ac2
+  description: 'AC2: the enum and the rubric''s declared ids are equal sets'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_rubric_load.py -q -p no:randomly --no-cov -k 'enum_lacks or does_not_declare or equal_id_sets'
+  binds_ac:
+  - AC2
+- id: dod-omn22263-ac3
+  description: 'AC3: no number, threshold or id list appears in handler code'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_contracts.py -q -p no:randomly --no-cov -k 'handler_code or planted_literal'
+  binds_ac:
+  - AC3
+- id: dod-omn22263-ac4
+  description: 'AC4: rule-set precision on the labelled sample is at least the bar overall and per kept rule'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_rubric_load.py -q -p no:randomly --no-cov -k 'shipped_rubric or planted_wrong or never_fires or one_wrong_sample'
+  binds_ac:
+  - AC4
+- id: dod-omn22263-ac5
+  description: 'AC5: the lab-model step is reachable only for undetermined'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_intent_classify_effect -q -p no:randomly --no-cov -k 'decided_by_a_rule'
+  binds_ac:
+  - AC5
+- id: dod-omn22263-ac6
+  description: 'AC6: the route is local-only'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_intent_classify_effect -q -p no:randomly --no-cov -k 'cloud_backend or local_only or declared_lab_hosts'
+  binds_ac:
+  - AC6
+- id: dod-omn22263-ac7
+  description: 'AC7: no prompt text is in any projection'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_intent_classify_effect -q -p no:randomly --no-cov -k 'no_prompt_text'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_work_classify.py -q -p no:randomly --no-cov -k 'hold_no_text or drops_the_brief_text'
+  binds_ac:
+  - AC7
+- id: dod-omn22263-ac8
+  description: 'AC8: an existing classifier is a rule input only if its measured precision reaches the bar'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute -q -p no:randomly --no-cov -k 'classifier'
+  binds_ac:
+  - AC8
+- id: dod-omn22263-ac10
+  description: 'AC10: every model is frozen with no default for a fact the source may lack'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_work_classify.py -q -p no:randomly --no-cov -k 'route_none or rated_unit'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_route_line_parse_compute -q -p no:randomly --no-cov -k 'without_a_route_line'
+  binds_ac:
+  - AC10
+- id: dod-omn22263-ac11
+  description: 'AC11: identical inputs give one stored fallback result'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_intent_classify_effect -q -p no:randomly --no-cov -k 'same_key or concurrent or put_if_absent'
+  binds_ac:
+  - AC11
+- id: dod-omn22263-ac12
+  description: 'AC12: a lane whose later session ran on a different model keeps the root session''s cell'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_work_classify.py -q -p no:randomly --no-cov -k 'sonnet_root or earliest_top_level'
+  binds_ac:
+  - AC12
+- id: dod-omn22263-contracts
+  description: The three node contracts declare their topics and overlay keys, resolve handlers and are onex.nodes entry points.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_classify_compute/test_contracts.py -q -p no:randomly --no-cov
+- id: "dod-omn22263-integration-proof"
+  description: "The pushed head ran the three nodes' tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+  source: "manual"
+  execution_scope: "local_done_gate"
+  checks:
+  - check_type: "command"
+    check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22263 -- uv run --frozen pytest tests/nodes/node_route_line_parse_compute tests/nodes/node_work_classify_compute tests/nodes/node_work_intent_classify_effect -q --no-cov"
+    cwd: "."
+- id: dod-omn22263-runtime-ownership
+  description: The command-consuming fallback effect declares effects ownership without a conflicting top-level profile.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/validation/test_runtime_profile_contracts.py tests/validation/test_no_toplevel_runtime_profiles_shadow.py -q --no-cov
+    cwd: .
+- id: dod-omn22263-deploy-probe
+  description: Hosted-runner source-artifact readback compares the published fallback contract at the evaluated revision to this checkout and requires effects ownership. This probes the published source artifact, not a running deployment.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      readback_dir="$(mktemp -d)";
+      trap 'rm -rf "$readback_dir"' EXIT;
+      revision="$(git rev-parse HEAD)";
+      path=src/omnimarket/nodes/node_work_intent_classify_effect/contract.yaml;
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+        --output "$readback_dir/contract.yaml";
+      cmp "$path" "$readback_dir/contract.yaml";
+      grep -Fx 'runtime_profiles: [effects]' "$readback_dir/contract.yaml";
+      grep -Fx '  runtime_profiles: [effects]' "$readback_dir/contract.yaml";
+      printf 'fallback effects ownership source readback matched %s\n' "$revision"
+    cwd: .

@@ -1,0 +1,132 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_tail_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Parses supplied ledger text and decides exact PR ownership, live drains and failed attempts from caller-supplied facts.
+input_model:
+  name: ModelLedgerTailRequest
+  module: omnimarket.nodes.node_ledger_tail_compute.models.model_ledger_tail
+output_model:
+  name: ModelLedgerTailResult
+  module: omnimarket.nodes.node_ledger_tail_compute.models.model_ledger_tail
+handler:
+  module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+  class: HandlerLedgerTail
+  input_model: omnimarket.nodes.node_ledger_tail_compute.models.model_ledger_tail.ModelLedgerTailRequest
+  output_model: omnimarket.nodes.node_ledger_tail_compute.models.model_ledger_tail.ModelLedgerTailResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail:HandlerLedgerTail
+  handlers:
+    - operation: parse_rows
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: parse_line
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: next_drain_lane
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: closed_claims
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: live_drains
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: split_key
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: pr_cells
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: repo_cells
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: names_branch
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: claim_names
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: is_live
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: owner
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: as_rows
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: failed_at_head
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: cause_attempt_rows
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+    - operation: cause_failed_at_base
+      handler:
+        name: HandlerLedgerTail
+        module: omnimarket.nodes.node_ledger_tail_compute.handlers.handler_ledger_tail
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [parse_rows, parse_line, next_drain_lane, closed_claims, live_drains, split_key, pr_cells, repo_cells, names_branch, claim_names, is_live, owner, as_rows, failed_at_head, cause_attempt_rows, cause_failed_at_base], description: Which question is asked.}
+  text: {type: str, required: false}
+  line: {type: int, required: false}
+  rows: {type: list, required: false}
+  lane: {type: str, required: false}
+  pr: {type: str, required: false}
+  head_ref: {type: str, required: false}
+  head: {type: str, required: false}
+  cause: {type: str, required: false}
+  base: {type: str, required: false}
+  now: {type: str, required: false}
+  open_claims: {type: list, required: false}
+  leases: {type: list, required: false}
+  last_row: {type: dict, required: false}
+  last_at: {type: str, required: false}
+  live_after_seconds: {type: float, required: false}
+  headless_h: {type: float, required: false}
+  attempts: {type: list, required: false}
+  repo_aliases: {type: dict, required: false, description: Extra repo name aliases the caller supplies for claim_names and owner.}
+outputs:
+  operation: {type: str}
+  value: {type: object}
+  refusal: {type: str}
+terminal_event: onex.evt.omnimarket.ledger-tail-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ledger-tail-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ledger-tail-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ledger-tail-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-tail-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Parses supplied ledger text and decides exact PR ownership, live drains and failed attempts from caller-supplied facts.
+  author: OmniNode Team
+  created: "2026-11-03"

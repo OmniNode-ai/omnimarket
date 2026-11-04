@@ -1,0 +1,11 @@
+# Exactness check: each mutant run with TLC -continue (the whole reachable state space), violated invariants and the number of violating states found.
+# A mutant passes when exactly one invariant is listed and it is the mutant's own.
+mut_EverySurfaceWithinTwoPasses: EverySurfaceWithinTwoPasses(14) 
+mut_ForeignWriteReported: ForeignWriteReported(75) 
+mut_NoLaneOnUnverifiedTree: NoLaneOnUnverifiedTree(2) 
+mut_NoObservedBeforeReadback: NoObservedBeforeReadback(686) 
+mut_OrphanPinReleased: OrphanPinReleased(2) 
+mut_OwnedSurfaceOneWriter: OwnedSurfaceOneWriter(130) 
+mut_PinnedTreeNeverRemoved: PinnedTreeNeverRemoved(4) 
+mut_StateWritesSerialised: StateWritesSerialised(6) 
+mut_TakeoverBeforeMutation: TakeoverBeforeMutation(20) 

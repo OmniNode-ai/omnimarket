@@ -17,6 +17,10 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.runtime_proof.model_runtime_proof_close import (
+    ModelProofCloseRequest,
+)
+
 UUID_PATTERN = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
@@ -353,6 +357,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     prior_reversal: bool = False
     outcome_changed_since_reversal: bool = False
     all_prs_merged: bool | None = None
+    # flip_decision (OMN-22334): the facts the runtime-proof conjunct reads; absent holds.
+    runtime_proof: ModelProofCloseRequest | None = None
     released: EnumReleasedState = EnumReleasedState.NOT_APPLICABLE
     # report
     project_name: str = ""
@@ -442,6 +448,7 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "prior_reversal",
                 "outcome_changed_since_reversal",
                 "released",
+                "runtime_proof",
             ),
             EnumCloseoutDecisionKind.REPORT: (
                 "project_name",

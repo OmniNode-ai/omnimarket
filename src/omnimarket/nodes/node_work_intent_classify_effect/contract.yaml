@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: node_work_intent_classify_effect (OMN-22263, plan task T4)
+
+name: node_work_intent_classify_effect
+version: "1.0.0"
+contract_name: node_work_intent_classify_effect
+node_name: node_work_intent_classify_effect
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: EFFECT_GENERIC
+runtime_profiles: [effects]
+
+description: >
+  The lab-model fallback for a unit no rule decided. Reachable only for the undetermined id. Sends the unit's first operator prompt through the delegation route port with the policy local_only and a declared lab route, keeps the returned work-type id and the route receipt id and never the text, and stores one result per (intent digest, rubric version, route model version) by one atomic put-if-absent. See formal/fallback_store_once in omnibase_infra.
+
+input_model:
+  name: ModelWorkIntentClassifyRequest
+  module: omnimarket.nodes.node_work_intent_classify_effect.models
+
+output_model:
+  name: ModelWorkIntentClassifyResult
+  module: omnimarket.nodes.node_work_intent_classify_effect.models
+
+handler:
+  module: omnimarket.nodes.node_work_intent_classify_effect.handlers.handler_work_intent_classify
+  class: HandlerWorkIntentClassify
+  input_model: omnimarket.nodes.node_work_intent_classify_effect.models.ModelWorkIntentClassifyRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_work_intent
+      handler:
+        name: HandlerWorkIntentClassify
+        module: omnimarket.nodes.node_work_intent_classify_effect.handlers.handler_work_intent_classify
+      event_model:
+        name: ModelWorkIntentClassifyRequest
+        module: omnimarket.nodes.node_work_intent_classify_effect.models
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
+# Every dependency is an overlay key read by the caller and injected through the request or the
+# constructor; no value below is held in code.
+overlay_keys:
+  delegation_route: the delegation route (route_id, backend_class lab, model_version); a cloud backend is refused at load
+  route_policy: the route policy; only local_only is accepted
+  lab_hosts: the lab hosts a route answer may come from
+  timeout_s: seconds the route may take before the unit stays undetermined
+
+capabilities:
+  - name: work.intent_classify
+    description: The lab-model fallback for a unit no rule decided
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-intent-classify-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.work-intent-classified.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-intent-classify-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.work-intent-classified.v1
+
+terminal_event: onex.evt.omnimarket.work-intent-classified.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-22263
+  maturity: alpha
+  tags:
+    - effect
+    - work-type
+    - fallback
+    - local-only
