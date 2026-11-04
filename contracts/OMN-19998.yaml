@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-capture-provenance
+    statement: The work-event projection retains supplied capture attribution and explicit causal edges alongside the governed directory shape.
+    acceptance:
+      - id: AC8
+        statement: 'Supplied principal, correlation_id and causation_id survive the four hook projection routes and their snapshot deltas; absent attribution and causation stay absent, replay is idempotent and distinct provenance does not collapse.'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -207,4 +212,13 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
+        cwd: .
+  - id: dod-omn19998-capture-provenance
+    description: Focused handler and snapshot regression over the recorded shape-only session-started wire and each contract-declared hook route. Four cases failed with missing principal before the change. This scoped capture check does not assert host installation or the landing-controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_events/test_redacted_working_directory_omn19513.py -q --no-cov
         cwd: .
