@@ -9,7 +9,9 @@
 # ONEX_INSTALLERS_HOME the canonical clone carrying the launchd installers; the host tick sets both.
 # `present_when` is a path that exists only on a host where the daemon is installed, so one
 # overlay serves every lab host without naming them.
-schema_version: 1
+# Surfaces declare portable plugin trees, configuration and observed revisions by host role.
+# Layer bounds limit temporary installations; transactional identities scope publishers by role.
+schema_version: 2
 fix_lane_repeat_hours: 6
 # One detached fix lane per refusal, through the remote-lane runner.
 fix_lane:
@@ -174,3 +176,187 @@ daemons:
       - omnimarket.nodes.node_host_reconcile_effect
       - --omni-home
       - ${OMNI_HOME}
+
+# Temporary installation limits and publisher identities.
+layers:
+  default_life_hours: 48
+  max_life_days: 7
+transactional_ids:
+  - {role: host-desired-state-publisher, id: host-desired-state-publisher, per_host: false}
+  - {role: host-observed-state, id: "host-observed-state/{host}", per_host: true}
+# Portable declarations keep host-specific locations behind environment variables.
+surfaces:
+  - name: omni-lane-tree
+    kind: lane_tree
+    applies_to_roles:
+      - lab
+      - lab-proof
+    repository: ${ONEX_SURFACE_REPO_INTERNAL_PLUGINS}
+    repository_paths:
+      - plugins/omni
+    runtime: python-venv
+    installed:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/omni/.verified
+      key: commit
+    loaded:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/omni/.verified
+      key: commit
+  - name: onex-overlays-lane-tree
+    kind: lane_tree
+    applies_to_roles:
+      - lab
+      - lab-proof
+    repository: ${ONEX_SURFACE_REPO_INTERNAL_PLUGINS}
+    repository_paths:
+      - plugins/onex-overlays
+    runtime: bash-hooks
+    installed:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/onex-overlays/.verified
+      key: commit
+    loaded:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/onex-overlays/.verified
+      key: commit
+  - name: onex-lane-tree
+    kind: lane_tree
+    applies_to_roles:
+      - lab
+      - lab-proof
+    repository: omniclaude
+    repository_paths:
+      - plugins/onex
+    runtime: python-venv
+    installed:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/onex/.verified
+      key: commit
+    loaded:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/onex/.verified
+      key: commit
+  - name: typesafe-skills-lane-tree
+    kind: lane_tree
+    applies_to_roles:
+      - lab
+      - lab-proof
+    repository: ${ONEX_SURFACE_REPO_TYPESAFE_PLUGIN}
+    repository_paths:
+      - .
+    runtime: bash-hooks
+    installed:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/typesafe-skills/.verified
+      key: commit
+    loaded:
+      kind: json_file
+      path: ${HOME}/lab-run/desired-trees/typesafe-skills/.verified
+      key: commit
+  - name: omni-installed-plugin
+    kind: installed_plugin
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    repository: ${ONEX_SURFACE_REPO_INTERNAL_PLUGINS}
+    repository_paths:
+      - plugins/omni
+    installed:
+      kind: json_file
+      path: ${HOME}/.claude/plugins/installed_plugins.json
+      key: plugins.omni@omninode-internal.0.version
+  - name: onex-overlays-installed-plugin
+    kind: installed_plugin
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    repository: ${ONEX_SURFACE_REPO_INTERNAL_PLUGINS}
+    repository_paths:
+      - plugins/onex-overlays
+    installed:
+      kind: json_file
+      path: ${HOME}/.claude/plugins/installed_plugins.json
+      key: plugins.onex-overlays@omninode-internal.0.version
+  - name: internal-marketplace-config
+    kind: claude_config
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    settings:
+      - key: autoUpdate
+        value: false
+    loaded:
+      kind: json_file
+      path: ${HOME}/.claude/plugins/known_marketplaces.json
+      key: omninode-internal
+  - name: launcher-environment
+    kind: launchd_env
+    applies_to_roles:
+      - launcher
+    env:
+      - name: ONEX_LEGACY_PLUGIN_ROOT
+        action: unset
+  - name: lab-work-serve
+    kind: observed
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    repository: omnimarket
+    loaded:
+      kind: command
+      argv:
+        - git
+        - -C
+        - ${HOME}/lab-run/lab-work-serve
+        - rev-parse
+        - HEAD
+  - name: landing-controller-copy
+    kind: observed
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    loaded:
+      kind: json_file
+      path: ${HOME}/.local/state/omni/landing/installed-revision.json
+      key: source_commit
+  - name: dispatch-venv
+    kind: observed
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    repository: omnimarket
+    loaded:
+      kind: command
+      argv:
+        - ${HOME}/.local/share/onex/dispatch-venv/bin/python
+        - -c
+        - import json, importlib.metadata as m; print(json.loads(m.distribution('omnimarket').read_text('direct_url.json'))['vcs_info']['commit_id'])
+  - name: host-reconciler
+    kind: observed
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    repository: omnimarket
+    loaded:
+      kind: json_file
+      path: ${HOME}/.local/state/omni/host-reconciler/installed-revision.json
+      key: source_commit
+  - name: desired-state-publisher
+    kind: observed
+    applies_to_roles:
+      - lab-proof
+      - lab
+      - launcher
+    repository: omnimarket
+    loaded:
+      kind: json_file
+      path: ${HOME}/.local/state/omni/desired-state-publisher/installed-revision.json
+      key: source_commit
