@@ -100,3 +100,12 @@ dod_evidence:
           assert order == sorted(order), "build, health check and switch are out of order"
           print("Published omnidash host handler builds, health-checks, then switches")'\'''
         cwd: .
+  - id: dod-omn22167-ac5-node-archive-arm64
+    description: The node distribution archive name is chosen from the host's OS (linux, darwin) and machine (x86_64, aarch64, arm64), so a macOS arm64 host gets the darwin-arm64 archive and not the Linux one, and an unknown OS or machine is refused; the tests are new in this change so the check cannot pass at the merge base.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omnidash_host_effect.py -q --no-cov --tb=line -k "omnidash_host_node_archive"
+        cwd: .

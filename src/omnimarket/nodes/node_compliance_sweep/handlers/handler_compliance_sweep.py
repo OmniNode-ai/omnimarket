@@ -50,7 +50,6 @@ _DEFAULT_REPOS: tuple[str, ...] = (
     "omnimemory",
     "omnibase_core",
     "omniclaude",
-    "onex_change_control",
     "omnibase_spi",
 )
 

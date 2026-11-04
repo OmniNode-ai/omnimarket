@@ -566,7 +566,6 @@ class HandlerArchitectureGraphPopulate:
             "omnimemory",
             "omniintelligence",
             "omninode_infra",
-            "onex_change_control",
             "omnidash",
         ]
     )

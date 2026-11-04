@@ -2180,6 +2180,14 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: retired-repository-reconcile
+        name: Retired repository bundles and registry targets (OMN-21284)
+        language: system
+        entry: uv run --frozen pytest tests/test_retired_repository_reconcile.py -q -p no:randomly --no-cov -m 'not kafka'
+        files: ^(src/omnimarket/.*|scripts/.*|config/.*|[^/]+\.(yaml|yml|json)|tests/test_retired_repository_reconcile\.py|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: class3-installed-copy-drift
         name: Class 3 installed-copy drift node regression (OMN-20865)
         language: system
