@@ -26,6 +26,11 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: the refill probe writes a lane overlay binding the host process environment and file overlay documents and passes it with --overlay to runtime_claude_probe; typed probe receipts remain classified as ok, limited, timeout or unavailable -- falsifier: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov -k "probe"'
+  - id: req-omn19998-worktree-report-handoff
+    statement: Worktree report publication moves to a bus node that preserves scrub and delivery failures and delegates landing.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: copied CLAIM root path tokens in markdown and JSON become portable; scrub, push, create and handoff failures remain failed and report friction and alerts; successful publication hands the exact PR head to the landing controller without reading checks or merging -- falsifier: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -99,4 +104,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
+        cwd: .
+  - id: dod-omn19998-worktree-report-handoff
+    description: Regression shapes from the recorded scrub and publish failures exercise the migrated path rewrite and the production host adapter through an injected subprocess seam. Unknown paths remain for the external scrub to refuse. This does not assert the landing controller timer criteria or a live installation.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short
+        cwd: .
+  - id: dod-omn19998-worktree-report-runtime
+    description: Hosted wiring smoke discovers the installed node entrypoint and routes success and failure through its declared command and completed topics on an in-memory bus. Only the host subprocess seam is replaced; this is not a live host installation readback.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k installed_contract
         cwd: .
