@@ -1,0 +1,113 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-22334"
+title: "A ticket closes only on runtime proof: a merged ticket with no runtime receipt stays open as merged, not yet proven running"
+summary: >-
+  Narrows the omnimarket paths that write Done on a merge. The shared rule runtime_proof_close_rules
+  closes a code ticket only on a passing runtime receipt (lab-pass, deploy-agent instance receipt, or a
+  dod_verify PASS whose checks exercise the running system) at a revision that contains the merged change,
+  and a docs-only or plan ticket only on the proof its own definition of done names. The triage node's
+  Done write and the closeout sweep's flip predicate both call it; a merge with no such proof leaves the
+  ticket open with the reason "merged, not yet proven running". No accepted evidence kind is added.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-close-on-runtime-proof"
+    statement: |-
+      A merge alone never closes a ticket; a runtime receipt at a containing revision does.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a test shows a ticket whose only evidence is a merged product PR plus a merged OCC companion is not closed by the sweep or the done-flip gate, and carries the reason "merged, not yet proven running" -- falsifier: uv run pytest -k merged_only_does_not_close over the suite that owns the predicate
+      - id: "AC2"
+        statement: |-
+          AC2: a test shows a merged change plus a passing runtime receipt at a revision that contains the change closes the ticket -- falsifier: uv run pytest -k merged_plus_runtime_receipt_closes over the suite that owns the predicate
+      - id: "AC3"
+        statement: |-
+          AC3: a test shows a passing receipt at a revision that lacks the change does not close the ticket -- falsifier: uv run pytest -k receipt_without_change_does_not_close over the suite that owns the predicate
+      - id: "AC4"
+        statement: |-
+          AC4: a docs-only or plan ticket closes only on the proof its definition of done names, and a test covers one of each -- falsifier: uv run pytest -k docs_or_plan_names_declared_proof over the suite that owns the predicate
+      - id: "AC5"
+        statement: |-
+          AC5: the changed predicate runs on the lab with a lab-run receipt of exit code 0 and the branch is installed where the sweep and the guard run, with installed=<host>:<revision> and observed=<what ran> recorded -- falsifier: lab-run receipt with exit code 0 for the predicate suite plus the install-first readback in the PR handoff
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC4: the shared rule, the triage Done write and the closeout flip predicate."
+    command: "uv run pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22334-ac1"
+    description: "AC1: a merge with no runtime receipt is held as merged, not yet proven running, by the triage Done write and the closeout flip predicate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k merged_only_does_not_close -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn22334-ac2"
+    description: "AC2: a merged change plus a passing runtime receipt at a containing revision closes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k merged_plus_runtime_receipt_closes -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC2"]
+  - id: "dod-omn22334-ac3"
+    description: "AC3: a passing receipt at a revision that lacks the change does not close, read from a real git history."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k receipt_without_change_does_not_close -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC3"]
+  - id: "dod-omn22334-ac4"
+    description: "AC4: a docs ticket and a plan ticket each close only on the proof their definition of done names."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k docs_or_plan_names_declared_proof -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC4"]
+  - id: "dod-omn22334-deploy-probe-rule"
+    description: "Deploy probe: the shared proof rule GitHub serves at the checked-out commit defines evaluate_proof_close and the held reason; the module is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/runtime_proof_close_rules.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def evaluate_proof_close\")' | grep -qx true"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/test_runtime_proof_close.py -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+  - id: "dod-omn22334-deploy-probe-sweep"
+    description: "Deploy probe: the closeout sweep handler GitHub serves at the checked-out commit holds a merged ticket on the runtime-proof block; the block is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dod_closeout_sweep_compute/handlers/handler_dod_closeout_sweep.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"BLOCK_MERGED_NOT_PROVEN_RUNNING\")' | grep -qx true"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -k merged_only_does_not_close -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: "dod-omn22334-ac5-hosted-predicate"
+    description: "AC5 hosted runtime check: discover the installed closeout contract, wire its handler through MessageDispatchEngine and send flip commands over the in-memory bus at the checked-out revision. The separate local integration item still requires the lab run; this hosted check does not attest installation of callers in other repositories."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_runtime_wiring_dod_closeout_sweep_compute.py -k runtime_proof_controls_the_installed_sweep_over_the_bus -q -p no:randomly --no-cov"
+        cwd: "."
+    binds_ac: ["AC5"]
+  - id: "dod-omn22334-integration-proof"
+    description: "AC5: the pushed head ran the predicate suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22334 -- uv run --frozen pytest tests/handlers/test_runtime_proof_close.py tests/nodes/node_linear_triage/test_omn_22334_runtime_proof_close.py tests/nodes/node_dod_closeout_sweep_compute/test_omn_22334_runtime_proof_flip_dod_closeout_sweep_compute.py -q -p no:randomly --no-cov"
+        cwd: "."

@@ -107,6 +107,12 @@ context_tier_sources:
   canonical_shapes: node_context_source_repo_doctrine_effect
   exemplar: node_context_source_repo_doctrine_effect
 
+# The additive profiles whose Claude Code rows are answered with a package (OMN-22016, TC.11).
+# Empty by default: every additive call is answered none. A profile is added by a data PR that
+# cites its measured latency (TC.12); per_prompt stays out until TC.13 promotes it, and the
+# loader (handlers/enabled_additive_profiles.py) refuses it before then.
+enabled_additive_profiles: []
+
 capabilities:
   - name: context.pack.build
     description: Build and render one context package for a named profile

@@ -35,12 +35,14 @@ from omnimarket.nodes.node_linear_triage.models.model_linear_triage_state import
 )
 from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
     EnumCloseEvidenceKind,
-    ModelCloseEvidence,
 )
 from omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate import (
     DodVerifySubprocessProbe,
     DoneWriteReceiptRefusedError,
     dod_verify_argv,
+)
+from tests.helpers.linear_triage_done_write_gate import (
+    ProvenCloseEvidence as ModelCloseEvidence,
 )
 
 USES_REAL_DONE_WRITE_GATE = True

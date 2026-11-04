@@ -1003,6 +1003,20 @@ events:
     required_fields: [ledger_id, event_id, row_id, raw_row, source, provenance_kind, event, row_schema]
 
   # =========================================================================
+  # Additive binding rows (OMN-22016): the miss record of an additive call that
+  # injected nothing for want of a package. profile, reason and elapsed_ms only.
+  # node_owned: node_claude_code_hook_adapter_effect journals it, never a hook script.
+  # =========================================================================
+  additive.miss:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.additive-pack-missed.v1"
+        tier: telemetry
+        description: "Additive call injected nothing: profile, reason and elapsed time only"
+    partition_key_field: profile
+    required_fields: [profile, reason, elapsed_ms]
+
+  # =========================================================================
   # Context compaction (OMN-21112): two restricted commands, six receipts.
   # Receipt schemas carry ids, hashes, counts, names and enums only.
   # node_owned: the orchestrator node emits these, never a Claude Code hook, so

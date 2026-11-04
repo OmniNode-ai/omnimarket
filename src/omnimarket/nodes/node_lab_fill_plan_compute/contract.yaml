@@ -12,7 +12,8 @@ node_version:
   patch: 0
 description: >
   Decide a lab-fill run from supplied facts without I/O: host capacity, candidate
-  choice, tier-1 source tickets and candidates, dispatch planning, ownership and
+  choice, tier-1 source tickets and candidates, machinery candidates from recurring
+  FRICTION classes, tick keys and Class tickets, dispatch planning, ownership and
   completion, authorized lane briefs and structured launches, receipt placement,
   single engine fallbacks and status with idle diagnostics. Identities, reader
   facts and observed times arrive in requests.
@@ -111,6 +112,17 @@ handler_routing:
       module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_source_candidates
     input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_sources.ModelLabFillSourceCandidatesRequest
     output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_sources.ModelLabFillSourceCandidatesResult
+  # OMN-22413: the machinery tier. The effect side reads the rolling ledger window, the throughput
+  # tick log, the tickets carrying a Class line and the live CLAIMs; this operation decides which
+  # recurring FRICTION classes, tick keys and machinery tickets become candidates, and skips what
+  # a live CLAIM owns. The dispatch plan ranks the machinery kind by config.lab_fill_plan.machinery.
+  - operation: classify_lab_fill_machinery_candidates
+    topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
+    handler:
+      name: HandlerLabFillMachineryCandidates
+      module: omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_machinery_candidates
+    input_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_machinery.ModelLabFillMachineryCandidatesRequest
+    output_model: omnimarket.nodes.node_lab_fill_plan_compute.models.model_lab_fill_machinery.ModelLabFillMachineryCandidatesResult
   # OMN-20867: the schedule's entry. The tick that opens a config.lab_fill_plan.schedule
   # window returns that window's fire (ModelScheduledFire) on the terminal topic; every other
   # tick returns nothing. Stateless, so the compute stays pure.
@@ -160,6 +172,30 @@ config:
       # A reading older than this, or dated this far in the future, is not fresh:
       # a host with idle slots then fails HEADROOM_UNKNOWN (OMN-20867).
       max_age_seconds: 60
+    # OMN-22413: the machinery tier. A FRICTION class (class, guard, reason) that recurs
+    # friction_recurrence_floor times within window_hours, a throughput-tick key printed with one of
+    # tick_statuses on tick_recurrence_floor ticks, and a ticket whose description has a
+    # "Class: <ticket_class>" line are machinery. source_order orders the three sources inside the
+    # tier; tier_order ranks every dispatch kind, first group first, and a kind sharing a group
+    # shares a rank. Machinery sits first: the operator's ruling is that factory fixes come before
+    # features, and a red PR is itself work a broken factory keeps producing.
+    machinery:
+      priority_class: mvp-landing
+      ticket_class: machinery
+      window_hours: 24
+      friction_recurrence_floor: 3
+      tick_recurrence_floor: 2
+      tick_statuses: [MISSING, UNKNOWN]
+      source_order: [friction-class, tick-key, machinery-ticket]
+      tier_order:
+      - [machinery]
+      - [pr-red]
+      - [pr-stalled]
+      - [defect]
+      - [ticket]
+      - [process-fix, partial-node, wiring]
+      - [pr-land]
+      - [dod-verify]
     # OMN-20867: lab-fill's cadence, the launchd timer's (10, 30 and 50 past each hour).
     schedule:
       workflow: lab-fill
