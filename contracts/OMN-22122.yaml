@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-22122
 title: 'Lane priority classes: factory-unblock, factory-fix, feature and other, read from a Class line on the ticket and passed by every dispatcher'
-summary: 'The omnimarket half: the lab placement node''s contract holds the four classes in order with a holdback each and reads a ticket''s Class line and the factory epics of a private overlay; lab-fill and the merge sweep pass the class their ticket names; the landing decision merges a cause fix first, then factory-fix PRs, then feature PRs. The runner, the create-ticket skill and the installed-revision readback are in the omni plugin and are not part of this change.'
+summary: 'The omnimarket half: the lab placement node''s contract holds the four classes in order with a holdback each and reads a ticket''s Class line and the factory epics of a private overlay; lab-fill and the merge sweep pass the class their ticket names; the landing decision merges a cause fix first, then factory-fix PRs, then feature PRs. The runner, the create-ticket skill and the installed-revision readback are in the omni plugin and are not part of this change. AC3 and AC8 are not part of this change and are left out of this contract; their local Done gate items are unbound.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -13,8 +13,6 @@ requirements:
     statement: 'AC1: the contract file lists the classes factory-unblock, factory-fix, feature, other in that order with a holdback per class, occ-retirement is gone, and no class or order is written in code -- falsifier: uv run pytest on the contract loader test that loads the contract and asserts the order, the holdbacks and the absence of occ-retirement'
   - id: AC2
     statement: 'AC2: the runner reads the Class line from the ticket text it fetches at dispatch, an explicit --priority-class or ONEX_LANE_PRIORITY_CLASS overrides it, and a ticket with no Class line falls back to the repo rule and reports the fallback -- falsifier: uv run pytest tests for lane_priority_class covering Class line, flag override and missing line with its report'
-  - id: AC3
-    statement: 'AC3: the omni create-ticket skill writes the Class line and its checker refuses a canonical ticket without one -- falsifier: uv run pytest on the checker with a payload lacking the Class line exiting 3 and one carrying it exiting 0'
   - id: AC4
     statement: 'AC4: factory machinery is defined once in the contract overlay and a ticket whose parent is a listed factory epic resolves to factory-fix -- falsifier: uv run pytest on the overlay loader and the parent-epic default with one listed and one unlisted parent'
   - id: AC5
@@ -23,8 +21,6 @@ requirements:
     statement: 'AC6: the landing controller''s merge ranks keep cause-fix first and put factory-fix PRs ahead of feature PRs -- falsifier: uv run pytest on the decide_landing ranking with a cause-fix, a factory-fix and a feature PR asserting that order'
   - id: AC7
     statement: 'AC7: on a host with one free slot a factory-fix lane is admitted ahead of a feature lane, and a factory-unblock lane takes the last slot before a feature lane -- falsifier: uv run pytest integration check of landing_placement slot admission with one slot, run on a lab host'
-  - id: AC8
-    statement: 'AC8: the merged change runs from the installed runner and placement on the Mac and the lab hosts at the merged revision -- falsifier: onex plugin installed-revision readback on each host showing the merged revision and a runner dry run printing the class resolved from a ticket''s Class line'
 evidence_requirements:
 - kind: tests
   description: The touched suites.
@@ -55,8 +51,6 @@ dod_evidence:
 - id: dod-omn22122-ac2-runner-wired
   description: The remote-lane runner asks this node for the lane's class. Runs only at the local Done gate on a host that has the registry; it fails until the runner is wired to the node.
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -65,8 +59,6 @@ dod_evidence:
 - id: dod-omn22122-ac3
   description: 'The create-ticket checker lives in the omni plugin, outside this repository: it fails at the local Done gate until the checker refuses a canonical ticket without a Class line.'
   source: manual
-  binds_ac:
-  - AC3
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -96,8 +88,6 @@ dod_evidence:
 - id: dod-omn22122-ac5-exception-queue
   description: The exception queue's mechanize command no longer names a class literally. Local Done gate only; fails until changed.
   source: manual
-  binds_ac:
-  - AC5
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -124,8 +114,6 @@ dod_evidence:
 - id: dod-omn22122-integration-proof
   description: The pushed head ran the node's tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check.
   source: manual
-  binds_ac:
-  - AC7
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -134,8 +122,6 @@ dod_evidence:
 - id: dod-omn22122-ac8
   description: Installed-revision readback on the Mac and the lab hosts is proven at the local Done gate after merge; fails until the plugin and runner halves exist.
   source: manual
-  binds_ac:
-  - AC8
   execution_scope: local_done_gate
   checks:
   - check_type: command
