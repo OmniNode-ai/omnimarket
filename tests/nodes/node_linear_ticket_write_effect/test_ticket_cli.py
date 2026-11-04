@@ -13,6 +13,7 @@ import pytest
 from click.testing import CliRunner
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.ticket import ticket_cli
 from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
     ModelTicketWriteRequest,
@@ -158,3 +159,27 @@ def test_failed_terminal_and_timeout_are_distinct(monkeypatch):
     assert json.loads(timeout.output)["status"] == "no_terminal"
     assert len(bus.commands) == 1
     assert bus.callbacks == {}
+
+
+def test_missing_bus_config_names_its_fix(monkeypatch):
+    """A host with no lane declaration reads the remedy, not a bare bus_unavailable."""
+    detail = (
+        "the lane declaration config/lab/ci_bus_lanes.yaml does not exist "
+        "(with no workspace config root declared, set ONEX_WORKSPACE_CONFIG_ROOT)"
+    )
+
+    @contextlib.asynccontextmanager
+    async def refused(_):
+        if detail:
+            raise LabRunBusError(detail)
+        yield
+
+    monkeypatch.setattr(ticket_cli, "_open_bus", refused)
+    result = CliRunner().invoke(
+        ticket_cli.ticket_group, ["read", "OMN-20570", "--lane", "lane-a"]
+    )
+    assert result.exit_code == 69
+    answer = json.loads(result.output)
+    assert answer["status"] == "bus_unavailable"
+    assert answer["detail"] == detail
+    assert "ONEX_WORKSPACE_CONFIG_ROOT" in answer["fix"]

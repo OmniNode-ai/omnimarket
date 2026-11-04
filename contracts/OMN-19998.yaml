@@ -21,6 +21,11 @@ requirements:
     acceptance:
       - id: AC3
         statement: 'AC3: scope derivation preserves first-mention order, deduplication, the 20-file cap, unknown-path refusal and declared checks; installed discovery and infra auto-wiring publish the result on the declared completed topic for both named and unknown files -- falsifier: uv run pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov'
+  - id: req-omn19998-ticket-read-secret-reason
+    statement: A ticket read whose consumer cannot resolve LINEAR_API_KEY answers secret_unavailable, and a missing bus config names its fix.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: an unresolved Linear key answers reason secret_unavailable with finding linear_api_key_unresolved instead of operation_failed, and a missing lane declaration answers bus_unavailable with detail and fix naming ONEX_WORKSPACE_CONFIG_ROOT -- falsifier: uv run pytest tests/nodes/node_linear_ticket_write_effect -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-pool-probe-overlay
     statement: The Claude pool refill passes a lane overlay to the credential probe that requires it.
     acceptance:
@@ -31,6 +36,13 @@ requirements:
     acceptance:
       - id: AC5
         statement: 'AC5: the default bound equals the runner-owned producer limit; keys, headers and record framing count toward the bound; recorded oversized records are refused before producer creation, exact-limit records are accepted, and the source advances only after durable quarantine -- falsifier: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov'
+  - id: req-omn19998-quiet-host-capture-repair
+    statement: The migrated alarm effect keeps quiet-host findings while independently observing and safely repairing capture per declared host.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: recorded quiet-host incidents retain their alarm; each safe host repair preserves backlog, persists a cooldown and requires a newer post-attempt event for capture recovery; unknown reads, cycling broker failures, failed installs and stale or future readbacks never report recovery -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0'
+      - id: AC9
+        statement: 'AC9: the installed alarm node is discovered and routes its declared bus command to a correlated terminal event; the existing registry installer renders its clean branch checkout, configuration path and revision -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"'
   - id: req-omn19998-delegation-floor-read
     statement: The floor reads delegation projection events through the node's public runtime without circular handler imports.
     acceptance:
@@ -46,6 +58,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: a newest-checkpoint read prints one PRIOR line for each running or queued workflow of the prior session that the current checkpoint does not carry by task id, run id or named script; relaunched, stopped and stale prior workflows are not named, and the stopped session''s own read has no PRIOR lines -- falsifier: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute/test_resume_names_prior_drivers.py -q --no-cov'
+  - id: req-omn19998-publish-recovery
+    statement: Finished lane commits survive a moving PR head through the remote-lane effect node.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the publish operation preserves the original commit on a pushed recovery branch, replays a clean lane delta onto the current head, pins every target push to an ancestor head, and reports conflicts and push refusals with the recovery branch named; failed preservation requires keeping the original worktree -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov'
   - id: req-omn19998-install-only-preserve
     statement: A declared install-only node missing from a replacement stage is retained from the live install.
     acceptance:
@@ -56,6 +73,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the recorded completed session with rejected weekly telemetry and 167 credit remains eligible; the recorded weekly-limit error session closes limited and records a hold; zero recorded credit excludes an account, while rate-only readings and migrated inferred holds do not -- falsifier: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect'
+  - id: req-omn19998-process-range
+    statement: The Process page plots a chosen measure and recalculates details for the selected range against the immediately preceding equal-length window.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: selected ranges change counts; browser values match the typed compute for counts, shares, durations and medians; partial coverage and sub-bucket ranges remain unmeasured; custom times use Eastern across clock changes -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov'
   - id: req-omn19998-morning-readme-heading
     statement: The morning README tool selects a unique exact heading before considering substring matches and refuses ambiguous matches.
     acceptance:
@@ -73,6 +95,24 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-publish-recovery
+    description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-publish-recovery-deploy
+    description: Hosted deployment smoke dispatches the installed publish operation through the canonical runtime adapter and its in-memory event bus, validates the typed result, and reads both the target head and recovery branch from a real local remote. No live PR or host installer is involved.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line -k canonical_runtime_bus
+        cwd: .
   - id: dod-omn19998-morning-readme-heading
     description: Focused registered-tool regressions cover exact-match precedence, ambiguity refusal, unique substring fallback, missing headings, heading listing and section boundaries. They do not assert the controller timer criteria.
     source: manual
@@ -135,6 +175,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov --tb=line -k runtime_command
         cwd: .
+  - id: dod-omn19998-ticket-read-secret-reason
+    description: The golden chain test fails at the merge base because an unresolved key answers operation_failed, and the CLI test fails at the merge base because bus_unavailable carries no fix field.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-pool-probe-overlay
     description: The refill tests check the required overlay argument and both dependency bindings, typed receipt classification, token rotation and dry-run behavior. The overlay regression test fails before this PR's handler change because the probe command supplies no --overlay.
     source: manual
@@ -161,6 +210,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov -k recorded_retry
+        cwd: .
+  - id: dod-omn19998-quiet-host-repair
+    description: Recorded-row regressions and negative controls exercise the migrated source readers, independent drainer safety decision, installer environment, per-host state and readback. This does not assert the landing controller timer criteria.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-quiet-host-deploy
+    description: Hosted wiring smoke discovers the installed entry point, wires all declared topics and reads a correlated terminal through an in-memory bus. A host-boundary fixture checks branch path and revision rendering through the existing installer; live installation remains separate evidence.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q --no-cov -n 0 -k "installed_node_discovery or registry_installer"
         cwd: .
   - id: dod-omn19998-delegation-floor-read
     description: The projection read distinguishes runs, attempts and terminal-only outcomes over fixed two-hour and twenty-four-hour windows, keeps an unread source distinct from zero, and renders escaped model and host facts. This scoped report check does not assert the controller timer criteria.
@@ -244,4 +309,23 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect -k recorded_session_reader
+        cwd: .
+
+  - id: dod-omn19998-process-range
+    description: The shipped browser reducer is exercised against typed compute fixtures over four selected ranges, including source gaps, ratios, medians and duplicate records. This focused proof does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-process-range-deploy
+    description: Hosted source smoke verifies that the existing process-health handler emits the overlay consumed by the published Process page. Live publication follows the existing publish effect after merge.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -q --no-cov
         cwd: .

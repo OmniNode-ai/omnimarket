@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_silent_failure_alarm_effect
+version: 1.0.0
+description: Host alarm tick with safe per-host capture repair and fresh-event readback.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Silent Failure Alarm Effect
+entry_points:
+  onex.nodes:
+    node_silent_failure_alarm_effect: omnimarket.nodes.node_silent_failure_alarm_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: host_automation
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.0
+license: MIT
+tags: [effect, alarm, capture, repair]
