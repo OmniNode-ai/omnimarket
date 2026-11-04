@@ -141,9 +141,6 @@ def test_goal_disposition_only_refused_without_becoming_an_executable_check(
     handler = HandlerDodVerify()
 
     class Collector:
-        occ_governance_ref = None
-        occ_refresh_outcome = None
-        occ_resolved_sha = None
         occ_ref_failure_code = None
         occ_ref_failure_cause = None
         lookup_failure_cause = None

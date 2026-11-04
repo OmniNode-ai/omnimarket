@@ -113,21 +113,24 @@ async def test_queue_wait_and_execution_are_separately_readable() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_a_fast_job_behind_a_long_queue_is_not_failed_for_the_queue() -> None:
-    """The measured failure, as a test.
+async def test_a_fast_job_behind_a_queue_within_the_budget_is_not_failed() -> None:
+    """A queue that leaves execution window still completes (OMN-22223).
 
-    Correlation ``b16b1c53`` waited 106 s in queue before pickup. The handler
-    budget must be measured from PICKUP, so a ten-minute queue in front of
-    50 ms of work still completes.
+    The budget is measured from PUBLISH like the caller's, so queue wait is
+    deducted. A wait well inside the window in front of 50 ms of work still
+    completes; a wait that spends the whole window is covered by
+    ``test_caller_wait_deducts_queue_wait``.
     """
-    published_at = datetime.now(UTC) - timedelta(seconds=600)
+    published_at = datetime.now(UTC) - timedelta(seconds=20)
     handler = HandlerDelegateSkill(dispatch_port=_FastDispatchPort())  # type: ignore[arg-type]
 
-    terminal = await handler.handle(_request(published_at, requested_timeout_seconds=2))
+    terminal = await handler.handle(
+        _request(published_at, requested_timeout_seconds=60)
+    )
 
     assert terminal.status == "completed"
     assert terminal.queue_wait_ms is not None
-    assert terminal.queue_wait_ms >= 600_000
+    assert terminal.queue_wait_ms >= 20_000
     assert terminal.execution_duration_ms is not None
     assert terminal.execution_duration_ms < 2_000
 
@@ -154,7 +157,7 @@ async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
     the same sentence for a job that ran 240 s and for one that sat 445 s in a
     queue and then ran 3 s.
     """
-    published_at = datetime.now(UTC) - timedelta(seconds=30)
+    published_at = datetime.now(UTC) - timedelta(milliseconds=500)
     handler = HandlerDelegateSkill(dispatch_port=_NeverReturningDispatchPort())  # type: ignore[arg-type]
 
     terminal = await asyncio.wait_for(
@@ -164,7 +167,7 @@ async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
     assert isinstance(terminal, ModelDelegateSkillFailed)
     assert terminal.status == "timeout"
     assert terminal.queue_wait_ms is not None
-    assert terminal.queue_wait_ms >= 30_000
+    assert terminal.queue_wait_ms >= 500
     assert "queue wait" in terminal.error_message
     assert str(terminal.queue_wait_ms) in terminal.error_message
     # The budget itself is still named -- this adds a fact, it removes none.

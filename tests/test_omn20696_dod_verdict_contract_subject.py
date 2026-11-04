@@ -318,9 +318,6 @@ _BOUND = ModelDodContractSubject(
 
 
 class _StubCollector:
-    occ_governance_ref = None
-    occ_refresh_outcome = None
-    occ_resolved_sha = None
     occ_ref_failure_code = None
     occ_ref_failure_cause = None
     lookup_failure_cause = None

@@ -1,0 +1,33 @@
+{
+  "_provenance": "Authored to the documented Messages usage shape (platform.claude.com prompt-caching, usage fields); NOT a live recording. The live second-pass proof is a separate lab receipt.",
+  "first_pass": {
+    "id": "msg_fixture_first",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "content": [{"type": "tool_use", "id": "toolu_1", "name": "submit_verdict", "input": {"findings": []}}],
+    "stop_reason": "tool_use",
+    "usage": {
+      "input_tokens": 410,
+      "cache_creation_input_tokens": 15200,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 55,
+      "cache_creation": {"ephemeral_5m_input_tokens": 14100, "ephemeral_1h_input_tokens": 1100}
+    }
+  },
+  "second_pass": {
+    "id": "msg_fixture_second",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "content": [{"type": "tool_use", "id": "toolu_2", "name": "submit_verdict", "input": {"findings": []}}],
+    "stop_reason": "tool_use",
+    "usage": {
+      "input_tokens": 410,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15200,
+      "output_tokens": 61,
+      "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}
+    }
+  }
+}
