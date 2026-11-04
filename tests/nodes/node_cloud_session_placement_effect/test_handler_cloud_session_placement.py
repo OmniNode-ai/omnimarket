@@ -243,7 +243,7 @@ def test_rate_run_and_limit_effects(tmp_path: Path) -> None:
             account="host_a",
             rate={"rateLimitType": "seven_day", "status": "rejected"},
         ).held
-        == "2026-01-02T01:00:00Z"
+        is None
     )
     assert (
         call(tmp_path, "record_run", account="host_a", run={"run_id": "run_a"}).error

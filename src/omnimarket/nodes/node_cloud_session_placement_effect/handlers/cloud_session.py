@@ -136,7 +136,17 @@ if d.get("session_status") in ENDED:
             after = page.get("last_id") if isinstance(page, dict) and page.get("has_more") else None
             if not after:
                 break
-        print("CLOUD-SESSION-REVIEW " + json.dumps(review_texts(events, REVIEW_FILE, LIMIT)))
+        result = None
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") == "user":
+                result = None
+            elif event.get("type") == "result":
+                result = {key: event[key] for key in ("type", "subtype", "is_error", "terminal_reason", "result", "errors") if key in event}
+        print("CLOUD-SESSION-RESULT " + json.dumps({"result": result}))
+        if review:
+            print("CLOUD-SESSION-REVIEW " + json.dumps(review_texts(events, REVIEW_FILE, LIMIT)))
     except Exception as exc:
         print("CLOUD-SESSION-REVIEW-UNREAD " + type(exc).__name__ + ": " + str(exc)[:200])
 """
@@ -149,20 +159,32 @@ USAGE_LIMIT_RE = re.compile(
 
 
 def cloud_session_limited(ended: Mapping[str, Any] | None) -> bool:
-    """Whether a terminal session reports a usage rejection rather than completed work."""
+    """A terminal limit ending; successful results outrank rejected rate telemetry."""
     if not ended or ended.get("status") not in CLOUD_SESSION_ENDED:
         return False
+    result = ended.get("result")
+    result = result if isinstance(result, Mapping) else {}
+    if result.get("is_error") is not True and (
+        result.get("subtype") == "success"
+        or result.get("terminal_reason") == "completed"
+    ):
+        return False
+    texts = [ended.get(key) for key in ("bucket", "detail", "needs_action")]
+    texts += [
+        result.get(key) for key in ("result", "errors", "subtype", "terminal_reason")
+    ]
+    if any(USAGE_LIMIT_RE.search(str(text or "")) for text in texts):
+        return True
     rate = ended.get("rate")
-    return (isinstance(rate, Mapping) and rate.get("status") == "rejected") or any(
-        USAGE_LIMIT_RE.search(str(ended.get(key) or ""))
-        for key in ("bucket", "detail", "needs_action")
+    return bool(
+        result.get("is_error") is True
+        and isinstance(rate, Mapping)
+        and rate.get("status") == "rejected"
     )
 
 
 def cloud_session_program(review_only: bool) -> str:
-    """The session read; a review-only lane's also reads the ended session's final message and review file."""
-    if not review_only:
-        return CLOUD_SESSION_PROGRAM.strip()
+    """Read terminal results for every lane and review text for review-only lanes."""
     head = "\n".join(
         [
             CLOUD_REVIEW_TEXTS_PROGRAM.strip(),
@@ -225,6 +247,18 @@ def _review_texts(stdout: str) -> dict[str, str]:
     return {}
 
 
+def _session_result(stdout: str) -> dict[str, Any]:
+    for line in stdout.splitlines():
+        if line.startswith("CLOUD-SESSION-RESULT "):
+            try:
+                found = json.loads(line[len("CLOUD-SESSION-RESULT ") :])
+            except ValueError:
+                continue
+            if isinstance(found, dict):
+                return found
+    return {}
+
+
 def parse_cloud_session(stdout: str) -> dict[str, Any] | str:
     """The session state the read printed, or why it could not be read. A review-only read's texts ride on it."""
     for line in stdout.splitlines():
@@ -234,7 +268,7 @@ def parse_cloud_session(stdout: str) -> dict[str, Any] | str:
             except ValueError as exc:
                 return f"unparsed answer: {exc}"
             return (
-                {**found, **_review_texts(stdout)}
+                {**found, **_review_texts(stdout), **_session_result(stdout)}
                 if isinstance(found, dict)
                 else "unparsed answer"
             )

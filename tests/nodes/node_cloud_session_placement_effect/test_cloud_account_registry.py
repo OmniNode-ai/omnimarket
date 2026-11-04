@@ -381,10 +381,10 @@ def test_migration_keeps_newest_credit_restores_rejected_rate_hold_and_renames_f
     assert (
         entry["credit"]["remaining"] == 198.5
     )  # h201's reading is newer than h200's 244.0
-    # The unexpired rejected reading supplies evidence even without an old hold stamp.
-    assert entry["limited_until"] == "2026-11-04T22:00:00Z"
-    assert entry["limited_source"] == "recorded"
-    assert acc.cloud_account_skip(entry, NOW) is not None
+    # Migration retains telemetry without turning it into a refusal.
+    assert "limited_until" not in entry
+    assert entry["rate"]["status"] == "rejected"
+    assert acc.cloud_account_skip(entry, NOW) is None
     assert entry["cap"] == 7  # the lower cap
     assert list(entry["active"]) == ["run_old"]  # union of unexpired active runs
     assert state["last"] == "lab-primary"

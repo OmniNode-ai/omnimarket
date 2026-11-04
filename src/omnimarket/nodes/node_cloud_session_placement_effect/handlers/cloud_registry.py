@@ -42,12 +42,11 @@ def parse_moment(text: str) -> datetime | None:
     return None
 
 
-def rejected_rate_until(rate: Any, now: datetime) -> str | None:
-    """The future reset of a recorded rejected reading, including pre-migration readings."""
-    if not isinstance(rate, Mapping) or rate.get("status") != "rejected":
-        return None
-    reset = parse_moment(str(rate.get("resets_at") or ""))
-    return stamp_of(reset) if reset is not None and reset > now else None
+def recorded_hold(entry: Mapping[str, Any], hold_stamp: str) -> bool:
+    """Keep deliberate/refusal holds, excluding the old rate-only inference."""
+    return entry.get("limited_source") == hold_stamp and not re.fullmatch(
+        r"[\w-]+ limit rejected", str(entry.get("limited_why") or "")
+    )
 
 
 def hash10(value: str) -> str:
@@ -235,9 +234,7 @@ def _merge_legacy(
         if isinstance(remaining, (int, float)) and remaining <= 0:
             out["exhausted_at"] = str(newest.get("read_at") or stamp_of(now))
     holds = [
-        e
-        for e in entries
-        if e.get("limited_source") == hold_stamp and e.get("limited_until")
+        e for e in entries if recorded_hold(e, hold_stamp) and e.get("limited_until")
     ]
     if holds:
         hold = max(holds, key=lambda e: str(e["limited_until"]))
@@ -265,13 +262,6 @@ def _merge_legacy(
     if rates:
         newest_rate = max(rates, key=lambda r: str(r.get("read_at") or ""))
         out["rate"] = dict(newest_rate)
-        until = rejected_rate_until(newest_rate, now)
-        if until and until > str(out.get("limited_until") or ""):
-            out.update(
-                limited_until=until,
-                limited_source=hold_stamp,
-                limited_why=f"{newest_rate.get('type') or 'usage'} limit rejected",
-            )
     runs = [r for e in entries for r in (e.get("runs") or []) if isinstance(r, dict)]
     if runs:
         out["runs"] = runs[-runs_kept:]
