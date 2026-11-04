@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Account file effects and cloud session text, with caller performed probes."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -277,6 +278,22 @@ class HandlerCloudSessionPlacement:
             )
             return {"title": title, "text": text}
         elif action == "render_result":
+            if r.placement_dir and ses.cloud_session_limited(r.ended):
+                assert r.ended is not None
+                rate = r.ended.get("rate")
+                reset = rate.get("resetsAt") if isinstance(rate, dict) else None
+                until = (
+                    datetime.fromtimestamp(reset, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if isinstance(reset, (int, float)) and reset > 0
+                    else ""
+                )
+                acc.note_cloud_refusal(
+                    pdir,
+                    r.account,
+                    r.run_id,
+                    f"usage limit ending: {r.ended.get('detail') or r.ended.get('needs_action') or ''} resets {until}",
+                    now=r.now,
+                )
             # OMN-22345: the close (status, outcome) is the node's; a review-only lane's review rides on ``parsed``.
             return ses.cloud_close(
                 r.owner,
