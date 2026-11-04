@@ -63,6 +63,9 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
         [
             uv,
             "run",
+            # Keep dependency resolution/build progress out of the resolver's
+            # stderr, including on a cold cache (OMN-21895).
+            "--quiet",
             "--no-project",
             "--isolated",
             "--with",

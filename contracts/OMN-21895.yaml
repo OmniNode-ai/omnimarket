@@ -20,6 +20,11 @@ requirements:
     statement: 'AC4: three new dev tags roll into one move and a second run in the same night updates the open PR in place -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k one_pr_per_night'
   - id: AC5
     statement: 'AC5: no required context, ratchet baseline, allowlist or gate condition is widened or removed: the new workflow mints no pull_request context and the changed file list holds none -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_pin_train_omn21895.py -q -k gates_unchanged'
+- id: req-omn21895-canary-stderr
+  statement: The integration canary judges the resolver output independently of uv dependency installation progress.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: with caching disabled, the private vocabulary canary resolves the configured path and observes exactly one resolver refusal line when the vocabulary is absent -- falsifier: env UV_NO_CACHE=1 uv run --frozen pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The cited tests pass at the PR head.
@@ -74,3 +79,12 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC5
+- id: dod-omn21895-canary-cold-cache
+  description: The two live resolver controls run without a dependency cache, so uv progress cannot hide a missing or multiline resolver refusal.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 UV_NO_CACHE=1 uv run --frozen pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov -p no:randomly
+    cwd: .
