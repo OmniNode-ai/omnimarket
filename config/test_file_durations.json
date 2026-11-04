@@ -842,6 +842,7 @@
   "tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py": 0.2,
   "tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py": 0.63,
   "tests/nodes/node_factory_floor_publish_effect/test_dashboard_plain_floor_dash_plain.py": 1.63,
+  "tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py": 4.16,
   "tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py": 0.31,
   "tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py": 1.4,
   "tests/nodes/node_factory_floor_publish_effect/test_floor_p0_page.py": 0.03,
