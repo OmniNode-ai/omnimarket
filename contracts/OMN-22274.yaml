@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+ticket_id: OMN-22274
+title: 'T2b: canonical overlay resolver as an omnimarket node, with hyphenated skill names mapping to underscore overlay ids'
+summary: The overlay resolver lived only in the full onex plugin and accepted underscore ids only. node_overlay_resolver_effect resolves a skill's structured overlay from the roots in ONEX_SKILL_OVERLAY_ROOTS (or the roots in the request) with the path rule root/skill/overlay.yaml, maps a hyphenated skill name to its underscore id, validates the overlay against the overlay.schema.json beside it, and refuses naming the overlay key or the schema path. The node ships no overlay data and no default value.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22274-overlay-resolver-node
+  statement: A node declared by a contract resolves a skill's structured overlay from the overlay roots, validates it against its schema, and refuses when it is absent or invalid.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node resolves an overlay by id from ONEX_SKILL_OVERLAY_ROOTS using the path rule root/skill/overlay.yaml and refuses with the overlay key named when it is absent -- falsifier: uv run pytest -k overlay_resolver_refuses_missing -q is red when a missing key returns a default'
+  - id: AC2
+    statement: 'AC2: a hyphenated skill name maps to its underscore overlay id (merge-drain to merge_drain, session-start to session_start) -- falsifier: uv run pytest -k overlay_resolver_hyphen_to_underscore -q is red on a hyphenated lookup that does not find the underscore directory'
+  - id: AC3
+    statement: 'AC3: a structured overlay is validated against its overlay.schema.json and an invalid overlay is refused with the schema path named -- falsifier: uv run pytest -k overlay_resolver_schema_refusal -q is red when an invalid fixture resolves'
+  - id: AC4
+    statement: 'AC4: the node is declared by a contract, its handler is bound from the contract and the node runs through the runtime entry point on the lab -- falsifier: uv run pytest -k overlay_resolver_contract_bound -q is red when the handler is not reachable through the contract'
+evidence_requirements:
+- kind: tests
+  description: The overlay resolver node refuses an absent overlay, maps hyphenated names, refuses an invalid overlay naming the schema path, and its handler is reachable through the contract.
+  command: uv run pytest tests/nodes/node_overlay_resolver_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22274-ac1
+  description: AC1 an absent overlay refuses naming the overlay key, with the roots from the environment, from the request, or none configured.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_overlay_resolver_effect -q --no-cov --tb=line -k overlay_resolver_refuses_missing
+    cwd: .
+- id: dod-omn22274-ac2
+  description: AC2 merge-drain resolves to merge_drain and session-start to session_start, and a hyphenated directory is not read.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_overlay_resolver_effect -q --no-cov --tb=line -k overlay_resolver_hyphen_to_underscore
+    cwd: .
+- id: dod-omn22274-ac3
+  description: AC3 an overlay the schema rejects, an absent schema, a broken schema and an unreadable overlay refuse naming the schema or overlay path and no document value.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_overlay_resolver_effect -q --no-cov --tb=line -k overlay_resolver_schema_refusal
+    cwd: .
+- id: dod-omn22274-ac4
+  description: AC4 the handler, models, topics and entry point are reachable through the contract, and the node runs over the bus from the contract.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_overlay_resolver_effect -q --no-cov --tb=line -k overlay_resolver_contract_bound
+    cwd: .
+- id: dod-omn22274-deploy-probe
+  description: 'Deploy probe: the contract GitHub serves at the checked-out commit declares node_overlay_resolver_effect.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_overlay_resolver_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "name: node_overlay_resolver_effect" > /dev/null'
+    cwd: .
+- id: dod-omn22274-integration-proof
+  description: The pushed head ran the overlay resolver tests, including the golden chain from the contract over the bus, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane rm-t2b-overlay-resolver-0330 -- uv run --frozen pytest tests/nodes/node_overlay_resolver_effect -q --no-cov
+    cwd: .

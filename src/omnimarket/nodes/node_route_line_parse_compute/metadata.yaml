@@ -1,0 +1,24 @@
+name: node_route_line_parse_compute
+version: "1.0.0"
+description: "Parse a ROUTE line from text against the routing contract's data (marker, dimension names, band edges)"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_route_line_parse_compute: "omnimarket.nodes.node_route_line_parse_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "route", "classification"]
+pack: "pipeline"
+display_name: "Route Line Parse Compute"
+node_role: "compute"
+tickets: ["OMN-22263"]

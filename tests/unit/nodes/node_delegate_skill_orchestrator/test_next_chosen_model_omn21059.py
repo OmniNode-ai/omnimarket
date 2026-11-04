@@ -42,6 +42,7 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
     ModelLocalSecretRequest,
 )
 from tests.chains.local.harness import use_local_store
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 
 pytestmark = pytest.mark.unit
 
@@ -116,6 +117,7 @@ def chosen_models(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 def _dispatch(
     tmp_path: Path, providers: _Providers, *, model: str | None = None
 ) -> dict[str, object]:
+    mirror_tenant_in_store(tmp_path / "evidence.sqlite", "acme")
     port = LocalDelegationDispatchPort(
         effect_handler=providers,
         evidence_db_path=tmp_path / "evidence.sqlite",
