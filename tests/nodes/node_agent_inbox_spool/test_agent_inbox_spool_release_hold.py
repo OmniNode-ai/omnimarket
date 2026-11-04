@@ -44,7 +44,7 @@ HOLD_ROW = (
     " | until=2026-11-05T00:00:00Z | ticket=OMN-1 | do not push yet"
 )
 UNADDRESSED_RELEASE = (
-    "2026-11-03T23:34:00Z | RELEASE | lane=orchestrator | surface=prepr-1 | result=CLEAN"
+    "2026-11-03T23:34:00Z | RELEASE | lane=orchestrator | surface=slot-1 | result=CLEAN"
     " | slot torn down"
 )
 
