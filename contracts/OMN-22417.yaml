@@ -69,3 +69,13 @@ dod_evidence:
     check_value: |-
       bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_secret_store_effect/handlers/handler_house_model_key.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerHouseModelKey" > /dev/null'
     cwd: .
+- id: dod-omn22417-runtime-regressions
+  description: The runtime CLI refuses an empty store key with exit 3 and empty stdout, and an explicitly selected home supplies both store addressing and bootstrap credentials. Runs against a local HTTP store on the hosted runner without lab credentials.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: |-
+      uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov --tb=line -k 'cli or explicit_home'
+    cwd: .

@@ -208,3 +208,49 @@ def test_the_cli_refusal_exits_3_with_nothing_on_stdout(
     assert code == 3
     assert out.out == ""
     assert house_key_reference(_NAME) in out.err
+
+
+async def test_explicit_home_supplies_both_store_address_and_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with running_fake_store() as (address, state):
+        _seed(state)
+        home = _host(tmp_path, address)
+        other_home = tmp_path / "other_home"
+        other_home.mkdir()
+        monkeypatch.setenv("HOME", str(other_home))
+        result = await _handler(home, tmp_path).handle(
+            ModelHouseModelKeyRequest(name=_NAME)
+        )
+    assert result.outcome is EnumSecretStoreOutcome.RESOLVED
+    assert result.value is not None
+    assert result.value.get_secret_value() == PLANTED
+    assert state.logins == 1
+
+
+async def test_an_empty_store_key_is_a_typed_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with running_fake_store() as (address, state):
+        state.secrets[(HOUSE_KEY_FOLDER, _NAME)] = ""
+        home = _host(tmp_path, address, local_key=True)
+        monkeypatch.setenv("HOME", str(home))
+        with pytest.raises(SecretStoreRefusedError) as raised:
+            await require_house_model_key(_NAME, handler=_handler(home, tmp_path))
+    assert raised.value.outcome == EnumSecretStoreOutcome.FAILED.value
+    assert house_key_reference(_NAME) in str(raised.value)
+
+
+def test_the_cli_refuses_an_empty_store_key_without_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with running_fake_store() as (address, state):
+        state.secrets[(HOUSE_KEY_FOLDER, _NAME)] = ""
+        home = _host(tmp_path, address)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("ONEX_HOME", str(tmp_path / "onex_home"))
+        code = main(["--name", _NAME, "--value-only"])
+    out = capsys.readouterr()
+    assert code == 3
+    assert out.out == ""
+    assert json.loads(out.err)["outcome"] == EnumSecretStoreOutcome.FAILED.value

@@ -52,6 +52,7 @@ from omnimarket.models.secret_store.model_secret_store_request import (
 from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
 )
+from omnimarket.nodes.node_secret_store_effect.adapters import IdentityFileStore
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
 )
@@ -147,7 +148,8 @@ class HandlerHouseModelKey:
             result.outcome is EnumSecretStoreOutcome.NOT_CONFIGURED
             and self._store_handler is None
         ):
-            overlay = host_env_overlay(self._home or Path.home())
+            home = self._home or Path.home()
+            overlay = host_env_overlay(home)
             if overlay is None:
                 return ModelHouseModelKeyResult(
                     name=request.name,
@@ -162,16 +164,20 @@ class HandlerHouseModelKey:
                 )
             source = EnumHouseKeyIdentitySource.HOST_ENV_FILE
             result = await HandlerSecretStore(
-                overlay=overlay, onex_home=self._onex_home
+                overlay=overlay,
+                onex_home=self._onex_home,
+                bootstrap_store=IdentityFileStore(home / HOST_ENV_FILE),
             ).handle(store_request)
         value = result.value
-        if result.outcome is EnumSecretStoreOutcome.RESOLVED and value is None:
+        if result.outcome is EnumSecretStoreOutcome.RESOLVED and (
+            value is None or not value.get_secret_value()
+        ):
             return ModelHouseModelKeyResult(
                 name=request.name,
                 reference=reference,
                 outcome=EnumSecretStoreOutcome.FAILED,
                 identity_source=source,
-                detail="the store answered resolved with no value",
+                detail="the store answered resolved with no usable value",
                 correlation_id=request.correlation_id,
             )
         return ModelHouseModelKeyResult(
