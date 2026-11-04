@@ -46,6 +46,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: a newest-checkpoint read prints one PRIOR line for each running or queued workflow of the prior session that the current checkpoint does not carry by task id, run id or named script; relaunched, stopped and stale prior workflows are not named, and the stopped session''s own read has no PRIOR lines -- falsifier: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute/test_resume_names_prior_drivers.py -q --no-cov'
+  - id: req-omn19998-install-only-preserve
+    statement: A declared install-only node missing from a replacement stage is retained from the live install.
+    acceptance:
+      - id: AC6
+        statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -183,4 +188,23 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute -q --no-cov
+        cwd: .
+  - id: dod-omn19998-install-only-preserve
+    description: Scoped installer regression only. Exercises the replacement source tree, the preserved guard check and record, declarative overlay, injected copying and contract-driven in-memory bus dispatch. Original controller rule, lock, act and launchd criteria remain outside this slice and unproven here.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-install-only-preserve-deploy
+    description: Hosted deployment wiring smoke discovers the source contract, wires its declared command and completed topics through the runtime, and observes the copied handler file. This does not claim a live host installer or launchd readback.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py -q --no-cov -n 0 -p no:randomly -k preservation_runtime_command
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
         cwd: .
