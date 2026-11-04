@@ -41,6 +41,16 @@ class EnumAgentReviewReason(StrEnum):
     NOT_BOUND = "not_bound"
 
 
+class EnumAgentRungOutcome(StrEnum):
+    """What one voter call of the chain came to. Only ``answered`` is counted toward the
+    quorum; every other outcome is skipped and recorded, never turned into a failed run."""
+
+    ANSWERED = "answered"
+    UNAVAILABLE = "unavailable"
+    TIMEOUT = "timeout"
+    UNPROVEN = "unproven"
+
+
 class ModelAgentVoter(BaseModel):
     """One voter of the roster: the identity a lab call must prove it reached."""
 
@@ -176,6 +186,10 @@ class ModelAgentReviewConfig(BaseModel):
     roster: tuple[ModelAgentVoter, ...] = Field(min_length=1)
     policy: ModelAgentReviewPolicy
     quorum: ModelAgentReviewQuorum
+    #: The chain of responders: rung names in the order they are called. The first rung
+    #: is called alone; each next rung is called only when the rungs before it left the
+    #: quorum short. Every roster rung is named here and every name here has a voter.
+    rung_order: tuple[str, ...] = Field(min_length=1)
     #: The store reference of the receipt signing key; the signer binds to it.
     signing_key_store: ModelAgentSigningKeyStore
     #: The bus the head read and the review post ride.
@@ -183,6 +197,18 @@ class ModelAgentReviewConfig(BaseModel):
     #: Rung name -> harness, for every roster rung served by the harness rung node. A
     #: roster rung that is neither the lab rung nor a key here has no binding.
     harness_rungs: dict[str, ModelAgentHarnessRung] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _chain_matches_roster(self) -> Self:
+        if len(set(self.rung_order)) != len(self.rung_order):
+            raise ValueError("a rung is named once in rung_order")
+        roster_rungs = {voter.rung for voter in self.roster}
+        if set(self.rung_order) != roster_rungs:
+            raise ValueError(
+                "rung_order and the roster name the same rungs: "
+                f"order={sorted(self.rung_order)} roster={sorted(roster_rungs)}"
+            )
+        return self
 
 
 class ModelAgentReviewRequest(BaseModel):
@@ -307,8 +333,24 @@ class ModelAgentReviewTopics(BaseModel):
         }[outcome]
 
 
+class ModelAgentRungAttempt(BaseModel):
+    """One voter call of the chain, recorded whatever it came to: the rung, the voter, the
+    model the roster names, the outcome, the call's latency and, for a failed call, the
+    exception type that ended it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    rung: str
+    identity: str
+    model: str
+    outcome: EnumAgentRungOutcome
+    latency_seconds: float = Field(ge=0)
+    cause: str = ""
+
+
 class ModelAgentReviewTerminal(BaseModel):
-    """The one terminal of a command. ``historical`` marks a replay of a recorded one."""
+    """The one terminal of a command. ``historical`` marks a replay of a recorded one.
+    ``attempts`` is every voter call the chain made for this command, in call order."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -317,11 +359,13 @@ class ModelAgentReviewTerminal(BaseModel):
     reason: EnumAgentReviewReason | None = None
     receipt_id: str | None = None
     historical: bool = False
+    attempts: tuple[ModelAgentRungAttempt, ...] = ()
 
 
 __all__ = [
     "EnumAgentReviewOutcome",
     "EnumAgentReviewReason",
+    "EnumAgentRungOutcome",
     "ModelAgentFinding",
     "ModelAgentQuorumRequest",
     "ModelAgentQuorumResult",
@@ -335,6 +379,7 @@ __all__ = [
     "ModelAgentReviewTerminal",
     "ModelAgentReviewTopics",
     "ModelAgentRosterSnapshot",
+    "ModelAgentRungAttempt",
     "ModelAgentVoter",
     "ModelAgentVoterReview",
 ]
