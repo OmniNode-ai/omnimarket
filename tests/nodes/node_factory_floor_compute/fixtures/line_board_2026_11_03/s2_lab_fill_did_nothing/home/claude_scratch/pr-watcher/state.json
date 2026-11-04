@@ -1,0 +1,100 @@
+{
+ "last_tick": "2026-11-03T13:16:00Z",
+ "merges": {},
+ "prs": {
+  "private-repo-3#1511": {
+   "ci": {
+    "last_red_completed_at": "",
+    "read_at": "2026-11-03T13:16:00Z",
+    "red": [],
+    "red_facts": [],
+    "runs": [
+     [
+      "Canonical File Shape (OMN-20304)",
+      "completed",
+      "success",
+      "2026-11-03T11:52:17Z"
+     ],
+     [
+      "Change class (OMN-21270)",
+      "completed",
+      "success",
+      "2026-11-03T11:53:05Z"
+     ],
+     [
+      "Secret scan and hygiene gate on what the change adds (OMN-21270)",
+      "completed",
+      "success",
+      "2026-11-03T11:52:19Z"
+     ],
+     [
+      "Shape-Gate Independence (OMN-20298)",
+      "completed",
+      "success",
+      "2026-11-03T11:52:44Z"
+     ],
+     [
+      "hook-push-rehearsal / rehearse",
+      "completed",
+      "success",
+      "2026-11-03T11:52:29Z"
+     ],
+     [
+      "private-repo-runner-placement / private-repo-runner-placement",
+      "completed",
+      "success",
+      "2026-11-03T11:52:58Z"
+     ],
+     [
+      "validate-plugin",
+      "completed",
+      "success",
+      "2026-11-03T12:23:05Z"
+     ],
+     [
+      "validator-tests (1/4)",
+      "completed",
+      "success",
+      "2026-11-03T12:06:55Z"
+     ],
+     [
+      "validator-tests (2/4)",
+      "completed",
+      "success",
+      "2026-11-03T12:03:12Z"
+     ],
+     [
+      "validator-tests (3/4)",
+      "completed",
+      "success",
+      "2026-11-03T11:58:06Z"
+     ],
+     [
+      "validator-tests (4/4)",
+      "completed",
+      "success",
+      "2026-11-03T12:02:44Z"
+     ]
+    ],
+    "sha": "148511fd943c40d65360c24674c9feb6e8567e14",
+    "total": 11,
+    "verdict": "GREEN"
+   },
+   "cls": "green",
+   "facts": {
+    "base": "[scrubbed]/omn-22248-fill-pythonpath-pr",
+    "created_at": "2026-11-03T09:48:38Z",
+    "draft": false,
+    "head_ref": "[scrubbed]/omn-22312-lab-fill-sends-after-pythonpath",
+    "head_sha": "148511fd943c40d65360c24674c9feb6e8567e14",
+    "merged_at": "",
+    "number": 1511,
+    "repo": "private-repo-3",
+    "state": "OPEN",
+    "title": "fix(OMN-22312): the lab fill names why a check reached no verdict, takes its budgets from an overlay, and builds only what the check admits"
+   },
+   "first_seen": "2026-11-03T09:48:38Z"
+  }
+ },
+ "schema": 1
+}

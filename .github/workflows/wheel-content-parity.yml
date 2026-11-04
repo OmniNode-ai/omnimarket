@@ -72,8 +72,7 @@ jobs:
     # hatchling wheel build, measured at 19 seconds, and it needs no
     # self-hosted resource. Pinning it to the hosted runner removes the
     # asymmetry rather than defending it, occupies no fleet capacity, and is
-    # strictly more conservative than what it replaces. omnibase_compat runs
-    # the same job the same way.
+    # strictly more conservative than what it replaces.
     #
     # This is a hardcoded label, so it answers to no routing variable and is
     # invisible to the runner-routing audit (rule 14). That is the cost, and
