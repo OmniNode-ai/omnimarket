@@ -45,6 +45,7 @@ from omnimarket.nodes.node_canonical_clone_dirty_converge_effect.models.model_ca
 
 NODE = "node_canonical_clone_dirty_converge_effect"
 AGE_ENV = "ONEX_CLONE_DIRTY_CONVERGE_AFTER_S"
+DETACHED_AGE_ENV = "ONEX_CLONE_DETACHED_REATTACH_AFTER_S"
 ENGINE_BOUND_ENV = "ONEX_CLONE_REFUSAL_BOUND_S"
 _TIMEOUTS = load_node_timeouts(NODE)
 _BREACH = re.compile(
@@ -85,6 +86,17 @@ def declared_age_seconds(env: Mapping[str, str]) -> float:
     return override if override > 0 else _TIMEOUTS.get("dirty_converge_after_seconds")
 
 
+def declared_detached_age_seconds(env: Mapping[str, str]) -> float:
+    """The contract's detached-HEAD age, replaced by the host overlay variable when it is positive."""
+    try:
+        override = float(env.get(DETACHED_AGE_ENV, ""))
+    except ValueError:
+        override = 0.0
+    return (
+        override if override > 0 else _TIMEOUTS.get("detached_reattach_after_seconds")
+    )
+
+
 class HandlerCanonicalCloneDirtyConvergeEffect:
     """One tick: run the engine, then save and converge every clone it reports refused too long."""
 
@@ -102,6 +114,7 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         self.declaration = declaration or load_declaration()
         self._run = run
         self.age = declared_age_seconds(env)
+        self.detached_age = declared_detached_age_seconds(env)
         self._engine_argv = list(
             engine_argv
             or [
@@ -269,10 +282,14 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
         branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
+        if not branch:
+            return self._reattach_detached(clone, refused_for, outcome)
         if branch not in self.declaration.tracking_branches:
+            return outcome(skipped, f"checked out on {branch}, not a tracking branch")
+        if refused_for < self.age:
             return outcome(
                 skipped,
-                f"checked out on {branch or 'a detached HEAD'}, not a tracking branch",
+                f"refused for {refused_for}s, below the declared {int(self.age)}s",
             )
         remote = self._out(clone, "config", "--get", f"branch.{branch}.remote")
         merge_ref = self._out(clone, "config", "--get", f"branch.{branch}.merge")
@@ -354,18 +371,117 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             converged_to=target,
         )
 
+    # -- a detached HEAD ----------------------------------------------------------------------
+    def _reattach_detached(
+        self,
+        clone: Path,
+        refused_for: int,
+        outcome: Callable[..., ModelDirtyConvergeOutcome],
+    ) -> ModelDirtyConvergeOutcome:
+        """Reattach a clone left on a detached HEAD to its tracking branch (OMN-20344).
+
+        Landing text and onex delegate refuse on the host while the shared clone stays detached. The
+        converge script derives the branch (the HEAD reflog, then the remote's default branch) and
+        saves commits reachable only from the detached HEAD as patches first. A clone it cannot
+        reattach is FAILED, never skipped: the command exits non-zero and the run is loud.
+        """
+        skipped = EnumDirtyConvergeStatus.SKIPPED
+        failed = EnumDirtyConvergeStatus.FAILED
+        if refused_for < self.detached_age:
+            return outcome(
+                skipped,
+                f"detached for {refused_for}s, below the declared {int(self.detached_age)}s",
+            )
+        # A raw ref can name a missing object. Require the commit before allowing
+        # the converge script to move HEAD and potentially lose its only reference.
+        before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+        if not before:
+            return outcome(failed, "HEAD does not resolve to a commit")
+        git_dir_text = self._out(clone, "rev-parse", "--absolute-git-dir")
+        if not git_dir_text:
+            return outcome(failed, "git directory does not resolve")
+        if any((Path(git_dir_text) / marker).exists() for marker in _IN_PROGRESS):
+            return outcome(skipped, "a git operation is in progress in the clone")
+        lane = self._open_claim_naming(clone)
+        if lane:
+            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        inside = self._process_inside(clone)
+        if inside:
+            return outcome(skipped, f"a process is using the clone ({inside})")
+
+        listed = self.declaration.max_listed
+        only_here = [
+            c
+            for c in self._out(
+                clone, "log", "--format=%h", "HEAD", "--not", "--remotes"
+            ).splitlines()
+            if c
+        ]
+        kept = ""
+        if only_here:
+            more = (
+                f" and {len(only_here) - listed} more"
+                if len(only_here) > listed
+                else ""
+            )
+            kept = (
+                f"; {len(only_here)} commit(s) reachable only from it "
+                f"({', '.join(only_here[:listed])}{more}) saved as patches by the script"
+            )
+        note = f"reattached from a detached HEAD at {before[:12]}{kept}"
+        script = self.registry_root / self.declaration.converge_script
+        try:
+            done = self._run(
+                [
+                    "/bin/bash",
+                    str(script),
+                    str(clone),
+                    "--execute",
+                    "--ticket",
+                    self.declaration.ticket,
+                    "--lane",
+                    self.declaration.lane,
+                    "--note",
+                    note,
+                ],
+                capture_output=True,
+                text=True,
+                env={k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV},
+                timeout=_TIMEOUTS.get("dirty_converge_script_seconds"),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return outcome(
+                failed, f"reattach could not run: {type(exc).__name__}: {exc}"
+            )
+        branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
+        head = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
+        if done.returncode or branch not in self.declaration.tracking_branches:
+            tail = " ".join((done.stderr or done.stdout or "").split())[-300:]
+            return outcome(
+                failed,
+                f"clone still detached or off a tracking branch ({branch or 'detached'}); "
+                f"converge-canonical-clone.sh exit {done.returncode}: {tail}",
+            )
+        return outcome(
+            EnumDirtyConvergeStatus.CONVERGED,
+            f"{note}; now on {branch} at {head[:12]}",
+            converged_to=head,
+        )
+
     # -- the tick -----------------------------------------------------------------------------
     def handle(
         self, request: ModelDirtyConvergeTickRequest
     ) -> ModelDirtyConvergeTickReceipt:
         """One tick for the registry root the handler was composed with."""
         return ModelDirtyConvergeTickReceipt(
-            after_seconds=int(self.age), outcomes=tuple(self.tick())
+            after_seconds=int(min(self.age, self.detached_age)),
+            outcomes=tuple(self.tick()),
         )
 
     def tick(self) -> list[ModelDirtyConvergeOutcome]:
         env = {k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV}
-        env[ENGINE_BOUND_ENV] = str(int(self.age))
+        env[ENGINE_BOUND_ENV] = str(int(min(self.age, self.detached_age)))
         env["OMNI_HOME"] = str(self.registry_root)
         try:
             done = self._run(
