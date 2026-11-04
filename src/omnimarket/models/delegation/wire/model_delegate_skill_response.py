@@ -122,11 +122,11 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 # accepts and drops it first (OMN-18868 consumer-first), and the declared
 # field lands once omniclaude's pin carries this consumer.
 #
-# OMN-22224 adds ``duration_ms``: how long a rung took, 0 for a rung never
-# sent. This consumer-first step 1 of 2 accepts and drops it; a later change
-# declares the field once omniclaude's pin carries this consumer.
+# OMN-22224 declares ``duration_ms`` below so attempt validation and
+# serialization retain the measured rung duration, including 0 for a rung
+# never sent.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"backend_pinned", "duration_ms", "gate_record", "secret_ref"}
+    {"backend_pinned", "gate_record", "secret_ref"}
 )
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
@@ -205,6 +205,11 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     model_id: str = Field(...)
     quality_gate_passed: bool = Field(...)
     quality_score: float | None = Field(default=None)
+    duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        description="Elapsed rung time in milliseconds; 0 if never sent, None if unknown.",
+    )
     cost_usd: float = Field(default=0.0, ge=0.0)
     # OMN-20717: whether this rung's cost was measured, estimated or unknown,
     # as the transport reported it. None when no source reached this record
