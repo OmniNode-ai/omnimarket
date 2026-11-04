@@ -173,6 +173,8 @@ def _projected_payload(event: ModelWorkEventInbound) -> dict[str, object]:
         ),
         "hook_source": event.hook_source,
         "correlation_id": event.correlation_id,
+        "causation_id": event.causation_id,
+        "principal": event.principal,
         "prompt_length": event.prompt_length,
         "tool_name": event.tool_name,
         "duration_ms": event.duration_ms,
