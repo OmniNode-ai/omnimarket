@@ -1033,6 +1033,7 @@
   "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_key_distribution.py": 0.17,
   "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py": 0.17,
   "tests/nodes/node_lab_placement_compute/test_lane_priority_and_parity.py": 0.04,
+  "tests/nodes/node_lab_placement_compute/test_lane_priority_classes.py": 2.6,
   "tests/nodes/node_lab_receipt_check_effect/test_core_fixture_set.py": 0.17,
   "tests/nodes/node_lab_receipt_check_effect/test_facts_and_phases.py": 0.17,
   "tests/nodes/node_lab_receipt_check_effect/test_golden_chain_lab_receipt_check.py": 0.17,
