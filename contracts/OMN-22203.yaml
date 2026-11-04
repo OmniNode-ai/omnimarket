@@ -1,0 +1,122 @@
+schema_version: 1.0.0
+ticket_id: OMN-22203
+title: 'node_floor_fill_lines_compute: the tick names each startable floor line that no lane touched, as MISSING and NOTE lines in the tick''s finding shape'
+summary: 'A new pure compute node, node_floor_fill_lines_compute, words one stopped-line fill pass for the tick: each startable line no lane touched is a MISSING line-stopped, a NOTE line-held or a NOTE line-filled line, with line-ticket, line-reserved and unread-source lines in the same finding shape.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22203-floor-fill-lines
+  statement: The tick prints one line per startable floor line that no lane touched, naming the next task and the cause, and holds those lines to NOTE while a brake, a stop signal or an empty slot budget holds.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: With four startable lines, 20 free slots and the process effect stubbed to answer `failed` (so every `StartFailed` cleared its entry), exactly four `MISSING line-stopped:` lines are printed, each naming a next task and the process effect''s cause -- falsifier: the printed lines equal the four expected full lines pinned in the fixture test; and `-k unread_sources_rendered` (one case per source: one `UNKNOWN <source>-unread:<cause>` line and no other).'
+  - id: AC2
+    statement: 'AC2: With the runner working, the same input prints four `NOTE line-filled:` lines and no `MISSING line-stopped:`; with `free_slots_after == 0`, each startable line prints `NOTE line-held:<line_id> | no-free-slots` instead -- falsifier: two fixture runs.'
+  - id: AC3
+    statement: 'AC3: While the open-count brake or a stop signal holds, no `MISSING line-stopped:` is printed and each startable line prints `NOTE line-held:` -- falsifier: fixture with a rising count => zero MISSING, four NOTE.'
+  - id: AC4
+    statement: 'AC4: Each `UNTICKETABLE` cause on a line with nothing else to start prints its `MISSING line-ticket:` line with the cause cell, and an unresolved `RESERVED` entry prints `MISSING line-reserved:` -- falsifier: `-k line_ticket_causes` (one fixture per cause) and `-k line_reserved_unresolved`.'
+  - id: AC5
+    statement: 'AC5: G-NODE holds, and the four-line scenario gives equal lines on the in-memory and Redpanda legs -- falsifier: `-k floor_fill_lines_parity` with the Redpanda receipt in the PR body.'
+  - id: AC6
+    statement: 'AC6: the task''s lab step has been run and its output is in the pull request''s Lab line (host, command, exit code, observation), or the step is none for a pure node -- falsifier: handoff_row.sh (the pr-handoff lab-line check) accepts the pull request at its live head, and uv run pytest over the task''s focused command exits 0 on a lab host through lab-run'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the floor fill lines compute node.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22203-ac1
+  description: AC1 four failed starts print the four pinned MISSING line-stopped lines, and each unread source prints one UNKNOWN line and no other.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "four_startable_lines_with_the_runner_failing or refused_mint or no_start_was_tried or cause_of_the_next_task"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "unread_sources_rendered"
+    cwd: .
+- id: dod-omn22203-ac2
+  description: AC2 with the runner working four NOTE line-filled lines print and no MISSING line-stopped; with no free slots each startable line prints NOTE line-held no-free-slots.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "runner_working or two_lanes_started or no_free_slots or last_slot"
+    cwd: .
+- id: dod-omn22203-ac3
+  description: AC3 while the open-count brake or a stop signal holds, zero MISSING and four NOTE line-held.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "open_count_brake or stop_signal_holds or a_hold_beats"
+    cwd: .
+- id: dod-omn22203-ac4
+  description: AC4 each untickable cause prints its MISSING line-ticket line, and an unresolved RESERVED entry past its timeout prints MISSING line-reserved.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "line_ticket_causes"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "line_reserved_unresolved"
+    cwd: .
+- id: dod-omn22203-ac5
+  description: AC5 the node reads no clock and does no I/O, injects no protocol, loads its contract, follows its request values, refuses a missing key, and the in-memory leg of the parity run equals the in-process lines.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -k "no_clock or config_variation or missing_key_refused or seams_in_spi or contract_loads"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line -m floor_fill_parity -k floor_fill_lines_parity
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_no_cross_node_reach_in.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22203-ac5-redpanda
+  description: AC5 the Redpanda leg equals the in-memory leg on the four-line scenario. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate; its receipt is in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22203 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov -m "floor_fill_parity and kafka"
+    cwd: .
+- id: dod-omn22203-ac6-focused
+  description: 'AC6 by its own second branch, the one this node takes: the task''s lab step is none for a pure node, so the focused command is the proof and it runs here. pytest over the node''s own tests exits 0 at this head and exits 4 at the merge base, where the node directory does not exist.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22203-ac6-integration-proof
+  description: AC6 the focused command exits 0 on a lab host through lab-run; the task's lab step is none for a pure node. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-focused-22203 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_lines_compute -q --no-cov
+    cwd: .
+- id: dod-omn22203-deploy-probe
+  description: 'Deploy probe: GitHub serves the shared scenario run model at the checked-out commit, with the shared row import and the parity result fields. The probe fails before this shared model exists and runs on the hosted verifier with GitHub access and Python.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'curl --fail --silent --show-error --header "Authorization: Bearer ${GH_TOKEN:?}" --header "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/model_scenario_run.py?ref=$(git rev-parse HEAD)" | python3 -c '\''import ast, sys; tree = ast.parse(sys.stdin.read()); assert any(isinstance(n, ast.ImportFrom) and n.module == "omnimarket.models.model_scenario_row" for n in tree.body); model = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ModelScenarioRun"); assert {"profile_id", "binding", "proof_eligible", "verdicts", "lines", "rows", "counts", "provenance"} <= {n.target.id for n in model.body if isinstance(n, ast.AnnAssign)}'\'''
+    cwd: .
