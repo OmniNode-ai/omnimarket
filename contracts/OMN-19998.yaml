@@ -34,8 +34,18 @@ requirements:
   - id: req-omn19998-worktree-report-handoff
     statement: Worktree report publication moves to a bus node that preserves scrub and delivery failures and delegates landing.
     acceptance:
-      - id: AC5
-        statement: 'AC5: copied CLAIM root path tokens in markdown and JSON become portable; scrub, push, create and handoff failures remain failed and report friction and alerts; successful publication hands the exact PR head to the landing controller without reading checks or merging -- falsifier: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov'
+      - id: AC8
+        statement: 'AC8: copied CLAIM root path tokens in markdown and JSON become portable; scrub, push, create and handoff failures remain failed and report friction and alerts; successful publication hands the exact PR head to the landing controller without reading checks or merging -- falsifier: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov'
+  - id: req-omn19998-delegation-floor-read
+    statement: The floor reads delegation projection events through the node's public runtime without circular handler imports.
+    acceptance:
+      - id: AC7
+        statement: 'AC5: fixed two-hour and twenty-four-hour windows distinguish runs, attempts, terminal outcomes, missing local traffic and unread sources; the installed report runner supports runtime annotation introspection -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-delegation-floor-publish
+    statement: The floor and report catalogue publish the projection-backed delegation report.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -132,7 +142,7 @@ dod_evidence:
     description: Regression shapes from the recorded scrub and publish failures exercise the migrated path rewrite and the production host adapter through an injected subprocess seam. Unknown paths remain for the external scrub to refuse. This does not assert the landing controller timer criteria or a live installation.
     source: manual
     binds_ac:
-      - AC5
+      - AC8
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short
@@ -141,7 +151,7 @@ dod_evidence:
     description: Hosted wiring smoke discovers the installed node entrypoint and routes success and failure through its declared command and completed topics on an in-memory bus. Only the host subprocess seam is replaced; this is not a live host installation readback.
     source: manual
     binds_ac:
-      - AC5
+      - AC8
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k installed_contract
@@ -150,8 +160,36 @@ dod_evidence:
     description: The installed node entrypoint uses the publication handler with an injected host for success, push refusal and handoff refusal; the runtime smoke asserts the declared completion topic before routing both outcomes through the bus.
     source: manual
     binds_ac:
-      - AC5
+      - AC8
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_golden_chain_worktree_report_publish_effect.py -q --no-cov --tb=short -k 'node_entrypoint or installed_contract'
+        cwd: .
+  - id: dod-omn19998-delegation-floor-read
+    description: The projection read distinguishes runs, attempts and terminal-only outcomes over fixed two-hour and twenty-four-hour windows, keeps an unread source distinct from zero, and renders escaped model and host facts. This scoped report check does not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC7
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-delegation-floor-publish
+    description: The report manifest publishes the delegation data alongside the floor; the tick entry reads through the same handler and never enters the publishing path. Live host readback is recorded separately in the lab evidence.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-delegation-floor-deploy
+    description: Hosted installed-package smoke resolves the report runner annotations and constructs its subprocess boundary through the public handler. It needs no lab endpoint and fails before the import-cycle fix because Runner is absent from the module globals.
+    source: manual
+    binds_ac:
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov --tb=line -k runner_annotations
         cwd: .

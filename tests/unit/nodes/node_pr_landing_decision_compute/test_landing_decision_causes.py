@@ -104,6 +104,7 @@ class Pr:
     gate_since: datetime | None = None
     gate_reasons: tuple[str, ...] = ()
     process_fix: bool = False
+    priority_class: str | None = None
     rerun_runs: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -125,6 +126,8 @@ class Pr:
             "process_fix": self.process_fix,
             "rerun_runs": list(self.rerun_runs),
         }
+        if self.priority_class is not None:
+            data["priority_class"] = self.priority_class
         if self.ci == "red":
             data["red_class"] = self.red_class
             data["red_checks"] = list(self.red_checks)
@@ -571,6 +574,43 @@ def test_cause_scenario_s22_fix_merges_members_rerun_and_go_green() -> None:
     ]
     assert world.state.causes == ()
     assert all(world.prs[f"{REPO}#{n}"].state == "merged" for n in (1, 2, 3))
+
+
+@pytest.mark.unit
+def test_merge_order_cause_fix_first_then_factory_fix_then_feature() -> None:
+    """OMN-22122: the PR a shared cause waits on merges first, then factory-fix PRs, then feature PRs.
+
+    The feature PR is the oldest and the cause fix the newest and unclassified, so neither age nor a class
+    alone gives the asserted order."""
+    fix = Pr(99, ci="pending", red_checks=(), annotations={})
+    factory = Pr(
+        50, ci="pending", red_checks=(), annotations={}, priority_class="factory-fix"
+    )
+    feature = Pr(
+        10, ci="pending", red_checks=(), annotations={}, priority_class="feature"
+    )
+    world = CauseWorld([*three(), fix, factory, feature])
+    key = key_for()
+    assert dispatched(world.step()) == [key]
+    world.result(key, "cause_fix_submitted", fix_ref=fix.key, fix_head=fix.head_sha)
+    world.step()
+    for pr in (fix, factory, feature):
+        pr.ci = "green"
+    merged = [a.subject for a in actions_of(world.step(), "merge")]
+    assert merged == [fix.key, factory.key, feature.key]
+    # negative control: with no cause fix the same PRs merge in class order, the oldest feature PR last
+    plain = CauseWorld(
+        [
+            green(99),
+            green(50, priority_class="factory-fix"),
+            green(10, priority_class="feature"),
+        ]
+    )
+    assert [a.subject for a in actions_of(plain.step(), "merge")] == [
+        f"{REPO}#50",
+        f"{REPO}#10",
+        f"{REPO}#99",
+    ]
 
 
 @pytest.mark.unit
