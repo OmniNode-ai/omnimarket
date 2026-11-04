@@ -41,6 +41,24 @@ GRANT SELECT, INSERT, UPDATE
     ON public.skill_executions
     TO tenant_projection_writer;
 
+-- Read grant for the RLS-scoped dashboard reader (OMN-14894): the tenant_isolation
+-- policy above is unreachable for app_dashboard without SELECT on the relation.
+-- RLS still filters every row the role sees.
+DO $require_app_dashboard$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles
+        WHERE rolname = 'app_dashboard' AND NOT rolsuper AND NOT rolbypassrls
+    ) THEN
+        RAISE EXCEPTION
+            'app_dashboard role missing or RLS-bypassing; apply omnibase_infra migration 094_create_app_dashboard_role.sql before this migration';
+    END IF;
+END
+$require_app_dashboard$;
+
+GRANT USAGE ON SCHEMA public TO app_dashboard;
+GRANT SELECT ON public.skill_executions TO app_dashboard;
+
 DO $assert_tenant_projection_writer_privileges$
 DECLARE
     privilege text;
