@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane Guard Unit Effect (OMN-22192)
+#
+# The runner-side lane guard: start a lane's engine inside the unit onexlane-<lane>-<id>, list the
+# unit's members, and stop it with a confirmed-empty answer. The bounded scope is the stdlib program
+# runtime_lane_guard_host.py (rebuilt from the plugin's lane_guard_host.py); a process that started
+# its own session carries the unit tag and is found and killed by the stop.
+#
+# WHO HOSTS THIS NODE. A serve process on the host that runs the lane's engine; it signals local
+# processes, so a shared runtime must NOT attach it and the contract declares runtime_dispatch and
+# NO event_bus block, as node_remote_lane_stop_effect does.
+name: "node_lane_guard_unit_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Start, list and stop a lane engine's guard unit onexlane-<lane>-<id>. start runs the command under
+  the bounded scope (runtime, memory, CPU, tasks) in its own session; list returns every process that
+  carries the unit's tag; stop reaps the systemd scope when there is one, kills every tagged process
+  (a setsid child included), re-reads the process table and answers confirmed_empty only when none is
+  left. A start without a command, or past the 3 h hard cap, the 32G memory or 1600 percent CPU
+  ceiling, is a typed refusal.
+input_model:
+  name: "ModelLaneGuardUnitRequest"
+  module: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit"
+  description: "Operation (start, list, stop), lane, run id and, for start, the command and limits."
+output_model:
+  name: "ModelLaneGuardUnitResult"
+  module: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit"
+  description: "Unit name, started pid, members, killed processes and the confirmed-empty answer."
+handler:
+  module: "omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_unit"
+  class: "HandlerLaneGuardUnit"
+  input_model: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit.ModelLaneGuardUnitRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_unit:HandlerLaneGuardUnit"
+  handlers:
+    - operation: "handle"
+      handler:
+        name: "HandlerLaneGuardUnit"
+        module: "omnimarket.nodes.node_lane_guard_unit_effect.handlers.handler_lane_guard_unit"
+      input_model: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit.ModelLaneGuardUnitRequest"
+      output_model: "omnimarket.nodes.node_lane_guard_unit_effect.models.model_lane_guard_unit.ModelLaneGuardUnitResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lane-guard-unit-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lane-guard-unit-completed.v1"
+    failure: "onex.evt.omnimarket.lane-guard-unit-failed.v1"
+published_events:
+  - event_type: ModelLaneGuardUnitResult
+    topic: onex.evt.omnimarket.lane-guard-unit-completed.v1
+    description: "The typed outcome of one start, list or stop."
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-guard-unit-completed.v1
+  - onex.evt.omnimarket.lane-guard-unit-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-22192
+  description: "Lane guard unit: start, list and stop a lane engine in onexlane-<lane>-<id>"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lane-guard"
