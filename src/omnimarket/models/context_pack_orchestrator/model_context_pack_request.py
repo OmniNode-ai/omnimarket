@@ -9,12 +9,15 @@ field placed here.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.models.context.model_context_caller_scope import (
     ModelContextCallerScope,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
 from omnimarket.models.context_pack_orchestrator.enum_context_pack_mode import (
     EnumContextPackMode,
 )
@@ -48,6 +51,10 @@ class ModelContextPackRequest(BaseModel):
     manifest_case: str | None = Field(default=None, min_length=1)
     tier_revisions: dict[EnumContextFactor, str] = Field(default_factory=dict)
     cited_refs: tuple[str, ...] = ()
+    # An additive binding (a Claude Code hook) names itself and its invocation (OMN-22016):
+    # the answer then carries a client verdict, and only an enabled profile is built.
+    binding_kind: EnumContextBindingKind | None = None
+    invocation_id: UUID | None = None
 
     @model_validator(mode="after")
     def _pinned_names_its_case(self) -> ModelContextPackRequest:
@@ -59,6 +66,12 @@ class ModelContextPackRequest(BaseModel):
             raise ValueError("newest_turn requires session_id")
         if any(not revision for revision in self.tier_revisions.values()):
             raise ValueError("a tier revision may not be empty")
+        if (self.binding_kind is EnumContextBindingKind.ADDITIVE) != (
+            self.invocation_id is not None
+        ):
+            raise ValueError(
+                "invocation_id is required for an additive call and only there"
+            )
         return self
 
 

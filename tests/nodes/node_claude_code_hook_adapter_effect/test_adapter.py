@@ -468,12 +468,15 @@ def test_the_parent_watch_returns_when_stopped() -> None:
     watch_parent(stop, get_ppid=lambda: 100, on_orphaned=lambda: pytest.fail("fired"))
 
 
-def test_the_shipped_contract_loads_the_manual_compaction_row_and_nothing_else() -> (
+def test_the_shipped_contract_loads_the_manual_compaction_row_and_the_additive_rows() -> (
     None
 ):
     section = load_client_section()
     assert [(b.name, b.hook_event, b.matcher_tool) for b in section.bindings] == [
-        ("compaction", "session.compact", "manual")
+        ("compaction", "session.compact", "manual"),
+        ("session_start", "SessionStart", None),
+        ("agent_spawn", "SubagentStart", None),
+        ("per_prompt", "UserPromptSubmit", None),
     ]
 
 
