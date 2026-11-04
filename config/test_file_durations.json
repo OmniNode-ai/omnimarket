@@ -1233,6 +1233,7 @@
   "tests/nodes/node_pr_head_stage_compute/test_pr_head_stage.py": 0.0,
   "tests/nodes/node_pr_title_check_compute/test_golden_chain_pr_title_check_compute.py": 0.82,
   "tests/nodes/node_pr_watcher_closure_reconcile_effect/test_pr_watcher_closure_reconcile.py": 0.19,
+  "tests/nodes/node_prepush_preflight_effect/test_handler_prepush_preflight.py": 10.58,
   "tests/nodes/node_product_floor_verdict_compute/test_golden_chain_product_floor_verdict_compute.py": 0.6,
   "tests/nodes/node_projection_baselines_quality/test_projection_baselines_quality.py": 0.09,
   "tests/nodes/node_projection_baselines_roi/test_projection_baselines_roi.py": 0.09,
