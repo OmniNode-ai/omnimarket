@@ -51,11 +51,23 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov -k test_failed_walk_is_a_failed_run_through_canonical_runtime
     cwd: .
 - id: deploy-probe
-  description: The deployed source contract dispatches through the same runtime and retains its successful walk receipt; no cloud runtime configuration changes.
+  description: Hosted-runner source-artifact readback requires the published walk contract at the evaluated commit to match this checkout, bind ModelWalkReceipt to one published topic and keep both terminal topics in runtime_dispatch. This checks the source artifact; it does not claim the fix is installed on a host.
   source: manual
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov -k test_walk_runs_through_canonical_runtime
+  - check_type: command
+    check_value: |
+      set -eu;
+      readback_dir="$(mktemp -d)";
+      trap 'rm -rf "$readback_dir"' EXIT;
+      revision="$(git rev-parse HEAD)";
+      path=src/omnimarket/nodes/node_onboarding_clean_vm_walk_effect/contract.yaml;
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+        --output "$readback_dir/contract.yaml";
+      cmp "$path" "$readback_dir/contract.yaml";
+      test "$(grep -c 'event_type: ModelWalkReceipt' "$readback_dir/contract.yaml")" = 1;
+      grep -F 'failure: onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1' "$readback_dir/contract.yaml";
+      printf 'walk contract source readback matched %s\n' "$revision"
     cwd: .
 - id: dod-omn19915-integration-proof
   description: The pushed head, run on a lab host through the ONEX CLI, starts the clean VM walk through the real local runtime and bus adapter and reaches its measured receipt, and a failed walk ends as a failed run. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
