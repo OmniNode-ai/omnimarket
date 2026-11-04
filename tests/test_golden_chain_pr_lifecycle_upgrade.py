@@ -127,13 +127,13 @@ class TestDagOrderingCrossRepo:
     """_apply_dag_ordering sorts PRs by repo dependency tier."""
 
     def test_cross_repo_prs_return_in_tier_order(self) -> None:
-        """3 GREEN PRs sorted: omnibase_compat (0) -> omnimarket (4) -> omnidash (10)."""
+        """3 GREEN PRs sorted: omnibase_spi (1) -> omnimarket (4) -> omnidash (10)."""
         pr_omnidash = TriageRecord(
             pr_number=100, repo="OmniNode-ai/omnidash", category=EnumPrCategory.GREEN
         )
-        pr_omnibase_compat = TriageRecord(
+        pr_omnibase_spi = TriageRecord(
             pr_number=50,
-            repo="OmniNode-ai/omnibase_compat",
+            repo="OmniNode-ai/omnibase_spi",
             category=EnumPrCategory.GREEN,
         )
         pr_omnimarket = TriageRecord(
@@ -142,10 +142,10 @@ class TestDagOrderingCrossRepo:
             category=EnumPrCategory.GREEN,
         )
 
-        ordered = _apply_dag_ordering([pr_omnidash, pr_omnibase_compat, pr_omnimarket])
+        ordered = _apply_dag_ordering([pr_omnidash, pr_omnibase_spi, pr_omnimarket])
 
         assert len(ordered) == 3
-        assert ordered[0].repo == "OmniNode-ai/omnibase_compat"
+        assert ordered[0].repo == "OmniNode-ai/omnibase_spi"
         assert ordered[1].repo == "OmniNode-ai/omnimarket"
         assert ordered[2].repo == "OmniNode-ai/omnidash"
 
@@ -172,13 +172,13 @@ class TestDagOrderingCrossRepo:
         )
         pr_known = TriageRecord(
             pr_number=301,
-            repo="OmniNode-ai/omnibase_compat",
+            repo="OmniNode-ai/omnibase_spi",
             category=EnumPrCategory.GREEN,
         )
 
         ordered = _apply_dag_ordering([pr_unknown, pr_known])
 
-        assert ordered[0].repo == "OmniNode-ai/omnibase_compat"
+        assert ordered[0].repo == "OmniNode-ai/omnibase_spi"
         assert ordered[1].repo == "OmniNode-ai/some-new-repo"
 
     def test_stable_sort_preserves_original_order_within_same_tier(self) -> None:

@@ -96,6 +96,50 @@ class ModelAgentHarnessRung(BaseModel):
     run_dir_leaf: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+class ModelAgentSigningKeyStore(BaseModel):
+    """Where the receipt signing key lives in the secret store: a reference, never a value.
+
+    One ``secret://<provider>/<environment>/<path...>/<name>`` reference, the form the
+    private overlay holds every credential in. The dispatch resolves it at bind time through
+    the host's own store identity, so the key is held in this process's memory and handed to
+    the signer child, and is never a file, an argument or a setting on any host.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reference: str = Field(
+        pattern=r"^secret://[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+){2,}$"
+    )
+
+    @property
+    def _parts(self) -> tuple[str, str, list[str], str]:
+        provider, environment, *rest = self.reference.removeprefix("secret://").split(
+            "/"
+        )
+        *path, name = rest
+        return provider, environment, path, name
+
+    @property
+    def provider(self) -> str:
+        provider, *_ = self._parts
+        return provider
+
+    @property
+    def environment_slug(self) -> str:
+        _, environment, *_ = self._parts
+        return environment
+
+    @property
+    def secret_path(self) -> str:
+        _, _, path, _ = self._parts
+        return "/" + "".join(f"{part}/" for part in path)
+
+    @property
+    def secret_name(self) -> str:
+        _, _, _, name = self._parts
+        return name
+
+
 class ModelAgentReviewScmBus(BaseModel):
     """The bus the source-control node calls ride, as ``onex scm`` names it: kind and lane.
 
@@ -132,6 +176,8 @@ class ModelAgentReviewConfig(BaseModel):
     roster: tuple[ModelAgentVoter, ...] = Field(min_length=1)
     policy: ModelAgentReviewPolicy
     quorum: ModelAgentReviewQuorum
+    #: The store reference of the receipt signing key; the signer binds to it.
+    signing_key_store: ModelAgentSigningKeyStore
     #: The bus the head read and the review post ride.
     scm_bus: ModelAgentReviewScmBus
     #: Rung name -> harness, for every roster rung served by the harness rung node. A

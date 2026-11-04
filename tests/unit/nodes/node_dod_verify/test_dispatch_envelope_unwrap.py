@@ -71,26 +71,11 @@ class _StubCollectorHandler(HandlerDodVerify):
     @staticmethod
     def _make_collector() -> object:
         class _Collector:
-            # OMN-15454: matches the real EvidenceCollector's provenance
-            # surface (occ_refresh_outcome/occ_resolved_sha attributes,
-            # occ_governance_ref property) — _handle_typed reads these
-            # unconditionally after a None-contract-path collect(). None
-            # here means "OCC auto-resolution never attempted", same as the
-            # real collector when it is never asked to auto-resolve.
-            occ_refresh_outcome = None
-            occ_resolved_sha = None
-            occ_governance_ref = "origin/dev"
             # OMN-17022: the same provenance surface grew a typed
             # PR/repo-lookup-failure pair, read unconditionally by
             # _handle_typed. None means "no lookup failed this run".
             lookup_failure_cause = None
             lookup_failure_code = None
-            # OMN-17796: and again for the run-wide OCC governance-ref pair,
-            # read on the same unconditional line. None means "the governance
-            # ref resolved (or was never asked for)", which is this stub's
-            # situation — it never auto-resolves OCC at all.
-            occ_ref_failure_cause = None
-            occ_ref_failure_code = None
 
             def collect(
                 self,
