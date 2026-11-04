@@ -62,6 +62,11 @@ descriptor:
   side_effects: []
   timeout_ms: 2000
 
+runtime_dispatch:
+  addressable: false
+  invocation_mode: projection_reducer
+  reason: "A pure fold that consumes the seam count, window-close and reading events and projects the view_seam_readings exposure; it has no command topic."
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.view-seam-counted.v1

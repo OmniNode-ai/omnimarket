@@ -21,6 +21,7 @@ handler:
   module: omnimarket.nodes.node_view_render_web_effect.handlers.handler_view_render_web_effect
   class: HandlerViewRenderWebEffect
   input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
+  output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
 
 handler_routing:
   routing_strategy: operation_match
@@ -32,11 +33,15 @@ handler_routing:
         module: omnimarket.nodes.node_view_render_web_effect.handlers.handler_view_render_web_effect
 
 descriptor:
+  runtime_profiles: []
   node_archetype: effect
   purity: pure
   idempotent: true
   side_effects: []
   timeout_ms: 2000
+
+runtime_dispatch:
+  external_trigger: "Direct Python call to HandlerViewRenderWebEffect.handle by the view seam reading step; the scaffold has no bus route until its emitter is built."
 
 event_bus:
   subscribe_topics: []
@@ -53,4 +58,4 @@ published_events:
 
 metadata:
   ticket: OMN-22020
-  transport_type: inmemory
+  transport_type: local
