@@ -2710,6 +2710,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: prompt-cost-import-schema
+        name: Prompt cost import schema and uncertainty contract
+        entry: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/node_prompt_cost_estimate_compute/|tests/nodes/node_prompt_cost_estimate_compute/|\.pre-commit-config\.yaml$)
+        stages: [pre-commit]
       - id: compaction-arm-assignment
         name: Compaction arm assignment and native-binding controls
         entry: uv run pytest tests/nodes/node_compaction_arm_assignment_compute/test_golden_chain_compaction_arm_assignment.py -q --no-cov
