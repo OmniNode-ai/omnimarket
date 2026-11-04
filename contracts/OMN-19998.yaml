@@ -51,6 +51,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
+  - id: req-omn19998-receipt-explicit-disposition
+    statement: A TERMINAL row that names a delegation receipt is accepted only when the receipt records an explicit disposition.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: a named ok receipt whose disposition is a placeholder string (none, n/a, tbd, -, pending, unknown or blank) or a non-string, non-mapping value is reported undisposed; a named disposition string or a non-empty mapping is accepted -- falsifier: uv run --frozen pytest tests/handlers/ledger_row_grammar/test_ledger_terminal_undisposed_receipt_omn20015.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -207,4 +212,22 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
+        cwd: .
+  - id: dod-omn19998-receipt-explicit-disposition
+    description: The receipt tests write lane receipts whose disposition is a placeholder string or a boolean and check that a TERMINAL naming them is refused as undisposed, while a named disposition is accepted. The placeholder cases fail at the merge base because any truthy disposition counted as disposed. This does not assert the controller timer criteria or a live delegation attempt.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/handlers/ledger_row_grammar/test_ledger_terminal_undisposed_receipt_omn20015.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-receipt-explicit-disposition-deploy
+    description: Hosted smoke runs the whole ledger row grammar suite through the public grammar functions to show the other row checks are unchanged. No live ledger append or host installation readback is asserted.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/handlers/ledger_row_grammar -q --no-cov --tb=line
         cwd: .
