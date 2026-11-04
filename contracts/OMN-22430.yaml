@@ -128,10 +128,10 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect -q --no-cov --tb=line -k 'aggregates_declared_grants or transactional_id_grants_applied'
     cwd: .
 - id: dod-omn22430-integration-proof
-  description: The pushed head ran the host state model suites, the lab daemon schema v2 suite and the broker ACL aggregation suites together on one host and exited 0. The broker apply of the four topics and their grants is a separate lab step after merge.
+  description: The pushed head ran the host state model suites, the lab daemon schema v2 suite and the broker ACL aggregation suites together on a lab host through the lab work runner and exited 0. The broker apply of the four topics and their grants is a separate lab step after merge.
   source: manual
   execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/models tests/nodes/node_lab_daemon_sync_effect tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov --tb=line
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22430 -- uv run --frozen pytest tests/models tests/nodes/node_lab_daemon_sync_effect tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q -p no:randomly --no-cov
     cwd: .
