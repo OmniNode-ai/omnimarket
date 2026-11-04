@@ -151,18 +151,10 @@ dependencies = [
     # on the wire Literal; omnibase_infra d20586c7d pins 0.47.48 (INFRA_CORE_PINS).
     # OMN-21264: floor raised 0.47.48 -> 0.47.53, the first release whose terminal
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
-    "omnibase-core>=0.47.53,<0.48.0",
-    # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
-    # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
-    # and this emitter share one zero-dep vocabulary): the single seam
-    # omnibase_compat.contracts.pr_occ_stamp.
-    # OMN-18159: 0.5.6 -> 0.5.7, forced by the omnibase-infra floor above.
-    # omnibase-infra 0.38.22 declares `omnibase-compat==0.5.7` exactly. Because
-    # this pin is also a [tool.uv] override it does not conflict -- it silently
-    # WINS, installing 0.5.6 underneath an infra release built against 0.5.7,
-    # which is the masked-incompatibility failure the paragraph above warns
-    # about. The two move together or the override hides the break.
-    "omnibase-compat==0.5.7",
+    # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
+    # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
+    # Raised in BOTH places.
+    "omnibase-core>=0.47.60,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
@@ -1501,7 +1493,10 @@ override-dependencies = [
     # on the wire Literal; omnibase_infra d20586c7d pins 0.47.48 (INFRA_CORE_PINS).
     # OMN-21264: floor raised 0.47.48 -> 0.47.53, the first release whose terminal
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
-    "omnibase-core>=0.47.53,<0.48.0",
+    # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
+    # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
+    # Raised in BOTH places.
+    "omnibase-core>=0.47.60,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
@@ -1562,7 +1557,6 @@ override-dependencies = [
     # chains resolve a topic through the one fixture in omnibase_infra. 0.38.75
     # also carries migration 0003 (infra#5036), so the dev-tag git source is gone.
     "omnibase-infra>=0.38.75,<0.39.0",
-    "omnibase-compat==0.5.7",
 ]
 
 # OMN-16024: the security floors for the five TRANSITIVE packages flagged by
@@ -1750,10 +1744,6 @@ python_version = "3.12"
 mypy_path = "src:scripts"
 namespace_packages = true
 explicit_package_bases = true
-
-[[tool.mypy.overrides]]
-module = "omnibase_compat.*"
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_infra.*"

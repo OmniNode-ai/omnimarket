@@ -113,10 +113,9 @@ class HandlerBrokerAclReconcile:
                 exit_code=2,
                 error=f"{settings['ssh_target_env']} is not set",
             )
-        command = list(
-            request.reconcile_command
-            or shlex.split(self._environ.get(settings["reconcile_command_env"], ""))
-        )
+        # The program comes only from operator configuration; a bus request never
+        # carries an argv.
+        command = shlex.split(self._environ.get(settings["reconcile_command_env"], ""))
         if not command:
             return ModelBrokerAclReconcileResult(
                 mode=request.mode,
