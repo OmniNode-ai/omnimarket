@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: node_work_classify_compute (OMN-22263, plan task T4)
+
+name: node_work_classify_compute
+version: "1.0.0"
+contract_name: node_work_classify_compute
+node_name: node_work_classify_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Classify one work unit by the work-type rubric's first-match rules and the run-style rules, both held as data; read brief features with the rubric's patterns; take a brief stratum for a unit with no ROUTE line (never a band); keep a unit's cell from its root session. A unit no rule decides is undetermined with a cause, never a guessed type.
+
+input_model:
+  name: ModelWorkClassifyRequest
+  module: omnimarket.nodes.node_work_classify_compute.models
+
+output_model:
+  name: ModelWorkClassification
+  module: omnimarket.models.work_classification.model_work_classification
+
+handler:
+  module: omnimarket.nodes.node_work_classify_compute.handlers.handler_work_classify
+  class: HandlerWorkClassify
+  input_model: omnimarket.nodes.node_work_classify_compute.models.ModelWorkClassifyRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_work
+      handler:
+        name: HandlerWorkClassify
+        module: omnimarket.nodes.node_work_classify_compute.handlers.handler_work_classify
+      event_model:
+        name: ModelWorkClassifyRequest
+        module: omnimarket.nodes.node_work_classify_compute.models
+    - operation: extract_brief_features
+      handler:
+        name: HandlerBriefFeatureExtract
+        module: omnimarket.nodes.node_work_classify_compute.handlers.handler_work_classify
+      event_model:
+        name: ModelBriefExtractRequest
+        module: omnimarket.nodes.node_work_classify_compute.models
+    - operation: report_classifications
+      handler:
+        name: HandlerClassificationReport
+        module: omnimarket.nodes.node_work_classify_compute.handlers.handler_work_classify
+      event_model:
+        name: ModelClassificationReportRequest
+        module: omnimarket.nodes.node_work_classify_compute.models
+    - operation: build_unit_cell
+      handler:
+        name: HandlerUnitCell
+        module: omnimarket.nodes.node_work_classify_compute.handlers.handler_work_classify
+      event_model:
+        name: ModelUnitCellRequest
+        module: omnimarket.nodes.node_work_classify_compute.models
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+# Every dependency is an overlay key read by the caller and injected through the request or the
+# constructor; no value below is held in code.
+overlay_keys:
+  work_type_rubric: path of work_type_rubric.v1.yaml
+  run_style_rules: path of run_style_rules.v1.yaml
+  precision_bar: minimum precision a rule or an existing classifier needs on the labelled sample
+
+capabilities:
+  - name: work.classify
+    description: Classify one work unit by the work-type rubric's first-match rules and the run-style rules, both held as data; read brief features with the rubric's patterns; take a brief stratum for a unit with no ROUTE line (never a band); keep a unit's cell from its root session
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-classify-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.work-classified.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-classify-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.work-classified.v1
+
+terminal_event: onex.evt.omnimarket.work-classified.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-22263
+  maturity: alpha
+  tags:
+    - compute
+    - work-type
+    - classification
+    - rubric
