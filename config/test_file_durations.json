@@ -2406,6 +2406,7 @@
   "tests/test_omn21819_real_postgres_revocation_route.py": 0.01,
   "tests/test_omn22182_real_postgres_credential_version.py": 0.01,
   "tests/test_omn22346_runtime_health_liveness_contract.py": 0.01,
+  "tests/test_omn22468_session_files_port.py": 6.39,
   "tests/test_omn8693_node_heartbeat_mechanism.py": 0.05,
   "tests/test_omn9403_publisher_wiring.py": 0.04,
   "tests/test_omn_13718_plan_to_tickets_runtime_local.py": 0.03,

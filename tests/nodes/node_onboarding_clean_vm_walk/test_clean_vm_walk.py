@@ -693,3 +693,29 @@ def test_cli_prints_receipt(
     receipt = ModelWalkReceipt.model_validate_json(capsys.readouterr().out)
     assert receipt.outcome == EnumWalkOutcome.PASSED
     assert receipt.vm_deleted
+
+
+def test_walk_runs_through_canonical_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay the CLI failure before Tart was invoked, through the real bus adapter."""
+    from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+
+    from tests.runtime_local_compat import RuntimeLocal
+
+    runner = StubTartRunner()
+    monkeypatch.setattr(walk, "select_runner", lambda _: runner)
+    input_path = tmp_path / "input.json"
+    input_path.write_text(request().model_dump_json())
+    hosted = RuntimeLocal(
+        workflow_path=CONTRACT,
+        state_root=tmp_path / "state",
+        input_path=input_path,
+        timeout=5,
+    )
+    assert hosted.run() == EnumWorkflowResult.COMPLETED
+    assert runner.calls
+    result = hosted.handler_result
+    assert isinstance(result, ModelWalkReceipt)
+    assert result.outcome == EnumWalkOutcome.PASSED
+    assert result.vm_deleted
