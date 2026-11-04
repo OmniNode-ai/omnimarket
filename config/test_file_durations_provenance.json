@@ -90,5 +90,12 @@
     "basis": "Sum of each lane-end test file's measured pytest setup, call and teardown durations from one serial focused run with --store-durations --clean-durations -m 'not kafka' --no-cov; 22 passed, 3 Kafka-marked cases deselected; existing entries unchanged",
     "runner": "lab host h051, Python 3.12, serial focused run; the next CI refresh replaces these entries",
     "base_sha": "52ede9e6ef77b508c4ae98b99f6f701337da3dfb"
+  },
+  "supplement_omn19486": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Summed measured pytest setup, call and teardown seconds for tests/cli/test_pr_state.py from a serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h053, lane pr-4928-1157; the next CI refresh replaces this entry",
+    "base_sha": "10e4469489ac04ec863a0f00dc7cbc92bf7095c8"
   }
 }
