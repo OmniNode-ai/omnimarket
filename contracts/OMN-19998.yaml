@@ -46,6 +46,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the recorded exit-124, no-JSON, empty-stderr enumeration failure returns typed UNREAD before the outer deadline; a complete empty read is READ; source failures never select candidates from unread kinds; the packaged operation publishes READ and UNREAD terminals on the declared completed topic -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-checkpoint-prior-drivers
+    statement: A checkpoint read names the running workflows of the session that stopped before the current one.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: a newest-checkpoint read prints one PRIOR line for each running or queued workflow of the prior session that the current checkpoint does not carry by task id, run id or named script; relaunched, stopped and stale prior workflows are not named, and the stopped session''s own read has no PRIOR lines -- falsifier: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute/test_resume_names_prior_drivers.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -183,4 +188,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly -k bus_adapter
+        cwd: .
+  - id: dod-omn19998-checkpoint-prior-drivers
+    description: The checkpoint tests build the recorded case of two drain drivers and one lane, then a resumer that relaunches the lane; the read names both drivers. The tests fail at the merge base because the read has no PRIOR lines.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute/test_resume_names_prior_drivers.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-checkpoint-prior-drivers-deploy
+    description: Hosted smoke runs the whole checkpoint node suite, including the golden chain and member read, to show existing line formats are unchanged. No live installation readback is asserted.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_session_checkpoint_compute -q --no-cov
         cwd: .
