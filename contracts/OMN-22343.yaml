@@ -40,10 +40,10 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py -q --no-cov --tb=line -k 'ttl_comes_from_the_contract or missing_policy_section'
     cwd: .
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py::test_ttl_comes_from_the_contract_not_the_handler -q --no-cov --tb=line
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py -q --no-cov --tb=line -k 'contract or policy'
     cwd: .
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py -q --no-cov --tb=line -k 'contract or policy'
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_prompt_cache_omn22343.py::test_ttl_comes_from_the_contract_not_the_handler -q --no-cov --tb=line
     cwd: .
   - check_type: command
     check_value: grep -F 'prompt_cache:' src/omnimarket/nodes/node_claude_review_gateway_effect/contract.yaml
