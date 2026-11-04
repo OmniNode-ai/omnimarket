@@ -28,7 +28,9 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from omnimarket.handlers.adapter_local_session_files import LocalSessionFiles
 from omnimarket.models.session_scope import ModelSessionScope
+from omnimarket.protocols.protocol_session_files import ProtocolSessionFiles
 
 from ..models.model_session_resume import ModelDanglingClaim, Owner
 from .ledger_grammar import (
@@ -203,7 +205,7 @@ class Ledger:
         return [r for r in self.recs if r.rtype == "CLAIM" and r.lane]
 
 
-def read_ledger(ledger: Path) -> Ledger:
+def read_ledger(ledger: Path, *, fs: ProtocolSessionFiles | None = None) -> Ledger:
     files: list[tuple[Path, bool]] = []
     archive = ledger.parent / "archive"
     if archive.is_dir():
@@ -213,26 +215,30 @@ def read_ledger(ledger: Path) -> Ledger:
     skipped = 0
     seq = 0
     for path, live in files:
-        with path.open(encoding="utf-8", errors="replace") as handle:
-            for lineno, line in enumerate(handle, 1):
-                row = parse_row(line)
-                if row is None:
-                    if opens_a_row(line):
-                        skipped += 1
-                    continue
-                seq += 1
-                label = "live" if live else f"archive/{path.name}"
-                recs.append(
-                    Rec(
-                        row=row,
-                        seq=seq,
-                        source=f"{label}:{lineno}",
-                        lineno=lineno,
-                        live=live,
-                        rtype=LEGACY_TYPE_MAP.get(row.row_type, row.row_type),
-                        raw=line.rstrip("\n"),
-                    )
+        handle = (
+            (fs or LocalSessionFiles())
+            .read_text(path, encoding="utf-8", errors="replace")
+            .splitlines(keepends=True)
+        )
+        for lineno, line in enumerate(handle, 1):
+            row = parse_row(line)
+            if row is None:
+                if opens_a_row(line):
+                    skipped += 1
+                continue
+            seq += 1
+            label = "live" if live else f"archive/{path.name}"
+            recs.append(
+                Rec(
+                    row=row,
+                    seq=seq,
+                    source=f"{label}:{lineno}",
+                    lineno=lineno,
+                    live=live,
+                    rtype=LEGACY_TYPE_MAP.get(row.row_type, row.row_type),
+                    raw=line.rstrip("\n"),
                 )
+            )
     return Ledger([p for p, _ in files], recs, skipped)
 
 

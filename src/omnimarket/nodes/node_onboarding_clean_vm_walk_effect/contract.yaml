@@ -58,9 +58,8 @@ published_events:
 - event_type: ModelWalkReceipt
   topic: onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
   description: Onboarding and dashboard probes completed; cleanup recorded.
-- event_type: ModelWalkReceipt
-  topic: onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1
-  description: Walk failed; failure text and cleanup recorded.
+# Keep one class-to-topic binding. Success and failure terminals remain declared
+# in runtime_dispatch; listing one class twice prevents runtime startup.
 externally_consumed_topics:
 - onex.evt.omnimarket.onboarding-clean-vm-walk-completed.v1
 - onex.evt.omnimarket.onboarding-clean-vm-walk-failed.v1
