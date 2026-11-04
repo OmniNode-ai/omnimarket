@@ -392,8 +392,9 @@ def test_http_gateway_create_under_a_parent_clears_the_inherited_project() -> No
     assert fake.issues["OMN-99002"]["data"]["issue"]["project"] is None
 
 
-def test_http_gateway_create_without_a_parent_sends_no_clear() -> None:
+def test_http_gateway_create_without_a_parent_reads_back_and_sends_no_clear() -> None:
     fake = _FakeLinear()
+    fake.issues["OMN-99003"] = copy.deepcopy(_RECORDED["read_no_project"])
 
     def post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         if "GetTeamByName" in query:
@@ -417,7 +418,8 @@ def test_http_gateway_create_without_a_parent_sends_no_clear() -> None:
     gateway.create_ticket(
         title="t", description="d", team="Omninode", parent=None, assignee_id="user-1"
     )
-    assert fake.calls == []
+    assert len(fake.calls) == 1  # the independent readback
+    assert fake.mutations() == []
 
 
 # --- the contract-routed path: the request reaches HandlerTicketProject without HandlerCreateTicket ----
