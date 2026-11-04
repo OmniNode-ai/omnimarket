@@ -13,6 +13,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.nodes.node_dod_verify.services.scoped_item_binding import (
+    scoped_item_binding_violation,
+)
 from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
 
 pytestmark = pytest.mark.unit
@@ -171,15 +174,10 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
             violations.append(f"{label}: use binds_ac, not ac_bindings")
         if "binds_ac" not in item:
             continue
-        # OMN-22403: the hosted receipt gate runs a local_done_gate item neither at
-        # the head nor at the merge base, so it has no control and refuses a bound
-        # one. An empty binds_ac binds nothing and is the dev convention.
-        if item.get("execution_scope") == "local_done_gate" and item["binds_ac"]:
-            violations.append(
-                f"{label}: a local_done_gate item may not carry binds_ac; "
-                "scoped local_done_gate, which this hosted check runs neither at "
-                "the head nor at the merge base"
-            )
+        # OMN-22403: the rule lives in the verifier's service module.
+        refusal = scoped_item_binding_violation(item)
+        if refusal:
+            violations.append(f"{label}: {refusal}")
             continue
         bound.update(item["binds_ac"])
         argvs = [

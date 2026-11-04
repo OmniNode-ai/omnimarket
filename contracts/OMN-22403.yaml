@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn22403-ac1-ac2-bound-scoped-item-refused"
-    description: "AC1: the checker refuses a bound local_done_gate item and accepts an unbound one; the regression tests are absent at the merge base, so they fail there."
+    description: "AC1: the checker refuses a bound local_done_gate item and accepts an unbound one; the rule lives in services/scoped_item_binding.py, absent at the merge base, so the test module fails to import there."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -35,7 +35,7 @@ dod_evidence:
         cwd: "."
     binds_ac: ["AC1"]
   - id: "dod-omn22403-ac2-repo-contracts"
-    description: "AC2: every repository contract passes the binding checker, including the prompt-cache contract's bound evidence."
+    description: "AC2: every repository contract passes the binding checker, and the module that carries the rule is absent at the merge base, so this check fails there."
     source: "manual"
     checks:
       - check_type: "test_passes"
