@@ -31,6 +31,11 @@ requirements:
     acceptance:
       - id: AC5
         statement: 'AC5: the default bound equals the runner-owned producer limit; keys, headers and record framing count toward the bound; recorded oversized records are refused before producer creation, exact-limit records are accepted, and the source advances only after durable quarantine -- falsifier: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov'
+  - id: req-omn19998-install-only-preserve
+    statement: A declared install-only node missing from a replacement stage is retained from the live install.
+    acceptance:
+      - id: AC6
+        statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -122,4 +127,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov -k recorded_retry
+        cwd: .
+  - id: dod-omn19998-install-only-preserve
+    description: Scoped installer regression only. Exercises the replacement source tree, the preserved guard check and record, declarative overlay, injected copying and contract-driven in-memory bus dispatch. Original controller rule, lock, act and launchd criteria remain outside this slice and unproven here.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-install-only-preserve-deploy
+    description: Hosted deployment wiring smoke discovers the source contract, wires its declared command and completed topics through the runtime, and observes the copied handler file. This does not claim a live host installer or launchd readback.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py -q --no-cov -n 0 -p no:randomly -k preservation_runtime_command
         cwd: .
