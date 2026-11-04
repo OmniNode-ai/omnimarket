@@ -43,6 +43,15 @@ dod_evidence:
           uv run --frozen pytest tests/test_retired_repository_reconcile.py -k 'registry_wide_refusal or host_refuses_a_retired_target' -q -p no:randomly --no-cov
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-retired-registry-consumers"
+    description: "AC2: the merge-sweep fleet and the shim scanner default list skip the retired repository; merge-sweep parity replays its recorded fleet."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_merge_sweep_plan_compute/test_merge_sweep_parity.py tests/nodes/node_shim_scanner/test_shim_scanner_no_arg_default.py -q -p no:randomly --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
   - id: "dod-retirement-deploy-head"
     description: >-
       The hosted runner reads the changed handler at the checked-out head. The base lacks the retirement effect and fails this probe; the behavior is checked separately above.
