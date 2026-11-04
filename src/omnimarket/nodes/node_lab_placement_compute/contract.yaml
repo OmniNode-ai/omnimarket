@@ -88,19 +88,26 @@ placement:
     max_weight: heavy
     speed: 1.0
   unit_needs: []
-# LANE PRIORITY (OMN-22124). The classes a lane takes at placement, highest first (`other` last), and the
-# repositories and tickets of each. A class at rank i leaves i free pool slots to the classes above it that
-# have a unit waiting. A lane takes, in order: the class its caller declared, the class the contract lists its
-# ticket (or its parent ticket) under, the class the contract lists its repository under, else `other`. A
-# repository the contract lists under a class is that class's work whether or not the caller said so. A
-# private repository's class is data of the private overlay, never of this public contract: the caller
-# passes it as `private_repos` and it is merged over the contract's.
+# LANE PRIORITY (OMN-22124, OMN-22122). The classes a lane takes at placement, highest first (`other` last), and
+# the repositories and tickets of each. `holdback` is, per class, the most free pool slots a unit of the class
+# leaves to the classes above it that have a unit waiting; a class that holds back 0 takes any free slot. A lane
+# takes, in order: the class its caller declared, the `Class:` line of its ticket's text, the class the contract
+# lists its ticket (or its parent ticket) under, `factory_class` when its ticket's parent is a factory epic of the
+# private overlay (`lane_priority.factory_epics`), the class the contract lists its repository under, else
+# `other`. A ticket with no `Class:` line falls back down that list and the result says so. A private
+# repository's class is data of the private overlay, never of this public contract: the caller passes it as
+# `private_repos` and it is merged over the contract's.
 priority:
-  classes: [mvp-landing, occ-retirement, process-fix, other]
+  classes: [factory-unblock, factory-fix, feature, other]
+  holdback:
+    factory-unblock: 0
+    factory-fix: 1
+    feature: 2
+    other: 3
+  factory_class: factory-fix
   repos:
-    mvp-landing: [omnibase_infra, omnibase_core, omnimarket, omniclaude, omnidash]
-  tickets:
-    occ-retirement: [OMN-20074, OMN-20068]
+    feature: [omnibase_infra, omnibase_core, omnimarket, omniclaude, omnidash]
+  tickets: {}
 # PLUGIN PARITY (OMN-22124). An installed plugin tree is compared with its shipped revision file by file. These
 # entries directly under the install path are runtime markers Claude Code writes, never plugin content: `.in_use`
 # while a session has the plugin loaded, `.orphaned_at` once the directory is superseded. The same name at any

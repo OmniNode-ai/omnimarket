@@ -4,7 +4,7 @@
 
 The fixture ``fixtures/no_host_1102`` holds what the 2026-11-02 incident receipts recorded: a lane on
 omnibase_infra charged to ``other`` and refused PRIORITY-HOLDBACK with one free slot held for
-mvp-landing; a pinned lane refused PARITY-FAILED for the ``.orphaned_at`` file; and four lanes refused
+feature; a pinned lane refused PARITY-FAILED for the ``.orphaned_at`` file; and four lanes refused
 with no free slot, which are correct refusals and stay the negative controls.
 """
 
@@ -23,6 +23,7 @@ from omnimarket.nodes.node_lab_placement_compute.handlers import (
 from omnimarket.nodes.node_lab_placement_compute.models import (
     ModelLanePriorityRequest,
     ModelPluginParityRequest,
+    ModelPriorityRules,
 )
 
 pytestmark = pytest.mark.unit
@@ -40,12 +41,16 @@ def legacy_lane_priority_class(
     return handler.rules.class_of_ticket(request.ticket)
 
 
+#: The receipts recorded the class names of 2026-11-02; the contract now calls the MVP repositories' class feature (OMN-22122).
+RETIRED_CLASS_NAMES = {"mvp-landing": "feature"}
+
+
 def _request(case: dict[str, Any]) -> ModelLanePriorityRequest:
     return ModelLanePriorityRequest(
         repo=case["repo"],
         ticket=case["ticket"],
         free_slots=case["pool"]["free_slots"],
-        waiting=tuple(case["pool"]["waiting"]),
+        waiting=tuple(RETIRED_CLASS_NAMES.get(c, c) for c in case["pool"]["waiting"]),
     )
 
 
@@ -62,10 +67,10 @@ def parity() -> HandlerLabPluginParity:
 @pytest.mark.parametrize(
     ("repo", "expected"),
     [
-        ("omnibase_infra", "mvp-landing"),
-        ("OmniNode-ai/omnibase_infra", "mvp-landing"),
-        ("omnimarket#4981", "mvp-landing"),
-        ("OmniNode-ai/OmniClaude", "mvp-landing"),
+        ("omnibase_infra", "feature"),
+        ("OmniNode-ai/omnibase_infra", "feature"),
+        ("omnimarket#4981", "feature"),
+        ("OmniNode-ai/OmniClaude", "feature"),
         ("some_other_repo", "other"),
         ("", "other"),
         (None, "other"),
@@ -83,36 +88,43 @@ def test_priority_class_of_repo_lane_without_declared_class_takes_the_repository
     result = priority.handle(
         ModelLanePriorityRequest(repo="omnibase_infra", ticket="OMN-22124")
     )
-    assert (result.priority_class, result.source) == ("mvp-landing", "repository")
+    assert (result.priority_class, result.source) == ("feature", "repository")
 
 
-def test_priority_class_of_repo_order_declared_then_ticket_then_repository(
-    priority: HandlerLabLanePriority,
-) -> None:
+def test_priority_class_of_repo_order_declared_then_ticket_then_repository() -> None:
+    # the contract lists no ticket, so a ticket listing is exercised on rules that carry one
+    rules = ModelPriorityRules(
+        classes=("factory-unblock", "factory-fix", "feature", "other"),
+        holdback={"factory-unblock": 0, "factory-fix": 1, "feature": 2, "other": 3},
+        factory_class="factory-fix",
+        repos={"feature": ("omnibase_infra",)},
+        tickets={"factory-unblock": ("OMN-20074",)},
+    )
+    priority = HandlerLabLanePriority(rules)
     # a declared class outranks everything
     declared = priority.handle(
         ModelLanePriorityRequest(
-            repo="omnibase_infra", ticket="OMN-20074", declared="process-fix"
+            repo="omnibase_infra", ticket="OMN-20074", declared="factory-fix"
         )
     )
-    assert (declared.priority_class, declared.source) == ("process-fix", "declared")
+    assert (declared.priority_class, declared.source) == ("factory-fix", "declared")
     # a name that is no class is no declaration
     junk = priority.handle(
         ModelLanePriorityRequest(repo="omnibase_infra", declared="urgent")
     )
-    assert (junk.priority_class, junk.source) == ("mvp-landing", "repository")
-    # a ticket the contract names outranks the repository (OCC retirement in an MVP repository)
+    assert (junk.priority_class, junk.source) == ("feature", "repository")
+    # a ticket the contract names outranks the repository
     ticket = priority.handle(
         ModelLanePriorityRequest(repo="omnibase_infra", ticket="OMN-20074")
     )
-    assert (ticket.priority_class, ticket.source) == ("occ-retirement", "ticket")
+    assert (ticket.priority_class, ticket.source) == ("factory-unblock", "ticket")
     # a child of a named parent takes the parent's class
     child = priority.handle(
         ModelLanePriorityRequest(
-            repo="omnibase_infra", ticket="OMN-1", parent="omn-20068"
+            repo="omnibase_infra", ticket="OMN-1", parent="omn-20074"
         )
     )
-    assert child.priority_class == "occ-retirement"
+    assert child.priority_class == "factory-unblock"
     # nothing named: default
     none = priority.handle(ModelLanePriorityRequest(repo="some_other_repo"))
     assert (none.priority_class, none.source) == ("other", "default")
@@ -131,19 +143,19 @@ def test_priority_class_of_repo_incident_lane_is_placed_where_it_was_held_back(
     )
     assert held is not None
     assert held.startswith(case["recorded_refusal"])
-    # GREEN: the repository gives the lane mvp-landing, which nothing holds a slot against
+    # GREEN: the repository gives the lane feature, which nothing holds a slot against
     result = priority.handle(request)
-    assert result.priority_class == "mvp-landing"
+    assert result.priority_class == "feature"
     assert result.admitted, result.refusal
 
 
 def test_priority_class_of_repo_holdback_still_holds_the_slot_for_a_lane_of_no_class(
     priority: HandlerLabLanePriority,
 ) -> None:
-    # negative control: the fix moves the lane that belongs to mvp-landing, not the holdback itself
+    # negative control: the fix moves the lane that belongs to feature, not the holdback itself
     result = priority.handle(
         ModelLanePriorityRequest(
-            repo="some_other_repo", free_slots=1, waiting=("mvp-landing",)
+            repo="some_other_repo", free_slots=1, waiting=("feature",)
         )
     )
     assert result.priority_class == "other"
@@ -165,7 +177,7 @@ def test_priority_class_of_repo_no_free_slot_still_refuses_every_class(
 ) -> None:
     result = priority.handle(
         ModelLanePriorityRequest(
-            repo=repo, free_slots=case["free_slots"], waiting=("mvp-landing",)
+            repo=repo, free_slots=case["free_slots"], waiting=("feature",)
         )
     )
     assert not result.admitted
@@ -176,11 +188,11 @@ def test_priority_class_of_repo_no_free_slot_still_refuses_every_class(
 def test_priority_class_of_repo_private_overlay_repositories_are_merged(
     priority: HandlerLabLanePriority,
 ) -> None:
-    private = {"process-fix": ("example_private_repo",)}
+    private = {"factory-fix": ("example_private_repo",)}
     named = priority.handle(
         ModelLanePriorityRequest(repo="example_private_repo", private_repos=private)
     )
-    assert (named.priority_class, named.source) == ("process-fix", "repository")
+    assert (named.priority_class, named.source) == ("factory-fix", "repository")
     # without the overlay the contract knows nothing of it
     unnamed = priority.handle(ModelLanePriorityRequest(repo="example_private_repo"))
     assert unnamed.priority_class == "other"
@@ -198,7 +210,7 @@ def test_priority_class_of_repo_pool_not_read_judges_only_the_class(
 ) -> None:
     result = priority.handle(ModelLanePriorityRequest(repo="omnibase_infra"))
     assert result.admitted
-    assert result.priority_class == "mvp-landing"
+    assert result.priority_class == "feature"
 
 
 SHIPPED = {"skills/a/SKILL.md": "b1", "scripts/run.py": "b2"}

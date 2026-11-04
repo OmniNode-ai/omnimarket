@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-22361
+title: The Linear snapshot writer emits linear-DATE.json with title, assignee, labels and description
+summary: Adds node_linear_snapshot_effect to omnimarket. It reads the signed-in subject's open Linear issues through the GraphQL API with the environment's LINEAR_API_KEY, follows every page, validates them with one typed model and writes linear-<UTC date>.json (id, title, status, statusType, assignee, labels, project, updatedAt, description per issue and operator, the resolved Linear user id, at the top). The lab fill generator reads that file for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22361-snapshot-json-writer
+  statement: A node writes the dated Linear snapshot JSON the lab fill generator and plans-today read, and refuses to write a list the read cut short.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the writer''s JSON carries id, title, status, statusType, assignee, labels, project, updatedAt and description per issue and operator at the top, validated by one typed model -- falsifier: uv run pytest -k snapshot_json_shape'
+evidence_requirements:
+- kind: tests
+  description: The writer's output shape, the typed model's refusals (literal me, an issue of another assignee), pagination, the refusal of a cut-short list, the unchanged file on a failed read, plans-today's sidecar and loader reading the output, and the node's registration.
+  command: uv run pytest tests/nodes/node_linear_snapshot_effect -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22361-ac2-snapshot-json-shape
+  description: The JSON carries every named field per issue and operator at the top, validated by ModelLinearSnapshot; plans-today's sidecar model and snapshot loader read it; a literal me or a foreign assignee is refused; every page is followed and a cut-short list is never written.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_linear_snapshot_effect -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn22361-deploy-linear-snapshot-node
+  description: 'Hosted source readback and runtime smoke with no Linear key, broker or lab route: read the handler at the checked-out revision through the GitHub contents API and require its bytes to match the handler exercised locally, then resolve node_linear_snapshot_effect through its onex.nodes entry point and write a snapshot from a fake two-issue Linear answer, requiring a written result with two issues and a JSON whose operator is the viewer id and whose issues carry the named fields.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      handler_path=src/omnimarket/nodes/node_linear_snapshot_effect/handlers/handler_linear_snapshot.py;
+      curl --fail --silent --show-error --location --connect-timeout 10 --max-time 60 \
+        -H "Authorization: Bearer ${GH_TOKEN:-${GITHUB_TOKEN:?GitHub token required}}" \
+        -H "Accept: application/vnd.github.raw+json" \
+        "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/$handler_path?ref=$(git rev-parse HEAD)" \
+        --output "$probe_dir/handler.py";
+      cmp "$probe_dir/handler.py" "$handler_path";
+      uv run --locked python -c '
+      import importlib, json, sys
+      from importlib.metadata import entry_points
+      from pathlib import Path
+      eps = {e.name: e.value for e in entry_points(group="onex.nodes")}
+      pkg = importlib.import_module(eps["node_linear_snapshot_effect"])
+      from omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot import ModelLinearSnapshotRequest
+      def node(n):
+          return {"identifier": "OMN-%d" % n, "title": "t", "description": "d", "updatedAt": "2026-11-03T00:00:00.000Z", "priority": 0, "priorityLabel": "No priority", "state": {"name": "Todo", "type": "unstarted"}, "assignee": {"id": "viewer-1"}, "labels": {"nodes": [{"name": "x"}]}, "project": {"name": "p"}}
+      def post(query, variables):
+          return {"viewer": {"id": "viewer-1"}, "issues": {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": [node(1), node(2)]}}
+      result = pkg.HandlerLinearSnapshot(post).handle(ModelLinearSnapshotRequest(out_dir=sys.argv[1], date="2026-11-03"))
+      assert result.status == "written" and result.issue_count == 2, result
+      doc = json.loads(Path(result.path).read_text())
+      assert doc["operator"] == "viewer-1" and len(doc["issues"]) == 2, doc
+      need = {"id", "title", "status", "statusType", "assignee", "labels", "project", "updatedAt", "description"}
+      assert need <= set(doc["issues"][0]), doc["issues"][0]
+      ' "$probe_dir";
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn22361-integration-proof
+  description: The pushed head ran the focused falsifier files on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-snapshot-json-1415 -- uv run --frozen pytest tests/nodes/node_linear_snapshot_effect -q --no-cov
+    cwd: .

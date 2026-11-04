@@ -936,8 +936,9 @@ function freshRows(rec, status, health, manifest, delegation){
   flag("Factory record", "Lines declared by the overlay", !!(d && d.state === "read"), d && d.state === "read" ? `${plural(d.plan_path_contains.length, "line", "lines")} declared` : (d && d.reason) || "");
   if (health) timed("Reports and series", "Process-health series", health.generated_at, healthNote(health));
   else rows.push({group: "Reports and series", name: "Process-health series", ok: false, flag: true, note: "not published"});
-  if (delegation) timed("Reports and series", "Delegation counts", delegation.generated_at);
-  else rows.push({group: "Reports and series", name: "Delegation counts", ok: false, flag: true, note: "no node writes this file yet"});
+  // Count snapshots predate the explicit read status; an unread report never supplies freshness.
+  if (delegation && (delegation.status === undefined || delegation.status === "read")) timed("Reports and series", "Delegation counts", delegation.generated_at);
+  else rows.push({group: "Reports and series", name: "Delegation counts", ok: false, flag: true, note: delegation && delegation.reason || "lab projection read unavailable"});
   if (manifest && Array.isArray(manifest.reports)){
     timed("Reports and series", "Reports manifest", manifest.published_at);
     // The record and the series are listed above from their own files, so their manifest rows are not listed twice.
@@ -995,6 +996,19 @@ function lamp(key, cls, head, small, word, why){
 
 function listWords(parts){
   return parts.length < 2 ? parts.join("") : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
+}
+
+function delegationCard(report){
+  const title = '<header><h2 id="delegationH">Delegation: local and escalated</h2><p>Real lab projection events. Runs count once per rung they touched; rung totals can overlap. Attempt outcomes are shown separately.</p></header>';
+  if (!report || report.status !== "read" || !report.windows) return `<section class="sec" aria-labelledby="delegationH">${title}<p class="unread">Unread: ${esc(report && report.reason || "lab delegation projection unavailable")}</p></section>`;
+  const stale = ageMs(report.generated_at) == null || ageMs(report.generated_at) > STALE_MIN * 60000;
+  const summaries = Object.entries(report.windows).map(([label, w]) => {
+    const rows = Object.entries(w.by_rung).map(([rung, r]) => `<tr><th>${esc(rung)}</th><td>${esc(r.runs)}</td><td>${esc(r.accepted_runs)}</td><td>${esc(r.refused_runs)}</td><td>${esc(r.failed_runs)}</td><td>${esc(r.unknown_runs)}</td></tr>`).join("");
+    const detail = w.rungs.map(r => `<tr><th>${esc(r.rung)}</th><td>${esc(r.model)}</td><td>${esc(r.host)}</td><td>${esc(r.runs)}</td><td>${esc(r.attempts)}</td><td>${esc(r.accepted)}</td><td>${esc(r.refused)}</td><td>${esc(r.failed)}</td><td>${esc(r.unknown)}</td></tr>`).join("");
+    return `<h3>${esc(label)}: ${esc(w.local_runs)} local / ${esc(w.total_runs)} delegated runs</h3><p>${esc(clock(w.start))} to ${esc(clock(w.end))}; ${esc(w.unattributed_runs)} runs have no attempt history. Terminal outcomes count for those runs; no attempts are invented.</p><div style="overflow-x:auto"><table><thead><tr><th>Rung</th><th>Runs</th><th>Accepted</th><th>Refused</th><th>Failed</th><th>Unknown</th></tr></thead><tbody>${rows}</tbody></table></div><details class="more"><summary>Models, hosts and attempt outcomes (${esc(label)})</summary><div style="overflow-x:auto"><table><thead><tr><th>Rung</th><th>Model</th><th>Host</th><th>Runs</th><th>Attempts</th><th>Accepted attempts</th><th>Refused attempts</th><th>Failed attempts</th><th>Unknown attempts</th></tr></thead><tbody>${detail}</tbody></table></div></details>`;
+  }).join("");
+  const endpoints = (report.endpoints || []).map(e => `<li>${esc(e.backend_id)} · ${esc(e.model_name)} · ${esc(e.host || "not recorded")} · ${e.diagnostic_only ? "physical probe" : "routing"}: ${esc(e.probe)}${e.checked_at ? ` at ${esc(clock(e.checked_at))}` : ""}${e.wall_seconds != null ? ` (${esc(e.wall_seconds)} s)` : ""}${e.source ? `; source: ${esc(e.source)}` : ""}</li>`).join("");
+  return `<section class="sec" id="delegation" aria-labelledby="delegationH">${title}<p class="${stale ? "unread" : "sub"}">${stale ? "STALE: " : "Read at "}${esc(clock(report.generated_at))}; positive control: ${esc(report.positive_control_rows)} stored events.</p><p>Newest local run: ${esc(report.latest_local ? clock(report.latest_local) : "never recorded")}</p><p>${esc(report.cause)}</p>${summaries}<h3>Local chat endpoint calls</h3><p>These checks use the production call handler. Unbound means no endpoint is configured, so a call cannot be sent; it does not measure physical server availability. Probes are excluded from traffic counts.</p><ul>${endpoints}</ul></section>`;
 }
 
 function renderDashboard(p){
@@ -1112,6 +1126,7 @@ function renderDashboard(p){
         <div class="mrows">${rowsM.join("")}</div>
       </section>
     </div>
+    ${delegationCard(p.delegation)}
     <section class="sec" aria-labelledby="freshH">
       <header><h2 id="freshH">How fresh each source is</h2><p>${esc(freshLine)}. A source is out of date after ${STALE_MIN} minutes.</p></header>
       ${notFresh ? `<div class="fresh">${fresh.problems}</div>` : ""}

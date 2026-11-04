@@ -402,9 +402,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_agent_inbox_spool is called in process with an injected bus and clock
     # and reads with one stable group per host, not by a bus command, so it is
     # experimental with no handler_routing: 34 -> 35.
+    # node_linear_snapshot_effect is run by `python -m` from the plans-today skill, not
+    # by a bus command, so it is experimental with no handler_routing.
     # node_host_installer_net_units is called in process by the host installer
-    # and declares no handler_routing, so it is experimental: 35 -> 36.
-    assert summary["skipped"] == 36
+    # and declares no handler_routing, so it is experimental: 35 -> 37.
+    assert summary["skipped"] == 37
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
