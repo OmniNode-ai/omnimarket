@@ -73,6 +73,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the recorded completed session with rejected weekly telemetry and 167 credit remains eligible; the recorded weekly-limit error session closes limited and records a hold; zero recorded credit excludes an account, while rate-only readings and migrated inferred holds do not -- falsifier: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect'
+  - id: req-omn19998-process-range
+    statement: The Process page plots a chosen measure and recalculates details for the selected range against the immediately preceding equal-length window.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: selected ranges change counts; browser values match the typed compute for counts, shares, durations and medians; partial coverage and sub-bucket ranges remain unmeasured; custom times use Eastern across clock changes -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov'
   - id: req-omn19998-host-model-serving
     statement: A typed lab host declares model serving independently of lane and unit placement, defaulting to its existing availability when omitted.
     acceptance:
@@ -313,4 +318,23 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_hold_subscription_rate.py -q --no-cov --confcutdir=tests/nodes/node_cloud_session_placement_effect -k recorded_session_reader
+        cwd: .
+
+  - id: dod-omn19998-process-range
+    description: The shipped browser reducer is exercised against typed compute fixtures over four selected ranges, including source gaps, ratios, medians and duplicate records. This focused proof does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_process_range.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-process-range-deploy
+    description: Hosted source smoke verifies that the existing process-health handler emits the overlay consumed by the published Process page. Live publication follows the existing publish effect after merge.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -q --no-cov
         cwd: .
