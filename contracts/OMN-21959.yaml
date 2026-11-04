@@ -22,6 +22,13 @@ requirements:
         statement: 'open_bound_bus resolves this lane''s recorded non-decision bus-binding-degraded rows on a healthy durable command with empty outbox, without needing remembered episode, while decision rows and rows with queued requests stay open -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k "recorded_row_left_open or decision_row or requests_still_queued"'
       - id: AC5
         statement: 'one degraded episode appends only one alarm row even after external closure, and a subsequent episode appends a new row -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_bus_binding_reducer/test_bus_binding_degraded_wired.py --no-cov -q -k episode'
+  - id: req-omn21959-refusal-disposition-source
+    statement: Validate supplied refusal-disposition evidence without enacting a disposition or switching a caller.
+    acceptance:
+      - id: AC6
+        statement: 'The source validator accepts the three explicitly approved reason controls only with exact request, artifact-byte and canonical evidence bindings; absent, changed, malformed, mismatched, conflicting, revoked, expired or incomplete evidence and additional unknown artifacts remain blocked -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ledger_refusal_disposition_compute/test_refusal_disposition.py -q --no-cov -o addopts= -p no:randomly'
+      - id: AC7
+        statement: 'The positive reason controls read no environment or filesystem state, selected CLAIM, TERMINAL, legacy and unknown rows block before state-dependent grammar validation, and unrelated history remains available for revocation checks -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ledger_refusal_disposition_compute/test_refusal_disposition.py -q --no-cov -o addopts= -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The bus-binding suites run at the pushed head on a lab host.
@@ -146,4 +153,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py -q --no-cov --tb=line -k the_replay_settles_the_two_recorded_rows_and_appends_nothing
+        cwd: .
+  - id: dod-omn21959-refusal-disposition-source
+    description: Synthetic snapshot tests bind AC6 and AC7 to the source-only validator, including all three reason controls, fail-closed evidence cases, purity guards and prior false-admission regressions. The tests require the new node, which is absent at the merge base; no live refusal is adjudicated and no caller integration or deployment is asserted.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac:
+      - AC6
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ledger_refusal_disposition_compute/test_refusal_disposition.py -q --no-cov -o addopts= -p no:randomly
         cwd: .
