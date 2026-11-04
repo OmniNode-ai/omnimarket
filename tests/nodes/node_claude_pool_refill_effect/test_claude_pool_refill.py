@@ -60,6 +60,33 @@ probe:
 """
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_lab_hosts_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+
+
+def test_the_lab_hosts_overlay_is_the_host_table_before_the_overlays_own_relative_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
+    roots = tmp_path / "roots"
+    (roots / "lab_hosts").mkdir(parents=True)
+    (roots / "lab_hosts" / "overlay.yaml").write_text(
+        "hosts:\n  - {name: hr, target: reader.ts.net}\n  - {name: h1, target: one.ts.net}\n"
+        "  - {name: h2, target: two.ts.net}\n  - {name: h3, target: three.ts.net}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(roots))
+    overlay = _overlay(tmp_path)
+    assert overlay.reader.target == "reader.ts.net"
+    assert [host.target for host in overlay.hosts] == [
+        "one.ts.net",
+        "two.ts.net",
+        "three.ts.net",
+    ]
+
+
 def _overlay(tmp_path: Path) -> Any:
     lab = tmp_path / refill_mod.OVERLAY_REL.parent
     lab.mkdir(parents=True)

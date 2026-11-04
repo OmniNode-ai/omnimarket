@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-21967
+title: Registered ledger HOLDs enter the exception queue as readback-gated stops
+summary: >-
+  The exception queue's ledger detector reconciles in-force HOLDs before a bound
+  open_stops read. Registered classes emit with the contract's opening role and
+  receive the named swarm lane's lease. Durable HOLD identities survive queue
+  resolution. RELEASE prevents first ingestion but never clears an existing stop.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn21967-ledger-holds
+    statement: The exception queue detects registered ledger HOLDs, preserves readback-gated stops across RELEASE and reports unregistered classes.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: with the two HOLD rows above on a fixture ledger, open_stops returns a stop for each key and class -- falsifier: uv run pytest -k andon_hold_opens_stop -q in omnimarket'
+      - id: AC2
+        statement: 'AC2: a RELEASE row naming re=<id> clears nothing on its own and the stop keeps its readback -- falsifier: uv run pytest -k andon_release_keeps_readback -q in omnimarket'
+      - id: AC3
+        statement: 'AC3: a HOLD row of an unregistered class opens no stop and is reported -- falsifier: uv run pytest -k andon_unregistered_class_reported -q in omnimarket'
+evidence_requirements:
+  - kind: tests
+    description: Ledger HOLD detector, RELEASE retention, replay and runtime bus adapter tests.
+    command: uv run pytest tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21967-ac1
+    description: The two fixture HOLDs open stops with their registered class, scope keys and swarm leases; rereading changes no queue record or lease.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -k andon_hold_opens_stop -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn21967-ac2
+    description: Matching RELEASE rows preserve the existing stops and their readback commands.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -k andon_release_keeps_readback -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov
+        cwd: .
+    binds_ac: [AC2]
+  - id: dod-omn21967-ac3
+    description: An unknown class returns a named detector report and creates no exception queue stop.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -k andon_unregistered_class_reported -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov
+        cwd: .
+    binds_ac: [AC3]
+  - id: dod-omn21967-deploy-detector
+    description: >-
+      Hosted-runner artifact readback compares the published detector at the
+      evaluated revision with the checkout. The behavior probe runs the contract's
+      detector through the runtime bus adapter with an in-memory bus and fixture
+      files. This checks the source artifact and portable runtime route, not a
+      running production deployment; no lab network or production service is used.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_exception_queue_effect/handlers/handler_andon_ledger_holds.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'from pathlib import Path; import sys; actual = sys.stdin.read(); expected = Path("src/omnimarket/nodes/node_exception_queue_effect/handlers/handler_andon_ledger_holds.py").read_text(); assert actual == expected; print("published detector matches evaluated revision")'
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest -k andon_hold_deploy_bus_route -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov
+        cwd: .
+    binds_ac: [AC1]
+  - id: dod-omn21967-integration-proof
+    description: >-
+      Run the pushed revision's detector and runtime-adapter fixture tests on a
+      lab host with its installed dependencies. This local Done-gate check remains
+      pending until the publishing runner has pushed the revision; hosted CI
+      cannot place work on the lab.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21967 -- uv run --frozen pytest tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py -q --no-cov
+        cwd: .

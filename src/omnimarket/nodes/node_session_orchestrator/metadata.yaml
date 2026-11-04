@@ -15,7 +15,6 @@ capabilities:
   side_effect_class: mutating
 dependencies:
   - "omnibase_core>=0.39.0"
-  - "omnibase_compat"
   - "omnibase-infra>=0.38.3,<0.39.0"
   - "pyyaml>=6.0"
   - "aiokafka>=0.10.0"

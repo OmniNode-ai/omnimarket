@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.nodes.node_architecture_discovery_orchestrator.broker_overlay_support import (
+    install_broker_overlays,
+)
+
 REPO = Path(__file__).resolve().parents[3]
 NODE = REPO / "src/omnimarket/nodes/node_architecture_discovery_orchestrator"
 OVERLAY = {
@@ -285,7 +289,7 @@ def test_discovery_lab_inprocess_bus_dispatch(
             ).result()
 
     monkeypatch.setattr(handler_coding_agent_bus, "publish_and_poll", publish)
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fixture:9092")
+    install_broker_overlays(tmp_path, monkeypatch, {"type": "kafka", "lane": "dev"})
     monkeypatch.setenv("ONEX_CODING_AGENT_WORKSPACE_ROOT", str(tmp_path))
     request = ModelDiscoveryRequest(
         date="2026-10-06", workspace_path=str(tmp_path), overlay=OVERLAY
@@ -310,7 +314,10 @@ def test_discovery_lab_inprocess_bus_dispatch(
     assert validations == [str(tmp_path)] * 6
 
 
-def test_discovery_bus_refuses_missing_broker(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_discovery_bus_refuses_a_node_whose_overlay_declares_no_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.handlers.bus_binding.node_broker import NodeBrokerResolutionError
     from omnimarket.nodes.node_architecture_discovery_orchestrator.handlers import (
         HandlerArchitectureDiscovery,
     )
@@ -318,8 +325,9 @@ def test_discovery_bus_refuses_missing_broker(monkeypatch: pytest.MonkeyPatch) -
         ModelDiscoveryRequest,
     )
 
-    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
-    with pytest.raises(ValueError, match="KAFKA_BOOTSTRAP_SERVERS is required"):
+    install_broker_overlays(tmp_path, monkeypatch, None)
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "ambient-wrong-broker:1")
+    with pytest.raises(NodeBrokerResolutionError, match="declares no event_bus"):
         HandlerArchitectureDiscovery().handle(
             ModelDiscoveryRequest(
                 date="2026-10-06", workspace_path="/fixture/worktree", overlay=OVERLAY
@@ -328,7 +336,7 @@ def test_discovery_bus_refuses_missing_broker(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_workspace_rejection_stops_agent_invocation(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from typing import Any
     from uuid import uuid4
@@ -352,7 +360,7 @@ def test_workspace_rejection_stops_agent_invocation(
             }
         }
 
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "fixture:9092")
+    install_broker_overlays(tmp_path, monkeypatch, {"type": "kafka", "lane": "dev"})
     monkeypatch.setenv("ONEX_CODING_AGENT_WORKSPACE_ROOT", "/allowed")
     task = ModelDiscoveryTask(
         label="discovery-linear",

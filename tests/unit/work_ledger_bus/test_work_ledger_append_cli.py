@@ -525,8 +525,14 @@ def test_serve_resolves_writer_list_and_optional_operator(
     monkeypatch.delenv("ONEX_WORK_LEDGER_OPERATOR_PRINCIPAL")
     identities: list[tuple[tuple[str, ...], str | None]] = []
 
-    def handler(*args: object, **kwargs: object) -> HandlerWorkLedgerAppendEffect:
-        identities.append((kwargs["writer_principals"], kwargs["operator_principal"]))
+    def handler(
+        runner: object,
+        ledger: Path,
+        host_name: str,
+        writer_principals: tuple[str, ...],
+        operator_principal: str | None,
+    ) -> HandlerWorkLedgerAppendEffect:
+        identities.append((writer_principals, operator_principal))
         return HandlerWorkLedgerAppendEffect()
 
     class UnavailableBus:
@@ -539,7 +545,7 @@ def test_serve_resolves_writer_list_and_optional_operator(
     def unavailable(**kwargs: object) -> UnavailableBus:
         return UnavailableBus()
 
-    monkeypatch.setattr(cli, "HandlerWorkLedgerAppendEffect", handler)
+    monkeypatch.setattr(cli, "local_serve_handler", handler)
     monkeypatch.setattr(cli, "open_lab_run_bus", unavailable)
     result = CliRunner().invoke(
         work_ledger_group,
