@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: HandlerInferenceCredentialCreate
+#
+# Register one BYOK inference credential for the caller tenant: derive the reference from the Idempotency-Key, write the key to the secret store, publish credential-registered. Answers only through the runtime HTTP mount. Refuses every request with no resolved tenant before any store write or publish.
+name: "node_inference_credential_create"
+contract_name: "node_inference_credential_create"
+node_name: "node_inference_credential_create"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  Register one BYOK inference credential for the caller tenant: derive the reference from the Idempotency-Key, write the key to the secret store, publish credential-registered. Answers only through the runtime HTTP mount. Refuses every request with no resolved tenant before any store write or publish.
+input_model:
+  name: "ModelInferenceCredentialCreateRequest"
+  module: "omnimarket.models.model_inference_credential_create_request"
+  description: "Customer body: name, provider, key_value and optional plan, model, expiry; no caller-supplied api_key_ref or tenant_id."
+output_model:
+  name: "ModelInferenceCredentialResponse"
+  module: "omnimarket.projection.credential_publisher"
+  description: "Reference and metadata, never the key value."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics: []
+  publish_topics:
+    - "onex.evt.omnimarket.credential-registered.v1"
+published_events:
+  - topic: "onex.evt.omnimarket.credential-registered.v1"
+    event_type: "ModelCredentialRegisteredEvent"
+    description: "A credential was registered: tenant, provider, name, reference and metadata, never the value."
+# The group's one HTTP mount. The narrowest prefix, equal to the POST and GET
+# path; the DELETE path sits under it. Exactly one of the three contracts
+# declares it.
+http_mount:
+  factory: "omnimarket.nodes.node_inference_credential_create.handlers.http_app:create_app"
+  path_prefix: "/v1/tenants/me/inference-credentials"
+http_route_group:
+  nodes:
+    - node_inference_credential_create
+    - node_inference_credential_list
+    - node_inference_credential_revoke
+# The route this node serves through the group's one HTTP mount. The mounted app
+# holds no path of its own; it reads this block and builds the route from it.
+http_route:
+  method: POST
+  path: "/v1/tenants/me/inference-credentials"
+  success_status: 201
+  handler:
+    name: HandlerInferenceCredentialCreate
+    module: omnimarket.nodes.node_inference_credential_create.handlers.handler_inference_credential_create
+  input_schema:
+    type: object
+    required: [name, provider, key_value]
+    properties:
+      name: {type: string, minLength: 1, maxLength: 100}
+      provider: {type: string, minLength: 1, maxLength: 100, pattern: "^[A-Za-z0-9_-]+$"}
+      key_value: {type: string, minLength: 1}
+    additionalProperties: false
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves secrets by logical name. The reference-derivation key is the logical name inference.credentials.ref_hmac_key. The caller tenant comes from the bound ProtocolHttpTenantIdentity, never from a request value."
+    required: false
+capabilities:
+  - name: "node_inference_credential_create_http"
+    description: "Register a BYOK credential for the caller tenant through the runtime mount."
+metadata:
+  description: "Register one BYOK inference credential for the caller tenant: derive the reference from the Idempotency-Key, write the key to the secret store, publish credential-registered. Answers only through the runtime HTTP mount. Refuses every request with no resolved tenant before any store write or publish."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22340"
+  # Experimental until the cutover: the route is served over HTTP only, so the
+  # contract declares no consumed topic, and the identity resolver the hosted
+  # edge binds does not exist yet.
+  lifecycle: experimental
+  tags:
+    - "effect"
+    - "http"
+    - "byok"

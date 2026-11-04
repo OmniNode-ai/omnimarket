@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: HandlerInferenceCredentialRevoke
+#
+# Revoke one credential the caller tenant owns: check ownership against the projection, delete the store entry, then publish credential-revoked. A reference owned by another tenant answers 404 and runs no store call. Refuses every request with no resolved tenant first.
+name: "node_inference_credential_revoke"
+contract_name: "node_inference_credential_revoke"
+node_name: "node_inference_credential_revoke"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  Revoke one credential the caller tenant owns: check ownership against the projection, delete the store entry, then publish credential-revoked. A reference owned by another tenant answers 404 and runs no store call. Refuses every request with no resolved tenant first.
+input_model:
+  name: "ModelInferenceCredentialHttpCall"
+  module: "omnimarket.models.model_inference_credential_http"
+  description: "The authenticated request: caller tenant and the api_key_ref path value."
+output_model:
+  name: "ModelInferenceCredentialRevokeResponse"
+  module: "omnimarket.projection.credential_publisher"
+  description: "The revoked reference and its status."
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics: []
+  publish_topics:
+    - "onex.evt.omnimarket.credential-revoked.v1"
+published_events:
+  - topic: "onex.evt.omnimarket.credential-revoked.v1"
+    event_type: "ModelCredentialRevokedEvent"
+    description: "A credential was revoked: tenant and reference."
+# The route this node serves through the group's one HTTP mount. The mounted app
+# holds no path of its own; it reads this block and builds the route from it.
+http_route:
+  method: DELETE
+  path: "/v1/tenants/me/inference-credentials/{api_key_ref}"
+  success_status: 200
+  handler:
+    name: HandlerInferenceCredentialRevoke
+    module: omnimarket.nodes.node_inference_credential_revoke.handlers.handler_inference_credential_revoke
+  max_path_param_length: 300
+  input_schema: {type: object, properties: {}, additionalProperties: true}
+dependencies:
+  - name: "secret_resolver"
+    type: "service"
+    class_name: "SecretResolver"
+    module: "omnibase_infra.runtime.secret_resolver"
+    description: "Resolves secrets by logical name. The store delete is reached through a DI-bound secret store; the identity resolver is bound by the hosted edge."
+    required: false
+capabilities:
+  - name: "node_inference_credential_revoke_http"
+    description: "Revoke an owned credential after a tenant-scoped ownership check."
+metadata:
+  description: "Revoke one credential the caller tenant owns: check ownership against the projection, delete the store entry, then publish credential-revoked. A reference owned by another tenant answers 404 and runs no store call. Refuses every request with no resolved tenant first."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22340"
+  # Experimental until the cutover: the route is served over HTTP only, so the
+  # contract declares no consumed topic, and the identity resolver the hosted
+  # edge binds does not exist yet.
+  lifecycle: experimental
+  tags:
+    - "effect"
+    - "http"
+    - "byok"

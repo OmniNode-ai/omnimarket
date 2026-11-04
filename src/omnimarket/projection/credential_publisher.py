@@ -620,6 +620,7 @@ async def register_inference_credential(
     model_discoverer: Callable[
         ..., Awaitable[ModelByokModelDiscovery]
     ] = discover_byok_model,
+    api_key_ref: str | None = None,
 ) -> ModelInferenceCredentialResponse:
     """Perform the value->ref exchange and thin-publish credential-registered.
 
@@ -663,7 +664,6 @@ async def register_inference_credential(
         CredentialStoreWriteRejectedError: the store declined the write.
     """
     plan, detected_model = await _resolve_registration_plan(request, plan_detector)
-    model: str | None
     if request.models:
         for choice in request.models:
             await _resolve_registration_model(
@@ -672,7 +672,7 @@ async def register_inference_credential(
                 detected_model,
                 model_discoverer,
             )
-        model = request.models[0]
+        model: str | None = request.models[0]
     else:
         # OMN-20157: with no choice, a provider whose customer chooses the model
         # refuses not_chosen here, before anything is stored; any other reads
@@ -680,7 +680,7 @@ async def register_inference_credential(
         model = await _resolve_registration_model(
             request, plan, detected_model, model_discoverer
         )
-    api_key_ref = mint_api_key_ref(tenant_id, request.provider)
+    api_key_ref = api_key_ref or mint_api_key_ref(tenant_id, request.provider)
 
     owns_store = secret_store is None
     store = secret_store if secret_store is not None else _build_secret_store()
