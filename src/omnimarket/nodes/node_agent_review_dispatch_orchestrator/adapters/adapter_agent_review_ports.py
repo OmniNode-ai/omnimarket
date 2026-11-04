@@ -38,6 +38,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
@@ -514,6 +515,9 @@ class SystemClock:
 
     def new_id(self) -> str:
         return str(uuid.uuid4())
+
+    def monotonic(self) -> float:
+        return time.monotonic()
 
 
 # -- the signer ------------------------------------------------------------------------

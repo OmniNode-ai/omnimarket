@@ -78,6 +78,8 @@ class ProtocolAgentReviewClock(Protocol):
 
     def new_id(self) -> str: ...
 
+    def monotonic(self) -> float: ...
+
 
 __all__ = [
     "ProtocolAgentReceiptStore",

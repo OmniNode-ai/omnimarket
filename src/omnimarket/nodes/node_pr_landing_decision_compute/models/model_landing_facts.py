@@ -169,6 +169,15 @@ class ModelLandingPrFacts(BaseModel):
     process_fix: bool = Field(
         default=False, description="Carries the process-fix tag (R4)."
     )
+    priority_class: str | None = Field(
+        default=None,
+        description=(
+            "The lane priority class of the PR's ticket (its Class line, else the "
+            "repository rule), a class of the lab placement contract (R4). None, or "
+            "a name that is no class: process_fix PRs take the contract's factory "
+            "class, every other PR the last class."
+        ),
+    )
     created_at: datetime
     parents: tuple[str, ...] = Field(
         default=(),
