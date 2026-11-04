@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-18883
+title: Retire the per-projection writer classes; route projection writes through a generic effect node so rule 7a holds with no exception
+summary: node_projection_write_effect persists a pure fold's typed result (ModelProjectionFoldResult) as one targeted-column UPSERT per row through the core upsert plan. The database handle is the handler's constructor dependency and the envelope metadata is a typed field of ModelProjectionWriteRequest, so no key is injected into a payload dict. This change lands AC1; the conversions, the baseline and the two checks are later slices.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn18883-generic-write-node
+  statement: A generic projection-write effect node persists a fold's typed result through the effect boundary.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A generic projection-write effect node persists the fold''s typed result, taking the database handle and envelope metadata through the effect boundary rather than through keys injected into a payload dict. -- falsifier: an integration test under the repo''s real-Postgres idiom drives the effect node with a fold result and asserts the row exists, and a companion test asserts the fold module imports no database adapter.'
+evidence_requirements:
+- kind: tests
+  description: The unit tests drive the handler with a recording database; the integration test drives it through a real AsyncpgAdapter against Postgres and reads the rows back.
+  command: uv run pytest tests/test_golden_chain_projection_write_effect.py tests/test_omn18883_projection_write_effect_real_postgres.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn18883-ac1-unit
+  description: AC1 the handler renders one UPSERT per row, binds a TIMESTAMPTZ as a datetime, passes the envelope tenant to the adapter, refuses an unsafe identifier before any statement, the request model has no injected keys, and the fold-result model module imports no database adapter. At the merge base the node does not exist, so these fail on import.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_write_effect.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn18883-ac1-real-postgres
+  description: AC1 the effect node writes a fold result through a real AsyncpgAdapter and the rows exist in Postgres, with UUID, TIMESTAMPTZ and JSONB columns bound as their own types and a second write updating in place.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn18883_projection_write_effect_real_postgres.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn18883-deploy-probe
+  description: 'Deploy probe: the node contract GitHub serves at the checked-out commit names HandlerProjectionWrite, which the merge base lacks.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_write_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class: HandlerProjectionWrite" > /dev/null'
+    cwd: .
