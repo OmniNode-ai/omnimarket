@@ -37,3 +37,18 @@ dod_evidence:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19998 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov
         cwd: .
+  - id: dod-omn19998-code-edit-scope-move
+    description: The scope node preserves the six derivation cases and its installed contract routes a bus request to a completed event. This migration check does not assert the controller timer criteria.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_code_edit_scope_node.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-code-edit-scope-deploy
+    description: The published revision contains the scope entry point; the focused runtime test separately exercises its command and terminal topics through infra auto-wiring.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_code_edit_scope_compute/node.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def derive_scope("'
+        cwd: .
