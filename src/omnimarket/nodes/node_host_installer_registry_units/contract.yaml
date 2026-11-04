@@ -66,3 +66,28 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
     state_directory: .onex_state/factory-floor-publish
+  silent-failure-alarm:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.silent-failure-alarm
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm
+    entry_file: src/omnimarket/nodes/node_silent_failure_alarm_effect/runtime_silent_failure_alarm.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SILENT_FAILURE_ALARM_CONFIG
+    environment:
+      ONEX_SILENT_FAILURE_ALARM_CONFIG: "{home}/.local/state/omni/silent-failure-alarm/config.json"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/silent-failure-alarm/last-run.json
+    state_directory: .onex_state/silent-failure-alarm

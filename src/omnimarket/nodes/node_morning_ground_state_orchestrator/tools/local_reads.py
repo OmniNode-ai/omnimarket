@@ -675,10 +675,15 @@ def morning_readme(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
     if p.heading is None:
         return {"headings": cast(JsonValue, [h for _, h in headings])}
     needle = p.heading.lower().lstrip("# ").strip()
-    match = next(((i, h) for i, h in headings if needle in h.lower()), None)
-    if match is None:
+    exact = [(i, h) for i, h in headings if needle == h.lower().lstrip("# ").strip()]
+    matches = exact or [(i, h) for i, h in headings if needle in h.lower()]
+    if not matches:
         raise MorningToolRefusalError(f"no heading contains {p.heading!r}")
-    start, heading = match
+    if len(matches) > 1:
+        raise MorningToolRefusalError(
+            f"ambiguous heading {p.heading!r}; matches: {[h for _, h in matches]}"
+        )
+    start, heading = matches[0]
     level = len(heading) - len(heading.lstrip("#"))
     end = next(
         (i for i, h in headings if i > start and len(h) - len(h.lstrip("#")) <= level),

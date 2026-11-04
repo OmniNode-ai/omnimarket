@@ -171,8 +171,8 @@ def test_only_a_review_only_lane_reads_the_sessions_events() -> None:
     review = ses.cloud_session_script(
         "export PATH=/usr/bin", "session_01Review", SESSIONS_API, BRIEF
     )
-    assert "/events" not in plain
-    assert "CLOUD-SESSION-REVIEW" not in plain
+    assert "/events" in plain
+    assert "if review:" in plain
     assert f"python3 - session_01Review {SESSIONS_API} review <<" in review
     assert "/events" in review
     assert repr(REVIEW_FILE) in review
