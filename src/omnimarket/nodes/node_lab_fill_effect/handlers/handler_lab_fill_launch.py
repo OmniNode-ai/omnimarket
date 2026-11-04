@@ -21,6 +21,9 @@ from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaun
 from omnimarket.models.model_internal_release_path_guard import (
     ModelInternalReleasePathGuardRequest,
 )
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    priority_class_args,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
@@ -49,12 +52,16 @@ _BRIEF_CHECK = re.compile(r"REMOTE-LANE-(?:MINT|TIMEOUT)-REFUSED\b.*")
 _TIMED_OUT = 124
 
 
-def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
+def runner_args(
+    launch: ModelLabFillLaunch, brief_path: str, ticket_text: str = ""
+) -> list[str]:
     """The arguments after the runner script, in the order the workflow built them.
 
     ``--host`` only for pinned work; ``--ref`` only with a repo. ``--placement auto``
     (OMN-21881) carries no ``--host``: a pinned host refuses a cloud session, so the
     runner picks the lab host and takes a cloud session only when none admits the lane.
+    ``--priority-class`` is the class the ticket's ``Class:`` line names in ``ticket_text``, else absent
+    (OMN-22122).
     """
     args = [
         "run",
@@ -80,6 +87,7 @@ def runner_args(launch: ModelLabFillLaunch, brief_path: str) -> list[str]:
             args += ["--ref", launch.ref]
     if launch.pr:
         args += ["--pr", launch.pr]
+    args += priority_class_args(ticket_text)
     args.append("--detach")
     return args
 
@@ -252,7 +260,7 @@ class HandlerLabFillLaunch:
             )
         try:
             outcome = self._runner.run(
-                runner_args(launch, brief_path),
+                runner_args(launch, brief_path, full),
                 env={"ONEX_LEDGER_PATH": request.ledger_path},
                 timeout_s=left,
             )

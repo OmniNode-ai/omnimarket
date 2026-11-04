@@ -71,6 +71,8 @@ class ModelMergeSweepLaneRunRequest(BaseModel):
     model: str
     parent: str
     ticket: str
+    #: The ticket's text as fetched at dispatch; its ``Class:`` line gives the lane's ``--priority-class`` (OMN-22122).
+    ticket_text: str = ""
     prs: list[str] = Field(default_factory=list)
     repo: str | None = None
     host: str | None = None

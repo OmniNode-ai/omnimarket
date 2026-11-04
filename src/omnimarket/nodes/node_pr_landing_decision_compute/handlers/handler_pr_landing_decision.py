@@ -73,12 +73,19 @@ import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import cache
 
 from omnimarket.handlers.cause_signature import (
     CAUSE_PREFIX,
     UNREAD,
     cause_key,
     normalize_signature,
+)
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    load_priority_rules,
+)
+from omnimarket.nodes.node_lab_placement_compute.models.model_lab_lane_priority import (
+    ModelPriorityRules,
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
@@ -2005,16 +2012,47 @@ class LandingCoverageError(RuntimeError):
     """
 
 
+@cache
+def _priority_rules() -> ModelPriorityRules:
+    """The lane priority classes, highest first, defined once in the lab placement contract."""
+    return load_priority_rules()
+
+
+def _class_rank(p: ModelLandingPrFacts) -> int:
+    """Where the PR's lane priority class stands in the contract's order; 0 is first."""
+    rules = _priority_rules()
+    cls = p.priority_class
+    if cls not in rules.classes:
+        cls = rules.factory_class if p.process_fix else rules.classes[-1]
+    return rules.classes.index(str(cls))
+
+
+def _cause_fix_prs(t: _Tick) -> set[str]:
+    """The PRs that are the fix a shared cause is waiting on."""
+    return {
+        rec.fix_ref
+        for rec in t.causes.values()
+        if rec.fix_ref and rec.outcome is EnumLandingOutcome.CAUSE_FIX_SUBMITTED
+    }
+
+
 def _priority(
-    t: _Tick, p: ModelLandingPrFacts
-) -> tuple[bool, int, bool, datetime, str]:
-    """R4: green and mergeable, chain root by PRs unblocked, process-fix, age."""
+    t: _Tick, p: ModelLandingPrFacts, cause_fixes: set[str]
+) -> tuple[bool, bool, int, int, datetime, str]:
+    """R4: green and mergeable, a cause fix, chain root by PRs unblocked, lane priority class, age."""
     unblocks = sum(
         1
         for q in t.prs.values()
         if q.state is EnumLandingPrState.OPEN and p.pr in q.parents
     )
-    return (not _mergeable(p), -unblocks, not p.process_fix, p.created_at, p.pr)
+    return (
+        not _mergeable(p),
+        p.pr not in cause_fixes,
+        -unblocks,
+        _class_rank(p),
+        p.created_at,
+        p.pr,
+    )
 
 
 # ---------------------------------------------------------------------- tick
@@ -2063,7 +2101,8 @@ def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
     _advance_causes(t)
     _form_causes(t)
     _dispatch_causes(t)
-    for p in sorted(t.prs.values(), key=lambda p: _priority(t, p)):
+    cause_fixes = _cause_fix_prs(t)
+    for p in sorted(t.prs.values(), key=lambda p: _priority(t, p, cause_fixes)):
         _product_pr(t, p)
     # The tick is local to this call: a raise here leaves no decision, no
     # action and no state behind, so the caller has nothing to act on.

@@ -4,6 +4,7 @@
 
 from .model_lab_lane_priority import (
     PRIORITY_OTHER,
+    ModelLanePriorityOverlay,
     ModelLanePriorityRequest,
     ModelLanePriorityResult,
     ModelParityRules,
@@ -45,6 +46,7 @@ __all__ = [
     "ModelLabPlacementRequest",
     "ModelLabPlacementResult",
     "ModelLabPoolPlaceRequest",
+    "ModelLanePriorityOverlay",
     "ModelLanePriorityRequest",
     "ModelLanePriorityResult",
     "ModelParityRules",
