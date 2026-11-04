@@ -17,10 +17,9 @@ import hashlib
 import json
 import os
 import shlex
-import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -30,6 +29,21 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+    HandlerDelegationReport,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+    PublishRefusedError as PublishRefusedError,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+    Runner as Runner,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+    run_process as run_process,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
+    ModelDelegationReportRequest,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelDeclaredLines,
@@ -47,36 +61,9 @@ NODE_NAME = "node_factory_floor_publish_effect"
 NODE_DIR = Path(__file__).resolve().parents[1]
 OWN_CONTRACT = NODE_DIR / "contract.yaml"
 
-Runner = Callable[
-    [Sequence[str], bytes | None, int], "subprocess.CompletedProcess[bytes]"
-]
-
-
 SSH_CONNECTION_ERROR = 255
 SSH_CONNECT_RETRIES = 2
 SSH_RETRY_SECONDS = 10.0
-
-
-class PublishRefusedError(RuntimeError):
-    """A source, setting or transfer is missing or failed; the message names it and the fix."""
-
-
-def run_process(
-    argv: Sequence[str], stdin: bytes | None, timeout: int
-) -> subprocess.CompletedProcess[bytes]:
-    """The one subprocess boundary of this node; tests replace it."""
-    try:
-        return subprocess.run(
-            list(argv), input=stdin, capture_output=True, timeout=timeout, check=False
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise PublishRefusedError(
-            f"{argv[0]} did not finish within {timeout} s"
-        ) from exc
-    except OSError as exc:
-        raise PublishRefusedError(
-            f"{argv[0]} could not start ({type(exc).__name__})"
-        ) from exc
 
 
 def load_runtime(contract_path: Path = OWN_CONTRACT) -> ModelFactoryFloorPublishRuntime:
@@ -267,6 +254,13 @@ class HandlerFactoryFloorPublish:
             for name in rt.names.theme_css
         ]
         health = self._read_process_health(home / rt.process_health_relpath)
+        if not request.skip_refresh or request.refresh_delegation:
+            reading = HandlerDelegationReport(self._run).handle(
+                ModelDelegationReportRequest(probe=True), environ=env
+            )
+            write_atomic(
+                home / rt.delegation_relpath, json.dumps(reading.report).encode()
+            )
         delegation = self._read_delegation(home / rt.delegation_relpath)
         status = json.dumps(
             {

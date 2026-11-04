@@ -73,6 +73,37 @@ async def test_a_valid_passing_receipt_with_degraded_voters_passes_agent(
     assert call.receipt["id"] == "rcpt-1"
 
 
+async def test_both_voters_answering_503_with_no_verdict_pass_on_a_chain_receipt(
+    make_gate: MakeGate,
+) -> None:
+    """The recorded failed reviewer run: both voters 503, the result file holds no quorum
+    verdict at all (NO VERDICT). A receipt of the review chain, verified for this head,
+    is the vote; without one the run stays unchanged, never a pass."""
+    no_verdict = result_file(
+        voter("voter-1", error=CREDIT_ERROR),
+        voter("voter-2", error=UNAVAILABLE_ERROR),
+        verdict=None,
+    )
+    gate = make_gate(
+        no_verdict,
+        [receipt_review("rcpt-chain")],
+        FakeVerifier({"rcpt-chain": accepted("rcpt-chain")}),
+    )
+    result = await gate.decide(request_for())
+    assert result.decision is Decision.PASS_AGENT
+    assert result.receipt_id == "rcpt-chain"
+    assert "voter-1=credit_exhausted" in result.summary_line
+    assert "voter-2=unavailable" in result.summary_line
+    (call,) = gate.verifier.calls
+    assert call.head_sha == HEAD
+
+    bare = make_gate(no_verdict, [plain_review()])
+    unchanged = await bare.decide(request_for())
+    assert unchanged.decision is Decision.UNCHANGED
+    assert unchanged.reason is Reason.NO_RECEIPT_REVIEW
+    assert bare.verifier.calls == []
+
+
 async def test_the_same_receipt_with_voters_that_passed_is_unchanged(
     make_gate: MakeGate,
 ) -> None:

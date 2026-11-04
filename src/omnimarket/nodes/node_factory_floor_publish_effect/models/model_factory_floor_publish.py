@@ -348,6 +348,7 @@ class ModelFactoryFloorPublishRequest(BaseModel):
     home: str | None = None
     state_dir: str | None = None
     skip_refresh: bool = False
+    refresh_delegation: bool = False
     overlay: ModelFactoryFloorPublishOverlay | None = None
     now: datetime | None = None
 
