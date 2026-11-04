@@ -552,7 +552,6 @@ REGISTRY: tuple[str, ...] = (
     "omnibase_core",
     "omnibase_spi",
     "omnibase_infra",
-    "omnibase_compat",
     "omnimarket",
     "omniclaude",
     "omnimemory",

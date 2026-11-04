@@ -14,7 +14,7 @@ from typing import Literal
 
 
 class ReconcileStopError(Exception):
-    def __init__(self, code: Literal[3, 4, 5, 6], detail: str) -> None:
+    def __init__(self, code: Literal[2, 3, 4, 5, 6], detail: str) -> None:
         self.code = code
         self.detail = detail
         super().__init__(detail)

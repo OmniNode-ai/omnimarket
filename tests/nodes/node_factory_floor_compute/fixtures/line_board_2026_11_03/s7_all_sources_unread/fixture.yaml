@@ -1,0 +1,35 @@
+case: s7_all_sources_unread
+variant: observed
+observed_at: '2026-11-03T13:30:00Z'
+derivation: 'no source: the case has every one of the eight dependencies absent'
+overlay_file: ../line_board.yaml
+plan_path_contains:
+- one-runtime
+sources:
+  pr_watcher: absent
+  plans_clone: absent
+  goal_file: absent
+  plans_today: absent
+  linear_snapshot: absent
+  required_contexts: absent
+  running_evidence: absent
+  ledger_window: absent
+ledger_rows: []
+expected:
+  health:
+    plans_clone: unread
+    pr_watcher: unread
+    ledger_window: unread
+    plans_today: unread
+    linear_snapshot: unread
+    running_evidence: unread
+    required_contexts: unread
+    goal_file: unread
+  coverage: 'UNREAD: plan selection, lines unknown'
+  stops: []
+  absent:
+  - kind: any
+    why: no line is drawn as running, fine or zero from an unread source
+scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every
+  stored text are replaced (private-repo-N, [scrubbed]). original_sha256 is the digest of the ledger row
+  as the ledger or its archive roll holds it; scrubbed_sha256 is the digest of the row as stored here.'
