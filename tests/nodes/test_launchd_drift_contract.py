@@ -47,6 +47,7 @@ def test_contract_routes_fold_and_escalation() -> None:
     fold_handler = getattr(
         import_module(fold_route["handler"]["module"]), fold_route["handler"]["name"]
     )()
+    assert isinstance(fold_handler, node_launchd_drift_effect.HandlerHostDriftFold)
     fold_request = getattr(
         import_module(fold_route["event_model"]["module"]),
         fold_route["event_model"]["name"],
@@ -67,6 +68,9 @@ def test_contract_routes_fold_and_escalation() -> None:
         import_module(escalate_route["handler"]["module"]),
         escalate_route["handler"]["name"],
     )()
+    assert isinstance(
+        escalate_handler, node_launchd_drift_effect.HandlerHostDriftEscalate
+    )
     escalate_request = getattr(
         import_module(escalate_route["event_model"]["module"]),
         escalate_route["event_model"]["name"],
