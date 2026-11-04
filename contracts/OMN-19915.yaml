@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-19915
+title: Run the clean VM walk through the canonical runtime
+summary: >-
+  Scoped remediation of the walk's runtime entrypoint, discovered during the
+  clean-machine retake. This implementation criterion covers runtime dispatch
+  only. The epic's participant recording, child evidence audit and two
+  scheduled producer successes remain unproven; this contract does not claim them.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: clean-walk-runtime
+  statement: The existing clean VM effect starts through its declared runtime contract and reports its measured outcome.
+  acceptance:
+  - id: DoD1
+    statement: The canonical runtime invokes the walk handler and retains its receipt and VM cleanup result.
+evidence_requirements:
+- kind: tests
+  description: Real local runtime and bus adapter, with the existing stub Tart transport and a successful receipt control.
+  command: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: runtime-entry
+  description: The success case reproduces the pre-handler runtime refusal before the contract correction and reaches the measured receipt afterward.
+  source: manual
+  binds_ac:
+  - DoD1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov -k test_walk_runs_through_canonical_runtime
+    cwd: .
+- id: deploy-probe
+  description: The deployed source contract dispatches through the same runtime and retains its successful walk receipt; no cloud runtime configuration changes.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov -k test_walk_runs_through_canonical_runtime
+    cwd: .
+- id: dod-omn19915-integration-proof
+  description: The pushed head, run on a lab host through the ONEX CLI, starts the clean VM walk through the real local runtime and bus adapter and reaches its measured receipt. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane ob-walk-1150 -- uv run --frozen pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov -k test_walk_runs_through_canonical_runtime
+    cwd: .
