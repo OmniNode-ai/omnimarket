@@ -67,7 +67,6 @@ _DEFAULT_REPOS = [
     "OmniNode-ai/omninode_infra",
     "OmniNode-ai/omnidash",
     "OmniNode-ai/omnimarket",
-    "OmniNode-ai/omnibase_compat",
     "OmniNode-ai/omniweb",
 ]
 
