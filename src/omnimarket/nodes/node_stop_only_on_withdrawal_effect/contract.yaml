@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stop_only_on_withdrawal_effect
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Apply S8 decisions through an injected attributed bus ledger writer and an
+  idempotent task dispatcher. Persist each repair intent before the atomic
+  reopen-and-redispatch operation, record its acknowledgement, then append the
+  cursor. Recover pending intents before advancing the cursor. No dispatcher
+  or ledger binding means failure, never a completed tick.
+input_model:
+  name: ModelS8ApplyRequest
+  module: omnimarket.models.model_stop_only_on_withdrawal
+output_model:
+  name: ModelS8Applied
+  module: omnimarket.models.model_stop_only_on_withdrawal
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: apply_stop_only_on_withdrawal
+      handler:
+        name: HandlerStopOnlyOnWithdrawalEffect
+        module: omnimarket.nodes.node_stop_only_on_withdrawal_effect.handlers.handler_stop_only_on_withdrawal_effect
+      input_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8ApplyRequest
+      output_model: omnimarket.models.model_stop_only_on_withdrawal.ModelS8Applied
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 180000
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.stop-only-on-withdrawal-apply-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
+    - onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.stop-only-on-withdrawal-apply-requested.v1
+terminal_event: onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
+terminal_events:
+  success: onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
+  failure: onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
+  - onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1
+dependencies:
+  ledger_writer: omnimarket.protocols.protocol_s8_effects.ProtocolS8LedgerWriter
+  task_dispatcher: omnimarket.protocols.protocol_s8_effects.ProtocolS8TaskDispatcher
+metadata:
+  transport_type: kafka

@@ -10,6 +10,13 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 from typing import Literal
 
+from omnimarket.handlers.relay_admission import (
+    CoreRelayAdmission,
+    load_relay_requires_rule,
+    relay_admission_refusals,
+    relay_rows,
+)
+from omnimarket.models.model_relay_admission import ModelRelayRequiresRule
 from omnimarket.models.work_ledger_append import (
     EnumWorkLedgerAppendStatus,
     ModelAppendIfAbsentPolicy,
@@ -27,6 +34,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 from omnimarket.nodes.node_work_ledger_append_effect.writer_principals import (
     WriterPrincipals,
 )
+from omnimarket.protocols.protocol_relay_admission import ProtocolRelayAdmission
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ([^|\r\n]+) \| ")
 _BUS_ROW_TYPES = frozenset(
@@ -86,8 +94,12 @@ class HandlerWorkLedgerAppendEffect:
         writers: WriterPrincipals | None = None,
         append_lock: ProtocolLedgerAppendLock | None = None,
         append_if_absent: ModelAppendIfAbsentPolicy | None = None,
+        relay_admission: ProtocolRelayAdmission | None = None,
+        relay_rule: ModelRelayRequiresRule | None = None,
     ) -> None:
         self._runner = runner
+        self._relay_admission = relay_admission or CoreRelayAdmission()
+        self._relay_rule = relay_rule or load_relay_requires_rule()
         self._reader = reader
         # The runtime boot resolver constructs a declared handler from injectable
         # params alone; the serve command supplies the real runner and reader, and
@@ -203,6 +215,15 @@ class HandlerWorkLedgerAppendEffect:
         if any(row_type not in _BUS_ROW_TYPES for row_type in rows):
             return receipt(
                 EnumWorkLedgerAppendStatus.REFUSED, 65, "unknown ledger row type"
+            )
+        relay_refusals = relay_admission_refusals(
+            relay_rows(request.rows), self._relay_admission, self._relay_rule
+        )
+        if relay_refusals:
+            return receipt(
+                EnumWorkLedgerAppendStatus.REFUSED,
+                65,
+                "\n".join((*relay_refusals, self._relay_rule.fix)),
             )
         if any(row_type in _AUTHORITY_TYPES for row_type in rows) and (
             authenticated_principal != self._operator_principal
