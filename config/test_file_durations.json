@@ -2933,6 +2933,7 @@
   "tests/unit/delegation/test_per_attempt_secret_ref_omn22474.py": 1.0,
   "tests/unit/delegation/test_pin_policy_consumer_omn17427.py": 0.04,
   "tests/unit/delegation/test_pinned_backend_never_moves_omn20844.py": 1.94,
+  "tests/unit/delegation/test_pinned_consumer_decodes_attempt_omn22474.py": 0.6,
   "tests/unit/delegation/test_placement_reason_telemetry_omn16891.py": 0.03,
   "tests/unit/delegation/test_port_gate_record.py": 11.06,
   "tests/unit/delegation/test_port_gate_record_consumer.py": 0.01,
