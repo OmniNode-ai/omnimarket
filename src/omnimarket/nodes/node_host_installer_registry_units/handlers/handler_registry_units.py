@@ -157,6 +157,33 @@ class HandlerRegistryUnits:
                 raise ValueError(
                     f"{name} is not a path override {request.unit} declares"
                 )
+        # A migrated unit keeps only the host commands its contract explicitly names.
+        # Refuse an unreadable prior plist rather than silently dropping another alarm.
+        preserve = [
+            str(name) for name in unit.get("preserve_installed_environment") or []
+        ]
+        inherited: dict[str, str] = {}
+        if preserve:
+            installed = (
+                Path(request.home) / "Library/LaunchAgents" / f"{unit['label']}.plist"
+            )
+            if installed.exists():
+                try:
+                    previous = plistlib.loads(installed.read_bytes()).get(
+                        "EnvironmentVariables", {}
+                    )
+                    if not isinstance(previous, dict):
+                        raise ValueError("installed environment is not a dictionary")
+                    inherited = {
+                        name: previous[name]
+                        for name in preserve
+                        if isinstance(previous.get(name), str)
+                    }
+                except (OSError, ValueError, plistlib.InvalidFileException) as exc:
+                    raise ValueError(
+                        f"cannot preserve {unit['label']} environment: {exc}"
+                    ) from exc
+        declared.update(inherited)
         filled: dict[str, str] = {}
         for name, template in declared.items():
             if not NAME.match(str(name)):
@@ -170,6 +197,11 @@ class HandlerRegistryUnits:
                     f"{name} names {left.group(0)}, which this request does not set"
                 )
             filled[str(name)] = request.path_overrides.get(str(name), text)
+        for name in unit.get("required_environment") or []:
+            if not filled.get(str(name), "").strip():
+                raise ValueError(
+                    f"{request.unit} requires {name}; preserve its installed value or supply a declared override"
+                )
         return filled
 
     def render(

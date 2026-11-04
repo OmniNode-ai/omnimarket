@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# One operator-host alarm tick. The decisions are node_silent_failure_alarm_compute's; this node
+# reads the ledger, the two session tick files and the landing controller receipt, and raises:
+# a FRICTION row through the packaged appender, then the shared alert channel. The tick runs in
+# process (no broker) from a host timer, because it exists to notice that other automations
+# stopped.
+name: silent_failure_alarm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  One operator-host silent-failure alarm tick: read the lab-fill STATUS rows and lane receipts in
+  the rolling ledger, the queue-status trend file, the PR watcher state and the landing
+  controller receipt, plus the newest hook event each pool host sent (read through the configured
+  hook-events command), the hook-emit drainer's supervisor job, interpreter and status file, the
+  launchd job table and the job-exit state file; take the six decisions from the silent-failure
+  alarm compute node; reinstall a dead drainer with its backlog preserved when that is safe; and,
+  for a placement, liveness, quiet-host, throughput-results or drainer alarm not already raised
+  inside two hours, append the guarded FRICTION row and deliver the alert. Keep each open alarm in
+  the delivery state file: report it as open with its age in the summary, escalate once when it
+  holds past two hours, and write one resolved STATUS row when its decision reads it healthy.
+  Persist job-exit streaks
+  and episodes atomically in the state file, write a brief and start a detached remote-lane
+  dispatch for each new job-exit episode (a failed exit or a missed interval, once per job and
+  cause inside the cooldown) with the tail of the job's logs in the brief, record the dispatch in a
+  STATUS row, and push an alert after 30 minutes without a ledger CLAIM citing it. Hosted
+  on the operator host, which holds the ledger, the session state and the alert credentials.
+runtime_profiles: [effects]
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: tick
+      subscribe_topic: onex.cmd.omnimarket.silent-failure-alarm-requested.v1
+      publish_topic: onex.evt.omnimarket.silent-failure-alarm-completed.v1
+      handler:
+        name: HandlerSilentFailureAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_effect.models.model_silent_failure_alarm_request.ModelSilentFailureAlarmRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_effect.models.model_silent_failure_alarm_result.ModelSilentFailureAlarmResult
+entry_points:
+  onex.nodes:
+    node_silent_failure_alarm_effect: omnimarket.nodes.node_silent_failure_alarm_effect
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  side_effects:
+    - bounded inventory-status command and watcher log tail reads
+    - one watcher publish request through the installed watcher interpreter and bus binding,
+      under an exclusive lock with a persisted ten-minute cooldown; no snapshot writes
+    - STATUS rows recording diagnostic and recovery outcomes without resolving an old inventory
+    - reads of the rolling ledger, the queue-status trend file, the PR watcher state and the controller receipt
+    - one run of the configured hook-events command, which reads the hook-event table
+    - reads of the hook-emit drainer's supervisor job (launchctl or systemctl), installed job file,
+      status file and journal directory
+    - a reinstall of the drainer through omniclaude's install-hook-emit-drainer.sh with
+      ONEX_HOOK_EMIT_PRESERVE_BACKLOG=1, run only when the decision marks it safe and the tick applies
+    - launchctl list and print reads of the launchd job table
+    - reads and atomic writes of the job-exit streak and episode state file
+    - reads of the tail of each failing job's stdout and stderr log, quoted into its brief
+    - job-exit brief and dispatch log writes and detached remote-lane dispatch processes
+    - guarded FRICTION ledger appends through the packaged appender
+    - one STATUS ledger append per job-exit dispatch, published as an event by the ledger's bus
+      dual write
+    - alert delivery through the shared alert channel library
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory
+  hosting: operator-host
+
+terminal_event: onex.evt.omnimarket.silent-failure-alarm-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.silent-failure-alarm-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.silent-failure-alarm-requested.v1]
+  publish_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
+externally_consumed_topics:
+  - onex.evt.omnimarket.silent-failure-alarm-completed.v1

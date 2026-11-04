@@ -3,7 +3,7 @@
 ---
 name: node_silent_failure_alarm_compute
 version: 1.0.0
-description: Decides the silent-failure alarms from facts a caller read, without I/O, each verdict carrying its FRICTION cells and alert text.
+description: Decides the silent-failure alarms from facts a caller read, without I/O, including the eight-minute complete watcher inventory bound, each verdict carrying its FRICTION cells and alert text.
 omnibase_core_compat: '>=0.39.0,<1.0.0'
 pack: core
 node_role: compute

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_silent_failure_alarm_effect
+version: 1.0.0
+description: Observe silent failures, diagnose stale watcher inventories and request bounded recovery through the scheduled watcher path.
+pack: operator_tooling
+node_role: effect
+display_name: Silent Failure Alarm Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_silent_failure_alarm_effect: omnimarket.nodes.node_silent_failure_alarm_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.0
+  - pyyaml>=6.0
+license: MIT
+tags: [effect, alarm, watcher, recovery]

@@ -26,6 +26,11 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: the refill probe writes a lane overlay binding the host process environment and file overlay documents and passes it with --overlay to runtime_claude_probe; typed probe receipts remain classified as ok, limited, timeout or unavailable -- falsifier: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov -k "probe"'
+  - id: req-omn19998-watcher-alarm-recovery
+    statement: The host alarm effect diagnoses stale complete watcher inventories and requests bounded recovery while retaining the eight-minute freshness check.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: the four recorded inventory outages raise tick-liveness, status and bounded log evidence are collected, a locked or cooling recovery never requests another tick, and command success without a complete inventory refresh retains the alarm -- falsifier: uv run --frozen pytest tests/nodes/test_watcher_alarm_recovery.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -99,4 +104,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
+        cwd: .
+  - id: dod-omn19998-watcher-alarm-recovery
+    description: Replay the four recorded outages and check concurrency, cooldown, timeout, unchanged snapshots, strict freshness and episode resolution only after a complete refresh.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_watcher_alarm_recovery.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-watcher-alarm-deploy
+    description: Hosted smoke dispatches the installed host entry through its real contract command and completed topics with an in-memory transport and validates the typed terminal and run record. The installer render keeps the branch project and existing host commands. This is not a live launchd installation readback.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_watcher_alarm_recovery.py -q --no-cov -n 0 -p no:randomly -k 'installed_entry or installer'
         cwd: .

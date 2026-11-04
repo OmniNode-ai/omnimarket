@@ -10,7 +10,7 @@ description: >
   Decide the seven silent-failure alarms from facts a caller read, without I/O: lab-fill placed
   under half of what it dispatched over two consecutive runs, or one lane refusal reason on most
   of a run; the queue-status trend file older than 40 minutes while the landing controller is
-  live; a pool host that ran lanes in the last hour and sent no hook event for 30 minutes; an
+  live, or a complete PR watcher inventory older than eight minutes; a pool host that ran lanes in the last hour and sent no hook event for 30 minutes; an
   hour with fewer merges than its bound while PRs are open, or no lane placed (OMN-19998); the
   hook-emit drainer dead, because its supervisor job is not running, its interpreter is missing,
   its status file is absent, or its last confirmed publish is older than 15 minutes while records
