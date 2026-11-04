@@ -1,0 +1,98 @@
+schema_version: 1.0.0
+ticket_id: OMN-21994
+title: Compaction A/B live projection and per-build scoreboard
+summary: 'New node node_projection_compaction_ab: one row per (experiment_id, session_id, boundary_uuid) with single-owner writers and an order guard, a per-build series keyed by candidate_id and commit, the floor ratchet, and the live-measurement data file. Rows are held by an in-memory store under test; the SQL upsert text and the migration are tested but no database writer runs.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21994-ab-projection
+  statement: The compaction A/B projection and scoreboard behave as the four criteria state.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: one writer per column and one row per key, upserting on `(experiment_id, session_id, boundary_uuid)`, and an out-of-order event does not move a row backwards -- falsifier: `uv run pytest tests/nodes/node_projection_compaction_ab -k "upsert_key or out_of_order" -q --no-cov` finds two writers or a duplicate key in the migration test'
+  - id: AC2
+    statement: 'AC2: the series refuses a build with no `candidate_id` -- falsifier: `uv run pytest tests/nodes/node_projection_compaction_ab -k candidate_id_required -q --no-cov` accepts a row without it'
+  - id: AC3
+    statement: 'AC3: the floor file stores each criterion''s direction, and a build that moves any criterion past its floor in the unfavourable direction fails the ratchet test, higher-is-better and lower-is-better alike -- falsifier: `uv run pytest tests/nodes/node_projection_compaction_ab -k floor_ratchet -q --no-cov` passes a mutant that lowers recall or raises contradiction past its floor'
+  - id: AC4
+    statement: 'AC4: the live hypotheses HL1 and HL2, the live safeguard set and their observable denominators are in the data file and the projection reads exactly those -- falsifier: `uv run pytest tests/nodes/node_projection_compaction_ab -k live_denominators -q --no-cov` finds a live column with no denominator, or a safeguard of section 3.8 that the projection cannot read and the data file does not mark replay-only'
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests run at the pushed head.
+  command: uv run pytest tests/nodes/node_projection_compaction_ab -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21994-ac1
+  description: The migration test parses the CREATE TABLE, checks the primary key and the column set against the data file's writers, and the fold tests deliver an older, equal and newer event; mutating the order guard fails them.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_compaction_ab -k "upsert_key or out_of_order" -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21994-ac2
+  description: A series entry with a missing, null or empty candidate_id is refused by the model.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_compaction_ab -k candidate_id_required -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21994-ac3
+  description: Each of a higher-is-better and a lower-is-better criterion is moved past its floor in turn and each is reported; flipping the comparison fails the tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_compaction_ab -k floor_ratchet -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21994-ac4
+  description: The test checks every scores column is a numerator or denominator of a named live measure, and that two seeded defects (a live column with no denominator, an unreadable denominator) are caught.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_compaction_ab -k live_denominators -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21994-integration-proof
+  description: The pushed head ran the node's focused suite, including the real-Postgres upsert test, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+    - check_type: command
+      check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21994 -- uv run --frozen pytest tests/nodes/node_projection_compaction_ab -q -p no:randomly --no-cov
+      cwd: .
+- id: dod-omn21994-migration-runtime-boundary
+  description: The discovered pure fold requests no runtime database adapter, while the authoritative migration manifest retains both compaction A/B tables. The projection chain gate still resolves every runtime table through real topology.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_projection_compaction_ab/test_projection.py -k migration_ownership_without_runtime_database_access -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21994-deploy-source-readback
+  description: Hosted-runner deploy probe reads the published compaction A/B migration and upsert handler at the evaluated commit and compares their bytes with this checkout. This checks source artifacts only; no database writer or bus consumer is wired by this PR.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      readback_dir="$(mktemp -d)"
+      trap 'rm -rf "$readback_dir"' EXIT
+      revision="$(git rev-parse HEAD)"
+      for path in src/omnimarket/nodes/node_projection_compaction_ab/migrations/0000_create_compaction_ab.sql src/omnimarket/nodes/node_projection_compaction_ab/handlers/handler_projection_compaction_ab.py; do
+        curl --fail --silent --show-error --location --max-time 10 \
+          "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+          --output "$readback_dir/source"
+        cmp "$path" "$readback_dir/source"
+      done
+    cwd: .

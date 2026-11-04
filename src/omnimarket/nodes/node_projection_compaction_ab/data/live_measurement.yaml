@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Live-stage data file for the compaction A/B projection: the writers that own
+# each column, the live hypotheses and safeguards, and their observable
+# denominators. The projection reads exactly the `scores` writer's columns.
+key_columns: [experiment_id, session_id, boundary_uuid]
+writers:
+  assignment:
+    columns: [arm, block_index, carryover]
+  covariates:
+    columns: [pre_compaction_tokens, trigger, rulings_in_window, open_loops_at_boundary]
+  scores:
+    columns:
+      - hl1_events
+      - hl2_acted_items
+      - hl2_open_loop_items
+      - incident_count
+      - hold_scope_violations
+      - s5_cost_tokens
+      - s3_defects
+      - s3_merged_prs
+# denominator is a column of this projection, or `row` for one boundary row.
+live_hypotheses:
+  - id: HL1
+    description: already-ruled question-guard refusals plus operator restatements per boundary
+    favourable_on_mod: lower
+    numerator_column: hl1_events
+    denominator: row
+  - id: HL2
+    description: ACTED share of open-loop items read from the ledger and hook events
+    favourable_on_mod: higher
+    numerator_column: hl2_acted_items
+    denominator: hl2_open_loop_items
+live_safeguards:
+  - id: kill_switch_incident_rate
+    numerator_column: incident_count
+    denominator: row
+  - id: hold_scope_violation_rate
+    numerator_column: hold_scope_violations
+    denominator: row
+  - id: s5_cost_ratio
+    numerator_column: s5_cost_tokens
+    denominator: pre_compaction_tokens
+  - id: s3_defect_rate_per_merged_pr
+    numerator_column: s3_defects
+    denominator: s3_merged_prs
+# Measured by the replay stage only; a live session has no calibrated probe run
+# and no planted items.
+replay_only:
+  - s1_judged_recall
+  - planted_stratum

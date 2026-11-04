@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Floor file of the per-build scoreboard. The ratchet is enforced once the
+# first HELPS verdict exists; until then the series is informational. A null
+# floor means no passing score has been recorded for the criterion yet.
+helps_verdict_seen: false
+criteria:
+  h1_recall: {direction: higher_is_better, floor: null}
+  acted_share: {direction: higher_is_better, floor: null}
+  planted_recall: {direction: higher_is_better, floor: null}
+  contradiction_rate: {direction: lower_is_better, floor: null}
+  false_memory_rate: {direction: lower_is_better, floor: null}
+  hold_and_scope_violation_rate: {direction: lower_is_better, floor: null}
+  cost_ratio: {direction: lower_is_better, floor: null}
