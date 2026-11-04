@@ -35,6 +35,7 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute import (
     HandlerPromptCostEstimate,
     ModelPromptCostEstimateRequest,
     ModelPromptCostEstimateResult,
+    ModelPromptCostRow,
 )
 from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.contract_config import (
     OVERLAY_ID,
@@ -272,8 +273,9 @@ def test_result_marks_estimated_and_range() -> None:
     assert result.saving_usd_low < result.saving_usd_high, (
         "every manifest entry is low confidence, so the range has width"
     )
-    assert result.saving_usd == (result.saving_usd_low + result.saving_usd_high) / 2
+    assert result.saving_usd == result.actual_cost_usd - result.delegated_cost_usd
     for row in result.rows:
+        assert row.saving_usd == row.actual_cost_usd - row.delegated_cost_usd
         assert row.saving_usd_low <= row.saving_usd <= row.saving_usd_high
         if row.recommended_tier == NOT_DELEGATED:
             assert row.saving_usd_low == row.saving_usd_high == 0
@@ -309,9 +311,47 @@ def test_result_marks_estimated_and_range_widens_for_text_tokens() -> None:
     assert estimated.saving_usd_high > reported.saving_usd_high
     assert estimated.saving_usd_low < reported.saving_usd_low
     assert (
-        estimated.saving_usd
-        == (estimated.saving_usd_low + estimated.saving_usd_high) / 2
+        estimated.saving_usd == estimated.actual_cost_usd - estimated.delegated_cost_usd
     )
+
+
+def _text_length_result() -> ModelPromptCostEstimateResult:
+    reply = "x" * 1600  # 400 tokens at the text-length rate
+    return estimate(
+        "prompt,model,tokens_in,response\n"
+        f"write a python function that parses ISO dates,gpt-4o,40,{reply}\n"
+    )
+
+
+def _text_length_row() -> ModelPromptCostRow:
+    return _text_length_result().rows[0]
+
+
+def test_text_length_row_headline_is_the_point_saving_not_the_midpoint() -> None:
+    row = _text_length_row()
+    assert row.token_method is EnumTokenMethod.TEXT_LENGTH_OUTPUT
+    point = row.actual_cost_usd - row.delegated_cost_usd
+    midpoint = (row.saving_usd_low + row.saving_usd_high) / 2
+    assert point > 0
+    assert midpoint != point, "the range is asymmetric, so the two readings differ"
+    assert row.saving_usd == point
+    assert row.saving_usd_low <= row.saving_usd <= row.saving_usd_high
+
+
+def test_a_midpoint_headline_is_refused_by_the_row_and_the_result() -> None:
+    row = _text_length_row()
+    midpoint = (row.saving_usd_low + row.saving_usd_high) / 2
+    assert midpoint != row.saving_usd
+    with pytest.raises(ValueError, match="actual minus delegated"):
+        ModelPromptCostRow.model_validate({**row.model_dump(), "saving_usd": midpoint})
+    result = _text_length_result()
+    assert result.saving_usd == result.actual_cost_usd - result.delegated_cost_usd
+    result_midpoint = (result.saving_usd_low + result.saving_usd_high) / 2
+    assert result_midpoint != result.saving_usd
+    with pytest.raises(ValueError, match="actual minus delegated"):
+        ModelPromptCostEstimateResult.model_validate(
+            {**result.model_dump(), "saving_usd": result_midpoint}
+        )
 
 
 def test_text_length_rate_is_injected_from_contract() -> None:

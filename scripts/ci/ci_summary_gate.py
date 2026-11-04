@@ -460,14 +460,18 @@ GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 # default-deny sweep ignores these so it never newly-wedges a PR on a job that is
 # already non-blocking. Keep this list SMALL and only add jobs that genuinely
 # already exist in ci.yml as non-gating.
-# OMN-19998: release staleness (OMN-18010) stays an unconditional job in
-# ci.yml that measures dev against the newest release tag and reports
-# STALE, but it no longer gates CI Summary. Operator ruling
-# 2026-10-16T07:34:18Z: "There's no reason we need to wait for a
-# release." and "have no users right now." Consumers take omnimarket
-# by branch or tag pin, so release debt is visible on the check-run and
-# never holds a PR or dev. Its 24-hour threshold is unchanged.
-SOFT_ALLOWLIST: frozenset[str] = frozenset({"Release Staleness (OMN-18010)"})
+SOFT_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # OMN-19998: release staleness (OMN-18010) stays an unconditional job in
+        # ci.yml that measures dev against the newest release tag and reports
+        # STALE, but it no longer gates CI Summary. Operator ruling
+        # 2026-10-16T07:34:18Z: "There's no reason we need to wait for a
+        # release." and "have no users right now." Consumers take omnimarket
+        # by branch or tag pin, so release debt is visible on the check-run and
+        # never holds a PR or dev. Its 24-hour threshold is unchanged.
+        "Release Staleness (OMN-18010)",  # release-staleness
+    }
+)
 
 # L4: contexts produced by OTHER workflow files (separate runs the in-run
 # poller never observes), ASSERTED against the PR head SHA's

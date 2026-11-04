@@ -127,7 +127,7 @@ def test_the_headline_is_the_sum_of_its_rows_and_task_types() -> None:
     )
     assert result.actual_cost_usd == sum(row.actual_cost_usd for row in result.rows)
     assert result.saving_usd == sum(group.saving_usd for group in result.by_task_type)
-    assert result.saving_usd == (result.saving_usd_low + result.saving_usd_high) / 2
+    assert result.saving_usd == result.actual_cost_usd - result.delegated_cost_usd
 
 
 # AC2 -----------------------------------------------------------------------

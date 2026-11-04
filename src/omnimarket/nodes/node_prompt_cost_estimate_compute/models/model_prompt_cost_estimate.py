@@ -100,15 +100,18 @@ class ModelPromptCostRow(BaseModel):
     saving_usd: Decimal = Field(
         ...,
         ge=Decimal("0"),
-        description="Midpoint of saving_usd_low and saving_usd_high.",
+        description=(
+            "Point saving: actual_cost_usd minus delegated_cost_usd; "
+            "lies within the low/high range."
+        ),
     )
     saving_usd_low: Decimal = Field(..., ge=Decimal("0"))
     saving_usd_high: Decimal = Field(..., ge=Decimal("0"))
 
     @model_validator(mode="after")
-    def _saving_is_the_midpoint(self) -> ModelPromptCostRow:
-        if self.saving_usd != (self.saving_usd_low + self.saving_usd_high) / 2:
-            raise ValueError("saving_usd must equal the range midpoint")
+    def _saving_is_the_point_saving(self) -> ModelPromptCostRow:
+        if self.saving_usd != self.actual_cost_usd - self.delegated_cost_usd:
+            raise ValueError("saving_usd must equal actual minus delegated")
         if not self.saving_usd_low <= self.saving_usd <= self.saving_usd_high:
             raise ValueError("saving_usd lies within its range")
         if self.tokens_estimated != (self.token_method is not EnumTokenMethod.REPORTED):
@@ -191,7 +194,10 @@ class ModelPromptCostEstimateResult(BaseModel):
     saving_usd: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
-        description=("Midpoint of saving_usd_low and saving_usd_high."),
+        description=(
+            "Point saving: actual_cost_usd minus delegated_cost_usd; "
+            "lies within the low/high range."
+        ),
     )
     saving_usd_low: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     saving_usd_high: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
@@ -245,8 +251,8 @@ class ModelPromptCostEstimateResult(BaseModel):
         )
         if self.tokens_estimated_share != share:
             raise ValueError("estimated share is estimated tokens over total tokens")
-        if self.saving_usd != (self.saving_usd_low + self.saving_usd_high) / 2:
-            raise ValueError("saving_usd must equal the range midpoint")
+        if self.saving_usd != self.actual_cost_usd - self.delegated_cost_usd:
+            raise ValueError("saving_usd must equal actual minus delegated")
         if not self.saving_usd_low <= self.saving_usd <= self.saving_usd_high:
             raise ValueError("saving_usd lies within its range")
         return self

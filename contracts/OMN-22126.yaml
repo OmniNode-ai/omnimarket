@@ -40,12 +40,20 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_import_schema_from_contract -q --no-cov --refuse-skips
         cwd: .
   - id: token-provenance-and-range
-    description: Estimated sides, token totals, confidence and method spreads, invoice evidence and the range midpoint are checked.
+    description: Estimated sides, token totals, confidence and method spreads, invoice evidence and the point saving inside its range are checked.
     source: manual
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k test_result_marks_estimated_and_range -q --no-cov --refuse-skips
+        cwd: .
+  - id: headline-is-the-point-saving
+    description: The headline saving is actual minus delegated, a text-length row whose midpoint differs keeps the point saving, and a midpoint headline is refused by the row and the result.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_prompt_cost_estimate_compute/test_import_schema_and_range.py -k "point_saving or midpoint_headline" -q --no-cov --refuse-skips
         cwd: .
   - id: both-csv-shapes
     description: Both CSV fixtures produce the same rows and totals when the model-less input declares its model.

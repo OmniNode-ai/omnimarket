@@ -42,7 +42,8 @@ description: >
   level and one per token method. pricing_basis names every manifest entry that
   priced a row, with its confidence, its source and whether its evidence is
   checked against invoices (evidence.authoritative over a non-zero
-  sample_count). saving_usd is explicitly the midpoint of that range.
+  sample_count). saving_usd is the point saving (actual minus delegated) and
+  lies within that range.
   config.chars_per_token supplies the text-length estimation rate.
   A deployment overlay (prompt_cost_estimate) may replace saving_range;
   the CSV schema is never overlaid.
