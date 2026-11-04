@@ -11,10 +11,8 @@ core parser — no inline f-string authoring and no local regex extraction path.
 from __future__ import annotations
 
 import pytest
-from omnibase_compat.contracts.pr_occ_stamp import (
-    EnumPrEvidenceSourceKind,
-    parse_pr_occ_metadata_stamp,
-)
+from omnibase_core.contracts.pr_occ_metadata_stamp import parse_pr_occ_metadata_stamp
+from omnibase_core.enums.enum_pr_evidence_source_kind import EnumPrEvidenceSourceKind
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
     product_pr_has_evidence_source,
