@@ -320,7 +320,24 @@ def test_standing_rules_file_audit_is_atomic(tmp_path: Path) -> None:
     assert len(audit.read_text().splitlines()) == 1
 
 
-async def test_standing_rules_installed_runtime_bus_roundtrip(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("node", "completed", "failed"),
+    [
+        (
+            "node_dispatch_standing_rules_compute",
+            "onex.evt.omnimarket.dispatch-standing-rules-compute-completed.v1",
+            "onex.evt.omnimarket.dispatch-standing-rules-compute-failed.v1",
+        ),
+        (
+            "node_dispatch_standing_rules_effect",
+            "onex.evt.omnimarket.dispatch-standing-rules-effect-completed.v1",
+            "onex.evt.omnimarket.dispatch-standing-rules-effect-failed.v1",
+        ),
+    ],
+)
+async def test_standing_rules_installed_runtime_bus_roundtrip(
+    tmp_path: Path, node: str, completed: str, failed: str
+) -> None:
     """Discover and wire the packaged handler; the event carries its typed verdict."""
     import asyncio
     from uuid import uuid4
@@ -332,14 +349,17 @@ async def test_standing_rules_installed_runtime_bus_roundtrip(tmp_path: Path) ->
     from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
     from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
-    node = "node_dispatch_standing_rules_effect"
     contracts = tuple(c for c in discover_contracts().contracts if c.name == node)
     assert len(contracts) == 1
     contract = yaml.safe_load(
         files(f"omnimarket.nodes.{node}").joinpath("contract.yaml").read_text()
     )
     command = contract["runtime_dispatch"]["command_topic"]
-    completed = contract["runtime_dispatch"]["terminal_events"]["success"]
+    assert contract["runtime_dispatch"]["terminal_events"] == {
+        "success": completed,
+        "failure": failed,
+    }
+    assert set(contract["event_bus"]["publish_topics"]) == {completed, failed}
     bus = EventBusInmemory(environment="local", group="standing-rules-proof")
     answers: asyncio.Queue[dict[str, object]] = asyncio.Queue()
     await bus.start()
@@ -365,13 +385,17 @@ async def test_standing_rules_installed_runtime_bus_roundtrip(tmp_path: Path) ->
         engine.freeze()
         for entry in ("agent", "workflow", "runner", "lab"):
             correlation_id = uuid4()
-            request = ModelStandingRulesRequest(
-                dispatch=snapshot(dispatch_kind=entry).dispatch, now=NOW
+            request = (
+                snapshot(dispatch_kind=entry)
+                if node == "node_dispatch_standing_rules_compute"
+                else ModelStandingRulesRequest(
+                    dispatch=snapshot(dispatch_kind=entry).dispatch, now=NOW
+                )
             )
             envelope = ModelEventEnvelope[object](
                 payload=request.model_dump(mode="json"),
                 correlation_id=correlation_id,
-                event_type="omnimarket.dispatch-standing-rules-effect-requested",
+                event_type=command.removeprefix("onex.cmd.").removesuffix(".v1"),
             )
             await bus.publish(command, None, envelope.model_dump_json().encode(), None)
             answer = await asyncio.wait_for(answers.get(), timeout=5)
@@ -382,3 +406,11 @@ async def test_standing_rules_installed_runtime_bus_roundtrip(tmp_path: Path) ->
     finally:
         bind_overlay(None)
         await bus.close()
+
+
+def test_standing_rules_effect_package_exports_runtime_handler() -> None:
+    from omnimarket.nodes.node_dispatch_standing_rules_effect import (
+        HandlerDispatchStandingRulesEffect as ExportedHandler,
+    )
+
+    assert ExportedHandler is HandlerDispatchStandingRulesEffect
