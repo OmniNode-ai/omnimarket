@@ -52,7 +52,7 @@ _GIT_POINTER_ENV_VARS = (
 
 # Canonical default handler-repo set scanned when no explicit scope is supplied.
 # Kept in lockstep with the per-node ``__main__`` lists this module replaces so a
-# no-arg dispatch scans the real handler universe (OMN-13538).
+# no-arg dispatch scans the active handler repositories.
 DEFAULT_REPOS: tuple[str, ...] = (
     "omniclaude",
     "omnibase_core",
@@ -60,7 +60,6 @@ DEFAULT_REPOS: tuple[str, ...] = (
     "omnibase_spi",
     "omniintelligence",
     "omnimemory",
-    "onex_change_control",
 )
 
 

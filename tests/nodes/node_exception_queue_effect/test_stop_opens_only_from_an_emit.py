@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """A stop opens only from an emit of a registered class by the authorised role (OMN-21958, AC6).
 
-A ledger HOLD row that carries ``class=`` and ``key=`` cells is not an emit: ``open_stops`` reads the exception
-queue file and nothing else, and the queue opens a stop only from ``HandlerExceptionEmit`` called by the contract's
-opening role. Process health counts an ANDON HOLD row as the ``andon.stops_started`` metric and opens nothing.
+A ledger HOLD row that carries ``class=`` and ``key=`` cells is not an emit by itself.
+Without a bound ledger detector, ``open_stops`` reads the queue file alone. A bound
+detector translates a live registered HOLD into ``HandlerExceptionEmit`` with the
+contract's opening role. Process health still only counts its metric.
 """
 
 from __future__ import annotations
