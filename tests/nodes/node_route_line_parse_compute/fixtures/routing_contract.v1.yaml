@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Test fixture shaped like the routing contract the overlay key routing_contract_path names.
+marker: "ROUTE:"
+dimensions: [S, A, R, V, N, C, J]
+dimension_max: 3
+bands:
+  - {name: B0, rank: 0, score_min: null, score_max: null}
+  - {name: B1, rank: 1, score_min: 0, score_max: 4}
+  - {name: B1c, rank: 1, score_min: 0, score_max: 4}
+  - {name: B2, rank: 2, score_min: 5, score_max: 8}
+  - {name: B3, rank: 3, score_min: 9, score_max: 13}
+  - {name: B4, rank: 4, score_min: 14, score_max: 17}
+  - {name: B5, rank: 5, score_min: 18, score_max: 21}

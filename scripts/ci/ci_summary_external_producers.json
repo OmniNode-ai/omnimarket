@@ -543,5 +543,13 @@
       "workflow_dispatch"
     ],
     "push_branches": []
+  },
+  "prompt-cost-estimate-contract": {
+    "workflow": "prompt-cost-estimate-contract.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
   }
 }
