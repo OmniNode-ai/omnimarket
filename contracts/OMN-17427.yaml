@@ -1072,6 +1072,13 @@ requirements:
     acceptance:
       - id: "AC1742733"
         statement: "AC1742733: ModelLabAdmission accepts probe_owner; h101 and h053 (AUTH-REFUSED) and h106 (NAME-UNRESOLVED) lines lead with the receipt's owner action and no rerun advice, an sshd-refused gap says a rerun clears nothing, a receipt with no owner keeps the regex-derived owner, and an unclassified timeout keeps the rerun advice and names the receipt readings -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap' fails at the merge base, where probe_owner is refused as an extra field"
+  - id: "req-pr5043-check-mode-receipt"
+    statement: "A host reconciliation check writes its own receipt without replacing the last repair receipt, and receipt readbacks name the mode's path."
+    acceptance:
+      - id: "AC504301"
+        statement: "AC504301: a check run leaves an existing .onex-workspace-reconcile.json byte-identical and writes .onex-workspace-reconcile.check.json -- falsifier: tests/test_host_reconcile_effect.py::test_check_run_leaves_the_repair_receipt_intact fails before the receipt-path change."
+      - id: "AC504302"
+        statement: "AC504302: check and repair runs write parseable receipts at their respective default paths and failure alerts name the same paths -- falsifier: tests/test_host_reconcile_effect.py::test_run_receipt_lock_and_publication and ::test_failures_publish_slack_command_before_completed_event fail when check mode writes to the repair path."
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4526,3 +4533,26 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q --no-cov -p no:randomly --refuse-skips -k 'receipts_owner or gap_the_ssh_regexes or receipt_with_no_owner or no_known_gap'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr5043-preserve-repair-receipt"
+    description: "The real reconciliation effect runs in check mode against temporary local Git repositories and leaves the existing repair receipt unchanged while writing the check receipt. Fails before this PR's receipt-path change."
+    source: "manual"
+    binds_ac: ["AC504301"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py::test_check_run_leaves_the_repair_receipt_intact -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
+  - id: "dod-omn17427-pr5043-receipt-path-readback"
+    description: "Check and repair effects write their mode's receipt and publish failure alerts naming that path. The check-mode cases fail before this PR's receipt-path change."
+    source: "manual"
+    binds_ac: ["AC504302"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py::test_run_receipt_lock_and_publication tests/test_host_reconcile_effect.py::test_failures_publish_slack_command_before_completed_event -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
+  - id: "dod-omn17427-pr5043-receipt-deploy-probe"
+    description: "Hosted deployment artifact readback runs the checked-out reconciliation effect against temporary local Git repositories and reads its receipt bytes and failure alert paths. Requires locked Python dependencies and Git, with no broker, database, credentials or lab access. A check effect that overwrites the repair receipt fails this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_effect.py -q --no-cov -p no:randomly --refuse-skips -k 'check_run_leaves_the_repair_receipt_intact or run_receipt_lock_and_publication or failures_publish_slack_command_before_completed_event'"
+        cwd: "."
