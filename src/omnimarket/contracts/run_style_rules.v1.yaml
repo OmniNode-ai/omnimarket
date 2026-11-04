@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# run_style_rules.v1.yaml: the eight run styles and the signals that select each (OMN-22263).
+#
+# The overlay key run_style_rules names the file the handlers read. A signal is a named
+# fact read from the hook events, the transcript and the ledger before classification:
+# entrypoint, working_directory_shape, subagent_ancestry, workflow_run_id, hook_actor,
+# delegation_backend, ledger_run_cell. First match wins; within one style every
+# declared signal must hold, and any listed value of a signal matches. A unit no style
+# matches carries run_style None and the cause, never a guessed style.
+#
+# Codex work inside a Claude lane is a covariate from the hook events and the
+# delegation facts, not a style of its own. A lane executed wholly by Codex has no
+# transcript: version one counts it as a lane instance without a session and leaves it
+# out of the style contrast.
+rules_version: "1.0.0"
+styles:
+  - {style: workflow, match: {workflow_run_id: [present]}}
+  - {style: remote_lane, match: {ledger_run_cell: [remote]}}
+  - {style: lab_run, match: {ledger_run_cell: [lab]}}
+  - {style: glm, match: {delegation_backend: [glm]}}
+  - {style: lab_delegation, match: {delegation_backend: [lab]}}
+  - {style: codex, match: {hook_actor: [codex], subagent_ancestry: [none]}}
+  - {style: agent, match: {subagent_ancestry: [subagent]}}
+  - {style: foreground, match: {entrypoint: [cli, interactive], subagent_ancestry: [none]}}
+cause_no_style: no-style-signal
