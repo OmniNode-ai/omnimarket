@@ -67,7 +67,6 @@ dod_evidence:
     description: "From h051 and from h053, ssh as jonah to the two named lab hosts succeeds non-interactively. Needs the lab network and the private host table, so only the local Done gate runs it; it takes its targets from the lab host table at run time, not from this file."
     source: "manual"
     execution_scope: "local_done_gate"
-    binds_ac: ["AC3"]
     checks:
       - check_type: "command"
         check_value: |-
@@ -81,11 +80,26 @@ dod_evidence:
     description: "The install ran once from the pushed branch and its receipt names every pool host row as ok (an unavailable host row is skipped, with the table's reason). The lab receipt is recorded on the ticket and in the pull request."
     source: "manual"
     execution_scope: "local_done_gate"
-    binds_ac: ["AC4"]
     checks:
       - check_type: "command"
         check_value: |-
           uv run --frozen onex-host-key-distribution --declared-keys --dry-run | awk '$2 == "refused" {bad=1} END {exit bad}'
+        cwd: "."
+  - id: "dod-omn22174-ssh-transport"
+    description: "Hosted behavioral support for AC3: the declared-key CLI invokes ssh with BatchMode=yes and the declared target, passes keys only on stdin, and runs the real append script through a synthetic SSH executable. This checks the non-interactive transport and authorized_keys writes, not live connectivity from h051 or h053; the unchanged local lab-ssh check above retains that probe."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py -q --no-cov -k 'cli_installs_through_shell_transport and ssh'"
+        cwd: "."
+  - id: "dod-omn22174-cli-install-readback"
+    description: "Hosted behavioral support for AC4: the packaged CLI loads a declared-key overlay and host table, runs its real local shell transport, and reads back the authorized_keys bytes and permissions. A dry run writes nothing, unavailable hosts are skipped, and a second run adds nothing. The local lab-run-receipt check above still probes the private pool; this check does not assert a live rollout."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py -q --no-cov -k 'cli_installs_through_shell_transport and local'"
         cwd: "."
   - id: "dod-omn22174-integration-proof"
     description: "The pushed head ran the node's tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."

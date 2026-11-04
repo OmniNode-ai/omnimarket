@@ -5,7 +5,12 @@
 from __future__ import annotations
 
 import base64
+import json
+import os
 import re
+import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -289,3 +294,104 @@ def test_declared_keys_refuses_allow_unavailable() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--declared-keys", "--allow-unavailable", "delta"])
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("remote", [False, True], ids=["local", "ssh"])
+def test_lab_host_public_keys_cli_installs_through_shell_transport(
+    tmp_path: Path, remote: bool
+) -> None:
+    """Run the CLI and real append scripts; only the SSH network boundary is synthetic."""
+    root = tmp_path / "overlays"
+    _write_overlay(root, KEYS)
+    table = ModelLabHostsTable(
+        hosts=(
+            ModelLabHostRow(
+                name="alpha", target="alpha.example.invalid", local=not remote
+            ),
+            ModelLabHostRow(
+                name="beta",
+                target="beta.example.invalid",
+                available=False,
+                unavailable_reason="off the pool",
+            ),
+        )
+    )
+    table_file = tmp_path / "table.yaml"
+    table_file.write_text(table.model_dump_json(), encoding="utf-8")
+    home = tmp_path / "host-home"
+    home.mkdir()
+    ssh_log = tmp_path / "ssh.jsonl"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    ssh.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "assert sys.argv[1:6] == ['-o', 'BatchMode=yes', '-o', "
+        "'ConnectTimeout=8', 'alpha.example.invalid']\n"
+        "with Path(os.environ['SSH_PROBE_LOG']).open('a') as stream:\n"
+        "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "raise SystemExit(subprocess.run(['bash', '-c', sys.argv[6]], "
+        "check=False).returncode)\n",
+        encoding="utf-8",
+    )
+    ssh.chmod(0o700)
+    environ = {
+        **os.environ,
+        OVERLAY_ROOTS_ENV: str(root),
+        "HOME": str(home),
+        "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+        "SSH_PROBE_LOG": str(ssh_log),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    argv = [
+        sys.executable,
+        "-m",
+        "omnimarket.nodes.node_lab_host_key_distribution_effect.runtime_lab_host_key_distribution",
+        "--declared-keys",
+        "--table",
+        str(table_file),
+    ]
+
+    def run(*extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [*argv, *extra],
+            env=environ,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+    planned = run("--dry-run")
+    assert planned.returncode == 0, planned.stderr
+    assert "alpha planned would-add=3 present=0" in planned.stdout
+    authorized = home / ".ssh" / "authorized_keys"
+    assert not authorized.exists()
+
+    first = run()
+    assert first.returncode == 0, first.stderr
+    assert first.stdout.splitlines() == [
+        "alpha ok added=3 present=0",
+        "beta skipped added=0 present=0 unavailable: off the pool",
+    ]
+    assert authorized.read_text().splitlines() == list(KEYS)
+    assert stat.S_IMODE(authorized.stat().st_mode) == 0o600
+    assert stat.S_IMODE(authorized.parent.stat().st_mode) == 0o700
+    before = authorized.read_bytes()
+    second = run()
+    assert second.returncode == 0, second.stderr
+    assert "alpha ok added=0 present=3" in second.stdout
+    assert authorized.read_bytes() == before
+    for result in (planned, first, second):
+        assert result.stderr == ""
+        assert all(key not in result.stdout for key in KEYS)
+        assert "example.invalid" not in result.stdout
+    if remote:
+        calls = [json.loads(line) for line in ssh_log.read_text().splitlines()]
+        assert len(calls) == len(KEYS) * 3
+        assert all(call[4] == "alpha.example.invalid" for call in calls)
+        assert all(key not in json.dumps(calls) for key in KEYS)
+    else:
+        assert not ssh_log.exists()
