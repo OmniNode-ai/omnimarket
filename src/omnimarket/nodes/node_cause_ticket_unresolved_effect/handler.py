@@ -28,10 +28,6 @@ from omnimarket.models.exception_queue import (
     ModelExceptionResolveRequest,
     ModelExceptionRow,
 )
-from omnimarket.nodes.node_cause_ticket_unresolved_effect.container.container_cause_ticket_unresolved_effect import (
-    build_handler_exception_emit,
-    build_handler_exception_resolve,
-)
 from omnimarket.nodes.node_cause_ticket_unresolved_effect.models import (
     ModelCauseTicketCase,
     ModelCauseTicketResolution,
@@ -168,6 +164,10 @@ class HandlerCauseTicketUnresolved:
                 f"({state}), open and not an umbrella: the merge sweep plans this {case.lane_kind} lane under it"
             )
             if row_id:
+                from omnimarket.nodes.node_cause_ticket_unresolved_effect.container.container_cause_ticket_unresolved_effect import (
+                    build_handler_exception_resolve,
+                )
+
                 build_handler_exception_resolve().handle(
                     ModelExceptionResolveRequest(
                         queue_dir, row_id, SOURCE, how, request.now
@@ -176,6 +176,10 @@ class HandlerCauseTicketUnresolved:
             return ModelCauseTicketResolution(
                 id=row_id, cls=CLASS, resolved=True, ticket=ticket, how=how, emitted=""
             )
+        from omnimarket.nodes.node_cause_ticket_unresolved_effect.container.container_cause_ticket_unresolved_effect import (
+            build_handler_exception_emit,
+        )
+
         emitted = build_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=queue_dir,
