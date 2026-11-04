@@ -77,6 +77,7 @@ async def test_runtime_command_derives_scope_through_the_declared_topics() -> No
     raw = yaml.safe_load(Path(CONTRACT).read_text())
     command_topic = raw["runtime_dispatch"]["command_topic"]
     completed_topic = raw["terminal_event"]
+    assert completed_topic == "onex.evt.omnimarket.code-edit-scope-completed.v1"
     completed: asyncio.Queue[dict[str, object]] = asyncio.Queue()
     bus = EventBusInmemory(environment="local", group="code-edit-scope-wiring")
     await bus.start()
