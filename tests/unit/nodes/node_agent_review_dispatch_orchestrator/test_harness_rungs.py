@@ -103,6 +103,7 @@ def three_rung_overlay() -> dict[str, Any]:
     fields["roster"] = [*fields["roster"], CODEX, CLAUDE]
     fields["policy"]["approved_identities"] = [v["identity"] for v in fields["roster"]]
     fields["policy"]["approved_rungs"] = ["lab", "codex", "claude"]
+    fields["rung_order"] = ["lab", "codex", "claude"]
     fields["policy"]["forbidden_endpoint_classes"] = ["review_gateway", "anthropic_api"]
     fields["harness_rungs"] = {
         "codex": harness_rung("codex", CODEX["endpoint"]),
