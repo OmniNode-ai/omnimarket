@@ -625,6 +625,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-22389: the durations record is refreshed on dev before the freshness
+      # cap (50 unrecorded files) fails every open PR. Check-only. The CI twin is
+      # the unit shard that runs this file.
+      - id: test-durations-refresh
+        name: Test durations refresh opens one PR before the cap (OMN-22389)
+        language: system
+        entry: uv run pytest tests/unit/test_ci_durations_refresh_omn22389.py tests/nodes/node_test_durations_refresh_effect -q -p no:randomly --no-cov
+        files: ^(\.github/workflows/test-durations-refresh\.yml|src/omnimarket/nodes/node_test_durations_refresh_effect/.*|tests/nodes/node_test_durations_refresh_effect/.*|tests/unit/test_ci_durations_refresh_omn22389\.py|tests/unit/test_ci_shard_plan_record_freshness_omn17427\.py|scripts/ci/merge_test_durations\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: queue-run-once-policy
         name: Queue full-suite admission policy (OMN-19998)
         language: system

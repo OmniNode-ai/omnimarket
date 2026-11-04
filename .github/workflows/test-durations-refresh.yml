@@ -1,0 +1,162 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-22389: keep the committed test-durations record ahead of the freshness cap.
+#
+# tests/unit/test_ci_shard_plan_record_freshness_omn17427.py fails once 50 test
+# files are missing from config/test_file_durations.json, and it fails on every
+# open PR at once, because each PR merges dev into its own tree. The cap was hit
+# three times on 2026-11-03 (dev commits a7216c982, 8fecf3cae, e6f433ffd) and
+# each time a lane measured the new files by hand and landed a record change.
+#
+# This workflow is the dev-side half. On each push to dev it counts the
+# unrecorded files (`node_test_durations_refresh_effect status`). Below
+# UNRECORDED_REFRESH_AT nothing else runs. At or above it, the job runs just the
+# unrecorded files once, adds them to the record (`supplement`, existing entries
+# untouched) and opens the one refresh PR, or updates it when it is already open.
+# The cap is never raised: the PR lands before open PRs reach it, because the
+# refresh starts at less than half of it.
+#
+# Trust boundary: push and workflow_dispatch both run the default branch's copy
+# of this file, and nothing from a PR reaches a shell through ${{ }}.
+#
+# Guarded by tests/unit/test_ci_durations_refresh_omn22389.py (pre-commit hook
+# 'test-durations-refresh').
+
+name: Test durations refresh
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'tests/**'
+      - 'src/omnimarket/nodes/node_test_durations_refresh_effect/**'
+      - 'config/test_file_durations.json'
+      - '.github/workflows/test-durations-refresh.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-durations-refresh
+  cancel-in-progress: false
+
+env:
+  REFRESH_BRANCH: automation/omn-22389-test-durations-refresh
+
+jobs:
+  refresh:
+    name: Record the unrecorded test files
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Count the unrecorded test files
+        id: status
+        run: |
+          set -euo pipefail
+          uv run python -m omnimarket.nodes.node_test_durations_refresh_effect status \
+            --files-out "$RUNNER_TEMP/unrecorded.txt" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Mint onexbot-occ-writer app token
+        if: steps.status.outputs.due == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      # The same pytest flags as a full-suite shard, minus coverage and the CI
+      # Postgres service: tests that need the service self-skip. Their seconds
+      # are small, and the next full refresh from CI runs replaces them. A red
+      # test does not stop the measurement; dev's own checks report it.
+      - name: Measure the unrecorded files once
+        if: steps.status.outputs.due == 'true'
+        run: |
+          set -uo pipefail
+          mapfile -t files < "$RUNNER_TEMP/unrecorded.txt"
+          test "${#files[@]}" -gt 0
+          uv run pytest "${files[@]}" \
+            --store-durations \
+            --clean-durations \
+            --durations-path "$RUNNER_TEMP/refresh.test_durations" \
+            --no-cov -p no:cacheprovider \
+            -v --tb=short -m "not kafka" \
+            --timeout=300 --timeout-method=thread || echo "::warning::pytest exited $? while measuring; durations are recorded as run"
+          test -s "$RUNNER_TEMP/refresh.test_durations"
+
+      - name: Add the files to the record
+        if: steps.status.outputs.due == 'true'
+        env:
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          uv run python -m omnimarket.nodes.node_test_durations_refresh_effect supplement \
+            --durations "$RUNNER_TEMP/refresh.test_durations" \
+            --base-sha "$BASE_SHA" \
+            --runner "GitHub-hosted ubuntu-latest, serial focused run of the unrecorded files by test-durations-refresh.yml; the next CI refresh replaces these entries" \
+            --recorded-on "$(date -u +%Y-%m-%d)"
+          uv run python -m omnimarket.nodes.node_test_durations_refresh_effect status
+
+      - name: Open or update the refresh PR
+        if: steps.status.outputs.due == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.sha }}
+          UNRECORDED: ${{ steps.status.outputs.unrecorded }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "307849072+onexbot-occ-writer[bot]@users.noreply.github.com"
+          git checkout -B "$REFRESH_BRANCH"
+          git add config/test_file_durations.json config/test_file_durations_provenance.json
+          if git diff --cached --quiet; then
+            echo "The measurement changed nothing; no refresh PR."
+            exit 0
+          fi
+          # Provenance trailers (OMN-18273): the commit names the run that made it.
+          git commit \
+            -m "chore(OMN-22389): record the durations of ${UNRECORDED} unrecorded test files" \
+            -m "Ticket: OMN-22389" \
+            --trailer "Onex-Workflow: ${GITHUB_WORKFLOW}" \
+            --trailer "Onex-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # The branch is rebuilt from dev's tip on every run, so the one PR always
+          # carries the current dev plus this record change and nothing stale.
+          git push --force origin "refs/heads/${REFRESH_BRANCH}"
+          BODY="$(printf '%s\n' \
+            "## Summary" \
+            "" \
+            "On the dev push ${BASE_SHA}, ${UNRECORDED} test files were missing from config/test_file_durations.json. The freshness test fails every open PR at 50. This PR adds the measured seconds of those files (existing entries untouched) so the cap is never reached; it is opened or updated by .github/workflows/test-durations-refresh.yml and the cap is not raised." \
+            "" \
+            "Lab: the files were measured by ${RUN_URL} on a GitHub-hosted runner; the record is data, and the PR's own checks run the freshness and balance tests against it." \
+            "")"
+          EXISTING="$(gh pr list --repo "$REPO" --base dev --head "$REFRESH_BRANCH" --state open \
+            --json number --jq '.[0].number // empty')"
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --repo "$REPO" \
+              --title "chore(OMN-22389): record the durations of ${UNRECORDED} unrecorded test files" \
+              --body "$BODY"
+            echo "Updated refresh PR #${EXISTING}."
+          else
+            gh pr create --repo "$REPO" --base dev --head "$REFRESH_BRANCH" \
+              --title "chore(OMN-22389): record the durations of ${UNRECORDED} unrecorded test files" \
+              --body "$BODY"
+          fi
