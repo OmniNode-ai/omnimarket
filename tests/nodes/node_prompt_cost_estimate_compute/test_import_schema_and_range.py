@@ -1,0 +1,466 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The CSV import schema lives in the contract, and the saving is a range (OMN-22126).
+
+AC1: the parser reads every column name from ``config.csv_import_schema``; no
+name is a literal in handler code, and a name added to a contract copy is read
+with no code change. AC2: rows name their token method, totals count estimated
+tokens, and the saving is a range widened by the contract's spreads, with a
+basis entry per manifest entry that priced a row. AC3: the cofounder's CSV (no
+model column) and the cloud owner's CSV (model plus either token spelling)
+import to the same rows and totals.
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import re
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, get_args
+
+import pytest
+import yaml
+from omnibase_infra.models.pricing.model_pricing_entry import PricingConfidence
+from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
+
+from omnimarket.nodes.node_prompt_cost_estimate_compute import (
+    NOT_DELEGATED,
+    EnumExportFormat,
+    EnumModelSource,
+    EnumTokenMethod,
+    EnumUnpricedReason,
+    ExportParseError,
+    HandlerPromptCostEstimate,
+    ModelPromptCostEstimateRequest,
+    ModelPromptCostEstimateResult,
+    ModelPromptCostRow,
+)
+from omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.contract_config import (
+    OVERLAY_ID,
+    config_from_contract,
+    load_config,
+    load_contract,
+)
+from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
+    ModelPromptCostEstimateConfig,
+)
+from tests.node_overlay_support import install_node_overlay
+
+pytestmark = pytest.mark.unit
+
+NODE_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_prompt_cost_estimate_compute"
+)
+FIXTURES = Path(__file__).parent / "fixtures"
+COFOUNDER_CSV = FIXTURES / "cofounder_no_model.csv"
+OWNER_CSV = FIXTURES / "cloud_owner_tokens_in_out.csv"
+OWNER_ALT_CSV = FIXTURES / "cloud_owner_prompt_completion.csv"
+# The model every row of the cloud owner's fixtures names.
+FIXTURE_MODEL = "gpt-4o"
+
+
+def estimate(
+    content: str,
+    declared_model: str | None = None,
+    handler: HandlerPromptCostEstimate | None = None,
+) -> ModelPromptCostEstimateResult:
+    return (handler or HandlerPromptCostEstimate()).handle(
+        ModelPromptCostEstimateRequest(
+            consent_given=True,
+            export_format=EnumExportFormat.CSV,
+            content=content,
+            declared_model=declared_model,
+        )
+    )
+
+
+def contract_copy() -> dict[str, Any]:
+    return load_contract()
+
+
+# AC1 -------------------------------------------------------------------------
+
+
+def test_import_schema_from_contract() -> None:
+    schema = load_config().csv_import_schema
+    assert schema.required_columns.model_dump() == {"prompt": ("prompt",)}
+    assert schema.optional_columns.model_dump() == {
+        "model": ("model",),
+        "conversation_id": ("conversation_id",),
+        "timestamp": ("timestamp",),
+        "response": ("response",),
+        "tokens_in": ("tokens_in", "input_tokens", "prompt_tokens"),
+        "tokens_out": ("tokens_out", "output_tokens", "completion_tokens"),
+    }
+
+
+def test_the_schema_block_is_plain_machine_readable_yaml() -> None:
+    raw = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    block = raw["config"]["csv_import_schema"]
+    assert set(block) == {"schema_version", "required_columns", "optional_columns"}
+    for columns in (block["required_columns"], block["optional_columns"]):
+        assert all(
+            isinstance(names, list) and all(isinstance(n, str) for n in names)
+            for names in columns.values()
+        )
+
+
+def _string_constants(path: Path) -> list[tuple[int, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    ]
+
+
+def _csv_name_literals(path: Path) -> list[tuple[int, str]]:
+    """CSV column access must use schema attributes, including future aliases."""
+    return [
+        (line, value)
+        for line, value in _string_constants(path)
+        if re.fullmatch(r"[a-z_][a-z0-9_]*", value)
+    ]
+
+
+def test_import_schema_from_contract_has_no_column_literals_in_handlers() -> None:
+    """A column or alias added to handler code instead of the contract fails here.
+
+    Every handler is scanned for every declared name. JSON keys that overlap
+    the CSV names must also be supplied by the contract, without exceptions.
+    """
+    schema = load_config().csv_import_schema
+    every_name = schema.accepted_names()
+    handlers = NODE_DIR / "handlers"
+    offenders: list[str] = []
+    for path in sorted(handlers.glob("*.py")):
+        offenders.extend(
+            f"{path.name}:{line} {value!r}"
+            for line, value in _string_constants(path)
+            if value.strip().lower() in every_name
+        )
+    assert offenders == []
+    assert _csv_name_literals(handlers / "csv_export_parser.py") == [], (
+        "An identifier literal in the CSV reader could add an undeclared alias"
+    )
+
+
+def test_the_literal_scan_catches_an_alias_written_into_code(tmp_path: Path) -> None:
+    """Positive control: the scan sees a literal alias when one is present."""
+    planted = tmp_path / "planted.py"
+    planted.write_text('_CSV_TOKENS_IN = ("tokens_in", "input_tokens")\n')
+    found = {value for _, value in _string_constants(planted)}
+    assert found & load_config().csv_import_schema.accepted_names()
+    planted.write_text('_CSV_TOKENS_IN = ("brand_new_alias_only_in_code",)\n')
+    assert _csv_name_literals(planted) == [(1, "brand_new_alias_only_in_code")]
+
+
+def test_import_schema_from_contract_accepts_new_alias_without_code_change() -> None:
+    content = "PROMPT_TEXT,LLM,n_in,n_out\nwrite a python function,gpt-4o,1000,500\n"
+    with pytest.raises(ExportParseError):
+        estimate(content)
+
+    contract = contract_copy()
+    columns = contract["config"]["csv_import_schema"]
+    columns["required_columns"]["prompt"].append("prompt_text")
+    columns["optional_columns"]["model"].append("llm")
+    columns["optional_columns"]["tokens_in"].append("n_in")
+    columns["optional_columns"]["tokens_out"].append("n_out")
+    config = config_from_contract(contract, environ={})
+    result = estimate(
+        content, handler=HandlerPromptCostEstimate(config_provider=lambda: config)
+    )
+    (row,) = result.rows
+    assert (row.source_model, row.tokens_in, row.tokens_out) == ("gpt-4o", 1000, 500)
+    assert row.token_method is EnumTokenMethod.REPORTED
+
+
+def test_aliases_are_read_in_declared_precedence_order() -> None:
+    content = (
+        "prompt,model,prompt_tokens,tokens_in,tokens_out\nhello there,gpt-4o,7,3,2\n"
+    )
+    (row,) = estimate(content).rows
+    assert row.tokens_in == 3, "tokens_in is declared before prompt_tokens"
+
+    contract = contract_copy()
+    aliases = contract["config"]["csv_import_schema"]["optional_columns"]["tokens_in"]
+    aliases.reverse()
+    config = config_from_contract(contract, environ={})
+    handler = HandlerPromptCostEstimate(config_provider=lambda: config)
+    (row,) = estimate(content, handler=handler).rows
+    assert row.tokens_in == 7, "the reversed contract puts prompt_tokens first"
+
+
+def test_chatgpt_legacy_identifier_is_preserved_from_contract() -> None:
+    result = HandlerPromptCostEstimate().handle(
+        ModelPromptCostEstimateRequest(
+            consent_given=True,
+            export_format=EnumExportFormat.CHATGPT_CONVERSATIONS,
+            declared_model=FIXTURE_MODEL,
+            content=json.dumps(
+                [
+                    {
+                        "conversation_id": "legacy-conversation",
+                        "mapping": {
+                            "u": {
+                                "message": {
+                                    "author": {"role": "user"},
+                                    "content": {"parts": ["hello"]},
+                                }
+                            }
+                        },
+                    }
+                ]
+            ),
+        )
+    )
+    assert result.rows[0].conversation_id == "legacy-conversation"
+
+
+def test_a_name_claimed_by_two_columns_is_refused() -> None:
+    contract = contract_copy()
+    contract["config"]["csv_import_schema"]["optional_columns"]["tokens_out"].append(
+        "input_tokens"
+    )
+    with pytest.raises(ValueError, match="more than one column"):
+        config_from_contract(contract, environ={})
+
+
+# AC2 -------------------------------------------------------------------------
+
+
+def test_result_marks_estimated_and_range_token_totals() -> None:
+    content = (
+        "prompt,model,tokens_in,tokens_out,response\n"
+        "write a python function that parses dates,gpt-4o,100,200,\n"
+        "write a python function that parses times,gpt-4o,,200,\n"
+        "write a python function that parses zones,gpt-4o,100,,some answer text\n"
+        "write a python function that parses years,gpt-4o,,,some answer text\n"
+    )
+    result = estimate(content)
+    assert [row.token_method for row in result.rows] == [
+        EnumTokenMethod.REPORTED,
+        EnumTokenMethod.TEXT_LENGTH_INPUT,
+        EnumTokenMethod.TEXT_LENGTH_OUTPUT,
+        EnumTokenMethod.TEXT_LENGTH_BOTH,
+    ]
+    assert [row.tokens_estimated for row in result.rows] == [False, True, True, True]
+    assert result.prompts_tokens_estimated == 3
+    assert result.tokens_total == sum(r.tokens_in + r.tokens_out for r in result.rows)
+    reported = result.rows[0]
+    by_text = (
+        result.rows[1].tokens_in
+        + result.rows[2].tokens_out
+        + result.rows[3].tokens_in
+        + result.rows[3].tokens_out
+    )
+    assert result.tokens_from_text_length == by_text
+    assert reported.tokens_in + reported.tokens_out + by_text + 200 + 100 == (
+        result.tokens_total
+    )
+    assert result.tokens_estimated_share == Decimal(by_text) / Decimal(
+        result.tokens_total
+    )
+
+
+def test_result_marks_estimated_and_range() -> None:
+    result = estimate(OWNER_CSV.read_text(encoding="utf-8"))
+    spread = load_config().saving_range
+    assert result.saving_usd_low <= result.saving_usd <= result.saving_usd_high
+    assert result.saving_usd_low < result.saving_usd_high, (
+        "every manifest entry is low confidence, so the range has width"
+    )
+    assert result.saving_usd == result.actual_cost_usd - result.delegated_cost_usd
+    for row in result.rows:
+        assert row.saving_usd == row.actual_cost_usd - row.delegated_cost_usd
+        assert row.saving_usd_low <= row.saving_usd <= row.saving_usd_high
+        if row.recommended_tier == NOT_DELEGATED:
+            assert row.saving_usd_low == row.saving_usd_high == 0
+            continue
+        table = ModelPricingTable.from_yaml()
+        entry_a = table.get_entry(row.source_model)
+        entry_d = table.get_entry(row.recommended_model)
+        assert entry_a is not None
+        assert entry_d is not None
+        c_a = spread.confidence[entry_a.confidence]
+        c_d = spread.confidence[entry_d.confidence]
+        assert row.saving_usd_high == (
+            row.actual_cost_usd * (1 + c_a) - row.delegated_cost_usd * (1 - c_d)
+        )
+    assert result.saving_usd_low == sum(row.saving_usd_low for row in result.rows)
+    assert result.saving_usd_high == sum(row.saving_usd_high for row in result.rows)
+
+
+def test_result_marks_estimated_and_range_widens_for_text_tokens() -> None:
+    reported = estimate(
+        "prompt,model,tokens_in,tokens_out\n"
+        "write a python function that parses ISO dates,gpt-4o,40,400\n"
+    ).rows[0]
+    reply = "x" * 1600  # 400 tokens at the text-length rate
+    estimated = estimate(
+        "prompt,model,tokens_in,response\n"
+        f"write a python function that parses ISO dates,gpt-4o,40,{reply}\n"
+    ).rows[0]
+    assert (estimated.tokens_in, estimated.tokens_out) == (40, 400)
+    assert estimated.actual_cost_usd == reported.actual_cost_usd
+    assert estimated.delegated_cost_usd == reported.delegated_cost_usd
+    assert estimated.token_method is EnumTokenMethod.TEXT_LENGTH_OUTPUT
+    assert estimated.saving_usd_high > reported.saving_usd_high
+    assert estimated.saving_usd_low < reported.saving_usd_low
+    assert (
+        estimated.saving_usd == estimated.actual_cost_usd - estimated.delegated_cost_usd
+    )
+
+
+def _text_length_result() -> ModelPromptCostEstimateResult:
+    reply = "x" * 1600  # 400 tokens at the text-length rate
+    return estimate(
+        "prompt,model,tokens_in,response\n"
+        f"write a python function that parses ISO dates,gpt-4o,40,{reply}\n"
+    )
+
+
+def _text_length_row() -> ModelPromptCostRow:
+    return _text_length_result().rows[0]
+
+
+def test_text_length_row_headline_is_the_point_saving_not_the_midpoint() -> None:
+    row = _text_length_row()
+    assert row.token_method is EnumTokenMethod.TEXT_LENGTH_OUTPUT
+    point = row.actual_cost_usd - row.delegated_cost_usd
+    midpoint = (row.saving_usd_low + row.saving_usd_high) / 2
+    assert point > 0
+    assert midpoint != point, "the range is asymmetric, so the two readings differ"
+    assert row.saving_usd == point
+    assert row.saving_usd_low <= row.saving_usd <= row.saving_usd_high
+
+
+def test_a_midpoint_headline_is_refused_by_the_row_and_the_result() -> None:
+    row = _text_length_row()
+    midpoint = (row.saving_usd_low + row.saving_usd_high) / 2
+    assert midpoint != row.saving_usd
+    with pytest.raises(ValueError, match="actual minus delegated"):
+        ModelPromptCostRow.model_validate({**row.model_dump(), "saving_usd": midpoint})
+    result = _text_length_result()
+    assert result.saving_usd == result.actual_cost_usd - result.delegated_cost_usd
+    result_midpoint = (result.saving_usd_low + result.saving_usd_high) / 2
+    assert result_midpoint != result.saving_usd
+    with pytest.raises(ValueError, match="actual minus delegated"):
+        ModelPromptCostEstimateResult.model_validate(
+            {**result.model_dump(), "saving_usd": result_midpoint}
+        )
+
+
+def test_text_length_rate_is_injected_from_contract() -> None:
+    content = "prompt,model,response\nabcdefgh,gpt-4o,abcdefghijklmnop\n"
+    contract = contract_copy()
+    contract["config"]["chars_per_token"] = 8
+    config = config_from_contract(contract, environ={})
+    result = estimate(
+        content, handler=HandlerPromptCostEstimate(config_provider=lambda: config)
+    )
+    assert [(row.tokens_in, row.tokens_out) for row in result.rows] == [(1, 2)]
+
+
+def test_result_marks_estimated_and_range_uses_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    content = OWNER_CSV.read_text(encoding="utf-8")
+    contract_result = estimate(content)
+    zero = dict.fromkeys(get_args(PricingConfidence), "0")
+    install_node_overlay(
+        monkeypatch,
+        tmp_path,
+        OVERLAY_ID,
+        {
+            "saving_range": {
+                "confidence": zero,
+                "token_method": {method.value: "0" for method in EnumTokenMethod},
+            }
+        },
+    )
+    overlaid = estimate(content)
+    assert overlaid.saving_usd == contract_result.saving_usd
+    assert overlaid.saving_usd_low == overlaid.saving_usd == overlaid.saving_usd_high
+    assert contract_result.saving_usd_low < overlaid.saving_usd_low
+
+
+def test_result_marks_estimated_and_range_covers_every_confidence_and_method() -> None:
+    spread = load_config().saving_range
+    assert set(spread.confidence) == set(get_args(PricingConfidence))
+    assert set(spread.token_method) == set(EnumTokenMethod)
+    contract = contract_copy()
+    del contract["config"]["saving_range"]["confidence"]["MEASURED"]
+    with pytest.raises(ValueError, match="manifest levels"):
+        ModelPromptCostEstimateConfig.model_validate(contract["config"])
+
+
+def test_result_marks_estimated_and_range_names_manifest_basis() -> None:
+    result = estimate(OWNER_CSV.read_text(encoding="utf-8"))
+    table = ModelPricingTable.from_yaml()
+    used = {row.source_model for row in result.rows} | {
+        row.recommended_model
+        for row in result.rows
+        if row.recommended_tier != NOT_DELEGATED
+    }
+    assert {basis.model for basis in result.pricing_basis} == used
+    assert len(used) > 1, "the fixture delegates at least one row"
+    for basis in result.pricing_basis:
+        entry = table.get_entry(basis.model)
+        assert entry is not None
+        assert basis.confidence == entry.confidence
+        assert basis.source == entry.source
+        assert basis.sample_count == entry.sample_count
+        assert basis.evidence_authoritative is (
+            entry.evidence.get("authoritative") is True
+        )
+        assert basis.checked_against_invoices is (
+            basis.evidence_authoritative and entry.sample_count > 0
+        )
+
+
+# AC3 -------------------------------------------------------------------------
+
+
+def _shape(result: ModelPromptCostEstimateResult) -> object:
+    return (
+        [row.model_dump(exclude={"model_source"}) for row in result.rows],
+        result.model_dump(exclude={"rows"}),
+    )
+
+
+def test_the_cofounder_csv_imports_and_names_no_model() -> None:
+    """Columns prompt, input_tokens, output_tokens and no model column.
+
+    Every row is unpriced, counted under no_model_named, unless the request
+    declares the model that answered them.
+    """
+    content = COFOUNDER_CSV.read_text(encoding="utf-8")
+    undeclared = estimate(content)
+    assert undeclared.rows == ()
+    assert undeclared.prompts_total == 3
+    assert [(g.model, g.reason, g.prompts) for g in undeclared.unpriced] == [
+        ("", EnumUnpricedReason.NO_MODEL_NAMED, 3)
+    ]
+    declared = estimate(content, declared_model=FIXTURE_MODEL)
+    assert declared.prompts_priced == 3
+    assert all(row.model_source is EnumModelSource.DECLARED for row in declared.rows)
+
+
+def test_both_csv_shapes_same_result() -> None:
+    cofounder = estimate(
+        COFOUNDER_CSV.read_text(encoding="utf-8"), declared_model=FIXTURE_MODEL
+    )
+    owner = estimate(OWNER_CSV.read_text(encoding="utf-8"))
+    owner_alt = estimate(OWNER_ALT_CSV.read_text(encoding="utf-8"))
+
+    assert owner.prompts_priced == 3
+    assert all(row.model_source is EnumModelSource.EXPORT for row in owner.rows)
+    assert all(row.token_method is EnumTokenMethod.REPORTED for row in owner.rows)
+    assert [(r.tokens_in, r.tokens_out) for r in cofounder.rows] == [
+        (r.tokens_in, r.tokens_out) for r in owner.rows
+    ]
+    assert _shape(cofounder) == _shape(owner) == _shape(owner_alt)

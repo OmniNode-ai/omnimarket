@@ -57,6 +57,10 @@ from .adapter_holder import (
     read_holder,
     terminate_holder,
 )
+from .retired_repositories import (
+    load_retirement_policy,
+    retired_repository_findings,
+)
 
 
 def _parse_guard_readback(stdout: str) -> tuple[str, str, int, tuple[str, ...]]:
@@ -525,6 +529,134 @@ class _ReconcilePass:
             )
         )
 
+    def retire_repositories(self) -> set[str]:
+        """Back up and remove retired clones before any sync delegate can run."""
+        policy = load_retirement_policy()
+        retired = set(policy.retired_repositories)
+        roots = [
+            self.root,
+            *sorted(
+                path
+                for path in self.root.iterdir()
+                if path.name not in retired
+                and not path.is_symlink()
+                and (path / ".git").exists()
+            ),
+        ]
+        for name in sorted(retired):
+            clone = self.root / name
+            if not clone.exists() and not clone.is_symlink():
+                continue
+            surface = f"retired-clone:{name}"
+            if self.request.mode == "check":
+                self.movement(surface, "present", "present", "absent")
+                continue
+            try:
+                self._retire_clone(clone, policy.backup_directory)
+            except (OSError, ValueError) as exc:
+                self.facts.append(
+                    ModelSurfaceUnhealthyFact(surface=surface, reason=str(exc))
+                )
+                continue
+            self.movement(surface, "present", "absent", "absent")
+        refused = False
+        for root in roots:
+            for finding in retired_repository_findings(root, policy):
+                refused = True
+                self.facts.append(
+                    ModelSurfaceUnhealthyFact(
+                        surface="retired-repository-targets",
+                        reason=(
+                            f"{root / finding.path}: {finding.repository} "
+                            f"({finding.kind}); remove the retired target before syncing"
+                        ),
+                    )
+                )
+        if refused:
+            raise ReconcileStopError(2, "REFUSED: retired repository in sync inputs")
+        return retired
+
+    def _retire_clone(self, clone: Path, backup_directory: str) -> None:
+        # A bundle cannot preserve uncommitted files or another worktree's
+        # state. Refuse these cases rather than erase work a bundle cannot hold.
+        if clone.is_symlink() or not (clone / ".git").is_dir():
+            raise ValueError(f"{clone}: retired path is not a standalone clone")
+        if (clone / ".git").is_symlink():
+            raise ValueError(f"{clone}: symbolic git directory is refused")
+
+        def git(*args: str) -> str:
+            result = self.command(["git", "-C", str(clone), *args], owner=True)
+            if result.returncode:
+                raise ValueError(
+                    f"{clone}: git {args[0]} failed: {result.stderr.strip()}"
+                )
+            return result.stdout.strip()
+
+        if Path(git("rev-parse", "--show-toplevel")).resolve() != clone.resolve():
+            raise ValueError(f"{clone}: repository root differs from retired path")
+        if len(git("worktree", "list", "--porcelain").split("worktree ")) != 2:
+            raise ValueError(f"{clone}: linked worktrees must be archived separately")
+        if git("rev-parse", "--is-shallow-repository") != "false":
+            raise ValueError(
+                f"{clone}: shallow history cannot be preserved in a full bundle"
+            )
+        status = git("status", "--porcelain", "--untracked-files=all", "--ignored")
+        if status:
+            raise ValueError(
+                f"{clone}: dirty or ignored files are outside bundle coverage"
+            )
+        head = git("rev-parse", "HEAD")
+        refs = git("show-ref", "--head")
+        archive = self.root / backup_directory
+        if not archive.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError("retirement backup escapes the workspace")
+        if any(
+            archive.resolve().is_relative_to((self.root / name).resolve())
+            for name in load_retirement_policy().retired_repositories
+        ):
+            raise ValueError("retirement backup is inside a retired clone")
+        made = self.command(["mkdir", "-p", "--", str(archive)], owner=True)
+        if made.returncode:
+            raise ValueError(
+                f"cannot create retirement backup directory: {made.stderr}"
+            )
+        bundle = archive / f"{clone.name}-{self.request.correlation_id}.bundle"
+        staging = bundle.with_suffix(".bundle.partial")
+        if bundle.exists() or staging.exists():
+            raise ValueError(
+                f"{clone}: retirement backup already exists; refusing overwrite"
+            )
+        git("bundle", "create", str(staging), "--all", "HEAD")
+        git("bundle", "verify", str(staging))
+        if f"{head} HEAD" not in git("bundle", "list-heads", str(staging)).splitlines():
+            raise ValueError(f"{clone}: bundle does not contain the checkout HEAD")
+        if not staging.is_file() or staging.stat().st_size == 0:
+            raise ValueError(f"{clone}: retirement backup is missing or empty")
+        # Persist the verified bundle and its directory entry before deleting
+        # the only checkout. A failed verification leaves the clone intact.
+        with staging.open("rb") as stream:
+            os.fsync(stream.fileno())
+        os.replace(staging, bundle)
+        directory_fd = os.open(archive, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        if (
+            git("rev-parse", "HEAD") != head
+            or git("show-ref", "--head") != refs
+            or len(git("worktree", "list", "--porcelain").split("worktree ")) != 2
+            or git("status", "--porcelain", "--untracked-files=all", "--ignored")
+        ):
+            raise ValueError(f"{clone}: clone changed during backup; retained {bundle}")
+        self.say(
+            f"retirement backup verified: {clone.name} head={head} bundle={bundle}"
+        )
+        shutil.rmtree(clone)
+        if clone.exists():
+            raise ValueError(f"{clone}: retired clone is still present after removal")
+        self.say(f"retired clone removed: {clone.name}")
+
     def clones(self, repos: list[str]) -> None:
         self.plan_owner(repos)
 
@@ -948,6 +1080,25 @@ class _ReconcilePass:
         try:
             repos, governed = self.setup()
             self.acquire()
+            self.plan_owner(
+                sorted(
+                    {
+                        *[
+                            repo
+                            for repo in repos
+                            if (self.root / repo / ".git").exists()
+                        ],
+                        *[
+                            repo
+                            for repo in load_retirement_policy().retired_repositories
+                            if (self.root / repo / ".git").is_dir()
+                            and not (self.root / repo).is_symlink()
+                        ],
+                    }
+                )
+            )
+            retired = self.retire_repositories()
+            repos = [repo for repo in repos if repo not in retired]
             present = [repo for repo in repos if (self.root / repo / ".git").exists()]
             self.say(
                 f"surfaces under {self.root} (branch {self.request.branch}): clones={len(present)}"
@@ -956,13 +1107,12 @@ class _ReconcilePass:
             sp = self.venvs(governed)
             self.guards()
             code: Literal[0, 2, 3, 4, 5, 6] = self.finish(governed, sp)
+        except (OSError, ValueError, SyntaxError, yaml.YAMLError) as exc:
+            self.record_partial_decisions()
+            self.say(f"INDETERMINATE: {exc}")
+            code = 3
         except ReconcileStopError as exc:
-            if self.facts and not self.surfaces:
-                self.surfaces = list(self.evaluate(tuple(self.facts)).surfaces)
-                for surface in self.surfaces:
-                    self.say(
-                        f"  {surface.surface}: {surface.verdict} ({surface.detail})"
-                    )
+            self.record_partial_decisions()
             self.say(exc.detail)
             code = exc.code
         finally:
@@ -977,3 +1127,9 @@ class _ReconcilePass:
             diagnostics=tuple(self.diagnostics),
             floor_stamped=self.floor_stamped,
         )
+
+    def record_partial_decisions(self) -> None:
+        if self.facts and not self.surfaces:
+            self.surfaces = list(self.evaluate(tuple(self.facts)).surfaces)
+            for surface in self.surfaces:
+                self.say(f"  {surface.surface}: {surface.verdict} ({surface.detail})")

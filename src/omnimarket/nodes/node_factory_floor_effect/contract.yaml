@@ -67,6 +67,7 @@ descriptor:
   - reads the trace count and newest span time from the Phoenix GraphQL API at the URL the phoenix_url_env variable names (a read that fails is recorded as unread)
   - reads each declared host's container listing over ssh (read-only listing; a host that cannot be read draws UNKNOWN with its cause)
   - reads the remote-lane receipts, the pool read receipt, the placement markers and cloud accounts file, the lab host table and the runner fleet observation (any of them unread is recorded as unread)
+  - reads the API credit meter, engine usage and lab rung status, and token pool status mirrors (any of them unread is recorded as unread)
   - writes the factory floor JSON to runtime.output.relpath under the registry home
 
 # Where the entry reads and writes. Paths are relative to the registry home (the environment variable named by
@@ -112,6 +113,11 @@ runtime:
     # scripts/runner_fleet_event.py); node_projection_runner_fleet saves the newest observation to this path (its
     # state_file), and a bay draws its CI runners as unread until it has.
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
+  # Limits status mirrors under the registry home; absent or invalid files remain unread.
+  limit_sources:
+    api_meter_relpath: .claude_scratch/limits/api-credit-meter.json
+    engines_relpath: .claude_scratch/limits/engines.json
+    token_pool_glob: .claude_scratch/limits/claude-token-pool.*.json
   # The machine bays and the live lanes (OMN-21733). The remote-lane receipts are the runner's per-run JSON files;
   # the pool receipt is the one `onex_lab_run.py --hosts` writes: the landing placement's pool read (load, memory,
   # swap, cap per host, or UNREADABLE). The placement directory holds the live placement markers

@@ -1,0 +1,394 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 98 and seed 5047424651296288158 with 4 workers on 56 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /w/HostDesiredState.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module HostDesiredState
+Starting... (2026-11-04 01:51:39)
+Computing initial states...
+Computed 2 initial states...
+Computed 4 initial states...
+Computed 8 initial states...
+Computed 16 initial states...
+Computed 32 initial states...
+Computed 64 initial states...
+Computed 128 initial states...
+Computed 256 initial states...
+Finished computing initial states: 365 distinct states generated at 2026-11-04 01:51:40.
+Error: Invariant NoLaunchOnExpiredLayer is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ v = [ merged |-> {},
+  stopped |-> FALSE,
+  pass |-> 1,
+  state |->
+      [ core |->
+            [ merged |-> {},
+              live |-> {},
+              rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              tomb |-> {},
+              gone |-> {},
+              consumed |-> {},
+              decisions |-> {},
+              off |-> 0 ],
+        hw |-> 0,
+        pending |-> [gen |-> 0] ],
+  pc |-> 0,
+  mem |-> [gen |-> 0],
+  memOff |-> 0,
+  alive |-> TRUE,
+  crashes |-> 0,
+  epoch |-> 1,
+  producerEpoch |-> 1,
+  otherEpoch |-> 0,
+  otherStage |-> 0,
+  topic |-> <<"rg1", "rg2", "rg3">>,
+  now |-> 0,
+  remote |-> <<<<>>, <<>>, <<>>>>,
+  inflight |-> [gen |-> 0],
+  deferred |-> [gen |-> 0],
+  bus |-> <<>>,
+  probe |-> 0,
+  obs |-> [hA |-> 0, hB |-> 0],
+  badLaunch |-> FALSE,
+  badTag |-> FALSE ]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 0], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 2: <Start line 219, col 3 to line 224, col 73 of module HostDesiredState>
+/\ v = [ merged |-> {},
+  stopped |-> FALSE,
+  pass |-> 1,
+  state |->
+      [ core |->
+            [ merged |-> {},
+              live |-> {},
+              rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              tomb |-> {},
+              gone |-> {},
+              consumed |-> {},
+              decisions |-> {},
+              off |-> 0 ],
+        hw |-> 0,
+        pending |-> [gen |-> 0] ],
+  pc |-> 1,
+  mem |-> [gen |-> 0],
+  memOff |-> 0,
+  alive |-> TRUE,
+  crashes |-> 0,
+  epoch |-> 1,
+  producerEpoch |-> 1,
+  otherEpoch |-> 0,
+  otherStage |-> 0,
+  topic |-> <<"rg1", "rg2", "rg3">>,
+  now |-> 0,
+  remote |-> <<<<>>, <<>>, <<>>>>,
+  inflight |-> [gen |-> 0],
+  deferred |-> [gen |-> 0],
+  bus |-> <<>>,
+  probe |-> 0,
+  obs |-> [hA |-> 0, hB |-> 0],
+  badLaunch |-> FALSE,
+  badTag |-> FALSE ]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 0], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 3: <Fetch line 227, col 3 to line 228, col 73 of module HostDesiredState>
+/\ v = [ merged |-> {},
+  stopped |-> FALSE,
+  pass |-> 1,
+  state |->
+      [ core |->
+            [ merged |-> {},
+              live |-> {},
+              rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              tomb |-> {},
+              gone |-> {},
+              consumed |-> {},
+              decisions |-> {},
+              off |-> 0 ],
+        hw |-> 0,
+        pending |-> [gen |-> 0] ],
+  pc |-> 2,
+  mem |-> [gen |-> 0],
+  memOff |-> 0,
+  alive |-> TRUE,
+  crashes |-> 0,
+  epoch |-> 1,
+  producerEpoch |-> 1,
+  otherEpoch |-> 0,
+  otherStage |-> 0,
+  topic |-> <<"rg1", "rg2", "rg3">>,
+  now |-> 0,
+  remote |-> <<<<>>, <<>>, <<>>>>,
+  inflight |-> [gen |-> 0],
+  deferred |-> [gen |-> 0],
+  bus |-> <<>>,
+  probe |-> 0,
+  obs |-> [hA |-> 0, hB |-> 0],
+  badLaunch |-> FALSE,
+  badTag |-> FALSE ]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 0], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 4: <ReadTopic line 231, col 3 to line 232, col 73 of module HostDesiredState>
+/\ v = [ merged |-> {},
+  stopped |-> FALSE,
+  pass |-> 1,
+  state |->
+      [ core |->
+            [ merged |-> {},
+              live |-> {},
+              rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0],
+              tomb |-> {},
+              gone |-> {},
+              consumed |-> {},
+              decisions |-> {},
+              off |-> 0 ],
+        hw |-> 0,
+        pending |-> [gen |-> 0] ],
+  pc |-> 3,
+  mem |-> [gen |-> 0],
+  memOff |-> 3,
+  alive |-> TRUE,
+  crashes |-> 0,
+  epoch |-> 1,
+  producerEpoch |-> 1,
+  otherEpoch |-> 0,
+  otherStage |-> 0,
+  topic |-> <<"rg1", "rg2", "rg3">>,
+  now |-> 0,
+  remote |-> <<<<>>, <<>>, <<>>>>,
+  inflight |-> [gen |-> 0],
+  deferred |-> [gen |-> 0],
+  bus |-> <<>>,
+  probe |-> 0,
+  obs |-> [hA |-> 0, hB |-> 0],
+  badLaunch |-> FALSE,
+  badTag |-> FALSE ]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 0], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 5: <ComputeStep line 235, col 3 to line 240, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 0, pending |-> [gen |-> 0]], pc |-> 4, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<>>, probe |-> 0, obs |-> [hA |-> 0, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 0], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 6: <WritePending line 243, col 3 to line 254, col 44 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 5, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<>>, probe |-> 0, obs |-> [hA |-> 0, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 7: <PushTags line 261, col 3 to line 265, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 6, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<>>, probe |-> 0, obs |-> [hA |-> 0, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 8: <Send line 268, col 3 to line 270, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 7, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1], deferred |-> [gen |-> 0], bus |-> <<>>, probe |-> 0, obs |-> [hA |-> 0, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 9: <Deliver line 273, col 3 to line 280, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 7, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 1, obs |-> [hA |-> 0, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 10: <Observe line 342, col 3 to line 345, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 7, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 2, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 11: <ProbeLaunch line 355, col 17 to line 355, col 49 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 7, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 3, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 12: <ProbeLaunch line 356, col 20 to line 356, col 52 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {}, rev |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], exp |-> [l1 |-> 0, l2 |-> 0, l3 |-> 0], tomb |-> {}, gone |-> {}, consumed |-> {}, decisions |-> {}, off |-> 0], hw |-> 1, pending |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]]], pc |-> 7, mem |-> [gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 0, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = <<>>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 13: <Commit line 301, col 3 to line 308, col 58 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 1, state |-> [core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], hw |-> 1, pending |-> [gen |-> 0]], pc |-> 8, mem |-> [gen |-> 0], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 0, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 0, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = << [ gen |-> 1,
+     core |->
+         [ merged |-> {},
+           live |-> {"l1", "l2", "l3"},
+           rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1],
+           exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4],
+           tomb |-> {},
+           gone |-> {},
+           consumed |-> {"rg1", "rg2", "rg3"},
+           decisions |->
+               { [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg1",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg2",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg3",
+                   named |-> 0,
+                   at |-> 0 ] },
+           off |-> 3 ] ] >>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 14: <Advance line 311, col 3 to line 315, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 2, state |-> [core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], hw |-> 1, pending |-> [gen |-> 0]], pc |-> 0, mem |-> [gen |-> 0], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 2, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 1, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = << [ gen |-> 1,
+     core |->
+         [ merged |-> {},
+           live |-> {"l1", "l2", "l3"},
+           rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1],
+           exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4],
+           tomb |-> {},
+           gone |-> {},
+           consumed |-> {"rg1", "rg2", "rg3"},
+           decisions |->
+               { [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg1",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg2",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg3",
+                   named |-> 0,
+                   at |-> 0 ] },
+           off |-> 3 ] ] >>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 15: <Observe line 342, col 3 to line 345, col 73 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 2, state |-> [core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], hw |-> 1, pending |-> [gen |-> 0]], pc |-> 0, mem |-> [gen |-> 0], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 2, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 2, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> FALSE, badTag |-> FALSE]
+/\ commitHistory = << [ gen |-> 1,
+     core |->
+         [ merged |-> {},
+           live |-> {"l1", "l2", "l3"},
+           rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1],
+           exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4],
+           tomb |-> {},
+           gone |-> {},
+           consumed |-> {"rg1", "rg2", "rg3"},
+           decisions |->
+               { [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg1",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg2",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg3",
+                   named |-> 0,
+                   at |-> 0 ] },
+           off |-> 3 ] ] >>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+State 16: <ProbeLaunch line 355, col 17 to line 355, col 49 of module HostDesiredState>
+/\ v = [merged |-> {}, stopped |-> FALSE, pass |-> 2, state |-> [core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], hw |-> 1, pending |-> [gen |-> 0]], pc |-> 0, mem |-> [gen |-> 0], memOff |-> 3, alive |-> TRUE, crashes |-> 0, epoch |-> 1, producerEpoch |-> 1, otherEpoch |-> 0, otherStage |-> 0, topic |-> <<"rg1", "rg2", "rg3">>, now |-> 2, remote |-> <<<<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>, <<>>, <<>>>>, inflight |-> [gen |-> 0], deferred |-> [gen |-> 0], bus |-> <<[gen |-> 1, rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2], ep |-> 1]>>, probe |-> 3, obs |-> [hA |-> 1, hB |-> 0], badLaunch |-> TRUE, badTag |-> FALSE]
+/\ commitHistory = << [ gen |-> 1,
+     core |->
+         [ merged |-> {},
+           live |-> {"l1", "l2", "l3"},
+           rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1],
+           exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4],
+           tomb |-> {},
+           gone |-> {},
+           consumed |-> {"rg1", "rg2", "rg3"},
+           decisions |->
+               { [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg1",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg2",
+                   named |-> 0,
+                   at |-> 0 ],
+                 [ outcome |-> "applied",
+                   reason |-> "register",
+                   id |-> "rg3",
+                   named |-> 0,
+                   at |-> 0 ] },
+           off |-> 3 ] ] >>
+/\ fault = [step |-> 1, pass |-> 2, afterDelivery |-> FALSE]
+/\ pendingHistory = <<[gen |-> 1, core |-> [merged |-> {}, live |-> {"l1", "l2", "l3"}, rev |-> [l1 |-> 1, l2 |-> 1, l3 |-> 1], exp |-> [l1 |-> 2, l2 |-> 3, l3 |-> 4], tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, off |-> 3], rec |-> [gen |-> 1, merged |-> {}, live |-> {"l1", "l2", "l3"}, tomb |-> {}, gone |-> {}, consumed |-> {"rg1", "rg2", "rg3"}, decisions |-> {[outcome |-> "applied", reason |-> "register", id |-> "rg1", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg2", named |-> 0, at |-> 0], [outcome |-> "applied", reason |-> "register", id |-> "rg3", named |-> 0, at |-> 0]}, rel |-> [l1 |-> "none", l2 |-> "none", l3 |-> "none"], tag |-> [name |-> 1, commit |-> <<1, {"l1", "l2", "l3"}, [l1 |-> 1, l2 |-> 1, l3 |-> 1], [l1 |-> 2, l2 |-> 3, l3 |-> 4]>>], pub |-> "h1", valid_until |-> 2]], [gen |-> 0], [gen |-> 0]>>
+/\ scn = "expiry"
+/\ tombHistory = <<{}, {}, {}>>
+
+5345 states generated, 5296 distinct states found, 333 states left on queue.
+The depth of the complete state graph search is 16.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 1 and the 95th percentile is 1).
+Finished in 03s at (2026-11-04 01:51:41)
+exit=12

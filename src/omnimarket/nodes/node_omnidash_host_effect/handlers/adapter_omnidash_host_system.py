@@ -38,6 +38,12 @@ from .handler_omnidash_host_effect import OmnidashPollError
 BUILD_OK_MARKER = ".omnidash-host-build-ok"
 # Vite 6 answers only IP and localhost Host headers unless the serving name is added here.
 ALLOWED_HOSTS_ENV = "__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS"
+_NODE_DIST_OS: Mapping[str, str] = {"Linux": "linux", "Darwin": "darwin"}
+_NODE_DIST_ARCH: Mapping[str, str] = {
+    "x86_64": "x64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+}
 
 
 def serve_hostname(host: ModelOmnidashHostRow) -> str:
@@ -48,12 +54,16 @@ def serve_hostname(host: ModelOmnidashHostRow) -> str:
 
 
 def node_archive(row: ModelOmnidashHostRow) -> str:
-    """The directory name the pinned node distribution unpacks to."""
+    """The directory name of the pinned node distribution for the host's OS and machine."""
+    system = platform.system()
+    os_name = _NODE_DIST_OS.get(system)
+    if os_name is None:
+        raise ValueError(f"no node distribution for system {system!r}")
     machine = platform.machine()
-    arch = {"x86_64": "x64", "aarch64": "arm64"}.get(machine)
+    arch = _NODE_DIST_ARCH.get(machine)
     if arch is None:
         raise ValueError(f"no node distribution for machine {machine!r}")
-    return f"node-v{row.node_version}-linux-{arch}"
+    return f"node-v{row.node_version}-{os_name}-{arch}"
 
 
 def node_bin(host: ModelOmnidashHostRow) -> Path:

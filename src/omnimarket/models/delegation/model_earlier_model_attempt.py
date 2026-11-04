@@ -24,3 +24,5 @@ class ModelEarlierModelAttempt(BaseModel):
     failure_class: EnumDelegationFailureClass
     error_message: str
     http_status: int | None = None
+    # OMN-22224: how long this earlier call took, as the effect measured it.
+    duration_ms: int | None = Field(default=None, ge=0)
