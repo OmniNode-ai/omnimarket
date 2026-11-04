@@ -247,6 +247,65 @@ def test_the_writer_declares_in_process_dispatch() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "missing", ["task_id", "correlation_id", "event_type", "enforcement_level"]
+)
+def test_runtime_refuses_malformed_input_before_connecting(
+    missing: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer = ContextAuditProjectionWriter()
+    event = _event(1)
+    del event[missing]
+
+    async def unavailable() -> None:
+        pytest.fail("malformed input must be classified before database I/O")
+
+    monkeypatch.setattr(writer.db, "connect", unavailable)
+    with pytest.raises(ValidationError):
+        writer.handle(
+            {**event, "_topic": RETIRED_MODULE_TOPICS[0], "_partition": 0, "_offset": 1}
+        )
+
+
+@pytest.mark.unit
+def test_runtime_replay_writes_and_closes_each_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = _KeyedTable()
+    writer = ContextAuditProjectionWriter()
+    calls: list[str] = []
+
+    async def connect() -> None:
+        calls.append("connect")
+
+    async def execute(sql: str, *params: Any) -> list[dict[str, Any]]:
+        calls.append("write")
+        return await db.execute(sql, *params)
+
+    async def close() -> None:
+        calls.append("close")
+
+    monkeypatch.setattr(writer.db, "connect", connect)
+    monkeypatch.setattr(writer.db, "execute", execute)
+    monkeypatch.setattr(writer.db, "close", close)
+    for inserted in (True, False):
+        for topic, meta, event in _stream():
+            result = writer.handle(
+                {
+                    **event,
+                    "_topic": topic,
+                    "_partition": meta.partition,
+                    "_offset": meta.offset,
+                }
+            )
+            assert result["rows_upserted"] == 1
+            assert result["event_inserted"] is inserted
+            assert result["event_key"] in db.rows
+    assert len(db.rows) == len(RETIRED_MODULE_TOPICS)
+    assert calls == ["connect", "write", "close"] * (2 * len(RETIRED_MODULE_TOPICS))
+
+
+@pytest.mark.unit
 def test_contract_declares_the_retired_modules_topics_and_a_dlq() -> None:
     contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
 

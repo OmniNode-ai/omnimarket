@@ -11,6 +11,7 @@ service when configured, otherwise an owned, disposable PostgreSQL container.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -77,8 +78,14 @@ def _events() -> list[tuple[str, dict[str, Any]]]:
 
 @pytest.mark.integration
 @pytest.mark.parametrize("legacy_table", [False, True], ids=["fresh", "legacy"])
+@pytest.mark.parametrize(
+    "runtime_delivery", [False, True], ids=["standalone", "runtime"]
+)
 async def test_replay_against_real_postgres_leaves_one_row_per_key(
-    postgres: _pg._Postgres, monkeypatch: pytest.MonkeyPatch, legacy_table: bool
+    postgres: _pg._Postgres,
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_table: bool,
+    runtime_delivery: bool,
 ) -> None:
     admin = await asyncpg.connect(**postgres.connect_kwargs())
     schema = f"context_audit_{uuid4().hex}"
@@ -104,12 +111,15 @@ async def test_replay_against_real_postgres_leaves_one_row_per_key(
             writer_module._UPSERT.replace("public.", f"{schema}."),
         )
 
-        pool = await asyncpg.create_pool(
-            **postgres.connect_kwargs(), min_size=1, max_size=2
-        )
-        assert pool is not None
-        adapter = AsyncpgAdapter()
-        monkeypatch.setattr(adapter, "_pool", pool)
+        # Runtime deliveries open and close their own pool on the worker loop.
+        # Keep the fixture's administrative connection on this test's loop.
+        adapter = AsyncpgAdapter(dsn=postgres.dsn(schema).split("?", 1)[0])
+        if not runtime_delivery:
+            pool = await asyncpg.create_pool(
+                **postgres.connect_kwargs(), min_size=1, max_size=2
+            )
+            assert pool is not None
+            monkeypatch.setattr(adapter, "_pool", pool)
         writer = writer_module.ContextAuditProjectionWriter()
         monkeypatch.setattr(writer, "_db", adapter)
 
@@ -118,7 +128,19 @@ async def test_replay_against_real_postgres_leaves_one_row_per_key(
                 meta = MessageMeta(
                     partition=index % 2, offset=10 + index, fallback_id="f", topic=topic
                 )
-                assert await writer.project_event(topic, event, meta)
+                if runtime_delivery:
+                    result = await asyncio.to_thread(
+                        writer.handle,
+                        {
+                            **event,
+                            "_topic": topic,
+                            "_partition": meta.partition,
+                            "_offset": meta.offset,
+                        },
+                    )
+                    assert result["rows_upserted"] == 1
+                else:
+                    assert await writer.project_event(topic, event, meta)
 
         await replay()
         rows = await admin.fetch(

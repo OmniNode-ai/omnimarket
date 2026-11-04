@@ -104,9 +104,10 @@ class ContextAuditProjectionWriter(BaseProjectionRunner):
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
+        row = self._row(topic, data, meta)
         await self.db.connect()
         try:
-            return await self._project(self.db, topic, data, meta)
+            return await self._write_row(self.db, row)
         finally:
             await self.db.close()
 
@@ -120,12 +121,17 @@ class ContextAuditProjectionWriter(BaseProjectionRunner):
     async def _project(
         self, db: Any, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
+        return await self._write_row(db, self._row(topic, data, meta))
+
+    def _row(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> ModelContextAuditRow:
         payload = strip_runner_injected_keys(data)
         payload.pop("_db", None)
         # A malformed event raises ValidationError before any write; the runtime
         # classifies it as POISON and routes the raw message to the contract's DLQ.
         event = ModelContextAuditEventWire.model_validate(payload)
-        row = self._fold.handle(
+        return self._fold.handle(
             ModelContextAuditProjectionRequest(
                 event=event,
                 source_topic=topic,
@@ -133,6 +139,8 @@ class ContextAuditProjectionWriter(BaseProjectionRunner):
                 source_offset=meta.offset,
             )
         )
+
+    async def _write_row(self, db: Any, row: ModelContextAuditRow) -> dict[str, Any]:
         written = await db.execute(_UPSERT, *_params(row))
         return {
             "rows_upserted": len(written),
