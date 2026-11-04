@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Execute Tart through a remote bash shell, including on zsh login hosts."""
+"""Execute Tart through a bash shell on the Tart host, including on zsh login hosts."""
 
 from __future__ import annotations
 
@@ -77,3 +77,17 @@ class HandlerSshTart:
             raise OSError(
                 f"detached tart run failed ({result.returncode}): {result.stderr}"
             )
+
+
+class HandlerLocalTart(HandlerSshTart):
+    """Same commands, run in a local bash when this process is on the Tart host.
+
+    A host cannot always ssh to itself (no authorized key for its own login), and
+    the guest steps already ssh from the Tart host to the VM.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("localhost")
+
+    def _ssh(self, command: str) -> list[str]:
+        return ["bash", "-c", command]

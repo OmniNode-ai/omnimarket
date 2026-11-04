@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_resolver_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The canonical overlay resolver as a node. Resolves a skill's structured overlay by name from the roots in
+  ONEX_SKILL_OVERLAY_ROOTS (or the roots in the request) with the path rule <root>/<overlay id>/overlay.yaml, the
+  overlay id being the skill name with each hyphen turned into an underscore, and validates it against the
+  overlay.schema.json beside it. There is no default: an overlay that is absent, a schema that is absent or broken, and
+  an overlay the schema rejects all refuse, naming the overlay key or the schema path and never a document value. Ships
+  no overlay data; the overlays are read from the roots at run time.
+input_model:
+  name: ModelOverlayResolveRequest
+  module: omnimarket.nodes.node_overlay_resolver_effect.models.model_overlay_resolver
+output_model:
+  name: ModelOverlayResolveResult
+  module: omnimarket.nodes.node_overlay_resolver_effect.models.model_overlay_resolver
+handler:
+  module: omnimarket.nodes.node_overlay_resolver_effect.handlers.handler_overlay_resolver
+  class: HandlerOverlayResolver
+  input_model: omnimarket.nodes.node_overlay_resolver_effect.models.model_overlay_resolver.ModelOverlayResolveRequest
+  output_model: omnimarket.nodes.node_overlay_resolver_effect.models.model_overlay_resolver.ModelOverlayResolveResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_overlay_resolver_effect.handlers.handler_overlay_resolver:HandlerOverlayResolver
+  handlers:
+    - operation: resolve_overlay
+      handler:
+        name: HandlerOverlayResolver
+        module: omnimarket.nodes.node_overlay_resolver_effect.handlers.handler_overlay_resolver
+descriptor:
+  node_archetype: effect
+  purity: effectful  # reads the overlay and its schema from the overlay roots
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [effects]
+inputs:
+  skill: {type: str, required: true, description: The skill name; a hyphenated name maps to its underscore overlay id.}
+  roots: {type: list, required: false, description: Overlay roots searched in order; empty means the roots named by ONEX_SKILL_OVERLAY_ROOTS.}
+outputs:
+  overlay_id: {type: str}
+  overlay_path: {type: str}
+  schema_path: {type: str}
+  document: {type: object}
+terminal_event: onex.evt.omnimarket.overlay-resolve-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.overlay-resolve-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.overlay-resolve-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.overlay-resolve-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-resolve-completed.v1
+metadata:
+  transport_type: inmemory
+  description: structured overlay resolution by skill name from the overlay roots
+  author: OmniNode Team
+  created: "2026-11-03"
+  related_tickets: [OMN-22274]

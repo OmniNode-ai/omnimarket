@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_policy_compute
+version: 1.0.0
+description: Judge whether a pull request author's pull request lands like the operator's and whether the landing
+  controller can land it. Every author lands; only a pull request that names no author lands for nobody.
+pack: distributed_validation
+node_role: compute
+display_name: Landing Policy Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_landing_policy_compute: omnimarket.nodes.node_landing_policy_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- landing-policy-compute
+- OMN-22192
