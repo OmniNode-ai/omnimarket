@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_seam_counter_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Count the work-ledger seam for one window: the rows in the ledger file, on the
+  work-ledger topics and in the database projection, emitted as one typed event, and
+  check conservation, file = projected + refused-with-reason + pending-replay. A file
+  row none of the three explains is unexplained, is placed at the seam where it
+  stopped, and fails the verdict, which is what fails the parity probe. The three
+  sources, the refusal and pending-replay sources and the event publisher are
+  injected; the overlay names the backend (inmemory or redpanda), the broker, the
+  topics, the consumer group, the ledger file and the writer-path markers.
+input_model:
+  name: ModelSeamCounterRequest
+  module: omnimarket.nodes.node_work_ledger_seam_counter_compute.models.model_seam_counter
+output_model:
+  name: ModelSeamCounterResult
+  module: omnimarket.nodes.node_work_ledger_seam_counter_compute.models.model_seam_counter
+handler:
+  module: omnimarket.nodes.node_work_ledger_seam_counter_compute.handlers.handler_seam_counter
+  class: HandlerSeamCounter
+  input_model: omnimarket.nodes.node_work_ledger_seam_counter_compute.models.model_seam_counter.ModelSeamCounterRequest
+  output_model: omnimarket.nodes.node_work_ledger_seam_counter_compute.models.model_seam_counter.ModelSeamCounterResult
+# The handler takes the boot-injectable container; a dependency not passed by
+# keyword is resolved from it by its protocol when a window is counted.
+dependencies:
+- name: ProtocolSeamSources
+  dependency_type: protocol
+  description: the file, topic and projection row sources for the window, injected by keyword or resolved from the container.
+  required: true
+- name: ProtocolRefusalSource
+  dependency_type: protocol
+  description: the refused-with-reason rows for the window, injected by keyword or resolved from the container.
+  required: true
+- name: ProtocolPendingReplaySource
+  dependency_type: protocol
+  description: the pending-replay rows for the window, injected by keyword or resolved from the container.
+  required: true
+- name: ProtocolSeamEventPublisher
+  dependency_type: protocol
+  description: publishes the seam-counted event on the contract publish topic, injected by keyword or resolved from the container.
+  required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_work_ledger_seam_counter_compute.handlers.handler_seam_counter:HandlerSeamCounter
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerSeamCounter
+      module: omnimarket.nodes.node_work_ledger_seam_counter_compute.handlers.handler_seam_counter
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.work-ledger-seam-count.v1
+  publish_topics:
+  - onex.evt.omnimarket.work-ledger-seam-counted.v1
+# The count event is the terminal event of one seam-count command.
+terminal_event: onex.evt.omnimarket.work-ledger-seam-counted.v1
+# The per-window count is read by the parity probe and the observability plane.
+externally_consumed_topics:
+- onex.evt.omnimarket.work-ledger-seam-counted.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-seam-count.v1
+  external_trigger: A seam-count command with a window, from the parity probe on the bus or in process;
+    sources and publisher are injected by keyword or resolved from the container.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles:
+  - main
+  idempotent: true
+  timeout_ms: 60000
+# The deployment facts (backend, broker, topics, consumer group, ledger file, writer-path
+# markers) come from <root>/node_work_ledger_seam_counter_compute/overlay.yaml.
+overlay:
+  id: node_work_ledger_seam_counter_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: kafka
+  description: Per-window seam counts for the work ledger and the conservation check.
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - compute
+  - work-ledger
+  - OMN-21849
+  related_tickets:
+  - OMN-21849

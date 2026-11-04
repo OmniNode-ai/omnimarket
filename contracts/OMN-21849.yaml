@@ -1,0 +1,89 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21849
+title: Count the work-ledger seam per window and queue file-mode rows for replay
+summary: >-
+  Two packaged nodes. The seam counter compute node counts the rows of the ledger file,
+  the work-ledger topics and the database projection for a window, emits the typed counts,
+  and fails the verdict when a file row is neither projected, refused with a reason nor
+  pending replay. The file-mode replay effect node queues a row appended in file mode by
+  its row id and replays it through the work-ledger emit path once the bus accepts again.
+  Hosted checks use in-memory sources and an injected broker reader factory; the live
+  restoration of the 2026-10-31 rows and the caller change in the ledger writer are
+  outside this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-seam-counter
+    statement: Count the three sides of the work-ledger seam per window and check conservation.
+    acceptance:
+      - id: AC4
+        statement: A row appended in file mode is queued for replay and reaches the projection once the bus accepts again.
+      - id: AC5
+        statement: A typed per-window count on the file side, the topic side and the projection side is emitted as an event, and the conservation check fails when a row is unexplained.
+      - id: AC6
+        statement: The seam counter is contract and overlay driven with in-memory and Redpanda overlay tests, and a falsifier test that drops one row makes the conservation check fail.
+evidence_requirements:
+  - kind: tests
+    description: Focused seam counter and file-mode replay queue tests.
+    command: uv run --locked pytest tests/nodes/node_work_ledger_seam_counter_compute tests/nodes/node_work_ledger_file_mode_replay_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21849-ac4-file-mode-replay-queue
+    description: A file-mode row stays pending while the bus refuses, replays once it accepts, and a second drain publishes nothing.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests -k file_mode_replay_queue -q --no-cov
+        cwd: .
+  - id: dod-omn21849-ac5-seam-conservation
+    description: Typed counts are emitted on the contract topic and an unexplained row fails the verdict.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests -k seam_conservation -q --no-cov
+        cwd: .
+  - id: dod-omn21849-ac6-overlay-and-falsifier
+    description: In-memory and Redpanda overlay tests, and the dropped-row falsifier.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests -k 'seam_counter_inmemory or seam_counter_redpanda or seam_drop_one_row' -q --no-cov
+        cwd: .
+  - id: dod-omn21849-integration-proof
+    description: >-
+      The queue drives the real work-ledger emit handler until the row is published, and
+      the seam counter then reads the row as projected. The emitter is an in-process spool
+      stand-in, so this is not a live broker or database read.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21849 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_ledger_file_mode_replay_effect/test_file_mode_replay_queue_through_emit_path.py -q --no-cov
+        cwd: .
+  - id: dod-omn21849-runtime-wiring-gates
+    description: >-
+      The seam counter constructs from the boot-injectable container alone and resolves
+      its sources and publisher from it, carries a command topic and a terminal event so
+      the runtime dogfood audit reads it as routable, and the file-mode replay effect is a
+      local invocation with no handler_routing; both contracts declare their injected
+      protocol dependencies.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/validation/test_runtime_profile_contract_ownership.py tests/test_handler_routing_boot_resolvable.py tests/test_market_node_runtime_dogfood.py tests/nodes/node_work_ledger_seam_counter_compute tests/nodes/node_work_ledger_file_mode_replay_effect -q --no-cov
+        cwd: .
+  - id: dod-omn21849-deploy-smoke
+    description: Hosted package smoke imports both registered nodes, resolves their contract handlers, emits the seam count event, and queues and replays a row through the packaged handler. This uses injected in-memory dependencies and is not a live broker deployment readback.
+    source: manual
+    binds_ac: [AC4, AC5, AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --locked pytest tests/nodes/node_work_ledger_seam_counter_compute/test_golden_chain_work_ledger_seam_counter_compute.py tests/nodes/node_work_ledger_file_mode_replay_effect/test_golden_chain_work_ledger_file_mode_replay_effect.py -q --no-cov
+        cwd: .
