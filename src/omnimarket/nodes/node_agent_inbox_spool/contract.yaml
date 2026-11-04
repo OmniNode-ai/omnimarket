@@ -10,8 +10,9 @@ contract_version:
   minor: 0
   patch: 0
 node_version: 1.0.0
-description: Read the work-ledger MSG events with one stable consumer group per host
-  and write a local spool entry and an unread marker for each addressed lane.
+description: Read the work-ledger MSG, RELEASE and HOLD events with one stable consumer
+  group per host and write a local spool entry and an unread marker for each addressed
+  lane, so a running lane receives a row appended after its launch.
 input_model:
   name: ModelAgentInboxSpoolRequest
   module: omnimarket.nodes.node_agent_inbox_spool.models.model_agent_inbox_spool_request
@@ -41,8 +42,9 @@ replay:
     spooled or delivered, so it never raises an unread marker twice.
 metadata:
   transport_type: kafka
-  description: Read the work-ledger MSG events with one stable consumer group per host
-    and write a local spool entry and an unread marker for each addressed lane.
+  description: Read the work-ledger MSG, RELEASE and HOLD events with one stable consumer
+    group per host and write a local spool entry and an unread marker for each addressed
+    lane, so a running lane receives a row appended after its launch.
   created: '2026-11-01'
   tags:
   - effect
@@ -50,9 +52,12 @@ metadata:
   - OMN-21902
   related_tickets:
   - OMN-21902
+  - OMN-19998
 caller_subscription:
   mode: stable_group_per_host
   topics:
   - onex.evt.omnimarket.work-ledger-msg.v2
+  - onex.evt.omnimarket.work-ledger-release.v2
+  - onex.evt.omnimarket.work-ledger-hold.v2
   group_id_template: '{prefix}-{host}'
   auto_offset_reset: earliest

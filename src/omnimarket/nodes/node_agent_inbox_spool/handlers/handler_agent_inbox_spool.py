@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Read the ledger MSG topic with one stable group per host; spool by lane.
+"""Read the ledger MSG, RELEASE and HOLD topics with one stable group per host.
+
+Each addressed row is spooled by lane, so a lane that read its inbox at launch
+still receives a RELEASE or HOLD appended while it runs.
 
 The group id is ``{prefix}-{host}`` on every call. The reader never mints a
 group per call and never subscribes ungrouped, which starts at the log end and
@@ -35,7 +38,7 @@ from .write_spool import UNREAD_MARKER, spool_entry
 
 
 class HandlerAgentInboxSpool:
-    """Subscribe to the contract's MSG topic, then write spool entries and markers.
+    """Subscribe to the contract's topics, then write spool entries and markers.
 
     The caller owns the bus lifecycle and selects its lane from the overlay.
     """
@@ -50,8 +53,8 @@ class HandlerAgentInboxSpool:
         from ..node import load_topics
 
         self._topics = load_topics() if topics is None else topics
-        if len(self._topics) != 1:
-            raise ValueError("inbox spool reads exactly one MSG topic")
+        if not self._topics or len(set(self._topics)) != len(self._topics):
+            raise ValueError("inbox spool reads one or more distinct ledger topics")
         # The runtime builds a handler with no arguments; the bus is then bound by
         # the caller before ``handle`` runs, and a call with none refuses.
         self._bus = bus
@@ -98,16 +101,17 @@ class HandlerAgentInboxSpool:
         records: list[bytes] = []
         try:
             async with AsyncExitStack() as stack:
-                stop = await asyncio.wait_for(
-                    bus.subscribe(
-                        self._topics[0],
-                        on_message=on_message,
-                        group_id=group_id,
-                        auto_offset_reset="earliest",
-                    ),
-                    timeout=remaining(),
-                )
-                stack.push_async_callback(stop)
+                for topic in self._topics:
+                    stop = await asyncio.wait_for(
+                        bus.subscribe(
+                            topic,
+                            on_message=on_message,
+                            group_id=group_id,
+                            auto_offset_reset="earliest",
+                        ),
+                        timeout=remaining(),
+                    )
+                    stack.push_async_callback(stop)
                 while remaining() > 0:
                     try:
                         records.append(
