@@ -26,6 +26,11 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: the refill probe writes a lane overlay binding the host process environment and file overlay documents and passes it with --overlay to runtime_claude_probe; typed probe receipts remain classified as ok, limited, timeout or unavailable -- falsifier: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov -k "probe"'
+  - id: req-omn19998-snapshot-record-boundary
+    statement: Snapshot publication refuses a complete Kafka record larger than the runner-owned producer accepts before opening the transport.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: the default bound equals the runner-owned producer limit; keys, headers and record framing count toward the bound; recorded oversized records are refused before producer creation, exact-limit records are accepted, and the source advances only after durable quarantine -- falsifier: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov'
   - id: req-omn19998-workspace-lab-hosts
     statement: Lab placement discovers the declared workspace config owner's host overlay without a manual overlay-root export.
     acceptance:
@@ -43,6 +48,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-snapshot-record-boundary
+    description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-workspace-lab-hosts
     description: Recorded missing-overlay environment shapes resolve the declared config owner's host table; explicit-source precedence and refusals, environment isolation and placement admission have positive and negative controls.
     source: manual
@@ -125,4 +139,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q --no-cov --tb=line -k probe
+        cwd: .
+  - id: dod-omn19998-snapshot-record-deploy
+    description: Hosted deployment smoke invokes the runner snapshot publication path and the installed Kafka driver's serializer with the two recorded oversized records. It checks refusal before producer creation, durable quarantine, and no source commit when quarantine fails. No broker, lab route or live installation is required or asserted.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/projection/test_snapshot_record_boundary.py -q --no-cov -k recorded_retry
         cwd: .
