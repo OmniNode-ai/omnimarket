@@ -1,0 +1,624 @@
+{
+  "$defs": {
+    "ModelBranchRecord": {
+      "additionalProperties": false,
+      "description": "The install record a branch install writes its expiry into (an installer --branch-hours).",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "source_key": {
+          "default": "branch_source",
+          "title": "Source Key",
+          "type": "string"
+        },
+        "until_key": {
+          "default": "branch_until",
+          "title": "Until Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "ModelBranchRecord",
+      "type": "object"
+    },
+    "ModelChoreDeclaration": {
+      "additionalProperties": false,
+      "description": "A host maintenance command the sync runs every tick, such as the pre-commit cache gc.",
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "hosts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Hosts",
+          "type": "array"
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "no_change": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A regular expression the output matches when the run changed nothing.",
+          "title": "No Change"
+        },
+        "present_when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Present When"
+        },
+        "timeout_s": {
+          "default": 600,
+          "minimum": 1,
+          "title": "Timeout S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "argv"
+      ],
+      "title": "ModelChoreDeclaration",
+      "type": "object"
+    },
+    "ModelCloneSet": {
+      "additionalProperties": false,
+      "description": "The registry clones every lab host holds: a missing one is cloned, a clean one fast-forwarded.",
+      "properties": {
+        "extra_repos_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A host JSON file {\"repos\": [...]} naming more clones, such as private ones.",
+          "title": "Extra Repos File"
+        },
+        "repos": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Repos",
+          "type": "array"
+        },
+        "root": {
+          "description": "The registry root the clones live under.",
+          "minLength": 1,
+          "title": "Root",
+          "type": "string"
+        },
+        "timeout_s": {
+          "default": 900,
+          "minimum": 1,
+          "title": "Timeout S",
+          "type": "integer"
+        },
+        "url": {
+          "description": "HTTPS clone URL template; `{repo}` is the repository name.",
+          "pattern": "^https://[^\\s{}]*\\{repo\\}[^\\s{}]*$",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "root",
+        "url",
+        "repos"
+      ],
+      "title": "ModelCloneSet",
+      "type": "object"
+    },
+    "ModelDaemonDeclaration": {
+      "additionalProperties": false,
+      "description": "One lab daemon, as the overlay declares it. Nothing about a daemon lives in the node.",
+      "properties": {
+        "absent_is_lag": {
+          "default": false,
+          "description": "An unreadable installed revision is a lag the installer fixes (a plugin this host does not have yet), not a refusal.",
+          "title": "Absent Is Lag",
+          "type": "boolean"
+        },
+        "branch_record": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelBranchRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "hosts": {
+          "description": "Host names this daemon runs on; `*` is every host.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Hosts",
+          "type": "array"
+        },
+        "installed": {
+          "$ref": "#/$defs/ModelRevisionProbe"
+        },
+        "installer": {
+          "description": "The daemon's own installer, which converges it to the source branch tip.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Installer",
+          "type": "array"
+        },
+        "installer_timeout_s": {
+          "default": 1800,
+          "minimum": 1,
+          "title": "Installer Timeout S",
+          "type": "integer"
+        },
+        "locks": {
+          "description": "Locks the installer takes itself; any held one skips this tick as busy.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Locks",
+          "type": "array"
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "present_when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A path that exists only where the daemon is installed; absent skips the host.",
+          "title": "Present When"
+        },
+        "source": {
+          "$ref": "#/$defs/ModelRevisionProbe"
+        },
+        "source_branch": {
+          "default": "main",
+          "title": "Source Branch",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "installed",
+        "source",
+        "installer"
+      ],
+      "title": "ModelDaemonDeclaration",
+      "type": "object"
+    },
+    "ModelLayerBounds": {
+      "additionalProperties": false,
+      "description": "Required overlay limits for temporary installation layers.",
+      "properties": {
+        "default_life_hours": {
+          "exclusiveMinimum": 0,
+          "title": "Default Life Hours",
+          "type": "integer"
+        },
+        "max_life_days": {
+          "exclusiveMinimum": 0,
+          "title": "Max Life Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "default_life_hours",
+        "max_life_days"
+      ],
+      "title": "ModelLayerBounds",
+      "type": "object"
+    },
+    "ModelRevisionProbe": {
+      "additionalProperties": false,
+      "description": "How to read one revision: a command's stripped stdout, or a key of a JSON file.",
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Argv",
+          "type": "array"
+        },
+        "key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dotted key (a number indexes a list) into the JSON file for `json_file`, or into the command's stdout parsed as JSON for `command`; omitted for a command means its last stdout line.",
+          "title": "Key"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "json_file"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ModelRevisionProbe",
+      "type": "object"
+    },
+    "ModelSurfaceDeclaration": {
+      "additionalProperties": false,
+      "description": "One portable installation, configuration or observed revision surface.",
+      "properties": {
+        "applies_to_roles": {
+          "items": {
+            "enum": [
+              "lab-proof",
+              "lab",
+              "launcher"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Applies To Roles",
+          "type": "array"
+        },
+        "branch": {
+          "default": "main",
+          "title": "Branch",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "env": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelSurfaceEnv"
+          },
+          "title": "Env",
+          "type": "array"
+        },
+        "installed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRevisionProbe"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "enum": [
+            "lane_tree",
+            "installed_plugin",
+            "claude_config",
+            "launchd_env",
+            "observed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "loaded": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRevisionProbe"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "repository": {
+          "anyOf": [
+            {
+              "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9._-]*|\\$\\{[A-Z][A-Z0-9_]*\\})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository"
+        },
+        "repository_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Repository Paths",
+          "type": "array"
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime"
+        },
+        "settings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelSurfaceSetting"
+          },
+          "title": "Settings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "applies_to_roles"
+      ],
+      "title": "ModelSurfaceDeclaration",
+      "type": "object"
+    },
+    "ModelSurfaceEnv": {
+      "additionalProperties": false,
+      "description": "One environment change owned by a launchd surface.",
+      "properties": {
+        "action": {
+          "enum": [
+            "unset",
+            "set"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "name",
+        "action"
+      ],
+      "title": "ModelSurfaceEnv",
+      "type": "object"
+    },
+    "ModelSurfaceSetting": {
+      "additionalProperties": false,
+      "description": "One Claude configuration setting owned by a surface.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "title": "ModelSurfaceSetting",
+      "type": "object"
+    },
+    "ModelTransactionalId": {
+      "additionalProperties": false,
+      "description": "A transactional producer identity, optionally scoped to one host.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "per_host": {
+          "title": "Per Host",
+          "type": "boolean"
+        },
+        "role": {
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "id",
+        "per_host"
+      ],
+      "title": "ModelTransactionalId",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Declared daemons, portable surfaces, layer bounds and fix-lane command.",
+  "properties": {
+    "chores": {
+      "items": {
+        "$ref": "#/$defs/ModelChoreDeclaration"
+      },
+      "title": "Chores",
+      "type": "array"
+    },
+    "clones": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelCloneSet"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "daemons": {
+      "items": {
+        "$ref": "#/$defs/ModelDaemonDeclaration"
+      },
+      "title": "Daemons",
+      "type": "array"
+    },
+    "fix_lane": {
+      "description": "argv template that dispatches one detached fix lane; `{lane}`, `{brief}`, `{daemon}` and `{host}` are filled per refusal.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Fix Lane",
+      "type": "array"
+    },
+    "fix_lane_repeat_hours": {
+      "default": 6.0,
+      "description": "The same blocker dispatches another fix lane only after this long.",
+      "exclusiveMinimum": 0,
+      "title": "Fix Lane Repeat Hours",
+      "type": "number"
+    },
+    "layers": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelLayerBounds"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "enum": [
+        1,
+        2
+      ],
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "surfaces": {
+      "items": {
+        "$ref": "#/$defs/ModelSurfaceDeclaration"
+      },
+      "title": "Surfaces",
+      "type": "array"
+    },
+    "transactional_ids": {
+      "items": {
+        "$ref": "#/$defs/ModelTransactionalId"
+      },
+      "title": "Transactional Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "daemons",
+    "fix_lane"
+  ],
+  "title": "ModelDaemonOverlay",
+  "type": "object"
+}
