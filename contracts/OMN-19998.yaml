@@ -144,3 +144,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py -q --no-cov -n 0 -p no:randomly -k preservation_runtime_command
         cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -p no:randomly -k inventory_classifies_all_entry_points
+        cwd: .
