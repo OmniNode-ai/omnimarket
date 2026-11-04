@@ -28,7 +28,7 @@ from omnimarket.models.silent_failure_alarm import (
 )
 
 from ..models import ModelDrainerWatchOptions
-from .handler_alarm_io import one_line
+from .alarm_io import one_line
 
 STATUS_FILENAME = "hook_emit_drainer_status.json"
 JOURNAL_DIRNAME = "hook_emit_journal"
@@ -46,7 +46,7 @@ def _epoch(value: object) -> datetime | None:
         return None
 
 
-class HandlerDrainerWatch:
+class DrainerWatchProbe:
     """Observe the drainer on this host and reinstall it when the decision says to."""
 
     def __init__(

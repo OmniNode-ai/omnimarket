@@ -64,10 +64,10 @@ from ..models import (
     ModelSilentFailureAlarmResult,
 )
 from ..protocols import ProtocolDrainerWatch
-from .handler_alarm_io import CONTROLLER_STALE, append_row, one_line, read_controller
-from .handler_command_drainer_watch import HandlerCommandDrainerWatch
-from .handler_drainer_watch import HandlerDrainerWatch
-from .handler_quiet_host_repair import HandlerQuietHostRepair
+from .alarm_io import CONTROLLER_STALE, append_row, one_line, read_controller
+from .command_drainer_watch import CommandDrainerWatchProbe
+from .drainer_watch import DrainerWatchProbe
+from .quiet_host_repair import QuietHostRepairPlanner
 
 LANE = "silent-failure-alarm"
 
@@ -188,9 +188,7 @@ class HandlerSilentFailureAlarm:
         self._options = options
         self._drainer = HandlerDrainerAlarm()
         self._watch = drainer_watch or (
-            HandlerDrainerWatch(options.drainer)
-            if options.drainer is not None
-            else None
+            DrainerWatchProbe(options.drainer) if options.drainer is not None else None
         )
         self._placement = HandlerPlacementShareAlarm()
         self._liveness = HandlerTickLivenessAlarm()
@@ -198,7 +196,7 @@ class HandlerSilentFailureAlarm:
         self._results = HandlerThroughputResultsAlarm()
         self._job_exit = HandlerJobExitAlarm()
         watches: dict[str, ProtocolDrainerWatch] = {
-            host: HandlerCommandDrainerWatch(host, target)
+            host: CommandDrainerWatchProbe(host, target)
             for host, target in options.host_drainers.items()
         }
         if options.drainer is not None and self._watch is not None:
@@ -207,7 +205,7 @@ class HandlerSilentFailureAlarm:
             watches.update(host_watches)
         for host in options.repair_disabled_hosts:
             watches.pop(host, None)
-        self._capture = HandlerQuietHostRepair(
+        self._capture = QuietHostRepairPlanner(
             watches=watches,
             read_events=self._read_hook_events,
             state_file=options.capture_repair_state_file,

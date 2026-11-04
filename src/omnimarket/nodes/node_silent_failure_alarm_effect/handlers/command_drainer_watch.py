@@ -15,7 +15,7 @@ from ..models.model_quiet_host_repair import ModelHostDrainerCommand
 from ..models.model_silent_failure_alarm_result import ModelSilentFailureAlarmResult
 
 
-class HandlerCommandDrainerWatch:
+class CommandDrainerWatchProbe:
     def __init__(self, host: str, target: ModelHostDrainerCommand) -> None:
         self._host, self._target = host, target
 

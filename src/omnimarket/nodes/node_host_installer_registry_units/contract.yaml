@@ -79,8 +79,8 @@ units:
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
       - /usr/local/bin/python3.13
-    module: omnimarket.nodes.node_silent_failure_alarm_effect
-    entry_file: src/omnimarket/nodes/node_silent_failure_alarm_effect/__main__.py
+    module: omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm
+    entry_file: src/omnimarket/nodes/node_silent_failure_alarm_effect/runtime_silent_failure_alarm.py
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file

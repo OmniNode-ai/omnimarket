@@ -20,14 +20,14 @@ def one_line(value: object, fallback: str) -> str:
 
 
 @dataclass(frozen=True)
-class ControllerActivity:
+class TickActivity:
     at: datetime
 
     def last_activity(self) -> datetime:
         return self.at
 
 
-def read_controller(state_dir: Path) -> ControllerActivity | None:
+def read_controller(state_dir: Path) -> TickActivity | None:
     """Keep the receipt, completion and in-flight heartbeat liveness semantics."""
     try:
         receipts = state_dir / "ticks.jsonl"
@@ -52,7 +52,7 @@ def read_controller(state_dir: Path) -> ControllerActivity | None:
                 latest = max(latest, heartbeat)
         except (OSError, ValueError):
             pass
-        return ControllerActivity(latest)
+        return TickActivity(latest)
     except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
         return None
 

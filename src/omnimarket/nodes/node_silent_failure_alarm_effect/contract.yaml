@@ -57,6 +57,11 @@ event_bus:
     - onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1
   publish_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
 externally_consumed_topics: [onex.evt.omnimarket.silent-failure-alarm-completed.v1]
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.silent-failure-drainer-observe-requested.v1
+    producer: "the alarm's own command-line runtime (drainer-observe), run on a quiet host over its declared execution command, not a node contract"
+  - topic: onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1
+    producer: "the alarm's own command-line runtime (drainer-repair), run on a quiet host over its declared execution command, not a node contract"
 descriptor:
   node_archetype: effect
   purity: effectful

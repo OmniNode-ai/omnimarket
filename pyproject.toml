@@ -1207,7 +1207,7 @@ node_retrospective_digest_render_compute = "omnimarket.nodes.node_retrospective_
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 
 [project.scripts]
-onex-market-silent-failure-alarm = "omnimarket.nodes.node_silent_failure_alarm_effect.__main__:main"
+onex-market-silent-failure-alarm = "omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm:main"
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main"
 onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.runtime_host_thermal_cli:main"
 onex-automation-liveness-check = "omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli:main"

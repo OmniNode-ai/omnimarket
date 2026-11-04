@@ -38,7 +38,7 @@ class _Attempt(BaseModel):
     attempted_at: AwareDatetime
 
 
-class HandlerQuietHostRepair:
+class QuietHostRepairPlanner:
     def __init__(
         self,
         *,
