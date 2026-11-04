@@ -62,6 +62,7 @@ from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     HOUSE_TENANT_UUID,
 )
+from tests.helpers.tenant_registry import mirror_tenant_in_store
 from tests.test_omn17082_customer_key_terminus import (  # noqa: F401 — fixtures
     house_keys_planted,
     local_and_house_backends,
@@ -194,6 +195,7 @@ def fixture_backends_resolvable(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _port(tmp_path: Path, effect: _RecordingEffect) -> LocalDelegationDispatchPort:
+    mirror_tenant_in_store(tmp_path / "evidence.sqlite", _CUSTOMER)
     return LocalDelegationDispatchPort(
         effect_handler=effect,
         evidence_db_path=tmp_path / "evidence.sqlite",

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_work_ledger_append_effect
-version: "0.4.0"
+version: "0.5.0"
 description: "Effect: append rows attributed to the broker principal of the producing connection, attested by per-principal topic WRITE ACLs, on the ledger host over a bus command, returning a receipt. Hosted by a serve process, never by a shared runtime."
 pack: pipeline
 node_role: effect
