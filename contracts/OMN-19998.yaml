@@ -41,6 +41,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-publish-recovery
+    statement: Finished lane commits survive a moving PR head through the remote-lane effect node.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the publish operation preserves the original commit on a pushed recovery branch, replays a clean lane delta onto the current head, pins every target push to an ancestor head, and reports conflicts and push refusals with the recovery branch named; failed preservation requires keeping the original worktree -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
@@ -53,6 +58,24 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-publish-recovery
+    description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn19998-publish-recovery-deploy
+    description: Hosted deployment smoke dispatches the installed publish operation through the canonical runtime adapter and its in-memory event bus, validates the typed result, and reads both the target head and recovery branch from a real local remote. No live PR or host installer is involved.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line -k canonical_runtime_bus
+        cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
     source: manual
