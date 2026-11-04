@@ -1,0 +1,29 @@
+{
+  "observed_at": "2026-11-04T14:54:07Z",
+  "sessions": {
+    "lab-h051": {
+      "bucket": "completed",
+      "needs_action": "",
+      "rate": {
+        "isUsingOverage": false,
+        "rateLimitType": "ccr_promotional",
+        "resetsAt": 1793865600,
+        "status": "allowed"
+      },
+      "status": "idle",
+      "updated_at": "2026-11-04T14:53:32.337618Z"
+    },
+    "lab-h053": {
+      "bucket": "completed",
+      "needs_action": "",
+      "rate": {
+        "isUsingOverage": false,
+        "rateLimitType": "seven_day",
+        "resetsAt": 1793883600,
+        "status": "rejected"
+      },
+      "status": "idle",
+      "updated_at": "2026-11-04T13:47:50.620138Z"
+    }
+  }
+}

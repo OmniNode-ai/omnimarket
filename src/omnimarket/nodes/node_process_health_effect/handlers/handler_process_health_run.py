@@ -46,10 +46,24 @@ class OutputPathError(RuntimeError):
     """No output path could be resolved."""
 
 
-def load_config(path: Path = COMPUTE_CONTRACT) -> ModelProcessHealthConfig:
+def load_config(
+    path: Path = COMPUTE_CONTRACT, *, overlay_path: Path | None = None
+) -> ModelProcessHealthConfig:
     """The metric config the compute node's contract declares."""
     contract = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return ModelProcessHealthConfig.model_validate(contract["config"]["process_health"])
+    settings = dict(contract["config"]["process_health"])
+    if overlay_path is not None:
+        overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(overlay, dict)
+            or set(overlay) != {"process_health"}
+            or not isinstance(overlay["process_health"], dict)
+        ):
+            raise ValueError(
+                "the config overlay must contain one process_health mapping"
+            )
+        settings.update(overlay["process_health"])
+    return ModelProcessHealthConfig.model_validate(settings)
 
 
 def load_runtime_io(path: Path = EFFECT_CONTRACT) -> dict[str, Any]:
@@ -66,10 +80,13 @@ def read_sources(
     """Read every source; keep the series window plus the summary's look-back."""
     environ = request.environ
     generated_at = request.generated_at
-    series_start = generated_at - timedelta(days=config.series_days + 1)
-    summary_start = (
-        config.reset_at - timedelta(hours=config.summary_max_hours) - timedelta(days=1)
+    series_start = generated_at - timedelta(
+        days=max(config.series_days, config.range_history_days) + 1
     )
+    summary_start = min(
+        config.reset_at - timedelta(hours=config.summary_max_hours),
+        config.reset_at - (generated_at - config.reset_at),
+    ) - timedelta(days=1)
     keep_from = min(series_start, summary_start)
     git_since = min(
         keep_from, generated_at - timedelta(days=int(runtime_io["git"]["since_days"]))
@@ -141,8 +158,9 @@ class HandlerProcessHealthRun:
     def handle(
         self, request: ModelProcessHealthRunRequest
     ) -> ModelProcessHealthRunResult:
-        config = load_config()
         runtime_io = load_runtime_io()
+        overlay = request.environ.get(runtime_io["config_overlay"]["env_var"], "")
+        config = load_config(overlay_path=Path(overlay) if overlay else None)
         output = resolve_output(runtime_io, request)
         sources = read_sources(config, runtime_io, request)
         result = HandlerProcessHealth().handle(build_request(config, sources, request))
