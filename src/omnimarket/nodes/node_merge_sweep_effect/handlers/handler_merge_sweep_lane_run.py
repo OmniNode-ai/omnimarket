@@ -15,6 +15,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    priority_class_args,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
 )
@@ -53,6 +56,7 @@ def start_argv(request: ModelMergeSweepLaneRunRequest) -> list[str]:
         argv += ["--repo", request.repo]
     if request.host:
         argv += ["--host", request.host]
+    argv += priority_class_args(request.ticket_text)
     argv.append("--detach")
     return argv
 

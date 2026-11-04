@@ -231,7 +231,7 @@ async def test_two_voters_raising_the_same_finding_block_the_receipt(make: Any) 
         {"roster__0__endpoint_class": "review_gateway"},
         {"policy__approved_identities": ["voter-one"]},
         {"roster__1__model": ""},
-        {"roster__0__rung": "cloud"},
+        {"roster__0__rung": "cloud", "rung_order": ["cloud", "lab"]},
         {"policy__forbidden_hosts": ["192.0.2.12"]},
     ],
     ids=["provider", "gateway", "unknown-identity", "missing-model", "rung", "host"],
