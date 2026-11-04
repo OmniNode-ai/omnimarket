@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_prepush_preflight_effect.models.model_prepush_refusal import (
     ModelPrepushRefusal,
@@ -25,7 +25,6 @@ class ModelPrepushPreflightResult(BaseModel):
     refusals: tuple[ModelPrepushRefusal, ...] = ()
     error_tail: str = ""
 
-    @computed_field  # type: ignore[prop-decorator]
     @property
     def report(self) -> dict[str, Any]:
         """The keys a lane's hook-preflight result takes from this answer: the range and status always, and, when a
