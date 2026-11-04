@@ -3,32 +3,18 @@
 
 """Unit tests for DurableEvidenceGate.
 
-The gate refuses Linear Done transitions when the durable evidence trail in
-``onex_change_control`` is local-only or cites a non-merged PR.
+The gate refuses Linear Done transitions unless the ticket's product-repository
+contract and the check run on its merged head back it (OMN-20071). A ticket no
+product repository governs is refused and decided nowhere else (OMN-20074).
 
-DEFAULT invocation (OMN-12593 config-drift fix)
------------------------------------------------
-The gate's default invocation resolves the receipt and contract against the
-*real* control-plane layout: receipts at
-``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml`` (a directory, not a
-single ``evidence/<TICKET>/dod_report.json`` file) and the dev-targeted OCC
-governance ref ``origin/dev`` (not ``main``). The default-invocation regression
-tests are ``test_default_invocation_passes_for_omn_12574_style_ticket`` and
-``test_default_invocation_fails_when_receipt_truly_missing``.
-
-Test surface (one test per failure mode + the pass case + helper functions):
-
-1. ``test_untracked_receipt_hard_fails`` — no receipt under dir on dev → FAIL
-2. ``test_contract_cites_superseded_pr_hard_fails`` — receipt-bound PR closed not merged
-3. ``test_contract_cites_merged_pr_pass`` — receipt citations match real merge SHAs
-4. ``test_stale_occ_governance_ref_hard_fails`` — dev has older contract version
-5. ``test_enforce_raises_with_structured_error`` — DurableEvidenceGateError
-6. ``test_zero_receipt_bound_commits_fails_citation_check``
-7. ``test_receipt_json_url_extracted``
-8. ``test_parse_pr_url_handles_invalid``
+The label and repair-to-ratchet checks keep their meaning on that path; their
+cases run over an all-green product-repository contract. The receipt-citation
+parsers the gate module still carries are covered at the end of the file.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import pytest
 
@@ -37,41 +23,48 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
+    EnumRepoContractReadStatus,
+    ModelDurableEvidenceGateResult,
+    ModelRepoContractRead,
+    ModelRepoEvidenceCheckRun,
+    ModelTicketMergedPr,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
-    DEFAULT_OCC_GOVERNANCE_REF,
+    REPO_EVIDENCE_APP_SLUG,
+    REPO_EVIDENCE_CHECK_NAME,
     DurableEvidenceGate,
     DurableEvidenceGateError,
     default_contract_path,
-    default_receipt_dir,
     extract_receipt_merge_commits,
     parse_pr_url,
 )
 
-# Canonical default surfaces under test. These mirror the real OCC layout the
-# platform writes (OccCompanionEmitter) and the dev-targeted governance ref.
-_OCC_REPO = "/fake/onex_change_control"
-_DEV_REF = DEFAULT_OCC_GOVERNANCE_REF  # "origin/dev"
 _TICKET = "OMN-9855"
-_RECEIPT_DIR = default_receipt_dir(_TICKET)  # drift/dod_receipts/OMN-9855
-_CONTRACT_PATH = default_contract_path(_TICKET)  # contracts/OMN-9855.yaml
+_REPO = "OmniNode-ai/omnibase_core"
+_HEAD = "a" * 40
+_MERGE = "b" * 40
+_DESCRIPTION = (
+    "## Acceptance criteria\n\n"
+    "- [ ] AC1: it works -- falsifier: uv run pytest tests/a.py\n"
+)
 
 
 def _ticket_contract(
     *,
     evidence_id: str = "dod-001",
 ) -> dict[str, object]:
-    """Build a schema-valid contract dict with one evidence check."""
+    """Build a schema-valid contract dict with one evidence check bound to AC1."""
     return {
         "schema_version": "1.0.0",
-        "ticket_id": "OMN-9855",
+        "ticket_id": _TICKET,
         "dod_evidence": [
             {
                 "id": evidence_id,
                 "description": "Code change shipped",
                 "checks": [
-                    {"check_type": "command", "check_value": "true"},
+                    {"check_type": "test_passes", "check_value": "uv run pytest a.py"},
                 ],
+                "binds_ac": ["AC1"],
             }
         ],
     }
@@ -109,6 +102,79 @@ def _receipt(
     }
 
 
+def _merged_pr() -> ModelTicketMergedPr:
+    return ModelTicketMergedPr(
+        repo=_REPO,
+        pr_number=949,
+        head_sha=_HEAD,
+        merge_commit_sha=_MERGE,
+        merged_at="2026-10-09T12:00:00Z",
+    )
+
+
+def _make_gate(
+    *,
+    contract_in_repo: dict[str, object] | None = None,
+    released_tags: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
+    released_index: dict[tuple[str, str], frozenset[str] | None] | None = None,
+) -> DurableEvidenceGate:
+    """A gate over deterministic in-memory product-repository readers.
+
+    ``contract_in_repo`` is the contract the merged PR carries; ``None`` means
+    the repository carries none, so no product repository governs the ticket.
+    """
+
+    def read_repo_contract(
+        repo: str, ref: str, ticket_id: str
+    ) -> ModelRepoContractRead:
+        if contract_in_repo is None:
+            return ModelRepoContractRead(status=EnumRepoContractReadStatus.ABSENT)
+        return ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.FOUND, contract=contract_in_repo
+        )
+
+    def read_repo_check_runs(
+        repo: str, sha: str
+    ) -> tuple[ModelRepoEvidenceCheckRun, ...] | None:
+        return (
+            ModelRepoEvidenceCheckRun(
+                id=7001,
+                name=REPO_EVIDENCE_CHECK_NAME,
+                app_slug=REPO_EVIDENCE_APP_SLUG,
+                status="completed",
+                conclusion="success",
+            ),
+        )
+
+    return DurableEvidenceGate(
+        release_tags_containing=_released_tags_stub(released_tags),
+        index_release_files=_released_index_stub(released_index),
+        read_repo_contract=read_repo_contract,
+        read_repo_check_runs=read_repo_check_runs,
+    )
+
+
+def _evaluate(
+    gate: DurableEvidenceGate,
+    *,
+    contract: dict[str, object] | None = None,
+    labels: frozenset[str] = frozenset(),
+) -> ModelDurableEvidenceGateResult:
+    return gate.evaluate(
+        ticket_id=_TICKET,
+        contract=contract if contract is not None else _ticket_contract(),
+        ticket_labels=labels,
+        merged_prs=(_merged_pr(),),
+        ticket_description=_DESCRIPTION,
+    )
+
+
+def _check(
+    result: ModelDurableEvidenceGateResult, check: EnumDurableEvidenceCheck
+) -> Any:
+    return next(c for c in result.checks if c.check == check)
+
+
 # OMN-18010: the released-is-Done probes are REQUIRED gate constructor
 # arguments — there is no unconfigured/skip path. These stubs answer "released"
 # for every input, so the pre-OMN-18010 behaviour of the cases in this file is
@@ -136,392 +202,97 @@ def _released_index_stub(
     return probe
 
 
-def _make_gate(
-    *,
-    tracked: dict[tuple[str, str, str], bool] | None = None,
-    pr_view: dict[tuple[str, int], tuple[str, str | None]] | None = None,
-    pr_commits: dict[tuple[str, int], tuple[str, ...]] | None = None,
-    contract_on_main: dict[str, object] | None = None,
-    receipts_on_ref: list[dict[str, object]] | None = None,
-    occ_governance_ref: str = _DEV_REF,
-    released_tags: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
-    released_index: dict[tuple[str, str], frozenset[str] | None] | None = None,
-) -> DurableEvidenceGate:
-    """Build a DurableEvidenceGate with deterministic in-memory probe stubs.
-
-    ``tracked`` is keyed by ``(repo_path, ref, receipt_dir)`` — the receipt-
-    tracked probe answers whether ANY receipt is tracked under the ticket's
-    receipt DIRECTORY (``drift/dod_receipts/<TICKET>``), not a single fixed
-    receipt file.
-
-    ``pr_commits`` is keyed by ``(repo, pr_number)`` and supplies the GitHub
-    PR-commits set for Check 2's membership leg (OMN-14255). An unmapped PR
-    yields an EMPTY tuple, exercising the fail-closed indeterminate path.
-    """
-    tracked_map = tracked or {}
-    pr_view_map = pr_view or {}
-    pr_commits_map = pr_commits or {}
-
-    def is_receipt_tracked(repo_path: str, ref: str, receipt_dir: str) -> bool:
-        return tracked_map.get((repo_path, ref, receipt_dir), False)
-
-    def gh_pr_view(repo: str, pr_number: int) -> tuple[str, str | None]:
-        if (repo, pr_number) not in pr_view_map:
-            msg = f"unexpected gh probe: {repo}#{pr_number}"
-            raise AssertionError(msg)
-        return pr_view_map[(repo, pr_number)]
-
-    def pr_commits_probe(repo: str, pr_number: int) -> tuple[str, ...]:
-        return pr_commits_map.get((repo, pr_number), ())
-
-    def load_contract(
-        repo_path: str, ref: str, rel_path: str
-    ) -> dict[str, object] | None:
-        return contract_on_main
-
-    def load_receipts(
-        repo_path: str, ref: str, receipt_dir: str
-    ) -> list[dict[str, object]]:
-        return receipts_on_ref or []
-
-    return DurableEvidenceGate(
-        release_tags_containing=_released_tags_stub(released_tags),
-        index_release_files=_released_index_stub(released_index),
-        is_receipt_tracked=is_receipt_tracked,
-        gh_pr_view=gh_pr_view,
-        pr_commits=pr_commits_probe,
-        load_contract_on_ref=load_contract,
-        load_receipts_on_ref=load_receipts,
-        occ_repo_path=_OCC_REPO,
-        occ_governance_ref=occ_governance_ref,
-    )
-
-
 @pytest.mark.unit
 class TestDurableEvidenceGate:
     """Behaviour of the durable-evidence gate across pass/fail cases."""
 
-    def test_untracked_receipt_hard_fails(self) -> None:
-        """No receipt tracked under the receipt dir on dev = HARD FAIL."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={
-                # No receipt tracked under drift/dod_receipts/OMN-9855 on dev.
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): False,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
+    def test_green_repo_contract_with_done_class_label_passes(self) -> None:
+        gate = _make_gate(contract_in_repo=_ticket_contract())
+        result = _evaluate(
+            gate, labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value})
         )
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+        assert _check(result, EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN).passed
 
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
+    def test_ticket_no_product_repository_governs_is_refused(self) -> None:
+        """No merged PR carries the contract: refused, and nothing else decides."""
+        gate = _make_gate(contract_in_repo=None)
+        result = _evaluate(
+            gate, labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value})
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        receipt_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RECEIPT_TRACKED
-        )
-        assert receipt_check.passed is False
-        assert "No receipt is tracked" in receipt_check.message
-        assert "Commit and push the command.yaml receipt" in receipt_check.message
+        governing = _check(result, EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN)
+        assert governing.passed is False
+        assert "no product repository governs" in governing.message
+        assert "OCC PR" not in governing.message
+        assert _check(result, EnumDurableEvidenceCheck.DONE_CLASS_LABEL).passed is False
 
-    def test_contract_cites_superseded_pr_hard_fails(self) -> None:
-        """Receipt cites a non-merged PR (CLOSED/superseded) = HARD FAIL."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True,
-            },
-            pr_view={
-                # PR #926 was CLOSED-as-superseded, never merged.
-                ("OmniNode-ai/omnibase_core", 926): ("CLOSED", None),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[
-                _receipt(
-                    pr_number=926,
-                    commit_sha="b424155a89b298f85f04cd20016139b49d8877ed",
-                )
-            ],
-        )
-
+    def test_ticket_with_no_merged_pr_is_refused(self) -> None:
+        gate = _make_gate(contract_in_repo=_ticket_contract())
         result = gate.evaluate(
             ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is False
-        assert "state=CLOSED" in cite_check.message
-        assert "expected MERGED" in cite_check.message
-
-    def test_contract_cites_unrelated_sha_hard_fails(self) -> None:
-        """PR MERGED but cited SHA is neither the merge commit nor a PR commit.
-
-        OMN-14255: the cited SHA fails the identity leg (it is not the squash
-        ``mergeCommit.oid``) AND is not a member of the PR's commit set, so it is
-        an unrelated/wrong commit and Check 2 hard-fails.
-        """
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            pr_commits={
-                # The PR's real commits — none is the receipt's zeros SHA.
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "1111111111111111111111111111111111111111",
-                    "2222222222222222222222222222222222222222",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[
-                _receipt(commit_sha="0000000000000000000000000000000000000000")
-            ],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is False
-        assert "neither that merge commit nor" in cite_check.message
-        assert "not part of this PR" in cite_check.message
-
-    def test_squash_merge_head_sha_citation_passes_via_pr_commits(self) -> None:
-        """OMN-14255: a squash-merge receipt citing the pre-merge head SHA passes.
-
-        These repos are squash-merge-only, so the synthetic ``mergeCommit.oid``
-        has NO ancestry to the reviewed head SHA — the identity leg fails. But the
-        head SHA IS a member of the PR's commit set (the GitHub PR-commits API),
-        so Check 2 confirms the cited content actually landed and PASSES. This is
-        the exact class of receipt that was structurally un-passable before.
-        """
-        head_sha = "2d083c5211111111111111111111111111111111"
-        squash_merge_oid = "00e32f1a22222222222222222222222222222222"
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): ("MERGED", squash_merge_oid),
-            },
-            pr_commits={
-                # The squash mergeCommit.oid is unrelated to the head, but the
-                # reviewed head SHA is one of the PR's commits.
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "9999999999999999999999999999999999999999",
-                    head_sha,
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt(commit_sha=head_sha)],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
+            contract=_ticket_contract(),
             ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.PASS, result
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is True
-
-    def test_squash_merge_head_sha_fails_closed_when_pr_commits_unresolvable(
-        self,
-    ) -> None:
-        """OMN-14255 fail-closed: head-SHA citation + unresolvable PR-commits → FAIL.
-
-        The cited SHA is not the squash ``mergeCommit.oid`` (identity fails) and
-        the PR-commits API cannot be resolved (empty tuple — gh missing / auth /
-        network / not-found). An indeterminate membership result must NOT upgrade
-        to PASS, so Check 2 fails closed.
-        """
-        head_sha = "2d083c5211111111111111111111111111111111"
-        squash_merge_oid = "00e32f1a22222222222222222222222222222222"
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): ("MERGED", squash_merge_oid),
-            },
-            # No pr_commits mapping → the probe returns () (unresolvable).
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt(commit_sha=head_sha)],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
+            merged_prs=(),
+            ticket_description=_DESCRIPTION,
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is False
-        assert "fail-closed" in cite_check.message
+        governing = _check(result, EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN)
+        assert governing.passed is False
+        assert "no merged product PR" in governing.message
 
-    def test_contract_cites_merged_pr_pass(self) -> None:
-        """All checks green: tracked receipt + MERGED PR + dev matches → PASS."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
-        )
+    def test_gate_has_no_occ_clone_or_receipt_parameters(self) -> None:
+        import inspect
 
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        assert all(c.passed for c in result.checks)
-        assert {c.check for c in result.checks} == {
-            EnumDurableEvidenceCheck.RECEIPT_TRACKED,
-            EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
-            # OMN-18010: released is part of Done — the merged citation lands in
-            # a publishing repo, so this check is evaluated, not skipped.
-            EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
-            EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
-            EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
-            EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
+        parameters = set(inspect.signature(DurableEvidenceGate).parameters)
+        assert parameters == {
+            "release_tags_containing",
+            "index_release_files",
+            "read_repo_contract",
+            "read_repo_check_runs",
         }
 
     def test_enforce_threads_done_class_labels(self) -> None:
         """enforce() passes label context through to the hard-fail gate."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
-        )
+        gate = _make_gate(contract_in_repo=_ticket_contract())
 
         result = gate.enforce(
             ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
+            contract=_ticket_contract(),
             ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+            merged_prs=(_merged_pr(),),
+            ticket_description=_DESCRIPTION,
         )
 
-        done_class = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
-        assert done_class.passed is True
+        assert _check(result, EnumDurableEvidenceCheck.DONE_CLASS_LABEL).passed is True
 
-    def _all_green_gate(self) -> DurableEvidenceGate:
-        """A gate whose durable checks all pass; label tests vary labels/contract."""
-        return _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=_ticket_contract(),
-            receipts_on_ref=[_receipt()],
-        )
+    def test_enforce_raises_with_structured_error(self) -> None:
+        """enforce() raises DurableEvidenceGateError carrying the result."""
+        gate = _make_gate(contract_in_repo=None)
+
+        with pytest.raises(DurableEvidenceGateError) as exc_info:
+            gate.enforce(
+                ticket_id=_TICKET,
+                contract=_ticket_contract(),
+                merged_prs=(_merged_pr(),),
+                ticket_description=_DESCRIPTION,
+            )
+
+        err = exc_info.value
+        assert err.result.ticket_id == _TICKET
+        assert err.result.status == EnumDurableEvidenceStatus.FAIL
+        assert "contract_on_occ_main" in str(err)
 
     def test_plain_done_no_class_label_hard_fails(self) -> None:
-        """Receipt+PR+contract all green but NO done-class label → HARD FAIL.
-
-        OMN-13337 (retro R2): a plain Done with no approved done-class label is
-        rejected at the gate boundary even when the three durable checks pass.
-        """
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            # No done-class label supplied (default empty set).
-        )
+        """Contract green but NO done-class label → HARD FAIL (OMN-13337)."""
+        result = _evaluate(_make_gate(contract_in_repo=_ticket_contract()))
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        done_class = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
+        done_class = _check(result, EnumDurableEvidenceCheck.DONE_CLASS_LABEL)
         assert done_class.passed is False
         assert "no approved done-class label" in done_class.message
-        # The three durable checks still pass — only the class check fails.
         assert all(
             c.passed
             for c in result.checks
@@ -530,99 +301,37 @@ class TestDurableEvidenceGate:
 
     def test_non_done_class_label_does_not_satisfy(self) -> None:
         """A label outside the approved set does not count as a done-class."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({"bug", "needs-review"}),
+        result = _evaluate(
+            _make_gate(contract_in_repo=_ticket_contract()),
+            labels=frozenset({"bug", "needs-review"}),
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        done_class = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
-        assert done_class.passed is False
+        assert _check(result, EnumDurableEvidenceCheck.DONE_CLASS_LABEL).passed is False
 
-    def test_done_class_label_without_tracked_receipt_hard_fails(self) -> None:
-        """A done-class label not backed by a tracked receipt → HARD FAIL.
+    def test_done_class_label_without_governing_contract_hard_fails(self) -> None:
+        """A done-class label the repository contract does not back → HARD FAIL.
 
-        The label alone is not evidence; it must be backed by RECEIPT_TRACKED.
+        The label alone is not evidence.
         """
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): False},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.PROD_PROVEN.value}),
+        result = _evaluate(
+            _make_gate(contract_in_repo=None),
+            labels=frozenset({EnumDoneClassLabel.PROD_PROVEN.value}),
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        done_class = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
+        done_class = _check(result, EnumDurableEvidenceCheck.DONE_CLASS_LABEL)
         assert done_class.passed is False
         assert "not evidence" in done_class.message
 
-    def test_done_class_label_backed_by_receipt_passes(self) -> None:
-        """An approved done-class label backed by a tracked receipt → PASS."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
+    def test_done_class_label_backed_by_repo_contract_passes(self) -> None:
+        result = _evaluate(
+            _make_gate(contract_in_repo=_ticket_contract()),
+            labels=frozenset({EnumDoneClassLabel.PROJECTION_BACKED.value}),
         )
 
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.PROJECTION_BACKED.value}),
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        done_class = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+        done_class = _check(result, EnumDurableEvidenceCheck.DONE_CLASS_LABEL)
         assert done_class.passed is True
         assert EnumDoneClassLabel.PROJECTION_BACKED.value in done_class.message
 
@@ -641,25 +350,15 @@ class TestDurableEvidenceGate:
 
     def test_defect_ticket_without_prevention_hard_fails(self) -> None:
         """A defect-labelled ticket with no prevention gate / note -> HARD FAIL."""
-        contract = _ticket_contract()
-        gate = self._all_green_gate()
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset(
+        result = _evaluate(
+            _make_gate(contract_in_repo=_ticket_contract()),
+            labels=frozenset(
                 {EnumDefectLabel.BUG.value, EnumDoneClassLabel.SOURCE_DONE.value}
             ),
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        defect = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
-        )
+        defect = _check(result, EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE)
         assert defect.passed is False
         assert "cannot close" in defect.message
         assert all(
@@ -669,19 +368,14 @@ class TestDurableEvidenceGate:
         )
 
     def test_defect_ticket_with_prevention_gate_passes(self) -> None:
-        """A defect ticket that links a prevention gate -> PASS."""
+        """A defect ticket whose repository contract links a prevention gate -> PASS."""
         contract = dict(_ticket_contract())
         contract["prevention_gate"] = (
             ".github/workflows/validator-no-except-swallow.yml"
         )
-        gate = self._all_green_gate()
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset(
+        result = _evaluate(
+            _make_gate(contract_in_repo=contract),
+            labels=frozenset(
                 {
                     EnumDefectLabel.REGRESSION.value,
                     EnumDoneClassLabel.PROJECTION_BACKED.value,
@@ -689,43 +383,23 @@ class TestDurableEvidenceGate:
             ),
         )
 
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        defect = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
-        )
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+        defect = _check(result, EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE)
         assert defect.passed is True
         assert "prevention_gate" in defect.message
 
     def test_defect_ticket_with_non_recurrence_note_passes(self) -> None:
-        """A defect ticket that carries a non-recurrence note -> PASS."""
         contract = dict(_ticket_contract())
-        contract["non_recurrence_note"] = (
-            "One-off data-entry typo in a fixture; no code path can reproduce it, "
-            "so no automated gate is feasible."
-        )
-        gate = self._all_green_gate()
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset(
-                {
-                    EnumDefectLabel.DEFECT.value,
-                    EnumDoneClassLabel.RUNTIME_OBSERVED.value,
-                }
+        contract["non_recurrence_note"] = "One-off data repair; no automated gate."
+        result = _evaluate(
+            _make_gate(contract_in_repo=contract),
+            labels=frozenset(
+                {EnumDefectLabel.DEFECT.value, EnumDoneClassLabel.SOURCE_DONE.value}
             ),
         )
 
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        defect = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
-        )
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+        defect = _check(result, EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE)
         assert defect.passed is True
         assert "non_recurrence_note" in defect.message
 
@@ -734,45 +408,28 @@ class TestDurableEvidenceGate:
         contract = dict(_ticket_contract())
         contract["prevention_gate"] = "   "
         contract["non_recurrence_note"] = ""
-        gate = self._all_green_gate()
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset(
+        result = _evaluate(
+            _make_gate(contract_in_repo=contract),
+            labels=frozenset(
                 {EnumDefectLabel.BUG.value, EnumDoneClassLabel.SOURCE_DONE.value}
             ),
         )
 
         assert result.status == EnumDurableEvidenceStatus.FAIL
-        defect = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
+        assert (
+            _check(result, EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE).passed
+            is False
         )
-        assert defect.passed is False
 
     def test_non_defect_ticket_is_exempt_from_ratchet(self) -> None:
         """A non-defect ticket passes the ratchet check N/A even with no fields."""
-        contract = _ticket_contract()
-        gate = self._all_green_gate()
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.DEMO_VISIBLE.value}),
+        result = _evaluate(
+            _make_gate(contract_in_repo=_ticket_contract()),
+            labels=frozenset({EnumDoneClassLabel.DEMO_VISIBLE.value}),
         )
 
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        defect = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE
-        )
+        assert result.status == EnumDurableEvidenceStatus.PASS, result.checks
+        defect = _check(result, EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE)
         assert defect.passed is True
         assert "does not apply" in defect.message
 
@@ -780,459 +437,8 @@ class TestDurableEvidenceGate:
         """The defect-class label set is exactly the three canonical labels."""
         assert EnumDefectLabel.values() == frozenset({"bug", "defect", "regression"})
 
-    def test_stale_occ_governance_ref_hard_fails(self) -> None:
-        """OCC dev still has a stale contract missing the receipt-bound check."""
-        local_contract = _ticket_contract(evidence_id="dod-949")
-        stale_main_contract = _ticket_contract(evidence_id="dod-926")
-
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=stale_main_contract,
-            receipts_on_ref=[_receipt(evidence_id="dod-949")],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=local_contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        main_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
-        )
-        assert main_check.passed is False
-        assert "stale" in main_check.message
-        assert "Open an OCC PR" in main_check.message
-
-    def test_contract_missing_on_governance_ref_hard_fails(self) -> None:
-        """Contract not yet present on the OCC governance ref → FAIL."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=None,
-            receipts_on_ref=[_receipt()],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        main_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
-        )
-        assert main_check.passed is False
-        assert "not present" in main_check.message
-
-    def test_enforce_raises_with_structured_error(self) -> None:
-        """enforce() raises DurableEvidenceGateError carrying the result."""
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={
-                # No receipt tracked → first failure.
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): False,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[_receipt()],
-        )
-
-        with pytest.raises(DurableEvidenceGateError) as exc_info:
-            gate.enforce(
-                ticket_id=_TICKET,
-                contract=contract,
-                receipt_dir=_RECEIPT_DIR,
-                contract_rel_path=_CONTRACT_PATH,
-            )
-
-        err = exc_info.value
-        assert err.result.ticket_id == _TICKET
-        assert err.result.status == EnumDurableEvidenceStatus.FAIL
-        assert "receipt_tracked" in str(err)
-
-    def test_receipt_url_variant_resolves_same_pr(self) -> None:
-        """A receipt probe URL with a trailing PR path still resolves the PR."""
-        local_contract = _ticket_contract()
-        main_contract = _ticket_contract()
-
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True,
-            },
-            pr_view={
-                ("OmniNode-ai/omnibase_core", 949): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                ),
-            },
-            contract_on_main=main_contract,
-            receipts_on_ref=[
-                _receipt()
-                | {
-                    "probe_stdout": (
-                        '{"number":949,"url":"https://github.com/OmniNode-ai/'
-                        'omnibase_core/pull/949/files","state":"MERGED",'
-                        '"mergeCommit":{"oid":"abcdef1234567890abcdef1234567890abcdef12"}}'
-                    )
-                }
-            ],
-        )
-
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=local_contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.RUNTIME_OBSERVED.value}),
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        main_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
-        )
-        assert main_check.passed is True
-
-    def test_zero_receipt_bound_commits_fails_citation_check(self) -> None:
-        """Tracked receipts with no PR-bound commit cannot pass vacuously."""
-        empty_contract: dict[str, object] = {
-            "schema_version": "1.0.0",
-            "ticket_id": "OMN-9999",
-            "dod_evidence": [
-                {
-                    "id": "dod-001",
-                    "description": "Documentation only",
-                    "checks": [{"check_type": "file_exists", "path": "README.md"}],
-                }
-            ],
-        }
-        receipt_dir = default_receipt_dir("OMN-9999")
-        gate = _make_gate(
-            tracked={
-                (_OCC_REPO, _DEV_REF, receipt_dir): True,
-            },
-            pr_view={},  # never invoked
-            contract_on_main=empty_contract,
-            receipts_on_ref=[],
-        )
-
-        result = gate.evaluate(
-            ticket_id="OMN-9999",
-            contract=empty_contract,
-            receipt_dir=receipt_dir,
-            contract_rel_path=default_contract_path("OMN-9999"),
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is False
-        assert "No PASS receipt" in cite_check.message
-
-
-@pytest.mark.unit
-class TestDefaultInvocation:
-    """DEFAULT-invocation regression tests for the OMN-12593 config-drift fix.
-
-    The bug: the gate's defaults looked for the receipt at the speculative
-    ``evidence/<TICKET>/dod_report.json`` and checked ``ref=main``, while the
-    platform writes receipts at
-    ``drift/dod_receipts/<TICKET>/<EVIDENCE_ITEM>/command.yaml`` and OCC
-    governance is dev-targeted (contracts land on OCC ``dev``, batched to
-    ``main`` later). The default invocation therefore FAILed
-    (RECEIPT_TRACKED + CONTRACT_ON_OCC_MAIN) for tickets whose evidence was
-    actually valid (e.g. OMN-12574 children).
-
-    These tests pin the corrected default surfaces: the canonical defaults must
-    PASS for an OMN-12574-style ticket and still FAIL fast when the receipt is
-    truly missing.
-    """
-
-    def test_canonical_default_helpers(self) -> None:
-        """The default path helpers and ref match the real platform layout."""
-        assert DEFAULT_OCC_GOVERNANCE_REF == "origin/dev"
-        assert default_receipt_dir("OMN-12574") == "drift/dod_receipts/OMN-12574"
+    def test_default_contract_path_is_the_repository_layout(self) -> None:
         assert default_contract_path("OMN-12574") == "contracts/OMN-12574.yaml"
-
-    def test_default_invocation_passes_with_receipt_bound_merge_commit(self) -> None:
-        """DEFAULT invocation PASSes when a receipt binds a merged PR commit."""
-        ticket = "OMN-12574"
-        contract: dict[str, object] = {
-            "schema_version": "1.0.0",
-            "ticket_id": ticket,
-            "dod_evidence": [
-                {
-                    "id": "dod-boundary-clone-retry-pr",
-                    "description": "OCC PR #2083 retries validate-boundaries clones.",
-                    "source": "manual",
-                    "status": "verified",
-                    "checks": [
-                        {
-                            "check_type": "command",
-                            "check_value": (
-                                "grep -q '^status: PASS$' "
-                                "drift/dod_receipts/OMN-12574/"
-                                "dod-boundary-clone-retry-pr/command.yaml"
-                            ),
-                        }
-                    ],
-                }
-            ],
-        }
-
-        gate = _make_gate(
-            tracked={
-                # Receipt(s) ARE tracked under drift/dod_receipts/OMN-12574 on
-                # the dev-targeted governance ref — the real platform layout.
-                (
-                    _OCC_REPO,
-                    DEFAULT_OCC_GOVERNANCE_REF,
-                    default_receipt_dir(ticket),
-                ): True,
-            },
-            pr_view={
-                ("OmniNode-ai/onex_change_control", 2083): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                )
-            },
-            contract_on_main=contract,  # contract present on OCC dev
-            receipts_on_ref=[
-                _receipt(
-                    repo="OmniNode-ai/onex_change_control",
-                    pr_number=2083,
-                    evidence_id="dod-boundary-clone-retry-pr",
-                )
-            ],
-        )
-
-        # DEFAULT invocation: caller passes ticket_id + contract + the ticket's
-        # done-class label set. The gate resolves canonical paths and the dev
-        # ref internally.
-        result = gate.evaluate_default(
-            ticket_id=ticket,
-            contract=contract,
-            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
-        )
-
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        assert all(c.passed for c in result.checks)
-        assert {c.check for c in result.checks} == {
-            EnumDurableEvidenceCheck.RECEIPT_TRACKED,
-            EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
-            # OMN-18010: released is part of Done — the merged citation lands in
-            # a publishing repo, so this check is evaluated, not skipped.
-            EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
-            EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
-            EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
-            EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
-        }
-        receipt_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RECEIPT_TRACKED
-        )
-        # The PASS message references the canonical dir + dev ref, proving the
-        # default resolution targeted the real layout, not the drifted one.
-        assert "drift/dod_receipts/OMN-12574" in receipt_check.message
-        assert "origin/dev" in receipt_check.message
-
-    def test_default_invocation_fails_without_receipt_bound_commit(self) -> None:
-        """A schema-valid contract with zero bound commits must not pass."""
-        ticket = "OMN-12574"
-        contract: dict[str, object] = {
-            "schema_version": "1.0.0",
-            "ticket_id": ticket,
-            "dod_evidence": [
-                {
-                    "id": "dod-boundary-clone-retry-pr",
-                    "description": "OCC PR #2083 retries validate-boundaries clones.",
-                    "checks": [{"check_type": "command", "check_value": "true"}],
-                }
-            ],
-        }
-        gate = _make_gate(
-            tracked={
-                (
-                    _OCC_REPO,
-                    DEFAULT_OCC_GOVERNANCE_REF,
-                    default_receipt_dir(ticket),
-                ): True,
-            },
-            pr_view={},
-            contract_on_main=contract,
-            receipts_on_ref=[],
-        )
-
-        result = gate.evaluate_default(ticket_id=ticket, contract=contract)
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        cite_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite_check.passed is False
-        assert "No PASS receipt" in cite_check.message
-
-    def test_default_invocation_fails_when_receipt_truly_missing(self) -> None:
-        """DEFAULT invocation still FAILs fast when the receipt is truly absent.
-
-        The fix must not weaken the gate's intent: with the contract present on
-        OCC dev but NO receipt tracked under
-        ``drift/dod_receipts/<TICKET>/`` on dev, the gate must HARD FAIL on
-        RECEIPT_TRACKED — fail-fast on genuinely missing evidence, no silent
-        fallback.
-        """
-        ticket = "OMN-12574"
-        contract: dict[str, object] = {
-            "schema_version": "1.0.0",
-            "ticket_id": ticket,
-            "dod_evidence": [
-                {
-                    "id": "dod-boundary-clone-retry-pr",
-                    "description": "OCC PR #2083 retries validate-boundaries clones.",
-                    "checks": [
-                        {"check_type": "command", "check_value": "true"},
-                    ],
-                }
-            ],
-        }
-
-        gate = _make_gate(
-            tracked={
-                # No receipt tracked anywhere on dev (truly missing evidence).
-                (
-                    _OCC_REPO,
-                    DEFAULT_OCC_GOVERNANCE_REF,
-                    default_receipt_dir(ticket),
-                ): False,
-            },
-            pr_view={},
-            contract_on_main=contract,
-        )
-
-        result = gate.evaluate_default(ticket_id=ticket, contract=contract)
-
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        receipt_check = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RECEIPT_TRACKED
-        )
-        assert receipt_check.passed is False
-        assert "No receipt is tracked" in receipt_check.message
-        assert "drift/dod_receipts/OMN-12574" in receipt_check.message
-
-    def test_enforce_default_raises_when_receipt_missing(self) -> None:
-        """enforce_default() hard-fails (raises) when evidence is missing."""
-        ticket = "OMN-12574"
-        contract: dict[str, object] = {
-            "schema_version": "1.0.0",
-            "ticket_id": ticket,
-            "dod_evidence": [{"id": "dod-001", "checks": [{"check_type": "command"}]}],
-        }
-        gate = _make_gate(
-            tracked={
-                (
-                    _OCC_REPO,
-                    DEFAULT_OCC_GOVERNANCE_REF,
-                    default_receipt_dir(ticket),
-                ): False,
-            },
-            pr_view={},
-            contract_on_main=contract,
-        )
-
-        with pytest.raises(DurableEvidenceGateError) as exc_info:
-            gate.enforce_default(ticket_id=ticket, contract=contract)
-
-        assert exc_info.value.result.status == EnumDurableEvidenceStatus.FAIL
-        assert "receipt_tracked" in str(exc_info.value)
-
-    def test_enforce_default_threads_done_class_labels(self) -> None:
-        """enforce_default() passes label context through canonical path checks."""
-        ticket = "OMN-12574"
-        contract: dict[str, object] = {
-            "schema_version": "1.0.0",
-            "ticket_id": ticket,
-            "dod_evidence": [
-                {
-                    "id": "dod-boundary-clone-retry-pr",
-                    "checks": [{"check_type": "command"}],
-                }
-            ],
-        }
-        gate = _make_gate(
-            tracked={
-                (
-                    _OCC_REPO,
-                    DEFAULT_OCC_GOVERNANCE_REF,
-                    default_receipt_dir(ticket),
-                ): True,
-            },
-            pr_view={
-                ("OmniNode-ai/onex_change_control", 2083): (
-                    "MERGED",
-                    "abcdef1234567890abcdef1234567890abcdef12",
-                )
-            },
-            contract_on_main=contract,
-            receipts_on_ref=[
-                _receipt(
-                    repo="OmniNode-ai/onex_change_control",
-                    pr_number=2083,
-                    evidence_id="dod-boundary-clone-retry-pr",
-                )
-            ],
-        )
-
-        result = gate.enforce_default(
-            ticket_id=ticket,
-            contract=contract,
-            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
-        )
-
-        done_class = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
-        assert done_class.passed is True
 
 
 @pytest.mark.unit
@@ -1384,51 +590,3 @@ class TestReceiptRepoFromGithubApiPath:
         assert [(c.repo, c.pr_number) for c in cites] == [
             ("OmniNode-ai/omnibase_core", 949)
         ]
-
-    def test_gate_passes_the_citation_on_a_merged_pr(self) -> None:
-        contract = _ticket_contract()
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={(_OCC, 13213): ("MERGED", "9" * 40)},
-            pr_commits={(_OCC, 13213): (_CAPTURED_SHA,)},
-            contract_on_main=contract,
-            receipts_on_ref=[_captured_receipt()],
-        )
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
-        )
-        cite = next(
-            c
-            for c in result.checks
-            if c.check is EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert cite.passed, cite.message
-
-    def test_gate_fails_closed_when_the_inferred_pr_is_not_that_repos(self) -> None:
-        """The receipt's PR is an OCC PR but its commit probe names a product repo."""
-        contract = _ticket_contract()
-        core = "OmniNode-ai/omnibase_core"
-        gate = _make_gate(
-            tracked={(_OCC_REPO, _DEV_REF, _RECEIPT_DIR): True},
-            pr_view={(core, 13213): ("UNKNOWN", None)},
-            contract_on_main=contract,
-            receipts_on_ref=[_captured_receipt(probe_repo=core)],
-        )
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
-        )
-        cite = next(
-            c
-            for c in result.checks
-            if c.check is EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT
-        )
-        assert not cite.passed
-        assert result.status is not EnumDurableEvidenceStatus.PASS
