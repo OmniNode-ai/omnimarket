@@ -9,17 +9,14 @@ Two surfaces are proven here:
   readback set and REJECTS each abuse vector (self-attested, PR-bearing,
   source-diff/git-verb, no-source-change-false, empty readback, missing
   prevention follow-up, prod target, stale readback, mixed set); and
-* the ``DurableEvidenceGate`` Check-2 branch — a no-PR runtime-ops receipt set
-  PASSES the full gate, and each abuse REJECTS the gate. Check 1
-  (RECEIPT_TRACKED) and Check 5 (DONE_CLASS_LABEL) still apply unchanged.
-
-The merged-PR probe (``gh_pr_view``) must never be called on the runtime-ops
-branch — the stub raises if it is.
+* the ``DurableEvidenceGate`` — it reads no receipt trail (OMN-20074), so a
+  well-formed runtime-ops receipt set no longer passes it; the ticket is
+  refused unless a product repository governs it.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -27,12 +24,11 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
+    EnumRepoContractReadStatus,
+    ModelRepoContractRead,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
-    DEFAULT_OCC_GOVERNANCE_REF,
     DurableEvidenceGate,
-    default_contract_path,
-    default_receipt_dir,
 )
 from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
     evaluate_runtime_ops_readback,
@@ -40,11 +36,7 @@ from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
     is_runtime_ops_receipt_set,
 )
 
-_OCC_REPO = "/fake/onex_change_control"
-_DEV_REF = DEFAULT_OCC_GOVERNANCE_REF
 _TICKET = "OMN-14159"
-_RECEIPT_DIR = default_receipt_dir(_TICKET)
-_CONTRACT_PATH = default_contract_path(_TICKET)
 _EVIDENCE_ID = "dod-runtime"
 
 _VERBS = frozenset(
@@ -95,84 +87,15 @@ def _runtime_ops_receipt(**overrides: object) -> dict[str, object]:
     return payload
 
 
-# OMN-18010: the released-is-Done probes are REQUIRED gate constructor
-# arguments — there is no unconfigured/skip path. These stubs answer "released"
-# for every input, so the pre-OMN-18010 behaviour of the cases in this file is
-# unchanged and the new check is exercised on its own terms in
-# tests/unit/nodes/node_dod_verify/test_omn_18010_released_gate.py.
-def _released_tags_stub(
-    table: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
-):
-    def probe(repo: str, commit_sha: str) -> tuple[str, ...] | None:
-        if table is not None and (repo, commit_sha) in table:
-            return table[(repo, commit_sha)]
-        return ("v9.9.9",)
-
-    return probe
-
-
-def _released_index_stub(
-    table: dict[tuple[str, str], frozenset[str] | None] | None = None,
-):
-    def probe(distribution: str, version: str) -> frozenset[str] | None:
-        if table is not None and (distribution, version) in table:
-            return table[(distribution, version)]
-        return frozenset({"bdist_wheel", "sdist"})
-
-    return probe
-
-
-def _make_gate(
-    *,
-    tracked: bool,
-    receipts: list[dict[str, object]],
-    contract_on_main: dict[str, object] | None,
-    released_tags: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
-    released_index: dict[tuple[str, str], frozenset[str] | None] | None = None,
-) -> DurableEvidenceGate:
-    def is_receipt_tracked(repo_path: str, ref: str, receipt_dir: str) -> bool:
-        return tracked
-
-    def gh_pr_view(repo: str, pr_number: int) -> tuple[str, str | None]:
-        raise AssertionError(
-            "gh_pr_view must NOT be called on the runtime-ops readback branch"
-        )
-
-    def pr_commits(repo: str, pr_number: int) -> tuple[str, ...]:
-        raise AssertionError(
-            "pr_commits must NOT be called on the runtime-ops readback branch"
-        )
-
-    def load_contract(
-        repo_path: str, ref: str, rel_path: str
-    ) -> dict[str, object] | None:
-        return contract_on_main
-
-    def load_receipts(
-        repo_path: str, ref: str, receipt_dir: str
-    ) -> list[dict[str, object]]:
-        return receipts
-
+def _gate_over_no_repo_contract() -> DurableEvidenceGate:
+    """A gate whose merged PR carries no product-repository contract."""
     return DurableEvidenceGate(
-        release_tags_containing=_released_tags_stub(released_tags),
-        index_release_files=_released_index_stub(released_index),
-        is_receipt_tracked=is_receipt_tracked,
-        gh_pr_view=gh_pr_view,
-        pr_commits=pr_commits,
-        load_contract_on_ref=load_contract,
-        load_receipts_on_ref=load_receipts,
-        occ_repo_path=_OCC_REPO,
-        occ_governance_ref=_DEV_REF,
-    )
-
-
-def _evaluate(gate: DurableEvidenceGate, contract: dict[str, object]):
-    return gate.evaluate(
-        ticket_id=_TICKET,
-        contract=contract,
-        receipt_dir=_RECEIPT_DIR,
-        contract_rel_path=_CONTRACT_PATH,
-        ticket_labels=frozenset({EnumDoneClassLabel.RUNTIME_OBSERVED.value}),
+        release_tags_containing=lambda _repo, _sha: ("v9.9.9",),
+        index_release_files=lambda _d, _v: frozenset({"bdist_wheel", "sdist"}),
+        read_repo_contract=lambda _repo, _ref, _ticket: ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.ABSENT
+        ),
+        read_repo_check_runs=lambda _repo, _sha: (),
     )
 
 
@@ -320,145 +243,22 @@ class TestRuntimeOpsHelperPredicates:
 
 @pytest.mark.unit
 class TestDurableEvidenceGateRuntimeOpsBranch:
-    def test_well_formed_runtime_ops_set_passes_gate(self) -> None:
+    def test_well_formed_runtime_ops_set_is_refused_by_the_gate(self) -> None:
+        """The set the gate used to admit from an OCC receipt trail is refused."""
         contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt()],
-            contract_on_main=contract,
+        result = _gate_over_no_repo_contract().evaluate(
+            ticket_id=_TICKET,
+            contract=contract,
+            ticket_labels=frozenset({EnumDoneClassLabel.RUNTIME_OBSERVED.value}),
         )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.PASS
-        assert all(c.passed for c in result.checks)
+
+        assert result.status == EnumDurableEvidenceStatus.FAIL
         checks = {c.check for c in result.checks}
-        assert EnumDurableEvidenceCheck.RUNTIME_OPS_READBACK in checks
-        assert EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT not in checks
-
-    def test_self_attested_receipt_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt(verifier="impl-agent")],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        ro = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RUNTIME_OPS_READBACK
-        )
-        assert ro.passed is False
-        assert "self-attested" in ro.message
-
-    def test_pr_bearing_receipt_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt(pr_number=1349)],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-
-    def test_git_verb_receipt_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt(mutation_verb="git")],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-
-    def test_untracked_receipt_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=False,
-            receipts=[_runtime_ops_receipt()],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        rt = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.RECEIPT_TRACKED
-        )
-        assert rt.passed is False
-
-    def test_prod_target_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[
-                _runtime_ops_receipt(target_identity="onex-prod/Deployment/omnidash")
-            ],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-
-    def test_missing_prevention_followup_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt(prevention_followup="")],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-
-    def test_stale_contract_on_ref_fails_gate(self) -> None:
-        # Receipt is well-formed, but the runtime-ops contract stub is absent on
-        # the governance ref (Check 3): the readback check passes, Check 3 fails.
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt()],
-            contract_on_main=None,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        c3 = next(
+        assert EnumDurableEvidenceCheck.RUNTIME_OPS_READBACK not in checks
+        governing = next(
             c
             for c in result.checks
             if c.check == EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN
         )
-        assert c3.passed is False
-
-    def test_no_done_class_label_fails_gate(self) -> None:
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt()],
-            contract_on_main=contract,
-        )
-        result = gate.evaluate(
-            ticket_id=_TICKET,
-            contract=contract,
-            receipt_dir=_RECEIPT_DIR,
-            contract_rel_path=_CONTRACT_PATH,
-            ticket_labels=frozenset(),  # no done-class label
-        )
-        assert result.status == EnumDurableEvidenceStatus.FAIL
-        label = next(
-            c
-            for c in result.checks
-            if c.check == EnumDurableEvidenceCheck.DONE_CLASS_LABEL
-        )
-        assert label.passed is False
-
-    def test_freshness_not_checked_on_gate_surface_a(self) -> None:
-        # The gate itself does not inject a clock — a receipt that is "old" by
-        # wall-clock still passes Surface A (staleness is a Surface-B live-reread
-        # concern). This documents the deliberate boundary.
-        old_ts = (datetime.now(tz=UTC) - timedelta(days=365)).isoformat()
-        contract = _runtime_ops_contract()
-        gate = _make_gate(
-            tracked=True,
-            receipts=[_runtime_ops_receipt(run_timestamp=old_ts)],
-            contract_on_main=contract,
-        )
-        result = _evaluate(gate, contract)
-        assert result.status == EnumDurableEvidenceStatus.PASS
+        assert governing.passed is False
+        assert "no product repository governs" in governing.message
