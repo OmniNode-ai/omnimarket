@@ -120,6 +120,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install contract YAML parser
+        run: python3 -m pip install PyYAML
+
       - name: Run architectural lint
         id: lint
         shell: bash
@@ -264,10 +267,10 @@ jobs:
           # -----------------------------------------------------------------------
           CONTRACT_TOPIC_VIOLATIONS=""
           if [ "${#CHANGED_CONTRACT_FILES[@]}" -gt 0 ]; then
-            CONTRACT_TOPIC_VIOLATIONS=$(grep -Hn 'onex\.' "${CHANGED_CONTRACT_FILES[@]}" 2>/dev/null \
-              | grep -vE 'onex\.(cmd|evt|dlq|intent|snapshot)\.[a-z_-]+\.[a-z_-]+\.v[0-9]+' \
-              | grep -v '#' \
-              || true)
+            if ! CONTRACT_TOPIC_VIOLATIONS=$(python3 scripts/ci/check_arch_contract_topics.py \
+              "${CHANGED_CONTRACT_FILES[@]}" 2>&1); then
+              CONTRACT_TOPIC_VIOLATIONS="${CONTRACT_TOPIC_VIOLATIONS:-Contract topic validator failed without a diagnostic}"
+            fi
           fi
 
           if [ -n "$CONTRACT_TOPIC_VIOLATIONS" ]; then

@@ -1,0 +1,30 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22418"
+title: "Architectural topic lint checks topic declarations instead of Python entry-point prose"
+summary: "The architectural topic lint parses YAML and validates topic fields recursively, while rejecting malformed YAML and malformed topic values. Entry-point prose containing onex.nodes is not a topic declaration."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22418-arch-topic-fields
+    statement: "Topic lint examines declared topics and refuses malformed values without interpreting entry-point prose as a topic."
+    acceptance:
+      - id: AC4
+        statement: "Entry-point prose passes; valid root and nested topics pass; invalid root, nested, mixed and routing topics and malformed YAML fail."
+evidence_requirements:
+  - kind: tests
+    description: "Focused architectural topic lint regression cases."
+    command: "uv run pytest tests/ci/test_arch_contract_topics_omn22418.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn22418-arch-topic-002
+    description: "The checker accepts entry-point prose and valid topic declarations, and refuses malformed root, nested, mixed and routing topics and unreadable YAML."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/ci/test_arch_contract_topics_omn22418.py -q --no-cov"
+        cwd: "."
