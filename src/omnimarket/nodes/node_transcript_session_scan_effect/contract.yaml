@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_transcript_session_scan_effect
+contract_name: node_transcript_session_scan_effect
+node_name: node_transcript_session_scan_effect
+version: "1.0.0"
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Lists the transcript files under the roots the overlay names, through an injected
+  read-side transcript store (the spi transcript store port), and returns one manifest:
+  per file the root-relative path, size, sha256, source revision (record count, byte
+  length as the tie-break), stream kind from the path shape (a subagents/ directory under
+  a session directory means subagent) and a stream id that hashes the root-relative path,
+  so a file present in two roots has one id and the higher revision wins. Roots, the
+  manifest hash algorithm and the read cap are overlay values; no root is a literal and
+  the in-memory store is used only when the overlay selects it. A bucket root without a
+  credential reference refuses at load, naming the key. The scan reads no transcript text
+  and no model is called. The facts compute is the only reader of record content.
+
+handler:
+  module: omnimarket.nodes.node_transcript_session_scan_effect.handlers.handler_transcript_session_scan
+  class: HandlerTranscriptSessionScan
+  input_model: omnimarket.nodes.node_transcript_session_scan_effect.models.ModelTranscriptScanRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_transcript_session_scan_effect.handlers.handler_transcript_session_scan:HandlerTranscriptSessionScan
+  handlers:
+    - operation: scan
+      topic: onex.cmd.omnimarket.transcript-session-scan-requested.v1
+      handler:
+        name: HandlerTranscriptSessionScan
+        module: omnimarket.nodes.node_transcript_session_scan_effect.handlers.handler_transcript_session_scan
+      event_model: omnimarket.nodes.node_transcript_session_scan_effect.models.ModelTranscriptScanRequest
+
+input_model:
+  name: ModelTranscriptScanRequest
+  module: omnimarket.nodes.node_transcript_session_scan_effect.models
+  description: The overlay roots to scan; empty scans every root.
+
+output_model:
+  name: ModelTranscriptScanResult
+  module: omnimarket.nodes.node_transcript_session_scan_effect.models
+  description: The manifest and the counts that must agree with it.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+
+capabilities:
+  - name: transcript.session_scan
+    description: List transcript files of the overlay roots through the transcript store port
+    version: 1.0.0
+
+protocol_dependencies:
+  - {name: TRN, protocol: "omnibase_spi.protocols.storage.protocol_transcript_store:ProtocolTranscriptSource", bind_as: sources, required: true}
+
+# Deployment facts are overlay values: <root>/node_transcript_session_scan_effect/overlay.yaml
+# under a root listed in ONEX_SKILL_OVERLAY_ROOTS. No packaged fallback.
+overlay:
+  node: node_transcript_session_scan_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  fields: [transcript_roots, manifest_hash_algorithm, read_max_bytes]
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.transcript-session-scan-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.transcript-session-scanned.v1
+
+published_events:
+  - event_type: ModelTranscriptScanResult
+    topic: onex.evt.omnimarket.transcript-session-scanned.v1
+    description: "One manifest of the scanned roots; folded by the transcript projection."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.transcript-session-scan-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.transcript-session-scanned.v1
+
+terminal_event: onex.evt.omnimarket.transcript-session-scanned.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-22259
+  maturity: alpha
+  tags:
+    - transcript
+    - scan

@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tool_use_rubric_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decide the tool-use rubric scorer plan, the verdict summary and the schema capture cache key from caller-supplied facts.
+  Pure behaviour-preserving decisions; the caller performs all I/O.
+input_model:
+  name: ModelToolUseRubricRequest
+  module: omnimarket.nodes.node_tool_use_rubric_compute.models.model_tool_use_rubric
+output_model:
+  name: ModelToolUseRubricResult
+  module: omnimarket.nodes.node_tool_use_rubric_compute.models.model_tool_use_rubric
+handler:
+  module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+  class: HandlerToolUseRubric
+  input_model: omnimarket.nodes.node_tool_use_rubric_compute.models.model_tool_use_rubric.ModelToolUseRubricRequest
+  output_model: omnimarket.nodes.node_tool_use_rubric_compute.models.model_tool_use_rubric.ModelToolUseRubricResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric:HandlerToolUseRubric
+  handlers:
+    - operation: disabled
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: scorer_candidates
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: scorer_python
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: scorer_command
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: manifest
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: summarize
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: summary_line
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: claude_version
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: schema_cache_target
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+    - operation: pick_captured_tools
+      handler:
+        name: HandlerToolUseRubric
+        module: omnimarket.nodes.node_tool_use_rubric_compute.handlers.handler_tool_use_rubric
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [disabled, scorer_candidates, scorer_python, scorer_command, manifest, summarize, summary_line, claude_version, schema_cache_target, pick_captured_tools], description: Which question is asked.}
+  rubric_env: {type: str, required: false}
+  scorer_python_env: {type: str, required: false}
+  lab_work_python_env: {type: str, required: false}
+  dispatch_venv: {type: str, required: false}
+  registry_root: {type: str, required: false}
+  executable_paths: {type: list, required: false}
+  source: {type: str, required: false}
+  args: {type: list, required: false}
+  run_ref: {type: str, required: false}
+  out_path: {type: str, required: false}
+  environ: {type: dict, required: false}
+  ls_returncode: {type: int, required: false}
+  ls_stdout: {type: str, required: false}
+  entries: {type: list, required: false}
+  scorer_python: {type: str, required: false}
+  run_error: {type: str, required: false}
+  returncode: {type: int, required: false}
+  stderr: {type: str, required: false}
+  record: {type: dict, required: false}
+  prefix: {type: str, required: false}
+  summary: {type: dict, required: false}
+  version_stdout: {type: str, required: false}
+  version: {type: str, required: false}
+  flags: {type: list, required: false}
+  xdg_cache_home: {type: str, required: false}
+  home: {type: str, required: false}
+  cache_dir: {type: str, required: false}
+  captured_bodies: {type: list, required: false}
+outputs:
+  operation: {type: str}
+  flag: {type: bool}
+  text: {type: str}
+  command: {type: list}
+  paths: {type: list}
+  summary: {type: dict}
+terminal_event: onex.evt.omnimarket.tool-use-rubric-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tool-use-rubric-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tool-use-rubric-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tool-use-rubric-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.tool-use-rubric-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Decide the tool-use rubric scorer plan, the verdict summary and the schema capture cache key from caller-supplied facts.
+  author: OmniNode Team
+  created: "2026-11-03"

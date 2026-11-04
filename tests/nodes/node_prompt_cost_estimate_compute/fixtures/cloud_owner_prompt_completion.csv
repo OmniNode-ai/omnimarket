@@ -1,0 +1,4 @@
+prompt,model,prompt_tokens,completion_tokens
+"write a python function that parses ISO dates and returns UTC",gpt-4o,1200,2400
+"review this PR for me",gpt-4o,900,150
+"what is the capital of france and why did it become the capital",gpt-4o,300,1800

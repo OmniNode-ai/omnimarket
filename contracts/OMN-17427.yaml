@@ -1062,6 +1062,11 @@ requirements:
     acceptance:
       - id: "AC1742731"
         statement: "AC1742731: a probe_error carrying 'Permission denied (publickey' yields a FIX telling the host owner to add the launching host's public key to the via= hop's authorized_keys, without the rerun or --hosts --lane advice, and a timed-out probe still yields the rerun advice -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -k publickey_refusal fails at the merge base, where every unreadable probe gets the rerun advice"
+  - id: "req-lab-host-row-ssh-route"
+    statement: "A lab host table whose rows declare the login, the jump host or the key file of their ssh destination (ssh_user, proxy_jump, ssh_identity) is read by lab placement, not refused whole, and a value ssh could read as an option is refused."
+    acceptance:
+      - id: "AC1742732"
+        statement: "AC1742732: ModelLabHostRow accepts ssh_user, proxy_jump and ssh_identity (each omitted by default), a table carrying them loads through load_host_table, and a login, jump host or key file that begins with a dash, holds a space or shell syntax, or has a '..' segment is refused -- falsifier: uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -k login_jump_host fails at the merge base, where the row model forbids the three fields"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4476,3 +4481,35 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-17427 -- uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute -q --no-cov"
         cwd: "."
+
+  - id: "dod-omn17427-ssh-route-row-model"
+    description: "The lab host row model accepts the login, jump host and key file a host row declares for its ssh destination, and refuses a value ssh would read as an option. The tests fail at the merge base, which forbids the three fields."
+    source: "manual"
+    binds_ac: ["AC1742732"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -q --no-cov -p no:randomly --refuse-skips -k login_jump_host"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ssh-route-deploy-probe"
+    description: "Hosted deployment artifact probe: the checked-out lab host row model accepts ssh_user, proxy_jump and ssh_identity. Requires only the checkout and locked Python dependencies, with no broker, database, credentials or lab access. This is a package readback, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/lab_work/test_lab_host_table_fallback_targets.py -q --no-cov -p no:randomly --refuse-skips -k login_jump_host"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ssh-route-integration-proof"
+    description: "The pushed head ran the lab work placement suites on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-17427 -- uv run --frozen pytest tests/unit/lab_work -q --no-cov"
+        cwd: "."
+  - id: dod-omn17427-record-supplement
+    source: manual
+    binds_ac: [AC4400]
+    description: The five measured files still absent from dev e06f3c94 are recorded with finite positive durations. All five parameter cases fail against that record and pass against the supplemented record.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/test_ci_duration_record_supplement.py -q --no-cov -p no:randomly --refuse-skips
+      cwd: .
