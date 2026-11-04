@@ -104,5 +104,12 @@
     "basis": "Summed measured pytest setup, call and teardown seconds for tests/cli/test_pr_state.py from a serial run with --store-durations --clean-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
     "runner": "lab host h053, lane pr-4928-1157; the next CI refresh replaces this entry",
     "base_sha": "10e4469489ac04ec863a0f00dc7cbc92bf7095c8"
+  },
+  "supplement_omn21993": {
+    "recorded_on": "2026-11-04",
+    "files_added": 55,
+    "basis": "files the record did not hold, each the sum of its measured pytest setup, call and teardown durations from one serial run of those files with --store-durations -m 'not kafka' --timeout=300 --no-cov; existing entries left as they were",
+    "runner": "lab host h106, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "3e6a5158ad972279a62813eb1fbee8875f000bb2"
   }
 }

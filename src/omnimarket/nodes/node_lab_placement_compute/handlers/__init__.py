@@ -2,7 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Packaged handlers for node_lab_placement_compute."""
 
-from .handler_lab_lane_priority import HandlerLabLanePriority, load_priority_rules
+from .handler_lab_lane_priority import (
+    HandlerLabLanePriority,
+    class_line,
+    load_factory_epics,
+    load_priority_rules,
+    priority_class_args,
+)
 from .handler_lab_placement import (
     HandlerLabPlacement,
     HostTableError,
@@ -22,10 +28,13 @@ __all__ = [
     "HandlerLabPluginParity",
     "HandlerLabPoolPlace",
     "HostTableError",
+    "class_line",
+    "load_factory_epics",
     "load_host_table",
     "load_parity_rules",
     "load_placement_rules",
     "load_priority_rules",
     "newest_per_host",
+    "priority_class_args",
     "repo_name",
 ]
