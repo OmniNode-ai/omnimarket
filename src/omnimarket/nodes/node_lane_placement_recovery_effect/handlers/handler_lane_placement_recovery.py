@@ -49,6 +49,7 @@ from ..models.model_lane_engine_failover import (
     ModelLaneEngineFailoverRequest,
     ModelLaneEngineFailoverResult,
 )
+from ..models.model_placement_wait import ModelPlacementWaitResult, PlacementOutcome
 from .handler_claude_account_limit import HandlerClaudeAccountLimit
 from .handler_codex_lane_limit import CODEX_LIMITED_PREFIX, HandlerCodexLaneLimit, _read
 from .handler_lane_engine_failover import HandlerLaneEngineFailover
@@ -195,10 +196,83 @@ class HandlerLanePlacementRecovery:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> int:
-        """Report placement before the detached parent exits (OMN-20840)."""
+        """Report placement before the detached parent exits (OMN-20840); the exit code of the typed read."""
+        return self.placement_wait_result(
+            receipt,
+            max_s,
+            lane=lane,
+            alive=alive,
+            poll_s=poll_s,
+            echo=echo,
+            clock=clock,
+            sleep=sleep,
+        ).exit_code
+
+    def placement_wait_result(
+        self,
+        receipt: Path,
+        max_s: float,
+        *,
+        lane: str,
+        alive: Callable[[], bool],
+        poll_s: float = 1.0,
+        echo: Callable[[str], None] = print,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> ModelPlacementWaitResult:
+        """Read placement as one typed outcome: placed, placing, refused or crashed (OMN-19998).
+
+        The human ``PLACEMENT`` line is printed as before, followed by one ``PLACEMENT_RESULT <json>`` line, so a
+        script reads ``outcome``/``error`` rather than treating exit 3 (still placing) as a failure."""
+        result = self._placement_read(
+            receipt,
+            max_s,
+            lane=lane,
+            alive=alive,
+            poll_s=poll_s,
+            echo=echo,
+            clock=clock,
+            sleep=sleep,
+        )
+        echo(result.line())
+        return result
+
+    def _placement_read(
+        self,
+        receipt: Path,
+        max_s: float,
+        *,
+        lane: str,
+        alive: Callable[[], bool],
+        poll_s: float,
+        echo: Callable[[str], None],
+        clock: Callable[[], float],
+        sleep: Callable[[float], None],
+    ) -> ModelPlacementWaitResult:
         rt = self.runtime
         end = clock() + max_s
         dead = False
+
+        def result(
+            outcome: PlacementOutcome,
+            code: int,
+            status: str,
+            host: str,
+            reason: str = "",
+            wait_command: str = "",
+        ) -> ModelPlacementWaitResult:
+            return ModelPlacementWaitResult(
+                outcome=outcome,
+                error=outcome in ("refused", "crashed"),
+                exit_code=code,
+                lane=lane,
+                status=status,
+                host=host,
+                receipt=str(receipt),
+                reason=reason,
+                wait_command=wait_command,
+            )
+
         while True:
             try:
                 data = json.loads(receipt.read_text(encoding="utf-8"))
@@ -213,12 +287,14 @@ class HandlerLanePlacementRecovery:
                     echo(
                         f"PLACEMENT lane={lane} status=no-host reason={reason} receipt={receipt}"
                     )
-                    return cast("int", rt["EXIT_NO_HOST"])
+                    return result(
+                        "refused", cast("int", rt["EXIT_NO_HOST"]), status, host, reason
+                    )
                 if status == "done":
                     echo(
                         f"PLACEMENT lane={lane} status=done host={host} receipt={receipt}"
                     )
-                    return cast("int", rt["EXIT_OK"])
+                    return result("placed", cast("int", rt["EXIT_OK"]), status, host)
                 failure = data.get("failure")
                 reason = (
                     data.get("reason")
@@ -231,28 +307,48 @@ class HandlerLanePlacementRecovery:
                     f"PLACEMENT lane={lane} status={status} host={host} reason={reason} receipt={receipt}"
                 )
                 code = data.get("exit_code")
-                return (
-                    code if type(code) is int and code != 0 else rt["EXIT_LANE_ERROR"]
+                return result(
+                    "crashed",
+                    code
+                    if type(code) is int and code != 0
+                    else cast("int", rt["EXIT_LANE_ERROR"]),
+                    str(status),
+                    str(host),
+                    reason,
                 )
             if status in ("preparing", "running"):
                 echo(
                     f"PLACEMENT lane={lane} status=running host={host} receipt={receipt}"
                 )
-                return cast("int", rt["EXIT_OK"])
+                return result("placed", cast("int", rt["EXIT_OK"]), status, host)
             if dead:
                 echo(
                     f"PLACEMENT lane={lane} status=dead receipt={receipt}: the runner exited before placement"
                 )
-                return cast("int", rt["EXIT_REMOTE_FAILED"])
+                return result(
+                    "crashed",
+                    cast("int", rt["EXIT_REMOTE_FAILED"]),
+                    "dead",
+                    str(host),
+                    "the runner exited before placement",
+                )
             if not alive():
                 dead = True  # Re-read the child's last receipt before declaring it dead (OMN-20840).
                 continue
             if clock() >= end:
+                wait_command = f"onex-remote-lane wait --receipt {receipt}"
                 echo(
                     f"PLACEMENT lane={lane} status=placing after {int(max_s)}s; read it with: "
-                    f"onex-remote-lane wait --receipt {receipt}"
+                    f"{wait_command}"
                 )
-                return cast("int", rt["EXIT_STILL_RUNNING"])
+                return result(
+                    "placing",
+                    cast("int", rt["EXIT_STILL_RUNNING"]),
+                    str(status),
+                    str(host),
+                    f"still placing after {int(max_s)}s",
+                    wait_command,
+                )
             sleep(min(poll_s, max(0.0, end - clock())))
 
     def until_placed(self, call: Callable[[], int], receipt_path: Path) -> int:
