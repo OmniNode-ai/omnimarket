@@ -21,3 +21,4 @@ class ModelRemoteLaneRetentionResult(BaseModel):
     archive: str
     removed: list[str]
     pruned: list[str]
+    kept: dict[str, str] = Field(default_factory=dict)
