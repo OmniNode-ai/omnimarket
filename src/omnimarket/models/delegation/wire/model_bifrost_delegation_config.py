@@ -453,8 +453,8 @@ class EnumQuotaScope(StrEnum):
     The key is (tenant, credential_ref, provider, model). ``provider`` bars
     every model behind that credential, because the provider pools one counter
     across models (the z.ai Coding Plan). ``model`` bars only the model that
-    answered, because the provider counts per model (OpenRouter free models,
-    the Gemini free tier).
+    answered, because the provider counts per model (for example the Gemini
+    free tier). A provider's daily cap can have a wider scope than its throttle.
     """
 
     PROVIDER = "provider"
@@ -474,7 +474,9 @@ class ModelQuotaCodeRule(BaseModel):
             "How to source the reset instant. 'message_reset_timestamp' reads an "
             "absolute stamp the provider states inline (z.ai); "
             "'message_retry_delay' reads a relative 'retry in <N>s' delay "
-            "(Gemini, OMN-16932). Anything else falls back to the cooldown."
+            "(Gemini, OMN-16932); 'rate_limit_reset_milliseconds' reads "
+            "X-RateLimit-Reset from response or error.metadata.headers. "
+            "Anything else falls back to the cooldown."
         ),
     )
     fallback_cooldown_seconds: int = Field(
