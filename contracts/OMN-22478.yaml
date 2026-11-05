@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-22478
+title: 'E1: the run engine effect node, with in-memory and self-hosted Temporal overlays and a conformance suite'
+summary: node_run_engine_effect holds the order of work and its waits outside any session behind one backend seam. A run is a keyed ordered list of steps, each a plain command with no model provider or a wait on a named condition. The overlay key run_engine_backend selects in_memory (the default when there is no overlay) or temporal_self_hosted, whose settings come from the overlay with no packaged value. The node ships no deployment fact.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22478-run-engine-node
+  statement: A node declared by a contract starts keyed runs, releases their named waits exactly once, cancels them and reads their state through a backend chosen by an overlay, and the same conformance suite passes on the in-memory backend and on a live self-hosted Temporal server.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a start answers accepted, duplicate or unknown, and a repeated start of a run key, including a finished one, answers duplicate and changes nothing -- falsifier: uv run pytest -k duplicate_start -q is red when a second start of the same key runs its steps again'
+  - id: AC2
+    statement: 'AC2: a wait is released exactly once; a repeated release id answers duplicate, a release for another or later wait answers stale, and neither records a second next step -- falsifier: uv run pytest -k wait_releases_exactly_one_next_step -q is red when a repeated release records a second step'
+  - id: AC3
+    statement: 'AC3: with no overlay the in-memory backend is used, the overlay selects the Temporal backend only with all its settings, and a broken overlay refuses instead of reading as absent -- falsifier: uv run pytest -k overlay -q is red when an overlay that lacks its settings builds a backend'
+  - id: AC4
+    statement: 'AC4: a down backend answers unknown for a start, release or cancel and an unhealthy health read, never an exception and never an assumed success -- falsifier: uv run pytest -k down_backend -q is red when a down backend raises or answers accepted'
+  - id: AC5
+    statement: 'AC5: the existing spi protocols ProtocolWorkflowOrchestrator and ProtocolLiteralWorkflowStateStore are satisfied over the node -- falsifier: uv run pytest -k existing_spi_protocols -q is red when either isinstance check fails'
+evidence_requirements:
+- kind: tests
+  description: The run engine node conformance suite on the in-memory backend, and on a live self-hosted Temporal server when RUN_ENGINE_TEMPORAL_OVERLAY names an overlay file that selects it.
+  command: uv run pytest tests/nodes/node_run_engine_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22478-ac1
+  description: AC1 a repeated start of a run key answers duplicate and the steps run once.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_run_engine_effect -q --no-cov --tb=line -k duplicate_start
+    cwd: .
+- id: dod-omn22478-ac2
+  description: AC2 a release yields exactly one next step; a repeat is duplicate and an other or later release is stale.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_run_engine_effect -q --no-cov --tb=line -k wait_releases_exactly_one_next_step
+    cwd: .
+- id: dod-omn22478-ac3
+  description: AC3 no overlay selects the in-memory backend; a broken overlay refuses.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_run_engine_effect -q --no-cov --tb=line -k overlay
+    cwd: .
+- id: dod-omn22478-ac4
+  description: AC4 a down backend answers unknown and an unhealthy read.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_run_engine_effect -q --no-cov --tb=line -k down_backend
+    cwd: .
+- id: dod-omn22478-ac5
+  description: AC5 the two existing spi protocols are satisfied over the node.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_run_engine_effect -q --no-cov --tb=line -k existing_spi_protocols
+    cwd: .
