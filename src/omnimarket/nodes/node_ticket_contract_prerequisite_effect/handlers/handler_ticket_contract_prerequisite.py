@@ -11,6 +11,7 @@ import subprocess
 from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
     cited_tickets,
     contract_prerequisite,
+    missing_contract_message,
 )
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_integration_proof import (
     check_integration_proof,
@@ -133,7 +134,25 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    base = _resolve_base(base)
+    try:
+        base = _resolve_base(base)
+    except (OSError, subprocess.SubprocessError):
+        # An unreadable base cannot establish a release-cut exemption, but the
+        # pinned head can still establish that a cited contract is missing.
+        # Keep that refusal; otherwise propagate the base error and fail closed.
+        missing = tuple(
+            missing_contract_message(ticket)
+            for ticket in cited_tickets(title or "")
+            if subprocess.run(
+                ["git", "cat-file", "-e", f"{sha}:contracts/{ticket}.yaml"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            ).returncode
+        )
+        if missing:
+            return missing
+        raise
     if title is None:
         subjects = _git(
             "log",
