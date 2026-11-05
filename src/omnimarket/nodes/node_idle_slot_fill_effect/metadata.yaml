@@ -9,7 +9,9 @@ description: 'The lab is never idle: from the throughput tick''s live pool hosts
   from the declared ledger and its archives before selecting work; an unread ledger blocks repository work.
   Each tick also recovers abandoned blocked, failed or partial ruled work through the same dispatcher, queues repeat
   failures for the orchestrator, and reads declared live ruling checks. All admitted engines, including shared
-  Codex capacity, are ranked by the lane model policy contract; current limit and auth marks remove capacity.'
+  Codex capacity, are ranked by the lane model policy contract; current limit and auth marks remove capacity.
+  Ledger ticket acquisition honors the environment or overlay query publisher with a bounded typed read;
+  an unread query never falls back to the file or becomes an empty claim set.'
 pack: distributed_validation
 node_role: effect
 display_name: Idle Slot Fill Effect

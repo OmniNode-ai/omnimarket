@@ -2636,13 +2636,12 @@ repos:
           all findings for a file with: # gitignore-ok: <reason>
 
           '
-        language: python
-        entry: python -m omnibase_core.validators.gitignore_baseline
+        # Run the same pinned validator when the commit host has no bare python.
+        language: system
+        entry: uv run --isolated --no-project --with omnibase-core==0.47.23 python -m omnibase_core.validators.gitignore_baseline
         pass_filenames: false
         stages:
           - pre-commit
-        additional_dependencies:
-          - omnibase-core==0.47.23  # Match uv.lock; includes the 0.47.19 baseline update.
 
   # OMN-19677: the debt baselines and allowlist can only shrink. CI and local
   # hooks execute the same immutable implementation.

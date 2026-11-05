@@ -22,6 +22,11 @@ description: >
   and whose tool calls dispatched nothing. The repository names, the cloud backlog declaration and the experiment
   designs are read from the idle_slot_fill and repos overlays; a key no overlay supplies refuses naming the key.
   Called in process through node.py by the throughput tick and the Stop hook.
+  Ledger ticket acquisition uses ONEX_LEDGER_BUS_READ_COMMAND, or the overlay's ledger_read_command,
+  for a typed two-day rows query to work_ledger_query_effect. The command runs without a shell and
+  is bounded by ONEX_LEDGER_BUS_TIMEOUT_S or ledger_read_timeout_s (five seconds by default).
+  A failed, mismatched or truncated answer is unread and never falls back to the ledger file.
+  The file reader remains available only when no publisher is declared and the file is still the record.
   The throughput effect reads each process ruling's optional live-check JSON object on every run, plus the two
   standing declarations in ruling_checks.yaml. A mismatch or unread reading is MISSING ruling-drift:<timestamp>
   with the live reading. This runs even without free slots. A blocked, failed or partial ruled-work terminal abandoned
@@ -66,6 +71,13 @@ handler_routing:
     handler:
       name: HandlerIdleSlotFill
       module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill
+  - operation: read-ledger
+    topic: onex.cmd.omnimarket.idle-slot-fill-ledger-requested.v1
+    handler:
+      name: HandlerLabFillLedger
+      module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_lab_fill_ledger
+    input_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_lab_fill_ledger.ModelLabFillLedgerRequest
+    output_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_lab_fill_ledger.ModelLabFillLedgerResult
   - operation: turn-guard
     topic: onex.cmd.omnimarket.idle-turn-guard-requested.v1
     handler:

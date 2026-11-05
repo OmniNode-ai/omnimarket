@@ -70,7 +70,6 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -147,6 +146,8 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
     resolve_lane_model,
 )
 
+from ..models.model_lab_fill_ledger import ModelLabFillLedgerRequest
+from .handler_lab_fill_ledger import HandlerLabFillLedger
 from .handler_ruling_recovery import HandlerRulingRecovery
 
 RULING = "RULING 2026-10-14T21:46:25Z lane=orchestrator-bb1a (OMN-17427)"
@@ -1775,70 +1776,22 @@ def _cell(text: str, name: str) -> str:
 
 
 def ledger_tickets(
-    ledger: Path, drain_map: Path, registry_root: Path, now: str
+    ledger: Path,
+    drain_map: Path,
+    registry_root: Path,
+    now: str,
+    environ: Mapping[str, str] | None = None,
 ) -> tuple[set[str], dict[str, str]]:
-    """Live CLAIM tickets and unsettled missing-readback TERMINAL subjects; failures raise (OMN-17427)."""
-    spec = importlib.util.spec_from_file_location("_lab_fill_drain_map", drain_map)
-    if spec is None or spec.loader is None:
-        raise ValueError("cannot load drain_map")
-    dm = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = dm
-    spec.loader.exec_module(dm)
-    now_dt = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=UTC
-    )  # drain_map reads aware stamps
-    grammar = dm.load_grammar(registry_root)
-    rows, _ = dm.load_rows(registry_root, 2.0, now_dt, grammar, ledger)
-    opened = dm.open_claims(rows, grammar, now_dt - timedelta(days=2))
-    last: dict[str, datetime] = {}
-    for row in rows:
-        stamp = _stamp(row.ts[:20])
-        if row.lane and stamp is not None:
-            stamp = stamp.replace(tzinfo=UTC)
-            last[row.lane] = max(last.get(row.lane, stamp), stamp)
-    claimed = {
-        tid
-        for row in opened
-        if row.lane in last and now_dt - last[row.lane] <= LIVE_CLAIM
-        for tid in re.findall(r"\bOMN-\d+\b", row.text)
-    }
-    readbacks: dict[str, str] = {}
-    for row in rows:
-        if row.rtype != "TERMINAL":
-            continue
-        # a fill lane rides on the carrier ticket and names the generated one only in its lane (fill-readback-OMN-n-...)
-        ids = next(
-            (
-                ids
-                for text in (
-                    *(
-                        _cell(row.text, name)
-                        for name in ("subject", "related", "blocker")
-                    ),
-                    row.lane,
-                    _cell(row.text, "ticket"),
-                )
-                if (
-                    ids := [
-                        t.upper()
-                        for t in re.findall(r"\bOMN-\d+\b", text or "", re.IGNORECASE)
-                    ]
-                )
-            ),
-            [],
+    """Live claims and unsettled readbacks from the node's ledger reader."""
+    result = HandlerLabFillLedger(environ).handle(
+        ModelLabFillLedgerRequest(
+            now=datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC),
+            ledger=ledger,
+            drain_map=drain_map,
+            registry_root=registry_root,
         )
-        if not ids:
-            continue
-        # a fill lane that blocked on the readback too settles it: sent again, it would end the same way
-        if (
-            _cell(row.text, "outcome") == "blocked"
-            and "readback" in _cell(row.text, "blocker").lower()
-            and not row.lane.startswith("fill-")
-        ):
-            readbacks[ids[0]] = row.text[:300]
-        else:
-            readbacks.pop(ids[0], None)
-    return claimed, readbacks
+    )
+    return set(result.claimed), result.readbacks
 
 
 # Live criteria read for tickets the snapshot carried no description for (a typed request and result).
@@ -1974,7 +1927,7 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
     def tickets() -> tuple[set[str], dict[str, str]]:
         if ledger is None or registry_root is None:
             raise ValueError(f"{REGISTRY_ROOT_ENV} or ledger is unavailable")
-        return ledger_tickets(ledger, drain_map, registry_root, now)
+        return ledger_tickets(ledger, drain_map, registry_root, now, env)
 
     return ModelBacklogSources(
         linear_snapshot=registry_root

@@ -70,7 +70,7 @@ _RELEASE_CUT_PATHS = frozenset({"CHANGELOG.md", "pyproject.toml", "uv.lock"})
 def _is_release_cut(sha: str, base: str) -> bool:
     """Whether the diff against the merge base is a root changelog plus optional pins."""
     try:
-        merge_base = _git("merge-base", base, sha)
+        merge_base = _git("merge-base", _resolve_base(base), sha)
         listing = _git("diff", "--name-only", "--no-renames", "-z", merge_base, sha)
     except (OSError, subprocess.SubprocessError):
         return False
@@ -133,7 +133,10 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
+    # Resolve a base only where its history is needed. An explicit title can
+    # still receive the missing-contract refusal when that history is unreadable.
     if title is None:
+        base = _resolve_base(base)
         subjects = _git(
             "log",
             "--first-parent",
@@ -175,7 +178,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
-            changed = _changed_paths(sha, base)
+            changed = _changed_paths(sha, _resolve_base(base))
         proof = check_integration_proof(
             ModelIntegrationProofRequest(
                 ticket_id=ticket, contract_text=text, changed_paths=changed
@@ -200,8 +203,7 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
-            base = _resolve_base(request.base)
-            failures = check(sha, base, request.title)
+            failures = check(sha, request.base, request.title)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )

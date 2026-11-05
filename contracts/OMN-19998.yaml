@@ -108,6 +108,11 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-lab-fill-ledger-command
+    statement: Lab-fill ledger ticket acquisition uses its declared typed query publisher instead of reading the rolling ledger when configured.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the default source callback bypasses the recorded 274,481-line ledger when its command is configured, retains the file positive control, and refuses failed, malformed, mismatched or truncated replies without file fallback -- falsifier: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_lab_fill_ledger_bus_read.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-ruling-failed-recovery
     statement: A failed mechanism lane remains unfinished work for the existing ruling recovery dispatcher and its retry limit.
     acceptance:
@@ -512,6 +517,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_source.py -q --no-cov -k source_is_refreshed
+        cwd: .
+  - id: dod-omn19998-lab-fill-ledger-command
+    description: The default lab-fill source callback exercises a real declared publisher subprocess with typed requests and replies over a synthetic ledger of the recorded size. This does not assert the controller timer criteria or a live throughput tick.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_lab_fill_ledger_bus_read.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-finished-clone-retention
     description: Scoped retention regression checks clean, dirty, staged, untracked, unpushed and unfinished runs, nested repositories, remote refs and peer worktree metadata. The clean-clone case fails before this change because every git-bearing tree is kept. Original controller timer criteria remain outside this slice.
