@@ -551,19 +551,32 @@ def pypi_release_files(
 ) -> frozenset[str] | None:
     """Read the distribution file types the index serves for one version.
 
-    ``frozenset()`` on a definite 404 (the index does not have that version);
-    ``None`` on any other failure, which is INDETERMINATE and never certifies.
+    ``frozenset()`` on a definite 404 (the index does not have that version).
+    Retry a transport failure once; exhausted retries and other failures return
+    ``None``, which is INDETERMINATE and never certifies.
     """
     url = PACKAGE_INDEX_JSON_URL.format(distribution=distribution, version=version)
-    try:
-        with urllib.request.urlopen(url, timeout=timeout_s) as response:
-            if response.status != 200:
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout_s) as response:
+                if response.status != 200:
+                    return None
+                payload = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                logger.warning("Release-index read returned HTTP %d", exc.code)
+            return frozenset() if exc.code == 404 else None
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            logger.warning(
+                "Release-index transport attempt %d/2 failed (%s)",
+                attempt + 1,
+                type(exc).__name__,
+            )
+            if attempt == 1:
                 return None
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return frozenset() if exc.code == 404 else None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return None
+        except json.JSONDecodeError:
+            return None
     urls = payload.get("urls")
     if not isinstance(urls, list):
         return None
