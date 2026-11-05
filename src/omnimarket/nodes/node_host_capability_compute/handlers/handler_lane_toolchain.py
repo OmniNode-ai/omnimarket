@@ -30,8 +30,11 @@ NOT_FOUND_STATUS = 127
 def _missing(reading: ModelToolReading) -> bool:
     if reading.status == NOT_FOUND_STATUS:
         return True
-    # A lab run once printed "command not found" and exited 0: the words count as much as the status.
-    return reading.status == 0 and "command not found" in reading.tail.lower()
+    # Both bash and POSIX sh diagnostics count even when a later command masks the status.
+    return reading.status == 0 and any(
+        marker in reading.tail.lower()
+        for marker in ("command not found", ": not found")
+    )
 
 
 def _failure(

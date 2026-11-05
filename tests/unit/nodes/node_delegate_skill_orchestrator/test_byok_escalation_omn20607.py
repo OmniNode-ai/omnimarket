@@ -209,6 +209,71 @@ def test_keys_follow_registration_order_with_bounded_existing_retries(
         assert byok.count(backend_id) == 1 + (byok_backend_max_retries(backend_id) or 0)
 
 
+def test_a_just_observed_cap_skips_retries_and_moves_to_the_next_key(
+    profile, tmp_path: Path
+):
+    from datetime import UTC, datetime, timedelta
+
+    from omnimarket.events.provider_quota import EnumProviderQuotaSource
+    from omnimarket.inference.provider_quota_observation import build_quota_observation
+    from omnimarket.inference.provider_quota_policy import ModelQuotaVerdict
+    from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+        EnumQuotaDisposition,
+        EnumQuotaScope,
+    )
+
+    HandlerLocalSecretStore().handle(
+        ModelLocalSecretRequest(
+            operation="set",
+            secret_ref="llm.openrouter.api_key",
+            value=SecretStr("synthetic-lab-test-value"),
+            models=("openrouter-tested-model", "openrouter-second-model"),
+            force=True,
+        )
+    )
+    add_key("gemini")
+
+    class CappedResponders(Responders):
+        def __call__(self, request):
+            if request.provider != "byok-openrouter":
+                return super().__call__(request)
+            self.calls.append(request)
+            now = datetime.now(UTC)
+            observation = build_quota_observation(
+                tenant_id=None,
+                endpoint_url="https://openrouter.ai/api/v1/chat/completions",
+                api_key_ref=request.secret_ref,
+                model_name=request.model_id,
+                succeeded=False,
+                observed_at=now,
+                latency_ms=1,
+                source=EnumProviderQuotaSource.INPROCESS_EFFECT,
+                http_status=429,
+                verdict=ModelQuotaVerdict(
+                    disposition=EnumQuotaDisposition.DISABLE_UNTIL_RESET,
+                    provider_id="openrouter",
+                    provider_code="429",
+                    scope=EnumQuotaScope.PROVIDER,
+                    disabled_until=now + timedelta(hours=12),
+                ),
+            )
+            return ModelLlmDelegationCallResult(
+                request_id=request.request_id,
+                success=False,
+                error_message="Rate limit exceeded: free-models-per-day-high-balance.",
+                failure_class=EnumDelegationFailureClass.RATE_LIMITED,
+                quota_observation=observation,
+            )
+
+    responders = CappedResponders()
+    result = dispatch(tmp_path, responders)
+    assert result["status"] == "completed", result
+    byok = [
+        call.provider for call in responders.calls if call.provider.startswith("byok-")
+    ]
+    assert byok == ["byok-openrouter", "byok-gemini"]
+
+
 def test_planning_uses_the_registered_key_over_real_http_unpinned(
     profile, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
