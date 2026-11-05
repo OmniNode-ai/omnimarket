@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_failure_recovery_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Normalize guard OOM and independent retention failures. Core admits rule rows.
+  Ownership comes from the owner-map node. Submit one memory/repository contribution
+  to the shared attempt family; this node never starts a replacement independently.
+input_model: omnimarket.models.model_lane_failure.ModelLaneFailureRequest
+output_model: omnimarket.models.model_lane_failure.ModelLaneFailureResult
+handler:
+  module: omnimarket.nodes.node_lane_failure_recovery_effect.handlers.handler_lane_failure_recovery
+  class: HandlerLaneFailureRecovery
+  input_model: omnimarket.models.model_lane_failure.ModelLaneFailureRequest
+  output_model: omnimarket.models.model_lane_failure.ModelLaneFailureResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerLaneFailureRecovery
+        module: omnimarket.nodes.node_lane_failure_recovery_effect.handlers.handler_lane_failure_recovery
+      event_model:
+        name: ModelLaneFailureRequest
+        module: omnimarket.models.model_lane_failure
+    - handler:
+        name: HandlerLaneRetentionVerify
+        module: omnimarket.nodes.node_lane_failure_recovery_effect.handlers.handler_lane_retention_verify
+      event_model:
+        name: ModelLaneRetentionVerifyRequest
+        module: omnimarket.models.model_lane_failure
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lane-failure-recovered.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-failure-recover.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.lane-failure-recover.v1]
+  publish_topics:
+    - onex.evt.omnimarket.lane-failure-recovered.v1
+    - onex.cmd.omnimarket.error-class-normalize.v1
+    - onex.cmd.omnimarket.lane-block-owner-requested.v1
+    - onex.cmd.omnimarket.error-rule-admission.v1
+    - onex.cmd.omnimarket.recovery-plan-requested.v1
+# Admission, runner ownership and shared claims are deployment-owned RPC ports.
+# This package supplies their typed requests; it does not implement the services.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-failure-recovered.v1
+  - onex.cmd.omnimarket.lane-block-owner-requested.v1
+  - onex.cmd.omnimarket.error-rule-admission.v1
+  - onex.cmd.omnimarket.recovery-plan-requested.v1
+config:
+  overlay_id: lane_failure_recovery
+  required_overlay_fields:
+    - normalizer_facts
+    - normalizer_key_version
+    - rule_key_version
+    - error_rule_document
+    - selectors
+    - memory_steps
+    - max_mem_bytes
+    - max_replacements
+    - owner_map
+    - bindings
+  idempotency:
+    replacement: [attempt_family]
+    escalation: [attempt_family]
+    runner_fix: [class_key]
+  claim_owner: shared_recovery_plan
+  runner_argument: --mem-max
+  rule_validation_owner: omnibase_core
+  scope_guard: scope_result=oom-kill
+  retention_verification:
+    overlay_id: lane_retention_verify
+    read_only: true
+    receipt_time_field: started_at
+    comparison: started_at_after_install_record
+    empty_or_unreadable: unmeasured
+metadata:
+  transport_type: kafka

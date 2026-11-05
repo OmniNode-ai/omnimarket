@@ -1,0 +1,123 @@
+{
+  "distinct_causes": [
+    {
+      "events": [
+        {
+          "code": "failed",
+          "producer": "remote-lane",
+          "source": "lane",
+          "text": "remote lane on <host> ended status=lane-error engine_rc=137; receipt rlane-pfix-68-1316-3a8419.json on the launching host; host closeout: the lane made no worktrees",
+          "text_kind": "machine"
+        },
+        {
+          "code": "failed",
+          "producer": "remote-lane",
+          "source": "lane",
+          "text": "No module named 'omnimarket' in retention cleanup; engine_rc=1"
+        }
+      ],
+      "labels": [
+        "lane-oom",
+        "retention-import-error"
+      ]
+    },
+    {
+      "events": [
+        {
+          "code": "1",
+          "producer": "Bash",
+          "source": "tool",
+          "text": "permission denied opening file"
+        },
+        {
+          "code": "1",
+          "producer": "Bash",
+          "source": "tool",
+          "text": "network connection refused"
+        }
+      ],
+      "labels": [
+        "tool-permission",
+        "tool-network"
+      ]
+    },
+    {
+      "events": [
+        {
+          "code": "failure",
+          "producer": "validator-tests",
+          "source": "ci",
+          "text": "database schema mismatch"
+        },
+        {
+          "code": "failure",
+          "producer": "validator-tests",
+          "source": "ci",
+          "text": "runner out of memory"
+        }
+      ],
+      "labels": [
+        "ci-schema",
+        "ci-oom"
+      ]
+    },
+    {
+      "events": [
+        {
+          "code": "1",
+          "producer": "Bash",
+          "source": "tool",
+          "text": "failed before publishing because authentication expired"
+        },
+        {
+          "code": "1",
+          "producer": "Bash",
+          "source": "tool",
+          "text": "failed before publishing because disk exhausted"
+        }
+      ],
+      "labels": [
+        "auth-expired",
+        "disk-exhausted"
+      ]
+    }
+  ],
+  "same_class": [
+    {
+      "events": [
+        {
+          "code": "NOT-READY",
+          "producer": "handoff",
+          "source": "gate",
+          "text": "NOT-READY install pushed head abcdef1 on lab-alpha PR #123"
+        },
+        {
+          "code": "NOT-READY",
+          "producer": "handoff",
+          "source": "gate",
+          "text": "NOT-READY install pushed head 9876543 on lab-beta PR #456"
+        }
+      ],
+      "label": "install-first"
+    },
+    {
+      "events": [
+        {
+          "code": "failed",
+          "producer": "remote-lane",
+          "source": "lane",
+          "text": "remote lane on <host> ended status=lane-error engine_rc=137; receipt rlane-pfix-68-1316-3a8419.json on the launching host; host closeout: the lane made no worktrees",
+          "text_kind": "machine"
+        },
+        {
+          "code": "failed",
+          "producer": "remote-lane",
+          "source": "lane",
+          "text": "remote lane on <host> ended status=lane-error engine_rc=137; receipt rlane-lane-push-race-1316-93df3b.json on the launching host; host closeout: the lane made no worktrees",
+          "text_kind": "machine"
+        }
+      ],
+      "label": "lane-oom"
+    }
+  ]
+}
