@@ -185,3 +185,18 @@ def test_metrics_row_names_the_answering_model_not_the_premium_baseline() -> Non
     assert result.metrics is not None
     assert result.metrics.model == "gemini-2.5-flash-lite"
     assert result.metrics.premium_counterfactual_model != result.metrics.model
+
+
+def test_retryable_flags_only_measured_drafting_transport_failures() -> None:
+    held = [
+        {"stage": "delegate", "reason": "connection refused"},
+        {"stage": "verify", "reason": "no citation"},
+        {"stage": "delegate", "reason": "something odd"},
+    ]
+    result = HANDLER.handle(
+        Request.model_validate({"kind": "classify_held", "held": held})
+    )
+    flags = result.model_dump()["retryable"]
+    assert flags[1] is False
+    assert flags[2] is False
+    assert len(flags) == len(held)
