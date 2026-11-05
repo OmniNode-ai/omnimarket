@@ -26,7 +26,9 @@ from ..adapters.adapter_agent_review_ports import (
 from ..models import (
     EnumAgentReviewOutcome,
     EnumAgentReviewReason,
+    EnumAgentRungOutcome,
     ModelAgentQuorumRequest,
+    ModelAgentQuorumResult,
     ModelAgentReceipt,
     ModelAgentReceiptCandidate,
     ModelAgentReceiptVoter,
@@ -34,6 +36,7 @@ from ..models import (
     ModelAgentReviewRequest,
     ModelAgentReviewTerminal,
     ModelAgentRosterSnapshot,
+    ModelAgentRungAttempt,
     ModelAgentVoter,
     ModelAgentVoterReview,
 )
@@ -234,16 +237,74 @@ class HandlerAgentReviewDispatch:
 
     async def _review(
         self, voter: ModelAgentVoter, request: ModelAgentReviewRequest
-    ) -> ModelAgentVoterReview | None:
+    ) -> tuple[ModelAgentVoterReview | None, ModelAgentRungAttempt]:
+        """One voter call and its record. A call that raises or runs out of time is an
+        attempt of outcome unavailable or timeout, never an error of the run."""
+        started = self.clock.monotonic()
+        review: ModelAgentVoterReview | None = None
+        outcome = EnumAgentRungOutcome.ANSWERED
+        cause = ""
         try:
             async with asyncio.timeout(self.config.lab_call_timeout_seconds):
-                if not self._allowed(voter):
-                    return None
-                return await self.lab.review(
-                    voter, request.repo, request.pr, request.head_sha
+                if self._allowed(voter):
+                    review = await self.lab.review(
+                        voter, request.repo, request.pr, request.head_sha
+                    )
+        except TimeoutError as exc:
+            outcome, cause = EnumAgentRungOutcome.TIMEOUT, type(exc).__name__
+        except Exception as exc:
+            outcome, cause = EnumAgentRungOutcome.UNAVAILABLE, type(exc).__name__
+        attempt = ModelAgentRungAttempt(
+            rung=voter.rung,
+            identity=voter.identity,
+            model=voter.model,
+            outcome=outcome,
+            latency_seconds=max(0.0, self.clock.monotonic() - started),
+            cause=cause,
+        )
+        return review, attempt
+
+    async def _chain(
+        self, request: ModelAgentReviewRequest
+    ) -> tuple[ModelAgentQuorumResult, tuple[ModelAgentRungAttempt, ...]]:
+        """Call the rungs in the overlay's order, one rung at a time.
+
+        The first rung is called alone. A rung is called only when the rungs before it
+        left the quorum short, so a rung that is unavailable is skipped, recorded, and
+        the next one answers; the run is refused only when the last rung is spent and
+        the quorum is still short. The same quorum rule as the CI gate counts the votes
+        of every rung called, so a blocking finding blocks whichever rung raised it.
+        """
+        roster = self.config.roster
+        reviews: list[ModelAgentVoterReview] = []
+        attempts: list[ModelAgentRungAttempt] = []
+        quorum = HandlerAgentReviewQuorum().handle(
+            ModelAgentQuorumRequest(
+                roster=roster, reviews=(), quorum=self.config.quorum
+            )
+        )
+        for rung in self.config.rung_order:
+            voters = [voter for voter in roster if voter.rung == rung]
+            results = await asyncio.gather(
+                *(self._review(voter, request) for voter in voters)
+            )
+            reviews.extend(review for review, _ in results if review is not None)
+            quorum = HandlerAgentReviewQuorum().handle(
+                ModelAgentQuorumRequest(
+                    roster=roster, reviews=tuple(reviews), quorum=self.config.quorum
                 )
-        except Exception:
-            return None
+            )
+            counted = {voter.identity for voter in quorum.counted}
+            attempts.extend(
+                attempt.model_copy(update={"outcome": EnumAgentRungOutcome.UNPROVEN})
+                if attempt.outcome is EnumAgentRungOutcome.ANSWERED
+                and attempt.identity not in counted
+                else attempt
+                for _, attempt in results
+            )
+            if quorum.sufficient:
+                break
+        return quorum, tuple(attempts)
 
     async def _dispatch(
         self, request: ModelAgentReviewRequest
@@ -252,20 +313,12 @@ class HandlerAgentReviewDispatch:
             return self._refused(request, EnumAgentReviewReason.STALE_HEAD)
         key = f"{request.repo}#{request.pr}#{request.head_sha}"
         stored = await self.store.get(key)
+        attempts: tuple[ModelAgentRungAttempt, ...] = ()
         if stored is None:
-            reviews = await asyncio.gather(
-                *(self._review(voter, request) for voter in self.config.roster)
-            )
-            quorum = HandlerAgentReviewQuorum().handle(
-                ModelAgentQuorumRequest(
-                    roster=self.config.roster,
-                    reviews=tuple(review for review in reviews if review is not None),
-                    quorum=self.config.quorum,
-                )
-            )
+            quorum, attempts = await self._chain(request)
             if not quorum.sufficient:
                 return self._refused(
-                    request, EnumAgentReviewReason.LAB_RUNG_INSUFFICIENT
+                    request, EnumAgentReviewReason.LAB_RUNG_INSUFFICIENT, attempts
                 )
             candidate = ModelAgentReceiptCandidate(
                 id=self.clock.new_id(),
@@ -299,17 +352,19 @@ class HandlerAgentReviewDispatch:
             receipt = await self.signer.sign(candidate)
             stored = await self.store.insert_if_absent(key, receipt)
         if await self.head.read_head(request.repo, request.pr) != request.head_sha:
-            return self._refused(request, EnumAgentReviewReason.STALE_HEAD)
+            return self._refused(request, EnumAgentReviewReason.STALE_HEAD, attempts)
         if not await self._post(request, stored):
             return ModelAgentReviewTerminal(
                 command_id=request.command_id,
                 outcome=EnumAgentReviewOutcome.FAILED,
                 reason=EnumAgentReviewReason.POST_FAILED,
+                attempts=attempts,
             )
         return ModelAgentReviewTerminal(
             command_id=request.command_id,
             outcome=EnumAgentReviewOutcome.COMPLETED,
             receipt_id=stored.id,
+            attempts=attempts,
         )
 
     async def _post(
@@ -348,10 +403,13 @@ class HandlerAgentReviewDispatch:
 
     @staticmethod
     def _refused(
-        request: ModelAgentReviewRequest, reason: EnumAgentReviewReason
+        request: ModelAgentReviewRequest,
+        reason: EnumAgentReviewReason,
+        attempts: tuple[ModelAgentRungAttempt, ...] = (),
     ) -> ModelAgentReviewTerminal:
         return ModelAgentReviewTerminal(
             command_id=request.command_id,
             outcome=EnumAgentReviewOutcome.REFUSED,
             reason=reason,
+            attempts=attempts,
         )

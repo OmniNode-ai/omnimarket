@@ -102,7 +102,14 @@ class ModelLabHostRow(_ModelOverlayBase):
     local: bool = False
     codex: bool = False
     available: bool = True
+    roles: (
+        tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
+    ) = None
     unavailable_reason: str | None = None
+    # Model serving is independent of lane/unit placement. Omitted: inherit the validated
+    # ``available`` value, preserving the existing policy for every row without this column.
+    # Keep this after ``available``: Pydantic passes preceding validated fields to the factory.
+    model_serving: bool = Field(default_factory=lambda data: data["available"])
     # A collaborator machine: it takes no lane bound to a lane the non-contributor rows bind, only
     # one bound to its own ``lane_binding``, and only while ``lane_ready`` says that lane can take a
     # lane (the remote-lane placement node judges it).
@@ -153,6 +160,23 @@ class ModelLabHostRow(_ModelOverlayBase):
     speed: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
+    def _roles_are_compatible(self) -> "ModelLabHostRow":
+        """Require distinct roles compatible with host availability and capacity."""
+        roles = self.roles or ()
+        if len(set(roles)) != len(roles):
+            raise ValueError(f"lab host {self.name!r}: roles must not repeat")
+        if not self.available and roles:
+            raise ValueError(f"lab host {self.name!r}: unavailable host has roles")
+        if "launcher" in roles:
+            if self.cap != 0:
+                raise ValueError(f"lab host {self.name!r}: launcher requires cap == 0")
+            if "lab" in roles or "lab-proof" in roles:
+                raise ValueError(
+                    f"lab host {self.name!r}: launcher cannot carry lab or lab-proof roles"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _fallback_targets_are_distinct_from_target(self) -> "ModelLabHostRow":
         """No fallback name is the row's ``target`` or repeats another."""
         names = self.fallback_targets
@@ -184,6 +208,19 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+
+    @model_validator(mode="after")
+    def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":
+        """Require one desired-state publisher whenever the table declares roles."""
+        if any(host.roles for host in self.hosts):
+            count = sum(
+                "desired-publisher" in (host.roles or ()) for host in self.hosts
+            )
+            if count != 1:
+                raise ValueError(
+                    f"desired-publisher role must appear on exactly one row; found {count}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _contributor_lane_is_its_own(self) -> "ModelLabHostsTable":

@@ -175,3 +175,28 @@ def test_golden_chain_loads_facts_then_runs_a_lane(tmp_path: Path) -> None:
     assert lane_files.written == {"/tmp/b.md": "brief"}
     assert runner.argvs[0][:3] == ["python3", "/s/onex_remote_lane.py", "run"]
     assert runner.argvs[1][2:] == ["wait", "--receipt", "/r/x.json"]
+
+
+def test_start_argv_carries_the_priority_class_of_the_tickets_class_line() -> None:
+    """OMN-22122: the sweep's lane gets the class its ticket's Class line names, and none without one."""
+    from omnimarket.nodes.node_merge_sweep_effect.handlers.handler_merge_sweep_lane_run import (
+        start_argv,
+    )
+
+    def request(ticket_text: str) -> ModelMergeSweepLaneRunRequest:
+        return ModelMergeSweepLaneRunRequest(
+            runner_script="runner.py",
+            brief_path="brief.md",
+            brief_text="brief",
+            lane="merge-sweep-1",
+            model="sonnet",
+            parent="orchestrator",
+            ticket="OMN-1",
+            ticket_text=ticket_text,
+        )
+
+    argv = start_argv(request("> Title: x\n> Class: factory-unblock\n"))
+    assert argv[argv.index("--priority-class") + 1] == "factory-unblock"
+    assert argv[-1] == "--detach"
+    assert "--priority-class" not in start_argv(request("> Title: x\n"))
+    assert "--priority-class" not in start_argv(request(""))

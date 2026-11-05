@@ -78,6 +78,7 @@ OVERLAY: dict[str, Any] = {
             "route_key": "route-two",
         },
     ],
+    "rung_order": ["lab"],
     "policy": {
         "approved_identities": ["voter-one", "voter-two"],
         "approved_rungs": ["lab"],
@@ -114,6 +115,9 @@ class World:
     lab_findings: dict[str, tuple[ModelAgentFinding, ...]] = field(default_factory=dict)
     lab_empty_event: set[str] = field(default_factory=set)
     lab_raises: set[str] = field(default_factory=set)
+    lab_error_text: dict[str, str] = field(default_factory=dict)
+    lab_slow: set[str] = field(default_factory=set)
+    lab_heads: list[str] = field(default_factory=list)
     lab_delay: float = 0.0
     lab_gate: asyncio.Event | None = None
     lab_arrivals: int = 0
@@ -124,6 +128,7 @@ class World:
     find_calls: int = 0
     terminals: dict[str, ModelAgentReviewTerminal] = field(default_factory=dict)
     nonces: int = 0
+    ticks: int = 0
     crash_at: str | None = None
     crash_armed: bool = True
     post_commits_then_times_out: bool = False
@@ -165,6 +170,7 @@ class FakeLab:
         world = self.world
         world.crash("before_lab_review")
         world.lab_calls.append(voter.identity)
+        world.lab_heads.append(head_sha)
         world.lab_arrivals += 1
         if world.lab_gate is not None:
             if world.lab_arrivals >= 2:
@@ -172,8 +178,12 @@ class FakeLab:
             await world.lab_gate.wait()
         if world.lab_delay:
             await asyncio.sleep(world.lab_delay)
+        if voter.identity in world.lab_slow:
+            await asyncio.sleep(3600)
         if voter.identity in world.lab_raises:
-            raise ConnectionError("lab endpoint unreachable")
+            raise ConnectionError(
+                world.lab_error_text.get(voter.identity, "lab endpoint unreachable")
+            )
         return ModelAgentVoterReview(
             identity=voter.identity,
             endpoint=voter.endpoint,
@@ -260,6 +270,10 @@ class FakeClock:
     def new_id(self) -> str:
         self.world.nonces += 1
         return f"receipt-{self.world.nonces}"
+
+    def monotonic(self) -> float:
+        self.world.ticks += 1
+        return float(self.world.ticks)
 
 
 class InMemoryBus:

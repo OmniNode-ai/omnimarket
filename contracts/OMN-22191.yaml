@@ -1,7 +1,7 @@
 schema_version: '1.0.0'
 ticket_id: OMN-22191
-title: G0 script rebuild, slices 2 and 3 - seven compute nodes
-summary: Slice 2 of the ten G0 script rebuild. Four pure compute nodes with a behaviour-preserving port of lane_rules_block.py, onex_pillar_owner.py, ledger_rows.py and ledger_tail.py. Slice 3 of the ten G0 script rebuild. Three pure compute nodes with a behaviour-preserving port of the decisions of entrypoint_lib.sh, tool_use_rubric.py and onex_ledger_reconcile.py. onex_ledger.py and skill_exec.py are already covered by node_onex_ledger_admission_compute and node_skill_exec_decision_compute on dev. The lane-end nodes are slice 1, a separate pull request. The release and the plugin wiring are later slices.
+title: G0 script rebuild, slices 1 to 3 - lane-end nodes and compute nodes
+summary: Slices 1 to 3 of the ten G0 script rebuild. Slice 1 is the lane-end nodes node_lane_tree_inventory_effect, node_lane_closeout_effect and node_lane_closeout_orchestrator. Slice 2 is four pure compute nodes porting lane_rules_block.py, onex_pillar_owner.py, ledger_rows.py and ledger_tail.py. Slice 3 is three pure compute nodes porting the decisions of entrypoint_lib.sh, tool_use_rubric.py and onex_ledger_reconcile.py. The release and the plugin wiring are later slices.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -19,6 +19,11 @@ requirements:
     acceptance:
       - id: AC1
         statement: 'AC1: Each of the ten G0 scripts (entrypoint_lib.sh, lane_rules_block.py, ledger_rows.py, ledger_tail.py, onex_lane_closeout.py, onex_ledger.py, onex_ledger_reconcile.py, onex_pillar_owner.py, skill_exec.py, tool_use_rubric.py) is rebuilt as an omnimarket node whose handler tests and canonical shape check pass in omnimarket CI, and the release holding them is published -- falsifier: uv run pytest on a rebuilt node''s test directory fails, the shape check ([OMN-21331](https://linear.app/omninode/issue/OMN-21331)) exits non-zero on a new file, or the published release lacks one of the nodes'
+  - id: req-lane-end-nodes
+    statement: Lane end is a node, with its tree inventory line, its operations guard verdict and its closeout cell returned as typed results.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: Lane end is a node: node_lane_closeout_orchestrator, node_lane_tree_inventory_effect and node_lane_closeout_effect (guard, wip_push, closeout) run over a fixture lane directory with two trees and return the inventory line, the guard verdict and the closeout result that the ported onex_lane_closeout tests expect, under the in-memory profile and the Redpanda profile -- falsifier: uv run pytest on the three node directories fails under either profile'
 evidence_requirements:
   - kind: tests
     description: Handler tests of the four slice 2 nodes, with literal expected values ported from the source scripts' behaviour.
@@ -26,6 +31,9 @@ evidence_requirements:
   - kind: tests
     description: Handler tests of the three slice 3 nodes, with literal expected values checked against the source scripts' behaviour.
     command: uv run pytest tests/nodes/node_entrypoint_lib_compute/test_golden_chain_entrypoint_lib_compute.py tests/nodes/node_ledger_reconcile_command_compute/test_golden_chain_ledger_reconcile_command_compute.py tests/nodes/node_tool_use_rubric_compute/test_golden_chain_tool_use_rubric_compute.py -q --no-cov -m "not kafka"
+  - kind: tests
+    description: Inventory lines, the ported guard cases, the closeout cell and the lane-end run over two trees.
+    command: uv run pytest tests/nodes/node_lane_tree_inventory_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_lane_closeout_orchestrator -q --no-cov -m "not kafka"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -96,3 +104,40 @@ dod_evidence:
       - check_type: command
         check_value: |-
           bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_tool_use_rubric_compute/handlers/handler_tool_use_rubric.py" | grep -F "class HandlerToolUseRubric:" > /dev/null'
+  - id: dod-lane-end-inmemory
+    description: The three node directories pass under the in-memory profile, including the guard verdicts ok, wip and keep and the two-tree lane-end run.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lane_tree_inventory_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_lane_closeout_orchestrator -q --no-cov -m "not kafka"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC2]
+  - id: dod-omn22191-integration-proof
+    description: The same three node directories pass under the Redpanda profile on a lab host. Hosted CI cannot reach the broker, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane omn-22191-0445 -- uv run --frozen pytest tests/nodes/node_lane_tree_inventory_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_lane_closeout_orchestrator -q --no-cov -m kafka
+        cwd: .
+  - id: dod-omn22191-deploy-source-readback
+    description: Hosted-runner source-artifact readback compares the published lane closeout handler at the evaluated revision with this checkout and requires its guard, WIP push and linked-worktree removal paths. This checks the published source artifact, not a running service revision.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          path=src/omnimarket/nodes/node_lane_closeout_effect/handlers/handler_lane_closeout.py;
+          curl --fail --silent --show-error --location --retry 2 --max-time 20 \
+            "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path" \
+            --output "$readback_dir/handler_lane_closeout.py";
+          cmp "$path" "$readback_dir/handler_lane_closeout.py";
+          grep -F 'verdict, detail = _guard(request, tree)' "$readback_dir/handler_lane_closeout.py";
+          grep -F 'tree, "push", "-q", request.url or "origin", f"HEAD:refs/heads/{wip_branch}"' "$readback_dir/handler_lane_closeout.py";
+          grep -F '"worktree", "remove", "--force", str(tree)' "$readback_dir/handler_lane_closeout.py";
+          printf 'lane closeout source readback matched %s\n' "$revision"
+        cwd: .

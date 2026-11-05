@@ -3,7 +3,9 @@
 name: node_factory_floor_publish_effect
 version: 1.0.0
 description: >-
-  Refresh the factory floor record and publish it with its page to the directory the lab web server serves.
+  Refresh the factory floor and lab delegation projection windows, expose the delegation tick read,
+  and publish the record, local endpoint probes and pages to the lab web server. Large process-health
+  series publish small floor summaries and lossless compressed detail for the Process report.
 pack: operator_tooling
 node_role: effect
 display_name: Factory Floor Publish Effect
@@ -26,4 +28,5 @@ license: MIT
 tags:
 - effect
 - factory-floor-publish
+- delegation-report
 - OMN-21733
