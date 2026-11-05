@@ -23,9 +23,9 @@ from omnimarket.models.model_reading import (
     EnumReadingVerdict,
     ModelReadingComputeResult,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters import ledger_adapters
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     CommandLedgerAppender,
-    stamp_request_cell,
 )
 from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer import (
     build_reading_row,
@@ -157,7 +157,26 @@ def test_a_refusal_reports_the_receipt_on_stdout_not_the_stderr_tail() -> None:
     assert "diagnostics only" not in outcome.message
 
 
+def test_a_row_without_the_request_cell_is_refused_with_the_real_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The failing control: the appender as it was, sending rows with no req= cell.
+    monkeypatch.setattr(
+        ledger_adapters,
+        "stamp_request_cell",
+        lambda rows, _request_id: rows,
+        raising=False,
+    )
+    appender = CommandLedgerAppender(
+        [sys.executable, "-c", _script()], "reading-writer", "h-test", 60
+    )
+    outcome = appender.append(_reading_row() + "\n", REQUEST_ID)
+    assert outcome.status == "refused"
+    assert f"must carry the whole pipe cell req={REQUEST_ID}" in outcome.message
+
+
 def test_the_request_cell_goes_on_every_row_once_and_never_on_a_continuation() -> None:
+    stamp_request_cell = ledger_adapters.stamp_request_cell
     row = _reading_row()
     once = stamp_request_cell(row + "\n  continued text\n" + row + "\n", REQUEST_ID)
     lines = once.splitlines()
