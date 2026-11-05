@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_review_trigger_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Consume the existing red-CI observation, read the required review's completed
+  exact-head job through the source-control gateway, and request the agent review
+  chain only when no voter answered and gate accept found no receipt. A persistent
+  journal serializes repo/PR/head across deliveries and processes. An ambiguous
+  publish retries the same command id, which dispatch replays as historical.
+input_model:
+  name: ModelCiRunFailedEvent
+  module: omnimarket.models.ci_red_triage
+output_model:
+  name: ModelReviewTriggerResult
+  module: omnimarket.nodes.node_agent_review_trigger_effect.models.model_review_trigger
+handler:
+  module: omnimarket.nodes.node_agent_review_trigger_effect.handlers.handler_review_trigger
+  class: HandlerAgentReviewTrigger
+  input_model: omnimarket.models.ci_red_triage.ModelCiRunFailedEvent
+  output_model: omnimarket.nodes.node_agent_review_trigger_effect.models.model_review_trigger.ModelReviewTriggerResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: request_missing_review
+      topic: onex.evt.omnimarket.ci-run-failed.v1
+      message_category: event
+      event_model:
+        name: ModelCiRunFailedEvent
+        module: omnimarket.models.ci_red_triage
+      handler:
+        name: HandlerAgentReviewTrigger
+        module: omnimarket.nodes.node_agent_review_trigger_effect.handlers.handler_review_trigger
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 120000
+review_command_topic: onex.cmd.omnimarket.agent-review-requested.v1
+terminal_event: onex.evt.omnimarket.agent-review-trigger-decided.v1
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.ci-run-failed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.agent-review-requested.v1
+    - onex.evt.omnimarket.agent-review-trigger-decided.v1
+published_events:
+  - event_type: AgentReviewTriggerDecided
+    topic: onex.evt.omnimarket.agent-review-trigger-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-review-trigger-decided.v1
+env_dependencies:
+  - name: ONEX_STATE_DIR
+    required: true
+    description: Persistent directory holding the dispatch journal.
+  - name: OMNI_HOME
+    required: true
+    description: Registry root for canonical lane bus resolution.
+  - name: ONEX_SKILL_OVERLAY_ROOTS
+    required: true
+    description: Roots holding the required trigger deployment overlay.

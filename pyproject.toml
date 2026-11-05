@@ -384,6 +384,7 @@ node_lane_queue_start_decision_compute = "omnimarket.nodes.node_lane_queue_start
 node_ruling_mechanism_owed_compute = "omnimarket.nodes.node_ruling_mechanism_owed_compute"
 node_agent_review_harness_rung_effect = "omnimarket.nodes.node_agent_review_harness_rung_effect"
 node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
+node_agent_review_trigger_effect = "omnimarket.nodes.node_agent_review_trigger_effect"
 node_question_guard_compute = "omnimarket.nodes.node_question_guard_compute"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
 node_skill_exec_decision_compute = "omnimarket.nodes.node_skill_exec_decision_compute"

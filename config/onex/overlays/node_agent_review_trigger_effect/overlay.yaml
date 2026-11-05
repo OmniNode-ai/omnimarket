@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+repository_owner: OmniNode-ai
+required_review_checks:
+  - Hostile Reviewer (adversarial gate)
+  - Hostile Review Gate
+reviewer_workflow: hostile-reviewer.yml
+reviewer_jobs:
+  - Hostile Reviewer (adversarial gate)
+bus_lane: dev
+timeout_seconds: 30
+lock_poll_seconds: 0.05
+read_limit: 100
+log_tail_bytes: 65536
+state_subdirectory: agent_review_trigger
