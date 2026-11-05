@@ -1,0 +1,114 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-22478"
+title: "B0: the reading writer node and the hourly read-only probes"
+summary: >-
+  B0 of the base-first plan adds node_reading_compute (a reading as a pure function of ledger rows in a window
+  closed at a fixed time plus ten minutes) and node_reading_writer_effect (the only writer of reading rows, with
+  the hourly probes and their own systemd user timer, installed and rolled back by the node).
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn22478-reading-writer"
+    statement: >-
+      A reading is a pure function of ledger rows in a closed window, only the reading writer writes reading rows,
+      and each failure is a typed event and a ledger row.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: A planted ledger yields the expected reading row: verdict, outcome, reason, window, key, content, manifest and the injected fault, and the row passes the ledger row grammar."
+      - id: "AC2"
+        statement: "AC2: A planted conflicting duplicate fails the window; an identical duplicate is dropped by key."
+      - id: "AC3"
+        statement: "AC3: A replay under the same key with different content is a replay failure and the first row stands."
+      - id: "AC4"
+        statement: "AC4: A stale source reads NOT WORKING (fail, not warn); an unreadable source and a piece with no producer read UNKNOWN with a reason, never blank."
+      - id: "AC5"
+        statement: "AC5: The golden chain ends in the success event under one correlation id, every error chain ends in its typed failure event with a ledger row, and each named injected break turns a chain assertion red."
+      - id: "AC6"
+        statement: "AC6: The ledger is read through the route the overlay names: it follows the variable when the path moves, the old path is refused, and an unset variable refuses naming itself."
+      - id: "AC7"
+        statement: "AC7: Only the reading writer node builds reading rows, and a probe appends nothing."
+      - id: "AC8"
+        statement: "AC8: The hourly unit renders from the contract, survives a reboot (Persistent timer), installs only on a declared host and rolls back by uninstall."
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused test files."
+    command: "uv run pytest tests/nodes/node_reading_compute tests/nodes/node_reading_writer_effect -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22478-ac1"
+    description: >-
+      A planted ledger yields the expected reading row: verdict, outcome, reason, window, key, content, manifest and the injected fault, and the row passes the ledger row grammar. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_compute/test_reading_compute.py::test_planted_input_yields_the_expected_reading tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_every_declared_piece_gets_a_row_and_the_rows_pass_the_ledger_grammar -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac2"
+    description: >-
+      A planted conflicting duplicate fails the window; an identical duplicate is dropped by key. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_compute/test_reading_compute.py::test_a_conflicting_duplicate_fails_the_window tests/nodes/node_reading_compute/test_reading_compute.py::test_an_identical_duplicate_is_dropped_by_key tests/nodes/node_reading_writer_effect/test_reading_chain_events.py::test_error_chain_a_conflicting_duplicate_fails_the_window_for_that_piece -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac3"
+    description: >-
+      A replay under the same key with different content is a replay failure and the first row stands. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_a_replay_with_different_content_is_a_replay_failure_and_the_first_row_stands tests/nodes/node_reading_writer_effect/test_reading_chain_events.py::test_error_chain_a_replay_with_different_content_fails -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac4"
+    description: >-
+      A stale source reads NOT WORKING (fail, not warn); an unreadable source and a piece with no producer read UNKNOWN with a reason, never blank. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_compute/test_reading_compute.py::test_a_stale_source_reads_not_working_and_fails_rather_than_warns tests/nodes/node_reading_compute/test_reading_compute.py::test_an_unreadable_source_reads_unknown_never_blank tests/nodes/node_reading_compute/test_reading_compute.py::test_a_piece_with_no_producer_today_reads_unknown_with_its_reason -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac5"
+    description: >-
+      The golden chain ends in the success event under one correlation id, every error chain ends in its typed failure event with a ledger row, and each named injected break turns a chain assertion red. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_chain_events.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac6"
+    description: >-
+      The ledger is read through the route the overlay names: it follows the variable when the path moves, the old path is refused, and an unset variable refuses naming itself. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_the_file_route_follows_the_variable_when_the_ledger_moves tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_an_unset_route_variable_refuses_naming_itself -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac7"
+    description: >-
+      Only the reading writer node builds reading rows, and a probe appends nothing. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_only_the_reading_writer_builds_reading_rows tests/nodes/node_reading_writer_effect/test_reading_writer.py::test_a_probe_computes_everything_and_appends_nothing -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-ac8"
+    description: >-
+      The hourly unit renders from the contract, survives a reboot (Persistent timer), installs only on a declared host and rolls back by uninstall. Fails at the merge base, which has no reading nodes.
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
