@@ -108,6 +108,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
+  - id: req-omn19998-merge-declared-clone
+    statement: The merge consumer refreshes the current host's declared repository clone when the registry scan finds none.
+    acceptance:
+      - id: AC15
+        statement: 'An empty scan refreshes the recorded off-root clones through the merge bus consumer; missing paths, diverged clones and unreadable host coverage refuse; another host or repository owner is never refreshed -- falsifier: uv run --frozen pytest tests/unit/kbi_clone_coverage/test_kbi_clone_coverage.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -123,6 +128,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-merge-declared-clone
+    description: Scoped clone-refresh proof replays the recorded off-root layout and preserves refusals and exact host/repository scope. The original controller timer criteria remain outside this slice.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/kbi_clone_coverage/test_kbi_clone_coverage.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-merge-declared-clone-deploy
+    description: Hosted smoke publishes a merge to the same bus adapter used by the per-host serve command and observes its receipt and real local clone heads. Live branch installation and host table configuration remain the publishing runner's responsibility.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/kbi_clone_coverage/test_kbi_clone_coverage.py -q --no-cov -k merge_consumer
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual

@@ -26,6 +26,7 @@ import time
 from collections.abc import Sequence
 from typing import Protocol
 
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
@@ -129,6 +130,7 @@ class TransportSubprocess:
                 text=True,
                 timeout=timeout_seconds,
                 check=False,
+                env=scrub_git_location_env(),
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise TransportUnreachableError(f"{type(exc).__name__}: {exc}") from exc
@@ -176,7 +178,12 @@ class HandlerDeclaredCloneRefresh:
 
     def _declared(self, host: ModelLabHostRow) -> ModelLabHostClone | None:
         return next(
-            (c for c in host.clones if c.repo.rsplit("/", 1)[-1] == self._dir), None
+            (
+                c
+                for c in host.clones
+                if c.repo == self._dir or c.repo.rsplit("/", 1)[-1] == self._dir
+            ),
+            None,
         )
 
     def handle(

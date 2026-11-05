@@ -14,6 +14,7 @@ import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolBusMessage
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_canonical_clone_refresh_effect import (
     CanonicalCloneRefreshHost,
     EnumCanonicalCloneRefreshStatus,
@@ -277,7 +278,15 @@ def test_handler_runs_the_host_sync_command_for_the_repo_and_reads_its_result() 
         ("", 0, "no_clone"),
     ],
 )
-def test_skip_or_report_each_engine_result(stdout: str, rc: int, status: str) -> None:
+def test_skip_or_report_each_engine_result(
+    stdout: str, rc: int, status: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_canonical_clone_refresh_effect.resolve_lab_hosts_table",
+        lambda: ModelLabHostsTable(
+            hosts=(ModelLabHostRow(name="h-test", target="h-test.invalid"),)
+        ),
+    )
     handler = HandlerCanonicalCloneRefreshEffect(
         ["sync", "{repo}"], host_name="h-test", run=_runner(stdout, rc)
     )
