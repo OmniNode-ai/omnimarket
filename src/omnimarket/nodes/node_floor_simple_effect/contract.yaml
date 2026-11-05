@@ -58,8 +58,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.floor-simple-written.v1
 
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.floor-simple-cycle-requested.v1
+  subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.floor-simple-written.v1
 

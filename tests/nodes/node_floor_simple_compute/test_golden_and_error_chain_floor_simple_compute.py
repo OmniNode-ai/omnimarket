@@ -8,6 +8,7 @@ Every verdict below is a function of the reads and the clock handed in; nothing 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 import pytest
 
@@ -17,6 +18,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelLabSourceDef,
     ModelLabSourceRead,
+    ModelLabSourceVerdict,
     ModelLabStateInput,
     ModelLabSubject,
 )
@@ -35,7 +37,7 @@ NOW = datetime(2026, 11, 5, 15, 30, tzinfo=UTC)
 DEF = ModelLabSourceDef(id="hosts", title="Lab hosts", kind="hosts", max_age_s=900)
 
 
-def judge(read: ModelLabSourceRead | None, at: datetime = NOW):  # type: ignore[no-untyped-def]
+def judge(read: ModelLabSourceRead | None, at: datetime = NOW) -> ModelLabSourceVerdict:
     return (
         HandlerLabState()
         .handle(
@@ -45,12 +47,18 @@ def judge(read: ModelLabSourceRead | None, at: datetime = NOW):  # type: ignore[
     )
 
 
-def read(status: str = "read", minutes: int = 1, **kw) -> ModelLabSourceRead:  # type: ignore[no-untyped-def]
+def read(
+    status: Literal["read", "failed", "unread"] = "read",
+    minutes: int = 1,
+    reason: str = "",
+    subjects: tuple[ModelLabSubject, ...] = (),
+) -> ModelLabSourceRead:
     return ModelLabSourceRead(
         id="hosts",
-        status=status,  # type: ignore[arg-type]
+        status=status,
         read_at=NOW - timedelta(minutes=minutes),
-        **kw,
+        reason=reason,
+        subjects=subjects,
     )
 
 
