@@ -231,6 +231,11 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
+# The wiring pass parses every contract in the manifest, and under the shard's coverage
+# tracing it took 290 s of the shard-wide 300 s budget on an unmodified dev head
+# (omnimarket#5148, 2026-11-05), so one more node tipped the shard over. This one test
+# gets its own budget; the shard-wide bound stays for every other test.
+@pytest.mark.timeout(900, method="thread")
 async def test_every_node_auto_wires_in_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
