@@ -21,6 +21,9 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def readers(monkeypatch):
+    # Brief-reader cases do not depend on a host's live WIP snapshot. The WIP
+    # routing test below supplies its own refusal and checks the caller facts.
+    monkeypatch.setattr(handler, "dispatch_wip_refusal", lambda **_facts: None)
     module = ModuleType("fixture_brief_readers")
     module.RULES_BLOCK_HEAD = "# Standing rules"
     module.H_CLAIM = "claim"
