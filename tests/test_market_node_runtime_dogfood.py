@@ -82,6 +82,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # filesystem, so a host timer runs it with python -m; it publishes events
     # but subscribes to no topic and has no onex.nodes entry point.
     "node_lab_daemon_sync_effect",
+    # OMN-22341: the hook-events by-correlation read is reached only through its
+    # contract-declared HTTP mount, so it subscribes to no topic and has no
+    # onex.nodes entry point.
+    "node_hook_events_by_correlation_read_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration

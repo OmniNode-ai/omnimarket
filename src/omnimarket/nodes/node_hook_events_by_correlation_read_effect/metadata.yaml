@@ -1,0 +1,28 @@
+name: node_hook_events_by_correlation_read_effect
+version: "0.1.0"
+description: "Serves GET /v1/projections/hook-events/by-correlation from the runtime: tenant-scoped hook_events rows by correlation id with three explicit data states"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_hook_events_by_correlation_read_effect: "omnimarket.nodes.node_hook_events_by_correlation_read_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.1.0"
+  - "pydantic>=2.0"
+  - "fastapi>=0.100"
+  - "asyncpg>=0.29"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Team"]
+license: "MIT"
+tags: ["projection", "read", "effect", "http", "hook-events"]
+pack: "projection"
+display_name: "Hook Events By Correlation Read Effect"
+node_role: "effect"
