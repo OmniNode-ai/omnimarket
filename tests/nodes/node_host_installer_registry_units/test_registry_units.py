@@ -91,6 +91,7 @@ def request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "workspace_config_root": str(tmp_path / "ws"),
         "plans_path": str(tmp_path / "plans"),
         "marketplace_root": str(tmp_path / "market"),
+        "runtime_ssh_host": "lab-runtime",
     }
     fields.update(kw)
     return ModelRegistryUnitsRequest(**fields)
@@ -251,6 +252,7 @@ def test_install_writes_the_plist_loads_it_and_records_the_revision_it_runs(
     proofs = [c for c in run.calls if c[0] == "/usr/bin/uv"]
     assert proofs
     assert str(branch) in proofs[0]
+    assert "--no-sync" not in proofs[0]
 
 
 def test_the_rendered_unit_and_its_proof_run_on_the_brew_interpreter(
