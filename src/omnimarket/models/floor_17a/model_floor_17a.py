@@ -226,7 +226,7 @@ class ModelLabStateOutput(_Frozen):
 # --- the landing goal's scope ------------------------------------------------------------------------------------------
 
 CLOSES_TICKET = re.compile(r"\bCloses\s+(OMN-\d+)\b", re.IGNORECASE)
-ANY_TICKET = re.compile(r"\bOMN-\d+\b")
+ANY_TICKET = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 GoalScopeClass = Literal["in_scope", "paused", "unlisted"]
 
 
