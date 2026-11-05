@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_reading_writer_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that
+# root. Every value here is synthetic; supply your deployment's facts. No key has a default.
+#
+#   ledger_read      how rows are read: `file` (the live ledger file named by the variable path_env,
+#                    and the rolls in archive_subdir beside it) or `command` (the command held in
+#                    command_env reads one typed query JSON on stdin and prints one JSON answer)
+#   ledger_append    the command in command_env appends rows; host_env holds the host name
+#   window           an hourly window closes at its end plus close_delay_seconds
+#   publish          the reading rows' lane and actor, how long a published reading stays fresh
+#   order            the build order of the pieces; part of every row key
+#   pieces           per piece: readable_today with sources, or UNKNOWN with its reason; every piece
+#                    names the fault injected on purpose
+#   schedule_hosts   hosts that install the hourly systemd user timer
+#   unit_environment environment the installed unit carries (the routes' variables)
+ledger_read:
+  route: file
+  path_env: EXAMPLE_LEDGER_FILE
+  archive_subdir: archive
+  timeout_seconds: 30
+  row_limit: 1000
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+window:
+  length_seconds: 3600
+  close_delay_seconds: 600
+publish:
+  lane: reading-writer
+  actor: node:node_reading_writer_effect
+  publish_max_age_seconds: 7200
+  reading_term: src=reading
+order:
+- 1
+- 6
+- 15
+pieces:
+- piece: 1
+  name: code graph
+  readable_today: false
+  unknown_reason: the nightly graph run does not exist yet
+  injected_fault: stop the timer and advance the clock
+- piece: 6
+  name: ledger
+  readable_today: true
+  basis: daily-parity-receipt
+  sources:
+  - source_id: parity
+    row_type: STATUS
+    lane: work-ledger-parity
+    mode: newest
+    pass_when:
+    - cell: missing
+      op: eq
+      value: '0'
+    - cell: unexplained
+      op: eq
+      value: '0'
+    max_age_seconds: 129600
+  injected_fault: an append returns with no durable row
+- piece: 15
+  name: delegation
+  readable_today: true
+  basis: delegation-terminal-rows
+  sources:
+  - source_id: terminals
+    row_type: STATUS
+    cells:
+      src: delegation
+      outcome: completed
+    mode: count
+    min_rows: 1
+    pass_when:
+    - cell: quality_gate_passed
+      op: eq
+      value: 'true'
+    max_age_seconds: 3600
+  injected_fault: drop the result of the synthetic task in a test route
+schedule_hosts:
+- name: host-a
+  scheduler: systemd-user
+unit_environment:
+  EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --bus-lane example
+  EXAMPLE_HOST_NAME: host-a
+  EXAMPLE_LEDGER_FILE: /var/lib/example/ledger.md
