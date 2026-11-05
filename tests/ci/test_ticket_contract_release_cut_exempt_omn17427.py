@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -127,10 +128,34 @@ def test_nested_changelog_is_not_a_release_cut(
     assert _check(monkeypatch, tmp_path, head) == (missing_contract_message(TICKET),)
 
 
-def test_unreadable_base_keeps_the_refusal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_unreadable_base_keeps_the_refusal(tmp_path: Path) -> None:
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    assert _check(monkeypatch, tmp_path, head, "no-such-base") == (
-        missing_contract_message(TICKET),
+    # The shipped adapter turns an unreadable base into a typed refusal; the
+    # low-level check deliberately propagates the git error to that handler.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_ticket_contract_prerequisite_effect",
+            "--head",
+            head,
+            "--base",
+            "no-such-base",
+            "--title",
+            TITLE,
+        ],
+        cwd=tmp_path,
+        env={
+            **scrub_git_location_env(os.environ),
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "src"),
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
+    assert result.returncode == 1
+    assert "ticket contract preflight could not read the pushed commit" in result.stderr
+    assert "no-such-base^{commit}" in result.stderr
+    assert "'fetch'" not in result.stderr
+    assert result.stdout == ""
+    assert _git(tmp_path, "rev-parse", "HEAD") == head
