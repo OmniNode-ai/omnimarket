@@ -337,7 +337,8 @@ class HandlerReadingWriter:
         )
         appended = self._appender.append(row + "\n", request_id)
         if not appended.ok:
-            return outcome(result, f"append-failed:{appended.status}", row)
+            why = f":{reason_token(appended.message)}" if appended.message else ""
+            return outcome(result, f"append-failed:{appended.status}{why}", row)
         return outcome(
             result,
             "written" if appended.status == "accepted" else "already-written",

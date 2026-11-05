@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -209,6 +210,43 @@ class CommandLedgerRowSource:
         return ModelLedgerRead(rows=tuple(rows))
 
 
+_ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| [^|\r\n]+ \| ")
+
+
+def stamp_request_cell(rows: str, request_id: str) -> str:
+    """Every row of ``rows`` with ``req=<request_id>`` as its last pipe cell.
+
+    The bus append refuses a row that does not carry the whole pipe cell ``req=<id>`` of its
+    request, so a retry under one request id is recognised as the same request. A row that
+    already ends in that cell is left as it is, and continuation lines are left alone.
+    """
+    cell = f"req={request_id}"
+    lines: list[str] = []
+    for line in rows.splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        ending = line[len(body) :]
+        if _ROW_START.match(body) and not body.endswith(f" | {cell}"):
+            body = f"{body} | {cell}"
+        lines.append(body + ending)
+    return "".join(lines)
+
+
+def _refusal_text(done: subprocess.CompletedProcess[str]) -> str:
+    """Why the append command refused: the receipt it printed on stdout, else the stderr tail.
+
+    The command prints its refusal as one JSON receipt on stdout and writes only diagnostics
+    to stderr, so the reason is the receipt's message and never the stderr tail alone.
+    """
+    last = done.stdout.strip().splitlines()[-1:] or [""]
+    try:
+        receipt = json.loads(last[0])
+    except json.JSONDecodeError:
+        receipt = None
+    if isinstance(receipt, dict) and receipt.get("message"):
+        return str(receipt["message"])[:400]
+    return done.stderr[-400:] or "refused-without-reason"
+
+
 class CommandLedgerAppender:
     """Appends through the configured bus append command: rows on stdin, one JSON receipt out."""
 
@@ -235,7 +273,7 @@ class CommandLedgerAppender:
         try:
             done = subprocess.run(
                 argv,
-                input=rows,
+                input=stamp_request_cell(rows, request_id),
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
@@ -248,7 +286,7 @@ class CommandLedgerAppender:
         if done.returncode == 75:
             return ModelAppendOutcome(status="pending", message="no receipt in time")
         if done.returncode == 65:
-            return ModelAppendOutcome(status="refused", message=done.stderr[-400:])
+            return ModelAppendOutcome(status="refused", message=_refusal_text(done))
         if done.returncode != 0:
             return ModelAppendOutcome(
                 status="error", message=f"append-command-exit-{done.returncode}"
