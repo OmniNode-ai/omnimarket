@@ -3,7 +3,7 @@
 """Host closeout retention. Standalone stdlib payload for a remote Python interpreter.
 
 The launcher supplies its final receipt and current ledger after closing ownership.
-Unknown ownership, missing evidence and git metadata preserve both run directories.
+Unknown ownership, missing evidence and unsaved git work preserve both run directories.
 Only this module's manifest-bearing archives participate in report expiration.
 """
 
@@ -18,6 +18,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from .handlers.retention_tree_safety import _inside, _trees_keep_reason
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,160}\Z")
 # Beyond the ordinary ends, the guard stops, usage limits and setup refusals of a lane
@@ -55,22 +57,6 @@ def _owners(ledger: str) -> tuple[set[str], set[str], set[tuple[str, str]]]:
     return set(active), known, runs
 
 
-def _inside(root: Path, path: Path) -> Path:
-    path = path.absolute()
-    try:
-        relative = path.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("artifact outside lab root") from exc
-    if ".." in relative.parts:
-        raise ValueError("parent traversal")
-    current = root
-    for part in relative.parts:
-        current /= part
-        if current.is_symlink():
-            raise ValueError("symlink in retention path")
-    return relative
-
-
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -101,7 +87,7 @@ def retain_run(
     """Archive one final run, optionally delete scratch trees, expire managed reports.
 
     A successful archive is required even when the working directories are absent.
-    Git-bearing trees are left for the runner's existing guarded git closeout.
+    Git-bearing trees must be clean with every local commit on a remote ref.
     ``now`` exists for deterministic expiration tests; timestamps are UTC epochs.
     """
     # A host may reach its lab-run directory through a link ($HOME/lab-run to a RAM
@@ -198,9 +184,11 @@ def retain_run(
         if staging.exists():
             shutil.rmtree(staging)
     removed: list[str] = []
-    # All git metadata, including a nested worktree, requires the existing git guard.
-    git_present = any(tree.exists() and any(tree.rglob(".git")) for tree in trees)
-    if delete and not git_present:
+    kept: dict[str, str] = {}
+    reason = _trees_keep_reason(root, trees) if delete else "delete-disabled"
+    if reason:
+        kept = {tree.name: reason for tree in trees if tree.exists()}
+    else:
         for tree in trees:
             _inside(root, tree)
             if tree.exists():
@@ -234,7 +222,7 @@ def retain_run(
         if managed and stamp < cutoff and data["lane"] not in active:
             shutil.rmtree(saved.parent)
             pruned.append(str(saved.parent.relative_to(root / "reports")))
-    return {"archive": str(archive), "removed": removed, "pruned": pruned}
+    return {"archive": str(archive), "removed": removed, "pruned": pruned, "kept": kept}
 
 
 def retention_script(
@@ -265,6 +253,15 @@ def retention_script(
         ).encode()
     ).decode()
     source = Path(__file__).read_text().split("\ndef retention_script(", 1)[0]
+    # Inline the same safety module used by the typed handler: the host runs
+    # stdlib Python and does not import a separately installed Market package.
+    source = source.replace(
+        "from .handlers.retention_tree_safety import _inside, _trees_keep_reason\n",
+        Path(__file__)
+        .with_name("handlers")
+        .joinpath("retention_tree_safety.py")
+        .read_text(),
+    )
     return (
         "python3 - <<'LANE_RETENTION_PY'\n"
         + source
