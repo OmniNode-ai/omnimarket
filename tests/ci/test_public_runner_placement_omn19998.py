@@ -148,3 +148,17 @@ def test_precommit_hook_names_this_public_repository() -> None:
     ]
     assert hooks
     assert hooks[0]["args"] == ["--repo", "omnimarket", "--visibility", "public"]
+
+
+def test_the_hostile_review_gate_job_is_github_hosted() -> None:
+    """The gate reads the result of the review job, so it takes no lab runner."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "hostile-reviewer.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    gate = workflow["jobs"]["hostile-review-gate"]
+    assert gate["name"] == "Hostile Review Gate"
+    assert gate["runs-on"] == "ubuntu-latest"
+    assert gate["needs"] == ["hostile-review"]
+    assert gate["if"] == "always()"
