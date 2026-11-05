@@ -136,6 +136,24 @@ def test_fetch_preserves_missing_contract_refusal(tmp_path: Path) -> None:
     assert _git(worker, "rev-parse", "origin/dev")
 
 
+@pytest.mark.parametrize("base", ["no-such-base", "origin/dev"])
+def test_unreadable_base_preserves_explicit_missing_contract_refusal(
+    tmp_path: Path, base: str
+) -> None:
+    """The CLI must retain the contract refusal even when base repair fails."""
+    worker = _worker(tmp_path, contract=False)
+    before = _git(worker, "rev-parse", "HEAD")
+    _git(worker, "remote", "set-url", "origin", str(tmp_path / "unreachable"))
+    result = _hook(worker, "--base", base, "--title", f"fix({TICKET}): change")
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        f"pull request cites {TICKET} but carries no contracts/{TICKET}.yaml"
+    )
+    assert _git(worker, "rev-parse", "HEAD") == before
+    assert _git(worker, "status", "--porcelain") == ""
+    assert _git(worker, "branch", "-r") == "origin/worker"
+
+
 def test_fetch_preserves_runtime_integration_proof_refusal(tmp_path: Path) -> None:
     worker = _worker(tmp_path, runtime=True)
     result = _hook(worker)
