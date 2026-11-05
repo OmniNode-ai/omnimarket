@@ -15,7 +15,6 @@ staleness rule included) and exits 0 only when WORKING.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import sys
 from datetime import UTC, datetime
@@ -24,22 +23,21 @@ from pathlib import Path
 import click
 from pydantic import ValidationError
 
-from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.lab_test_harness import (
     EnumLabTestHarnessReadingState,
     ModelLabTestHarnessOverlay,
-    ModelLabTestHarnessRequested,
     reading_at,
 )
 from omnimarket.nodes.node_lab_test_harness_effect.handlers import (
     HandlerLabTestHarnessEffect,
-    open_lab_work_runner,
 )
-
-EXIT_NOT_WORKING = 1
-EXIT_OVERLAY_REFUSED = 65
-EXIT_BUS_UNAVAILABLE = 69
+from omnimarket.nodes.node_lab_test_harness_effect.runtime_lab_test_harness import (
+    EXIT_NOT_WORKING,
+    EXIT_OVERLAY_REFUSED,
+    EXIT_WORKING,
+    run_once,
+)
 
 
 @click.group("lab-test-harness")
@@ -69,27 +67,15 @@ def _overlay() -> ModelLabTestHarnessOverlay:
 @click.option("--run-id", default=None, help="Default: manual-<UTC stamp>.")
 def run_command(workspace_root: Path | None, run_id: str | None) -> None:
     """Run every case once, write the current reading and print it."""
-    overlay = _overlay()
-    now = datetime.now(UTC)
-    handler = HandlerLabTestHarnessEffect(
-        overlay=overlay,
-        runner_opener=lambda ov: open_lab_work_runner(
-            ov, workspace_root=workspace_root
-        ),
-    )
-    request = ModelLabTestHarnessRequested(
-        run_id=run_id or f"manual-{now:%Y%m%dT%H%M%SZ}",
-        requested_at=now,
+    code, _run_id, _state = run_once(
+        workspace_root,
+        run_id,
         trigger="manual",
+        emit=click.echo,
+        emit_error=lambda text: click.echo(text, err=True),
     )
-    try:
-        reading = asyncio.run(handler.handle(request))
-    except LabRunBusError as exc:
-        click.echo(f"bus: {exc}", err=True)
-        sys.exit(EXIT_BUS_UNAVAILABLE)
-    click.echo(reading.model_dump_json(indent=2))
-    if reading.state is not EnumLabTestHarnessReadingState.WORKING:
-        sys.exit(EXIT_NOT_WORKING)
+    if code != EXIT_WORKING:
+        sys.exit(code)
 
 
 @harness_group.command("read")
