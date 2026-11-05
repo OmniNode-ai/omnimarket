@@ -164,14 +164,21 @@ def test_snapshot_json_shape_keeps_yesterdays_file_when_the_read_fails(
 
     result = write(tmp_path, boom)
     assert result.status == "failed"
-    assert "LINEAR_API_KEY" in result.reason
+    assert result.reason == "SnapshotReadError"
     assert target.read_text(encoding="utf-8") == "{}"
 
 
 def test_snapshot_json_shape_cli_prints_counts_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+    from omnimarket.nodes.node_linear_snapshot_effect.handlers import (
+        handler_linear_snapshot as writer,
+    )
+
+    def missing_key() -> None:
+        raise SnapshotReadError("key unavailable", code="key_unavailable")
+
+    monkeypatch.setattr(writer, "resolve_key", missing_key)
     assert main(["--out-dir", str(tmp_path), "--date", "2026-11-03"]) == 1
     out = capsys.readouterr().out
     assert out.startswith("linear-snapshot | failed ")

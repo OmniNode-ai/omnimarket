@@ -125,6 +125,7 @@ from omnimarket.models.model_backlog_item import (
     backlog_item_refusal,
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.models.model_linear_snapshot_request import ModelLinearSnapshotRequest
 from omnimarket.models.stop_gate import (
     REPOSITORY_SCOPE_KIND,
     EnumStopExemptionKind,
@@ -146,6 +147,7 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
     load_policy,
     resolve_lane_model,
 )
+from omnimarket.nodes.node_linear_snapshot_effect import HandlerLinearSnapshot
 
 from .handler_ruling_recovery import HandlerRulingRecovery
 
@@ -1649,6 +1651,78 @@ def generate_backlog(
     return [*tickets, *reads, *designs], skipped
 
 
+SNAPSHOT_REFRESH_SECONDS = 900
+SNAPSHOT_MAX_AGE_SECONDS = 1800
+
+
+def _read_linear_snapshot(
+    path: Path | None, now: str, *, max_age: int = SNAPSHOT_MAX_AGE_SECONDS
+) -> tuple[dict[str, Any], str]:
+    """Only today's readable, fresh snapshot supplies tickets; history supplies age."""
+    age = "unknown"
+    evidence = path
+    try:
+        clock = datetime.fromisoformat(now).timestamp()
+        if path is None:
+            raise ValueError("snapshot path is not configured")
+        if not path.is_file():
+            evidence = max(
+                path.parent.glob("linear-*.json"),
+                key=lambda p: p.stat().st_mtime,
+                default=None,
+            )
+        if evidence is not None and evidence.is_file():
+            stamp = evidence.stat().st_mtime
+            age = f"{max(0, int(clock - stamp))}s"
+        if not path.is_file():
+            detail = (
+                "only the compact form with no assignee, labels or title"
+                if path.with_suffix(".txt").is_file()
+                else "today's snapshot is absent"
+            )
+            raise ValueError(detail)
+        snapshot = _json(path)
+        if (
+            not isinstance(snapshot, dict)
+            or not isinstance(snapshot.get("issues"), list)
+            or not isinstance(snapshot.get("operator"), str)
+            or not snapshot["operator"].strip()
+            or snapshot["operator"].strip().lower() == "me"
+        ):
+            raise ValueError("snapshot needs resolved operator and issues list")
+        if snapshot.get("generated_at"):
+            generated = datetime.fromisoformat(snapshot["generated_at"])
+            if generated.tzinfo is None:
+                raise ValueError("generated_at needs a UTC offset")
+            stamp = generated.timestamp()
+            if stamp - clock > 300:
+                raise ValueError("generated_at is in the future")
+        seconds = clock - stamp
+        age = f"{max(0, int(seconds))}s"
+        if seconds > max_age:
+            raise ValueError(f"snapshot is stale (maximum age={max_age}s)")
+        return snapshot, ""
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        latest = f" latest={evidence.name}" if evidence is not None else ""
+        return {}, f"MISSING linear_snapshot age={age}{latest}: {str(exc)[:180]}"
+
+
+def refresh_linear_snapshot(sources: ModelBacklogSources, now: str) -> str:
+    """Maintain the default daily file through the existing writer, before capacity decisions."""
+    path = sources.linear_snapshot
+    if path is None:
+        return ""
+    _, missing = _read_linear_snapshot(path, now, max_age=SNAPSHOT_REFRESH_SECONDS)
+    if not missing:
+        return ""
+    result = HandlerLinearSnapshot().handle(
+        ModelLinearSnapshotRequest(out_dir=str(path.parent), date=now[:10])
+    )
+    return f"linear-snapshot | {result.status} issues={result.issue_count}" + (
+        f" reason={result.reason}" if result.reason else ""
+    )
+
+
 def read_generated(
     sources: ModelBacklogSources,
     watcher_state: dict[str, Any] | None,
@@ -1676,21 +1750,9 @@ def read_generated(
             unread.append(f"{name} unread: {detail}")
             return default
 
-    snapshot_path = sources.linear_snapshot
-    compact = snapshot_path.with_suffix(".txt") if snapshot_path is not None else None
-    if (
-        snapshot_path is not None
-        and compact is not None
-        and not snapshot_path.is_file()
-        and compact.is_file()
-    ):
-        unread.append(
-            f"linear_snapshot unread: only {compact.name}, the compact form with no assignee, labels or "
-            f"title, so no ticket is generated; write {snapshot_path.name} with them"
-        )
-        snapshot: Any = {}
-    else:
-        snapshot = read("linear_snapshot", sources.linear_snapshot, default={})
+    snapshot, snapshot_missing = _read_linear_snapshot(sources.linear_snapshot, now)
+    if snapshot_missing:
+        unread.append(snapshot_missing)
     operator = snapshot.get("operator") if isinstance(snapshot, dict) else None
     issues = snapshot.get("issues", []) if isinstance(snapshot, dict) else snapshot
     issues = issues if isinstance(issues, list) else []
@@ -1714,6 +1776,9 @@ def read_generated(
     except (Exception, SystemExit) as exc:
         unread.append(f"ledger unread: {' '.join(str(exc).splitlines())[:160]}")
         issues, readbacks = [], {}
+    if snapshot_missing:
+        # Repository and assignee context for readbacks comes from the snapshot.
+        readbacks = {}
     open_pr: set[str] = set()
     prs = watcher_state.get("prs", {}) if isinstance(watcher_state, dict) else {}
     for record in prs.values() if isinstance(prs, dict) else []:
@@ -1763,7 +1828,7 @@ def read_generated(
         items, skipped = [], {}
     t, r, e = (sum(i["kind"] == kind for i in items) for kind in GENERATED_KINDS)
     line = (
-        f"lab-fill-generator | tickets={t} readbacks={r} experiments={e} rule={TICKET_RULE} skipped: "
+        f"lab-fill-generator | tickets={'MISSING' if snapshot_missing else t} readbacks={r} experiments={e} rule={TICKET_RULE} skipped: "
         f"{', '.join(f'{k}={v}' for k, v in sorted(skipped.items())) or 'none'}"
     )
     return items, line + (f"; unread: {'; '.join(unread)}" if unread else "")
@@ -2209,6 +2274,13 @@ class HandlerLabFill:
         scope_unread = scope if isinstance(scope, str) else ""
         holds, holds_unread = read_fixer_holds(request.now, os.environ)
         wip_sources = request.sources or default_sources(request.now, os.environ)
+        snapshot_refresh = (
+            refresh_linear_snapshot(wip_sources, request.now)
+            if wip_sources is not None
+            and request.sources is None
+            and not request.read_only
+            else ""
+        )
         wip_refusal, wip_finding = fill_wip_gate(
             ledger_tickets=wip_sources.ledger_tickets if wip_sources else None,
             watcher_state=watcher,
@@ -2242,6 +2314,8 @@ class HandlerLabFill:
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
+        if snapshot_refresh:
+            found.append(("note", "linear-snapshot", snapshot_refresh, ""))
         if wip_finding:
             found.append(wip_finding)
         if holds_unread:
@@ -2272,9 +2346,21 @@ class HandlerLabFill:
                     'fix merge-sweep/sweep_scope.json ({"out_of_scope": {repo: ruling}})',
                 )
             )
-        sources = request.sources
-        if decision.idle_after > 0 and sources is None:
-            sources = default_sources(request.now, os.environ)
+        sources = wip_sources
+        snapshot_missing = ""
+        if sources is not None:
+            _, snapshot_missing = _read_linear_snapshot(
+                sources.linear_snapshot, request.now
+            )
+            if snapshot_missing:
+                found.append(
+                    (
+                        "missing",
+                        "linear_snapshot",
+                        snapshot_missing,
+                        "restore the Linear snapshot writer's credential or output directory",
+                    )
+                )
         if decision.idle_after > 0 and sources is not None:
             generated, line = read_generated(sources, watcher, sent, request.now)
             found.append(("note", "lab-fill-generator", line, ""))

@@ -26,7 +26,11 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct Python invocation, or python -m omnimarket.nodes.node_linear_snapshot_effect from the plans-today skill's first step and the session-start hook's note.
+  external_trigger: The existing idle-slot-fill tick refreshes the default daily snapshot after 900 seconds, including with no free slots; manual plans-today calls use the same node.
+secrets:
+  LINEAR_API_KEY:
+    required: true
+    description: Linear read credential resolved once through the canonical secret-store resolver.
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -34,7 +38,7 @@ descriptor:
   idempotent: true
   timeout_ms: 300000
   side_effects:
-  - reads the signed-in subject's open Linear issues through the GraphQL API with the LINEAR_API_KEY of the environment
+  - reads the signed-in subject's open Linear issues through the GraphQL API with a store-resolved key
   - writes linear-<UTC date>.json under the output directory, replacing the file atomically
 metadata:
   transport_type: HTTP

@@ -22,12 +22,13 @@ capabilities:
   full_runtime: false
   requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: true
   side_effect_class: write
 dependencies:
 - PyYAML>=6.0
 - omnimarket.nodes.node_ruling_mechanism_owed_compute
+- omnimarket.nodes.node_linear_snapshot_effect
 authors:
 - OmniNode Platform Team
 license: MIT
