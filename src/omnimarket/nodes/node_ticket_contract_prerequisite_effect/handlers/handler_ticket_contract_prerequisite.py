@@ -133,14 +133,15 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
-    base = _resolve_base(base)
+    resolved_base: str | None = None
     if title is None:
+        resolved_base = _resolve_base(base)
         subjects = _git(
             "log",
             "--first-parent",
             "--no-merges",
             "--format=%s",
-            *_own_revisions(sha, base),
+            *_own_revisions(sha, resolved_base),
         )
         branch = os.environ.get("PRE_COMMIT_LOCAL_BRANCH") or _git(
             "rev-parse", "--abbrev-ref", "HEAD"
@@ -167,7 +168,15 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         failure = contract_prerequisite(ticket, text)
         if failure and text is None:
             if release_cut is None:
-                release_cut = _is_release_cut(sha, base)
+                try:
+                    if resolved_base is None:
+                        resolved_base = _resolve_base(base)
+                except (OSError, subprocess.SubprocessError):
+                    # An unreadable base cannot establish the release exemption.
+                    # Keep the concrete missing-contract refusal for this ticket.
+                    release_cut = False
+                else:
+                    release_cut = _is_release_cut(sha, resolved_base)
             if release_cut:
                 continue
         if failure:
@@ -176,7 +185,9 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
         if text is None:
             continue
         if changed is None:
-            changed = _changed_paths(sha, base)
+            if resolved_base is None:
+                resolved_base = _resolve_base(base)
+            changed = _changed_paths(sha, resolved_base)
         proof = check_integration_proof(
             ModelIntegrationProofRequest(
                 ticket_id=ticket, contract_text=text, changed_paths=changed

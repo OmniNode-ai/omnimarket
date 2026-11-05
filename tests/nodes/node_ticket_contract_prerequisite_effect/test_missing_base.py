@@ -136,6 +136,20 @@ def test_fetch_preserves_missing_contract_refusal(tmp_path: Path) -> None:
     assert _git(worker, "rev-parse", "origin/dev")
 
 
+def test_unreadable_base_preserves_explicit_title_missing_contract_refusal(
+    tmp_path: Path,
+) -> None:
+    worker = _worker(tmp_path, contract=False)
+    result = _hook(
+        worker, "--base", "no-such-base", "--title", f"fix({TICKET}): change"
+    )
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        f"pull request cites {TICKET} but carries no contracts/{TICKET}.yaml"
+    )
+    assert _git(worker, "branch", "-r") == "origin/worker"
+
+
 def test_fetch_preserves_runtime_integration_proof_refusal(tmp_path: Path) -> None:
     worker = _worker(tmp_path, runtime=True)
     result = _hook(worker)

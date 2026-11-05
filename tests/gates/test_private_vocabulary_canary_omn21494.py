@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -59,23 +60,31 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
     }
     env[config["config_root_setting"]] = str(root)
     source = f"omnibase-core @ git+{config['core_repository']}@{config['core_dev_merge_tag']}"
+    # Provision the pinned environment separately: uv's VCS/install diagnostics
+    # are not the console script's diagnostic protocol.
+    scripts = root / "canary-venv" / "bin"
+    for command in (
+        [uv, "venv", "--python", sys.executable, str(scripts.parent)],
+        [uv, "pip", "install", "--python", str(scripts / "python"), source],
+    ):
+        provision = subprocess.run(
+            command,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+        sys.stderr.write(provision.stderr)
+        provision.check_returncode()
+    script = scripts / config["console_script"]
     return subprocess.run(
-        [
-            uv,
-            "run",
-            "--no-project",
-            "--isolated",
-            "--with",
-            source,
-            config["console_script"],
-            "--name",
-            config["vocabulary_name"],
-        ],
+        [str(script), "--name", config["vocabulary_name"]],
         env=env,
         capture_output=True,
         text=True,
         check=False,
-        timeout=600,
+        timeout=60,
     )
 
 
@@ -92,9 +101,28 @@ def test_unset_variable_resolves_vocabulary_at_config_root(tmp_path: Path) -> No
     assert Path(result.stdout.strip()).resolve() == vocabulary.resolve()
 
 
+@pytest.mark.parametrize(
+    "dependency_diagnostics", [False, True], ids=["warm", "uv-update"]
+)
 def test_unset_variable_without_vocabulary_is_one_refusal_naming_setting(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency_diagnostics: bool
 ) -> None:
+    if dependency_diagnostics:
+        uv = shutil.which("uv")
+        assert uv is not None
+        wrappers = tmp_path / "bin"
+        wrappers.mkdir()
+        wrapper = wrappers / "uv"
+        wrapper.write_text(
+            f"#!{sys.executable}\n"
+            "import os, sys\n"
+            "print('   Updating pinned dependency', file=sys.stderr)\n"
+            "print('    Updated pinned dependency', file=sys.stderr)\n"
+            f"os.execv({uv!r}, [{uv!r}, *sys.argv[1:]])\n",
+            encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{wrappers}{os.pathsep}{os.environ['PATH']}")
     config = _canary()
     result = _run(config, tmp_path)
     assert result.returncode != 0

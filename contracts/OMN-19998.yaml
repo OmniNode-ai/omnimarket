@@ -130,6 +130,9 @@ requirements:
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
+    description: The pinned vocabulary console retains its one-line refusal after dependency provisioning emits update diagnostics; the configured-vocabulary positive control still resolves its path.
+    command: uv run --frozen pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov -n 0 -p no:randomly
+  - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
     command: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
   - kind: tests
@@ -160,12 +163,15 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
         cwd: .
   - id: dod-omn19998-prepush-missing-base
-    description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
+    description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. An unreadable base retains the missing-contract refusal and cannot establish the release-cut exemption. This scoped hook proof does not assert the controller timer criteria.
     source: manual
     binds_ac: [AC10]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-prepush-missing-base-deploy
     description: Hosted hook-adapter smoke invokes the contract-backed node CLI as a subprocess in a real worker clone, observes the fetched tracking ref and unchanged head and worktree, and needs no credential. Host hook installation remains the publishing runner's responsibility.
