@@ -64,7 +64,6 @@ static tier order: a telemetry outage never breaks routing.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -81,6 +80,7 @@ from omnimarket.handlers.routing.roi_overlay import (
     resolve_roi_min_samples,
     resolve_roi_success_floor,
     resolve_roi_window_seconds,
+    resolve_routing_overlay_dsn,
 )
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
@@ -456,7 +456,7 @@ def resolve_eval_line_reader() -> PostgresEvalLineReader | None:
     constructed; the routing read then records ``missing`` and suppresses
     nothing.
     """
-    dsn = os.environ.get(_ENV_DSN, "").strip()
+    dsn = resolve_routing_overlay_dsn("projection")
     if not dsn:
         return None
     try:
@@ -679,8 +679,8 @@ def resolve_dod_outcome_reader() -> PostgresDodOutcomeReader | None:
     is unset (no DoD read, static routing) or when the reader cannot be
     constructed. Construction does no I/O; the first read does.
     """
-    delegation_dsn = os.environ.get(_ENV_DSN, "").strip()
-    verdict_dsn = os.environ.get(_ENV_VERDICT_DSN, "").strip()
+    delegation_dsn = resolve_routing_overlay_dsn("projection")
+    verdict_dsn = resolve_routing_overlay_dsn("verdict")
     if not delegation_dsn or not verdict_dsn:
         return None
     try:

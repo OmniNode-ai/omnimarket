@@ -51,11 +51,11 @@ v1(a) explicit non-goals (design-feasibility comment 41f99997):
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.handlers.routing.roi_overlay import resolve_routing_overlay_dsn
 from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
     TENANT_CREDENTIALS_TABLE,
     ProtocolTenantOverlayReader,
@@ -151,7 +151,7 @@ def resolve_tenant_overlay_db() -> ProtocolTenantOverlayReader | None:
     because no policy on it references ``app.tenant_id``. Do not read this as
     RLS coverage — AC2 (DB-enforced denial) is explicitly deferred.
     """
-    dsn = os.environ.get(_ENV_TENANT_OVERLAY_DSN, "").strip()
+    dsn = resolve_routing_overlay_dsn("projection")
     if not dsn:
         return None
     try:
