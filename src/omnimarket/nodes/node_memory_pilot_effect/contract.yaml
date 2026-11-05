@@ -6,14 +6,15 @@ node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Memory product pilot, stage one (Cognee), behind a backend protocol. A request
+  Memory product pilot (stage one Cognee, stage two Graphiti), behind a backend protocol. A request
   either ingests documents into a dataset or asks a question of one. The pilot
   runs only when the overlay's frozen hash matches the pilot's FROZEN.sha256 and
   every file it lists; otherwise the request fails pilot_not_frozen. Only lab
   model endpoints on the overlay's allowed hosts are used; telemetry must be
   disabled in the overlay. The default backend is in-memory lexical retrieval;
-  lexical_lab adds a lab chat model (the stage-one baseline) and cognee runs the
-  self-hosted package. Each request publishes a started event and exactly one
+  lexical_lab adds a lab chat model (the stage-one baseline), cognee runs the
+  self-hosted package, and graphiti runs its self-hosted package on an embedded
+  graph store with the injected lab answerer writing the answer from retrieved facts. Each request publishes a started event and exactly one
   completed or failed event; a failure carries a typed error code, a failure row
   is recorded, and the reading is NOT_WORKING. A lab model that is down fails
   fast as lab_model_unavailable; no answer is invented.

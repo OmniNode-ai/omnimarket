@@ -121,7 +121,7 @@ class HandlerMemoryPilot:
                 )
         if (
             self._backend is None
-            and overlay.backend == "lexical_lab"
+            and overlay.backend in ("lexical_lab", "graphiti")
             and self._answerer is None
         ):
             return fail(
@@ -186,6 +186,15 @@ class HandlerMemoryPilot:
                 name="lexical_lab",
                 answerer=self._answerer,
                 system_prompt=prompt,
+            )
+        if overlay.backend == "graphiti":
+            from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_graphiti import (
+                BackendGraphiti,
+            )
+
+            assert self._answerer is not None
+            return BackendGraphiti(
+                overlay, answerer=self._answerer, system_prompt=prompt
             )
         from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
             BackendCognee,

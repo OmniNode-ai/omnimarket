@@ -15,6 +15,9 @@ import yaml
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
     BackendCognee,
 )
+from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_graphiti import (
+    BackendGraphiti,
+)
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_in_memory import (
     BackendInMemory,
 )
@@ -45,9 +48,11 @@ from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot i
 from .conftest import (
     CORR,
     PILOT_DIR,
+    FakeGraphiti,
     RecordingBus,
     RecordingRecorder,
     frozen_hash,
+    make_graphiti_overlay,
     make_overlay,
 )
 
@@ -340,3 +345,144 @@ def test_a_failed_result_cannot_read_working() -> None:
             backend="x",
             error_code=Code.BACKEND_ERROR,
         )
+
+
+class _ConnectError(Exception):
+    """Named like the transport error a down lab model raises inside the Graphiti clients."""
+
+
+class _FixedAnswerer:
+    async def answer(self, system_prompt: str, question: str, context: str) -> str:
+        return "answer"
+
+
+def _graphiti_handler(
+    bus: RecordingBus,
+    recorder: RecordingRecorder,
+    tmp_path: Path,
+    lab_url: str,
+    fake: FakeGraphiti,
+    *,
+    answerer: object | None = None,
+) -> HandlerMemoryPilot:
+    overlay = make_graphiti_overlay(tmp_path, chat_url=lab_url)
+    backend = BackendGraphiti(
+        overlay,
+        answerer=answerer or _FixedAnswerer(),  # type: ignore[arg-type]
+        system_prompt="p",
+        graphiti=fake,
+    )
+    return HandlerMemoryPilot(
+        event_bus=bus, failure_recorder=recorder, overlay=overlay, backend=backend
+    )
+
+
+async def test_graphiti_extraction_model_down_is_lab_model_unavailable(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path, lab_url: str
+) -> None:
+    fake = FakeGraphiti(add_error=_ConnectError("refused"))
+    handler = _graphiti_handler(bus, recorder, tmp_path, lab_url, fake)
+    result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    _assert_typed_failure(result, bus, recorder, Code.LAB_MODEL_UNAVAILABLE)
+
+
+async def test_graphiti_extraction_failure_that_is_not_a_connection_is_a_backend_error(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path, lab_url: str
+) -> None:
+    fake = FakeGraphiti(add_error=ValueError("bad json from the model"))
+    handler = _graphiti_handler(bus, recorder, tmp_path, lab_url, fake)
+    result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    _assert_typed_failure(result, bus, recorder, Code.BACKEND_ERROR)
+    assert result.error_detail == "ValueError"
+
+
+async def test_graphiti_query_before_any_ingest_is_not_ingested(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path, lab_url: str
+) -> None:
+    handler = _graphiti_handler(
+        bus, recorder, tmp_path, lab_url, FakeGraphiti(facts=("f",))
+    )
+    result = await handler.handle(_req())
+    _assert_typed_failure(result, bus, recorder, Code.NOT_INGESTED)
+
+
+async def test_graphiti_answerer_down_fails_fast_and_invents_no_answer(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path, lab_url: str
+) -> None:
+    class DownAnswerer:
+        async def answer(self, system_prompt: str, question: str, context: str) -> str:
+            raise LabModelUnavailableError("ConnectionRefusedError")
+
+    fake = FakeGraphiti(facts=("f",))
+    handler = _graphiti_handler(
+        bus, recorder, tmp_path, lab_url, fake, answerer=DownAnswerer()
+    )
+    await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    bus.events.clear()
+    recorder.rows.clear()
+    result = await handler.handle(_req())
+    _assert_typed_failure(result, bus, recorder, Code.LAB_MODEL_UNAVAILABLE)
+
+
+async def test_graphiti_without_an_injected_answerer_is_refused_not_faked(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path
+) -> None:
+    handler = HandlerMemoryPilot(
+        event_bus=bus,
+        failure_recorder=recorder,
+        overlay=make_graphiti_overlay(tmp_path),
+    )
+    result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    _assert_typed_failure(result, bus, recorder, Code.BACKEND_ERROR)
+    assert result.error_detail == "no lab answerer injected"
+
+
+async def test_graphiti_with_the_lab_model_down_fails_before_touching_the_package(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path
+) -> None:
+    overlay = make_graphiti_overlay(tmp_path)
+    backend = BackendGraphiti(overlay, answerer=_FixedAnswerer(), system_prompt="p")
+    handler = HandlerMemoryPilot(
+        event_bus=bus, failure_recorder=recorder, overlay=overlay, backend=backend
+    )
+    result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    _assert_typed_failure(result, bus, recorder, Code.LAB_MODEL_UNAVAILABLE)
+    assert backend._graphiti is None, "the package was never imported"
+
+
+async def test_graphiti_endpoint_off_the_allow_list_is_refused_before_any_call(
+    bus: RecordingBus, recorder: RecordingRecorder, tmp_path: Path
+) -> None:
+    overlay = ModelMemoryPilotOverlay.model_validate(
+        {
+            **make_graphiti_overlay(tmp_path).model_dump(),
+            "embeddings": {
+                "base_url": "http://203.0.113.9:8002/v1",
+                "model": "e",
+                "timeout_seconds": 2,
+            },
+        }
+    )
+    fake = FakeGraphiti()
+    backend = BackendGraphiti(
+        overlay, answerer=_FixedAnswerer(), system_prompt="p", graphiti=fake
+    )
+    handler = HandlerMemoryPilot(
+        event_bus=bus, failure_recorder=recorder, overlay=overlay, backend=backend
+    )
+    result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    _assert_typed_failure(result, bus, recorder, Code.ENDPOINT_NOT_ALLOWED)
+    assert fake.episodes == []
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["lab_max_in_flight", "graphiti_chunk_chars", "graphiti_num_results"],
+)
+def test_graphiti_overlay_without_its_settings_is_invalid(
+    tmp_path: Path, missing: str
+) -> None:
+    values = make_graphiti_overlay(tmp_path).model_dump()
+    values[missing] = None
+    with pytest.raises(ValueError, match="graphiti needs"):
+        ModelMemoryPilotOverlay.model_validate(values)

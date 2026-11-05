@@ -5,11 +5,19 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_graphiti import (
+    BackendGraphiti,
+    render_facts,
+)
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_in_memory import (
     BackendInMemory,
+)
+from omnimarket.nodes.node_memory_pilot_effect.handlers.graphiti_chunking import (
+    chunk_text,
 )
 from omnimarket.nodes.node_memory_pilot_effect.handlers.handler_memory_pilot import (
     HandlerMemoryPilot,
@@ -26,7 +34,15 @@ from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import 
     ModelMemoryPilotRequest,
 )
 
-from .conftest import CORR, PILOT_DIR, RecordingBus, RecordingRecorder, make_overlay
+from .conftest import (
+    CORR,
+    PILOT_DIR,
+    FakeGraphiti,
+    RecordingBus,
+    RecordingRecorder,
+    make_graphiti_overlay,
+    make_overlay,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -128,3 +144,77 @@ async def test_lexical_lab_backend_answers_from_the_lab_model_over_retrieved_con
     assert seen
     assert seen[0][0] == "frozen"
     assert "planted_notes/PN-2-estimator-seed.txt" in seen[0][2]
+
+
+async def test_graphiti_backend_chunks_adds_episodes_then_answers_from_retrieved_facts(
+    bus: RecordingBus,
+    recorder: RecordingRecorder,
+    tmp_path: Path,
+    lab_url: str,
+) -> None:
+    """Golden chain of the second backend: ingest as episodes, search facts, injected lab answerer."""
+    seen: list[tuple[str, str, str]] = []
+
+    class FakeAnswerer:
+        async def answer(self, system_prompt: str, question: str, context: str) -> str:
+            seen.append((system_prompt, question, context))
+            return "the Beta service"
+
+    fake = FakeGraphiti(
+        facts=("Beta replaced Alpha in March.", "Alpha retried failed jobs."),
+    )
+    overlay = make_graphiti_overlay(tmp_path, chat_url=lab_url)
+    backend = BackendGraphiti(
+        overlay, answerer=FakeAnswerer(), system_prompt="frozen", graphiti=fake
+    )
+    handler = HandlerMemoryPilot(
+        event_bus=bus, failure_recorder=recorder, overlay=overlay, backend=backend
+    )
+    text = "Alpha retries failed jobs three times.\n\nBeta replaced Alpha in March."
+    ingested = await handler.handle(
+        _ingest((ModelMemoryPilotDocument(doc_id="smoke/a.txt", text=text),))
+    )
+    assert ingested.status is EnumMemoryPilotStatus.COMPLETED
+    assert ingested.documents_ingested == 1
+    assert ingested.backend == "graphiti"
+    assert fake.index_builds == 1, "indices are built once, before the first episode"
+    assert [e["name"] for e in fake.episodes] == ["smoke/a.txt#1", "smoke/a.txt#2"]
+    assert {e["group_id"] for e in fake.episodes} == {"d"}
+    assert {e["source_description"] for e in fake.episodes} == {"smoke/a.txt"}
+    assert "".join(e["episode_body"] for e in fake.episodes).replace(
+        "\n", ""
+    ) == text.replace("\n", "")
+    answer = await handler.handle(_ask("What replaced Alpha?"))
+    assert answer.status is EnumMemoryPilotStatus.COMPLETED
+    assert answer.reading is EnumMemoryPilotReading.WORKING
+    assert answer.answer == "the Beta service"
+    assert [c.source for c in answer.context] == ["graphiti-fact", "graphiti-fact"]
+    assert fake.searches == [
+        {"query": "What replaced Alpha?", "group_ids": ["d"], "num_results": 3}
+    ]
+    assert seen == [
+        (
+            "frozen",
+            "What replaced Alpha?",
+            "- Beta replaced Alpha in March.\n- Alpha retried failed jobs.",
+        )
+    ]
+    assert bus.topics == ["started", "completed", "started", "completed"]
+    assert {key for _t, key, _v in bus.events} == {str(CORR).encode()}
+    assert recorder.rows == []
+
+
+def test_chunks_cover_every_character_in_order_within_the_limit() -> None:
+    text = "one two three four five six seven eight nine ten\n\n" + "x" * 25 + "\n\nend"
+    chunks = chunk_text(text, 20)
+    assert all(0 < len(c) <= 20 for c in chunks)
+    assert "".join(chunks).replace(" ", "").replace("\n", "") == text.replace(
+        " ", ""
+    ).replace("\n", "")
+    assert chunk_text("", 20) == ()
+    assert chunk_text("short", 20) == ("short",)
+
+
+def test_render_facts_lists_one_fact_per_line_and_drops_blanks() -> None:
+    assert render_facts(["a", " ", "b"]) == "- a\n- b"
+    assert render_facts([]) == ""

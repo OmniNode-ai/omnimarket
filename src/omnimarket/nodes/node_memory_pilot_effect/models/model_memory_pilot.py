@@ -140,7 +140,7 @@ class ModelMemoryPilotOverlay(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["in_memory", "lexical_lab", "cognee"]
+    backend: Literal["in_memory", "lexical_lab", "cognee", "graphiti"]
     frozen_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     pilot_dir: Path
     telemetry_disabled: bool
@@ -155,6 +155,9 @@ class ModelMemoryPilotOverlay(BaseModel):
     max_completion_tokens: int = Field(default=1024, gt=0)
     top_k: int = Field(default=5, gt=0)
     ingest_data_per_batch: int | None = Field(default=None, gt=0)
+    lab_max_in_flight: int | None = Field(default=None, gt=0)
+    graphiti_chunk_chars: int | None = Field(default=None, gt=0)
+    graphiti_num_results: int | None = Field(default=None, gt=0)
 
     @field_validator("telemetry_disabled")
     @classmethod
@@ -185,6 +188,21 @@ class ModelMemoryPilotOverlay(BaseModel):
                 )
             if self.storage_root is None or not self.storage_root.is_absolute():
                 raise ValueError("cognee needs an absolute storage_root")
+        if self.backend == "graphiti":
+            if self.embeddings is None or self.embedding_dimensions is None:
+                raise ValueError(
+                    "graphiti needs an embeddings endpoint and its dimensions"
+                )
+            if self.storage_root is None or not self.storage_root.is_absolute():
+                raise ValueError("graphiti needs an absolute storage_root")
+            if self.lab_max_in_flight is None:
+                raise ValueError(
+                    "graphiti needs lab_max_in_flight (how many model calls it may hold open on the shared lab model)"
+                )
+            if self.graphiti_chunk_chars is None or self.graphiti_num_results is None:
+                raise ValueError(
+                    "graphiti needs graphiti_chunk_chars and graphiti_num_results"
+                )
         return self
 
     def endpoints(self) -> tuple[ModelLabEndpoint, ...]:

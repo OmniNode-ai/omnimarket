@@ -8,19 +8,25 @@ The control and the spy need the installed package, so they skip where it is abs
 
 from __future__ import annotations
 
+import sys
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
     cognee_environment,
 )
+from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_graphiti import (
+    BackendGraphiti,
+    graphiti_environment,
+)
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
     ModelMemoryPilotOverlay,
 )
 
-from .conftest import PILOT_DIR, frozen_hash
+from .conftest import PILOT_DIR, frozen_hash, make_graphiti_overlay
 
 pytestmark = pytest.mark.unit
 
@@ -121,3 +127,106 @@ def test_telemetry_is_off_with_the_pilot_environment_and_on_without_it(
     assert len(sent) == 1, (
         "control: with the switch removed the same call does queue an event"
     )
+
+
+def test_graphiti_environment_is_built_from_the_overlay_alone(tmp_path: Path) -> None:
+    env = graphiti_environment(make_graphiti_overlay(tmp_path, cap=4))
+    assert env["GRAPHITI_TELEMETRY_ENABLED"] == "false"
+    assert env["DO_NOT_TRACK"] == "1"
+    assert env["HF_HUB_OFFLINE"] == "1"
+    assert env["SEMAPHORE_LIMIT"] == "4", "the in-flight cap comes from the overlay"
+    assert (
+        graphiti_environment(make_graphiti_overlay(tmp_path, cap=2))["SEMAPHORE_LIMIT"]
+        == "2"
+    )
+    assert not any("KEY" in k for k in env)
+
+
+def test_graphiti_telemetry_is_off_with_the_pilot_environment_and_on_without_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The library disables itself under pytest, so the test hides pytest from it for the call."""
+    telemetry = pytest.importorskip("graphiti_core.telemetry.telemetry")
+    posthog = pytest.importorskip("posthog")
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(posthog, "capture", lambda **payload: sent.append(payload))
+    monkeypatch.setattr(telemetry, "get_anonymous_id", lambda: "spy-id")
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("GRAPHITI_TELEMETRY_ENABLED", raising=False)
+    for key, value in graphiti_environment(make_graphiti_overlay(tmp_path)).items():
+        monkeypatch.setenv(key, value)
+    telemetry.capture_event("pilot probe")
+    assert sent == [], "telemetry must be off under the pilot environment"
+    monkeypatch.delenv("GRAPHITI_TELEMETRY_ENABLED")
+    telemetry.capture_event("pilot probe")
+    assert len(sent) == 1, (
+        "control: with the switch removed the same call does queue an event"
+    )
+
+
+async def test_graphiti_opens_on_embedded_kuzu_and_takes_the_overlays_in_flight_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("graphiti_core")
+    pytest.importorskip("kuzu")
+    monkeypatch.delenv("SEMAPHORE_LIMIT", raising=False)
+    overlay = make_graphiti_overlay(tmp_path / "store", cap=3)
+
+    class Answerer:
+        async def answer(self, system_prompt: str, question: str, context: str) -> str:
+            return ""
+
+    backend = BackendGraphiti(overlay, answerer=Answerer(), system_prompt="p")
+    graphiti = await backend._open()
+    assert graphiti.max_coroutines == 3
+    assert (tmp_path / "store" / "kuzu.db").exists()
+    assert type(graphiti.driver).__name__ == "PilotKuzuDriver"
+
+
+async def test_graphiti_search_index_builds_and_a_group_scoped_add_resolves_on_kuzu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two defects of graphiti-core 0.31.2 on Kuzu, each shown by its control.
+
+    The control is the unpatched Kuzu driver: it has no ``_database`` (add_episode with a
+    group id fails) and its own index build is a no-op, so the full-text search a query runs
+    has no index to read. The pilot's driver and its maintenance-operation index build fix both.
+    """
+    pytest.importorskip("kuzu")
+    kuzu_driver = pytest.importorskip("graphiti_core.driver.kuzu_driver")
+    graphiti_module = pytest.importorskip("graphiti_core")
+    monkeypatch.setenv("GRAPHITI_TELEMETRY_ENABLED", "false")
+    overlay = make_graphiti_overlay(tmp_path / "store")
+
+    class Answerer:
+        async def answer(self, system_prompt: str, question: str, context: str) -> str:
+            return ""
+
+    graphiti = await BackendGraphiti(
+        overlay, answerer=Answerer(), system_prompt="p"
+    )._open()
+    scope = graphiti._resolve_request_scope("stage1")
+    assert scope[1] is graphiti.driver, (
+        "the group id resolves to the one embedded store"
+    )
+    await graphiti.driver.graph_ops.build_indices_and_constraints(graphiti.driver)
+    rows, _, _ = await graphiti.driver.execute_query(
+        "CALL QUERY_FTS_INDEX('RelatesToNode_', 'edge_name_and_fact', 'anything', TOP := 1) "
+        "RETURN count(*) AS n"
+    )
+    assert rows[0]["n"] == 0, "the full-text index exists and is empty"
+
+    plain = kuzu_driver.KuzuDriver(db=str(tmp_path / "plain.db"))
+    control = graphiti_module.Graphiti(
+        graph_driver=plain,
+        llm_client=graphiti.llm_client,
+        embedder=graphiti.embedder,
+        cross_encoder=graphiti.cross_encoder,
+    )
+    with pytest.raises(AttributeError, match="_database"):
+        control._resolve_request_scope("stage1")
+    with pytest.raises(RuntimeError, match="edge_name_and_fact"):
+        await plain.execute_query(
+            "CALL QUERY_FTS_INDEX('RelatesToNode_', 'edge_name_and_fact', 'anything', TOP := 1) "
+            "RETURN count(*) AS n"
+        )
