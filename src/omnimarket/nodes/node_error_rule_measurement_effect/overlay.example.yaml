@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment supplies write_identity, allowed_write_logins and confirmation_actors.
+# No default login is accepted, and a labeller cannot supply a confirmation.
+sample_limit: 50
+freshness_days: 7
+restatement_window_days: 7
+schedule_seconds: 86400
+wilson_z: 1.959963984540054
+labeller_engine: codex
+shadow_mode: shadow
+hint_mode: hint
+dispatch_mode: dispatch
