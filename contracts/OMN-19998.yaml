@@ -113,6 +113,11 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: an oversized recorded-shape series publishes a bounded summary and lossless compressed detail; the browser rejects mixed generations; the timer avoids sync and persists its declared runtime SSH host; a floor refresh refusal still permits shared report pages -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-floor-phoenix-timer-env
+    statement: The installed floor timer persists the Phoenix URL the floor reads its trace count and newest span age from.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-closer-dod-verify
     statement: The triage closer reads runtime proof from the same cached dod_verify verdict as the Done-write gate.
     acceptance:
@@ -475,4 +480,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
+        cwd: .
+  - id: dod-omn19998-floor-phoenix-timer-env
+    description: The timer-environment test fails before this change because the factory-floor-publish unit declares no Phoenix variable, so launchd ticks read the floor with it unset and draw the Phoenix row unread. Live capture into Phoenix is not asserted here.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
