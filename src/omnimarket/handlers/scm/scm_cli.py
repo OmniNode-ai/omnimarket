@@ -19,9 +19,10 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  pr-thread-reply, pr-thread-resolve, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  pr-thread-reply, pr-thread-resolve, pr-review-post, workflow-run,
+  check-run-create) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
-  needs. pr-edit, pr-ready and pr-close take the expected head from the
+  needs. pr-edit, pr-ready, pr-close and pr-review-post take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
   command: the effect runs elsewhere and cannot read that directory.
@@ -38,8 +39,13 @@ Gateway reads retry on no terminal or bus unavailability for up to three total
 attempts, pausing 20 seconds between attempts (OMN-21396). Writes retry only when
 the broker reports no consumer, checking that evidence after each timeout;
 other unanswered writes and bus-open failures stop immediately (OMN-21646).
-With ``--bus inmemory``, the selected contract is hosted in this process by
-the runtime dispatcher before the command is published.
+With no ``--bus-lane``, ``--kafka-bootstrap`` or ``--bus inmemory``, the bus is
+the ``event_bus`` the node's contract overlay declares (OMN-22351). With
+``--bus inmemory``, or an overlay declaring ``type: inmemory``, the selected
+contract is hosted in this process by the runtime dispatcher before the command
+is published. A lane whose durable binding is degraded is refused with exit 69
+naming the bus login this host lacks; a source-control node is never hosted in
+process as a fallback, because it runs in the runtime that holds its credential.
 
 Registered in ``[project.entry-points."onex.cli"]``; the CLI discovers it over
 installed distributions.
@@ -208,7 +214,11 @@ def _call_bus(
         except (LabRunBusError, InfraConnectionError) as exc:
             # A broker that refuses this principal a topic (an ACL) lands here too.
             click.echo(f"bus: {exc}", err=True)
-            if attempt == max_attempts or not is_read:
+            if (
+                attempt == max_attempts
+                or not is_read
+                or isinstance(exc, ScmBusRefusedError)
+            ):
                 return EXIT_BUS_UNAVAILABLE
         else:
             failed = (
@@ -249,9 +259,17 @@ def _open_bus(
     names = tuple(inspect.signature(open_lab_run_bus).parameters)
     if names[:3] != ("bus", "lane", "kafka_bootstrap") or len(names) != 4:
         raise LabRunBusError(f"unexpected bus opener parameters: {names}")
-    values: tuple[object, ...] = (
+    node = bus_opts.get("scm_node")
+    bus, lane = _bus_selection(
         _bus_kind(bus_opts["bus"]),
         _optional_str(bus_opts["bus_lane"]),
+        _optional_str(bus_opts["kafka_bootstrap"]),
+        _optional_path(bus_opts["omnibase_path"]),
+        node if isinstance(node, EnumScmNode) else None,
+    )
+    values: tuple[object, ...] = (
+        bus,
+        lane,
         _optional_str(bus_opts["kafka_bootstrap"]),
         _optional_path(bus_opts["omnibase_path"]),
     )
@@ -259,7 +277,6 @@ def _open_bus(
         Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
         open_lab_run_bus,
     )
-    node = bus_opts.get("scm_node")
     opened = opener(**dict(zip(names, values, strict=True)))
     if values[0] == "inmemory":
         from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
@@ -275,6 +292,48 @@ def _open_bus(
     )
 
 
+class ScmBusRefusedError(LabRunBusError):
+    """A bus refusal no retry can change: no broker is declared, or the binding is degraded and a
+    source-control node is never hosted on this host (OMN-22351). Exit 69 at once, never retried."""
+
+
+def _bus_selection(
+    bus: BusKind,
+    lane: str | None,
+    kafka_bootstrap: str | None,
+    workspace_root: Path | None,
+    node: EnumScmNode | None,
+) -> tuple[BusKind, str | None]:
+    """The bus and lane this verb dials: the command line's, else the node's contract overlay (OMN-22351).
+
+    ``--bus-lane``, ``--kafka-bootstrap`` and ``--bus inmemory`` are explicit and win. With none of
+    them, ``event_bus`` of the node's overlay selects the bus: ``type: kafka`` and its lane, or
+    ``type: inmemory``. With no overlay declaration the shared-bus selection stays incomplete and the
+    opener refuses it, now naming the overlay it looked for.
+    """
+    if (
+        bus != "kafka"
+        or lane is not None
+        or kafka_bootstrap is not None
+        or node is None
+    ):
+        return bus, lane
+    from omnimarket.handlers.bus_binding.node_event_bus_overlay import (
+        resolve_node_event_bus,
+    )
+
+    declared, path = resolve_node_event_bus(node.value, workspace_root)
+    if declared is None:
+        raise ScmBusRefusedError(
+            f"{node.value} declares no event_bus in its contract overlay "
+            f"({path or '<workspace config root>/config/onex/overlays/' + node.value + '/overlay.yaml'}), "
+            "and no --bus-lane or --kafka-bootstrap was given, so this verb names no broker. "
+            "Declare `event_bus: {type: kafka, lane: <lane id>}` there (the broker address stays "
+            "in the lane declaration)."
+        )
+    return declared.type, declared.lane
+
+
 @contextlib.asynccontextmanager
 async def _open_scm_bound(
     durable: contextlib.AbstractAsyncContextManager[ProtocolLabRunBus],
@@ -282,10 +341,16 @@ async def _open_scm_bound(
     values: tuple[object, ...],
     node: EnumScmNode | None,
 ) -> AsyncIterator[ProtocolLabRunBus]:
-    """The durable bus, or the in-memory bus hosting this node when the lane overlay orders a fallback
-    and the durable bus fails its bounded health read (OMN-20275)."""
+    """The durable bus, or a refusal when the lane's binding is degraded (OMN-22351).
+
+    The lane declaration may order an in-memory fallback (OMN-20275) for the clients that can run
+    their node in process. The source-control nodes cannot: they run in the lane's runtime, which
+    holds the GitHub credential, and a copy hosted in this process would look the credential up on a
+    host that must never hold it (the credential_unavailable failures of every h106 lane). So a
+    degraded binding refuses with exit 69 naming the bus login this host lacks, before any command
+    is published.
+    """
     from omnimarket.handlers.bus_binding.select import open_bound_bus, positional_opener
-    from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
 
     elsewhere = positional_opener(opener)
     used: list[bool] = []
@@ -308,15 +373,15 @@ async def _open_scm_bound(
         if not bound.decision.degraded:
             yield bound.bus
             return
-        if node is None:
-            raise LabRunBusError("the in-memory SCM fallback requires a node")
-
-        @contextlib.asynccontextmanager
-        async def borrowed() -> AsyncIterator[ProtocolLabRunBus]:
-            yield bound.bus
-
-        async with open_scm_inprocess(borrowed(), node) as hosted:
-            yield hosted
+        lane = bound.decision.lane
+        raise ScmBusRefusedError(
+            f"lane {lane!r} binding is {bound.decision.state.value} "
+            f"({bound.decision.reason or 'durable bus unavailable'}). "
+            f"onex scm never hosts {node.value if node else 'a source-control node'} on this host: "
+            "the node runs in the lane's runtime, which holds the GitHub credential. This host "
+            f"needs its own bus login on lane {lane!r} (issued by the lab principal issuer, stored "
+            f"with `onex auth lane-login --lane {lane}`) and the scm client grants its peers hold."
+        )
 
 
 def _bus_kind(value: object) -> BusKind:
@@ -610,6 +675,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_comment": ("body", "body_file"),
     "pr_thread_reply": ("thread", "body", "body_file"),
     "pr_thread_resolve": ("review_thread",),
+    "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
         "name",
@@ -623,7 +689,7 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
     {"pr_create", "workflow_dispatch", "check_run_create"}
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
-    {"pr_edit", "pr_ready", "pr_close"}
+    {"pr_edit", "pr_ready", "pr_close", "pr_review_post"}
 )
 
 _OPTION_DECORATORS: Final[

@@ -1,0 +1,119 @@
+[
+  {
+    "viewport": "phone",
+    "fit": {
+      "width": 390,
+      "scroll": 390,
+      "control": {
+        "x": 16,
+        "y": 367.90625,
+        "width": 358,
+        "height": 92,
+        "top": 367.90625,
+        "right": 374,
+        "bottom": 459.90625,
+        "left": 16
+      },
+      "graph": {
+        "x": 33,
+        "y": 688.75,
+        "width": 324,
+        "height": 270,
+        "top": 688.75,
+        "right": 357,
+        "bottom": 958.75,
+        "left": 33
+      }
+    },
+    "counts_change": true,
+    "touch_and_keyboard": true,
+    "custom_eastern": true,
+    "sub_bucket_unmeasured": true,
+    "stale_refresh_cleared": true,
+    "errors": [],
+    "dark_contrast": {
+      "text": 6.727952599742468,
+      "line": 8.578694886242877
+    },
+    "embedded_mode": true,
+    "dark_mode": true
+  },
+  {
+    "viewport": "tablet",
+    "fit": {
+      "width": 768,
+      "scroll": 768,
+      "control": {
+        "x": 16,
+        "y": 281.375,
+        "width": 736,
+        "height": 44,
+        "top": 281.375,
+        "right": 752,
+        "bottom": 325.375,
+        "left": 16
+      },
+      "graph": {
+        "x": 33,
+        "y": 531.890625,
+        "width": 702,
+        "height": 270,
+        "top": 531.890625,
+        "right": 735,
+        "bottom": 801.890625,
+        "left": 33
+      }
+    },
+    "counts_change": true,
+    "touch_and_keyboard": true,
+    "custom_eastern": true,
+    "sub_bucket_unmeasured": true,
+    "stale_refresh_cleared": true,
+    "errors": [],
+    "dark_contrast": {
+      "text": 6.727952599742468,
+      "line": 8.578694886242877
+    },
+    "embedded_mode": true,
+    "dark_mode": true
+  },
+  {
+    "viewport": "desktop",
+    "fit": {
+      "width": 1440,
+      "scroll": 1440,
+      "control": {
+        "x": 146,
+        "y": 284.71875,
+        "width": 1148,
+        "height": 44,
+        "top": 284.71875,
+        "right": 1294,
+        "bottom": 328.71875,
+        "left": 146
+      },
+      "graph": {
+        "x": 163,
+        "y": 535.234375,
+        "width": 1114,
+        "height": 270,
+        "top": 535.234375,
+        "right": 1277,
+        "bottom": 805.234375,
+        "left": 163
+      }
+    },
+    "counts_change": true,
+    "touch_and_keyboard": true,
+    "custom_eastern": true,
+    "sub_bucket_unmeasured": true,
+    "stale_refresh_cleared": true,
+    "errors": [],
+    "dark_contrast": {
+      "text": 6.727952599742468,
+      "line": 8.578694886242877
+    },
+    "embedded_mode": true,
+    "dark_mode": true
+  }
+]

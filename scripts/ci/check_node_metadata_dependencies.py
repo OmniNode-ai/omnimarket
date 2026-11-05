@@ -21,7 +21,6 @@ MODULE_TO_DISTRIBUTION = {
     "asyncpg": "asyncpg",
     "confluent_kafka": "confluent-kafka",
     "httpx": "httpx",
-    "omnibase_compat": "omnibase-compat",
     "omnibase_core": "omnibase_core",
     "omnibase_infra": "omnibase-infra",
     "omnibase_spi": "omnibase-spi",

@@ -39,24 +39,25 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumDoneClassLabel,
     EnumDurableEvidenceCheck,
     EnumDurableEvidenceStatus,
+    EnumRepoContractReadStatus,
+    ModelRepoContractRead,
+    ModelRepoEvidenceCheckRun,
+    ModelTicketMergedPr,
 )
 from omnimarket.nodes.node_dod_verify.services import evidence_collector
 from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     criteria_revision,
+)
+from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
+    REPO_EVIDENCE_APP_SLUG,
+    REPO_EVIDENCE_CHECK_NAME,
+    DurableEvidenceGate,
 )
 from omnimarket.occ_contract_pin import criterion_hash
 from tests.test_dod_verify_acceptance_basis import _contract, _run
 from tests.unit.nodes.node_dod_verify.omn_20858_ticket_reader import (
     RecordedTicketReader,
     criteria_body,
-)
-from tests.unit.nodes.node_dod_verify.test_receipt_bound_evidence_gate import (
-    _CONTRACT_PATH,
-    _RECEIPT_DIR,
-    _TICKET,
-    _make_gate,
-    _receipt_bound_contract,
-    _receipt_bound_receipt,
 )
 
 pytestmark = pytest.mark.unit
@@ -448,18 +449,59 @@ def test_the_revision_moves_with_a_criterion_and_not_with_the_prose() -> None:
 # -- the Done transition re-checks the verdict's revision ---------------------
 
 
+_GATE_TICKET = "OMN-90858"
+
+
+def _green_repo_contract() -> dict[str, object]:
+    """A product-repository contract binding every label the ticket carries."""
+    return {
+        "schema_version": "1.0.0",
+        "ticket_id": _GATE_TICKET,
+        "dod_evidence": [
+            {
+                "id": f"dod-{label.lower()}",
+                "description": "bound",
+                "checks": [
+                    {"check_type": "test_passes", "check_value": "uv run pytest t.py"}
+                ],
+                "binds_ac": [label],
+            }
+            for label in _FALSIFIERS
+        ],
+    }
+
+
 def _gate_evaluate(verdict_revision: str | None, description: str) -> Any:
-    gate = _make_gate(
-        tracked=True,
-        receipts=[_receipt_bound_receipt()],
-        contract_on_main=_receipt_bound_contract(),
+    contract = _green_repo_contract()
+    gate = DurableEvidenceGate(
+        release_tags_containing=lambda _repo, _sha: ("v9.9.9",),
+        index_release_files=lambda _d, _v: frozenset({"bdist_wheel", "sdist"}),
+        read_repo_contract=lambda _repo, _ref, _ticket: ModelRepoContractRead(
+            status=EnumRepoContractReadStatus.FOUND, contract=contract
+        ),
+        read_repo_check_runs=lambda _repo, _sha: (
+            ModelRepoEvidenceCheckRun(
+                id=7001,
+                name=REPO_EVIDENCE_CHECK_NAME,
+                app_slug=REPO_EVIDENCE_APP_SLUG,
+                status="completed",
+                conclusion="success",
+            ),
+        ),
     )
     return gate.evaluate(
-        ticket_id=_TICKET,
-        contract=_receipt_bound_contract(),
-        receipt_dir=_RECEIPT_DIR,
-        contract_rel_path=_CONTRACT_PATH,
+        ticket_id=_GATE_TICKET,
+        contract=contract,
         ticket_labels=frozenset({EnumDoneClassLabel.SOURCE_DONE.value}),
+        merged_prs=(
+            ModelTicketMergedPr(
+                repo="OmniNode-ai/omnimarket",
+                pr_number=1,
+                head_sha="a" * 40,
+                merge_commit_sha="b" * 40,
+                merged_at="2026-10-09T12:00:00Z",
+            ),
+        ),
         ticket_description=description,
         verdict_criteria_revision=verdict_revision,
     )

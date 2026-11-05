@@ -20,18 +20,18 @@
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
-  --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#b9c3bc; --rule:#343d39;
+  --steel:#a9bccb; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
-  --ok-text:#5ac277; --warn-text:#e8a43a; --stop-text:#ef5b4f;
+  --ok-text:#5ac277; --warn-text:#e8a43a; --stop-text:#ff8378;
   --belt:#0f1211; --roller:#2c3330; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
-  --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
+  --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#b9c3bc; --rule:#343d39;
+  --steel:#a9bccb; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
-  --ok-text:#5ac277; --warn-text:#e8a43a; --stop-text:#ef5b4f;
+  --ok-text:#5ac277; --warn-text:#e8a43a; --stop-text:#ff8378;
   --belt:#0f1211; --roller:#2c3330; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -46,7 +46,7 @@ h3{font-size:1.15rem;font-weight:600;text-transform:uppercase;letter-spacing:.03
 p{margin:0}
 small{font-size:.75rem}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
-.eyebrow{font:600 .75rem/1.3 var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.eyebrow{font:600 .8125rem/1.35 var(--f-body);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
 .muted{color:var(--muted)}
 
@@ -77,10 +77,11 @@ header{display:grid;gap:14px}
 
 /* assembly line */
 .line{background:var(--panel);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
-.line-head{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;padding:20px 22px;align-items:center}
-@media (max-width:760px){.line-head{grid-template-columns:1fr}}
+.line-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 32px;padding:20px 22px;align-items:start}
+@media (max-width:900px){.line-head{grid-template-columns:minmax(0,1fr)}}
+.line h2{text-transform:none;font-size:1.5rem;line-height:1.15;overflow-wrap:anywhere}
 .sign{display:inline-block;font:800 .875rem/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
-.line-head .meta{display:grid;gap:10px;min-width:0}
+.line-head .meta{display:grid;gap:10px;min-width:0;align-content:start}
 .pill{display:inline-flex;align-items:center;gap:6px;font:600 .875rem/1.1 var(--f-body);padding:5px 9px;border-radius:3px;border:1px solid currentColor}
 .pill.warn{color:var(--warn-text)} .pill.idle{color:var(--muted)} .pill.active{color:var(--warn-text)} .pill.stop{color:var(--stop-text)} .pill.done{color:var(--ok-text)} .pill.prep{color:var(--steel)} .pill.wait{color:var(--muted)}
 
@@ -91,16 +92,16 @@ header{display:grid;gap:14px}
 .alldone{font-weight:600}
 .refuse{color:var(--stop);font-size:.875rem}
 .caricon{width:34px;height:15px;fill:var(--idle);stroke:none;flex:none}
-.floor-scroll{overflow-x:auto;border-top:1px solid var(--rule)}
-.track{position:relative;min-width:calc(var(--n)*168px);padding:0 0 18px}
-.stations{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));gap:0}
-.st{padding:14px 12px 4px;border-left:1px dashed var(--rule);display:grid;gap:8px;align-content:start;min-width:0}
-.st:first-child{border-left:0}
-.st-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.floor-scroll{border-top:1px solid var(--rule)}
+.track{position:relative;padding:0}
+.stations{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:0}
+.st{background:var(--panel);border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:14px 14px 12px;display:grid;gap:8px;align-content:start;min-width:0;overflow-wrap:anywhere}
+.st-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.st-top .pill{white-space:nowrap}
 .st-num{font:800 1.6rem/1 var(--f-display);color:var(--muted)}
 .st.active .st-num{color:var(--warn-text)} .st.stop .st-num{color:var(--stop-text)}
-.st h3{font-size:1rem}
-.st .part{font:600 .75rem/1.3 var(--f-body);color:var(--muted)}
+.st h3{font-size:1.05rem;line-height:1.25;text-transform:none;letter-spacing:0;font-weight:700}
+.st .part{font:600 .8125rem/1.3 var(--f-body);color:var(--muted)}
 .st p.plain{font-size:.875rem;color:var(--muted)}
 .items{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .items li{display:grid;grid-template-columns:10px minmax(0,1fr);gap:7px;font-size:.875rem;line-height:1.35}
@@ -109,11 +110,12 @@ header{display:grid;gap:14px}
 .items li.active i{background:var(--safety);border-color:var(--safety)}
 .items li.prep i{background:transparent;border-color:var(--steel)}
 .items li.stop i{background:var(--stop);border-color:var(--stop)}
-.items small{display:block;color:var(--muted);font-size:.75rem}
+.items small{display:block;color:var(--muted);font-size:.8125rem;line-height:1.4}
+.items li.solo{grid-template-columns:10px minmax(0,1fr)}
 .feed{margin-top:4px;border-top:2px solid var(--safety);padding-top:8px;display:grid;gap:6px}
-.feed .eyebrow{font-size:.75rem}
+.feed .eyebrow{font-size:.8125rem}
 .feed div{font-size:.875rem;line-height:1.35;background:color-mix(in srgb,var(--safety) 10%,transparent);border-left:3px solid var(--safety);padding:5px 7px;border-radius:0 3px 3px 0}
-.feed div small{display:block;color:var(--muted)}
+.feed div small{display:block;color:var(--muted);font-size:.8125rem}
 
 /* machine bays */
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;align-items:start}
@@ -148,9 +150,9 @@ header{display:grid;gap:14px}
 .lane summary::-webkit-details-marker{display:none}
 .lane summary:focus-visible{outline:2px solid var(--safety);outline-offset:-2px}
 .lane .tt{font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.lane .tk{font:500 .75rem/1.3 var(--f-body);color:var(--muted)}
+.lane .tk{font:500 .8125rem/1.3 var(--f-body);color:var(--muted)}
 .lane .doing{font-size:.875rem;color:var(--ink);overflow-wrap:anywhere}
-.lane .when{font:500 .75rem/1.3 var(--f-body);color:var(--muted)}
+.lane .when{font:500 .8125rem/1.3 var(--f-body);color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:5px}
 .chip{font:600 .8125rem/1.1 var(--f-body);padding:4px 7px;border:1px solid var(--rule);border-radius:3px;background:var(--panel);color:var(--ink)}
 .chip.ci-green{border-color:var(--ok);color:var(--ok-text)}
@@ -160,7 +162,7 @@ header{display:grid;gap:14px}
 .chip.stall{background:var(--stop);border-color:var(--stop);color:var(--panel)}
 .lane-body{padding:9px 11px 11px;display:grid;gap:6px;font-size:.875rem;border-top:1px dashed var(--rule)}
 .lane-body dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0}
-.lane-body dt{color:var(--muted);font:600 .75rem/1.6 var(--f-body)}
+.lane-body dt{color:var(--muted);font:600 .8125rem/1.6 var(--f-body)}
 .lane-body dd{margin:0;overflow-wrap:anywhere}
 .lane-body a,.stlink{color:var(--car-edge)}
 .stlink{font:500 .8125rem/1.3 var(--f-body)}
@@ -173,12 +175,16 @@ header{display:grid;gap:14px}
 .sessions li small{grid-column:1/-1;color:var(--muted);overflow-wrap:anywhere}
 .st.flash,.items li.flash,.line.flash,.mbay.flash,.lane.flash{animation:flash 1.6s ease-out 1}
 @keyframes flash{0%{box-shadow:0 0 0 4px var(--safety)}100%{box-shadow:0 0 0 0 transparent}}
-.builtby{display:block;font-size:.75rem}
+.builtby{display:block;font-size:.8125rem}
 .builtby a{color:var(--car-edge)}
 
 /* dock + delegation */
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:18px 20px;display:grid;gap:14px;align-content:start;min-width:0}
+#limits[hidden]{display:none}
+#limits table{width:100%;border-collapse:collapse;font-size:.875rem;text-align:left}
+#limits th,#limits td{padding:8px 12px 8px 0;vertical-align:top;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+#limits tbody+tbody tr:first-child>*{border-top:2px solid var(--rule)}
 .big{font:800 3.2rem/0.9 var(--f-display)}
 .list{list-style:none;padding:0;margin:0;display:grid;gap:8px;font-size:.9375rem}
 .list li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;border-bottom:1px dashed var(--rule);padding-bottom:6px}
@@ -221,15 +227,18 @@ details.ghosts{border:1px dashed var(--idle);border-radius:4px;padding:10px 14px
 details.ghosts summary{cursor:pointer;color:var(--ink)}
 details.ghosts ul{margin:8px 0 0;padding-left:20px;display:grid;gap:4px;color:var(--muted)}
 
-.plan{font:400 .75rem/1.3 var(--f-body);color:var(--muted);overflow-wrap:anywhere}
+.plan{font:400 .8125rem/1.4 var(--f-body);color:var(--muted);overflow-wrap:anywhere}
 .line.ghost{border-style:dashed}
 .ghost-note{border:1px dashed var(--idle);border-radius:4px;padding:10px 12px;font-size:.9375rem;color:var(--muted);background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
-.hint{font:500 .8125rem/1.3 var(--f-body);color:var(--muted);padding:8px 22px 0}
 .floor-scroll{scroll-behavior:smooth}
-.st.stop{background:color-mix(in srgb,var(--stop) 6%,transparent)}
-.st.active{background:color-mix(in srgb,var(--safety) 8%,transparent)}
-.cause{border-left:3px solid var(--stop);background:var(--stop-soft);color:var(--ink);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.9375rem}
-.feed .eyebrow+small{display:block;color:var(--muted);font-size:.75rem}
+.st.stop{background:color-mix(in srgb,var(--stop) 8%,var(--panel))}
+.st.active{background:color-mix(in srgb,var(--safety) 10%,var(--panel))}
+.cause{border-left:3px solid var(--stop);background:var(--stop-soft);color:var(--ink);padding:8px 12px;border-radius:0 3px 3px 0;font-size:.9375rem;display:grid;gap:4px;overflow-wrap:anywhere}
+.cause b{font:700 .9375rem/1.2 var(--f-body);color:var(--stop-text)}
+.cause small{color:var(--ink);font-size:.8125rem}
+.cause.nocause{border-left-color:var(--idle);background:transparent;border:1px dashed var(--idle);border-left-width:3px;color:var(--muted)}
+.cause.nocause b{color:var(--muted)}
+.feed .eyebrow+small{display:block;color:var(--muted);font-size:.8125rem}
 .items small{overflow-wrap:anywhere}
 .st.solo .items{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px 24px}
 
@@ -250,7 +259,7 @@ details.more[open] summary{margin-bottom:8px}
 .banner{background:var(--stop-soft);color:var(--ink);border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9375rem}
 .banner[hidden]{display:none}
 .empty{color:var(--muted);font-size:.9rem}
-.list li small{color:var(--muted);font-size:.75rem}
+.list li small{color:var(--muted);font-size:.8125rem}
 
 .pills{display:flex;flex-wrap:wrap;gap:8px}
 
@@ -301,6 +310,7 @@ html.embed .wrap{padding-block:14px 48px}
   </section>
 
   <section class="card" aria-labelledby="mrH" id="mergedRunning" hidden></section>
+  <section class="card" aria-labelledby="limitsH" id="limits" hidden></section>
 
   <section class="two">
     <div class="card" aria-labelledby="dockH" id="dock">
@@ -391,11 +401,40 @@ function buildSlots(lines, status){
   return {declared: true, reason: "", slots};
 }
 
+// What the record notes beside a part, in plain words: the name of the source that read it is dropped.
+function plainNote(raw){
+  const text = String(raw == null ? "" : raw);
+  const m = /^(.*?):\s*([a-z][a-z,-]*)$/.exec(text);
+  if (!m) return text;
+  return [m[1]].concat(m[2].split(",").map(x => x === "no-ticket" ? "no ticket named" : "").filter(Boolean)).join(", ");
+}
+// A task as the plan wrote it is a sentence with its number, its ticket and its falsifier. The heading is the plain words
+// of it: the number, the ticket and everything from "falsifier" on are dropped, the words are cut to a short run, and a
+// task that has no words of its own is named by its number. The record cuts a long line at 90 characters, so a heading
+// that reaches that cut loses its last, half-written word.
+const HEADING_WORDS = 8;
+function shortTask(raw, fallbackId){
+  const full = String(raw == null ? "" : raw);
+  let t = full.replace(/\s*(?:[-\u2013\u2014]{1,2}\s*)?falsifier\b.*$/i, "");
+  t = t.replace(/^\s*[A-Z]{0,3}\d+(?:\.\d+)*[a-z]?(?!\w)/, "").replace(/^(?:\s*\+\s*[A-Z]{1,3}\d+(?:\.\d+)*)+/, "");
+  t = t.replace(/\s*\([^)]*\)?/g, "").replace(/\bOMN-\d+\b/g, "");
+  t = t.replace(/^[\s.:;,\u2013\u2014-]+/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  let words = t.split(" ").filter(Boolean);
+  const cut = full.length >= 88 && words.length > 1 && !/falsifier/i.test(full) && !/\([^)]*$/.test(full);
+  if (cut) words = words.slice(0, -1);
+  const long = words.length > HEADING_WORDS;
+  const head = words.slice(0, HEADING_WORDS).join(" ").replace(/[\s.:;,]+$/, "");
+  if (head.length < 3) return fallbackId ? `Task ${fallbackId}` : "Task";
+  return head.charAt(0).toUpperCase() + head.slice(1) + (cut || long ? "\u2026" : "");
+}
+
 // ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
 // (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
 const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+// A condition string is looked up as an own key only: a record value such as "constructor" or "toString" names no condition.
+function condEntry(key){ return Object.prototype.hasOwnProperty.call(COND, key) ? COND[key] : undefined; }
 function lineCondition(L){
-  const c = COND[L.condition];
+  const c = condEntry(L.condition);
   return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
 }
 function conditionPill(L){
@@ -487,24 +526,43 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.condition === "stopped"};
+    stopped: L.condition === "stopped",
+    // A line the record carries no condition for is unread, and is never counted as running.
+    unread: !condEntry(L.condition)};
 }
 
 function stationName(stations, id){
   const hit = stations.find(s => s.id === id);
-  return hit ? hit.name : id;
+  return hit ? shortTask(hit.name, hit.id) : id;
 }
 
 // Application containers per lane class, running of declared, from the line's own record; no record, no row.
+// The target is where the lane is going; a count at its budget is not a finished lane, so the distance is drawn beside it.
+function targetText(r){
+  if (r.target == null) return "";
+  const over = num(r.observed) - num(r.target);
+  return ` allowed, target ${num(r.target)}${over > 0 ? `, ${over} still to remove` : ""}`;
+}
 function containersRow(L){
   const c = L.application_containers;
   if (!c || typeof c !== "object") return "";
   const rows = Array.isArray(c.lanes) ? c.lanes : [];
   const cells = rows.map(r => {
     const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
-    return `<span class="mono" title="${esc([r.host, r.detail].filter(Boolean).join(" · "))}">${esc(r.lane)} ${known ? `${num(r.observed)} of ${num(r.budget)}` : "unread"}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+    return `<span class="mono" title="${esc([r.host, r.detail].filter(Boolean).join(" · "))}">${esc(r.lane)} ${known ? `${num(r.observed)} of ${num(r.budget)}${targetText(r)}` : "unread"}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
   });
   return `<span class="eyebrow containers">Application containers running of declared: ${cells.length ? cells.join(" · ") : "unread, no host could be read"}</span>`;
+}
+
+// A part whose title is its station's own title is named once, in the heading; a part under a station of several says its own plain words.
+// The changes a part is built from: the first three by name, the rest counted.
+function prNames(prs){
+  const all = Array.isArray(prs) ? prs.filter(Boolean) : [];
+  return all.slice(0, 3).join(", ") + (all.length > 3 ? ` and ${all.length - 3} more` : "");
+}
+function partTitle(station, it){
+  if (it.title === station.name) return "";
+  return `${esc(shortTask(it.title, it.id))}`;
 }
 
 function renderLine(slot, i){
@@ -521,20 +579,21 @@ function renderLine(slot, i){
           <h2 id="h-${sid}">${esc(L.name)}</h2>
           <button type="button" class="drill" data-drill="line-${sid}">Show this line's detail</button>
           <span class="plan">Plan file ${esc(L.plan_path)} · read from its ${esc(source)}</span>
+        </div>
+        <div class="meta">
           ${blockerBlock(L)}
           ${progressBlock(L)}
           ${evidenceRow(L)}
           ${containersRow(L)}
         </div>
       </div>
-      ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways</div>` : ""}
       <div class="floor-scroll" data-line="${esc(sid)}"><div class="track" style="--n:${Math.max(f.n, 1)}">
         <div class="stations">${f.stations.map((s, k) => {
           return `
           <div class="st ${esc(s.state)}${f.n === 1 ? " solo" : ""}" id="st-${sid}-${safeId(s.id)}">
             <div class="st-top"><span class="st-num mono">${k}</span><span class="pill ${esc(s.state)}">${esc(STATE_LABEL[s.state] || s.state)}</span></div>
-            <h3>${esc(s.name)}</h3>
-            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${esc(it.title)}<small>${esc([STATE_LABEL[it.state] || it.state, itemEvidence(it), it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Worker: <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
+            <h3>${esc(shortTask(s.name, s.id))}</h3>
+            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${partTitle(s, it)}<small>${esc([it.state === s.state ? "" : STATE_LABEL[it.state] || it.state, itemEvidence(it), plainNote(it.note), prNames(it.prs)].filter(Boolean).join(" · "))}</small>${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Worker: <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
             ${(s.feeders || []).length ? `<div class="feed"><span class="eyebrow">Feeder lines (work that supplies this station)</span>${s.feeders.map(x => `<div>${esc(stationName(f.stations, x))}<small>supplies this station</small></div>`).join("")}</div>` : ""}
           </div>`;
         }).join("")}
@@ -560,15 +619,21 @@ function renderLines(slots, declared, reason){
 function renderVerdict(slots, floor, bayState, health){
   const real = slots.filter(x => x.line).map(x => lineFacts(x.line));
   const stopped = real.filter(x => x.stopped).length;
+  const unreadLines = real.filter(x => x.unread).length;
   const parts = [];
-  parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : `No line is stopped (${real.length} read)`) : "No line has a plan file yet");
+  parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : unreadLines ? `No line is known to be stopped, but ${unreadLines} of ${real.length} line${real.length === 1 ? " is" : "s are"} not read` : `No line is stopped (${real.length} read)`) : "No line has a plan file yet");
+  if (stopped && unreadLines) parts.push(`${unreadLines} line${unreadLines === 1 ? " is" : "s are"} not read`);
+  // A planned line with no plan file is named, never counted among the lines read.
+  const planned = slots.length - real.length;
+  if (real.length && planned) parts.push(`${planned} planned line${planned === 1 ? " has" : "s have"} no plan file yet`);
   if (bayState.declared) parts.push(bayState.stalled ? `${bayState.stalled} of ${bayState.lanes} workers stalled` : `${bayState.lanes} workers, none stalled`);
   parts.push(`${floor.shipped.length} changes shipped, ${floor.waiting.length} waiting`);
   const sm = health && health.summary;
   if (sm && sm.measured !== false) parts.push(`process: ${num(sm.improved)} better, ${num(sm.worse)} worse, ${num(sm.flat)} flat, ${num(sm.unmeasured)} not yet measured`);
   const v = el("verdict");
   v.textContent = parts.join(" · ") + ".";
-  v.className = "verdict " + (stopped || bayState.stalled ? "c-stop" : "c-ok");
+  // No line read at all is never green.
+  v.className = "verdict " + (stopped || bayState.stalled ? "c-stop" : unreadLines || !real.length ? "c-warn" : "c-ok");
 }
 
 // ---- Machines, lanes and the cloud bay. Every figure comes from floor.machines, floor.lanes and floor.cloud.
@@ -620,7 +685,7 @@ function stationLink(l){
   const hit = ITEM_INDEX[itemKey(l.station)];
   if (!hit) return `<span class="unread">${esc(l.station.line_id)} · station ${esc(l.station.station_id)}</span>`;
   const target = "st-" + safeId(l.station.line_id) + "-" + safeId(l.station.station_id);
-  return `<a class="stlink" data-jump="${esc(target)}" href="#${esc(target)}">${esc(hit.letter)} · ${esc(hit.station.name)} · ${esc(hit.item.title)}</a>`;
+  return `<a class="stlink" data-jump="${esc(target)}" href="#${esc(target)}">${esc(hit.letter)} · ${esc(shortTask(hit.station.name, hit.station.id))}${hit.item.title === hit.station.name ? "" : ` · ${esc(shortTask(hit.item.title, hit.item.id))}`}</a>`;
 }
 
 function laneHTML(l){
@@ -768,6 +833,54 @@ function renderMergedRunning(floor){
     ${whyText ? `<p class="muted">Not running: ${esc(whyText)}.</p>` : ""}
     ${unread}
     ${hosts ? `<ul style="margin:0;padding-left:1.2em;display:grid;gap:4px">${hosts}</ul>` : ""}`;
+}
+
+function renderLimits(record){
+  const card = el("limits"), limits = record.limits;
+  if (!limits){ card.hidden = true; card.innerHTML = ""; return; }
+  const labels = {claude_subscription: "Claude subscription", cloud_credit: "Cloud credit", api_credit: "API credit", codex: "Codex", glm: "GLM", lab_model_rung: "Lab model rung", host_account_pool: "Host account pool"};
+  const valueText = (key, value) => {
+    if (typeof value === "boolean") return value ? "yes" : "no";
+    if (typeof value === "number") {
+      if (key.includes("utilization") || key === "used_pct") return `${fmt(num(value) * 100)}%`;
+      if (key.endsWith("_usd")) return `$${num(value).toFixed(2)}`;
+    }
+    return String(value);
+  };
+  const groups = new Map();
+  (limits.rows || []).forEach(row => {
+    if (!groups.has(row.kind)) groups.set(row.kind, []);
+    groups.get(row.kind).push(row);
+  });
+  const rows = Array.from(groups, ([kind, entries]) => `<tbody>${entries.map(row => {
+    let values;
+    if (row.state === "UNKNOWN") values = `<span class="muted">UNKNOWN ${esc(row.unknown_reason)}</span>`;
+    else {
+      const unknown = new Set(row.unknown_fields || []);
+      const known = row.values || {};
+      const keys = row.kind === "host_account_pool"
+        ? ["usable", "limited", "limited_until", "revoked", "total"].filter(key => Object.hasOwn(known, key))
+        : Object.keys(known);
+      values = keys.filter(key => !unknown.has(key)).map(key => {
+        const label = row.kind === "host_account_pool" && key === "revoked" ? "revoked (not capacity)" : key;
+        return `<div>${esc(label)}: ${esc(valueText(key, known[key]))}</div>`;
+      }).join("") + Array.from(unknown, key => `<div class="muted">${esc(key)}: UNKNOWN</div>`).join("");
+    }
+    const read = row.read_at ? `read ${sinceText(row.read_at)} ago` : "never read";
+    return `<tr><td>${esc(labels[kind] || kind)}</td><th scope="row">${esc(row.name)}</th><td>${esc(row.source)}<div class="muted">${esc(read)}</div></td><td>${values}</td></tr>`;
+  }).join("")}</tbody>`).join("");
+  const hosts = (record.floor && record.floor.merged_running && record.floor.merged_running.idle_hosts || []).map(host =>
+    `<li><b>${esc(host.host)}</b>: ${esc(host.state === "unread" ? "unread" : host.idle == null ? "UNKNOWN" : `${host.idle} idle`)}</li>`
+  ).join("");
+  const idle = limits.idle_slot_hours == null ? "UNKNOWN" : num(limits.idle_slot_hours).toFixed(1);
+  card.hidden = false;
+  card.innerHTML = `<div><div class="eyebrow">Capacity and usage</div><h2 id="limitsH">Limits</h2>
+    <p class="sub">Usage readings and their sources. Missing or stale readings are UNKNOWN.</p></div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:start">
+      <div style="flex:1;min-width:0;overflow-x:auto"><table><thead><tr><th scope="col">Kind</th><th scope="col">Name</th><th scope="col">Source and read time</th><th scope="col">Values</th></tr></thead>${rows}</table></div>
+      <div><h3>Idle slot-hours today</h3><span class="big mono">${esc(idle)}</span>${hosts ? `<h3>Idle slots by host</h3><ul>${hosts}</ul>` : ""}</div>
+    </div>
+    ${(limits.unread_sources || []).length ? `<p class="muted">Sources not read: ${esc(limits.unread_sources.join(", "))}</p>` : ""}`;
 }
 
 function renderMachines(floor){
@@ -958,6 +1071,7 @@ function render(parts){
   renderLines(built.slots, built.declared, built.reason);
   renderMachines(floor);
   renderMergedRunning(floor);
+  renderLimits(rec);
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);

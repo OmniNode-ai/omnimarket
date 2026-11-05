@@ -15,7 +15,9 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
+    ModelFloorLimitsFacts,
     ModelFloorSelection,
+    ModelFloorSourceReads,
 )
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
@@ -38,9 +40,11 @@ from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
+    load_api_keys,
     load_cloud_accounts,
     load_compute_config,
     load_contract,
+    load_engines,
     load_host_table,
     load_lane_containers,
     load_linear,
@@ -51,6 +55,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     load_receipts,
     load_runner_fleet,
     load_stoppages,
+    load_token_pools,
     load_watcher,
     merge_linear_titles,
     newest_dated_file,
@@ -58,6 +63,7 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     read_ledger_rows,
     resolve_dir,
     resolve_home,
+    resolve_host_table,
     runner_fleet_cause,
     write_result,
 )
@@ -70,6 +76,14 @@ OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 COMPUTE_CONTRACT = (
     Path(__file__).resolve().parents[2] / "node_factory_floor_compute" / "contract.yaml"
 )
+
+
+def _file_time(path: Path) -> datetime | None:
+    """When the file was last written; None when it cannot be read (the age is then not guessed)."""
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return None
 
 
 class HandlerFactoryFloorEffect:
@@ -119,6 +133,9 @@ class HandlerFactoryFloorEffect:
         container_read_line = overlay.container_read_line if overlay is not None else ""
         now = request.now or datetime.now(UTC)
         src = rt.sources
+        limit_sources = rt.limit_sources
+        codex, glm, lab_rungs = load_engines(home / limit_sources.engines_relpath)
+        token_glob = home / limit_sources.token_pool_glob
         plans_today_file = newest_dated_file(
             home / src.plans_today_dir, src.plans_today_file
         )
@@ -135,13 +152,14 @@ class HandlerFactoryFloorEffect:
         placement_dir = resolve_dir(
             os.environ, ls.placement_dir_env, ls.placement_dir_fallback
         )
-        table_env = os.environ.get(ls.host_table_env, "").strip()
-        host_table_path = (
-            Path(table_env)
-            if table_env
-            else home / overlay.host_table_relpath
-            if overlay is not None and overlay.host_table_relpath
-            else None
+        host_table_path = resolve_host_table(
+            os.environ,
+            ls.host_table_env,
+            home,
+            overlay.host_table_relpath if overlay is not None else "",
+        )
+        linear_snapshot = newest_linear_snapshot(
+            home / src.plans_today_dir, src.linear_snapshot_glob
         )
         titles = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_titles_glob
@@ -185,12 +203,18 @@ class HandlerFactoryFloorEffect:
                 else None,
             ),
             linear=merge_linear_titles(
-                load_linear(
-                    newest_linear_snapshot(
-                        home / src.plans_today_dir, src.linear_snapshot_glob
-                    )
-                ),
+                load_linear(linear_snapshot),
                 load_linear(titles),
+            ),
+            source_reads=ModelFloorSourceReads(
+                # The ledger is read live at ``now`` unless a rows file stands in for it; the Linear snapshot is as old
+                # as the file plans-today wrote.
+                ledger=_file_time(Path(request.ledger_rows_file))
+                if request.ledger_rows_file
+                else now,
+                linear=_file_time(linear_snapshot)
+                if linear_snapshot is not None
+                else None,
             ),
             placement=load_placement(home / src.placement_relpath),
             stoppages=load_stoppages(home / src.friction_report_relpath),
@@ -208,6 +232,13 @@ class HandlerFactoryFloorEffect:
                 result_chars=ls.result_chars,
             ),
             cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
+            limits=ModelFloorLimitsFacts(
+                api_keys=load_api_keys(home / limit_sources.api_meter_relpath),
+                codex=codex,
+                glm=glm,
+                lab_rungs=lab_rungs,
+                token_pools=load_token_pools(token_glob.parent, token_glob.name),
+            ),
             runner_fleet=runner_fleet,
             runner_fleet_cause=""
             if runner_fleet is not None

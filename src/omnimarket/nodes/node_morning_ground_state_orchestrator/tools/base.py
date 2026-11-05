@@ -79,7 +79,13 @@ def _tail(text: str) -> str:
     return text if len(text) <= OUTPUT_CHARS else "..." + text[-OUTPUT_CHARS:]
 
 
-def _proc(argv: list[str], *, cwd: Path, timeout: int = PROCESS_TIMEOUT_S) -> Result:
+def _proc(
+    argv: list[str],
+    *,
+    cwd: Path,
+    timeout: int = PROCESS_TIMEOUT_S,
+    full_stdout: bool = False,
+) -> Result:
     """Run one program in its own process group; a timeout ends the whole group.
 
     A program started through ``uv run`` is a child of uv, and killing uv alone left that child
@@ -108,7 +114,7 @@ def _proc(argv: list[str], *, cwd: Path, timeout: int = PROCESS_TIMEOUT_S) -> Re
             }
     return {
         "exit": process.returncode,
-        "stdout": _tail(stdout),
+        "stdout": stdout if full_stdout else _tail(stdout),
         "stderr": _tail(stderr),
     }
 
@@ -139,7 +145,10 @@ def _git_hooked(repo: Path, *args: str) -> Result:
 
 
 def _git_out(repo: Path, *args: str) -> str | None:
-    done = _git(repo, *args)
+    """Git stdout for parsing; report truncation must not discard source records."""
+    done = _proc(
+        ["git", "-C", str(repo), *args], cwd=repo, timeout=120, full_stdout=True
+    )
     return str(done["stdout"]).strip() if done["exit"] == 0 else None
 
 

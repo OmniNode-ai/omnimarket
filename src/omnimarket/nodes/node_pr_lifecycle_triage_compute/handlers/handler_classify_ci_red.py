@@ -39,9 +39,16 @@ from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify
 # capacity: the same two patterns the landing red rules use (handler_classify_cascade_checks), one copy.
 CI_SUMMARY_RE = SUMMARY_CHECK_RE
 HOSTILE_REVIEW_RE = REVIEWER_POOL_RE
-# Controller cause clustering: aggregates and reviewer gates never form causes.
+# Controller cause clustering: aggregates and reviewer gates never form causes. The thread gate is not reviewer
+# health (REVIEWER_POOL_RE leaves it out) but it fails on each pull request's own unanswered threads, so peers
+# carrying it share no cause: each keeps its per-PR worker.
 NEVER_CLUSTER = frozenset(
-    {"CI Summary", "Hostile Reviewer (adversarial gate)", "Hostile Review Gate"}
+    {
+        "CI Summary",
+        "Hostile Reviewer (adversarial gate)",
+        "Hostile Review Gate",
+        "Hostile Review Thread Gate",
+    }
 )
 # Controller cluster_min_members floor and cluster_absorb_ratio.
 CAUSE_MIN_MEMBERS = 3

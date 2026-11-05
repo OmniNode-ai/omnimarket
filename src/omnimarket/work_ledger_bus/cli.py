@@ -62,12 +62,13 @@ from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ledger_host 
 )
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
-    HandlerWorkLedgerAppendEffect,
     ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.local_serve import (
+    local_serve_handler,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerAppendCommand,
-    LocalLedgerFile,
 )
 from omnimarket.work_ledger_bus.bus import (
     WorkLedgerAppendCaller,
@@ -174,12 +175,8 @@ def serve_command(
         )
         sys.exit(75)
     append_runner = LocalLedgerAppendCommand(argv)
-    handler = HandlerWorkLedgerAppendEffect(
-        append_runner,
-        LocalLedgerFile(ledger),
-        host_name,
-        writer_principals=writer_principal,
-        operator_principal=operator_principal,
+    handler = local_serve_handler(
+        append_runner, ledger, host_name, writer_principal, operator_principal
     )
 
     async def main() -> None:

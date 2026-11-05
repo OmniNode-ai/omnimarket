@@ -1,0 +1,42 @@
+# Design-review verdict: host desired state (the publisher, its state file and outbox, layers, readers and placement)
+
+Reviewed by a read-only Codex run at high effort against the model, its cfg files and the committed TLC output in this directory.
+Evidence is the recorded TLC 2.19 run (tla2tools.jar sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88) of the design configuration and every mutant,
+plus results/EXACTNESS.txt (each mutant re-run with -continue over the whole reachable state space). sha256 of the model: 1c73cced082463c77e13470361701b96add81b69d8eafed9613b615999e23ee6.
+Findings of an earlier review round (dependency cascade on merge, non-minimal cascade mutant) were fixed in the model before this round.
+
+The model passes review within its documented bounded scenario scope. The recorded design run explores 17,185 distinct states without violations. Each mutant cfg changes exactly one constant; every first-failure output names its intended invariant, and [EXACTNESS.txt](results/EXACTNESS.txt) reports no additional violated invariant.
+
+Line references below refer to [HostDesiredState.tla](HostDesiredState.tla).
+
+| Invariant | Result | Reason |
+|---|---|---|
+| GenerationMonotone | PASS | Compares the entire declared-publisher broker history, so generation folding cannot conceal regressions (382–383). |
+| OnePublisherAccepted | PASS | Checks the reader’s held publisher; the higher-generation h2 record makes removal of origin filtering observable (285–298, 385). |
+| PendingTagsBeforePublish | PASS | `badTag` records exact remote-commit presence at delivery, preserving evidence even after subsequent tag pushes (272–279, 318–325). |
+| PendingRepublishedExactly | PASS | Compares delivered records and committed cores against the **first** durable pending value, including tags, decisions and consumed IDs (250–251, 388–394). |
+| ReleasedLayerNeverReturns | PASS | Checks later-generation live sets against both published releases and durable release history (396–400). |
+| DependentLeavesWithDependency | PASS | `Close` computes transitive departure closure; the invariant checks accepted records independently, with explicit merge and never-registered exceptions (148–151, 402–407). |
+| StaleRequestNeverApplies | PASS | Applied decisions retain requested and actual revisions; pending and committed decisions are checked (118–122, 409–412). |
+| NoLaunchOnExpiredLayer | PASS | Observes admission against expiry and host generation; the scenarios exercise matching and lagging hosts at the expiry boundary (339–360, 414). |
+
+I spot-read the mutant traces and found meaningful mechanism failures:
+
+- **GenerationMonotone:** an unacknowledged generation-2 send survives a crash; recovery publishes generations 2 and 3; `DeliverDeferred` then accepts the old generation 2.
+- **PendingRepublishedExactly:** generation 1 is persisted, then a crash introduces another request and advances time; recovery recomputes and publishes different generation-1 contents.
+- **StaleRequestNeverApplies:** an extend advances revision 1 to 2, then withdrawal naming revision 1 applies at revision 2.
+
+These are behavioral counterexamples, rather than invariants directly asserting that their mutation switches remain enabled.
+
+Blocking defects: none within the requested bounded scope. The scripts reach crashes after all eight pass steps, both delivery-side crash cases, both extend/withdraw orders, duplicates, reordering, merge and expiry release, transitive cascading, resurrection attempts, and permanent publisher stoppage across expiry.
+
+The builders must retain these conditions:
+
+- **Bounded coverage:** three generations, three layers, one crash and time through 4 cover the named scenarios; they establish neither arbitrary interleavings nor repeated-crash recovery (83–101).
+- **Atomic persistence and tag abstraction:** `WritePending` and `Commit` assume atomic durable state-file updates. One symbolic tag represents the required tag operation; partial multi-tag pushes, serialization defects and torn writes are outside this model (166–170, 242–265, 300–308).
+- **Limited competing publisher:** h2 performs one scripted publication between h1’s delivery and commit. Concurrent full publisher lifecycles and fencing during an outstanding send are not explored (282–298).
+- **Reader and admission abstraction:** `HeldRec` is an instantaneous generation fold; hosts expose generation agreement, and admission uses one shared clock atomically. Reader delivery delays, clock skew and delayed execution after admission require separate justification (328–353).
+- **Precisely scoped properties:** publisher acceptance means the held reader record, not broker exclusion of h2. Dependency safety means departure closure; never-registered dependencies are permitted, and merged dependencies are assumed retained in the base (385, 402–407).
+- **Safety only:** matching-host admissions before expiry are reachable, but eventual publication, successful recovery and service availability are not proved. Deadlocks are disabled in the cfg.
+
+VERDICT: PASS

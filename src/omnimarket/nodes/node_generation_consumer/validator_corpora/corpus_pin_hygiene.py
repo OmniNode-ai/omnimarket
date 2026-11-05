@@ -32,8 +32,8 @@ node (purity preserved) while the corpus — not the LLM — remains the accepta
 authority (OMN-13289): the scanner is accepted iff it flags every diverged /
 orphan / unknown pin and passes every ancestor pin.
 
-The three sibling distributions guarded are exactly the ones the layering rule
-names: ``omnibase-core``, ``omnibase-spi``, ``omnibase-compat``.
+The two sibling distributions guarded are exactly the ones the layering rule
+names: ``omnibase-core``, ``omnibase-spi``.
 
 Mutation cases (``mutation_of``) are adversarial perturbations of a base
 fixture: the same divergence expressed in the PEP-508 ``@rev`` form, in the
@@ -82,15 +82,6 @@ PIN_HYGIENE_CORPUS = ModelValidatorCorpus(
                 "  # pin-ancestry: orphan"
             ),
             description="omnibase-spi rev= pin off the dev line (orphan) — must flag",
-        ),
-        ModelCorpusFixture(
-            fixture_id="v-base-compat-rev",
-            source=(
-                'omnibase-compat = { git = "https://github.com/OmniNode-ai/'
-                'omnibase_compat.git", rev = "fedcba9876543210fedcba9876543210fedcba98" }'
-                "  # pin-ancestry: orphan"
-            ),
-            description="omnibase-compat rev= pin off the dev line (orphan) — must flag",
         ),
         # --- adversarial mutation cases (same divergence, different pin syntax) ---
         ModelCorpusFixture(
@@ -188,7 +179,7 @@ PIN_HYGIENE_CORPUS = ModelValidatorCorpus(
             ),
             description=(
                 "a git pin for a NON-sibling package — out of scope even when annotated "
-                "orphan, must stay clean (only omnibase-core/spi/compat are guarded)"
+                "orphan, must stay clean (only omnibase-core/spi are guarded)"
             ),
             mutation_of="c-base-pyproject-rev-ancestor",
         ),

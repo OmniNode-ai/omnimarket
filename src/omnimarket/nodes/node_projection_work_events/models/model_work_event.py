@@ -115,6 +115,13 @@ class ModelWorkEventInbound(BaseModel):
     working_directory: str | ModelRedactedValueShape | None = Field(default=None)
     hook_source: str | None = Field(default=None)
     correlation_id: str | None = Field(default=None)
+    causation_id: str | None = Field(
+        default=None, description="Explicit causal parent supplied by the emitter."
+    )
+    principal: str | None = Field(
+        default=None,
+        description="Source attribution metadata; not an authenticated writer identity.",
+    )
 
     # prompt-submitted
     prompt_length: int | None = Field(default=None, ge=0)

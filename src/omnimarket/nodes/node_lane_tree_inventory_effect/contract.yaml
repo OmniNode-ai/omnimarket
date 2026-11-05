@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_tree_inventory_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Read-only lane inventory: one line per tree under a lane directory (repository, branch, HEAD, clean, unpushed, upstream).
+input_model:
+  name: ModelLaneTreeInventoryRequest
+  module: omnimarket.models.lane_closeout.model_lane_tree_inventory_request
+output_model:
+  name: ModelLaneTreeInventoryResult
+  module: omnimarket.models.lane_closeout.model_lane_tree_inventory_result
+handler:
+  module: omnimarket.nodes.node_lane_tree_inventory_effect.handlers.handler_lane_tree_inventory
+  class: HandlerLaneTreeInventory
+  input_model: omnimarket.models.lane_closeout.model_lane_tree_inventory_request.ModelLaneTreeInventoryRequest
+  output_model: omnimarket.models.lane_closeout.model_lane_tree_inventory_result.ModelLaneTreeInventoryResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: inventory_lane_trees
+      handler:
+        name: HandlerLaneTreeInventory
+        module: omnimarket.nodes.node_lane_tree_inventory_effect.handlers.handler_lane_tree_inventory
+      event_model:
+        name: ModelLaneTreeInventoryRequest
+        module: omnimarket.models.lane_closeout.model_lane_tree_inventory_request
+      subscribe_topic: onex.cmd.omnimarket.lane-tree-inventory-requested.v1
+      topic: onex.cmd.omnimarket.lane-tree-inventory-requested.v1
+      publish_topic: onex.evt.omnimarket.lane-tree-inventory-completed.v1
+      message_category: command
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lane-tree-inventory-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-tree-inventory-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-tree-inventory-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-tree-inventory-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-tree-inventory-completed.v1
+metadata:
+  ticket: OMN-22191
+  transport_type: kafka

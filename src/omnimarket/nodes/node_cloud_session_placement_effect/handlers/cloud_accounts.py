@@ -181,16 +181,20 @@ def cloud_account_free(account: Mapping[str, Any], now: datetime) -> int:
 
 
 def cloud_account_skip(account: Mapping[str, Any], now: datetime) -> str | None:
-    """Why an account starts no cloud session now, or None. Cloud sessions draw on the cloud credit, so a
-    subscription rate reading never gates: only the credit, a recorded hold (a start the platform refused, or
-    ``mark_cloud_limited``) and the concurrency cap do."""
-    if account.get("exhausted_at"):
+    """Why an account starts no session: credit, a recorded refusal/hold or concurrency."""
+    credit = account.get("credit")
+    credit = credit if isinstance(credit, Mapping) else {}
+    remaining = credit.get("remaining")
+    if isinstance(remaining, (int, float)):
+        if remaining <= 0:
+            return f"credit read zero at {credit.get('read_at') or account.get('exhausted_at') or 'recorded reading'}"
+    elif account.get("exhausted_at"):
         return f"credit read zero at {account['exhausted_at']}"
     until = str(account.get("limited_until") or "")
     if (
         until
         and until > f"{now:%Y-%m-%dT%H:%M:%SZ}"
-        and account.get("limited_source") == CLOUD_HOLD_STAMP
+        and reg.recorded_hold(account, CLOUD_HOLD_STAMP)
     ):
         why = account.get("limited_why")
         return f"limited until {until}" + (f" ({why})" if why else "")
@@ -259,9 +263,13 @@ def note_cloud_refusal(
         entry["refused_at"] = f"{now:%Y-%m-%dT%H:%M:%SZ}"
         entry["refused_why"] = why[-300:]
         if CLOUD_SUBSCRIPTION_REFUSAL_RE.search(why):
-            entry["limited_until"] = _refusal_reset(why, now)
-            entry["limited_why"] = why[-300:]
-            entry["limited_source"] = CLOUD_HOLD_STAMP
+            until = _refusal_reset(why, now)
+            if not reg.recorded_hold(entry, CLOUD_HOLD_STAMP) or until > str(
+                entry.get("limited_until") or ""
+            ):
+                entry["limited_until"] = until
+                entry["limited_why"] = why[-300:]
+                entry["limited_source"] = CLOUD_HOLD_STAMP
         return int(entry["cap"])
 
 
@@ -283,9 +291,7 @@ def record_cloud_rate(
     *,
     now: datetime | None = None,
 ) -> str | None:
-    """Record the subscription rate reading a session of the account carried (``rateLimitType``, ``status``,
-    ``resetsAt``) as telemetry. A cloud session draws on the cloud credit, never on that subscription limit, so no
-    reading holds the account: the answer is always None (a hold comes from a refused start, ``note_cloud_refusal``)."""
+    """Persist rate telemetry without inferring an account hold."""
     if not isinstance(rate, Mapping):
         return None
     now = now or datetime.now(UTC)
@@ -296,7 +302,8 @@ def record_cloud_rate(
         else f"{now + timedelta(hours=1):%Y-%m-%dT%H:%M:%SZ}"
     )
     with _cloud_state(pdir) as state:
-        state["accounts"].setdefault(account, {})["rate"] = {
+        entry = state["accounts"].setdefault(account, {})
+        entry["rate"] = {
             "type": str(rate.get("rateLimitType") or ""),
             "status": str(rate.get("status") or ""),
             "resets_at": until,
@@ -408,10 +415,8 @@ def evaluate_accounts(
 
 def _state_skip(entry: Mapping[str, Any], now: datetime) -> str | None:
     """The usage state's reason an account starts nothing, with its date: a zero credit, a recorded hold, a full cap."""
-    if entry.get("exhausted_at"):
-        return f"credit read zero at {entry['exhausted_at']}"
     held = cloud_account_skip(entry, now)
-    if held and held.startswith("limited until"):
+    if held and held.startswith(("limited until", "credit read zero")):
         return held
     if cloud_account_free(entry, now) < 1:
         active = _since(entry.get("active"), now, CLOUD_ACTIVE_TTL)

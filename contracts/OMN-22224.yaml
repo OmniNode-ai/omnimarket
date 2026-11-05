@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-22224
+title: 'Deployed-lane delegation run steps reach the run_trace projection and every attempt record carries a duration'
+summary: A test drives the steps the deployed lane's port derives from a terminal through the bus envelope and the standalone run-trace writer's project_event against a stand-in pool, and finds the rows written (AC1 already held at dev for the rows themselves; this change makes the run-trace provider_call row of an earlier model of one customer route carry the duration the effect measured, which dev wrote as null). The earlier-model attempt (ModelEarlierModelAttempt), the local dispatch port's attempt records and the bus ladder's latency gain duration_ms, measured from the call (0 for a rung never sent) (AC2). The wire attempt record (ModelDelegateSkillAttemptRecord) accepts and drops duration_ms as a consumer-first key (step 1 of 2, because the Wire Compatibility Gate refuses declaring it while omniclaude's pin forbids extras); a later change declares the field once the pin carries this consumer. Changes are in omnimarket.models, node_llm_delegation_call_effect and node_delegate_skill_orchestrator; no new node.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn22224-run-steps-projected
+    statement: A deployed-lane run's steps are written to run_trace through the projection node, or the writer refuses naming the missing wiring.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a deployed-lane delegation run writes its run steps to the run_trace table through the projection node, or the writer refuses naming the missing wiring -- falsifier: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q -k deployed_run_steps_projected, a stub run-step event on the topic, which writes no row today'
+  - id: req-omn22224-attempt-duration
+    statement: Every attempt record carries a duration so per-rung time can be split.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: every attempt record carries a duration so per-rung time can be split -- falsifier: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q -k attempt_has_duration'
+evidence_requirements:
+  - kind: tests
+    description: The deployed-lane steps reach the run-trace writer with the duration of every rung, and every attempt record the producers build carries duration_ms (AC1 and AC2).
+    command: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn22224-ac1
+    description: AC1 runs the stub deployed-lane run-step events through the bus envelope and the run-trace writer, reads the eight rows written, and reads the duration the effect measured for an earlier model of one route on its stored provider_call row (null at the merge base).
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q -n 0 -p no:randomly --no-cov -k deployed_run_steps_projected
+        cwd: .
+  - id: dod-omn22224-ac2
+    description: AC2 reads duration_ms on the earlier-model attempt and every local dispatch attempt record, and reads that the wire attempt record accepts and drops the consumer-first key.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q -n 0 -p no:randomly --no-cov -k attempt_has_duration
+        cwd: .
+  - id: dod-omn22224-deploy-probe-ac1
+    description: 'Deploy probe for AC1: the local dispatch port GitHub serves at the checked-out commit hands the earlier model its own measured duration when it records the run step (duration_ms=earlier.duration_ms), which the merge base does not.'
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q --no-cov -k deployed_run_steps_projected
+        cwd: .
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "duration_ms=earlier.duration_ms" > /dev/null'
+        cwd: .
+  - id: dod-omn22224-deploy-probe-ac2
+    description: 'Deploy probe for AC2: the delegate-skill wire model GitHub serves at the checked-out commit lists duration_ms among the attempt keys it accepts consumer-first, which the merge base does not.'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py -q --no-cov -k attempt_has_duration
+        cwd: .
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "\"duration_ms\", \"gate_record\"" > /dev/null'
+        cwd: .
+  - id: dod-omn22224-integration-proof
+    description: The pushed head ran the OMN-22224 focused tests, the delegation attempt-record tests and the run-trace writer tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22224 -- uv run --frozen pytest tests/unit/projection/test_run_trace_deployed_lane_rows.py tests/unit/nodes/node_projection_run_trace -q --no-cov -m "not kafka"
+        cwd: .

@@ -32,7 +32,6 @@ FLEET_REPOS = frozenset(
     {
         "omnibase_core",
         "omnibase_spi",
-        "omnibase_compat",
         "omnibase_infra",
         "omnibase_internal",
         "omniclaude",

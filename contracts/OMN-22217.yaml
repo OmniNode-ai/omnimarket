@@ -1,0 +1,168 @@
+schema_version: 1.0.0
+ticket_id: OMN-22217
+title: The factory floor and the Claude pool refill read the lab host table from the lab_hosts overlay, so no host address is copied from a table kept outside the overlay; declared Linux host net units are installed byte for byte
+summary: The factory floor resolves the lab host table from the file its table variable names, then its overlay's relative path, then the lab_hosts overlay found through the overlay roots. The Claude pool refill resolves it from ONEX_LAB_RUN_HOSTS, then the lab_hosts overlay, and reads its own relative hosts_table only when neither supplies one. node_host_installer_net_units installs the root-owned files a lane had installed by hand on a Linux pool host (a systemd service with its script, two sshd drop-ins) from an overlay that declares each unit, its hosts, destinations, modes and sha256 pins. The service unit's interface is read from the host (the lowest-metric IPv4 default route), sshd is validated with sshd -t and reloaded never restarted, a failed check restores the previous file, a second install writes nothing, and a non-Linux host is refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22217-host-table-is-overlay-data
+  statement: The lab host table is overlay data of the private overlays package, so the floor and the pool refill name the machines that overlay names (the tailnet addresses of h051, h053 and h101) and not the ones a table kept elsewhere names.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the floor resolves the pinned file first, then the relative path its overlay declares, then the lab_hosts overlay, and none when no source supplies one -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -q -k host_table'
+  - id: AC2
+    statement: 'AC2: the pool refill takes its host targets from the lab_hosts overlay when the overlay roots hold one, ahead of its own hosts_table -- falsifier: uv run pytest tests/nodes/node_claude_pool_refill_effect -q -k lab_hosts_overlay'
+- id: req-omn22217-declared-units
+  statement: The hand-installed ARP assertion service and sshd drop-ins are declared units, installed byte for byte, and the unit's interface name comes from the host.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the three payloads (arp-assert script plus service unit, sshd-session-limits, sshd-hardening) are declared as managed Linux-host units and their rendered bytes equal the hand-installed sha256 values of P2 -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -k host_net -q'
+  - id: AC4
+    statement: 'AC4: the service unit''s interface name is read from the host and no declared template, contract or overlay contains a literal interface name -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -k host_net_interface -q'
+  - id: AC5
+    statement: 'AC5: a second install changes nothing and reloads nothing, a failed sshd -t restores the original and reloads nothing, and a non-Linux host is refused -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -k host_net_idempotent -q'
+  - id: AC6
+    statement: 'AC6: an install from the pushed branch on h053 leaves the four files byte-identical to P2 and onex-arp-assert.service active -- falsifier: ssh h053 ''sha256sum /usr/local/sbin/onex-arp-assert /etc/ssh/sshd_config.d/00-omn17232-hardening.conf /etc/ssh/sshd_config.d/10-omn22217-sessions.conf /etc/systemd/system/onex-arp-assert.service; systemctl is-active onex-arp-assert.service'''
+  - id: AC7
+    statement: 'AC7: no Python or test file under src or tests of the private overlay repository is changed by the pull request -- falsifier: git diff --name-only origin/main...HEAD -- src tests in the overlay repository checkout prints nothing'
+evidence_requirements:
+- kind: tests
+  description: The floor host table resolution and the pool refill overlay resolution.
+  command: uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_claude_pool_refill_effect -q --no-cov
+- kind: tests
+  description: The payload pin, interface rule, idempotence, sshd validation and refusal tests run against a recorded command side and a temporary directory; no host is touched.
+  command: uv run pytest tests/nodes/node_host_installer_net_units -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22217-ac1
+  description: AC1 the floor's host table resolution order. AC3 the payloads install byte for byte against their sha256 pins and a payload that misses its pin is refused. At the merge base the node does not exist, so these fail.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py -q --no-cov --tb=line -k host_table
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -k host_net -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22217-ac2
+  description: AC2 the pool refill reads the lab_hosts overlay. AC4 the unit's interface is read from the host's lowest-metric IPv4 default route (two host fixtures give two names) and no file of the node names an interface.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_pool_refill_effect -q --no-cov --tb=line -k lab_hosts_overlay
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -k host_net_interface -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22217-integration-proof
+  description: The pushed head runs the floor and pool refill tests on a lab host over the bus and exits 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head, run through the lab runner, passes the node's tests on a lab host; the install on the Linux pool host is the AC6 command below, run after the install from this branch (hosted CI cannot reach the lab, so only the local Done gate runs this unbound check).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22217 -- uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_claude_pool_refill_effect -q --no-cov
+    cwd: .
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane declare-host-net-1935 -- uv run --frozen pytest tests/nodes/node_host_installer_net_units -q --no-cov
+    cwd: .
+- id: dod-omn22217-ac3
+  description: AC5 a second install writes and reloads nothing, a failed sshd -t restores the original with no reload, sshd is reloaded and never restarted, and a non-Linux host is refused.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -k host_net_idempotent -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22217-ac4
+  description: AC6 the live proof on h053 (hosted CI cannot reach the lab, so only the local Done gate runs this unbound check).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'ssh h053 "sha256sum /usr/local/sbin/onex-arp-assert /etc/ssh/sshd_config.d/00-omn17232-hardening.conf /etc/ssh/sshd_config.d/10-omn22217-sessions.conf /etc/systemd/system/onex-arp-assert.service; systemctl is-active onex-arp-assert.service" | tee /dev/stderr | grep -c -e 4c67ddf35d23f47e8cccbb7a279d56765f21fc3817ea0ce2b8003c2b112b401d -e 707ade3a8e8c3543a603248afb58da57552ff51891c752b9b502516f62205511 -e 8ff6677022c0cfda7867942b64f39a0ae96e65741f4fc6c21021c2aee14418bf -e 8b3788f6ddb402cb36fd5163e597708d91122aea882e296c98aca8393a002a80 | grep -qx 4'
+    cwd: .
+- id: dod-omn22217-ac5
+  description: AC7 the overlay pull request changes no Python or test file under src or tests of the private overlay repository (that checkout is not on the hosted runner, so only the local Done gate runs this unbound check).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'test -z "$(git -C "${OVERLAY_REPO_HOME:?}" diff --name-only origin/main...omn-22217-host-net-overlay -- src tests)"'
+    cwd: .
+- id: dod-omn22217-deploy-source-readback
+  description: 'Hosted-runner deploy source readback: the published host-net handler at the evaluated commit must equal the checkout byte for byte, and the node entry point must install a declared drop-in idempotently in a temporary filesystem. This checks published source and local dispatch; the live Linux host install remains the local Done gate check.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'curl --fail --silent --show-error "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_host_installer_net_units/handlers/handler_net_units.py" | cmp - src/omnimarket/nodes/node_host_installer_net_units/handlers/handler_net_units.py'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_golden_chain_host_net_units.py -q --no-cov
+    cwd: .
+- id: dod-omn22217-hosted-lab-readback
+  description: 'AC6 and AC7 captured lab evidence, verified on hosted runners: the h053 status and dry-run readback uses the same node source bytes as this checkout and records all four P2 file hashes, modes and the active service. The captured overlay branch diff contains only the five payload declarations and its contract. A source digest mismatch refuses a stale readback; the merge-base control fails on the absent handler even with the readback copied into the control. The live probes remain separate local Done gate checks above.'
+  source: manual
+  binds_ac:
+  - AC6
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units.py -q --no-cov --tb=line -k host_net
+    cwd: .
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+      import hashlib
+      import json
+      from pathlib import Path
+
+      # Check product bytes first: the merge-base control fails on the missing handler,
+      # even if this captured readback is laid over the control beside the contract.
+      handler = Path('src/omnimarket/nodes/node_host_installer_net_units/handlers/handler_net_units.py')
+      assert hashlib.sha256(handler.read_bytes()).hexdigest() == 'c3e4ee6823b02678cf6dec806eda525d2d4bab0f126a048c285c69e660b9e972'
+      raw = Path('contracts/evidence/OMN-22217/host-net-readback.json').read_bytes()
+      assert hashlib.sha256(raw).hexdigest() == 'da18681360b7012173fcd7652574fad482dbc25f1c8d987a2cf008f2ad673dce'
+      record = json.loads(raw)
+      assert record["schema"] == "host_net_readback.v1" and record["ticket_id"] == "OMN-22217"
+      for path, digest in record["source_manifest"].items():
+          assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest, path
+      lab = record["lab"]
+      assert lab["source_manifest"] == record["source_manifest"]
+      assert lab["host"] == "h053" and lab["platform"] == "Linux"
+      expected = {'/etc/ssh/sshd_config.d/00-omn17232-hardening.conf': {'mode': '0644', 'sha256': '707ade3a8e8c3543a603248afb58da57552ff51891c752b9b502516f62205511'}, '/etc/ssh/sshd_config.d/10-omn22217-sessions.conf': {'mode': '0644', 'sha256': '8ff6677022c0cfda7867942b64f39a0ae96e65741f4fc6c21021c2aee14418bf'}, '/etc/systemd/system/onex-arp-assert.service': {'mode': '0644', 'sha256': '8b3788f6ddb402cb36fd5163e597708d91122aea882e296c98aca8393a002a80'}, '/usr/local/sbin/onex-arp-assert': {'mode': '0755', 'sha256': '4c67ddf35d23f47e8cccbb7a279d56765f21fc3817ea0ce2b8003c2b112b401d'}}
+      assert lab["installed_files"] == expected
+      service = lab["service"]
+      assert service["exit_code"] == 0 and service["stdout"].strip() == "active"
+      assert service["argv"] == ["systemctl", "is-active", "onex-arp-assert.service"]
+      assert len(lab["readbacks"]) == 6
+      assert {(r["unit"], r["mode"]) for r in lab["readbacks"]} == {
+          (unit, mode) for unit in ("onex-arp-assert", "sshd-session-limits", "sshd-hardening")
+          for mode in ("status", "dry-run")
+      }
+      for r in lab["readbacks"]:
+          assert r["exit_code"] == 0 and r["status"] == "success" and r["changed"] is False, r
+          assert r["digests"] and not r["stderr"], r
+          assert all(expected[p]["sha256"] == digest for p, digest in r["digests"].items()), r
+      tests = record["focused_tests"]
+      assert tests["host"] == "h101" and tests["exit_code"] == 0 and "17 passed" in tests["stdout"]
+      overlay = record["overlay"]
+      assert overlay["head_sha"] == 'f93fe0fc7b9533a53af0c765e6a99d6a762e6ae8' and overlay["exit_code"] == 0
+      assert overlay["changed_paths"] == overlay["diff_stdout"].splitlines()
+      assert set(overlay["changed_paths"]) == {'contracts/OMN-22217.yaml', 'config/onex/overlays/node_host_installer_net_units/sshd-hardening.conf', 'config/onex/overlays/node_host_installer_net_units/units.yaml', 'config/onex/overlays/node_host_installer_net_units/onex-arp-assert.b64', 'config/onex/overlays/node_host_installer_net_units/sshd-session-limits.conf', 'config/onex/overlays/node_host_installer_net_units/onex-arp-assert.service.tmpl'}
+      assert not any(p.startswith(("src/", "tests/")) for p in overlay["changed_paths"])
+      print("AC6 captured h053 readback: four P2 hashes and modes match, service active, six unchanged status/dry-run results")
+      print("AC7 captured overlay diff: five payload declarations and one contract, no src/tests changes")
+      print("Captured lab source manifest matches this checkout; h101 focused tests: 17 passed")
+      READBACK
+    cwd: .

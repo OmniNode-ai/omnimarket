@@ -4580,6 +4580,7 @@
         "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
+        "node_factory_floor_publish_effect",
         "node_lab_secret_store_override_effect",
         "node_llm_delegation_call_effect",
         "node_measured_model_selection_compute",
@@ -7799,6 +7800,7 @@
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",
         "node_pr_state_emit_effect",
+        "node_pr_state_read_effect",
         "node_wip_admission_compute"
       ],
       "target_schema": "omninode_internal",
@@ -9666,6 +9668,7 @@
         "node_session_context_sources_effect",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect",
+        "node_work_progress_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -9684,7 +9687,8 @@
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
         "src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
-        "src/omnimarket/nodes/node_work_ledger_seq_gap_effect/contract.yaml"
+        "src/omnimarket/nodes/node_work_ledger_seq_gap_effect/contract.yaml",
+        "src/omnimarket/nodes/node_work_progress_alert_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -9732,7 +9736,8 @@
         "node_session_context_sources_effect",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect",
-        "node_work_ledger_seq_gap_effect"
+        "node_work_ledger_seq_gap_effect",
+        "node_work_progress_alert_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [

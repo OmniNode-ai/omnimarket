@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Finding constructor shared by the three projection contract rules."""
+"""Finding constructor shared by the projection contract rules."""
 
 from typing import Final, Literal
 
@@ -15,6 +15,7 @@ RULE_DLQ: Final[str] = "projection-dlq-path"
 RULE_CURSOR_MISSING: Final[str] = "projection-cursor-declared"
 RULE_CURSOR_MEMBERSHIP: Final[str] = "projection-cursor-membership"
 RULE_CURSOR_SHRINKABLE: Final[str] = "projection-cursor-baseline-shrinkable"
+RULE_TYPED_ENTRY: Final[str] = "projection-typed-entry"
 RULE_UNPARSEABLE: Final[str] = "projection-contract-unparseable"
 RULE_ZERO_SCAN: Final[str] = "projection-contract-zero-scan"
 
