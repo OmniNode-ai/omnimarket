@@ -261,7 +261,7 @@ def test_the_entrypoint_exits_zero_on_the_post_fix_shape(tmp_path: Path) -> None
     assert "Projection typed-entry gate OK" in out
 
 
-def test_the_gate_is_wired_into_ci_and_pre_commit() -> None:
+def test_the_gate_is_wired_into_ci_and_pre_push() -> None:
     command = "runtime_projection_contract_check --rule typed-entry"
     precommit = yaml.safe_load(
         (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
@@ -274,7 +274,7 @@ def test_the_gate_is_wired_into_ci_and_pre_commit() -> None:
     ]
     assert len(hooks) == 1
     assert command in hooks[0]["entry"]
-    assert hooks[0].get("stages") == ["pre-commit"]
+    assert hooks[0].get("stages") == ["pre-push"]
     ci = yaml.safe_load(
         (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     )

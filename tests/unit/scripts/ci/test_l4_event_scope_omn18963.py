@@ -221,7 +221,7 @@ def test_poller_passes_branch_to_every_gate_invocation() -> None:
     assert step["env"]["REF_NAME"] == "${{ github.ref_name }}"
 
 
-def test_trigger_parity_is_wired_to_required_ci_and_pre_commit() -> None:
+def test_trigger_parity_is_wired_to_required_ci_and_manual_hook() -> None:
     root = Path(__file__).resolve().parents[4]
     workflows = _workflows()
     lint = workflows["ci.yml"]["jobs"]["lint"]
@@ -241,7 +241,7 @@ def test_trigger_parity_is_wired_to_required_ci_and_pre_commit() -> None:
         if hook["id"] == "ci-summary-event-scope"
     )
     assert hook["entry"] == step["run"]
-    assert hook["stages"] == ["pre-commit"]
+    assert hook["stages"] == ["manual"]
     assert hook["pass_filenames"] is False
 
 

@@ -21,6 +21,10 @@ manual hook must name the CI job that enforces it, and that job must
 Falsifier: set ``stages: [manual]`` on any hook that is not registered, drop or
 rename a registered job, remove its command from the job, or remove the job
 from CI Summary's gate list, and a named test here fails.
+
+Residual non-test scans run at pre-push. Test-running audits with explicit
+required CI twins are manual-only; the others retain their commit stage.
+Their commands and filename triggers stay unchanged.
 """
 
 from __future__ import annotations
@@ -58,6 +62,22 @@ GATED_CONTEXTS: frozenset[str] = frozenset(
 # today's count; lower it when one is scoped or moved, never raise it.
 UNSCOPED_COMMIT_STAGE_CEILING = 3
 
+# Residual full-tree scans after the CI-backed manual-stage move. A commit
+# touching one test or contract still launches these over the entire corpus;
+# the filename filter chooses when to run, not what the command scans.
+PUSH_ONLY: frozenset[str] = frozenset(
+    {
+        "handwritten-event-payload",
+        "no-literal-event-type-in-tests",
+        "projection-writer-contract",
+        "onex-validate-runtime-profiles",
+        "projection-typed-entry",
+        "migration-base-before-view",
+        "normalization-symmetry",
+        "workflow-module-refs",
+    }
+)
+
 
 @dataclass(frozen=True)
 class Home:
@@ -69,6 +89,29 @@ class Home:
 
 
 MOVED: Mapping[str, Home] = {
+    "queue-run-once-policy": Home(
+        "ci.yml", "lint", ("pytest tests/ci/test_queue_run_once_omn19998.py",)
+    ),
+    "ci-summary-event-scope": Home(
+        "ci.yml",
+        "lint",
+        ("pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py",),
+    ),
+    "review-voter-model-from-overlay": Home(
+        "ci.yml",
+        "lint",
+        ("pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py",),
+    ),
+    "contract-prerequisite-verifier-host-tools": Home(
+        "ci.yml",
+        "lint",
+        ("pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py",),
+    ),
+    "anthropic-key-prefix-workflows": Home(
+        "ci.yml",
+        "lint",
+        ("pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py",),
+    ),
     "node-auto-wiring-in-process": Home(
         "ci.yml",
         "lint",
@@ -289,6 +332,32 @@ def _hook_entries() -> list[dict[str, Any]]:
     """Every hook entry in the config; an id may be declared more than once."""
     config = yaml.safe_load(PRECOMMIT.read_text(encoding="utf-8"))
     return [hook for repo in config["repos"] for hook in repo.get("hooks", [])]
+
+
+@pytest.mark.parametrize("hook_id", sorted(PUSH_ONLY))
+def test_residual_whole_tree_scan_runs_at_push_only(hook_id: str) -> None:
+    """A small staged change must not launch an unrelated full-tree scan."""
+    entries = [hook for hook in _hook_entries() if hook["id"] == hook_id]
+    assert entries, f"{hook_id} is not declared"
+    assert all(hook.get("stages") == ["pre-push"] for hook in entries), (
+        f"every declaration of {hook_id} must run at pre-push only"
+    )
+    assert all(hook.get("pass_filenames") is False for hook in entries)
+
+
+def test_push_stage_is_installed_for_whole_tree_scans() -> None:
+    config = yaml.safe_load(PRECOMMIT.read_text(encoding="utf-8"))
+    assert "pre-push" in config["default_install_hook_types"]
+
+
+@pytest.mark.parametrize(
+    "hook_id", ["ticket-contract-schema", "single-arm-path-policy-gate"]
+)
+def test_test_audit_without_registered_ci_home_stays_at_commit(hook_id: str) -> None:
+    entries = [hook for hook in _hook_entries() if hook["id"] == hook_id]
+    assert entries, f"{hook_id} is not declared"
+    assert all(hook.get("stages") == ["pre-commit"] for hook in entries)
+    assert all(hook.get("pass_filenames") is False for hook in entries)
 
 
 def _job(workflow: str, job_id: str) -> dict[str, Any]:
