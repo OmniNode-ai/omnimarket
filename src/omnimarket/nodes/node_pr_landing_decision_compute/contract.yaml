@@ -69,7 +69,9 @@ description: >
   head, rerun, update-branch, eligibility rerun, companion rebuild or close,
   dispatch of a fixed worker brief or of one cause brief per shared red cause,
   kill, discard, observe-only, operator escalation of a parked cause), the
-  outcomes recorded, DEGRADED reasons, violations, the named gate of every
+  outcomes recorded with the consumed worker result's kind, reason and blocker
+  reference separate from the controller verification reason, DEGRADED reasons,
+  violations, the named gate of every
   gated PR, the named reason every green, CLEAN PR was not merged, and the
   next state to write ahead of acting. Deterministic in any input order.
   Fail-closed on its own coverage invariant: a tick that would leave an open,

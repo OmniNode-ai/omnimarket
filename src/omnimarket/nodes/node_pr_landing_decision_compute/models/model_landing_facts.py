@@ -297,7 +297,10 @@ class ModelLandingWorkerResult(BaseModel):
     fix_head: str | None = Field(
         default=None, pattern=SHA_PATTERN, description="cause_fix_submitted: its head."
     )
-    reason: str | None = Field(default=None, description="cause_not_shared: why.")
+    reason: str | None = Field(
+        default=None,
+        description="The worker's explanation, preserved on its recorded outcome.",
+    )
     finding_dispositions: tuple[ModelReviewFindingDispositionEntry, ...] = Field(
         default=(),
         description=(

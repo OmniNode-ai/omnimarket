@@ -108,6 +108,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
+  - id: req-omn19998-worker-result-diagnostics
+    statement: Landing result events and their ledger rows retain the worker's explanation separately from the controller verification verdict.
+    acceptance:
+      - id: AC11
+        statement: 'A consumed per-PR or cause-worker result retains kind, reason and blocker reference through decision serialization and the ledger append host; absent explanations and older event payloads stay explicitly unmeasured, free text cannot forge rows, and redelivery appends once -- falsifier: uv run --frozen pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_worker_result_causes.py tests/unit/work_ledger_bus/test_landing_decision.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -123,6 +128,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-worker-result-diagnostics
+    description: Replay the recorded blocked result without inventing its unavailable cause, retain supplied worker explanations on both result paths, and exercise the declared landing decision topic through the append host with duplicate delivery. This scoped proof does not assert the controller timer or legacy worker-terminal renderer.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_worker_result_causes.py tests/unit/work_ledger_bus/test_landing_decision.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual

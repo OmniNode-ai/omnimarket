@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.handlers.handler_internal_release_path_guard import (
     check_internal_release_path,
 )
+from omnimarket.models.landing_worker_diagnostic import ModelLandingWorkerDiagnostic
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingActionKind,
     EnumLandingBriefClass,
@@ -318,6 +319,14 @@ class ModelLandingRecordedOutcome(BaseModel):
     outcome: EnumLandingOutcome
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE
     blocker_fingerprint: str = ""
+    worker_result: ModelLandingWorkerDiagnostic | None = Field(
+        default=None,
+        description=(
+            "Diagnostics from the consumed worker result, separate from the "
+            "controller's verification reason. Absent for older events and "
+            "outcomes recorded without a result."
+        ),
+    )
 
 
 class ModelLandingDegraded(BaseModel):

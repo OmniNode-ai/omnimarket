@@ -7,6 +7,7 @@ from typing import Literal
 from urllib.parse import quote
 from uuid import NAMESPACE_URL, uuid5
 
+from omnimarket.models.landing_worker_diagnostic import ModelLandingWorkerDiagnostic
 from omnimarket.models.work_ledger_append import ModelWorkLedgerAppendRequest
 from omnimarket.nodes.node_work_ledger_landing_mirror.models.model_work_ledger_landing_mirror import (
     ModelWorkLedgerLandingMirrorRequest,
@@ -25,6 +26,41 @@ def _cell(value: str) -> str:
     pattern-bound subjects use, and encodes everything else.
     """
     return quote(value, safe="-_.:/#@ ")
+
+
+def _diagnostic_cells(result: ModelLandingWorkerDiagnostic | None) -> list[str]:
+    """Name observed result fields; an absent explanation stays unmeasured.
+
+    Measured means the worker reported the explanation in the consumed result
+    file. The source cell makes that scope explicit; it is not independent
+    verification of the worker's claimed root cause.
+    """
+    cells: list[str] = []
+    cause, source = "unmeasured", "none"
+    if result is not None:
+        cells.append(f"result={_cell(result.kind)}")
+        if result.reason and result.reason.strip():
+            cause, source = result.reason, "worker_result.reason"
+        elif (
+            result.blocker_kind
+            and result.blocker_kind.strip()
+            and result.blocker_ref
+            and result.blocker_ref.strip()
+        ):
+            cause = f"{result.blocker_kind} {result.blocker_ref}"
+            source = "worker_result.blocker"
+        for key, value in (
+            ("blocker_kind", result.blocker_kind),
+            ("blocker_ref", result.blocker_ref),
+        ):
+            if value:
+                cells.append(f"{key}={_cell(value)}")
+    cells += [
+        f"cause_state={'measured' if source != 'none' else 'unmeasured'}",
+        f"cause_source={source}",
+        f"cause={_cell(cause)}",
+    ]
+    return cells
 
 
 class HandlerWorkLedgerLandingMirror:
@@ -75,6 +111,7 @@ class HandlerWorkLedgerLandingMirror:
                 f"outcome={outcome.outcome.value}",
             ]
             cells.append(f"reason={outcome.reason.value}")
+            cells += _diagnostic_cells(outcome.worker_result)
             if outcome.lease_id is not None:
                 cells.append(f"lease=L{outcome.lease_id}")
             cells += [tail, "Landing controller outcome recorded"]

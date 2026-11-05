@@ -136,6 +136,57 @@ def test_idle_tick_appends_nothing(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_worker_cause_reaches_the_append_host_once(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        path = tmp_path / "ledger.md"
+        path.write_text("# Ledger\n")
+        runner = _Runner(path)
+        bus = EventBusInmemory(environment="local", group="landing-worker-cause")
+        await bus.start()
+        host = _host(bus, runner, path)
+        await host.start()
+        try:
+            topic = host.landing_topics[0]
+            payload = _decision([])
+            payload["recorded_outcomes"] = [
+                {
+                    "pr": "OmniNode-ai/repo#5",
+                    "lease_id": 26525,
+                    "outcome": "invalid",
+                    "reason": "bare_blocked",
+                    "worker_result": {
+                        "kind": "blocked",
+                        "reason": "lab_capacity_unavailable",
+                    },
+                }
+            ]
+            event = uuid4()
+            envelope = ModelEventEnvelope[dict[str, object]](
+                payload=payload,
+                correlation_id=event,
+                event_type=event_type_for(topic),
+            )
+            for _ in range(2):
+                envelope = envelope.model_copy(update={"envelope_id": uuid4()})
+                await bus.publish(
+                    topic, str(event).encode(), envelope.model_dump_json().encode()
+                )
+                await host.drain()
+            assert len(runner.calls) == 1
+            cells = runner.calls[0].split(" | ")
+            assert "result=blocked" in cells
+            assert "reason=bare_blocked" in cells
+            assert "cause_state=measured" in cells
+            assert "cause_source=worker_result.reason" in cells
+            assert "cause=lab_capacity_unavailable" in cells
+            assert path.read_text().count("src=landing") == 1
+        finally:
+            await host.stop()
+            await bus.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("invalid_kind", ["no-correlation", "malformed", "bad-tick"])
 def test_invalid_decision_is_answered_without_appending(
     tmp_path: Path, invalid_kind: str

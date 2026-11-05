@@ -81,6 +81,7 @@ from omnimarket.handlers.cause_signature import (
     cause_key,
     normalize_signature,
 )
+from omnimarket.models.landing_worker_diagnostic import ModelLandingWorkerDiagnostic
 from omnimarket.models.model_priority_rules import ModelPriorityRules
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
     load_priority_rules,
@@ -301,12 +302,26 @@ def _escalate(t: _Tick, pr: str) -> None:
     t.put_record(pr, **update)
 
 
+def _worker_diagnostic(
+    result: ModelLandingWorkerResult,
+) -> ModelLandingWorkerDiagnostic:
+    """Carry the result's own explanation without changing its verification."""
+    return ModelLandingWorkerDiagnostic(
+        kind=result.kind.value,
+        reason=result.reason,
+        blocker_kind=result.blocker_kind.value if result.blocker_kind else None,
+        blocker_ref=result.blocker_ref,
+    )
+
+
 def _record(
     t: _Tick,
     pr: str,
     lease_id: int | None,
     outcome: EnumLandingOutcome,
     reason: EnumLandingOutcomeReason = EnumLandingOutcomeReason.NONE,
+    *,
+    worker_result: ModelLandingWorkerResult | None = None,
 ) -> None:
     fp = t.fingerprint(pr)
     t.put_record(pr, outcome=outcome, reason=reason, blocker_fingerprint=fp)
@@ -317,6 +332,9 @@ def _record(
             outcome=outcome,
             reason=reason,
             blocker_fingerprint=fp,
+            worker_result=(
+                _worker_diagnostic(worker_result) if worker_result is not None else None
+            ),
         )
     )
 
@@ -436,7 +454,7 @@ def _read_result(t: _Tick, result: ModelLandingWorkerResult) -> None:
         if reason is EnumLandingOutcomeReason.NONE:
             outcome = EnumLandingOutcome.FIX_SUBMITTED
     t.leases[pr] = lease.model_copy(update={"result_recorded_at": t.now})
-    _record(t, pr, lease.lease_id, outcome, reason)
+    _record(t, pr, lease.lease_id, outcome, reason, worker_result=result)
     if outcome is EnumLandingOutcome.FIX_SUBMITTED:
         t.put_record(
             pr,
@@ -1002,7 +1020,11 @@ def _read_cause_result(
     t.leases[key] = lease.model_copy(update={"result_recorded_at": t.now})
     t.recorded.append(
         ModelLandingRecordedOutcome(
-            pr=key, lease_id=lease.lease_id, outcome=outcome, reason=reason
+            pr=key,
+            lease_id=lease.lease_id,
+            outcome=outcome,
+            reason=reason,
+            worker_result=_worker_diagnostic(result),
         )
     )
     if outcome is EnumLandingOutcome.INVALID:

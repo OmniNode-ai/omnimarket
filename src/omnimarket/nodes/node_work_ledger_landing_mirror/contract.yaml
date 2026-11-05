@@ -7,7 +7,12 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Pure mapping of one landing decision event to the STATUS append request for
-  its actions, recorded outcomes, DEGRADED reasons and violations. A tick with
+  its actions, recorded outcomes, DEGRADED reasons and violations. Outcome rows
+  retain the worker result kind, explanation and blocker reference; cause_state
+  is measured only when those fields name an explanation, with cause_source
+  identifying the worker report rather than independent root-cause verification.
+  Missing explanations, including older event payloads, remain unmeasured.
+  Free text is percent-encoded as one ledger cell. A tick with
   none of them maps to no request. Hosted by the single ledger serve process,
   which serializes these requests with ordinary ledger commands through the
   existing append handler. No shared runtime subscription: only the ledger
