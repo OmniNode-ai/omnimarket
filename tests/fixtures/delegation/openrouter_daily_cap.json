@@ -1,0 +1,14 @@
+{
+  "error": {
+    "message": "Rate limit exceeded: free-models-per-day-high-balance. ",
+    "code": 429,
+    "metadata": {
+      "headers": {
+        "X-RateLimit-Limit": "1000",
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": "1793750400000"
+      },
+      "limit_source": "openrouter_free_tier_daily"
+    }
+  }
+}
