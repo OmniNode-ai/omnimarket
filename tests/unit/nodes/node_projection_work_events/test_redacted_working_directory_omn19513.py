@@ -158,3 +158,84 @@ def test_working_directory_shape_rejects_a_smuggled_content_key() -> None:
                 "value": _SENTINEL_DIRECTORY,
             },
         )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "topic",
+    [
+        "session_started",
+        "prompt_submitted",
+        "tool_executed",
+        "session_ended",
+    ],
+)
+def test_redacted_working_directory_preserves_capture_provenance(topic: str) -> None:
+    """The runtime handler keeps supplied attribution and explicit causal edges."""
+    from omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events import (
+        _load_topics,
+    )
+
+    db = InmemoryDatabaseAdapter()
+    publisher = _RecordingPublisher()
+    wire = {
+        **json.loads(_LIVE_SESSION_STARTED),
+        "principal": "fixture-capture-principal",
+        "causation_id": "a062bb92-5894-4efa-b6ec-3415ceac61ac",
+    }
+    handler = HandlerProjectionWorkEvents(publisher=publisher)
+    source_topic = getattr(_load_topics(), topic)
+    for _ in range(2):
+        assert (
+            handler.handle({**wire, "_db": db, "_topic": source_topic})["rows_upserted"]
+            == 1
+        )
+
+    rows = db.query(TABLE)
+    assert len(rows) == 1
+    payload = rows[0]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["principal"] == wire["principal"]
+    assert payload["causation_id"] == wire["causation_id"]
+    assert payload["correlation_id"] == wire["correlation_id"]
+    assert payload["working_directory"] == {"type": "str", "length": 9}
+    # Attribution stays metadata: the session remains the row's actor.
+    assert rows[0]["actor_id"] == wire["session_id"]
+    assert len(publisher.sent) == 2
+    for delta in publisher.sent:
+        assert delta.value is not None
+        snapshot = json.loads(delta.value)
+        assert snapshot["row"]["payload"] == payload
+
+
+@pytest.mark.unit
+def test_redacted_working_directory_absent_provenance_does_not_invent_an_edge() -> None:
+    """A correlation id alone is not evidence of a causal parent or principal."""
+    event = ModelWorkEventInbound(**json.loads(_LIVE_SESSION_STARTED))
+    row = HandlerProjectionWorkEvents(publisher=_RecordingPublisher()).accumulate(
+        event, TOPIC_SESSION_STARTED
+    )
+    assert "principal" not in row.payload
+    assert "causation_id" not in row.payload
+    assert row.payload["correlation_id"] == event.correlation_id
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("field", ["principal", "causation_id"])
+def test_redacted_working_directory_distinct_provenance_is_not_collapsed(
+    field: str,
+) -> None:
+    """Equal session, time and correlation do not erase a distinct source edge."""
+    db = InmemoryDatabaseAdapter()
+    handler = HandlerProjectionWorkEvents(publisher=_RecordingPublisher())
+    wire = json.loads(_LIVE_SESSION_STARTED)
+    for value in ("fixture-first", "fixture-second"):
+        handler.handle(
+            {**wire, field: value, "_db": db, "_topic": TOPIC_SESSION_STARTED}
+        )
+    rows = db.query(TABLE)
+    assert len(rows) == 2
+    assert {row["payload"][field] for row in rows} == {
+        "fixture-first",
+        "fixture-second",
+    }

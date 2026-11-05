@@ -127,6 +127,9 @@ async def test_runtime_command_checks_the_recorded_host_through_declared_topics(
     raw = yaml.safe_load(CONTRACT.read_text())
     command_topic = raw["runtime_dispatch"]["command_topic"]
     completed_topic = raw["terminal_event"]
+    assert (
+        completed_topic == "onex.evt.omnimarket.lane-census-alias-parity-completed.v1"
+    )
     assert raw["event_bus"]["subscribe_topics"] == [command_topic]
     assert raw["event_bus"]["publish_topics"] == [completed_topic]
     completed: asyncio.Queue[dict[str, object]] = asyncio.Queue()
