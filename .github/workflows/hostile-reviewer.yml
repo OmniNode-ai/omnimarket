@@ -50,7 +50,10 @@ name: Hostile Reviewer
 
 on:
   pull_request:
-    branches: [main, dev]
+    # OMN-22478, operator RULING 2026-11-05T20:27:56Z: the automated review holds
+    # no merge and runs on no pull request until the review route is fixed. No
+    # branch has this name, so GitHub starts no run. To restore: branches: [main, dev]
+    branches: [review-stopped-omn-22478]
     types: [opened, synchronize, reopened]
 
 # OMN-19643: cancel only superseded pull request runs.
@@ -64,6 +67,7 @@ permissions:
   contents: read
 
 jobs:
+  # advisory-ok: OMN-22478 the operator ruled on 2026-11-05 that the automated review holds no merge
   hostile-review:
     name: Hostile Reviewer (adversarial gate)
     # The amd64 LAN pools carry arch-amd64; off-LAN h203-light runners do not.
@@ -904,6 +908,7 @@ jobs:
               });
             }
 
+  # advisory-ok: OMN-22478 the operator ruled on 2026-11-05 that the automated review holds no merge
   hostile-review-gate:
     name: Hostile Review Gate
     runs-on: >-
