@@ -470,9 +470,8 @@ async def _scratch_bus(
             "2026-11-04T12:00:00Z | MSG | from=parent | to=lane-a | "
             "id=2026-11-04T12:00:00Z-parent | verbatim=encoded | effect=informs | operator words"
         )
-        assert (
-            await caller.append(valid, timeout_s=timeout_s)
-        ).status == EnumWorkLedgerAppendStatus.ACCEPTED
+        valid_receipt = await caller.append(valid, timeout_s=timeout_s)
+        assert valid_receipt.status == EnumWorkLedgerAppendStatus.ACCEPTED
         assert "effect=informs" in ledger.read_text()
         # Exercise Market's closing node, a serialized receipt, and the real
         # bus TERMINAL writer at the runner's ledger_cells forwarding seam.
@@ -500,9 +499,10 @@ async def _scratch_bus(
                 f"outcome={closing_receipt['outcome']} | friction=none | {forwarded} | "
                 f"fixture authorized={authorized}"
             )
-            assert (
-                await caller.append(terminal_request, timeout_s=timeout_s)
-            ).status == EnumWorkLedgerAppendStatus.ACCEPTED
+            terminal_receipt = await caller.append(
+                terminal_request, timeout_s=timeout_s
+            )
+            assert terminal_receipt.status == EnumWorkLedgerAppendStatus.ACCEPTED
             written_terminal = next(
                 row
                 for line in reversed(ledger.read_text().splitlines())
@@ -687,7 +687,7 @@ def test_relay_effect_packaged_node_runtime_serialization(
         (
             "node_stop_only_on_withdrawal_effect",
             "onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1",
-            ("onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1",),
+            (),
         ),
     ],
 )

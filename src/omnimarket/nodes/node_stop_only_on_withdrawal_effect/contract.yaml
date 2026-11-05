@@ -32,21 +32,19 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 180000
+  runtime_profiles: [effects]
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.stop-only-on-withdrawal-apply-requested.v1
   publish_topics:
     - onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
-    - onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.stop-only-on-withdrawal-apply-requested.v1
 terminal_event: onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
 terminal_events:
   success: onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
-  failure: onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.stop-only-on-withdrawal-applied.v1
-  - onex.evt.omnimarket.stop-only-on-withdrawal-apply-failed.v1
 dependencies:
   ledger_writer: omnimarket.protocols.protocol_s8_effects.ProtocolS8LedgerWriter
   task_dispatcher: omnimarket.protocols.protocol_s8_effects.ProtocolS8TaskDispatcher
