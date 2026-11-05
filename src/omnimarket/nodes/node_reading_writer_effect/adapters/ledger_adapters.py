@@ -93,7 +93,7 @@ class InMemoryLedger:
     def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
         if self.append_status not in ("accepted", "duplicate"):
             return ModelAppendOutcome(
-                status=self.append_status,  # type: ignore[arg-type]
+                status=self.append_status,
                 message="injected append fault",
             )
         if request_id in self.append_requests:

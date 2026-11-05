@@ -181,9 +181,9 @@ class HandlerReadingCompute:
             )
 
         if not spec.readable_today:
-            reason = f"no-producer:{reason_token(spec.unknown_reason or '')}"
+            none_yet = f"no-producer:{reason_token(spec.unknown_reason or '')}"
             return result(
-                EnumReadingVerdict.UNKNOWN, EnumReadingOutcome.READ, [reason], []
+                EnumReadingVerdict.UNKNOWN, EnumReadingOutcome.READ, [none_yet], []
             )
 
         supplied = {item.source_id: item for item in request.sources}
