@@ -8,6 +8,8 @@ and never invokes voters itself. Ambiguous publishes retry the same command id
 that the dispatch receipt store already replays.
 """
 
+# unimported-handler-allow: the runtime loads this handler from the node contract's handler_routing (operation request_pr_review), not from a Python import
+
 from __future__ import annotations
 
 import fcntl

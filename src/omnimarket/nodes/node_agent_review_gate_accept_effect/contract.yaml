@@ -92,6 +92,9 @@ event_bus:
     - onex.cmd.omnimarket.agent-review-receipt-gate-requested.v1
   publish_topics:
     - onex.evt.omnimarket.agent-review-gate-accept-decided.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.agent-review-receipt-gate-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.agent-review-gate-accept-decided.v1
 published_events:

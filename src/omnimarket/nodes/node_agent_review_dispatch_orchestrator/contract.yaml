@@ -75,6 +75,9 @@ event_bus:
     - onex.evt.omnimarket.agent-review-failed.v1
     - onex.evt.omnimarket.agent-review-pr-trigger-decided.v1
     - onex.evt.omnimarket.agent-review-quorum-decided.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.agent-review-quorum-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.agent-review-completed.v1
   - onex.evt.omnimarket.agent-review-refused.v1
