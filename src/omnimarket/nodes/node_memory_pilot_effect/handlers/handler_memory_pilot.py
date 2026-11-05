@@ -202,6 +202,12 @@ class HandlerMemoryPilot:
 
         return BackendCognee(overlay, system_prompt=prompt)
 
+    async def close(self) -> None:
+        """Release what the backend holds (an embedded store's server process), if it holds any."""
+        closer = getattr(self._backend, "close", None)
+        if closer is not None:
+            await closer()
+
     async def _record(self, result: ModelMemoryPilotResult) -> None:
         assert result.error_code is not None
         try:

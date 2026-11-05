@@ -447,7 +447,8 @@ async def test_graphiti_with_the_lab_model_down_fails_before_touching_the_packag
     )
     result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
     _assert_typed_failure(result, bus, recorder, Code.LAB_MODEL_UNAVAILABLE)
-    assert backend._graphiti is None, "the package was never imported"
+    assert backend._store is None, "the package was never imported"
+    assert not backend._graphs
 
 
 async def test_graphiti_endpoint_off_the_allow_list_is_refused_before_any_call(

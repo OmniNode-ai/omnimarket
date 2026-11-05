@@ -164,71 +164,59 @@ def test_graphiti_telemetry_is_off_with_the_pilot_environment_and_on_without_it(
     )
 
 
-async def test_graphiti_opens_on_embedded_kuzu_and_takes_the_overlays_in_flight_cap(
+async def test_graphiti_opens_on_the_embedded_store_and_takes_the_overlays_in_flight_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("graphiti_core")
-    pytest.importorskip("kuzu")
+    pytest.importorskip("redislite")
     monkeypatch.delenv("SEMAPHORE_LIMIT", raising=False)
     overlay = make_graphiti_overlay(tmp_path / "store", cap=3)
-
-    class Answerer:
-        async def answer(self, system_prompt: str, question: str, context: str) -> str:
-            return ""
-
-    backend = BackendGraphiti(overlay, answerer=Answerer(), system_prompt="p")
-    graphiti = await backend._open()
-    assert graphiti.max_coroutines == 3
-    assert (tmp_path / "store" / "kuzu.db").exists()
-    assert type(graphiti.driver).__name__ == "PilotKuzuDriver"
-    with pytest.raises(RuntimeError, match="no cross encoder"):
-        await graphiti.cross_encoder.rank("q", ["p"])
-
-
-async def test_graphiti_search_index_builds_and_a_group_scoped_add_resolves_on_kuzu(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Two defects of graphiti-core 0.31.2 on Kuzu, each shown by its control.
-
-    The control is the unpatched Kuzu driver: it has no ``_database`` (add_episode with a
-    group id fails) and its own index build is a no-op, so the full-text search a query runs
-    has no index to read. The pilot's driver and its maintenance-operation index build fix both.
-    """
-    pytest.importorskip("kuzu")
-    kuzu_driver = pytest.importorskip("graphiti_core.driver.kuzu_driver")
-    graphiti_module = pytest.importorskip("graphiti_core")
-    monkeypatch.setenv("GRAPHITI_TELEMETRY_ENABLED", "false")
-    overlay = make_graphiti_overlay(tmp_path / "store")
-
-    class Answerer:
-        async def answer(self, system_prompt: str, question: str, context: str) -> str:
-            return ""
-
-    graphiti = await BackendGraphiti(
-        overlay, answerer=Answerer(), system_prompt="p"
-    )._open()
-    scope = graphiti._resolve_request_scope("stage1")
-    assert scope[1] is graphiti.driver, (
-        "the group id resolves to the one embedded store"
-    )
-    await graphiti.driver.graph_ops.build_indices_and_constraints(graphiti.driver)
-    rows, _, _ = await graphiti.driver.execute_query(
-        "CALL QUERY_FTS_INDEX('RelatesToNode_', 'edge_name_and_fact', 'anything', TOP := 1) "
-        "RETURN count(*) AS n"
-    )
-    assert rows[0]["n"] == 0, "the full-text index exists and is empty"
-
-    plain = kuzu_driver.KuzuDriver(db=str(tmp_path / "plain.db"))
-    control = graphiti_module.Graphiti(
-        graph_driver=plain,
-        llm_client=graphiti.llm_client,
-        embedder=graphiti.embedder,
-        cross_encoder=graphiti.cross_encoder,
-    )
-    with pytest.raises(AttributeError, match="_database"):
-        control._resolve_request_scope("stage1")
-    with pytest.raises(RuntimeError, match="edge_name_and_fact"):
-        await plain.execute_query(
-            "CALL QUERY_FTS_INDEX('RelatesToNode_', 'edge_name_and_fact', 'anything', TOP := 1) "
-            "RETURN count(*) AS n"
+    backend = BackendGraphiti(overlay, answerer=_Answerer(), system_prompt="p")
+    try:
+        graphiti = await backend._open("stage1")
+        assert graphiti.max_coroutines == 3
+        assert type(graphiti.driver).__name__ == "FalkorDriver"
+        assert graphiti.driver._database == "stage1"
+        with pytest.raises(RuntimeError, match="no cross encoder"):
+            await graphiti.cross_encoder.rank("q", ["p"])
+        assert await backend._episode_count(graphiti, "stage1") == 0, (
+            "a dataset never written reads as empty, not as an error"
         )
+    finally:
+        await backend.close()
+
+
+class _Answerer:
+    async def answer(self, system_prompt: str, question: str, context: str) -> str:
+        return ""
+
+
+async def _write_one_episode(backend: BackendGraphiti) -> None:
+    graphiti = await backend._open("stage1")
+    await graphiti.driver.execute_query(
+        "CREATE (:Episodic {group_id: $dataset_group, name: 'a'})",
+        dataset_group="stage1",
+    )
+
+
+async def test_the_embedded_store_survives_a_restart_after_the_backend_saves(
+    tmp_path: Path,
+) -> None:
+    """redislite's async close does not promise a save, so the backend saves after each document."""
+    pytest.importorskip("graphiti_core")
+    pytest.importorskip("redislite")
+    overlay = make_graphiti_overlay(tmp_path / "store")
+    first = BackendGraphiti(overlay, answerer=_Answerer(), system_prompt="p")
+    await _write_one_episode(first)
+    await first.save()
+    await first.close()
+    reopened = BackendGraphiti(overlay, answerer=_Answerer(), system_prompt="p")
+    try:
+        assert (
+            await reopened._episode_count(await reopened._open("stage1"), "stage1") == 1
+        )
+        assert (
+            await reopened._episode_count(await reopened._open("other"), "other") == 0
+        ), "another dataset is another graph of the same store"
+    finally:
+        await reopened.close()

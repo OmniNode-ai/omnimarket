@@ -144,13 +144,7 @@ class FakeGraphiti:
         self.index_builds = 0
         outer = self
 
-        class _Ops:
-            async def build_indices_and_constraints(self, driver: object) -> None:
-                outer.index_builds += 1
-
         class _Driver:
-            graph_ops = _Ops()
-
             async def execute_query(
                 self, query: str, **params: Any
             ) -> tuple[list[dict[str, int]], None, None]:
@@ -159,6 +153,9 @@ class FakeGraphiti:
                 return [{"n": held}], None, None
 
         self.driver = _Driver()
+
+    async def build_indices_and_constraints(self) -> None:
+        self.index_builds += 1
 
     async def add_episode(self, **kwargs: Any) -> None:
         if self.add_error is not None:

@@ -218,3 +218,49 @@ def test_chunks_cover_every_character_in_order_within_the_limit() -> None:
 def test_render_facts_lists_one_fact_per_line_and_drops_blanks() -> None:
     assert render_facts(["a", " ", "b"]) == "- a\n- b"
     assert render_facts([]) == ""
+
+
+async def test_graphiti_backend_saves_the_store_after_every_document_and_closes_it(
+    bus: RecordingBus,
+    recorder: RecordingRecorder,
+    tmp_path: Path,
+    lab_url: str,
+) -> None:
+    """The embedded store is written to disk document by document, so a crash loses at most one."""
+    commands: list[str] = []
+
+    class FakeServer:
+        async def execute_command(self, command: str) -> None:
+            commands.append(command)
+
+    class FakeStore:
+        client = FakeServer()
+        closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    class FixedAnswerer:
+        async def answer(self, system_prompt: str, question: str, context: str) -> str:
+            return ""
+
+    overlay = make_graphiti_overlay(tmp_path, chat_url=lab_url)
+    backend = BackendGraphiti(
+        overlay,
+        answerer=FixedAnswerer(),
+        system_prompt="frozen",
+        graphiti=FakeGraphiti(),
+    )
+    store = FakeStore()
+    backend._store = store
+    handler = HandlerMemoryPilot(
+        event_bus=bus, failure_recorder=recorder, overlay=overlay, backend=backend
+    )
+    docs = (
+        ModelMemoryPilotDocument(doc_id="a.txt", text="one"),
+        ModelMemoryPilotDocument(doc_id="b.txt", text="two"),
+    )
+    await handler.handle(_ingest(docs))
+    assert commands == ["SAVE", "SAVE"]
+    await handler.close()
+    assert store.closed
