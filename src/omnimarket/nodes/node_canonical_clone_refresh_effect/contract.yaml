@@ -24,7 +24,9 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: "0.1.0"
 description: >
   When a repository merges, syncs this host's canonical clones of it with the
-  host's own sync command and publishes one receipt per run.
+  host's own sync command and publishes one receipt per run. An empty scan
+  refreshes this host's exact repository declaration through the declared-clone
+  handler. Unreadable host coverage or a missing declared path is a refusal.
 input_model:
   name: "ModelCanonicalCloneRefreshRequest"
   module: "omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh"
@@ -94,6 +96,14 @@ declared_clone_refresh:
     class: HandlerDeclaredCloneRefresh
   input_model: omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh.ModelDeclaredCloneRefreshRequest
   output_model: omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh.ModelDeclaredCloneRefreshReceipt
+
+merge_declared_fallback:
+  hosts_overlay_key: lab_hosts.hosts
+  hosts_file_env: ONEX_LAB_RUN_HOSTS
+  scope: exact-host-and-repository
+  trigger: scan-no-clone
+  unreadable_coverage: refused
+  missing_declared_clone: refused
 
 timeouts:
   sync_timeout_seconds: 300  # Bounds the canonical clone sync subprocess.

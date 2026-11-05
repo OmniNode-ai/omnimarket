@@ -7,13 +7,30 @@ the home ``Code`` directory, outside the registry-root scan). Real git repositor
 gives each host its own HOME.
 """
 
+import asyncio
+import json
 import subprocess
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import yaml
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.delegated_test_loop.lab_run_bus import ProtocolBusMessage
+from omnimarket.nodes.node_canonical_clone_refresh_effect import (
+    CanonicalCloneRefreshHost,
+    HandlerCanonicalCloneRefreshEffect,
+    ModelRepoMerged,
+    load_canonical_clone_refresh_topics,
+    publish_repo_merged,
+)
 from omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh import (
     HandlerDeclaredCloneRefresh,
+)
+from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh import (
+    ModelCanonicalCloneRefreshRequest,
 )
 from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_refresh import (
     EnumDeclaredCloneRefusal,
@@ -23,6 +40,133 @@ from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_
 from tests.helpers.kbi_clone_coverage_layout import HomesTransport, Layout, git
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def declared_hosts_file(
+    layout: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    raw = layout.table.model_dump(mode="json")
+    for row in raw["hosts"]:
+        row["clones"][0]["path"] = str(layout.clone_path(row["name"]))
+    hosts_file = tmp_path / "hosts.yaml"
+    hosts_file.write_text(yaml.safe_dump(raw))
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(hosts_file))
+    return hosts_file
+
+
+@pytest.mark.parametrize("host_name", ["h101", "h053", "h051"])
+def test_merge_consumer_refreshes_the_declared_clone_when_scan_finds_none(
+    layout: Layout, declared_hosts_file: Path, host_name: str
+) -> None:
+    """The installed serve path must use the declared handler after an empty scan."""
+    assert layout.scan_based_refresh("h101") == []
+
+    async def scenario() -> None:
+        bus = EventBusInmemory(environment="local", group="declared-merge-test")
+        await bus.start()
+        handler = HandlerCanonicalCloneRefreshEffect(
+            [sys.executable, "-c", "pass", "{repo}"], host_name=host_name
+        )
+        host = CanonicalCloneRefreshHost(bus, handler)
+        receipts: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+
+        async def on_receipt(message: ProtocolBusMessage) -> None:
+            receipts.put_nowait(json.loads(message.value)["payload"])
+
+        unsubscribe = await bus.subscribe(
+            load_canonical_clone_refresh_topics().receipt,
+            on_message=on_receipt,
+            group_id="declared-merge-probe",
+        )
+        await host.start()
+        try:
+            await publish_repo_merged(
+                bus,
+                ModelRepoMerged(
+                    repo=layout.spec["origin_slug"],
+                    base=layout.spec["ref"],
+                    merge_sha=layout.origin_tip,
+                    pr_number=1,
+                    merged_at=datetime.now(UTC),
+                    source="test",
+                ),
+            )
+            receipt = await asyncio.wait_for(receipts.get(), timeout=10)
+            expected = "up_to_date" if host_name == "h051" else "advanced"
+            assert receipt["status"] == expected
+            assert receipt["before_sha"] == layout.start[host_name]
+            assert receipt["after_sha"] == layout.origin_tip
+            assert layout.head(host_name) == layout.origin_tip
+            for other in layout.start.keys() - {host_name}:
+                assert layout.head(other) == layout.start[other]
+        finally:
+            await host.stop()
+            await unsubscribe()
+            await bus.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_status", "detail"),
+    [
+        ("missing_path", "refused", "path_missing"),
+        ("diverged", "refused", "not_fast_forwarded"),
+        ("missing_host", "refused", "absent from the declared host table"),
+        ("missing_table", "refused", "coverage unreadable"),
+        ("invalid_table", "refused", "coverage unreadable"),
+        ("other_owner", "no_clone", "exact repository"),
+        ("scan_failed", "failed", ""),
+        ("explicit_no_clone", "advanced", "declared clone"),
+    ],
+)
+def test_merge_fallback_preserves_refusals_and_exact_host_repository_scope(
+    layout: Layout,
+    declared_hosts_file: Path,
+    case: str,
+    expected_status: str,
+    detail: str,
+) -> None:
+    host_name = "h101"
+    repo = layout.spec["origin_slug"]
+    clone = layout.clone_path(host_name)
+    code = "pass"
+    if case == "missing_path":
+        clone.rename(clone.with_name("saved-clone"))
+    elif case == "diverged":
+        (clone / "local.txt").write_text("local\n")
+        git(clone, "add", "local.txt")
+        git(clone, "commit", "--quiet", "-m", "local only")
+    elif case == "missing_host":
+        host_name = "h999"
+    elif case == "missing_table":
+        declared_hosts_file.unlink()
+    elif case == "invalid_table":
+        declared_hosts_file.write_text("hosts: not-a-table\n")
+    elif case == "other_owner":
+        raw = yaml.safe_load(declared_hosts_file.read_text())
+        for row in raw["hosts"]:
+            row["clones"][0]["repo"] = f"OtherOwner/{layout.repo_dir}"
+        declared_hosts_file.write_text(yaml.safe_dump(raw))
+    elif case == "scan_failed":
+        code = "raise SystemExit(1)"
+    elif case == "explicit_no_clone":
+        code = "print('NO_CLONE')"
+    handler = HandlerCanonicalCloneRefreshEffect(
+        [sys.executable, "-c", code, "{repo}"], host_name=host_name
+    )
+    receipt = handler.handle(
+        ModelCanonicalCloneRefreshRequest(
+            repo=repo, target_sha=layout.origin_tip, events=2
+        )
+    )
+    assert receipt.status.value == expected_status
+    assert detail in receipt.message
+    assert receipt.events_coalesced == 2
+    if case not in {"missing_path", "diverged", "explicit_no_clone"}:
+        assert layout.head("h101") == layout.start["h101"]
+    assert layout.head("h053") == layout.start["h053"]
 
 
 def _handler(
