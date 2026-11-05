@@ -56,6 +56,37 @@ chores:
     present_when: ${HOME}/.cache/pre-commit
     argv: [pre-commit, gc]
     no_change: '^0 repo\(s\) removed'
+  # The lab-run passes (OMN-19998). A macOS lab host has no other job that frees ~/lab-run:
+  # h101 held 875 plugin snapshots (198 GB), 349 lane worktrees (139 GB) and 466 .ctx
+  # directories (85 GB) on 2026-11-05. Both read live processes from /proc, or from lsof and ps
+  # on macOS, never remove what a live process names, and remove nothing when neither is readable.
+  - name: lab-run-plugin-snapshots
+    description: >
+      Evicts all but the newest three snapshots per plugin under ~/lab-run/plugins, keeping any
+      snapshot a live process names.
+    present_when: ${HOME}/lab-run/plugins
+    argv:
+      - ${ONEX_DISPATCH_VENV}/bin/python
+      - -m
+      - omnimarket.nodes.node_lab_disk_growth_effect
+      - plugin-snapshots
+      - --plugins-dir
+      - ${HOME}/lab-run/plugins
+    timeout_s: 1800
+    no_change: '^plugin_snapshots=ran evicted=0 '
+  - name: lab-run-lane-worktrees
+    description: >
+      Removes lane worktrees under ~/lab-run/runs that are clean, fully pushed, named by no live
+      process and idle past the bound, and .ctx directories past seven days (bounds in
+      node_retention_cleanup's contract, retention_policy.lane_worktree_retention).
+    present_when: ${HOME}/lab-run/runs
+    argv:
+      - ${ONEX_DISPATCH_VENV}/bin/python
+      - -m
+      - omnimarket.nodes.node_retention_cleanup
+      - --lane-worktrees
+    timeout_s: 3600
+    no_change: '^lane_worktrees=ran removed=0 ctx_removed=0 '
 daemons:
   - name: landing-controller
     description: >

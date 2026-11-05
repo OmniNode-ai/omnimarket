@@ -1,6 +1,6 @@
 name: node_retention_cleanup
 version: "1.0.0"
-description: "Prunes stale records from projection tables and retires aged lab files per declarative retention policy, preserving files cited by declared readers"
+description: "Prunes stale records from projection tables, retires aged lab files while preserving files cited by declared readers, and removes finished lab-run lane worktrees per declarative retention policy"
 display_name: "Retention Cleanup"
 node_role: "effect"
 pack: "operations"
@@ -13,6 +13,7 @@ tags:
   - files
   - archive
   - reference-protection
+  - worktrees
 author: OmniNode Team
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:

@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Evict old plugin commits without exposing partially removed snapshot trees."""
+"""Evict old plugin commits without exposing partially removed snapshot trees.
+
+Live references come from the host's process table: /proc on Linux, lsof and ps on macOS
+(read_process_references). A snapshot a live process names is never evicted, and a table that
+cannot be read evicts nothing.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +14,9 @@ import re
 import shutil as shutil
 import stat
 from collections.abc import Callable
-from contextlib import suppress
 from pathlib import Path
+
+from omnimarket.handlers.host_process_references import read_process_references
 
 from ..models import (
     ModelLabPluginSnapshotEvictRequest,
@@ -19,34 +25,6 @@ from ..models import (
 
 SNAPSHOT = re.compile(r"^(?P<plugin>.+)-[0-9a-f]{12}$")
 EVICTING = re.compile(r"^.+-[0-9a-f]{12}\.evicting\.[0-9]+$")
-
-
-def read_process_references(proc_root: Path = Path("/proc")) -> list[str] | None:
-    """Unreadable items belong to other users; a missing process table blocks eviction."""
-    if not (proc_root / "self").is_dir():
-        return None
-    references: list[str] = []
-    try:
-        processes = list(proc_root.iterdir())
-    except OSError:
-        return None
-    for process in processes:
-        if not process.name.isdigit() or not process.is_dir():
-            continue
-        for name in ("cmdline", "environ"):
-            with suppress(OSError):
-                references.extend(
-                    item.decode(errors="replace")
-                    for item in (process / name).read_bytes().split(b"\0")
-                    if item
-                )
-        links = [process / name for name in ("cwd", "root", "exe")]
-        with suppress(OSError):
-            links.extend((process / "fd").iterdir())
-        for link in links:
-            with suppress(OSError):
-                references.append(os.readlink(link))
-    return references
 
 
 # (device, inode) -> (size, link count, links inside the tree)

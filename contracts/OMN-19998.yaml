@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-lab-run-disk-retention
+    statement: Host retention reclaims idle lab-run worktrees and plugin snapshots while preserving live processes and unsaved Git work.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: recorded macOS process output protects live snapshots without /proc; idle clean pushed lane trees and old contexts are removed while dirty, unpushed, recent, live and unreadable candidates remain; the contract routes a typed lane-retention request through the runtime bus -- falsifier: uv run --frozen pytest tests/nodes/test_lane_worktree_retention.py tests/nodes/node_lab_disk_growth_effect/test_plugin_snapshot_evict_macos.py -q --no-cov -n 0'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -143,6 +148,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-lab-run-disk-retention
+    description: Scoped regressions use recorded macOS lsof and ps output and scratch Git repositories to exercise retention fences. They do not assert a macOS host installation or the original controller timer criteria.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_worktree_retention.py tests/nodes/node_lab_disk_growth_effect/test_plugin_snapshot_evict_macos.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-lab-run-disk-retention-deploy
+    description: Hosted wiring smoke dispatches the typed lane-retention request through the canonical local runtime adapter and in-memory bus and observes the handler result on its declared terminal topic. Host chore installation remains unmeasured by this check.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_worktree_retention.py -q --no-cov -n 0 -k contract_bus_route
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual

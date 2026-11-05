@@ -2,7 +2,7 @@
 name: retention_cleanup
 contract_version:
   major: 1
-  minor: 5
+  minor: 6
   patch: 0
 node_type: effect
 node_version:
@@ -28,12 +28,15 @@ handler:
   input_model: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup.RetentionCleanupRequest
 
 handler_routing:
+  routing_strategy: operation_match
   handlers:
     - operation: retention_cleanup
       topic: onex.cmd.omnimarket.retention-cleanup-requested.v1
       handler:
         name: NodeRetentionCleanup
         module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
+      input_model: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup.RetentionCleanupRequest
+      output_model: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup.RetentionCleanupResult
     - operation: retention_cleanup.references
       handler:
         name: HandlerRetentionReferences
@@ -54,6 +57,12 @@ handler_routing:
         Gate on retention_policy.schedule.run_interval_seconds elapsed since
         the last scheduled run; when due, run retention_cleanup against the
         database in retention_policy.schedule.database_url_env.
+    - operation: lane_worktree_retention
+      handler:
+        name: HandlerLaneWorktreeRetention
+        module: omnimarket.nodes.node_retention_cleanup.handlers.handler_lane_worktree_retention
+      input_model: omnimarket.nodes.node_retention_cleanup.models.model_lane_worktree_retention.ModelLaneWorktreeRetentionRequest
+      output_model: omnimarket.nodes.node_retention_cleanup.models.model_lane_worktree_retention.ModelLaneWorktreeRetentionResult
 
 input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"
@@ -105,6 +114,19 @@ retention_policy:
       # No index leads with window_start; the unique cursor index rises with
       # insertion, so each batch reads the oldest rows first.
       batch_order_column: projection_cursor
+  # Lane worktree retention (handler_lane_worktree_retention). The lane
+  # trees under runs_dir that file retention skips by their .git: a worktree
+  # goes when every repository in it is clean with every local commit on a
+  # remote, no live process names it (/proc, or lsof and ps on macOS) and
+  # nothing in it changed for idle_days; a <run>.ctx directory goes after
+  # ctx_keep_days (floor 7) unless a live process names it or its run tree.
+  # An unreadable process table removes nothing. Run on a host by the
+  # lab-run-lane-worktrees chore of the lab daemons overlay
+  # (`python -m omnimarket.nodes.node_retention_cleanup --lane-worktrees`).
+  lane_worktree_retention:
+    runs_dir: ~/lab-run/runs
+    idle_days: 3
+    ctx_keep_days: 7
   # File retention (OMN-17427). Paths belong to the host the timer runs on;
   # a path that is absent there is skipped. keep_days has a floor of 7: nothing
   # modified in the last week is touched. A unit (a file, or a directory matched
@@ -186,8 +208,8 @@ retention_policy:
         action: archive
         readers: [onex-remote-lane output, operator lane history]
         consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
-      # Readers: the lane's own session while it runs; onex-lane-closeout
-      # archives and removes the worktree trees (skipped here by their .git).
+      # Readers: the lane's own session while it runs. Units holding a .git
+      # entry are skipped here; lane_worktree_retention below removes them.
       - name: lab-run-lane-dirs
         path: ~/lab-run/runs
         pattern: "*"
