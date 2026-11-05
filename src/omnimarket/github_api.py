@@ -15,6 +15,7 @@ in infrastructure helpers).
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +28,8 @@ _GITHUB_REST = GITHUB_REST_URL
 _GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
 _GITHUB_API_VERSION = "2026-03-10"
 _REQUEST_TIMEOUT = 30.0
+_ASSET_DOWNLOAD_ATTEMPTS = 3
+_ASSET_RETRY_STATUSES = frozenset({502, 503, 504})
 
 _PR_GRAPHQL_QUERY = """
 query($owner: String!, $name: String!, $after: String) {
@@ -197,6 +200,9 @@ def download_release_asset(url: str, to: Path) -> None:
     The caller is responsible for deciding whether the bytes are acceptable.
     Nothing here verifies them.
 
+    Gateway failures (502, 503, 504) get at most three GET attempts, with
+    half-second then one-second delays. Other failures are returned immediately.
+
     Raises:
         GitHubApiError: On a non-https URL, or any HTTP or network failure.
     """
@@ -204,13 +210,21 @@ def download_release_asset(url: str, to: Path) -> None:
         raise GitHubApiError(f"refusing a non-https asset URL: {url}")
     to.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-            to.write_bytes(resp.read())
-    except urllib.error.HTTPError as exc:
-        raise GitHubApiError(str(exc), status_code=exc.code) from exc
-    except (urllib.error.URLError, OSError) as exc:
-        raise GitHubApiError(str(exc)) from exc
+    for attempt in range(_ASSET_DOWNLOAD_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+                to.write_bytes(resp.read())
+            return
+        except urllib.error.HTTPError as exc:
+            if (
+                exc.code not in _ASSET_RETRY_STATUSES
+                or attempt == _ASSET_DOWNLOAD_ATTEMPTS - 1
+            ):
+                raise GitHubApiError(str(exc), status_code=exc.code) from exc
+            exc.close()
+            time.sleep(0.5 * 2**attempt)
+        except (urllib.error.URLError, OSError) as exc:
+            raise GitHubApiError(str(exc)) from exc
 
 
 def rest_json(

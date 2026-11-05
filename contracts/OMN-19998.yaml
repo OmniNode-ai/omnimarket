@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: req-omn19998-release-asset-retry
+    statement: Public dashboard release downloads recover from transient gateway errors within a fixed attempt bound.
+    acceptance:
+      - id: AC13
+        statement: HTTP 502, 503 and 504 permit at most three GET attempts with 0.5 and 1 second delays; other HTTP, network and local write failures are refused immediately, HTTPS remains required, and downloaded dashboard bytes still match the repository pin.
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -158,6 +163,41 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-release-asset-retry-deploy
+    description: Hosted smoke exercises the production downloader with transient and persistent gateway responses, permanent failures and local write errors, then checks the existing dashboard checksum refusal and verified-page serving path. No lab service is needed.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_github_release_asset_retry.py tests/projection/test_dashboard_bundle_failure_omn20705.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn19998-release-asset-integration-proof
+    description: On a lab host, fetch the pinned release through the production bundle loader, verify its digest and index, and compare the public checksum sidecar to the repository pin. No cached bundle is reused.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |
+          env COMPOSE_PROJECT_NAME=landing-l27541-lab PYTHONDONTWRITEBYTECODE=1 UV_PYTHON=3.12 uv run --frozen python - <<'PY'
+          import shlex
+          import subprocess
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import ensure_bundle, load_pin
+
+          pin = load_pin()
+          sidecar = subprocess.check_output(
+              [*shlex.split("curl --fail --silent --show-error --location"), f"{pin.url}.sha256"],
+              text=True,
+              timeout=60,
+          )
+          assert sidecar.split() == [pin.sha256, pin.asset], sidecar
+          with TemporaryDirectory() as cache:
+              root = ensure_bundle(pin, cache_root=Path(cache))
+              assert (root / "index.html").is_file(), root
+          print(f"dashboard_bundle_lab_readback=PASS version={pin.version} sha256={pin.sha256} asset={pin.asset}")
+          PY
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual
