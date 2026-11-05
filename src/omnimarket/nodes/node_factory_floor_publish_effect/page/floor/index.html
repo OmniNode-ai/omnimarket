@@ -966,16 +966,24 @@ function prList(items){
 
 function renderDelegation(d, err){
   const host = el("delegBody");
-  if (!d || !Array.isArray(d.outcomes)){
-    host.innerHTML = `<p class="muted">Unread (${esc(err || "no data")}): no delegation counts are in the record, so none is drawn. The bar below stays hatched until the counts are published.</p>
+  if (!d || (d.status !== undefined && d.status !== "read") || (!d.windows && !Array.isArray(d.outcomes))){
+    host.innerHTML = `<p class="muted">Unread (${esc(err || d && d.reason || "no data")}): no delegation counts are in the record, so none is drawn. The bar below stays hatched until the counts are published.</p>
       <div class="stack unread" role="img" aria-label="Delegation outcomes are unread"></div>`;
     return;
   }
-  const total = Math.max(1, d.outcomes.reduce((a, o) => a + num(o.count), 0));
+  if (d.windows){
+    const windows = Object.entries(d.windows).map(([label, w]) => `
+      <h3>${esc(label)}: ${esc(num(w.local_runs))} local / ${esc(num(w.total_runs))} delegated runs</h3>
+      <p class="muted">${esc(whenSpan(w.start))} to ${esc(whenSpan(w.end))}; ${esc(num(w.unattributed_runs))} runs have no attempt history. Runs count once per rung they touched; rung totals can overlap.</p>
+      <ul class="list">${Object.entries(w.by_rung).map(([rung, r]) => `<li><span>${esc(rung)} · ${esc(num(r.runs))} runs</span><span>${esc(num(r.accepted_runs))} accepted · ${esc(num(r.refused_runs))} refused · ${esc(num(r.failed_runs))} failed · ${esc(num(r.unknown_runs))} unknown</span></li>`).join("")}</ul>`).join("");
+    host.innerHTML = `<p class="muted">Read ${esc(whenSpan(d.generated_at))}; positive control: ${esc(num(d.positive_control_rows))} stored events.</p>${windows}<p>${esc(d.cause || "")}</p>`;
+    return;
+  }
+  const total = d.outcomes.reduce((a, o) => a + num(o.count), 0);
   const w = d.window || {};
   host.innerHTML = `
     <p class="muted">${esc(num(d.total, total))} delegation calls${w.start && w.end ? ` from ${whenSpan(w.start)} to ${whenSpan(w.end)}` : ""}.</p>
-    <div class="stack" role="img" aria-label="${esc(d.outcomes.map(o => num(o.count) + " " + o.label).join(", "))}">${d.outcomes.map(o => `<b style="width:${(num(o.count) / total * 100).toFixed(1)}%;background:${TONE[o.tone] || TONE.idle}"></b>`).join("")}</div>
+    <div class="stack" role="img" aria-label="${esc(d.outcomes.map(o => num(o.count) + " " + o.label).join(", "))}">${d.outcomes.map(o => `<b style="width:${(num(o.count) / Math.max(1, total) * 100).toFixed(1)}%;background:${TONE[o.tone] || TONE.idle}"></b>`).join("")}</div>
     <div class="legend">${d.outcomes.map(o => `<span><i style="background:${TONE[o.tone] || TONE.idle}"></i>${esc(num(o.count))} ${esc(o.label)}</span>`).join("")}</div>
     ${Array.isArray(d.routes) && d.routes.length ? `<ul class="list">${d.routes.map(r => `<li><span>${esc(r.label)}</span><span>${esc(num(r.done))} of ${esc(num(r.total))}</span></li>`).join("")}</ul>` : ""}
     ${d.why ? `<p style="font-size:.86rem">${esc(d.why)}</p>` : ""}`;
