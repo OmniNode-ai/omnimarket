@@ -4,6 +4,7 @@ name: node_factory_floor_publish_effect
 version: 1.0.0
 description: >-
   Refresh the factory floor and lab delegation projection windows, expose the delegation tick read,
+  mirror the existing runner projection's saved observation before computing the floor,
   and publish the record, local endpoint probes and pages to the lab web server. Large process-health
   series publish small floor summaries and lossless compressed detail for the Process report.
 pack: operator_tooling
