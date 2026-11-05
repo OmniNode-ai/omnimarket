@@ -159,7 +159,7 @@ def test_cloud_source_calls_the_node_on_the_declared_host(
 ) -> None:
     import subprocess
 
-    from omnimarket.nodes.node_factory_floor_effect.handlers.handler_cloud_account_source import (
+    from omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect import (
         read_cloud_account_source,
     )
     from omnimarket.nodes.node_factory_floor_effect.source_loader import load_contract
@@ -221,7 +221,7 @@ def test_cloud_source_does_not_publish_subprocess_diagnostics(
 ) -> None:
     import subprocess
 
-    from omnimarket.nodes.node_factory_floor_effect.handlers.handler_cloud_account_source import (
+    from omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect import (
         read_cloud_account_source,
     )
     from omnimarket.nodes.node_factory_floor_effect.source_loader import load_contract
