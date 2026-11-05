@@ -1,0 +1,110 @@
+schema_version: 1.0.0
+ticket_id: OMN-22240
+title: node_work_progress_alert_effect gathers lane phases from work_ledger_rows and emits one stall event and one slack-publish command per over-budget lane per evaluation
+summary: An effect node reads the CLAIM, STATUS and TERMINAL rows of every lane with a CLAIM inside the lookback on the runtime heartbeat, builds each live lane's current phase entry, calls the work progress compute node, and emits one stall event and one slack-publish command per finding under the finding's one idempotency key. Its settings come from its overlay at evaluation time.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-work-progress-alert-effect
+  statement: A lane over the budget of its phase yields one stall event and one slack-publish command under one key per evaluation; an unreadable source or a missing overlay judges nothing and is named on the evaluated event.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a stalled lane yields one stall event and one command per evaluation, both with the same key, and a second evaluation repeats the same key -- falsifier: `uv run pytest tests/nodes/node_work_progress_alert_effect -q` comparing the keys across two evaluations; a new entering row gives a new key.'
+  - id: AC2
+    statement: 'AC2: the gatherer builds phases by plan section 2.1 -- falsifier: `uv run pytest tests/nodes/node_work_progress_alert_effect -q` where a placement CLAIM then ten STATUS rows without `pr=` give `claimed` entered at the first STATUS row, a later row with `pr=` gives `pr_open` entered at it and a second `pr=` row does not move the entry, a placement CLAIM carrying `pr=` gives `pr_open` entered at that CLAIM, a lane without a CLAIM inside the lookback is not a subject, a TERMINAL removes the lane, two rows with the same `row_ts` fed in both orders select the one with the smaller `row_id` and its key, a lane with two placement CLAIMs keeps the earlier as `placed` and the later as `claimed` and leaves the subjects once the earlier ages out, the earliest CLAIM''s `parent=` is the owner even when a later CLAIM names another and an earliest CLAIM without `parent=` gives the lane id even when a later CLAIM has one, and an ignored lane id and an ignored `actor=` are not subjects.'
+  - id: AC3
+    statement: 'AC3: an unreadable source yields no stall event and no command, and the terminal event names the failure -- falsifier: `uv run pytest tests/nodes/node_work_progress_alert_effect -q` with a failing reader.'
+  - id: AC4
+    statement: 'AC4: the overlay is read at evaluation time and a missing overlay refuses the evaluation, not the wiring -- falsifier: `uv run pytest tests/nodes/node_work_progress_alert_effect -q` constructing the node with no overlay present (no error), then evaluating (refused, naming the setting).'
+  - id: AC5
+    statement: 'AC5: the command validates against the shipped `node_slack_publish_effect` contract''s input model, and the heartbeat and Slack hops meet the shipped contracts -- falsifier: `uv run pytest tests/nodes/node_work_progress_alert_effect -q` with a golden-chain test like `test_golden_chain_rides_heartbeat_and_reaches_slack`.'
+  - id: AC6
+    statement: 'AC6: the effect''s settings and the compute''s budgets come from the overlays under the in-memory and the Redpanda overlay profiles -- falsifier: `uv run pytest tests/nodes/node_work_progress_alert_effect -q` where two values of `check_interval_seconds`, `lookback_seconds`, `ignore` and one budget each change the evaluations, the subjects or the findings under each profile.'
+evidence_requirements:
+- kind: tests
+  description: Focused tests of the effect, its gatherer and its overlay; the Redpanda profile test is marked kafka and runs on a lab host.
+  command: uv run pytest tests/nodes/node_work_progress_alert_effect -q --no-cov -m 'not kafka'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22240-key
+  description: One stalled lane yields one stall event and one command with one key, a second evaluation repeats it, and a new entering row gives a new key.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_stall_emits_command.py -q --no-cov -k 'one_stall_event or second_evaluation or new_entering_row'
+    cwd: .
+  binds_ac:
+  - AC1
+- id: dod-omn22240-gatherer
+  description: The gatherer builds phases, entering rows, owner, lookback admission, TERMINAL and ignore rules by plan section 2.1.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_gather_lanes.py -q --no-cov
+    cwd: .
+  binds_ac:
+  - AC2
+- id: dod-omn22240-unreadable
+  description: A failing reader emits no stall event and no command and the evaluated event names the failure.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_unreadable_and_refused.py -q --no-cov -k 'failing_reader or unset_dsn or recovered_source'
+    cwd: .
+  binds_ac:
+  - AC3
+- id: dod-omn22240-overlay
+  description: The node constructs with no overlay and the evaluation is refused naming the setting; the overlay is read at evaluation time.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_unreadable_and_refused.py -q --no-cov -k 'no_overlay or evaluation_time or missing_budget or malformed_settings or budget_missing'
+    cwd: .
+  binds_ac:
+  - AC4
+- id: dod-omn22240-golden-chain
+  description: The command validates against the Slack node's input model, and the heartbeat and Slack hops meet the shipped contracts.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_golden_chain_work_progress_alert.py -q --no-cov
+    cwd: .
+  binds_ac:
+  - AC5
+- id: dod-omn22240-profile-in-memory
+  description: Two values of check_interval_seconds, lookback_seconds, ignore and one budget each change the evaluations, subjects or findings under the in-memory profile.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_work_progress_alert_profiles.py -q --no-cov -k in_memory_profile
+    cwd: .
+  binds_ac:
+  - AC6
+- id: dod-omn22240-interval-change
+  description: Changing check_interval_seconds in the overlay on one live node never freezes the throttle - raising 300 to 900 evaluates again once 900 s have elapsed, and lowering 900 to 300 does not emit twice inside one interval.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_work_progress_alert_effect/test_stall_emits_command.py -q --no-cov -k interval_on_a_live_node
+    cwd: .
+  binds_ac:
+  - AC6
+- id: dod-omn22240-deploy-probe
+  description: 'Deploy probe: the contract GitHub serves at the checked-out commit declares the operation work_progress_alert, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_progress_alert_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "work_progress_alert" > /dev/null'
+    cwd: .
+- id: dod-omn22240-integration-proof
+  description: The pushed head ran the node's tests, the Redpanda overlay profile test included, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-hand-stall-t2-OMN-22240-0445 -- uv run --frozen pytest tests/nodes/node_work_progress_alert_effect -q --no-cov
+    cwd: .

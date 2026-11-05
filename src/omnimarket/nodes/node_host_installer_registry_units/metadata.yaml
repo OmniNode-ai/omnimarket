@@ -1,6 +1,6 @@
 name: node_host_installer_registry_units
 version: "1.0.0"
-description: "Renders and installs registry module tick units, with a project path override for branch checkouts"
+description: "Renders and installs registry module tick units with branch checkouts, prepared timer environments and declared runtime inputs"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -18,7 +18,7 @@ dependencies:
   - "pydantic>=2.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["install", "launchd", "registry-unit", "branch", "effect"]
+tags: ["install", "launchd", "registry-unit", "branch", "effect", "alarm"]
 pack: "install"
 display_name: "Host Installer Registry Units"
 node_role: "effect"

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+inmemory:
+  backend_overrides:
+    event_bus: inmemory
+redpanda:
+  # The broker and client transport resolve from config/test_bus_lane.yaml and
+  # config/ci_bus_lanes.yaml on the executing lab host; no ambient broker wins.
+  backend_overrides:
+    event_bus: kafka

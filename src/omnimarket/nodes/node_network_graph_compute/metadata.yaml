@@ -1,0 +1,25 @@
+name: node_network_graph_compute
+version: "1.0.0"
+description: "Network graph compute: vertices keyed repo/name and exact topic edges from contract texts, reading every topic dialect -- no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_network_graph_compute: "omnimarket.nodes.node_network_graph_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "pydantic>=2.11.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["network-graph", "contracts", "compute", "deterministic", "OMN-22255"]
+pack: "network_graph"
+display_name: "Network Graph Compute"
+node_role: "compute"

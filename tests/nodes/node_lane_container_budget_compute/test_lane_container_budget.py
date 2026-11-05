@@ -215,3 +215,26 @@ def test_contract_names_the_shared_models_and_handler() -> None:
         raw["input_model"]["module"] == "omnimarket.models.model_lane_container_budget"
     )
     assert raw["event_bus"]["publish_topics"] == []
+
+
+def test_the_declared_target_rides_with_the_lane_reading_and_the_budget_still_judges() -> (
+    None
+):
+    """The target is where the lane is going; the verdict is still the count against the budget."""
+    with_target = ModelLaneContainerBudgetDeclaration(
+        host=HOST,
+        lane="alpha",
+        compose_project="alpha",
+        application_container_budget=3,
+        application_container_target=1,
+        infrastructure_markers=INFRASTRUCTURE,
+    )
+    verdict = judge(over_budget_fixture(), with_target)
+    (lane,) = [row for row in verdict.lanes if row.lane == "alpha"]
+    assert lane.target == 1
+    unread = judge("", with_target, read_error="ssh refused")
+    assert [row.target for row in unread.lanes] == [1]
+    assert (
+        judge(over_budget_fixture(), declaration("alpha", "alpha", 3)).lanes[0].target
+        is None
+    )

@@ -87,6 +87,17 @@ CONTRACT = (
 )
 
 
+STUB_GUEST_IP = "192.0.2.77"
+STUB_ASKPASS = "/opt/walk/askpass"
+
+
+def guest_command(argv: Sequence[str]) -> str:
+    """The unchanged guest command inside the ssh argv's `bash -lc '<command>'`."""
+    shell, flag, command = shlex.split(argv[-1])
+    assert (shell, flag) == ("bash", "-lc")
+    return command
+
+
 def request(**overrides: object) -> ModelWalkRequest:
     return ModelWalkRequest.model_validate(
         {
@@ -97,6 +108,8 @@ def request(**overrides: object) -> ModelWalkRequest:
             "local_model": "test model",
             "tart_host": "192.0.2.1",
             "vm_name": "onex-walk-1234abcd",
+            "guest_askpass_path": STUB_ASKPASS,
+            "guest_ip": STUB_GUEST_IP,
             **overrides,
         }
     )
@@ -127,6 +140,8 @@ class StubTartRunner:
         if self.scripted.get(kind):
             return self.scripted[kind].pop(0)
         stdout = ""
+        if kind == EnumWalkStepKind.TART_IP:
+            stdout = f"{STUB_GUEST_IP}\n"
         if kind in (EnumWalkStepKind.GUEST_RUN_SCRIPT, EnumWalkStepKind.GUEST_READ_LOG):
             stdout = self.log
         if kind in (
@@ -215,6 +230,7 @@ def test_receipt_has_every_field_typed() -> None:
         "hand_fix_steps",
         "started_at",
         "finished_at",
+        "status",
     }
     assert isinstance(receipt.vm_spec, ModelVmSpec)
     assert (receipt.vm_spec.cpu, receipt.vm_spec.memory_gb) == (4, 8)
@@ -435,10 +451,17 @@ def test_builders_quote_flags_and_use_login_shell() -> None:
     )
     for kind in EnumWalkStepKind:
         argv = walk.build_step_argv(kind, req)
-        assert argv[0] == "~/.local/bin/tart"
         if kind.value.startswith("guest_"):
-            assert argv[1:5] == ("exec", req.vm_name, "bash", "-lc")
-    command = walk.build_step_argv(EnumWalkStepKind.GUEST_RUN_SCRIPT, req)[-1]
+            assert argv[0] == "env"
+            assert argv[3] == "ssh"
+            assert argv[-2] == f"{req.guest_user}@{STUB_GUEST_IP}"
+            assert "exec" not in argv
+            assert guest_command(argv)
+        else:
+            assert argv[0] == "~/.local/bin/tart"
+    command = guest_command(
+        walk.build_step_argv(EnumWalkStepKind.GUEST_RUN_SCRIPT, req)
+    )
     tokens = shlex.split(command)
     assert tokens[tokens.index("--provider") + 1] == "local,ollama"
     assert tokens[tokens.index("--ollama-model") + 1] == "qwen; echo oops"
@@ -532,7 +555,7 @@ def test_dashboard_shell_preserves_auth_query_without_printing_it(
         if projections
         else EnumWalkStepKind.GUEST_DASHBOARD_PROBE_ROOT
     )
-    command = walk.build_step_argv(kind, walk.resolve_request(request()))[-1]
+    command = guest_command(walk.build_step_argv(kind, walk.resolve_request(request())))
     prefix = 'curl() { printf "%s" "${!#}" > "$HOME/curl-target"; printf 200; }; '
     completed = subprocess.run(
         ["bash", "-c", prefix + command],
@@ -665,9 +688,68 @@ def test_cli_prints_receipt(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = StubTartRunner()
-    monkeypatch.setattr(runtime, "HandlerSshTart", lambda _host: runner)
+    monkeypatch.setattr(walk, "HandlerSshTart", lambda _host: runner)
     monkeypatch.setattr("sys.argv", ["walk", "--input", request().model_dump_json()])
     assert runtime.main() == 0
     receipt = ModelWalkReceipt.model_validate_json(capsys.readouterr().out)
     assert receipt.outcome == EnumWalkOutcome.PASSED
     assert receipt.vm_deleted
+
+
+def test_walk_runs_through_canonical_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay the CLI failure before Tart was invoked, through the real bus adapter."""
+    from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+
+    from tests.runtime_local_compat import RuntimeLocal
+
+    runner = StubTartRunner()
+    monkeypatch.setattr(walk, "select_runner", lambda _: runner)
+    input_path = tmp_path / "input.json"
+    input_path.write_text(request().model_dump_json())
+    hosted = RuntimeLocal(
+        workflow_path=CONTRACT,
+        state_root=tmp_path / "state",
+        input_path=input_path,
+        timeout=5,
+    )
+    assert hosted.run() == EnumWorkflowResult.COMPLETED
+    assert runner.calls
+    result = hosted.handler_result
+    assert isinstance(result, ModelWalkReceipt)
+    assert result.outcome == EnumWalkOutcome.PASSED
+    assert result.vm_deleted
+
+
+def test_failed_walk_is_a_failed_run_through_canonical_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded walk: the guide-pinned script exits 3 at preflight, so the run fails."""
+    from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+
+    from tests.runtime_local_compat import RuntimeLocal
+
+    runner = StubTartRunner()
+    runner.scripted[EnumWalkStepKind.GUEST_RUN_SCRIPT] = [
+        ModelRunnerResult(
+            exit_code=3,
+            stdout="This Mac is below the minimum requirements: 17 GB free disk (needs 20)",
+            stderr="",
+        )
+    ]
+    monkeypatch.setattr(walk, "select_runner", lambda _: runner)
+    input_path = tmp_path / "input.json"
+    input_path.write_text(request().model_dump_json())
+    hosted = RuntimeLocal(
+        workflow_path=CONTRACT,
+        state_root=tmp_path / "state",
+        input_path=input_path,
+        timeout=5,
+    )
+    assert hosted.run() == EnumWorkflowResult.FAILED
+    result = hosted.handler_result
+    assert isinstance(result, ModelWalkReceipt)
+    assert result.outcome == EnumWalkOutcome.FAILED
+    assert result.vm_deleted
+    assert result.model_dump(mode="json")["status"] == "failed"

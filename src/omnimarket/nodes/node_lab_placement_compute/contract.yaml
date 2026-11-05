@@ -33,6 +33,14 @@ handler_routing:
     handler:
       name: HandlerLabPoolPlace
       module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_pool_place
+  - operation: lane_priority
+    handler:
+      name: HandlerLabLanePriority
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority
+  - operation: plugin_parity
+    handler:
+      name: HandlerLabPluginParity
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_plugin_parity
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -80,6 +88,32 @@ placement:
     max_weight: heavy
     speed: 1.0
   unit_needs: []
+# LANE PRIORITY (OMN-22124, OMN-22122). The classes a lane takes at placement, highest first (`other` last), and
+# the repositories and tickets of each. `holdback` is, per class, the most free pool slots a unit of the class
+# leaves to the classes above it that have a unit waiting; a class that holds back 0 takes any free slot. A lane
+# takes, in order: the class its caller declared, the `Class:` line of its ticket's text, the class the contract
+# lists its ticket (or its parent ticket) under, `factory_class` when its ticket's parent is a factory epic of the
+# private overlay (`lane_priority.factory_epics`), the class the contract lists its repository under, else
+# `other`. A ticket with no `Class:` line falls back down that list and the result says so. A private
+# repository's class is data of the private overlay, never of this public contract: the caller passes it as
+# `private_repos` and it is merged over the contract's.
+priority:
+  classes: [factory-unblock, factory-fix, feature, other]
+  holdback:
+    factory-unblock: 0
+    factory-fix: 1
+    feature: 2
+    other: 3
+  factory_class: factory-fix
+  repos:
+    feature: [omnibase_infra, omnibase_core, omnimarket, omniclaude, omnidash]
+  tickets: {}
+# PLUGIN PARITY (OMN-22124). An installed plugin tree is compared with its shipped revision file by file. These
+# entries directly under the install path are runtime markers Claude Code writes, never plugin content: `.in_use`
+# while a session has the plugin loaded, `.orphaned_at` once the directory is superseded. The same name at any
+# other depth still counts.
+parity:
+  ignored_top_level: [.in_use, .orphaned_at]
 metadata:
   transport_type: local
   description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data. Also place a unit on the advertising pool hosts (place), with the table and weight read through injected sources."

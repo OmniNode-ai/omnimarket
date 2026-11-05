@@ -8,11 +8,8 @@ node_version:
   major: 1
   minor: 0
   patch: 0
-description: Applies the consumer-group DELETE ACL rows this contract declares to the dev broker through the lab broker ACL reconcile command, dry run first, and reads them back through the broker listing.
-# The reconcile path. The handler writes `broker_acl_declaration` below into a
-# declaration file in the lab broker ACL reconcile command's own format and runs that
-# command with `--declaration`; the command lists the live rows, prints the diff,
-# creates only the missing rows (it never deletes a live ACL) and lists again.
+description: Aggregates declared broker ACL grants and reconciles them with the broker through SSH, listing live rows before changes and reading them back after apply.
+# The omnimarket driver is the default; an explicit request command uses the legacy path.
 broker_acl_reconcile:
   reconcile_command_env: ONEX_ACL_RECONCILE_COMMAND
   ssh_target_env: ONEX_LAB_BROKER_SSH_TARGET
@@ -45,6 +42,41 @@ broker_acl_declaration:
         - {resource_type: GROUP, pattern: PREFIXED, name: gateway-canary-probe-, operation: DELETE}
         - {resource_type: GROUP, pattern: PREFIXED, name: "local.${ONEX_ACL_FLEET_PACKAGE}.host_drift_fleet.h", operation: DELETE}
         - {resource_type: GROUP, pattern: PREFIXED, name: onex.gateway-session., operation: DELETE}  # consumer-group name prefix, not a topic
+broker_topics:
+  - name: onex.cmd.omnimarket.host-layer-requested.v1
+    cleanup_policy: delete
+    retention_ms: 604800000
+    partitions: 1
+  - name: onex.evt.omnimarket.host-layer-decided.v1
+    cleanup_policy: compact
+    partitions: 1
+  - name: onex.evt.omnimarket.host-desired-state.v1
+    cleanup_policy: compact
+    partitions: 1
+  - name: onex.evt.omnimarket.host-observed-state.v1
+    cleanup_policy: compact
+    partitions: 1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DESIRED_PUBLISHER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: DESCRIBE}
+      - {resource_type: TRANSACTIONAL_ID, pattern: LITERAL, name: host-desired-state-publisher, operation: WRITE}
+      - {resource_type: TRANSACTIONAL_ID, pattern: LITERAL, name: host-desired-state-publisher, operation: DESCRIBE}
+      - {resource_type: CLUSTER, pattern: LITERAL, name: kafka-cluster, operation: IDEMPOTENT_WRITE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: host-desired-state-publisher., operation: READ}
+  - principal: "${ONEX_ACL_LAYER_REQUEST_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-layer-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-layer-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-desired-state.v1, operation: DESCRIBE}
 input_model:
   name: ModelBrokerAclReconcileRequest
   module: omnimarket.models.broker_acl_reconcile

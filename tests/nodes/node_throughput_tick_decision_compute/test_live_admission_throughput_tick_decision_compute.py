@@ -322,3 +322,163 @@ def test_a_transient_probe_failure_keeps_the_rerun_advice() -> None:
     assert fix.startswith("rerun the tick; if the probe stays unreadable")
     assert "onex_lab_run.py --hosts" in fix
     assert "authorized_keys" not in fix
+
+
+# OMN-17427: recorded 2026-11-03. h101 had read UNREADABLE for 163 consecutive ticks (rbs@lab-hop-1) and h053 for 113
+# (rbs@hp-gen9), each `cause=AUTH-REFUSED`; no rerun changes a file on the refusing hop, so the FIX names its owner.
+@pytest.mark.parametrize(
+    ("name", "ticks", "error"),
+    [
+        (
+            "h101",
+            163,
+            "rc=255 via=lab-hop-1 rbs@lab-hop-1: Permission denied (publickey,password,keyboard-interactive).",
+        ),
+        ("h053", 113, "rc=255 via=hp-gen9 rbs@hp-gen9: Permission denied (publickey)."),
+        ("h201", 1, "rc=255 via=lab-hop rbs@lab-hop: Too many authentication failures"),
+        (
+            "h202",
+            1,
+            "rc=255 via=lab-hop rbs@lab-hop: No supported authentication methods available",
+        ),
+    ],
+)
+def test_an_auth_refused_host_read_for_many_ticks_still_names_the_owner_and_not_a_rerun(
+    name: str, ticks: int, error: str
+) -> None:
+    assert ticks >= 1
+    adm = admission(0, claude_slots=0, codex_slots=0, probe_error=error)
+    [line] = lab_lines(run(host(name, adm=adm)))
+    fix = line.split("FIX: ", 1)[1]
+    assert "host owner must add the launching host's public key" in fix
+    assert "authorized_keys" in fix
+    assert "clears nothing" in fix
+    assert "rerun the tick" not in fix.split(";")[0]
+    assert "--hosts --lane" not in fix
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "rc=255 ssh: Could not resolve hostname h106.local: nodename nor servname provided, or not known",
+        "rc=255 ssh: Could not resolve hostname h053: Name or service not known",
+    ],
+)
+def test_a_name_unresolved_host_names_the_owner_and_says_a_rerun_clears_nothing(
+    error: str,
+) -> None:
+    adm = admission(0, claude_slots=0, codex_slots=0, probe_error=error)
+    [line] = lab_lines(run(host("h106", adm=adm)))
+    fix = line.split("FIX: ", 1)[1]
+    assert fix.startswith("the host owner must make h106's name resolvable")
+    assert "clears nothing" in fix
+    assert "--hosts --lane" not in fix
+    assert "never free and never full" in fix
+
+
+# OMN-17427: the three unreadable hosts of the 2026-11-04 tick, each from the hosts-probe receipt the same read_pool wrote
+# (`latest.json` readings, started 2026-11-04T10:36:38Z). `error` is the reading's own error text; `tag` is the receipt's
+# LAUNCHER-GAP tag. Scrubbed: the private hop and target names became lab-hop-2, h101 and h106.local. The receipt's
+# `owner:` is a role action, not a person; no receipt or host row names one.
+RECEIPT_H101 = (
+    "rc=255 via=lab-hop-2 lab@lab-hop-2: Permission denied (publickey,password,keyboard-interactive).",
+    "LAUNCHER-GAP:AUTH-REFUSED probed 1732s ago, next probe in 1868s; owner: the host's owner adds this launching host's "
+    "public key to the account's authorized_keys (refused at lab@lab-hop-2, row target h101)",
+)
+RECEIPT_H053 = (
+    "rc=255 via=hp-gen9 lab@hp-gen9: Permission denied (publickey).",
+    "LAUNCHER-GAP:AUTH-REFUSED probed 1732s ago, next probe in 1868s; owner: the host's owner adds this launching host's "
+    "public key to the account's authorized_keys (refused at lab@hp-gen9, row target h053)",
+)
+RECEIPT_H106 = (
+    "rc=255 ssh: Could not resolve hostname h106.local: nodename nor servname provided, or not known",
+    "LAUNCHER-GAP:NAME-UNRESOLVED probed 479s ago, next probe in 3121s; owner: the launching host's owner adds an ssh "
+    "alias or DNS entry that resolves the row's target, or the host's owner wakes it (refused at h106.local)",
+)
+# Not a recorded host: the SSHD-REFUSED owner action of GAP_RULES, to pin a gap the two ssh regexes do not know.
+RECEIPT_SSHD = (
+    "rc=255 ssh: connect to host h201 port 22: Connection refused",
+    "LAUNCHER-GAP:SSHD-REFUSED probed now; owner: the host's owner starts sshd, or allows this launching host's address",
+)
+
+
+def _receipt_fix(name: str, receipt: tuple[str, str] | tuple[str]) -> str:
+    adm = admission(0, claude_slots=0, codex_slots=0, probe_error=receipt[0])
+    if len(receipt) > 1:
+        adm["probe_owner"] = receipt[1]
+    [line] = lab_lines(run(host(name, adm=adm)))
+    return line.split(" | FIX: ", 1)[1]
+
+
+@pytest.mark.parametrize(
+    ("name", "receipt", "hop"),
+    [("h101", RECEIPT_H101, "lab@lab-hop-2"), ("h053", RECEIPT_H053, "lab@hp-gen9")],
+)
+def test_an_auth_refused_host_leads_with_the_receipts_owner_action_and_reads_the_receipt(
+    name: str, receipt: tuple[str, str], hop: str
+) -> None:
+    fix = _receipt_fix(name, receipt)
+    assert fix.startswith(
+        "the probe receipt names the owner action: the host's owner adds this launching host's public key to the "
+        f"account's authorized_keys (refused at {hop}"
+    )
+    assert "clears nothing" in fix
+    assert not fix.startswith("rerun the tick")
+    assert "hosts-probe/latest.json" in fix
+    assert f"{name}'s line in the readings" in fix
+    assert "not the listing `--hosts` prints" in fix
+    assert "--hosts --lane" not in fix
+
+
+def test_h106_takes_the_name_unresolved_branch_and_names_the_receipts_owner() -> None:
+    fix = _receipt_fix("h106", RECEIPT_H106)
+    assert fix.startswith(
+        "the probe receipt names the owner action: the launching host's owner adds an ssh alias or DNS entry that "
+        "resolves the row's target, or the host's owner wakes it (refused at h106.local)"
+    )
+    assert "resolves the same name and clears nothing" in fix
+    assert "rerun the tick; if the probe stays unreadable" not in fix
+    assert "--hosts --lane" not in fix
+    assert "h106's line in the readings of the hosts-probe receipt" in fix
+
+
+def test_a_gap_the_ssh_regexes_do_not_know_still_says_a_rerun_clears_nothing() -> None:
+    fix = _receipt_fix("h201", RECEIPT_SSHD)
+    assert fix.startswith(
+        "the probe receipt names the owner action: the host's owner starts sshd, or allows this launching host's address"
+    )
+    assert "reads the same gap and clears nothing" in fix
+    assert "rerun the tick; if the probe stays unreadable" not in fix
+    assert "hosts-probe/latest.json" in fix
+
+
+@pytest.mark.parametrize(
+    ("name", "receipt", "owner"),
+    [
+        (
+            "h101",
+            RECEIPT_H101[:1],
+            "the host owner must add the launching host's public key to lab-hop-2's",
+        ),
+        ("h106", RECEIPT_H106[:1], "the host owner must make h106's name resolvable"),
+    ],
+)
+def test_a_receipt_with_no_owner_keeps_the_regex_owner_and_still_reads_the_receipt(
+    name: str, receipt: tuple[str], owner: str
+) -> None:
+    fix = _receipt_fix(name, receipt)
+    assert fix.startswith(owner)
+    assert "clears nothing" in fix
+    assert f"{name}'s line in the readings of the hosts-probe receipt" in fix
+
+
+def test_an_unreadable_probe_with_no_known_gap_reads_the_receipt_not_the_hosts_listing() -> (
+    None
+):
+    fix = _receipt_fix("h201", ("rc=255 timed out after 1s",))
+    assert fix.startswith("rerun the tick; if the probe stays unreadable, run ")
+    assert "onex_lab_run.py --hosts --lane <lane>" in fix
+    assert "h201's line in the readings of the hosts-probe receipt" in fix
+    assert "same landing_placement.read_pool reading this tick used" in fix
+    assert "separate probe that can fail for unrelated reasons" in fix
+    assert "authorized_keys" not in fix

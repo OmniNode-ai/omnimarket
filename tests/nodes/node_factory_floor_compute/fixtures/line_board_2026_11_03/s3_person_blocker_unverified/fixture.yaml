@@ -1,0 +1,97 @@
+case: s3_person_blocker_unverified
+variant: observed
+observed_at: '2026-11-03T13:21:32Z'
+derivation: 'plan: the one-runtime plan at the newest plans-repository commit before observed_at; ledger:
+  CLAIM, TERMINAL, MSG, HOLD and RELEASE rows with ticket OMN-21288 or naming the cloud owner since 2026-11-03T00:00Z;
+  watcher: omnibase_infra#5401 from the live watcher record with check facts cut at observed_at (the head
+  6d80388bd44e was pushed 2026-10-27, so no later head exists)'
+overlay_file: ../line_board.yaml
+plan_path_contains:
+- one-runtime
+sources:
+  pr_watcher: present
+  plans_clone: 'present: reduced excerpt of beta/plans/2026-11-01-one-runtime-plan.md as of plans repository
+    commit e95cc5ca5dcb8f7f28d88808ff6057af30620687 (header, authority line, one task; the full plan is
+    private)'
+  goal_file: absent
+  plans_today: absent
+  linear_snapshot: absent
+  required_contexts: present
+  running_evidence: absent
+  ledger_window: 'present: 12 rows'
+ledger_rows:
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L3128
+  ts: '2026-11-03T00:36:01Z'
+  kind: MSG
+  original_sha256: e8a5b7464197cd34a9ce74232292cc024208046cc8e32de947ff573918f49d01
+  scrubbed_sha256: dff4525de1e6cc32da03d1ccab21e137126502089b63335d81f8f0de5fb7f438
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L3308
+  ts: '2026-11-03T00:52:16Z'
+  kind: CLAIM
+  original_sha256: 646efc76e91df557fdf473c9744fa61686fc4e017ad4a59694b19017b7e5cff0
+  scrubbed_sha256: 79d4893f494c56aad80478cb245e17729376426f1c456ac8b7b750e4aea51197
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L3377
+  ts: '2026-11-03T00:58:42Z'
+  kind: TERMINAL
+  original_sha256: 4d8e32941fb85190f6772d05b0701fd43c902363757a65cdb1e267632c81379c
+  scrubbed_sha256: 1a0adc3dcce37497015237927176f51bf5dd0a398260bd86709aaf5cc1ca41f9
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6780
+  ts: '2026-11-03T05:15:01Z'
+  kind: CLAIM
+  original_sha256: 447ae2c822b2710369a08523fc28a8607c8e8c08ecfa74ec5944a30bc06a0322
+  scrubbed_sha256: 366de2032394beb8884d102123a56274970c56ec43f0c471c0d6b100a9ccc8eb
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L6958
+  ts: '2026-11-03T05:43:01Z'
+  kind: TERMINAL
+  original_sha256: 8e071e6449a2c5af0141215a6ac95452372a05424a9304d9d38ff68b48c02242
+  scrubbed_sha256: 36d80a92922e198ff8e0baa4f238ff540331b8578baa9b729c615382f48c9798
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8823
+  ts: '2026-11-03T11:20:39Z'
+  kind: CLAIM
+  original_sha256: 672c7c09e03d9a7321e984953ac0c2cfb5293934fdb36f279cc97aad705b43ed
+  scrubbed_sha256: 708a4c338e00c830090703bc1a249087688267a8cfbb0e8a60441b6c7f684be7
+- ref: archive/ROLLING_WORK_LEDGER_2026-11-03-split.md:L8873
+  ts: '2026-11-03T11:24:20Z'
+  kind: TERMINAL
+  original_sha256: 1c88d59f85c88eb86220fddeae93906b86684bcbd12c9378a3761a5b79668352
+  scrubbed_sha256: a9ee7bff93ea4bc189e9c7dfcf0134125947d62d61b9b6f3161095b178a8d0ff
+- ref: ROLLING_WORK_LEDGER.md:L507
+  ts: '2026-11-03T12:18:54Z'
+  kind: CLAIM
+  original_sha256: 57d4c502fb99fda3e287d49f037698db8087891904ec0c9458709945787796ff
+  scrubbed_sha256: 52b834adc0f53d5366f3110b4524d3371c9161c717e8c613aba978cb0d43cc22
+- ref: ROLLING_WORK_LEDGER.md:L700
+  ts: '2026-11-03T12:37:13Z'
+  kind: MSG
+  original_sha256: 6f9c62236147422a447adff1da1d132a6853078bcb31aeb85bddc89c9dee8ebb
+  scrubbed_sha256: 73f630f79525c803fb985a05f395b425921e32934b2f5e954218448aae08a1ea
+- ref: ROLLING_WORK_LEDGER.md:L844
+  ts: '2026-11-03T12:52:42Z'
+  kind: TERMINAL
+  original_sha256: 98cfdce7d5cfa042dcb920658a73a0e6a517013243079c4acdbf02a978ca4196
+  scrubbed_sha256: dfb479145fe7358e99b9e72c1de2e962c1e0cd42eaa98e4e905ac378df79a251
+- ref: ROLLING_WORK_LEDGER.md:L843
+  ts: '2026-11-03T12:53:02Z'
+  kind: MSG
+  original_sha256: 43171359ade8d9630b98b6e681a150a70b1f940a42bf4e917687339cff624603
+  scrubbed_sha256: 89d50da9e1e3a31a90686735c9dd5fc7f8b876530d105027749b3aeb215d10a0
+- ref: ROLLING_WORK_LEDGER.md:L862
+  ts: '2026-11-03T12:55:53Z'
+  kind: CLAIM
+  original_sha256: 7cf6c931002e9f3e6a3eb395e4ee115d267f8c319f0ab7cd0eb28515d4d38510
+  scrubbed_sha256: 203a8ecf91156b3baea471504a5d0437a0b4b391aeb0e0d9876009a026632534
+expected:
+  stops:
+  - line: 2026-11-01-one-runtime-plan
+    kind: andon
+    evidence:
+    - pr-context omnibase_infra#5401 CI Summary
+    - pr-context omnibase_infra#5401 Hostile Review Thread Gate
+    sentence_contains: omnibase_infra#5401 CI red (2 red of 168)
+  absent:
+  - line: 2026-11-01-one-runtime-plan
+    kind: blocked-on-person
+    why: no ask row to the cloud owner names a one-runtime ticket or pull request in the window
+scrub: 'This is a public repository: private repository names, hosts, addresses and person names in every
+  stored text are replaced (private-repo-N, [scrubbed]). original_sha256 is the digest of the ledger row
+  as the ledger or its archive roll holds it; scrubbed_sha256 is the digest of the row as stored here.'

@@ -9,7 +9,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.claude_code_binding import (
+    EnumBindingKind,
     EnumClientMaxMode,
+    ModelAdditiveClientBinding,
     ModelClientBinding,
     ModelCompactionClientBinding,
 )
@@ -22,9 +24,22 @@ class ModelClientSection(BaseModel):
 
     default_max_mode: EnumClientMaxMode = Field(default=EnumClientMaxMode.OBSERVE)
     host_max_modes: dict[str, EnumClientMaxMode] = Field(default_factory=dict)
-    bindings: tuple[ModelCompactionClientBinding | ModelClientBinding, ...] = Field(
-        default=()
-    )
+    bindings: tuple[
+        ModelAdditiveClientBinding | ModelCompactionClientBinding | ModelClientBinding,
+        ...,
+    ] = Field(default=())
+
+    @model_validator(mode="after")
+    def _additive_rows_name_their_profile(self) -> ModelClientSection:
+        """An additive row is a ModelAdditiveClientBinding: a profile, a budget, a cap (OMN-22016)."""
+        for row in self.bindings:
+            if row.kind is EnumBindingKind.ADDITIVE and not isinstance(
+                row, ModelAdditiveClientBinding
+            ):
+                raise ValueError(
+                    f"additive row {row.name!r} names no profile or latency_budget_ms"
+                )
+        return self
 
     @model_validator(mode="before")
     @classmethod

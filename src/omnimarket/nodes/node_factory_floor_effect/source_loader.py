@@ -13,11 +13,13 @@ import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
@@ -38,6 +40,11 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorStoppage,
     ModelFloorTableTask,
     ModelFloorWatcher,
+    ModelLimitApiKey,
+    ModelLimitEngine,
+    ModelLimitLabRung,
+    ModelLimitToken,
+    ModelLimitTokenPool,
 )
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -839,6 +846,19 @@ def resolve_dir(environ: Mapping[str, str], env_name: str, fallback: str) -> Pat
     return Path(value) if value else Path.home() / fallback
 
 
+def resolve_host_table(
+    environ: Mapping[str, str], env_name: str, home: Path, relpath: str
+) -> Path | None:
+    """The shared lab host table: the file ``env_name`` names, else ``relpath`` under ``home`` when the floor overlay
+    declares one, else the ``lab_hosts`` overlay found through the overlay roots. None when none supplies it."""
+    value = environ.get(env_name, "").strip()
+    if value:
+        return Path(value)
+    if relpath:
+        return home / relpath
+    return find_node_overlay("lab_hosts", environ)
+
+
 def split_reading(text: str) -> list[str]:
     """Split a pool reading on the commas outside square brackets (the Claude pool cell holds commas)."""
     parts: list[str] = []
@@ -1043,6 +1063,8 @@ def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None
         for name, value in sorted(accounts.items()):
             credit = _mapping(value.get("credit"))
             rate = _mapping(value.get("rate"))
+            five_hour = _mapping(rate.get("five_hour"))
+            seven_day = _mapping(rate.get("seven_day"))
             remaining = credit.get("remaining")
             cap = value.get("cap")
             out.append(
@@ -1057,9 +1079,122 @@ def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None
                     credit_read_at=str(credit.get("read_at") or ""),
                     rate_status=str(rate.get("status") or ""),
                     rate_resets_at=str(rate.get("resets_at") or ""),
+                    rate_read_at=str(rate.get("read_at") or ""),
+                    five_hour_utilization=_limit_number(five_hour.get("utilization")),
+                    five_hour_resets_at=str(five_hour.get("resets_at") or ""),
+                    seven_day_utilization=_limit_number(seven_day.get("utilization")),
+                    seven_day_resets_at=str(seven_day.get("resets_at") or ""),
+                    credit_source=str(credit.get("source") or ""),
                 )
             )
         return tuple(out)
+
+    return _optional(read)
+
+
+def _limit_number(value: object) -> float | None:
+    return (
+        float(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else None
+    )
+
+
+def load_api_keys(path: Path) -> tuple[ModelLimitApiKey, ...] | None:
+    """Read monthly API spend without turning a missing reading into zero (OMN-22010)."""
+
+    def read() -> tuple[ModelLimitApiKey, ...]:
+        keys = json.loads(path.read_text(encoding="utf-8"))["keys"]
+        return tuple(
+            ModelLimitApiKey(
+                name=name,
+                month_spend_usd=_limit_number(value.get("month_spend_usd")),
+                read_at=str(value.get("read_at") or ""),
+                source=str(value.get("source", path.name)),
+                budget_usd=_limit_number(value.get("budget_usd")),
+            )
+            for name, value in sorted(keys.items())
+        )
+
+    return _optional(read)
+
+
+def load_engines(
+    path: Path,
+) -> tuple[
+    ModelLimitEngine | None,
+    ModelLimitEngine | None,
+    tuple[ModelLimitLabRung, ...] | None,
+]:
+    """Read subscription windows and lab smoke results, preserving unread sources."""
+
+    def read() -> tuple[
+        ModelLimitEngine | None,
+        ModelLimitEngine | None,
+        tuple[ModelLimitLabRung, ...] | None,
+    ]:
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        def engine(key: str) -> ModelLimitEngine | None:
+            if key not in data:
+                return None
+            value = data[key]
+            return ModelLimitEngine(
+                used_pct=_limit_number(value.get("used_pct")),
+                window=str(value.get("window") or ""),
+                resets_at=str(value.get("resets_at") or ""),
+                read_at=str(value.get("read_at") or ""),
+                source=str(value.get("source", path.name)),
+            )
+
+        rungs = (
+            tuple(
+                ModelLimitLabRung(
+                    name=name,
+                    available=value.get("available"),
+                    last_smoke_at=str(value.get("last_smoke_at") or ""),
+                    last_smoke_ok=value.get("last_smoke_ok"),
+                    read_at=str(value.get("read_at") or ""),
+                    source=str(value.get("source", path.name)),
+                )
+                for name, value in sorted(data["lab_rungs"].items())
+            )
+            if "lab_rungs" in data
+            else None
+        )
+        return engine("codex"), engine("glm"), rungs
+
+    return _optional(read) or (None, None, None)
+
+
+def load_token_pools(
+    directory: Path, pattern: str
+) -> tuple[ModelLimitTokenPool, ...] | None:
+    """Read only host, timestamp and token status fields from each pool's mirror."""
+
+    def pool(path: Path) -> ModelLimitTokenPool:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ModelLimitTokenPool(
+            host=data["host"],
+            read_at=str(data.get("at") or ""),
+            source=path.name,
+            tokens=tuple(
+                ModelLimitToken(
+                    label=token["label"],
+                    limited_until=token.get("until") or "",
+                    revoked=token.get("revoked", False),
+                )
+                for token in data["tokens"]
+            ),
+        )
+
+    def read() -> tuple[ModelLimitTokenPool, ...] | None:
+        pools = tuple(
+            value
+            for path in sorted(directory.glob(pattern))
+            if (value := _optional(partial(pool, path))) is not None
+        )
+        return pools or None
 
     return _optional(read)
 
@@ -1072,6 +1207,8 @@ def load_runner_fleet(path: Path) -> ModelFloorRunnerFleet | None:
 
 def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
     data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and data.get("status") == "unread":
+        raise SourceRefusedError(str(data.get("reason") or "fleet producer unread"))
     return ModelFloorRunnerFleet(
         observed_at=_utc(data["observed_at"]),
         runners=tuple(

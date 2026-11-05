@@ -36,13 +36,13 @@ set();q.addEventListener("change",set)})();
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --stop-soft:#4a2421; --idle:#4a554f;
-  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ef5b4f;
+  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ff8378;
   --belt:#0f1211; color-scheme:dark}}
 :root[data-theme="dark"]{
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --stop-soft:#4a2421; --idle:#4a554f;
-  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ef5b4f;
+  --ok-t:#5ac277; --warn-t:#e8a43a; --stop-t:#ff8378;
   --belt:#0f1211; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -68,7 +68,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var
 .hazard{height:8px;margin:0 -16px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
 .titlerow{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 20px;padding:10px 0 4px;min-width:0}
 h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
-#stamp{font-size:.8rem;line-height:1.4;color:var(--muted);min-width:0}
+#stamp{font-size:.8125rem;line-height:1.4;color:var(--muted);min-width:0}
 .banner{background:var(--stop-soft);border:1px solid var(--stop);border-radius:4px;padding:8px 12px;margin:6px 0 2px;font-size:.9rem}
 .banner[hidden]{display:none}
 
@@ -79,10 +79,12 @@ h1{font-size:1.7rem;font-weight:800;line-height:1;text-transform:uppercase}
 .tab:hover{color:var(--ink);background:color-mix(in srgb,var(--safety) 10%,transparent)}
 .tab[aria-selected="true"]{background:var(--floor);border-color:var(--rule);color:var(--ink);box-shadow:inset 0 4px 0 var(--safety);padding-top:11px;margin-bottom:-1px}
 .tab i{grid-row:span 3;width:12px;height:12px;border-radius:50%;background:var(--c,var(--idle));box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--idle)) 25%,transparent)}
-.tab i.c-none{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
+.tab i.c-none,.tab i.c-idle{background:transparent;box-shadow:none;border:1.5px dashed var(--idle)}
+.tab i.c-snap{background:var(--muted);box-shadow:none}
+.c-snap{--c:var(--muted);--ct:var(--muted)}
 .tab b{font:600 1.05rem/1.1 var(--f-display);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tab em{font:700 .875rem/1.3 var(--f-body);font-style:normal;color:var(--ct,var(--muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tab small{font-size:.78rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab small{font-size:.8125rem;line-height:1.3;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tab .short{display:none}
 
 main{min-width:0}
@@ -111,8 +113,8 @@ main{min-width:0}
 .lamp b{font:800 1.5rem/1.05 var(--f-display);letter-spacing:.02em;text-transform:uppercase}
 .lamp b small{font:600 .9rem/1.2 var(--f-display);letter-spacing:.05em;color:var(--muted);margin-left:6px}
 .lamp .st{font-size:.9rem;font-weight:700;color:var(--ct)}
-.lamp span.why{font-size:.8rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
-.key{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.8rem;color:var(--muted);align-items:center}
+.lamp span.why{font-size:.8125rem;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.key{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.8125rem;color:var(--muted);align-items:center}
 .key span{display:inline-flex;gap:6px;align-items:center}
 .key i{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--c)}
 .key i.dash-dot{background:transparent;border:2px dashed var(--idle)}
@@ -188,13 +190,13 @@ details.ghosts ul{margin:0;padding:0 14px 12px 32px;display:grid;gap:6px;font-si
 .lrow{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:8px 14px;text-decoration:none;color:inherit;border-bottom:1px dashed var(--rule)}
 .lrow:last-child{border-bottom:0}
 .lrow:hover{background:color-mix(in srgb,var(--safety) 10%,transparent)}
-.lrow .tk{font-size:.78rem;line-height:1.3;color:var(--muted);overflow-wrap:anywhere}
+.lrow .tk{font-size:.8125rem;line-height:1.3;color:var(--muted);overflow-wrap:anywhere}
 .lrow .doing{font-size:.92rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .lrow .side{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
 .chip{font:600 .875rem/1 var(--f-body);padding:3px 6px;border-radius:3px;border:1px solid var(--muted);white-space:nowrap;color:var(--muted)}
 .chip.red,.chip.stall{color:var(--stop-t);border-color:var(--stop)} .chip.green{color:var(--ok-t);border-color:var(--ok)}
 .chip.pending,.chip.warn{color:var(--warn-t);border-color:var(--warn)}
-.lrow .when{font-size:.78rem;color:var(--muted);margin-left:auto}
+.lrow .when{font-size:.8125rem;color:var(--muted);margin-left:auto}
 details.more{font-size:.88rem}
 details.more>summary{cursor:pointer;color:var(--car-edge);font-weight:600;padding:4px 0}
 details.fold{background:var(--panel);border:1px solid var(--rule);border-radius:6px}
@@ -216,7 +218,7 @@ ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10
 .lst li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:6px 0;border-bottom:1px dashed var(--rule);font-size:.9rem}
 .lst li:last-child{border-bottom:0}
 .lst li span:first-child{min-width:0;overflow-wrap:anywhere}
-.lst li small{color:var(--muted);font-size:.78rem;line-height:1.4;overflow-wrap:anywhere;text-align:right;max-width:16em}
+.lst li small{color:var(--muted);font-size:.8125rem;line-height:1.4;overflow-wrap:anywhere;text-align:right;max-width:16em}
 .lst a{color:inherit;text-decoration:none}
 .lst a:hover{text-decoration:underline}
 
@@ -226,7 +228,7 @@ ul.plain li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10
 .src.c-idle{border-left-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--idle) 30%,transparent) 6px 7px),var(--panel)}
 .src b{font-size:.88rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
 .src span{font-size:.88rem;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.src small{font-size:.78rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+.src small{font-size:.8125rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
 .fgroup{font:700 .85rem/1 var(--f-body);letter-spacing:.02em;color:var(--steel);margin:6px 0 -2px;grid-column:1/-1}
 .fgroup:first-child{margin-top:0}
 
@@ -241,7 +243,7 @@ footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
   .tab[aria-selected="true"]{padding-top:10px}
   .tab i{display:block;width:9px;height:9px;margin:0 auto 3px;box-shadow:none}
   .tab b{font-size:.85rem;letter-spacing:0;text-overflow:clip}
-  .tab em{display:block;font-size:.875rem}
+  .tab em{display:block;font-size:.875rem;white-space:normal;line-height:1.15}
   .tab small{display:none}
   .tab .long{display:none}
   .tab .short{display:inline}
@@ -250,7 +252,7 @@ footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
   .lamp{flex-basis:calc(50% - 2px);padding:10px 12px;grid-template-columns:minmax(0,1fr);gap:2px}
   .lamp i{grid-row:auto;width:10px;height:10px}
   .lamp b{font-size:1.2rem}
-  .lamp b small{display:block;margin:2px 0 0;font-size:.8rem}
+  .lamp b small{display:block;margin:2px 0 0;font-size:.8125rem}
   .pair b{font-size:2rem}
   .lst li{grid-template-columns:minmax(0,1fr)}
   .lst li small{text-align:left;max-width:none}
@@ -262,25 +264,25 @@ footer.note{font-size:.85rem;color:var(--muted);max-width:90ch}
   transform:translateX(24px);opacity:0;visibility:hidden;transition:transform .18s ease,opacity .18s ease,visibility 0s linear .18s}
 .drawer.open{transform:none;opacity:1;visibility:visible;transition:transform .18s ease,opacity .18s ease,visibility 0s}
 .drawer-head{flex:none;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
-.drawer-head h2{font-size:1.35rem;line-height:1.05;overflow-wrap:anywhere}
+.drawer-head h2{font-size:1.35rem;line-height:1.15;overflow-wrap:anywhere;text-transform:none}
 .drawer-head h2:focus{outline:none}
-.drawer-head .eyebrow{display:block;font:600 .75rem/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--steel);margin-bottom:5px}
+.drawer-head .eyebrow{display:block;font:600 .8125rem/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--steel);margin-bottom:5px}
 .drawer-close{flex:none;font:700 1.3rem/1 var(--f-body);width:40px;height:40px;border:1px solid var(--rule);border-radius:4px;background:transparent;color:var(--ink);cursor:pointer}
 .drawer-close:hover{background:color-mix(in srgb,var(--safety) 15%,transparent)}
 .drawer-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 40px;display:grid;gap:14px;align-content:start}
 .drawer-body h3{margin:4px 0 -4px;color:var(--steel)}
 .scrim{display:none}
 dl.kv{margin:0;display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:6px 12px;font-size:.86rem}
-dl.kv dt{font:600 .75rem/1.5 var(--f-body);letter-spacing:.04em;color:var(--steel)}
+dl.kv dt{font:600 .8125rem/1.5 var(--f-body);letter-spacing:.04em;color:var(--steel)}
 dl.kv dd{margin:0;overflow-wrap:anywhere}
 .dlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .dlist>li{border:1px solid var(--rule);border-radius:4px;padding:8px 10px;display:grid;gap:4px;font-size:.84rem;overflow-wrap:anywhere}
-.dlist ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.8rem}
+.dlist ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.8125rem}
 .dlist .pill{justify-self:start}
 .drawer .lrows{margin:0;border:1px solid var(--rule);border-radius:4px}
 .drawer .gauges{grid-template-columns:1fr 1fr}
 .drawer a.open-full{font-weight:600}
-a.drill{font-size:.78rem}
+a.drill{font-size:.8125rem}
 @keyframes paneIn{from{opacity:0}to{opacity:1}}
 .pane:not([hidden]){animation:paneIn .15s ease-out}
 @media (max-width:700px){
@@ -362,6 +364,32 @@ const PLAIN = [
   [new RegExp(NOT_ID + "lanes" + NOT_ID_END, "gi"), "workers"], [new RegExp(NOT_ID + "lane" + NOT_ID_END, "gi"), "worker"]
 ];
 const plain = s => PLAIN.reduce((t, [re, to]) => t.replace(re, to), String(s == null ? "" : s));
+// A task as the plan wrote it is a sentence with its number, its ticket and its falsifier. The heading is the plain words
+// of it: the number, the ticket and everything from "falsifier" on are dropped, the words are cut to a short run, and a
+// task that has no words of its own is named by its number. The record cuts a long line at 90 characters, so a heading
+// that reaches that cut loses its last, half-written word.
+const HEADING_WORDS = 8;
+function shortTask(raw, fallbackId){
+  const full = String(raw == null ? "" : raw);
+  let t = full.replace(/\s*(?:[-\u2013\u2014]{1,2}\s*)?falsifier\b.*$/i, "");
+  t = t.replace(/^\s*[A-Z]{0,3}\d+(?:\.\d+)*[a-z]?(?!\w)/, "").replace(/^(?:\s*\+\s*[A-Z]{1,3}\d+(?:\.\d+)*)+/, "");
+  t = t.replace(/\s*\([^)]*\)?/g, "").replace(/\bOMN-\d+\b/g, "");
+  t = t.replace(/^[\s.:;,\u2013\u2014-]+/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  let words = t.split(" ").filter(Boolean);
+  const cut = full.length >= 88 && words.length > 1 && !/falsifier/i.test(full) && !/\([^)]*$/.test(full);
+  if (cut) words = words.slice(0, -1);
+  const long = words.length > HEADING_WORDS;
+  const head = words.slice(0, HEADING_WORDS).join(" ").replace(/[\s.:;,]+$/, "");
+  if (head.length < 3) return fallbackId ? `Task ${fallbackId}` : "Task";
+  return head.charAt(0).toUpperCase() + head.slice(1) + (cut || long ? "\u2026" : "");
+}
+// What the record notes beside a part, in plain words: the name of the source that read it is dropped.
+function plainNote(raw){
+  const text = String(raw == null ? "" : raw);
+  const m = /^(.*?):\s*([a-z][a-z,-]*)$/.exec(text);
+  if (!m) return plain(text);
+  return plain([m[1]].concat(m[2].split(",").map(x => x === "no-ticket" ? "no ticket named" : "").filter(Boolean)).join(", "));
+}
 
 function ageText(ms){
   const m = Math.max(0, Math.round(ms / 60000));
@@ -614,14 +642,18 @@ function lineFacts(L){
   const items = stations.flatMap(s => s.items || []);
   return {stations, n, cur, items, done: items.filter(i => i.state === "done").length,
     active: items.filter(i => i.state === "active").length,
-    stopped: L.condition === "stopped"};
+    stopped: L.condition === "stopped",
+    // A line whose condition the record does not carry is unread. It is never counted as running.
+    unread: !condEntry(L.condition)};
 }
 
 // ---- One condition, one progress, one evidence row. Both pages draw these from the line's projected fields
 // (condition, blocker, progress, gates, line_evidence) and from nothing else; neither page decides scope, gate policy or completion.
 const COND = {queued: ["wait", "Queued", "○"], building: ["active", "Building", "▶"], stopped: ["stop", "Stopped", "■"], complete: ["done", "Complete", "✔"], needs_review: ["warn", "Needs review", "?"]};
+// A condition string is looked up as an own key only: a record value such as "constructor" or "toString" names no condition.
+function condEntry(key){ return Object.prototype.hasOwnProperty.call(COND, key) ? COND[key] : undefined; }
 function lineCondition(L){
-  const c = COND[L.condition];
+  const c = condEntry(L.condition);
   return c ? {key: L.condition, cls: c[0], label: c[1], icon: c[2]} : {key: "unread", cls: "idle", label: "Condition unread", icon: "?"};
 }
 function conditionPill(L){
@@ -706,6 +738,12 @@ function refusalNote(m){
 }
 
 // ---- Application containers per lane class, running of declared, from the line's own record; no record, no row.
+// The target is where the lane is going; a count at its budget is not a finished lane, so the distance is drawn beside it.
+function targetText(r){
+  if (r.target == null) return "";
+  const over = num(r.observed) - num(r.target);
+  return ` allowed, target ${fmt(num(r.target))}${over > 0 ? `, ${fmt(over)} still to remove` : ""}`;
+}
 function containersText(L){
   const c = L.application_containers;
   if (!c || typeof c !== "object") return "";
@@ -713,7 +751,7 @@ function containersText(L){
   if (!rows.length) return `<span class="unread">unread: no host could be read</span>`;
   return rows.map(r => {
     const known = r.status !== "UNKNOWN" && r.observed != null && r.budget != null;
-    return `<span title="${esc(plain([r.host, r.detail].filter(Boolean).join(" · ")))}">${esc(plain(r.lane))} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
+    return `<span title="${esc(plain([r.host, r.detail].filter(Boolean).join(" · ")))}">${esc(plain(r.lane))} ${known ? `${fmt(num(r.observed))} of ${fmt(num(r.budget))}${targetText(r)}` : `<span class="unread">unread</span>`}${r.status === "FAIL" ? " (off budget)" : ""}</span>`;
   }).join(" · ");
 }
 const lineLetter = i => "Line " + (LETTERS[i] || i + 1);
@@ -888,6 +926,7 @@ function freshRows(rec, status, health, manifest, delegation){
   flag("Factory record", "Worker receipts", s.receipts_read);
   flag("Factory record", "Cloud accounts", s.cloud_accounts_read);
   flag("Factory record", "CI runner fleet observation", s.runner_fleet_read, s.runner_fleet_cause || "no observation read");
+  flag("Factory record", "Running-on-dev evidence for merged work", s.running_evidence_read, s.merged_running_cause || "no running-on-dev evidence read");
   flag("Factory record", "Friction report", s.stoppage_report);
   flag("Factory record", "Linear issues", num(s.linear_issues) > 0, num(s.linear_issues) > 0 ? `${fmt(num(s.linear_issues))} issues read` : "");
   if (status && Array.isArray(status.steps)){
@@ -897,8 +936,9 @@ function freshRows(rec, status, health, manifest, delegation){
   flag("Factory record", "Lines declared by the overlay", !!(d && d.state === "read"), d && d.state === "read" ? `${plural(d.plan_path_contains.length, "line", "lines")} declared` : (d && d.reason) || "");
   if (health) timed("Reports and series", "Process-health series", health.generated_at, healthNote(health));
   else rows.push({group: "Reports and series", name: "Process-health series", ok: false, flag: true, note: "not published"});
-  if (delegation) timed("Reports and series", "Delegation counts", delegation.generated_at);
-  else rows.push({group: "Reports and series", name: "Delegation counts", ok: false, flag: true, note: "no node writes this file yet"});
+  // Count snapshots predate the explicit read status; an unread report never supplies freshness.
+  if (delegation && (delegation.status === undefined || delegation.status === "read")) timed("Reports and series", "Delegation counts", delegation.generated_at);
+  else rows.push({group: "Reports and series", name: "Delegation counts", ok: false, flag: true, note: delegation && delegation.reason || "lab projection read unavailable"});
   if (manifest && Array.isArray(manifest.reports)){
     timed("Reports and series", "Reports manifest", manifest.published_at);
     // The record and the series are listed above from their own files, so their manifest rows are not listed twice.
@@ -943,7 +983,7 @@ function freshnessCard(rows){
   }).join("");
   const problems = withState.filter(r => r.st !== "ok");
   const stale = withState.filter(r => r.st === "stop").length, unread = withState.filter(r => r.st === "idle").length;
-  return {stale, unread, total: withState.length, html, problems: problems.map(r => tile(r, "")).join("")};
+  return {stale, unread, total: withState.length, html, problems: problems.map(r => tile(r, "")).join(""), names: listWords(problems.map(r => plain(r.name).replace(/^([A-Z])(?=[a-z])/, c => c.toLowerCase())))};
 }
 
 // ---- Dashboard
@@ -958,6 +998,19 @@ function listWords(parts){
   return parts.length < 2 ? parts.join("") : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
 }
 
+function delegationCard(report){
+  const title = '<header><h2 id="delegationH">Delegation: local and escalated</h2><p>Real lab projection events. Runs count once per rung they touched; rung totals can overlap. Attempt outcomes are shown separately.</p></header>';
+  if (!report || report.status !== "read" || !report.windows) return `<section class="sec" aria-labelledby="delegationH">${title}<p class="unread">Unread: ${esc(report && report.reason || "lab delegation projection unavailable")}</p></section>`;
+  const stale = ageMs(report.generated_at) == null || ageMs(report.generated_at) > STALE_MIN * 60000;
+  const summaries = Object.entries(report.windows).map(([label, w]) => {
+    const rows = Object.entries(w.by_rung).map(([rung, r]) => `<tr><th>${esc(rung)}</th><td>${esc(r.runs)}</td><td>${esc(r.accepted_runs)}</td><td>${esc(r.refused_runs)}</td><td>${esc(r.failed_runs)}</td><td>${esc(r.unknown_runs)}</td></tr>`).join("");
+    const detail = w.rungs.map(r => `<tr><th>${esc(r.rung)}</th><td>${esc(r.model)}</td><td>${esc(r.host)}</td><td>${esc(r.runs)}</td><td>${esc(r.attempts)}</td><td>${esc(r.accepted)}</td><td>${esc(r.refused)}</td><td>${esc(r.failed)}</td><td>${esc(r.unknown)}</td></tr>`).join("");
+    return `<h3>${esc(label)}: ${esc(w.local_runs)} local / ${esc(w.total_runs)} delegated runs</h3><p>${esc(clock(w.start))} to ${esc(clock(w.end))}; ${esc(w.unattributed_runs)} runs have no attempt history. Terminal outcomes count for those runs; no attempts are invented.</p><div style="overflow-x:auto"><table><thead><tr><th>Rung</th><th>Runs</th><th>Accepted</th><th>Refused</th><th>Failed</th><th>Unknown</th></tr></thead><tbody>${rows}</tbody></table></div><details class="more"><summary>Models, hosts and attempt outcomes (${esc(label)})</summary><div style="overflow-x:auto"><table><thead><tr><th>Rung</th><th>Model</th><th>Host</th><th>Runs</th><th>Attempts</th><th>Accepted attempts</th><th>Refused attempts</th><th>Failed attempts</th><th>Unknown attempts</th></tr></thead><tbody>${detail}</tbody></table></div></details>`;
+  }).join("");
+  const endpoints = (report.endpoints || []).map(e => `<li>${esc(e.backend_id)} · ${esc(e.model_name)} · ${esc(e.host || "not recorded")} · ${e.diagnostic_only ? "physical probe" : "routing"}: ${esc(e.probe)}${e.checked_at ? ` at ${esc(clock(e.checked_at))}` : ""}${e.wall_seconds != null ? ` (${esc(e.wall_seconds)} s)` : ""}${e.source ? `; source: ${esc(e.source)}` : ""}</li>`).join("");
+  return `<section class="sec" id="delegation" aria-labelledby="delegationH">${title}<p class="${stale ? "unread" : "sub"}">${stale ? "STALE: " : "Read at "}${esc(clock(report.generated_at))}; positive control: ${esc(report.positive_control_rows)} stored events.</p><p>Newest local run: ${esc(report.latest_local ? clock(report.latest_local) : "never recorded")}</p><p>${esc(report.cause)}</p>${summaries}<h3>Local chat endpoint calls</h3><p>These checks use the production call handler. Unbound means no endpoint is configured, so a call cannot be sent; it does not measure physical server availability. Probes are excluded from traffic counts.</p><ul>${endpoints}</ul></section>`;
+}
+
 function renderDashboard(p){
   const rec = p.record, status = p.status, health = p.health;
   const floor = Object.assign({machines: [], lanes: [], cloud: null, shipped: [], waiting: [], stoppages: []}, rec.floor || {});
@@ -967,6 +1020,8 @@ function renderDashboard(p){
   const absent = slots.map((s, i) => ({slot: s, i})).filter(x => !x.slot.line);
   const facts = real.map(x => lineFacts(x.slot.line));
   const stoppedN = facts.filter(f => f.stopped).length;
+  const unreadL = facts.filter(f => f.unread).length;
+  const readL = facts.length - unreadL;
   const missing = absent.length;
 
   const ms = floor.machines || [], lanes = floor.lanes || [];
@@ -989,32 +1044,43 @@ function renderDashboard(p){
   // The verdict: one sentence, then what needs a person.
   const parts = [];
   if (stoppedN) parts.push(`${plural(stoppedN, "line is", "lines are")} stopped`);
+  if (unreadL) parts.push(`${plural(unreadL, "line is", "lines are")} not read`);
   if (stalled) parts.push(`${plural(stalled, "worker has", "workers have")} gone quiet`);
   if (redLanes) parts.push(`${plural(redLanes, "change is", "changes are")} failing checks`);
   if (fresh.stale) parts.push(`${plural(fresh.stale, "source is", "sources are")} out of date`);
   if (fresh.unread) parts.push(`${plural(fresh.unread, "source is", "sources are")} not read`);
   if (unreadM) parts.push(`${plural(unreadM, "machine is", "machines are")} not read`);
-  const needsPerson = stoppedN || stalled || redLanes;
-  const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : "ok";
+  // No line read at all is never Running: the verdict is grey, not green.
+  const vcls = stoppedN || redLanes ? "stop" : parts.length ? "warn" : real.length ? "ok" : "idle";
   const needs = [];
+  // Needs you holds only what the operator decides. What the workers and the publish machinery handle is listed apart.
+  const handled = [];
   real.forEach(x => {
     const f = lineFacts(x.slot.line);
     if (!f.stopped) return;
     const L = x.slot.line;
     const why = L.blocker && L.blocker.reason ? String(L.blocker.reason).replace(/[:\s]+$/, "") : "";
-    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: whoever owns this line's plan; clear the stop or fix its cause.", href: drillHref("line", safeId(L.line_id)), link: "Open this line"});
+    needs.push({what: `${lineLetter(x.i)} is stopped${why ? `: ${plain(why)}` : " and the record gives no reason"}.`, who: "Who acts: you; clear the stop or let the factory fix its cause.", href: drillHref("line", safeId(L.line_id)), link: "Open this line"});
   });
-  if (stalled) needs.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more.`, who: `Who acts: the owner of each worker, starting with ${stalledL[0].lane} (quiet for ${ageText(liveMs(stalledL[0].silent_minutes))}).`, href: drillHref("lane", safeId(stalledL[0].lane)), link: "Open the quietest worker"});
-  if (redLanes) needs.push({what: `${plural(redLanes, "change is", "changes are")} failing checks.`, who: `Who acts: the worker that wrote each change, starting with ${redL[0].lane}.`, href: drillHref("lane", safeId(redL[0].lane)), link: "Open the first failing change"});
-  if (notFresh) needs.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}.`, who: "Who acts: whoever runs the publish tick.", href: "#freshH", link: "See which sources"});
-  if (unreadM) needs.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, who: "Who acts: whoever runs the machine pool read.", href: "#baysH", link: "See the machines"});
-  const verdict = !parts.length ? "All lines running. Nothing needs you."
-    : `${needsPerson ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
-  const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : "Stopped or failing";
+  if (stalled) handled.push({what: `${plural(stalled, "worker has", "workers have")} gone quiet: nothing logged for ${floor.stall_minutes || "the stall"} minutes or more, the longest ${ageText(liveMs(stalledL[0].silent_minutes))}.`, href: drillHref("lane", safeId(stalledL[0].lane)), link: "Open the quietest worker"});
+  if (redLanes) handled.push({what: `${plural(redLanes, "change is", "changes are")} failing checks; the worker that wrote each one fixes it.`, href: drillHref("lane", safeId(redL[0].lane)), link: "Open the first failing change"});
+  if (unreadL) handled.push({what: `${plural(unreadL, "line is", "lines are")} not read: the record carries no condition for ${unreadL === 1 ? "it" : "them"}, so ${unreadL === 1 ? "it is" : "they are"} not counted as running.`, href: "#linesH", link: "See the lines"});
+  if (notFresh) handled.push({what: `${plural(notFresh, "source is", "sources are")} ${fresh.stale && fresh.unread ? "not read or out of date" : fresh.stale ? "out of date" : "not read"}: ${fresh.names}.`, href: "#freshH", link: "See which sources"});
+  if (unreadM) handled.push({what: `${plural(unreadM, "machine is", "machines are")} not read, so its workers cannot be counted.`, href: "#baysH", link: "See the machines"});
+  // A planned line with no plan file has nothing to run, so it is named and never counted in "running".
+  const planned = missing ? `${plural(missing, "planned line has", "planned lines have")} no plan file yet` : "";
+  const verdict = !parts.length
+    ? (!real.length ? `No line is read${planned ? `: ${planned}` : ""}. Nothing needs you.`
+      : planned ? `${plural(real.length, "line is", "lines are")} running; ${planned}. Nothing needs you.`
+      : "All lines running. Nothing needs you.")
+    : `${needs.length ? "Needs attention" : "Needs a look"}: ${listWords(parts)}.`;
+  const verdictWord = vcls === "ok" ? "Running" : vcls === "warn" ? "Needs a look" : vcls === "idle" ? "No line read" : "Stopped or failing";
 
   const board = [];
   board.push(slots.length
-    ? lamp("lines", stoppedN ? "stop" : real.length ? "ok" : "idle", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", stoppedN ? "Stopped" : real.length ? "Running" : "No data", missing ? `${plural(missing, "declared line has", "declared lines have")} no plan file yet` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`)
+    ? (unreadL
+      ? lamp("lines", stoppedN ? "stop" : readL ? "warn" : "idle", `${readL} of ${slots.length}`, "lines read", stoppedN ? "Stopped" : readL ? "Needs a look" : "Not read", `${plural(unreadL, "line is", "lines are")} not read and not counted as running${stoppedN ? `; ${stoppedN} of the ${readL} read ${stoppedN === 1 ? "is" : "are"} stopped` : ""}`)
+      : lamp("lines", stoppedN ? "stop" : real.length ? "ok" : "idle", `${stoppedN} of ${slots.length}`, stoppedN === 1 ? "line stopped" : "lines stopped", stoppedN ? "Stopped" : real.length ? "Running" : "No data", missing ? `${plural(missing, "declared line has", "declared lines have")} no plan file yet` : `${facts.length} read, ${plural(facts.reduce((a, f) => a + f.active, 0), "part", "parts")} being built`))
     : lamp("lines", "idle", "Lines", "not read", "No data", "The record holds no lines"));
   board.push(lamp("workers", stalled ? "warn" : lanes.length ? "ok" : "idle", `${stalled} of ${lanes.length}`, "workers gone quiet", stalled ? "Needs a look" : lanes.length ? "Running" : "No data", stalled ? `Nothing logged for ${floor.stall_minutes || "the stall"} minutes or more` : lanes.length ? "All are logging" : "No worker is live in the record"));
   board.push(lamp("changes", redLanes ? "stop" : lanes.length ? "ok" : "idle", `${redLanes}`, redLanes === 1 ? "change failing checks" : "changes failing checks", redLanes ? "Failing" : lanes.length ? "Passing" : "No data", "Changes written by live workers"));
@@ -1039,7 +1105,8 @@ function renderDashboard(p){
     <section class="verdict c-${vcls}" aria-labelledby="verdictH">
       <h2 class="sr" id="verdictH">Is anything wrong</h2>
       <p class="vs" role="status"><span class="st">${esc(verdictWord)}.</span> ${esc(verdict)}</p>
-      ${needs.length ? `<div><p class="sub">Needs you</p><ol class="needs">${needs.slice(0, 5).map(n => `<li><span>${esc(plain(n.what))}</span><span class="who">${esc(plain(n.who))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : ""}
+      ${needs.length ? `<div><p class="sub">Needs you</p><ol class="needs">${needs.slice(0, 5).map(n => `<li><span>${esc(plain(n.what))}</span><span class="who">${esc(plain(n.who))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : `<p class="sub">Needs you: nothing</p>`}
+      ${handled.length ? `<div><p class="sub">The factory is handling these, no action from you</p><ol class="needs">${handled.slice(0, 6).map(n => `<li><span>${esc(plain(n.what))}</span><a href="${esc(n.href)}">${esc(n.link)}</a></li>`).join("")}</ol></div>` : ""}
     </section>
     <div class="board" role="list" aria-label="Right now">${board.join("")}</div>
     <div class="key" aria-label="What the lamp colours mean"><span><i style="--c:var(--ok)"></i>green: running as expected</span><span><i style="--c:var(--warn)"></i>amber: needs a look</span><span><i style="--c:var(--stop)"></i>red: stopped or failing</span><span><i class="dash-dot"></i>grey dashed: no data</span></div>
@@ -1059,6 +1126,7 @@ function renderDashboard(p){
         <div class="mrows">${rowsM.join("")}</div>
       </section>
     </div>
+    ${delegationCard(p.delegation)}
     <section class="sec" aria-labelledby="freshH">
       <header><h2 id="freshH">How fresh each source is</h2><p>${esc(freshLine)}. A source is out of date after ${STALE_MIN} minutes.</p></header>
       ${notFresh ? `<div class="fresh">${fresh.problems}</div>` : ""}
@@ -1066,7 +1134,7 @@ function renderDashboard(p){
     </section>
     <footer class="note">Nothing here is typed in. The page reads the factory record, the publish status, the process-health series and the reports manifest again every minute. A source that could not be read is drawn as not read, never as zero. Times are in your time zone, named beside each time; hover a time to see it in universal time.</footer>`;
 
-  return {stoppedN, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
+  return {stoppedN, unreadL, readL, missing, slots: slots.length, stale: fresh.stale, unread: fresh.unread, unreadM, stalled, redLanes};
 }
 
 // ---- What the drawer shows, read from the factory record in hand (the same files the dashboard reads).
@@ -1095,7 +1163,7 @@ function drillContent(d){
       ["Running since", whenTag(l.started_at)],
       ["Change", l.pr ? esc(l.pr) + (l.pr_title ? " · " + esc(plain(l.pr_title)) : "") + (l.pr_ci_note ? " · " + esc(plain(l.pr_ci_note)) : "") : "none written yet"],
       ["Placed on", esc(l.placement === "cloud" ? "cloud" : l.host || l.placement || "unread")],
-      ["Builds", st ? `<a href="${drillHref("st", esc(safeId(st.line.line_id) + "-" + safeId(st.station.id)), tab)}">${esc(plain(st.station.name))} · ${esc(plain(st.item ? st.item.title : ""))}</a>` : "no station on the lines holds this ticket"]
+      ["Builds", st ? `<a href="${drillHref("st", esc(safeId(st.line.line_id) + "-" + safeId(st.station.id)), tab)}">${esc(shortTask(st.station.name, st.station.id))}${st.item && st.item.title !== st.station.name ? ` · ${esc(shortTask(st.item.title, st.item.id))}` : ""}</a>` : "no station on the lines holds this ticket"]
     ])};
   }
   if (d.kind === "line"){
@@ -1105,7 +1173,7 @@ function drillContent(d){
     return {kind: "Assembly line", title: L.name, html: `<div>${carIcon()} ${conditionPill(L)}</div>`
       + progressBlock(L) + blockerBlock(L) + evidenceRow(L)
       + (containersText(L) ? `<p class="facts containers">Application containers running of declared: ${containersText(L)}</p>` : "")
-      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(plain(s.name))}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${esc(plain(i.title))} · ${esc([stateWord[i.state] || i.state || "", itemEvidence(i)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></li>`).join("")}</ul>`};
+      + `<ul class="dlist">${f.stations.map(s => `<li><a href="${drillHref("st", esc(safeId(L.line_id) + "-" + safeId(s.id)), tab)}"><b>${esc(shortTask(s.name, s.id))}</b></a><span class="pill ${s.state === "stop" ? "stop" : s.state === "done" ? "done" : s.state === "active" ? "active" : "wait"}">${esc(stateWord[s.state] || s.state || "unread")}</span><ul>${(s.items || []).map(i => `<li>${i.title === s.name ? "" : `${esc(shortTask(i.title, i.id))} · `}${esc([stateWord[i.state] || i.state || "", itemEvidence(i)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></li>`).join("")}</ul>`};
   }
   if (d.kind === "st" || d.kind === "part"){
     let hit = null;
@@ -1115,8 +1183,8 @@ function drillContent(d){
     }));
     if (!hit) return miss(d.kind, "station");
     const built = lanes.filter(l => l.station && l.station.line_id === hit.L.line_id && l.station.station_id === hit.s.id);
-    return {kind: "Station", title: hit.s.name, html: kv([["Line", `<a href="${drillHref("line", esc(safeId(hit.L.line_id)), tab)}">${esc(plain(hit.L.name))}</a>`], ["State", esc(stateWord[hit.s.state] || hit.s.state || "unread")]])
-      + `<h3>Parts</h3><ul class="dlist">${(hit.s.items || []).map(i => `<li><span>${esc(plain(i.title))}</span><span class="pill ${i.state === "stop" ? "stop" : i.state === "done" ? "done" : i.state === "active" ? "active" : "wait"}">${esc(stateWord[i.state] || i.state || "unread")}</span>${i.note || (i.prs && i.prs.length) ? `<small class="muted">${esc(plain([i.note].concat(i.prs || []).filter(Boolean).join(" · ")))}</small>` : ""}</li>`).join("") || `<li class="unread">No parts are listed.</li>`}</ul>`
+    return {kind: "Station", title: shortTask(hit.s.name, hit.s.id), html: kv([["Line", `<a href="${drillHref("line", esc(safeId(hit.L.line_id)), tab)}">${esc(plain(hit.L.name))}</a>`], ["State", esc(stateWord[hit.s.state] || hit.s.state || "unread")]])
+      + `<h3>Parts</h3><ul class="dlist">${(hit.s.items || []).map(i => `<li><span>${esc(shortTask(i.title, i.id))}</span><span class="pill ${i.state === "stop" ? "stop" : i.state === "done" ? "done" : i.state === "active" ? "active" : "wait"}">${esc(stateWord[i.state] || i.state || "unread")}</span>${i.note || (i.prs && i.prs.length) ? `<small class="muted">${esc([plainNote(i.note)].concat((i.prs || []).slice(0, 3)).filter(Boolean).join(" · ") + (i.prs && i.prs.length > 3 ? ` and ${i.prs.length - 3} more` : ""))}</small>` : ""}</li>`).join("") || `<li class="unread">No parts are listed.</li>`}</ul>`
       + `<h3>Workers building here</h3>` + (built.length ? `<div class="lrows">${built.map(l => laneRow(l, tab)).join("")}</div>` : `<p class="muted">No live worker names this station.</p>`)};
   }
   if (d.kind === "bay"){
@@ -1183,10 +1251,16 @@ function renderTabs(p, d){
   const rec = p.record;
   const recAge = Date.parse(rec.generated_at);
   tabAge.dashboard = tabAge.floor = Number.isNaN(recAge) ? {text: "Record time unreadable"} : {iso: rec.generated_at, label: "Record computed"};
-  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : d.stale || d.stalled || d.unread || d.unreadM ? "warn" : "ok",
-    d.stoppedN || d.redLanes ? "Stopped or failing" : d.stale || d.stalled || d.unread || d.unreadM ? "Needs a look" : "Running",
-    `${d.stoppedN} of ${d.slots} lines stopped`, `${d.stale} out of date and ${d.unread} not read sources`);
-  setTab("floor", d.stoppedN ? "stop" : "ok", d.stoppedN ? "Stopped" : "Running", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : "no line stopped");
+  // The tab words are short so a phone shows them whole: Stopped, Failing, Needs a look, Not read, Running.
+  const needsLook = d.stale || d.stalled || d.unread || d.unreadM || d.unreadL;
+  // No line read at all is never Running on the Dashboard tab either: it is grey, like its verdict.
+  const noneRead = !d.readL && !d.unreadL;
+  setTab("dashboard", d.stoppedN || d.redLanes ? "stop" : needsLook ? "warn" : noneRead ? "idle" : "ok",
+    d.stoppedN ? "Stopped" : d.redLanes ? "Failing" : needsLook ? "Needs a look" : noneRead ? "No line read" : "Running",
+    `${d.stoppedN} of ${d.slots} lines stopped, ${d.unreadL} not read`, `${d.stale} out of date and ${d.unread} not read sources`);
+  // A line the record does not carry a condition for is never green: all unread is grey, some unread is amber.
+  // No line read at all (only planned lines with no plan file, or none) is grey too, never Running.
+  setTab("floor", d.stoppedN ? "stop" : d.unreadL ? (d.readL ? "warn" : "idle") : d.readL ? "ok" : "idle", d.stoppedN ? "Stopped" : d.unreadL ? (d.readL ? "Needs a look" : "Not read") : d.readL ? "Running" : "No line read", `record ${sinceText(rec.generated_at)} old`, d.stoppedN ? `${d.stoppedN} lines stopped` : d.unreadL ? `${d.unreadL} lines not read` : d.readL ? (d.missing ? `no line stopped; ${d.missing} planned with no plan file` : "no line stopped") : "no line has a plan file yet");
   const h = p.health && p.health.summary;
   tabAge.process = p.health && p.health.generated_at ? {iso: p.health.generated_at, label: "Series computed"} : {text: "Series not published"};
   if (!h) setTab("process", "none", "No data", "series not published", "not read");
@@ -1200,7 +1274,7 @@ function renderTabs(p, d){
     tabAge[tab] = x ? {iso: x.as_of, label: snap ? "Snapshot from" : "Data from"} : {text: "Data not read"};
     if (!m) setTab(tab, "none", "No data", "manifest not read", "not read");
     else if (!x) setTab(tab, "idle", "No data", "data not read", r ? ((r.data || [])[0] || {}).reason || "" : "not in the manifest");
-    else setTab(tab, "none", snap ? "Snapshot" : "Data", `${sinceText(x.as_of)} old`, `data from ${utcText(x.as_of)}`);
+    else setTab(tab, "snap", snap ? "Snapshot" : "Data", `${sinceText(x.as_of)} old`, `data from ${utcText(x.as_of)}`);
   });
 }
 

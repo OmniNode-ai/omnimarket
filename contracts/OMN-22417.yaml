@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-22417
+title: GLM harness login resolves its key from the Infisical store on every lab host
+summary: The house GLM key LLM_GLM_API_KEY lives in the Infisical store folder /shared/env (dev), and a host with no local copy of it resolves it in process through the secret store node's house model key handler, which reads the store identity from the machine's secret_store block or, with none, from the addressing and identity names the host's own ~/.omnibase/.env carries. A key the store does not hold is a typed refusal that names the secret reference; a local copy of the key is never a fallback.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22417-store-resolve
+  statement: A host with no local GLM key resolves it through the secret store node.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the house model key handler resolves the key through the secret store on a host with no secret_store block and no local copy -- falsifier: uv run pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py fails when the store call is removed'
+evidence_requirements:
+- kind: tests
+  description: The house model key handler and CLI run against a local fake of the store's REST API with a host that has no local copy of the key; the store is the only place the value exists.
+  command: uv run pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22417-ac1
+  description: The house model key CLI, run on a lab host, reads LLM_GLM_API_KEY from the store and prints the outcome and the value length only. Hosted CI cannot reach the lab store, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'uv run --frozen python -m omnimarket.nodes.node_secret_store_effect.runtime_house_model_key_cli --name LLM_GLM_API_KEY | grep -F "\"outcome\":\"resolved\"" > /dev/null'
+    cwd: .
+- id: dod-omn22417-ac2
+  description: AC2 the handler resolves the key from the store for a host with no local copy, refuses naming the reference when the store lacks it, and never falls back to a local copy. With the store call removed these fail.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22417-ac3-integration-proof
+  description: The pushed head, run on a lab host, passes the house model key tests. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane glm-store-2140 -- uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov
+    cwd: .
+- id: dod-omn22417-deploy-probe
+  description: 'Deploy probe: the node GitHub serves at the checked-out commit carries the house model key handler, which the merge base does not.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_secret_store_effect/handlers/handler_house_model_key.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerHouseModelKey" > /dev/null'
+    cwd: .
+- id: dod-omn22417-runtime-regressions
+  description: The runtime CLI refuses an empty store key with exit 3 and empty stdout, and an explicitly selected home supplies both store addressing and bootstrap credentials. Runs against a local HTTP store on the hosted runner without lab credentials.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: |-
+      uv run --frozen pytest tests/unit/nodes/node_secret_store_effect/test_house_model_key.py -q --no-cov --tb=line -k 'cli or explicit_home'
+    cwd: .

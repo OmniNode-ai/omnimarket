@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Read-only git boundary for the ticket-contract prerequisite (OMN-20864)."""
+"""Git boundary for the ticket-contract prerequisite, repairing absent remote bases."""
 
 from __future__ import annotations
 
@@ -30,6 +30,36 @@ def _git(*args: str) -> str:
     return subprocess.run(
         ["git", *args], check=True, capture_output=True, text=True, timeout=60
     ).stdout.strip()
+
+
+def _resolve_base(base: str) -> str:
+    """Pin the base, fetching only an absent configured remote-tracking branch.
+
+    A single-branch worker clone need not have origin/dev, even when its objects
+    are present. An explicit destination refspec repairs that clone regardless
+    of its configured fetch refspec. Local refs and object ids are never guessed
+    into remote branches. Fetch errors propagate to the failed typed verdict.
+    """
+    try:
+        return _git("rev-parse", "--verify", f"{base}^{{commit}}")
+    except subprocess.CalledProcessError:
+        tracking = base.removeprefix("refs/remotes/")
+        remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
+        remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
+        if remote is None:
+            raise
+        branch = tracking[len(remote) + 1 :]
+        _git("check-ref-format", f"refs/heads/{branch}")
+        _git(
+            "fetch",
+            "--no-tags",
+            "--no-recurse-submodules",
+            "--no-write-fetch-head",
+            "--",
+            remote,
+            f"refs/heads/{branch}:refs/remotes/{remote}/{branch}",
+        )
+        return _git("rev-parse", "--verify", f"{base}^{{commit}}")
 
 
 # The receipt gate admits a release cut only while its diff against the merge base
@@ -104,13 +134,12 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
     """Read immutable git blobs, including when the working tree has a repair."""
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
     if title is None:
-        base_sha = _git("rev-parse", "--verify", f"{base}^{{commit}}")
         subjects = _git(
             "log",
             "--first-parent",
             "--no-merges",
             "--format=%s",
-            *_own_revisions(sha, base_sha),
+            *_own_revisions(sha, base),
         )
         branch = os.environ.get("PRE_COMMIT_LOCAL_BRANCH") or _git(
             "rev-parse", "--abbrev-ref", "HEAD"
@@ -158,7 +187,7 @@ def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
 
 
 class HandlerTicketContractPrerequisite:
-    """Run the contract-declared check without executing evidence or writing git."""
+    """Run the declared check, fetching an absent base without executing evidence."""
 
     def handle(
         self, request: ModelTicketContractPrerequisiteRequest
@@ -171,7 +200,8 @@ class HandlerTicketContractPrerequisite:
                     ),
                 )
             sha = _git("rev-parse", "--verify", f"{request.head}^{{commit}}")
-            failures = check(sha, request.base, request.title)
+            base = _resolve_base(request.base)
+            failures = check(sha, base, request.title)
             return ModelTicketContractPrerequisiteResult(
                 head_sha=sha, failures=failures
             )
