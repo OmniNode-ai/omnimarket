@@ -17,6 +17,10 @@ import pytest
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers.handler_ticket_contract_prerequisite import (
+    check,
+)
+
 pytestmark = pytest.mark.unit
 TICKET = "OMN-19998"
 ROOT = Path(__file__).resolve().parents[3]
@@ -185,9 +189,25 @@ def test_explicit_remote_base_uses_its_exact_tracking_ref(
     )
 
 
-def test_missing_local_base_is_not_guessed_into_a_remote(tmp_path: Path) -> None:
+@pytest.mark.parametrize("explicit_title", [False, True])
+def test_missing_local_base_is_not_guessed_into_a_remote(
+    tmp_path: Path, explicit_title: bool
+) -> None:
     worker = _worker(tmp_path)
-    result = _hook(worker, "--base", "dev")
+    title = ("--title", f"fix({TICKET}): change") if explicit_title else ()
+    result = _hook(worker, "--base", "dev", *title)
     assert result.returncode == 1
     assert "'fetch'" not in result.stderr
     assert _git(worker, "branch", "-r") == "origin/worker"
+
+
+def test_unreadable_base_preserves_missing_contract_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker = _worker(tmp_path, contract=False)
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(worker)
+    assert check("HEAD", "no-such-base", f"fix({TICKET}): change") == (
+        f"pull request cites {TICKET} but carries no contracts/{TICKET}.yaml",
+    )
