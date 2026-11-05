@@ -39,6 +39,11 @@ handler_routing:
     handler:
       name: HandlerReportsPublish
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_reports_publish
+  - operation: read_delegation_report
+    handler:
+      name: HandlerDelegationReport
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report.ModelDelegationReportRequest
   - operation: publish_operator_reports
     handler:
       name: HandlerOperatorAccess
@@ -75,6 +80,18 @@ descriptor:
 # The friction step keeps the 24-hour window of the rollup's report (the part with the classes the record reads).
 # Steps run in order. A step that is not required may fail: the status file records it and the page shows that
 # source as unread. The factory floor effect is last and required: without a record nothing is published.
+delegation_report:
+  local_group: local
+  fallback_group: other
+  groups:
+  - name: local
+    tiers: [local]
+    backend_prefixes: [local-]
+  - name: GLM
+    backend_contains: [claude-glm]
+    model_prefixes: [glm-]
+  - name: Codex
+    backend_contains: [codex]
 runtime:
   home_env: OMNI_HOME
   plugin_root_env: CLAUDE_PLUGIN_ROOT
@@ -90,10 +107,9 @@ runtime:
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
   process_health_relpath: .onex_state/process-health/process-health.json
-  # The delegation counts of a window, a JSON object {generated_at, window: {start, end}, total, outcomes:
-  # [{label, count, tone}], routes: [{label, done, total}], why}. No node writes it yet: when the file is absent or
-  # is not that shape nothing is published and the page draws the delegation card as unread.
-  delegation_relpath: .claude_scratch/delegation/delegation-window.json
+  # The publisher reads the lab projection through the existing delegation_health overlay.
+  # Both windows share one database clock and snapshot; unread reads replace stale counts.
+  delegation_relpath: .onex_state/delegation-report/delegation-window.json
   # Which plans are lines is the factory floor effect's overlay. This node reads that overlay's plan_path_contains
   # to tell the page which lines are declared, so a declared line with no plan is drawn as unread.
   lines_overlay:
@@ -187,6 +203,17 @@ runtime:
       remote: reports/index.html
     manifest: reports/manifest.json
     entries:
+    - id: delegation
+      title: Delegation, local and escalated
+      summary: Real delegation runs over two and twenty-four hours, by rung, model and host, with outcomes and local endpoint probes.
+      href: ../
+      refresh: tick
+      data:
+      - name: Lab delegation projection windows
+        remote: delegation.json
+        relpath: .onex_state/delegation-report/delegation-window.json
+        as_of_key: generated_at
+        publish: false
     - id: factory_floor
       title: Lean Factory Floor
       summary: Every plan as a car on its assembly line, the lab bays, the shipping dock and the stoppages.
