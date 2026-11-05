@@ -13,12 +13,14 @@ lane acts on what the job reports instead of on the job.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_job_exit_alarm import (
     HandlerJobExitAlarm,
 )
 from omnimarket.nodes.node_silent_failure_alarm_compute.models import (
     ModelJobExitAlarmRequest,
+    ModelJobExitAlarmResult,
     ModelJobExitReading,
     ModelJobExitStreak,
 )
@@ -33,7 +35,7 @@ def _tick(
     previous: tuple[ModelJobExitStreak, ...],
     now: datetime,
     finding_exits: dict[str, tuple[int, ...]] | None = None,
-):  # type: ignore[no-untyped-def]
+) -> ModelJobExitAlarmResult:
     return HandlerJobExitAlarm().handle(
         ModelJobExitAlarmRequest(
             now=now,
@@ -95,7 +97,7 @@ def test_the_same_snapshot_decides_the_same_episode() -> None:
     assert first == second
 
 
-def test_the_finding_brief_asks_the_lane_to_act_on_the_finding(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_finding_brief_asks_the_lane_to_act_on_the_finding(tmp_path: Path) -> None:
     from omnimarket.models.silent_failure_alarm import ModelJobExitEpisode
     from omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm import (
         HandlerSilentFailureAlarm,

@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: req-omn19998-job-exit-finding
+    statement: A job exit declared as a finding opens a finding episode and directs the repair lane to the reported condition.
+    acceptance:
+      - id: AC11
+        statement: 'Declared finding exits retain a failing alarm, name the finding in the episode, friction row, alert and dispatch brief, and decide deterministically; undeclared exits retain failed-exit behavior -- falsifier: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0'
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
     acceptance:
@@ -123,6 +128,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-job-exit-finding
+    description: Replay the recorded floor job exit 1 through the job-exit decision handler and the alarm effect brief writer, including undeclared exit controls. This scoped alarm regression does not assert the controller timer criteria. The test file is absent at the merge base.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_silent_failure_alarm_compute/test_job_exit_finding_exit.py -q --no-cov -n 0
+        cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
     source: manual
