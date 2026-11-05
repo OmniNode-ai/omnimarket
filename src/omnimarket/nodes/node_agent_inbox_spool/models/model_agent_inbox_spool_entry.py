@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""One spooled MSG, as written for a lane's hook shim to inject."""
+"""One spooled MSG, RELEASE or HOLD row, as written for a lane's hook shim to inject."""
+
+from typing import Literal
 
 from ._base import ModelFrozen
+
+SpoolRowType = Literal["MSG", "RELEASE", "HOLD"]
 
 
 class ModelAgentInboxSpoolEntry(ModelFrozen):
     row_id: str
+    row_type: SpoolRowType = "MSG"
     msg_id: str
     sender: str
     recipients: tuple[str, ...]

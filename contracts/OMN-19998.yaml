@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-inbox-spool-release-hold
+    statement: The per-host inbox spool delivers a RELEASE or HOLD row addressed to a lane, as it does a MSG row, so a running lane receives a row appended after its launch.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: the spool reads the MSG, RELEASE and HOLD topics its contract declares with one stable group per host; a RELEASE published while the lane runs is spooled to that lane with row_type RELEASE and raises its unread marker; a RELEASE or HOLD with no to= is unaddressed and a MSG with no to= stays malformed -- falsifier: uv run --frozen pytest tests/nodes/node_agent_inbox_spool/test_agent_inbox_spool_release_hold.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +514,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-inbox-spool-release-hold
+    description: The new spool test publishes a HOLD at launch and a RELEASE addressed to the lane while it runs, and reads both back from the lane's spool. It fails at the merge base because the spool reads only the MSG topic and refuses every row that is not a MSG. The rows are synthetic in the landing controller's RELEASE shape; no lane-side hook shim or live broker is exercised.
+    source: manual
+    binds_ac:
+      - AC13
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_agent_inbox_spool/test_agent_inbox_spool_release_hold.py -q --no-cov
         cwd: .
