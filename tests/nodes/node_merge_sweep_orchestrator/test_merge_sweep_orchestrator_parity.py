@@ -14,6 +14,7 @@ and the plan of the scenario are the old tools' own and are compared too.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,31 @@ DISPATCH = json.loads(
 RECORDED = load_recorded()
 RULES_TOKEN = "\u0000RULES\u0000"
 CASES = DISPATCH["cases"]
+
+
+def _expected(case: dict[str, Any]) -> dict[str, Any]:
+    """Retain the old recording, accounting for the diagnose repo and its CLI/brief."""
+    expected: dict[str, Any] = deepcopy(case["expected"])
+    for receipt in expected["receipts"]:
+        if receipt["kind"] != "diagnose":
+            continue
+        receipt["repo"] = "omnimarket"
+        for name in (receipt["lane"], f"{receipt['lane']}-r2"):
+            if name in expected["commands"]:
+                expected["commands"][name] = [
+                    cmd.replace(" --detach", " --repo omnimarket --detach")
+                    for cmd in expected["commands"][name]
+                ]
+            if name in expected["briefs"]:
+                expected["briefs"][name] = [
+                    text.replace(
+                        "merge-sweep diagnose lane (",
+                        "merge-sweep diagnose lane for omnimarket (",
+                        1,
+                    )
+                    for text in expected["briefs"][name]
+                ]
+    return expected
 
 
 def _sweep(case: dict[str, Any], root: Path) -> tuple[dict[str, Any], Any, list[float]]:
@@ -107,7 +133,7 @@ def test_the_recorded_sweeps_cover_every_branch() -> None:
 def test_the_sweep_matches_the_workflow(index: int, tmp_path: Path) -> None:
     case = CASES[index]
     got, _, _ = _sweep(case, tmp_path)
-    expected = case["expected"]
+    expected = _expected(case)
     assert got["events"] == expected["events"]
     expected_commands = {
         name: [cmd.replace("--model opus", "--model sonnet") for cmd in commands]
@@ -127,7 +153,10 @@ def test_the_plan_is_the_old_plan_and_each_wait_is_slept(
     _, result, slept = _sweep(case, tmp_path)
     assert result.plan is not None
     got = result.plan.model_dump(exclude_unset=True)
-    expected = RECORDED["scenarios"][case["scenario"]]["expected"]["plan"]
+    expected = deepcopy(RECORDED["scenarios"][case["scenario"]]["expected"]["plan"])
+    for lane in expected["lanes"]:
+        if lane["kind"] == "diagnose":
+            lane["repo"] = "omnimarket"
     assert {k: got[k] for k in ("lab_only", "lanes", "skipped")} == {
         k: expected[k] for k in ("lab_only", "lanes", "skipped")
     }
@@ -151,7 +180,7 @@ def test_a_broken_brief_fails_the_cases(
         original.replace("Premise", "Premise."),
     )
     misses = sum(
-        _sweep(c, tmp_path / str(i))[0]["briefs"] != c["expected"]["briefs"]
+        _sweep(c, tmp_path / str(i))[0]["briefs"] != _expected(c)["briefs"]
         for i, c in enumerate(CASES)
     )
     assert misses > 0

@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-diagnose-repository
+    statement: Every diagnose lane names omnimarket, the workflow registry repository, independently of unread controller or product facts and multiple under-floor repositories.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: unread or empty facts, a stalled controller, multiple under-floor repositories and an unread floor produce a diagnose lane with repo omnimarket; contract-routed read, plan, brief and launch pass --repo omnimarket and reach done while a start without a repository remains refused -- falsifier: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_diagnose_repo.py -q --no-cov --tb=short'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +514,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-diagnose-repository
+    description: Seven tests cover the contract-routed read, plan, brief and launch replay, a missing-repository refusal positive control and five diagnose-trigger cases. With the merge-base handler, six tests fail and the refusal control passes because the diagnose repository is unset.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_diagnose_repo.py -q --no-cov --tb=short
+        cwd: .
+  - id: dod-omn19998-diagnose-repository-deploy
+    description: Hosted deployment smoke routes recorded facts through the production read, plan, brief and launch stages with an injected launcher, checking --repo omnimarket and the done outcome. It requires no broker or lab access and asserts no live installation readback.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_merge_sweep_orchestrator/test_diagnose_repo.py -q --no-cov --tb=short -k recorded_diagnose_start_refusal
         cwd: .

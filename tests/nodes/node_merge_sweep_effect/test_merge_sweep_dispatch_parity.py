@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,31 @@ class ScriptedFiles:
 
     def read_json(self, path: str) -> dict[str, Any] | None:
         return self._runner.receipts.get(path)
+
+
+def _expected(case: dict[str, Any]) -> dict[str, Any]:
+    """Retain the old recording, accounting for the diagnose repo and its CLI/brief."""
+    expected: dict[str, Any] = deepcopy(case["expected"])
+    for receipt in expected["receipts"]:
+        if receipt["kind"] != "diagnose":
+            continue
+        receipt["repo"] = "omnimarket"
+        for name in (receipt["lane"], f"{receipt['lane']}-r2"):
+            if name in expected["commands"]:
+                expected["commands"][name] = [
+                    cmd.replace(" --detach", " --repo omnimarket --detach")
+                    for cmd in expected["commands"][name]
+                ]
+            if name in expected["briefs"]:
+                expected["briefs"][name] = [
+                    text.replace(
+                        "merge-sweep diagnose lane (",
+                        "merge-sweep diagnose lane for omnimarket (",
+                        1,
+                    )
+                    for text in expected["briefs"][name]
+                ]
+    return expected
 
 
 def _sweep(case: dict[str, Any]) -> dict[str, Any]:
@@ -229,7 +255,7 @@ def test_the_recorded_dispatch_covers_every_branch() -> None:
 def test_dispatch_matches_the_workflow(index: int) -> None:
     case = CASES[index]
     got = _sweep(case)
-    expected = case["expected"]
+    expected = _expected(case)
     assert got["events"] == expected["events"]
     # The trace predates the ceiling; keep all other command cells and effects exact.
     expected_commands = {
@@ -250,5 +276,5 @@ def test_a_broken_brief_fails_the_cases(monkeypatch: pytest.MonkeyPatch) -> None
         "STANDING_RULES",
         original.replace("Premise", "Premise."),
     )
-    misses = sum(_sweep(c)["briefs"] != c["expected"]["briefs"] for c in CASES)
+    misses = sum(_sweep(c)["briefs"] != _expected(c)["briefs"] for c in CASES)
     assert misses > 0

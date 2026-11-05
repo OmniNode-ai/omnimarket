@@ -19,6 +19,7 @@ are compared once the plan compute lists them (it does not yet).
 
 from __future__ import annotations
 
+import copy
 import random
 import re
 from pathlib import Path
@@ -197,7 +198,10 @@ def test_plan_over_the_reading_matches_the_old_plan(index: int, tmp_path: Path) 
         ModelMergeSweepPlanRequest.model_validate({"reading": reading.model_dump()})
     )
     got = planned.model_dump(exclude_unset=True)
-    expected = spec["expected"]["plan"]
+    expected = copy.deepcopy(spec["expected"]["plan"])
+    for lane in expected["lanes"]:
+        if lane["kind"] == "diagnose":
+            lane["repo"] = "omnimarket"
     set_aside = spec["expected"]["reading"]["out_of_scope_prs"]
     assert {k: got[k] for k in ("lab_only", "lanes")} == {
         k: expected[k] for k in ("lab_only", "lanes")
