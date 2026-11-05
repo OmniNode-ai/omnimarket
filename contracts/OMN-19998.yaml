@@ -138,6 +138,11 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
+  - id: req-omn19998-remote-ref-before-send
+    statement: Remote lane ref resolution checks the default branch and requested branch before send and returns typed refusals.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -153,6 +158,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-remote-ref-before-send
+    description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual

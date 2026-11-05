@@ -4,6 +4,7 @@
 
 from .model_remote_lane_effect import (
     SHA_RE,
+    EnumRemoteLaneRefRefusal,
     ModelRemoteLaneRefRequest,
     ModelRemoteLaneRefResult,
 )
@@ -18,6 +19,7 @@ from .model_remote_lane_retention import (
 
 __all__ = [
     "SHA_RE",
+    "EnumRemoteLaneRefRefusal",
     "ModelRemoteLanePublishRequest",
     "ModelRemoteLanePublishResult",
     "ModelRemoteLaneRefRequest",
