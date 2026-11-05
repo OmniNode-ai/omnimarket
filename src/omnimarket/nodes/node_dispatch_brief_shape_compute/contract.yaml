@@ -6,7 +6,7 @@
     "minor": 0,
     "patch": 0
   },
-  "description": "Refuse a remote lane before placement when its brief asks a lab lane to mint a ticket, pastes the standing rules block with no task of its own, or names a pf-drive driver lane with no PR target.",
+  "description": "Refuse a remote lane before placement when its brief asks a lab lane to mint a ticket, pastes the standing rules block with no task of its own, names a pf-drive driver lane with no PR target, or waits for a gate that does not read pass.",
   "input_model": {
     "name": "ModelDispatchBriefShapeRequest",
     "module": "omnimarket.nodes.node_dispatch_brief_shape_compute.models.model_dispatch_brief_shape"
