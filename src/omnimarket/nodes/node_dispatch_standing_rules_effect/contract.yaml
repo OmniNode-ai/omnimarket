@@ -38,6 +38,8 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 30000
+  runtime_profiles:
+    - effects
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.dispatch-standing-rules-effect-requested.v1
   terminal_events:
