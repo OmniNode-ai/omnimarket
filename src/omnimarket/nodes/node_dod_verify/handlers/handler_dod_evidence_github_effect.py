@@ -69,7 +69,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL, service_endpoint_url
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.delegated_test_loop.must_fail_models import (
     ModelPrChangedFile,
     ModelPrDiffFacts,
@@ -91,6 +91,12 @@ from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import 
     DodEvidenceLocalSource,
     canonical_clone,
     parse_repo_contract,
+)
+from omnimarket.nodes.node_dod_verify.handlers.release_index_source import (
+    PACKAGE_INDEX_JSON_URL as PACKAGE_INDEX_JSON_URL,
+)
+from omnimarket.nodes.node_dod_verify.handlers.release_index_source import (
+    pypi_release_files as pypi_release_files,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
@@ -119,12 +125,6 @@ logger = logging.getLogger(__name__)
 _GH_LIST_TIMEOUT_S = 15
 _GH_PR_TIMEOUT_S = 30
 _HANDLER_ID = "node_dod_verify.dod_evidence_github_effect"
-_DEFAULT_INDEX_TIMEOUT_S: Final[float] = 20.0
-
-# The package index this org publishes to. Read from one place so tests can
-# assert the URL shape without a network call.
-_PYPI: Final[str] = service_endpoint_url("pypi.base_url")
-PACKAGE_INDEX_JSON_URL: Final[str] = f"{_PYPI}/pypi/{{distribution}}/{{version}}/json"
 
 # ``gh pr checks --json ... state`` values that are NOT a failure. Anything
 # else (FAILURE, CANCELLED, ERROR, TIMED_OUT, ACTION_REQUIRED, PENDING,
@@ -541,51 +541,6 @@ def _exact_ticket_token_candidates(
         if pattern.search(title) or pattern.search(head_ref):
             matches.append(item)
     return matches
-
-
-def pypi_release_files(
-    distribution: str,
-    version: str,
-    *,
-    timeout_s: float = _DEFAULT_INDEX_TIMEOUT_S,
-) -> frozenset[str] | None:
-    """Read the distribution file types the index serves for one version.
-
-    ``frozenset()`` on a definite 404 (the index does not have that version).
-    Retry a transport failure once; exhausted retries and other failures return
-    ``None``, which is INDETERMINATE and never certifies.
-    """
-    url = PACKAGE_INDEX_JSON_URL.format(distribution=distribution, version=version)
-    for attempt in range(2):
-        try:
-            with urllib.request.urlopen(url, timeout=timeout_s) as response:
-                if response.status != 200:
-                    return None
-                payload = json.loads(response.read().decode("utf-8"))
-            break
-        except urllib.error.HTTPError as exc:
-            if exc.code != 404:
-                logger.warning("Release-index read returned HTTP %d", exc.code)
-            return frozenset() if exc.code == 404 else None
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            logger.warning(
-                "Release-index transport attempt %d/2 failed (%s)",
-                attempt + 1,
-                type(exc).__name__,
-            )
-            if attempt == 1:
-                return None
-        except json.JSONDecodeError:
-            return None
-    urls = payload.get("urls")
-    if not isinstance(urls, list):
-        return None
-    types = {
-        entry["packagetype"]
-        for entry in urls
-        if isinstance(entry, dict) and isinstance(entry.get("packagetype"), str)
-    }
-    return frozenset(types)
 
 
 class HandlerDodEvidenceGithubEffect:
