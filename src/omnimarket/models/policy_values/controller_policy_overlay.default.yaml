@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Shipped controller policy values (OMN-22019). Every budget, cap, window and
+# bound a controller gate judges with is one entry here, and every entry names
+# the ruling or ticket that set it. A deployment raises or lowers a value by
+# pointing OMNIMARKET_CONTROLLER_POLICY_OVERLAY at its own copy of this file;
+# the gates read it on every call, so a change needs no release.
+schema_version: controller-policy-overlay/v1
+automation_liveness_deadman:
+  # The primary's heartbeat is silent once older than this (the bus silence bound).
+  primary_heartbeat_bound_seconds: {value: 600, ruling: OMN-20807}
+  # Delivery budget the dead-man's own alarms carry (the watchdog's default).
+  delivery_budget_seconds: {value: 120, ruling: OMN-20807}
+  # The fixed hour (UTC) the canary injects its three no-work-with-demand runs.
+  canary_injection_hour_utc: {value: 5, ruling: OMN-20807}
+  # How long after the injection the episode may take to be delivered and recorded.
+  canary_receipt_budget_seconds: {value: 900, ruling: OMN-20807}
+cause_claim_ownership:
+  # How many bytes of decisions.jsonl's tail the ownership rule reads.
+  decisions_tail_bytes: {value: 8388608, ruling: OMN-19998}
+  # The controller is acting on an item only while its newest decision for it is
+  # a live lease or a dispatch this recent.
+  acting_window_seconds: {value: 1800, ruling: OMN-19998}

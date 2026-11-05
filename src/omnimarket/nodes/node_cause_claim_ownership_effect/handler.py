@@ -33,6 +33,9 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.handlers.rules_merge_sweep import leased_lanes
+from omnimarket.models.policy_values.model_controller_policy_overlay import (
+    load_controller_policy_overlay,
+)
 
 from .models import (
     ModelCauseClaimOwnershipRequest,
@@ -647,9 +650,22 @@ class HandlerCauseClaimOwnership:
         )
 
 
-DECISIONS_TAIL_BYTES = 8 << 20
-# The controller is acting on an item only while its newest decision for it is a live lease or a dispatch this recent.
-ACTING_WINDOW = timedelta(minutes=30)
+def decisions_tail_bytes() -> int:
+    """How much of decisions.jsonl's tail is read: the overlay's cap as it stands now (OMN-22019)."""
+    return load_controller_policy_overlay().cause_claim_ownership.decisions_tail_bytes.value
+
+
+def acting_window() -> timedelta:
+    """The controller is acting on an item only while its newest decision for it is a live lease or a dispatch this recent.
+
+    The overlay's window as it stands now (OMN-22019), so a raised window needs no release.
+    """
+    seconds = (
+        load_controller_policy_overlay().cause_claim_ownership.acting_window_seconds
+    )
+    return timedelta(seconds=seconds.value)
+
+
 # A worker result of one of these kinds (kind, reason or blocker_kind) is an attempt that never ran.
 NEVER_RAN = ("lab_capacity_unavailable", "host_tools_refused")
 
@@ -688,7 +704,7 @@ def _tail_lines(path: Path, size: int) -> list[str]:
 def read_decisions(landing: Path) -> list[dict[str, Any]]:
     """decisions.jsonl's tail rows in file (time) order; a missing file is a controller that decided nothing."""
     try:
-        lines = _tail_lines(landing / "decisions.jsonl", DECISIONS_TAIL_BYTES)
+        lines = _tail_lines(landing / "decisions.jsonl", decisions_tail_bytes())
     except FileNotFoundError:
         return []
     rows = []
@@ -777,9 +793,11 @@ def judge(
     subject: str,
     now: datetime,
     lease_id: int | None,
-    window: timedelta = ACTING_WINDOW,
+    window: timedelta | None = None,
 ) -> tuple[bool, str]:
     """(acting, evidence) from the controller's newest decision for ``subject`` (or, with none, for ``lease_id``)."""
+    if window is None:
+        window = acting_window()
     key = _short(subject)
     mine = [
         r for r in rows if _short(str(r.get("subject") or r.get("cause") or "")) == key

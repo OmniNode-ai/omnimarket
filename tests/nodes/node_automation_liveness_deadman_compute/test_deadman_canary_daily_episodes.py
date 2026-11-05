@@ -13,10 +13,10 @@ from omnimarket.models.liveness.model_automation_liveness import (
     EnumAutomationLivenessVerdict,
 )
 from omnimarket.models.liveness.model_automation_liveness_deadman import (
-    CANARY_INJECTION_HOUR_UTC,
     CANARY_PROCESS_ID,
     ModelAutomationLivenessDeadmanRequest,
 )
+from omnimarket.models.policy_values import load_controller_policy_overlay
 from omnimarket.nodes.node_automation_liveness_deadman_compute.handlers.handler_automation_liveness_deadman import (
     HandlerAutomationLivenessDeadman,
 )
@@ -31,6 +31,7 @@ from tests.nodes.node_automation_liveness_deadman_effect.support import (
 
 pytestmark = pytest.mark.unit
 
+CANARY_INJECTION_HOUR_UTC = load_controller_policy_overlay().automation_liveness_deadman.canary_injection_hour_utc.value
 DAYS = (date(2026, 10, 10), date(2026, 10, 11), date(2026, 10, 12))
 NOW = datetime(2026, 10, 12, 20, 0, tzinfo=UTC)
 

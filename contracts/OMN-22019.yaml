@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-22019"
+title: "Controller budgets, caps and bounds carry ruled policy values"
+summary: >-
+  The omnimarket dead-man heartbeat and canary policy and cause-claim ownership
+  read cap and acting window come from a typed overlay read on each call.
+  Every value requires a ruling timestamp or ticket. This contract covers the
+  omnimarket sites described in PR 5072; omniclaude lane intake, plugin sites
+  and the lab-alarm dev-tag bound are outside this repository. The focused AST
+  assertion covers these two source files, not the upstream family-B gate.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn22019-live-policy"
+    statement: "Controller decisions use the current deployment overlay without a release."
+    acceptance:
+      - id: "AC1"
+        statement: "Raising the heartbeat bound or acting window in the same overlay file changes the next verdict; changing the decisions tail cap changes the next read."
+  - id: "req-omn22019-no-policy-constants"
+    statement: "The two cited omnimarket controller files no longer define module policy constants."
+    acceptance:
+      - id: "AC2"
+        statement: "The dead-man request model and cause-claim handler have no module assignment named with BUDGET, CAP, WINDOW, BOUND, BYTES, TAIL or LIMIT; the AST test includes a positive control."
+  - id: "req-omn22019-required-ruling"
+    statement: "Every loaded policy value identifies the ruling or ticket that set it."
+    acceptance:
+      - id: "AC3"
+        statement: "Loading refuses missing or malformed rulings and bare numbers, accepts ruling timestamps, and the shipped values retain their prior defaults and carry rulings."
+evidence_requirements:
+  - kind: "tests"
+    description: "Focused controller overlay behavior and validation tests."
+    command: "uv run pytest tests/unit/test_omn22019_controller_policy_overlay.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn22019-ac1"
+    description: "The same handler observes edits to the overlay on its next call for heartbeat silence, acting ownership and the decisions read cap."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn22019_controller_policy_overlay.py -q --no-cov -k 'raising or decisions_tail_cap'"
+        cwd: "."
+  - id: "dod-omn22019-ac2"
+    description: "The AST assertion checks both cited source files for module policy constants and requires module assignments as a positive control."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn22019_controller_policy_overlay.py -q --no-cov -k no_module_level"
+        cwd: "."
+  - id: "dod-omn22019-ac3"
+    description: "Overlay loading refuses unruled or malformed values and accepts ruling timestamps; shipped values retain the previous defaults and identify their rulings."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn22019_controller_policy_overlay.py -q --no-cov -k 'ruling or shipped_overlay'"
+        cwd: "."
+  - id: "dod-omn22019-integration-proof"
+    description: "The local Done gate places the focused controller policy tests on a lab host at the evaluated revision with real dependencies. Hosted verification cannot reach the lab and does not run this check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane controller-policy-omn22019 -- env PYTHONDONTWRITEBYTECODE=1 COMPOSE_PROJECT_NAME=landing-l26599-lab uv run --frozen pytest tests/unit/test_omn22019_controller_policy_overlay.py tests/nodes/node_automation_liveness_deadman_compute/test_deadman_canary_daily_episodes.py -q --no-cov'
+        cwd: "."
+  - id: "dod-omn22019-deploy-source-readback"
+    description: "Hosted-runner deploy source readback fetches the overlay and loader at the evaluated revision, compares their bytes with the checkout, and requires the ruled schema and loader. This proves published source identity, not a running rollout. The merge base lacks these files."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          readback_dir="$(mktemp -d)";
+          trap 'rm -rf "$readback_dir"' EXIT;
+          revision="$(git rev-parse HEAD)";
+          policy_path=src/omnimarket/models/policy_values;
+          for file in controller_policy_overlay.default.yaml model_controller_policy_overlay.py; do
+            curl --fail --silent --show-error --location --max-time 30 \
+              "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$policy_path/$file" \
+              --output "$readback_dir/$file";
+            cmp "$policy_path/$file" "$readback_dir/$file";
+          done;
+          grep -F 'schema_version: controller-policy-overlay/v1' "$readback_dir/controller_policy_overlay.default.yaml";
+          grep -F 'ruling: OMN-20807' "$readback_dir/controller_policy_overlay.default.yaml";
+          grep -F 'ruling: OMN-19998' "$readback_dir/controller_policy_overlay.default.yaml";
+          grep -F 'def load_controller_policy_overlay(' "$readback_dir/model_controller_policy_overlay.py";
+          printf 'controller policy source readback matched %s\n' "$revision"
+        cwd: "."
