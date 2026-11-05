@@ -3,8 +3,8 @@ ticket_id: OMN-19998
 title: A plain ledger append names no optional field it does not use
 summary: Ledger append requests omit optional fields whose value is None, so an older host can validate a plain append from a newer writer. Set fields remain on the wire and are refused by a host that cannot honor them. Queued requests and the bus caller use the same serialization. Earlier heal-read retry criteria and evidence remain unchanged.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched: [events, public_api]
 requirements:
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
@@ -128,6 +128,42 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-error-normalization
+    statement: Error producers receive pure reproducible class keys from caller-supplied normalization facts.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: volatile subject text shares one full-template hash key, distinct causes sharing an exit code or check name remain distinct, and old host snapshots replay with their original key version -- falsifier: uv run pytest tests/unit/nodes/node_error_class_normalize_compute/test_normalizer.py -q'
+  - id: req-omn19998-error-corpus-integrity
+    statement: Scrubbed frozen replay rows and captured acceptance evidence are pinned without treating unmeasured cases as accepted.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: a fixture row edit or removal fails the digest/count check, captured misses carry gold labels, and uncaptured breaks retain UNMEASURED -- falsifier: uv run pytest tests/unit/nodes/node_error_class_normalize_compute/test_corpus.py -q'
+  - id: req-omn19998-error-normalizer-bus
+    statement: The canonical runtime bus adapter preserves every frozen corpus key under the selected transport profile.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: every frozen event returns the same class key and version through the canonical runtime adapter as through direct compute; selected Redpanda failures fail rather than skip -- falsifier: uv run pytest tests/unit/nodes/node_error_class_normalize_compute/test_profiles.py -q'
+
+  - id: req-omn19998-error-rule-match
+    statement: Pure matching uses core row models and explicit normalizer version bindings.
+    acceptance:
+    - id: AC11
+      statement: 'AC11: exact keys and context return the row, sources, action and mode; the captured miss families and absent fresh class return a typed NO-MATCH without an action -- falsifier: uv run pytest tests/unit/nodes/node_error_rule_match_compute/test_match.py -q --no-cov'
+  - id: req-omn19998-error-rule-exception
+    statement: The NO-MATCH effect passes a class-keyed case to the existing queue emit verb.
+    acceptance:
+    - id: AC12
+      statement: 'AC12: the effect retains one case across repeat emits and writes one after a crash before the queue write; same-key second-occurrence triage remains a queue dependency -- falsifier: uv run pytest tests/unit/nodes/node_error_rule_match_compute/test_nomatch.py -q --no-cov'
+  - id: req-omn19998-error-rule-replay
+    statement: The replay node reports measured coverage separately from unlabelled records.
+    acceptance:
+    - id: AC13
+      statement: 'AC13: the replay reports hits, misses, labelled false matches and sorted NO-MATCH keys deterministically; the test fresh class is absent from its frozen test seed digest, pending the completed seed overlay -- falsifier: uv run pytest tests/unit/nodes/node_error_rule_match_compute/test_replay.py -q --no-cov'
+  - id: req-omn19998-error-rule-bus
+    statement: Installed node contracts and the replay command use the declared event bus.
+    acceptance:
+    - id: AC14
+      statement: 'AC14: the registered replay command and match run-node entry execute on the in-memory runtime; a selectable Redpanda profile exercises the same adapters without skipping when unavailable -- falsifier: uv run pytest tests/unit/nodes/node_error_rule_match_compute/test_cli.py -q --no-cov'
   - id: req-omn19998-ledger-detail-reference-retention
     statement: Ledger detail retention preserves old units cited by declared local readers and refuses removal when readers cannot be checked or change during archival.
     acceptance:
@@ -536,4 +572,81 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-error-normalizer
+    description: Scoped normalizer proof covers whole-template identity, volatile stripping, negative classes, host-snapshot replay, hook caller DI and provisional alias resolution. It does not assert the controller timer criteria or live hook installation.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_normalizer.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-error-corpus
+    description: The scrubbed snapshot pins counts and digests, records labelled captured cases and keeps missing seed/capture evidence pending. Passing integrity is not completed replay acceptance or measured rule precision.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_corpus.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-error-normalizer-deploy
+    description: Hosted wiring smoke pins the normalized event wire topic and its publish declaration, resolves the installed contract handler and sends every frozen event through the canonical bus adapter on the in-memory profile, checking each received topic. The lab selects the Redpanda profile separately; no live installation or Redpanda success is asserted by this hosted check.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_profiles.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-error-rule-match
+    description: 'Focused test seed only: exact keys, context, versions, trigger kind, aliases and the captured miss families. Completed deployment seed coverage remains pending.'
+    source: manual
+    binds_ac:
+    - AC11
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_match_compute/test_match.py -q --no-cov
+      cwd: .
+  - id: dod-omn19998-error-rule-exception
+    description: Existing queue emit writes one class-keyed case on rerun after a pre-write crash and coalesces repeats. Does not claim same-key second-occurrence triage dispatch.
+    source: manual
+    binds_ac:
+    - AC12
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_match_compute/test_nomatch.py -q --no-cov
+      cwd: .
+  - id: dod-omn19998-error-rule-replay
+    description: Frozen corpus replay and labelled controls distinguish hits, misses and false matches. Miss-5 is pinned to a focused test seed; completed deployment seed remains pending.
+    source: manual
+    binds_ac:
+    - AC13
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_match_compute/test_replay.py -q --no-cov
+      cwd: .
+  - id: dod-omn19998-error-rule-bus
+    description: Canonical adapters execute all three nodes on the in-memory profile by default. The selected Redpanda profile fails on an unreadable broker or denied topic; no broker success is asserted by this hosted proof.
+    source: manual
+    binds_ac:
+    - AC14
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_match_compute/test_profiles.py -q --no-cov
+      cwd: .
+  - id: dod-omn19998-error-rule-deploy
+    description: Installed contract and command smoke hosts the match node and replay node on the in-memory bus. It does not claim a deployed lab runtime or broker authorization.
+    source: manual
+    binds_ac:
+    - AC14
+    checks:
+    - check_type: test_passes
+      check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_match_compute/test_cli.py -q --no-cov
+      cwd: .
+  - id: dod-omn19998-error-profiles-package-collection
+    description: Both profile modules collect under distinct test package names and run their canonical in-memory bus adapters together. The combined command fails with an import-file mismatch without the package markers. This hosted deployment smoke requires no broker credentials and makes no claim about Redpanda authorization.
+    source: manual
+    binds_ac: [AC10, AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_profiles.py tests/unit/nodes/node_error_rule_match_compute/test_profiles.py -q --no-cov -p no:randomly
         cwd: .

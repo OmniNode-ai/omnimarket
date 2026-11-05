@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_rule_nomatch_effect
+version: 1.0.0
+description: Send a class-keyed missing-rule case through the installed exception
+  queue emit verb. Queue owns coalescing and triage dispatch.
+pack: core
+node_role: effect
+display_name: Error Rule Nomatch Effect
+omnibase_core_compat: '>=0.47.67,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_error_rule_nomatch_effect: omnimarket.nodes.node_error_rule_nomatch_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+- pydantic>=2.11.0
+- pyyaml>=6.0
+license: MIT
+tags:
+- effect
+- errors
+- rules
+- nomatch

@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_rule_replay_compute
+node_type: compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Replay a frozen event corpus, count hits, misses and labelled false matches,
+  and list NO-MATCH keys deterministically.
+input_model: omnimarket.models.error_rule_match.ModelErrorRuleReplayRequest
+output_model: omnimarket.models.error_rule_match.ModelErrorRuleReplayResult
+handler:
+  module: omnimarket.nodes.node_error_rule_replay_compute.handler
+  class: HandlerErrorRuleReplay
+  input_model: omnimarket.models.error_rule_match.ModelErrorRuleReplayRequest
+  output_model: omnimarket.models.error_rule_match.ModelErrorRuleReplayResult
+entrypoint:
+  name: NodeErrorRuleReplayCompute
+  module: omnimarket.nodes.node_error_rule_replay_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_error_rule_replay_compute.handler:HandlerErrorRuleReplay
+  handlers:
+  - operation: replay
+    topic: onex.cmd.omnimarket.error-rule-replay.v1
+    handler:
+      module: omnimarket.nodes.node_error_rule_replay_compute.handler
+      name: HandlerErrorRuleReplay
+    input_model: omnimarket.models.error_rule_match.ModelErrorRuleReplayRequest
+    event_model:
+      name: ModelErrorRuleReplayRequest
+      module: omnimarket.models.error_rule_match
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.error-rule-replay-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.error-rule-replay.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.error-rule-replay.v1
+  publish_topics:
+  - onex.evt.omnimarket.error-rule-replay-completed.v1
+externally_produced_topics:
+- topic: onex.cmd.omnimarket.error-rule-replay.v1
+  producer: The operator run-node caller supplies the typed request over the configured
+    bus.
+externally_consumed_topics:
+- onex.evt.omnimarket.error-rule-replay-completed.v1
+metadata:
+  transport_type: kafka
+protocol_dependencies:
+- name: NORM
+  protocol: omnimarket.protocols.protocol_error_class_normalizer:ProtocolErrorClassNormalizer
+  bind_as: normalizer
+  required: false
+- name: MATCH
+  protocol: omnimarket.protocols.protocol_error_rule_match:ProtocolErrorRuleMatcher
+  bind_as: matcher
+  required: false

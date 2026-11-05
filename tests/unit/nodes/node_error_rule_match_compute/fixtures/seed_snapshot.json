@@ -1,0 +1,55 @@
+{
+  "error_rules": [
+    {
+      "action": {
+        "contract": null,
+        "digest": null,
+        "kind": "none",
+        "reason": "test fixture only"
+      },
+      "applies_if": {
+        "host_roles": [
+          "lab"
+        ],
+        "repositories": [
+          "omnimarket"
+        ],
+        "ticket_states": [
+          "open"
+        ]
+      },
+      "break_class": "other",
+      "budget": 1,
+      "class_keys": [
+        "tool.Bash.template.6649199df0"
+      ],
+      "fixtures": {
+        "negative": [
+          "miss"
+        ],
+        "positive": [
+          "known"
+        ]
+      },
+      "id": "fixture-known",
+      "key_version": 1,
+      "lane_kinds": [
+        "triage"
+      ],
+      "lease_s": 1,
+      "measured": null,
+      "mode": "shadow",
+      "read_back": null,
+      "removal_ticket": "fixture",
+      "source_state": null,
+      "sources": [
+        "ledger:2000-01-01T00:00:00Z"
+      ],
+      "subject_kind": "global",
+      "trigger": {
+        "kind": "text",
+        "state_check": null
+      }
+    }
+  ]
+}
