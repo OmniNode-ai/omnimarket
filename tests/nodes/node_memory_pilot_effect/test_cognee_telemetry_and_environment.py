@@ -44,6 +44,7 @@ def _overlay(tmp_path: Path) -> ModelMemoryPilotOverlay:
                 "timeout_seconds": 5,
             },
             "embedding_dimensions": 16,
+            "ingest_data_per_batch": 2,
             "storage_root": tmp_path,
         }
     )

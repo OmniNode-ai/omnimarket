@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import socket
 from pathlib import Path
 
 import pytest
@@ -17,12 +18,11 @@ from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
 from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_in_memory import (
     BackendInMemory,
 )
-from omnimarket.nodes.node_memory_pilot_effect.handlers.chat_answerer import (
-    LabChatAnswerer,
-    probe_endpoint,
-)
 from omnimarket.nodes.node_memory_pilot_effect.handlers.handler_memory_pilot import (
     HandlerMemoryPilot,
+)
+from omnimarket.nodes.node_memory_pilot_effect.handlers.lab_reachability import (
+    probe_endpoint,
 )
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
     EnumMemoryPilotErrorCode as Code,
@@ -107,29 +107,36 @@ async def test_lab_model_down_fails_fast_and_invents_no_answer(
     _assert_typed_failure(result, bus, recorder, Code.LAB_MODEL_UNAVAILABLE)
 
 
-async def test_real_lab_chat_client_against_a_closed_port_is_lab_model_unavailable(
-    bus: RecordingBus, recorder: RecordingRecorder
-) -> None:
+def test_probe_of_a_closed_port_is_lab_model_unavailable() -> None:
     endpoint = ModelLabEndpoint(
         base_url="http://127.0.0.1:9/v1", model="m", timeout_seconds=2
     )
     with pytest.raises(LabModelUnavailableError):
         probe_endpoint(endpoint)
-    backend = BackendInMemory(
-        name="lexical_lab",
-        answerer=LabChatAnswerer(endpoint, temperature=0.0, max_completion_tokens=8),
-        system_prompt="p",
-    )
-    await backend.ingest("d", (DOC,))
+
+
+def test_probe_of_a_listening_port_passes() -> None:
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+        endpoint = ModelLabEndpoint(
+            base_url=f"http://127.0.0.1:{port}/v1", model="m", timeout_seconds=2
+        )
+        probe_endpoint(endpoint)
+
+
+async def test_lexical_lab_without_an_injected_answerer_is_refused_not_faked(
+    bus: RecordingBus, recorder: RecordingRecorder
+) -> None:
     handler = HandlerMemoryPilot(
         event_bus=bus,
         failure_recorder=recorder,
-        overlay=make_overlay(),
-        backend=backend,
+        overlay=make_overlay(backend="lexical_lab"),
     )
-    _assert_typed_failure(
-        await handler.handle(_req()), bus, recorder, Code.LAB_MODEL_UNAVAILABLE
-    )
+    result = await handler.handle(_req(EnumMemoryPilotOperation.INGEST))
+    _assert_typed_failure(result, bus, recorder, Code.BACKEND_ERROR)
+    assert result.error_detail == "no lab answerer injected"
 
 
 async def test_cognee_backend_with_the_lab_model_down_fails_before_touching_the_package(
@@ -153,6 +160,7 @@ async def test_cognee_backend_with_the_lab_model_down_fails_before_touching_the_
                 "timeout_seconds": 2,
             },
             "embedding_dimensions": 8,
+            "ingest_data_per_batch": 2,
             "storage_root": tmp_path,
         }
     )
