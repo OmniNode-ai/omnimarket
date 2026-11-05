@@ -389,14 +389,6 @@ handler_routing:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
       description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
-    - operation: "parse_provider_quota_reset"
-      event_model:
-        name: "ModelProviderQuotaResetRequest"
-        module: "omnimarket.models.delegation.model_provider_quota_reset"
-      handler:
-        name: "HandlerProviderQuotaReset"
-        module: "omnimarket.handlers.handler_provider_quota_reset"
-      description: "Read the policy-selected provider reset surface through the shared quota classifier."
   default_handler: "HandlerLlmDelegationCall"
 
 # Maps HandlerInferenceIntent's returned model to its publish topic so the
@@ -511,6 +503,16 @@ codex_harness:
   reasoning_effort: high
   max_timeout_seconds: 600
   terminate_grace_seconds: 5
+
+# Provider quota reset reader: called in-process by the quota policy through the shared classifier, never from the
+# bus. It is not in handler_routing because a routed handler needs a subscribed topic and an event_type.
+provider_quota_reset:
+  request_model:
+    name: "ModelProviderQuotaResetRequest"
+    module: "omnimarket.models.delegation.model_provider_quota_reset"
+  handler:
+    name: "HandlerProviderQuotaReset"
+    module: "omnimarket.handlers.handler_provider_quota_reset"
 
 # Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
 # The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is
