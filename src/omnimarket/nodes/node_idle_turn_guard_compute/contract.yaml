@@ -44,6 +44,8 @@ config:
 terminal_event: onex.evt.omnimarket.idle-turn-guard-decided.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.idle-turn-guard-decision-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.idle-turn-guard-decided.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.idle-turn-guard-decision-requested.v1

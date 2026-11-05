@@ -123,6 +123,12 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: the rendered factory-floor-publish unit carries the floor contract''s Phoenix URL variable from the request or the installing shell, sets none when neither names one, and refuses a URL that is not http or https -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-idle-turn-guard-decision
+    statement: The idle-turn guard exposes its deterministic decision through the registered compute contract and returns the declared terminal result to its runtime caller.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: recorded Stop turns refuse idle headroom, honor an operator stop, discount lane-refusing hosts and count a background placement receipt; malformed facts fail without a result; installed node discovery and the in-memory bus execute the declared handler -- falsifier: uv run --frozen pytest tests/nodes/node_idle_turn_guard_compute/test_golden_chain_idle_turn_guard.py -q --no-cov -n 0'
+
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -488,4 +494,21 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-idle-turn-guard-decision
+    description: Scoped rule regressions cover the recorded Stop-turn cases through the compute handler and the Stop hook adapter payload. These tests do not assert a host timer installation or the landing-controller criteria.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_idle_turn_guard_compute/test_idle_turn_guard_decision.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-idle-turn-guard-deploy
+    description: Hosted wiring smoke loads the installed entry point and invokes its packaged contract through RuntimeLocal on the in-memory bus. Recorded stop, refusing-host and background-placement cases return typed decisions; malformed facts fail without a result. The same contract declares its terminal reply for the runtime caller.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_idle_turn_guard_compute/test_golden_chain_idle_turn_guard.py -q --no-cov -n 0
         cwd: .
