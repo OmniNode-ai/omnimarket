@@ -10,6 +10,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadPolicy,
+)
+
 
 class ModelFactoryFloorPublishOverlay(BaseModel):
     """Deployment facts of the host that serves the page. There is no packaged default for any of them."""
@@ -64,7 +68,7 @@ class ModelLinesOverlay(BaseModel):
     file_env: str = Field(min_length=1)
 
 
-StepKind = Literal["module", "capture", "copy", "command"]
+StepKind = Literal["module", "capture", "copy", "command", "runner_fleet"]
 
 
 class ModelPublishStep(BaseModel):
@@ -78,6 +82,8 @@ class ModelPublishStep(BaseModel):
     (OMN-21733: the run took 8.5 to 10 minutes against a 300 s tick, which left the heartbeat older than twice its
     interval half the time). A step with ``fresh_relpath`` and ``fresh_seconds`` is skipped, counted ok, while that file
     under the registry home was written less than ``fresh_seconds`` ago, for an output that moves in days.
+    ``runner_fleet`` mirrors the deployed projection's saved observation to ``output_relpath``;
+    a failed read writes an unread cause so old counts cannot masquerade as a new read.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -107,6 +113,7 @@ class ModelPublishStep(BaseModel):
             "capture": bool(self.argv) and bool(self.output_relpath),
             "copy": bool(self.source_relpath) and bool(self.output_relpath),
             "command": bool(self.argv),
+            "runner_fleet": bool(self.output_relpath),
         }[self.kind]
         if not need:
             raise ValueError(
@@ -228,6 +235,7 @@ class ModelReportData(BaseModel):
     relpath: str = Field(min_length=1)
     as_of_key: str | None = None
     publish: bool = True
+    projection: Literal["identity", "process_health_summary"] = "identity"
 
     @field_validator("remote")
     @classmethod
@@ -320,6 +328,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     evidence_file: str = Field(min_length=1)
     source: ModelPublishSource
     process_health_relpath: str = Field(min_length=1)
+    process_health_payload: ModelProcessHealthPayloadPolicy
     delegation_relpath: str = Field(min_length=1)
     lines_overlay: ModelLinesOverlay
     # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
