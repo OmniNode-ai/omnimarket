@@ -963,12 +963,24 @@ provider_quota_policy:
             z.ai's pricing page. This is never a funding action.
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
-      # The free tier is rate-limited with no SLA. OMN-20154: its 429 carries
-      # the bare HTTP status as error.code and the limit is counted per free
-      # model, so a 429 cools down that one model and the other free models
-      # behind the same key stay routable. Recorded rather than retried: the
-      # 59 free calls in 24h on 2026-09-30 had nothing to learn from otherwise.
+      # Daily free-tier exhaustion is shared by the credential's free models.
+      # Match it before the ordinary model throttle; the provider embeds its
+      # epoch-millisecond reset in error.metadata.headers on recorded refusals.
       codes:
+        # The provider's native limit-source and message markers are code
+        # candidates before its generic HTTP 429. No new wire keys are needed.
+        - code: "openrouter_free_tier_daily"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: rate_limit_reset_milliseconds
+          fallback_cooldown_seconds: 86400
+          alert: false
+        - code: "free-models-per-day"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: rate_limit_reset_milliseconds
+          fallback_cooldown_seconds: 86400
+          alert: false
         - code: "429"
           disposition: cooldown
           scope: model
