@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Keep direct-call exceptions intact and publish bus failures as typed terminal results."""
+"""Resolve effect dependencies inside the bus failure boundary, after wiring."""
 
+from functools import partial
+from threading import Lock
 from typing import Literal
 
 from omnimarket.models.model_operator_terminal_failure import (
@@ -33,27 +35,37 @@ class HandlerPromiseCapture:
         overlay: ModelPromiseEffectOverlay | None = None,
         evaluation: ModelPromiseBarReport | None = None,
     ) -> None:
-        self._handler = BaseHandlerPromiseCapture(
+        # Runtime discovery must be able to wire the failure route even when a
+        # deployment overlay is absent or invalid. Resolve it on the first call;
+        # a refusal stays retryable and cannot quarantine the node at boot.
+        self._build_handler = partial(
+            BaseHandlerPromiseCapture,
             store=store,
             classifier=classifier,
             delegate=delegate,
             overlay=overlay,
             evaluation=evaluation,
         )
+        self._handler: BaseHandlerPromiseCapture | None = None
+        self._lock = Lock()
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
-        return self._handler.handler_type
+        return "NODE_HANDLER"
 
     @property
     def handler_category(self) -> Literal["EFFECT"]:
-        return self._handler.handler_category
+        return "EFFECT"
 
     def handle(
         self, request: ModelPromiseCaptureRecord
     ) -> ModelPromiseCaptureReceipt | ModelOperatorTerminalFailure:
         try:
-            return self._handler.handle(request)
+            with self._lock:
+                if self._handler is None:
+                    self._handler = self._build_handler()
+                handler = self._handler
+            return handler.handle(request)
         except Exception as exc:
             return ModelOperatorTerminalFailure(
                 terminal_failure_cause=type(exc).__name__

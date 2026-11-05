@@ -18,6 +18,7 @@ from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
 from omnimarket.models.model_orchestrator_promise import (
+    ModelPromiseBarRequest,
     ModelPromiseCaptureRecord,
     ModelPromiseClassifyRequest,
     ModelPromiseEffectOverlay,
@@ -33,6 +34,82 @@ from omnimarket.nodes.node_orchestrator_promise_classify_compute.node import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize("overlay_state", ["missing", "invalid", "configured"])
+async def test_promise_capture_auto_wires_before_resolving_deployment_overlay(
+    overlay_state, tmp_path, monkeypatch
+) -> None:
+    node_name = "node_orchestrator_promise_capture_effect"
+    raw = contract(node_name)
+    policy = contract("node_orchestrator_promise_classify_compute")["config"]
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    if overlay_state != "missing":
+        overlay_dir = tmp_path / node_name
+        overlay_dir.mkdir()
+        document = (
+            {"store_path": str(tmp_path / "capture.sqlite")}
+            if overlay_state == "invalid"
+            else ModelPromiseEffectOverlay(
+                store_path=str(tmp_path / "capture.sqlite"),
+                assistant_reply_kind="assistant_reply",
+                policy=policy,
+            ).model_dump(mode="json")
+        )
+        (overlay_dir / "overlay.yaml").write_text(yaml.safe_dump(document))
+    discovered = tuple(c for c in discover_contracts().contracts if c.name == node_name)
+    bus = EventBusInmemory(environment="local", group="promise-overlay-runtime")
+    received = asyncio.Queue()
+    await bus.start()
+
+    async def collect(message):
+        await received.put((message.topic, json.loads(message.value)))
+
+    try:
+        for topic in raw["event_bus"]["publish_topics"]:
+            await bus.subscribe(topic, group_id="overlay-results", on_message=collect)
+        engine = MessageDispatchEngine()
+        report = await wire_from_manifest(
+            ModelAutoWiringManifest(contracts=discovered),
+            engine,
+            event_bus=bus,
+            environment="local",
+        )
+        assert [result.outcome.value for result in report.results] == ["wired"]
+        engine.freeze()
+        command = raw["runtime_dispatch"]["command_topic"]
+        record = ModelPromiseCaptureRecord(
+            session_id="session-a",
+            lane="orchestrator-fixture",
+            content_kind="assistant_reply",
+            content_record_id="overlay-runtime",
+            emitted_at="2026-11-04T12:00:00Z",
+            content="I will install it. Thanks.",
+        )
+        for replay in range(2):
+            envelope = ModelEventEnvelope[object](
+                payload=record.model_dump(mode="json"),
+                event_type=command,
+                correlation_id=uuid4(),
+            )
+            await bus.publish(command, None, envelope.model_dump_json().encode(), None)
+            topic, event = await asyncio.wait_for(received.get(), timeout=5)
+            assert event["correlation_id"] == str(envelope.correlation_id)
+            if overlay_state == "configured":
+                assert topic == raw["terminal_event"]
+                assert event["payload"]["status"] == (
+                    "recorded" if replay == 0 else "duplicate"
+                )
+                assert event["payload"]["candidate_count"] == 1
+            else:
+                assert topic == raw["runtime_dispatch"]["terminal_events"]["failure"]
+                assert event["payload"] == {
+                    "status": "failed",
+                    "terminal_failure_cause": "NodeOverlayError",
+                }
+        assert received.empty()
+    finally:
+        await bus.close()
 
 
 def contract(name):
@@ -151,6 +228,30 @@ async def test_promise_classify_runtime_discovers_and_dispatches(
             )
             event = await asyncio.wait_for(received.get(), timeout=10)
             assert event["payload"]["candidate_count"] == 0
+            bar_topic = next(
+                route["topic"]
+                for route in raw["handler_routing"]["handlers"]
+                if route["operation"] == "measure_promise_bar"
+            )
+            bar = ModelPromiseBarRequest(
+                corpus_id="runtime-fixture",
+                origin="synthetic",
+                labelled_by="runtime-fixture",
+                samples=(),
+                policy=policy,
+            )
+            envelope = ModelEventEnvelope[object](
+                payload=bar.model_dump(mode="json"),
+                event_type=bar_topic,
+                correlation_id=uuid4(),
+            )
+            await bus.publish(
+                bar_topic, None, envelope.model_dump_json().encode(), None
+            )
+            event = await asyncio.wait_for(received.get(), timeout=10)
+            assert event["correlation_id"] == str(envelope.correlation_id)
+            assert event["payload"]["replies"] == 0
+            assert event["payload"]["passed"] is False
     finally:
         await bus.close()
         store.close()

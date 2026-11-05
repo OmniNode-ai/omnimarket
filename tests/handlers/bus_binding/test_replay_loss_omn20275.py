@@ -194,9 +194,16 @@ async def test_multi_row_one_request(tmp_path: Path, ledger: Path) -> None:
     result = HandlerCaptureProcess(_delegate(), append, now=CAPTURE_NOW).handle(
         ModelCaptureProcessRequest(store_dir=root, ledger_path=ledger)
     )
-    assert (result.processed, result.rows_appended, result.pending) == (1, 2, 0)
+    assert (result.processed, result.rows_appended, result.pending) == (1, 4, 0)
     assert len(sent) == 1
     rows = sent[0].splitlines()
-    assert len(rows) == 2
+    assert len(rows) == 4
     assert "kind=decision" in rows[0]
     assert "kind=ask" in rows[1]
+    for sentence, row in enumerate(rows[2:], 1):
+        assert "kind=disposition" in row
+        assert f"sentence={sentence}" in row
+        item_id = next(
+            cell for cell in rows[sentence - 1].split(" | ") if cell.startswith("item=")
+        )
+        assert item_id in row.split(" | ")

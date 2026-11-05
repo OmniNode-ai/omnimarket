@@ -49,6 +49,11 @@ runtime_dispatch:
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.orchestrator-promise-classify-requested.v1, onex.cmd.omnimarket.orchestrator-promise-bar-requested.v1, onex.cmd.omnimarket.orchestrator-promise-render-requested.v1]
   publish_topics: [onex.evt.omnimarket.orchestrator-promise-classify-completed.v1, onex.evt.omnimarket.orchestrator-promise-classify-failed.v1]
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.orchestrator-promise-bar-requested.v1
+    producer: External evaluation clients submitting ModelPromiseBarRequest through the measure_promise_bar command ingress
+  - topic: onex.cmd.omnimarket.orchestrator-promise-render-requested.v1
+    producer: External report clients submitting ModelPromiseRenderRequest through the render_promises command ingress
 descriptor:
   node_archetype: compute
   purity: pure

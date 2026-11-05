@@ -177,7 +177,12 @@ def test_a_host_with_no_recent_reading_is_unknown_naming_the_read_that_refreshes
     )
     for line in lab:
         assert "onex_lab_run.py --hosts --lane <lane>" in line.split(" | FIX: ", 1)[1]
-    assert result.unknown[-2:] == ["lab-headroom:h201", "lab-headroom:h101"]
+    assert result.unknown[-3:] == [
+        "lab-headroom:h201",
+        "lab-headroom:h101",
+        "open-items",
+    ]
+    assert any(line.startswith("UNKNOWN open-items") for line in result.lines)
     assert not any(
         line.startswith("NOTE lab-headroom") and "no recent placement" in line
         for line in result.lines
