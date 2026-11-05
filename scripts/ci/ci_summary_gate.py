@@ -852,19 +852,7 @@ SWEEP_EXCLUSION_MAX_DAYS: int = 90
 # OMN-17427: measured over 43 merged PR heads on 2026-10-17. Only these
 # external pull_request rows skip by design; ci.yml owns the other skips.
 # Expiry re-arms the sweep.
-_REVIEW_HOLDS_NO_MERGE = SweepExclusion(
-    reason="The operator ruled on 2026-11-05 that the automated review holds no merge.",
-    ticket="OMN-22478",
-    added="2026-11-05",
-    expires="2027-02-03",
-)
 EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = {
-    # OMN-22478, operator RULING 2026-11-05T20:27:56Z: the automated review holds no
-    # merge, so the sweep judges none of its rows. A red copy can still sit on a head
-    # from before its trigger stopped.
-    "Hostile Reviewer (adversarial gate)": _REVIEW_HOLDS_NO_MERGE,
-    "Hostile Review Gate": _REVIEW_HOLDS_NO_MERGE,
-    "Hostile Review Thread Gate": _REVIEW_HOLDS_NO_MERGE,
     "AC1 exact revision row on PostgreSQL 16": SweepExclusion(
         reason="omn20025-ac1-postgres-proof.yml restricts the proof to PR 3094 from this repository.",
         ticket="OMN-17427",
