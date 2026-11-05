@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -68,12 +71,52 @@ class ModelPrWatcherClosureReconcileResult(BaseModel):
     unanswered: tuple[str, ...]
     # Upper bound, in ticks, before every current candidate has been read.
     ticks_to_full_pass: int
+    # A transport failure is observable, rather than a successful empty pass.
+    read_failed: bool = False
+
+
+class ModelPrWatcherClosureTickRequest(BaseModel):
+    """Bus callers supply correlation, never a host path, clock or token."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    correlation_id: UUID
+
+
+class ModelPrWatcherClosureObservation(BaseModel):
+    """Only the observation clock is needed; PR facts come from the locked file."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+    observed_at: datetime
+
+
+class ModelPrWatcherClosureOverlay(BaseModel):
+    """Deployment-owned snapshot and read identity; no packaged host defaults."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    state_path: Path
+    github_token_secret_ref: str = Field(min_length=1)
+
+
+class ModelPrWatcherClosureTickResult(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    correlation_id: UUID
+    source_tick: str
+    status: Literal["reconciled", "already-reconciled", "stale-state", "read-failed"]
+    reconciliation: ModelPrWatcherClosureReconcileResult | None = None
+    terminal_failure_cause: Literal["read-failed"] | None = Field(
+        default=None,
+        description="A failed batch routes the result to the declared failure terminal.",
+    )
 
 
 __all__ = [
     "ModelClosureFlip",
     "ModelPrNodeState",
+    "ModelPrWatcherClosureObservation",
+    "ModelPrWatcherClosureOverlay",
     "ModelPrWatcherClosureReconcileRequest",
     "ModelPrWatcherClosureReconcileResult",
+    "ModelPrWatcherClosureTickRequest",
+    "ModelPrWatcherClosureTickResult",
     "PrState",
 ]
