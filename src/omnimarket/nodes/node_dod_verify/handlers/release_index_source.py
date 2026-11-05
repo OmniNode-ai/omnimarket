@@ -38,7 +38,15 @@ def pypi_release_files(
                 if response.status != 200:
                     return None
                 payload = json.loads(response.read().decode("utf-8"))
-            break
+            urls = payload.get("urls")
+            if not isinstance(urls, list):
+                return None
+            types = {
+                entry["packagetype"]
+                for entry in urls
+                if isinstance(entry, dict) and isinstance(entry.get("packagetype"), str)
+            }
+            return frozenset(types)
         except urllib.error.HTTPError as exc:
             if exc.code != 404:
                 logger.warning("Release-index read returned HTTP %d", exc.code)
@@ -49,16 +57,6 @@ def pypi_release_files(
                 attempt + 1,
                 type(exc).__name__,
             )
-            if attempt == 1:
-                return None
         except json.JSONDecodeError:
             return None
-    urls = payload.get("urls")
-    if not isinstance(urls, list):
-        return None
-    types = {
-        entry["packagetype"]
-        for entry in urls
-        if isinstance(entry, dict) and isinstance(entry.get("packagetype"), str)
-    }
-    return frozenset(types)
+    return None

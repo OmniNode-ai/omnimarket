@@ -181,6 +181,22 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn19998-release-index-initialized-payload
+    description: Successful release-index reads consume their payload inside the successful attempt. Focused controls cover a retry followed by a served release or definite 404, exhausted transport retries, definite HTTP errors and malformed payloads.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_release_index_transport.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-release-payload-deploy
+    description: Hosted smoke calls the release-index reader through the evidence effect handler's public import, with a local transport response after a timeout and an exhausted transport failure. It observes the served file types and indeterminate result without requiring network access or a host installation.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_release_index_transport.py -q --no-cov -k 'transient_transport_failure_then_served_release or transport_failure_exhaustion'
+        cwd: .
   - id: dod-omn19998-release-index-transport-retry
     description: The negative-control release from the recorded integration failure is exercised with each supported transport exception followed by a definite 404. Positive release, exhausted retry, definite HTTP and malformed payload controls preserve the evidence distinctions. The CI log did not expose its underlying transport exception.
     source: manual
