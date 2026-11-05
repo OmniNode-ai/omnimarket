@@ -5,9 +5,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal, Self
+from typing import Final, Self
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -17,6 +18,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class EnumMemoryPilotOperation(StrEnum):
     INGEST = "ingest"
     QUERY = "query"
+
+
+class EnumMemoryPilotBackend(StrEnum):
+    """The backends the overlay may name; the overlay chooses, the code only maps."""
+
+    IN_MEMORY = "in_memory"
+    LEXICAL_LAB = "lexical_lab"
+    COGNEE = "cognee"
 
 
 class EnumMemoryPilotStatus(StrEnum):
@@ -135,12 +144,48 @@ class ModelLabEndpoint(BaseModel):
         return value.rstrip("/")
 
 
+class ModelBackendRequirements(BaseModel):
+    """What an overlay must carry for one backend, declared as data and not as branches."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chat: bool
+    embeddings: bool
+    ingest_batch: bool
+    storage_root: bool
+    answerer: bool
+
+
+#: Per-backend overlay requirements. A backend absent here cannot be named by an overlay.
+BACKEND_REQUIREMENTS: Final[
+    Mapping[EnumMemoryPilotBackend, ModelBackendRequirements]
+] = {
+    EnumMemoryPilotBackend.IN_MEMORY: ModelBackendRequirements(
+        chat=False,
+        embeddings=False,
+        ingest_batch=False,
+        storage_root=False,
+        answerer=False,
+    ),
+    EnumMemoryPilotBackend.LEXICAL_LAB: ModelBackendRequirements(
+        chat=True,
+        embeddings=False,
+        ingest_batch=False,
+        storage_root=False,
+        answerer=True,
+    ),
+    EnumMemoryPilotBackend.COGNEE: ModelBackendRequirements(
+        chat=True, embeddings=True, ingest_batch=True, storage_root=True, answerer=False
+    ),
+}
+
+
 class ModelMemoryPilotOverlay(BaseModel):
     """Every deployment fact of the pilot; nothing here has a packaged default."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["in_memory", "lexical_lab", "cognee"]
+    backend: EnumMemoryPilotBackend
     frozen_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     pilot_dir: Path
     telemetry_disabled: bool
@@ -172,19 +217,22 @@ class ModelMemoryPilotOverlay(BaseModel):
 
     @model_validator(mode="after")
     def _backend_needs(self) -> Self:
-        if self.backend != "in_memory" and self.chat is None:
+        need = BACKEND_REQUIREMENTS[self.backend]
+        name = self.backend.value
+        if need.chat and self.chat is None:
             raise ValueError("this backend needs a chat endpoint")
-        if self.backend == "cognee":
-            if self.embeddings is None or self.embedding_dimensions is None:
-                raise ValueError(
-                    "cognee needs an embeddings endpoint and its dimensions"
-                )
-            if self.ingest_data_per_batch is None:
-                raise ValueError(
-                    "cognee needs ingest_data_per_batch (how many documents it extracts at once on the shared lab model)"
-                )
-            if self.storage_root is None or not self.storage_root.is_absolute():
-                raise ValueError("cognee needs an absolute storage_root")
+        if need.embeddings and (
+            self.embeddings is None or self.embedding_dimensions is None
+        ):
+            raise ValueError(f"{name} needs an embeddings endpoint and its dimensions")
+        if need.ingest_batch and self.ingest_data_per_batch is None:
+            raise ValueError(
+                f"{name} needs ingest_data_per_batch (how many documents it extracts at once on the shared lab model)"
+            )
+        if need.storage_root and (
+            self.storage_root is None or not self.storage_root.is_absolute()
+        ):
+            raise ValueError(f"{name} needs an absolute storage_root")
         return self
 
     def endpoints(self) -> tuple[ModelLabEndpoint, ...]:
@@ -196,10 +244,13 @@ class ModelMemoryPilotOverlay(BaseModel):
 
 
 __all__ = [
+    "BACKEND_REQUIREMENTS",
+    "EnumMemoryPilotBackend",
     "EnumMemoryPilotErrorCode",
     "EnumMemoryPilotOperation",
     "EnumMemoryPilotReading",
     "EnumMemoryPilotStatus",
+    "ModelBackendRequirements",
     "ModelLabEndpoint",
     "ModelMemoryPilotContextRef",
     "ModelMemoryPilotDocument",

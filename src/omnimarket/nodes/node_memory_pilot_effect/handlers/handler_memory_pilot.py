@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import ClassVar
 
@@ -23,15 +24,17 @@ from omnimarket.nodes.node_memory_pilot_effect.handlers.frozen_pilot import (
     verify_frozen,
 )
 from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
-    EnumMemoryPilotErrorCode as Code,
-)
-from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
+    BACKEND_REQUIREMENTS,
+    EnumMemoryPilotBackend,
     EnumMemoryPilotOperation,
     EnumMemoryPilotReading,
     EnumMemoryPilotStatus,
     ModelMemoryPilotOverlay,
     ModelMemoryPilotRequest,
     ModelMemoryPilotResult,
+)
+from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot import (
+    EnumMemoryPilotErrorCode as Code,
 )
 from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot import (
     LabModelUnavailableError,
@@ -44,6 +47,17 @@ from omnimarket.nodes.node_memory_pilot_effect.protocols.protocol_memory_pilot i
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
 _log = logging.getLogger(__name__)
 _NODE = "node_memory_pilot_effect"
+
+
+def _make_cognee(
+    overlay: ModelMemoryPilotOverlay, prompt: str
+) -> ProtocolMemoryBackend:
+    """Import the optional package's backend only when an overlay names it."""
+    from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
+        BackendCognee,
+    )
+
+    return BackendCognee(overlay, system_prompt=prompt)
 
 
 class HandlerMemoryPilot:
@@ -121,7 +135,7 @@ class HandlerMemoryPilot:
                 )
         if (
             self._backend is None
-            and overlay.backend == "lexical_lab"
+            and BACKEND_REQUIREMENTS[overlay.backend].answerer
             and self._answerer is None
         ):
             return fail(
@@ -178,20 +192,16 @@ class HandlerMemoryPilot:
 
     def _make_backend(self, overlay: ModelMemoryPilotOverlay) -> ProtocolMemoryBackend:
         prompt = frozen_system_prompt(overlay.pilot_dir)
-        if overlay.backend == "in_memory":
-            return BackendInMemory()
-        assert overlay.chat is not None
-        if overlay.backend == "lexical_lab":
-            return BackendInMemory(
-                name="lexical_lab",
+        factories: dict[EnumMemoryPilotBackend, Callable[[], ProtocolMemoryBackend]] = {
+            EnumMemoryPilotBackend.IN_MEMORY: BackendInMemory,
+            EnumMemoryPilotBackend.LEXICAL_LAB: lambda: BackendInMemory(
+                name=EnumMemoryPilotBackend.LEXICAL_LAB.value,
                 answerer=self._answerer,
                 system_prompt=prompt,
-            )
-        from omnimarket.nodes.node_memory_pilot_effect.handlers.backend_cognee import (
-            BackendCognee,
-        )
-
-        return BackendCognee(overlay, system_prompt=prompt)
+            ),
+            EnumMemoryPilotBackend.COGNEE: lambda: _make_cognee(overlay, prompt),
+        }
+        return factories[overlay.backend]()
 
     async def _record(self, result: ModelMemoryPilotResult) -> None:
         assert result.error_code is not None

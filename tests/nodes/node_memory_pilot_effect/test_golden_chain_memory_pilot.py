@@ -67,6 +67,12 @@ async def test_ingest_then_query_emits_started_then_completed_under_one_key(
     assert answer.status is EnumMemoryPilotStatus.COMPLETED
     assert "8123" in answer.answer
     assert bus.topics == ["started", "completed", "started", "completed"]
+    assert [topic for topic, _k, _v in bus.events] == [
+        "onex.evt.omnimarket.memory-pilot-started.v1",
+        "onex.evt.omnimarket.memory-pilot-completed.v1",
+        "onex.evt.omnimarket.memory-pilot-started.v1",
+        "onex.evt.omnimarket.memory-pilot-completed.v1",
+    ], "the events leave on the topics the contract declares"
     assert {key for _t, key, _v in bus.events} == {str(CORR).encode()}
     terminal = json.loads(bus.events[-1][2])
     assert terminal["status"] == "completed"

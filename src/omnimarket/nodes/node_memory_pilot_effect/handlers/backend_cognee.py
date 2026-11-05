@@ -9,6 +9,7 @@ dependency of omnimarket; only a host that installed it can use this backend.
 
 from __future__ import annotations
 
+import importlib
 import os
 from typing import Any
 
@@ -99,9 +100,7 @@ class BackendCognee:
     def _load(self) -> Any:
         if self._cognee is None:
             os.environ.update(cognee_environment(self._overlay))
-            import cognee  # type: ignore[import-not-found,import-untyped,unused-ignore]
-
-            self._cognee = cognee
+            self._cognee = importlib.import_module("cognee")
         return self._cognee
 
     def _probe_models(self) -> None:

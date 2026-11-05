@@ -81,6 +81,10 @@ def _assert_typed_failure(
     assert bus.topics == ["started", "failed"], (
         "exactly one terminal event, and it is the failure"
     )
+    assert [topic for topic, _k, _v in bus.events] == [
+        "onex.evt.omnimarket.memory-pilot-started.v1",
+        "onex.evt.omnimarket.memory-pilot-failed.v1",
+    ], "the failure leaves on the failed topic the contract declares"
     assert json.loads(bus.events[-1][2])["error_code"] == code.value
     assert [row[1] for row in recorder.rows] == [code.value]
     assert recorder.rows[0][0] == str(CORR)
