@@ -510,3 +510,10 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn19998-dependency-scan-multidict-pin
+    description: The locked multidict is 6.9.1, the release that fixes advisory PYSEC-2026-4244 present in 6.8.0; the Safety scan in the Dependency Security Scan check crashed on that advisory. The grep fails if the lock holds any other multidict version.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: grep -A1 '^name = "multidict"$' uv.lock | grep -q '^version = "6.9.1"$'
+        cwd: .
