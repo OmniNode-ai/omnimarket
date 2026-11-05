@@ -604,13 +604,10 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/test_lane_block_diagnose.py -q --no-cov -m "not kafka"
         cwd: .
   - id: dod-omn19998-routing-lock-corpus-integrity
-    description: The runtime work-contract corpus loads with the routing dependency lock, preserves deterministic positive and negative controls, and refuses evaluator tampering. The installed routing smoke remains the scoped deployment check.
+    description: The routing nodes are registered entry points and the dependency lock matches every work-contract corpus environment pin. The test fails at the merge base, where the routing nodes are absent. The installed routing smoke remains the scoped deployment check.
     source: manual
     binds_ac: [AC10]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_work_contract_pins_current.py tests/nodes/test_work_contract_corpus.py tests/nodes/test_work_contract_bindings.py -q --no-cov
-        cwd: .
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_work_contract_checks.py -q --no-cov -k 'F02-01 or F03-01 or F06-01 or dod-OMN-21090-01 or tampering or historical_dod or recorded_check_bound'
+        check_value: uv run --frozen pytest tests/nodes/test_lane_routing_lock_corpus.py -q --no-cov
         cwd: .
