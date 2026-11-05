@@ -24,6 +24,28 @@ from .reverse_substitution import (
 ORIGINAL = "def test_example():\n    # keep this evidence\n    assert left and right\n"
 
 
+def test_moved_tree_has_no_legacy_registry_root_variable() -> None:
+    root = Path(__file__).resolve().parents[3]
+    node = "src/omnimarket/nodes/node_landing_placement_effect"
+    tests = "tests/nodes/node_landing_placement_effect"
+    # A missing product tree must fail the merge-base control, even when
+    # the gate overlays this test file onto that tree.
+    assert (root / node / "contract.yaml").is_file()
+    assert (root / node / "handlers/handler_landing_placement.py").is_file()
+    files = [
+        path
+        for directory in (root / node, root / tests)
+        for path in directory.rglob("*")
+        if path.is_file() and path.suffix in {".py", ".yaml", ".json"}
+    ]
+    assert files
+    assert [
+        str(path.relative_to(root))
+        for path in files
+        if "OMNI" + "_HOME" in path.read_text(encoding="utf-8")
+    ] == []
+
+
 @pytest.mark.parametrize(
     "moved",
     [

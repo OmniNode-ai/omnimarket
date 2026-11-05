@@ -59,6 +59,8 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "test -f src/omnimarket/nodes/node_landing_placement_effect/contract.yaml && test -z \"$(git grep -n -F OMNI_HOME -- src/omnimarket/nodes/node_landing_placement_effect tests/nodes/node_landing_placement_effect)\""
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_landing_placement_effect/test_reverse_substitution.py::test_moved_tree_has_no_legacy_registry_root_variable -q --no-cov"
   - id: "dod-omn21408-ac2-reverse-substitution"
     description: "Whole-file comparison of all six moved tests against independently supplied historical originals and pre-enumerated edits. Only lint-required formatting and PT018 assertion splits are mechanical exceptions. Missing inputs and deleted caller tests refuse; the checker regression tests alone do not establish AC2."
     source: "manual"
