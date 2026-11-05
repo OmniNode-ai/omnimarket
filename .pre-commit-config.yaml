@@ -1690,6 +1690,15 @@ repos:
       # overlay. Refuses any vars.*MODEL* reference and any model id literal in
       # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
       # comes from the overlay (OMN-20910)".
+      # OMN-19998: same focused proof as the required CI lint job.
+      - id: public-review-receipt
+        name: Public review receipt and runtime dispatch
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/(node_agent_review_dispatch_orchestrator|node_agent_review_gate_accept_effect)/.*|tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt\.py|\.github/workflows/hostile-reviewer\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: review-voter-model-from-overlay
         name: Review voter model comes from the overlay (OMN-20910)
         language: system

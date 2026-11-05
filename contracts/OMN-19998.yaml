@@ -138,6 +138,12 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
+  - id: req-omn19998-public-review-off-actions
+    statement: The existing review nodes gain a receipt-only reader and a proactive PR-state command producer before the hosted workflow cutover.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: the proactive exact-head review command and receipt-only reader preserve the publisher, signature and quorum refusal boundary through runtime dispatch, persistent command acknowledgement and bounded missing-receipt refusal -- falsifier: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly'
+
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -557,4 +563,21 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-public-review-receipt
+    description: Focused replay of exact-head receipt verification outcomes, persistent command identity, acknowledgement retry and bounded missing-receipt failure. The hosted workflow activation remains a separate patch until trusted base tooling is available. This scoped proof does not claim runner-group policy enforcement or completion of the controller timer criteria.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-public-review-runtime-wiring
+    description: Hosted runtime discovery and in-memory dispatch exercise the contract-declared PR-state handler and its durable per-head command acknowledgement. A live lab runtime install and a real signed receipt remain pending; this entry claims the wiring smoke only.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly -k runtime_discovers
         cwd: .
