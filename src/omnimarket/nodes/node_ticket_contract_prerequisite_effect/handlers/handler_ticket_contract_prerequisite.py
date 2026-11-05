@@ -131,7 +131,11 @@ def _changed_paths(sha: str, base: str) -> tuple[str, ...]:
 
 
 def check(head: str, base: str, title: str | None = None) -> tuple[str, ...]:
-    """Read immutable git blobs, including when the working tree has a repair."""
+    """Read immutable git blobs without repairing refs.
+
+    The typed handler resolves and repairs its base before calling this helper.
+    An unreadable comparison cannot exempt a missing contract as a release cut.
+    """
     sha = _git("rev-parse", "--verify", f"{head}^{{commit}}")
     if title is None:
         subjects = _git(
