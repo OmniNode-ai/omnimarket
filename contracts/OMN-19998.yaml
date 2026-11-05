@@ -68,11 +68,6 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'A second install whose source omits the guard retains the live guard, prints INSTALL-SUPERSET-CONTAINED guard=first and records SUPERSET guard=first; stage versions win and undeclared nodes are not carried.'
-  - id: req-omn19998-lane-dispatch-contract
-    statement: Lane dispatch uses a frozen serialized spec, a verified canonical record, declared bus topics and deployment-bound grant roles.
-    acceptance:
-      - id: AC6
-        statement: 'AC6: the dispatch contract round-trips canonical JSON, refuses invalid policy and admission facts, preserves runner arguments and routes through its declared node; machine topic roles resolve only when bound by the overlay -- falsifiers: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka" and uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov'
   - id: req-omn19998-cloud-limit-ending
     statement: Cloud placement distinguishes a terminal limit ending from subscription telemetry and uses recorded credit balances.
     acceptance:
@@ -153,6 +148,11 @@ requirements:
     acceptance:
       - id: AC13
         statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-lane-dispatch-contract
+    statement: Lane dispatch uses a frozen serialized spec, a verified canonical record, declared bus topics and deployment-bound grant roles.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the dispatch contract round-trips canonical JSON, refuses invalid policy and admission facts, preserves runner arguments and routes through its declared node; machine topic roles resolve only when bound by the overlay -- falsifiers: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka" and uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -255,25 +255,6 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly -k timer_persists
-        cwd: .
-  - id: dod-omn19998-lane-dispatch-contract
-    description: Frozen model, canonical record, policy refusals and runner arguments are exercised in the focused dispatch suite. This does not assert the original controller timer criteria or a live broker grant.
-    source: manual
-    binds_ac: [AC6]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka"
-        cwd: .
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov
-        cwd: .
-  - id: dod-omn19998-lane-dispatch-deploy
-    description: Hosted deployment smoke invokes the declared node through RuntimeLocal with an in-memory overlay and checker/runner protocol adapters. The real Redpanda proof remains subject to deployment topic and group authorization; this smoke does not claim a live installation.
-    source: manual
-    binds_ac: [AC6]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/nodes/test_golden_chain_lane_dispatch_effect.py -q -n 0 --no-cov -k declared_node_over_inmemory_overlay
         cwd: .
   - id: dod-omn19998-publish-recovery
     description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
@@ -600,13 +581,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn19998-unreadable-base-refusal
-    description: Direct prerequisite calls recover an absent configured remote base with an explicit title or inferred title, and a release cut remains exempt after that recovery. Three direct-call regressions fail at the merge base; each reads back the recovered tracking ref, unchanged head and clean worktree. An unreadable base retains the missing-contract refusal, and source changes and missing runtime integration proof remain refusals. All Git remotes are local and require no credentials.
-    source: manual
-    binds_ac: [AC10]
-    checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual
@@ -630,4 +604,31 @@ dod_evidence:
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-lane-dispatch-contract
+    description: Frozen model, canonical record, policy refusals and runner arguments are exercised in the focused dispatch suite. This does not assert the original controller timer criteria or a live broker grant.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_lane_dispatch_contract.py -q -n 0 --no-cov -m "not kafka"
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_machine_grant_role_compute/test_machine_grant_role.py -q -n 0 --no-cov
+        cwd: .
+  - id: dod-omn19998-lane-dispatch-deploy
+    description: Hosted deployment smoke invokes the declared node through RuntimeLocal with an in-memory overlay and checker/runner protocol adapters. The real Redpanda proof remains subject to deployment topic and group authorization; this smoke does not claim a live installation.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_golden_chain_lane_dispatch_effect.py -q -n 0 --no-cov -k declared_node_over_inmemory_overlay
+        cwd: .
+  - id: dod-omn19998-unreadable-base-refusal
+    description: Direct prerequisite calls recover an absent configured remote base with an explicit title or inferred title, and a release cut remains exempt after that recovery. Three direct-call regressions fail at the merge base; each reads back the recovered tracking ref, unchanged head and clean worktree. An unreadable base retains the missing-contract refusal, and source changes and missing runtime integration proof remain refusals. All Git remotes are local and require no credentials.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov
         cwd: .
