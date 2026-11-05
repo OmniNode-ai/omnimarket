@@ -111,6 +111,22 @@ async def test_lab_model_down_fails_fast_and_invents_no_answer(
     _assert_typed_failure(result, bus, recorder, Code.LAB_MODEL_UNAVAILABLE)
 
 
+async def test_runtime_built_handler_has_only_the_bus_and_still_names_a_failure(
+    bus: RecordingBus, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The runtime injects only the event bus; with no recorder the failure is logged, never lost."""
+    handler = HandlerMemoryPilot(
+        event_bus=bus,
+        overlay=make_overlay(frozen="0" * 64),
+    )
+    with caplog.at_level("ERROR"):
+        result = await handler.handle(_req())
+    assert result.error_code is Code.PILOT_NOT_FROZEN
+    assert bus.topics == ["started", "failed"]
+    assert "error_code=pilot_not_frozen" in caplog.text
+    assert f"correlation_id={CORR}" in caplog.text
+
+
 def test_probe_of_a_closed_port_is_lab_model_unavailable() -> None:
     endpoint = ModelLabEndpoint(
         base_url="http://127.0.0.1:9/v1", model="m", timeout_seconds=2

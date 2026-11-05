@@ -60,6 +60,26 @@ def _make_cognee(
     return BackendCognee(overlay, system_prompt=prompt)
 
 
+class LoggingFailureRecorder:
+    """The recorder the runtime gets when none is injected: one error log line per failure.
+
+    The runtime's auto-wiring injects only the event bus, so a handler that needs
+    another dependency cannot be built there. A durable failure row is a recorder
+    passed in by whoever hosts the node with a store; this one names the failure
+    in the log and writes nothing else.
+    """
+
+    async def record_failure(
+        self, correlation_id: str, error_code: str, detail: str
+    ) -> None:
+        _log.error(
+            "memory pilot failure: correlation_id=%s error_code=%s detail=%s",
+            correlation_id,
+            error_code,
+            detail,
+        )
+
+
 class HandlerMemoryPilot:
     """One request in, a started event and exactly one terminal event out."""
 
@@ -69,7 +89,7 @@ class HandlerMemoryPilot:
         self,
         *,
         event_bus: ProtocolEventPublisher,
-        failure_recorder: ProtocolFailureRecorder,
+        failure_recorder: ProtocolFailureRecorder | None = None,
         overlay: ModelMemoryPilotOverlay | None = None,
         backend: ProtocolMemoryBackend | None = None,
         answerer: ProtocolChatAnswerer | None = None,
@@ -80,7 +100,7 @@ class HandlerMemoryPilot:
         self._completed_topic = next(t for t in topics if t.endswith("-completed.v1"))
         self._failed_topic = next(t for t in topics if t.endswith("-failed.v1"))
         self._bus = event_bus
-        self._recorder = failure_recorder
+        self._recorder = failure_recorder or LoggingFailureRecorder()
         self._overlay = overlay
         self._backend = backend
         self._answerer = answerer
