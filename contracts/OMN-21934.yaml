@@ -124,6 +124,39 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-21934 -- uv run --frozen pytest tests/test_golden_chain_projection_context_audit.py tests/test_projection_context_audit_real_postgres.py -q -p no:randomly --no-cov"
         cwd: "."
+  - id: "dod-omn21934-hosted-postgres-deploy"
+    description: >-
+      A private PostgreSQL 16 container receives both shipped node migrations,
+      including the tenant projection writer grants. The real writer then
+      replays all five topics through standalone and runtime delivery against
+      that database, requiring one row per event key after the second replay.
+      This probe needs Docker on the runner, without a lab route or lane service.
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export COMPOSE_PROJECT_NAME=landing-l27010-lab
+          export PYTHONDONTWRITEBYTECODE=1
+          container=$(docker run --detach --rm --publish 127.0.0.1::5432 --env POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine)
+          trap 'docker rm --force "$container" >/dev/null' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec "$container" psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE ROLE tenant_projection_writer NOLOGIN'
+          node=src/omnimarket/nodes/node_projection_context_audit
+          for migration in "$node"/migrations/*.sql; do
+            docker exec -i "$container" psql -U postgres -v ON_ERROR_STOP=1 < "$migration"
+          done
+          published=$(docker port "$container" 5432/tcp)
+          export INTEGRATION_POSTGRES_HOST=127.0.0.1
+          export INTEGRATION_POSTGRES_PORT="${published##*:}"
+          export INTEGRATION_POSTGRES_DB=postgres
+          export INTEGRATION_POSTGRES_USER=postgres
+          export INTEGRATION_POSTGRES_PASSWORD=unused
+          uv run --frozen pytest tests/test_golden_chain_projection_context_audit.py tests/test_projection_context_audit_real_postgres.py -q --no-cov -p no:randomly --refuse-skips
   - id: "dod-omn21934-sequence-ownership"
     description: 'AC4: the sequence is declared exactly once; the test fails at the merge base, which declares no such sequence'
     source: "manual"
