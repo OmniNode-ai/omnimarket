@@ -37,7 +37,7 @@ from omnimarket.models.model_reading import (
 )
 
 _KEY_LENGTH = 24
-_TOKEN_LIMIT = 60
+_TOKEN_LIMIT = 120
 _NOT_TOKEN = re.compile(r"[^a-z0-9]+")
 
 
