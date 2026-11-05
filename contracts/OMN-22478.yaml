@@ -112,3 +112,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_reading_writer_effect/test_reading_schedule.py -q --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn22478-integration-proof"
+    description: >-
+      The pushed head ran the reading nodes' suites on a lab host through the lab work runner and exited 0.
+      The hourly unit's installation and its runs on the pool host are read after merge from the installed unit and its rows.
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22478 -- uv run --frozen pytest tests/nodes/node_reading_compute tests/nodes/node_reading_writer_effect -q -p no:randomly --no-cov'
+        cwd: "."
