@@ -14,7 +14,8 @@ description: >-
   revision, be at it). The revision the unit runs is read from the checkout and written to the unit's install record
   beside its state directory, so the installed unit records the revision it runs. A unit may also declare
   environment variables whose value is a path the request may override (the installed overlay tree, for the factory
-  floor publisher); an override of any other variable is refused.
+  floor publisher); an override of any other variable is refused. Declared environment inputs are persisted in
+  the unit. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -43,6 +44,12 @@ units:
       run_at_load: true
       description: every 300 s and at load
     registry_project: omnimarket
+    # Installation prepares and checks this environment once. A timer tick must
+    # not rebuild the editable package on every 300 s invocation.
+    tick_no_sync: true
+    environment_inputs:
+      ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
+    required_environment_inputs: [ONEX_RUNTIME_SSH_HOST]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
     # otherwise build the project's venv on never gets the grant: under launchd its LAN connections fail with

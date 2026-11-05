@@ -44,6 +44,12 @@ handler_routing:
       name: HandlerDelegationReport
       module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report
     input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report.ModelDelegationReportRequest
+  - operation: prepare_process_health
+    handler:
+      name: HandlerProcessHealthPayload
+      module: omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload
+    input_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload.ModelProcessHealthPayloadRequest
+    output_model: omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload.ModelProcessHealthPayloadResult
   - operation: publish_operator_reports
     handler:
       name: HandlerOperatorAccess
@@ -107,6 +113,13 @@ runtime:
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
   process_health_relpath: .onex_state/process-health/process-health.json
+  # The floor needs daily values and summaries; only the detailed report needs
+  # hundreds of thousands of range observations. Preserve those in a gzip file,
+  # published before the small summary. The report reader's 8 MiB bound stays.
+  process_health_payload:
+    max_source_bytes: 268435456
+    max_summary_bytes: 8388608
+    detail_file: process-health-detail.json.gz
   # The publisher reads the lab projection through the existing delegation_health overlay.
   # Both windows share one database clock and snapshot; unread reads replace stale counts.
   delegation_relpath: .onex_state/delegation-report/delegation-window.json
@@ -239,6 +252,7 @@ runtime:
         relpath: .onex_state/process-health/process-health.json
         as_of_key: generated_at
         publish: false
+        projection: process_health_summary
     - id: decision_map
       title: October decision map
       summary: Problems the system ran into, the decisions they led to, and whether each problem came back after the change.
