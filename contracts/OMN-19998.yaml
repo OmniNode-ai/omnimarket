@@ -128,6 +128,18 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+
+  - id: req-omn19998-unanswered-repository-slice
+    statement: Transcript structure and independently appended arrival rows expose unanswered operator messages even when content capture is absent.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: tool-only turns remain unanswered, one-line assistant text covers all preceding operator messages, machine prompts are excluded, arrival replay is idempotent, pending arrivals drain on any session hook and an independent drain invocation, stale spool depth and age reach the capture watch, and private handoff words or a flagged resend request remain available -- falsifier: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q'
+  - id: req-omn19998-bounded-unanswered-stop
+    statement: The Stop gate refuses each unanswered message twice and permits a handoff only with a durable owner-naming acknowledgement and a claimed running answer lane; failures are visible alarms.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: per-message bounded blocks, acknowledgement-required handoff, transcript/store/timeout alarms, structural coverage, machine-turn exclusions, installed dependency closure and p95 budget hold -- falsifier: uv run pytest tests/nodes/node_operator_access_mode_effect/test_unanswered_guard.py -q -n 0'
+
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +521,29 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-unanswered-repository-slice
+    description: Focused structural, spool, installed-hook, ledger-host and in-memory runtime falsifiers for this repository slice. Live host-unit installation, the capture-stopped headless session and the real labelled sample of 60 remain separate required lab evidence.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_unanswered_compute/test_golden_chain_unanswered_detect.py -q -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-bounded-unanswered-stop
+    description: Focused gate model witnesses and mutations, real transcript and arrival reconciliation, canonical in-memory bus dispatch, independent message counters, installed isolated process imports and p95 latency. Live Part A claim-store race, headless answer-lane delivery and Redpanda observations are separate pending lab evidence.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_access_mode_effect/test_unanswered_guard.py -q -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-bounded-stop-installed-smoke
+    description: Hosted installer output runs Stop in a process outside the repository with only the isolated copy on PYTHONPATH. This does not assert a host-wide installation or answer-lane start.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_access_mode_effect/test_unanswered_guard.py -q -n 0 -p no:randomly -k installed_isolated_copy
         cwd: .

@@ -278,7 +278,9 @@ def test_refusal_row_allowed_calls_write_none(scratch: Scratch) -> None:
             ),
         },
     )
-    assert (named.returncode, named.stdout) == (0, "")
+    # An alarm systemMessage from the unanswered gate is not a refusal.
+    assert named.returncode == 0
+    assert "decision" not in json.loads(named.stdout or "{}")
     assert scratch.rows() == []
     # Positive control: the same scratch ledger does take a row from a refusal.
     assert scratch.bash("local_cli", "cd /repo && ls").returncode == 2

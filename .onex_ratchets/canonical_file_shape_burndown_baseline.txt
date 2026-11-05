@@ -151,7 +151,6 @@ src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/server.py
 src/omnimarket/nodes/node_omniclaude_pin_bump_compute/__main__.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_access_mode_detect.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_access_mode_state.py
-src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_refusal_row.py
 src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_digest.py
 src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_process.py

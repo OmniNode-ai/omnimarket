@@ -1,0 +1,30 @@
+{
+  "max_blocks": 2,
+  "budget_ms": 250,
+  "counter_poll_seconds": 0.001,
+  "overlay_env": "ONEX_UNANSWERED_GUARD_OVERLAY",
+  "arrival_overlay_env": "ONEX_OPERATOR_MESSAGE_OVERLAY",
+  "handoff_command_env": "ONEX_OPERATOR_ANSWER_HANDOFF_COMMAND",
+  "handoff_timeout_seconds": 0.2,
+  "alarm_kind": "operator-unanswered-gate-alarm",
+  "acknowledgement_kind": "operator-message-acknowledgement",
+  "source": "unanswered-stop-gate",
+  "detector_contract": "nodes/node_operator_unanswered_compute/contract.yaml",
+  "dependency_packages": [
+    "nodes/node_operator_unanswered_compute"
+  ],
+  "dependency_files": [
+    "models/operator_unanswered.py",
+    "handlers/operator_messages.py",
+    "handlers/operator_message_spool.py",
+    "models/model_operator_message_spool.py",
+    "enums/enum_machine_prompt.py",
+    "contracts/operator_message_arrivals.json",
+    "models/model_operator_stop_gate.py",
+    "handlers/handler_operator_unanswered_bus.py"
+  ],
+  "detector_handler": "omnimarket.nodes.node_operator_unanswered_compute.handlers.handler_operator_unanswered:HandlerOperatorUnanswered",
+  "detector_input_model": "omnimarket.models.operator_unanswered.ModelUnansweredRequest",
+  "detector_command_topic": "onex.cmd.omnimarket.operator-unanswered-requested.v1",
+  "detector_terminal_topic": "onex.evt.omnimarket.operator-unanswered-completed.v1"
+}

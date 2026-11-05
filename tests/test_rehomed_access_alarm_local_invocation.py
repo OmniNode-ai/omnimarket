@@ -18,6 +18,34 @@ pytestmark = pytest.mark.unit
 NODES = Path(__file__).resolve().parents[1] / "src/omnimarket/nodes"
 
 
+def _model(ref: str) -> type:
+    module, _, name = ref.rpartition(".")
+    return getattr(importlib.import_module(module), name)
+
+
+def _access_mode_binding() -> tuple[type, type, type]:
+    # The node also hosts the bus-wired unanswered Stop gate, so only the
+    # access-mode detection is a hook-local operation, routed outside the bus.
+    contract = yaml.safe_load(
+        (NODES / "node_operator_access_mode_effect" / "contract.yaml").read_text()
+    )
+    assert contract["runtime_dispatch"]["external_trigger"].strip()
+    routes = [
+        route
+        for route in contract["hook_handler_routing"]["handlers"]
+        if route["operation"] == "detect_access_mode"
+    ]
+    assert len(routes) == 1
+    route = routes[0]
+    assert "topic" not in route
+    module, name = route["handler"]["module"], route["handler"]["name"]
+    return (
+        getattr(importlib.import_module(module), name),
+        _model(route["input_model"]),
+        _model(route["output_model"]),
+    )
+
+
 def _binding(node: str) -> tuple[type, type, type]:
     contract = yaml.safe_load((NODES / node / "contract.yaml").read_text())
     assert contract["metadata"]["transport_type"] == "local"
@@ -37,12 +65,8 @@ def _binding(node: str) -> tuple[type, type, type]:
     assert route["input_model"] == binding["input_model"]
     assert route["output_model"] == binding["output_model"]
 
-    def model(ref: str) -> type:
-        module, _, name = ref.rpartition(".")
-        return getattr(importlib.import_module(module), name)
-
     handler = getattr(importlib.import_module(binding["module"]), binding["class"])
-    return handler, model(binding["input_model"]), model(binding["output_model"])
+    return handler, _model(binding["input_model"]), _model(binding["output_model"])
 
 
 @pytest.mark.parametrize(
@@ -57,7 +81,7 @@ def _binding(node: str) -> tuple[type, type, type]:
 def test_access_mode_local_contract(
     tmp_path: Path, environ: dict[str, str], mode: EnumAccessMode, source: str
 ) -> None:
-    handler, request_model, result_model = _binding("node_operator_access_mode_effect")
+    handler, request_model, result_model = _access_mode_binding()
     assert handler is HandlerLocalAccessMode
     request = request_model.model_validate(
         {"session_id": "local-contract", "state_dir": str(tmp_path), "environ": environ}

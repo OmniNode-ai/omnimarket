@@ -3,7 +3,7 @@ version: "1.0.0"
 description: >
   Reads source and active principal capture freshness on a timer and publishes
   silence findings through the canonical Slack effect. Every tick publishes
-  its own automation heartbeat and terminal evaluation.
+  its own automation heartbeat and terminal evaluation, including the host-wide operator-message spool depth, oldest age and stale-source findings.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true

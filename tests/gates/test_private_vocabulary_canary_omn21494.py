@@ -16,9 +16,11 @@ omniclaude follow-up named in the OMN-21494 contract, not part of this canary.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -59,7 +61,7 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
     }
     env[config["config_root_setting"]] = str(root)
     source = f"omnibase-core @ git+{config['core_repository']}@{config['core_dev_merge_tag']}"
-    return subprocess.run(
+    launched = subprocess.run(
         [
             uv,
             "run",
@@ -67,6 +69,11 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
             "--isolated",
             "--with",
             source,
+            "python",
+            "-c",
+            "import json, subprocess, sys; "
+            "result = subprocess.run(sys.argv[1:], capture_output=True, text=True, check=False); "
+            "print(json.dumps(dict(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)))",
             config["console_script"],
             "--name",
             config["vocabulary_name"],
@@ -76,6 +83,19 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
         text=True,
         check=False,
         timeout=600,
+    )
+    # uv's dependency preparation has its own diagnostics. Keep them visible,
+    # while measuring only the console script's stdout, stderr and exit status.
+    # A preparation failure still fails the canary with its original output.
+    if launched.returncode:
+        pytest.fail(f"canary environment preparation failed: {launched.stderr}")
+    sys.stderr.write(launched.stderr)
+    result = json.loads(launched.stdout)
+    return subprocess.CompletedProcess(
+        [config["console_script"], "--name", config["vocabulary_name"]],
+        returncode=result["returncode"],
+        stdout=result["stdout"],
+        stderr=result["stderr"],
     )
 
 
@@ -101,3 +121,35 @@ def test_unset_variable_without_vocabulary_is_one_refusal_naming_setting(
     lines = [ln for ln in result.stderr.splitlines() if ln.strip()]
     assert len(lines) == 1, result.stderr
     assert config["unset_setting"] in lines[0]
+
+
+def test_dependency_update_diagnostics_are_separate_from_the_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cold uv environment reports its update before the application starts."""
+    config = _canary()
+    refusal = f"private vocabulary is not set: set {config['unset_setting']}\n"
+    diagnostic = "Updating dependency\nUpdated dependency\n"
+    console = tmp_path / config["console_script"]
+    console.write_text(
+        f"#!{sys.executable}\nimport sys\nsys.stderr.write({refusal!r})\nsys.exit(1)\n"
+    )
+    console.chmod(0o755)
+    uv = tmp_path / "uv"
+    uv.write_text(
+        f"#!{sys.executable}\nimport os, sys\n"
+        f"sys.stderr.write({diagnostic!r})\n"
+        "if 'python' in sys.argv:\n"
+        "    index = sys.argv.index('python')\n"
+        "    os.execv(sys.executable, [sys.executable, *sys.argv[index + 1:]])\n"
+        "else:\n"
+        f"    sys.stderr.write({refusal!r})\n"
+        "    sys.exit(1)\n"
+    )
+    uv.chmod(0o755)
+    monkeypatch.setattr(shutil, "which", lambda _: str(uv))
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    result = _run(config, tmp_path)
+    assert result.returncode == 1
+    assert result.stderr == refusal
+    assert capsys.readouterr().err == diagnostic

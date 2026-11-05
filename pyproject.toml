@@ -876,6 +876,7 @@ node_pr_handoff_ledger_effect = "omnimarket.nodes.node_pr_handoff_ledger_effect"
 # by the work-ledger serve process on the ledger host (--operator-capture); neither declares
 # event_bus.
 node_operator_capture_compute = "omnimarket.nodes.node_operator_capture_compute"
+node_operator_unanswered_compute = "omnimarket.nodes.node_operator_unanswered_compute"
 node_ask_state_compute = "omnimarket.nodes.node_ask_state_compute"
 node_ask_state_effect = "omnimarket.nodes.node_ask_state_effect"
 # OMN-21883: pure host bring-up plan over the declared target graph.

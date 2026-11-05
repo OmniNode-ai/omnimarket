@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_operator_unanswered_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+lifecycle: experimental
+description: Structural coverage over transcript records and arrival rows, independent of capture classifications.
+input_model:
+  name: ModelUnansweredRequest
+  module: omnimarket.models.operator_unanswered
+output_model:
+  name: ModelUnansweredResult
+  module: omnimarket.models.operator_unanswered
+entrypoint:
+  name: NodeOperatorUnansweredCompute
+  module: omnimarket.nodes.node_operator_unanswered_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_operator_unanswered_compute.handlers.handler_operator_unanswered:HandlerOperatorUnanswered
+  handlers:
+    - operation: detect_unanswered
+      topic: onex.cmd.omnimarket.operator-unanswered-requested.v1
+      handler:
+        name: HandlerOperatorUnanswered
+        module: omnimarket.nodes.node_operator_unanswered_compute.handlers.handler_operator_unanswered
+      input_model: omnimarket.models.operator_unanswered.ModelUnansweredRequest
+      output_model: omnimarket.models.operator_unanswered.ModelUnansweredResult
+    - operation: resolve_answer_words
+      topic: onex.cmd.omnimarket.operator-answer-words-requested.v1
+      handler:
+        name: HandlerAnswerWords
+        module: omnimarket.nodes.node_operator_unanswered_compute.handlers.handler_answer_words
+      input_model: omnimarket.models.operator_unanswered.ModelAnswerWordsRequest
+      output_model: omnimarket.models.operator_unanswered.ModelAnswerWordsResult
+    - operation: measure_structural_misses
+      topic: onex.cmd.omnimarket.operator-structural-sample-requested.v1
+      handler:
+        name: HandlerStructuralMissRate
+        module: omnimarket.nodes.node_operator_unanswered_compute.handlers.handler_structural_miss_rate
+      input_model: omnimarket.models.operator_unanswered.ModelStructuralSample
+      output_model: omnimarket.models.operator_unanswered.ModelStructuralMissRate
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.operator-unanswered-requested.v1
+    - onex.cmd.omnimarket.operator-answer-words-requested.v1
+    - onex.cmd.omnimarket.operator-structural-sample-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.operator-unanswered-completed.v1
+terminal_event: onex.evt.omnimarket.operator-unanswered-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.operator-answer-words-requested.v1
+    producer: Canonical run-node clients resolving private answer words for an answer lane.
+  - topic: onex.cmd.omnimarket.operator-structural-sample-requested.v1
+    producer: Canonical run-node measurement clients submitting a labelled structural sample.
+externally_consumed_topics:
+  - onex.evt.omnimarket.operator-unanswered-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.operator-unanswered-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.operator-unanswered-completed.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 1000
+measurement_policy:
+  minimum_sample_size: 60
+  wilson_z: 1.959963984540054
+  confidence_level: 0.95
+  sample_scope: labelled operator messages followed by non-empty assistant text
+answer_words_policy:
+  resend_text: I could not read your message. Please resend it.
+metadata:
+  description: Structural unanswered-message detection
+  author: OmniNode Platform Team
+  tags: [compute, operator, transcript]

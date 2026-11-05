@@ -19,7 +19,13 @@ from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
     ProtocolLocalRuntimeBus,
 )
 
+from omnimarket.handlers.operator_message_spool import (
+    load_arrival_policy,
+    read_operator_spool_status,
+    spool_directory,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+from omnimarket.models.model_operator_message_spool import ModelOperatorSpoolStatus
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_secret_ref,
@@ -51,6 +57,7 @@ from omnimarket.nodes.node_capture_silence_watch_effect.models import (
     ModelCaptureSource,
     ModelCaptureWatchDelivery,
     ModelCaptureWatchEvaluation,
+    ModelCaptureWatchSlackCommand,
     ModelCaptureWatchTrigger,
     ModelCaptureWatchVerdict,
 )
@@ -74,6 +81,7 @@ class HandlerCaptureSilenceWatch:
         contract_path: Path | None = None,
         host: str | None = None,
         pid: int | None = None,
+        spool_reader: Callable[[float], ModelOperatorSpoolStatus] | None = None,
     ) -> None:
         self._contract_path = contract_path or _CONTRACT_PATH
         self._policy, self._binding, self._sources = load_capture_watch_config(
@@ -89,6 +97,13 @@ class HandlerCaptureSilenceWatch:
             self._terminal_topic = self._topic(topics, terminal)
         except ValueError as exc:
             raise CaptureWatchPolicyError(str(exc)) from exc
+        spool_config = contract_section(self._contract_path, "operator_message_spool")
+        if not isinstance(spool_config, dict):
+            raise CaptureWatchPolicyError(
+                "contract must declare operator_message_spool"
+            )
+        self._spool_source_id = str(spool_config["source_id"])
+        self._spool_reader = spool_reader or self._read_spool
         self._publisher = event_publisher
         self._event_bus = event_bus
         self._reader = reader
@@ -155,6 +170,24 @@ class HandlerCaptureSilenceWatch:
                                 source, verdict, epoch, correlation_id
                             )
                         )
+        spool = self._spool_reader(epoch)
+        if spool.state == "FINDING":
+            age = spool.oldest_age_seconds
+            verdicts.append(
+                ModelCaptureWatchVerdict(
+                    source_id=self._spool_source_id,
+                    scope="source",
+                    actor=None,
+                    state=EnumCaptureWatchState.STALE
+                    if age is not None and age > spool.bound_seconds
+                    else EnumCaptureWatchState.UNKNOWN,
+                    newest_at=None,
+                    age_seconds=age,
+                    bound_seconds=int(spool.bound_seconds),
+                    error="; ".join(spool.errors) or None,
+                )
+            )
+            deliveries.append(await self._publish_spool_alarm(spool, correlation_id))
         heartbeat = build_heartbeat(
             process_id=self._policy.heartbeat_process_id,
             host=self._host,
@@ -174,11 +207,51 @@ class HandlerCaptureSilenceWatch:
             deliveries=tuple(deliveries),
             heartbeat_published=heartbeat_error is None,
             heartbeat_error=heartbeat_error,
+            operator_message_spool=spool,
         )
         await self._publish_json(
             self._terminal_topic, evaluation.model_dump_json().encode("utf-8")
         )
         return evaluation
+
+    @staticmethod
+    def _read_spool(epoch: float) -> ModelOperatorSpoolStatus:
+        policy = load_arrival_policy(os.environ)
+        return read_operator_spool_status(
+            spool_directory(os.environ, policy),
+            now=epoch,
+            bound_seconds=policy.stale_after_seconds,
+        )
+
+    async def _publish_spool_alarm(
+        self, spool: ModelOperatorSpoolStatus, correlation_id: UUID
+    ) -> ModelCaptureWatchDelivery:
+        key = f"{self._spool_source_id}|{self._host}|{int(self._clock()) // self._policy.renotify_after_seconds}"
+        error: str | None = None
+        try:
+            ref = contract_secret_ref(self._contract_path, _CHANNEL_SECRET)
+            secret = resolve_api_key_loop_safe(ref, env_var_fallback=ref)
+            if secret is None:
+                raise RuntimeError(f"secret ref {ref!r} resolved to None")
+            command = ModelCaptureWatchSlackCommand(
+                channel=secret.get_secret_value(),
+                text=f"CAPTURE SOURCE STALE: {self._spool_source_id} host={self._host} depth={spool.depth} oldest_age_seconds={spool.oldest_age_seconds} bound_seconds={spool.bound_seconds} errors={'; '.join(spool.errors)}",
+                idempotency_key=key,
+                correlation_id=correlation_id,
+            )
+            error = await self._publish_json(
+                self._slack_topic, command.model_dump_json().encode("utf-8")
+            )
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        return ModelCaptureWatchDelivery(
+            source_id=self._spool_source_id,
+            actor=None,
+            command_topic=self._slack_topic,
+            idempotency_key=key,
+            published=error is None,
+            error=error,
+        )
 
     async def _publish_json(self, topic: str, payload: bytes) -> str | None:
         try:

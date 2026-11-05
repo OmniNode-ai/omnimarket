@@ -16,19 +16,21 @@ Registered by ``onex-user-hooks-install`` in the user settings file, run as
   the foreground Bash and fetch guard, the attention-only push gate (OMN-20896) and the reply
   check on a sent message (OMN-20894), plus the lab dispatch gate in every session and lane.
   A refusal is exit 2 with the reason on stderr.
-* ``stop`` (Stop): the silence check on all text blocks in the turn, then the reply check on
-  the turn's last message (OMN-20894). A refusal asks the
-  model to rewrite once; a second stop in the same turn (``stop_hook_active``) passes, so a
-  refusal can never loop. The repeated-reply check (OMN-20893) is the exception: it reads the
-  session transcript and runs on every stop, because a re-firing goal hook sets
-  ``stop_hook_active`` on every turn. An empty reply always passes, so it never forces a reply.
+* ``stop`` (Stop): the unanswered gate reads transcript and independent arrivals before
+  checking reply text, even for an empty reply or ``stop_hook_active``. Each message is
+  blocked up to the overlay's max_blocks (two); subsequent attempts require both a
+  durable acknowledgement naming the owner and a claimed, running answer lane.
+  Unreadable transcript, unavailable claim service or timeout permits the turn with a
+  durable alarm and the hook's own visible session message. Silence-tick and machine-only
+  turns pass. Other checks still request one rewrite per turn; the repeated-reply check
+  still runs on every stop. Any later assistant text counts as an answer.
 
 ``onex-access-mode show|set local|set remote|set auto [--session ID]`` reads or sets the override:
 without ``--session`` it is global (every operator-facing session), with it one session.
 ``silent on|off [--session ID]`` sets silent mode with the same scope.
 
 An internal error never wedges a session: the hook prints a warning and lets the action through.
-Standard library only, so the installed copy runs under the host Python with no venv.
+The installed copy includes the declared detector closure and uses the installer's runtime Python for its model and contract dependencies.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ...models.model_operator_message_spool import ModelHookMessageRequest
 from .handlers.handler_access_mode_detect import HandlerAccessModeDetect
 from .handlers.handler_access_mode_state import (
     prune_stale_sessions,
@@ -67,6 +70,7 @@ from .handlers.handler_lab_dispatch_gate import (
     mac_route_count,
     read_lab_pool,
 )
+from .handlers.handler_operator_message_ledger import message_ledger
 from .handlers.handler_operator_reply_check import (
     REPEAT_WINDOW,
     HandlerOperatorReplyCheck,
@@ -292,7 +296,23 @@ def session_opted_in(session_id: str, environ: Mapping[str, str]) -> bool:
     return (directory / session_id).is_file()
 
 
+def _message_rows(
+    event: str, payload: Mapping[str, Any], environ: Mapping[str, str]
+) -> None:
+    try:
+        message_ledger(environ).handle(
+            ModelHookMessageRequest(
+                event=event,
+                payload=dict(payload),
+            )
+        )
+    except Exception as exc:
+        # Keep the existing fail-open hook contract, while making persistence failures visible.
+        print(f"[operator-message] {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
 def on_session_start(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("session-start", payload, environ)
     result = resolve(payload, environ)
     if not result.operator_facing:
         return 0
@@ -332,6 +352,7 @@ def on_session_start(payload: Mapping[str, Any], environ: Mapping[str, str]) -> 
 
 
 def on_prompt(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("prompt", payload, environ)
     result = resolve(payload, environ)
     if not result.operator_facing:
         return 0
@@ -407,6 +428,7 @@ def _idle_seconds(state: Mapping[str, Any]) -> float | None:
 
 
 def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    _message_rows("pre-tool", payload, environ)
     tool = payload.get("tool_name")
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
@@ -467,12 +489,50 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
     return 0
 
 
+def unanswered_guard() -> Any:
+    # Prompt, drain and the other hooks keep their standard-library bootstrap.
+    # The Stop dependency closure is loaded only by an operator-facing Stop.
+    from .handlers.handler_unanswered_guard import HandlerUnansweredGuard
+
+    return HandlerUnansweredGuard()
+
+
 def on_stop(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
-    text = payload.get("last_assistant_message")
-    if not isinstance(text, str) or not text.strip():
-        return 0
+    _message_rows("stop", payload, environ)
     result = resolve(payload, environ)
-    if not result.operator_facing:
+    alarm = ""
+    if result.operator_facing:
+        from .models.model_unanswered_guard_request import ModelUnansweredGuardRequest
+
+        session = str(payload.get("session_id") or "")
+        directory = state_dir(environ)
+        state = read_session(directory, session)
+        gate = unanswered_guard().handle(
+            ModelUnansweredGuardRequest(
+                session_id=session,
+                transcript_path=str(payload.get("transcript_path") or ""),
+                state_dir=str(directory),
+                environ=dict(environ),
+                silence_tick=bool(state.get("silence_tick")),
+            )
+        )
+        alarm = gate.alarm
+        if not gate.allowed:
+            print(json.dumps({"decision": "block", "reason": gate.reason}))
+            return 0
+
+    # A failed unanswered check must still run the other supervision checks.
+    # Emit one combined hook response so an alarm never hides repeated replies.
+    def emit(reason: str = "") -> None:
+        body = {"decision": "block", "reason": reason} if reason else {}
+        if alarm:
+            body["systemMessage"] = alarm
+        if body:
+            print(json.dumps(body))
+
+    text = payload.get("last_assistant_message")
+    if not isinstance(text, str) or not text.strip() or not result.operator_facing:
+        emit()
         return 0
     rewrite_asked = payload.get("stop_hook_active") is True
     if not rewrite_asked:
@@ -488,7 +548,7 @@ def on_stop(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
         )
         if not silence.allowed:
             _record(silence, payload, environ)
-            print(json.dumps({"decision": "block", "reason": silence.reason}))
+            emit(silence.reason)
             return 0
     verdict = HandlerOperatorReplyCheck().handle(
         ModelOperatorReplyRequest(
@@ -496,14 +556,28 @@ def on_stop(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
         )
     )
     if rewrite_asked and verdict.reason_class != "repeated-reply":
+        emit()
         return 0  # one rewrite per turn: only a repeated reply is refused again
     if not verdict.allowed:
         _record(verdict, payload, environ)
-        print(json.dumps({"decision": "block", "reason": verdict.reason}))
+        emit(verdict.reason)
+    else:
+        emit()
     return 0
 
 
+def on_drain(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
+    from dataclasses import asdict
+
+    result = message_ledger(environ).handle(
+        ModelHookMessageRequest(event="drain", payload={})
+    )
+    print(json.dumps(asdict(result)))
+    return 0 if result.status.depth == 0 and not result.status.errors else 1
+
+
 EVENTS = {
+    "drain": on_drain,
     "session-start": on_session_start,
     "prompt": on_prompt,
     "pre-tool": on_pre_tool,
@@ -593,7 +667,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {"systemMessage": f"{TAG} hook error ({type(exc).__name__}: {exc})"}
             )
         )
-        return 0
+        return 1 if args and args[0] == "drain" else 0
 
 
 if __name__ == "__main__":
