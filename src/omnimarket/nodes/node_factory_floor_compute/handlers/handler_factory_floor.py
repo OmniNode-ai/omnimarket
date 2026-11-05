@@ -655,7 +655,11 @@ def _table_item(
     ):
         state, note = "active", "matching PR open"
     elif row.state in {"open-green", "open-red"}:
-        if prs and all(pr_key(key) not in index.records for key in prs):
+        # A row that links no PR keeps its recorded state; only linked PRs the watcher
+        # contradicts (read but not open, or filtered out as unrelated) downgrade it.
+        if not row.prs or (
+            prs and all(pr_key(key) not in index.records for key in prs)
+        ):
             state, note = "active", f"PR open, {row.state.removeprefix('open-')}"
         else:
             state, note = "wait", "recorded open PR, no matching open pull request read"
