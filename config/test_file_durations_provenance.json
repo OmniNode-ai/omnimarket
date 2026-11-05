@@ -84,6 +84,13 @@
     "basis": "Summed per-test seconds from pytest --store-durations --no-cov for tests/unit/test_ci_duration_record_supplement.py",
     "runner": "lab host h053, lane ev-5031-0635"
   },
+  "supplement_omn22452": {
+    "recorded_on": "2026-11-04",
+    "files_added": 1,
+    "basis": "Sum of measured pytest setup, call and teardown seconds for all 14 pre-push preflight handler tests; --store-durations --clean-durations --no-cov, Python 3.12.14. Existing entries are unchanged.",
+    "runner": "lab host h051, lane pr-5025-1208; the next CI refresh replaces this entry",
+    "base_sha": "48c7f214c3ba4a1f1eed3a937c269ce7df3c42c0"
+  },
   "supplement_omn22191": {
     "recorded_on": "2026-11-04",
     "files_added": 3,
