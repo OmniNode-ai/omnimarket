@@ -47,7 +47,10 @@ def _resolve_base(base: str) -> str:
         remotes = sorted(_git("remote").splitlines(), key=len, reverse=True)
         remote = next((r for r in remotes if tracking.startswith(f"{r}/")), None)
         if remote is None:
-            raise
+            # Not a configured remote-tracking branch: never guess one. Leave the
+            # base unresolved so each reader fails closed on it (release-cut and
+            # changed-path reads treat an unreadable base as "not exempt").
+            return base
         branch = tracking[len(remote) + 1 :]
         _git("check-ref-format", f"refs/heads/{branch}")
         _git(
