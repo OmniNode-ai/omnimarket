@@ -3,8 +3,8 @@ ticket_id: OMN-19998
 title: A plain ledger append names no optional field it does not use
 summary: Ledger append requests omit optional fields whose value is None, so an older host can validate a plain append from a newer writer. Set fields remain on the wire and are refused by a host that cannot honor them. Queued requests and the bus caller use the same serialization. Earlier heal-read retry criteria and evidence remain unchanged.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched: [events, public_api]
 requirements:
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
@@ -53,6 +53,37 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-error-normalization
+    statement: Error producers receive pure reproducible class keys from caller-supplied normalization facts.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: volatile subject text shares one full-template hash key, distinct causes sharing an exit code or check name remain distinct, and old host snapshots replay with their original key version -- falsifier: uv run pytest tests/unit/nodes/node_error_class_normalize_compute/test_normalizer.py -q'
+  - id: req-omn19998-error-corpus-integrity
+    statement: Scrubbed frozen replay rows and captured acceptance evidence are pinned without treating unmeasured cases as accepted.
+    acceptance:
+      - id: AC9
+        statement: 'AC9: a fixture row edit or removal fails the digest/count check, captured misses carry gold labels, and uncaptured breaks retain UNMEASURED -- falsifier: uv run pytest tests/unit/nodes/node_error_class_normalize_compute/test_corpus.py -q'
+  - id: req-omn19998-error-normalizer-bus
+    statement: The canonical runtime bus adapter preserves every frozen corpus key under the selected transport profile.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: every frozen event returns the same class key and version through the canonical runtime adapter as through direct compute; selected Redpanda failures fail rather than skip -- falsifier: uv run pytest tests/unit/nodes/node_error_class_normalize_compute/test_profiles.py -q'
+
+  - id: req-omn19998-lane-failure-class
+    statement: Lane receipts distinguish a guard OOM kill from independent runner retention failures.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the two B7 receipt field extracts share one lane-oom key and one different retention-import key, and an argument-list retention error has a third key -- falsifier: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k lane_failure_class -q'
+  - id: req-omn19998-lane-failure-recovery
+    statement: OOM memory and repository changes contribute to the same shared attempt family.
+    acceptance:
+      - id: AC12
+        statement: 'AC12: the shared-claim fixture starts one replacement with the original brief, overlay memory and any repository change, joins redeliveries, keeps evidenced salvage and escalates a second OOM once -- falsifier: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k lane_failure_class -q'
+  - id: req-omn19998-retention-install-readback
+    statement: Read-only scans distinguish receipts started after installation from older artifacts.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: the configured one-hour and twenty-four-hour scan reads install and receipt start timestamps, reports the import error, and refuses to call empty or unreadable input clear -- falsifier: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k retention_scan -q'
   - id: req-omn19998-checkpoint-prior-drivers
     statement: A checkpoint read names the running workflows of the session that stopped before the current one.
     acceptance:
@@ -133,6 +164,13 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-automatic-fix-install
+    statement: A model-free lab tick installs the superset of released and exact-head proven fixes through deployment-bound existing installers.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: a proven branch reaches both behind hosts before merge; installed fixes survive, a conflicting incoming fix is named and dropped alone, repeated ticks avoid reinstalling, and stale sources, moved heads, locks and failed readbacks refuse safely -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly'
+      - id: AC11
+        statement: 'AC11: installed discovery wires the declared command to a correlated terminal, and the host module runs the existing atomic tree installer, reads its recorded revision and observes the installed tree -- falsifier: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"'
   - id: req-omn19998-delegation-daily-cap
     statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
     acceptance:
@@ -187,6 +225,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -k declared_reader_globs
         cwd: .
+  - id: dod-omn19998-lane-failure-class
+    description: Focused B7 field-extract, shared-claim and retention-readback fixtures. Raw B7 capture, live replacement dispatch and the actual post-install one-hour and twenty-four-hour scans remain UNMEASURED; this evidence makes no live installation claim.
+    source: manual
+    binds_ac: [AC11, AC12, AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k lane_failure_class -q
+        cwd: .
+  - id: dod-omn19998-lane-failure-runtime
+    description: Hosted in-memory runtime adapters route the two extracts through normalization, admission, ownership and the shared-claim fixture. Selected Redpanda uses the same adapters and fails on missing connectivity or credentials; external services remain fixtures.
+    source: manual
+    binds_ac: [AC11, AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lane_failure_recovery_effect/test_golden_chain_lane_failure_class.py -k runtime_bus_profile -q
   - id: dod-omn19998-lab-host-toolchain
     description: Replay the recorded missing-tool and masked-zero shapes through the existing parity and provisioning handlers, including a real POSIX shell, overlay installer re-probes and working-version controls. Does not assert the unrelated controller timer criteria or live host installation.
     source: manual
@@ -447,6 +500,30 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov --tb=line -k runner_annotations
         cwd: .
+  - id: dod-omn19998-error-normalizer
+    description: Scoped normalizer proof covers whole-template identity, volatile stripping, negative classes, host-snapshot replay, hook caller DI and provisional alias resolution. It does not assert the controller timer criteria or live hook installation.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_normalizer.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-error-corpus
+    description: The scrubbed snapshot pins counts and digests, records labelled captured cases and keeps missing seed/capture evidence pending. Passing integrity is not completed replay acceptance or measured rule precision.
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_corpus.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-error-normalizer-deploy
+    description: Hosted wiring smoke resolves the installed contract handler and sends every frozen event through the canonical bus adapter on the in-memory profile. The lab selects the Redpanda profile separately; no live installation or Redpanda success is asserted by this hosted check.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_profiles.py -q --no-cov
+        cwd: .
   - id: dod-omn19998-checkpoint-prior-drivers
     description: The checkpoint tests build the recorded case of two drain drivers and one lane, then a resumer that relaunches the lane; the read names both drivers. The tests fail at the merge base because the read has no PRIOR lines.
     source: manual
@@ -576,6 +653,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn19998-automatic-fix-install
+    description: Recorded branch-install regression and negative controls exercise released refs, proven heads, conflict isolation, containment, retry observation and independent host outcomes. This scope does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-automatic-fix-install-deploy
+    description: Hosted wiring smoke discovers the installed entry point and reads a correlated terminal over the real in-memory bus. The host module fixture uses the existing atomic tree installer on a disposable installation and verifies its revision and bytes. Persistent host service installation and deployment-specific routes remain separate live evidence.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_automatic_fix_install_effect/test_golden_chain_automatic_fix_install.py -q --no-cov -n 0 -p no:randomly -k "installed_discovery or host_module"
   - id: dod-omn19998-delegation-daily-cap
     description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
     source: manual

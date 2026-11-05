@@ -27,3 +27,4 @@ tags:
 - compute
 - hooks
 - refusal
+- versioned-error-classes
