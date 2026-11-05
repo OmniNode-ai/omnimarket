@@ -364,6 +364,7 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "pool",
         "friction",
         "process_health",
+        "runner_fleet",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -388,8 +389,11 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
         Overlapping({"--json": (0, b"[]", b"")})
     ).handle(request, environ=PLUGIN)
     assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
-    # the friction report is absent in this home, which is its own failed step
-    assert [s.name for s in result.steps if s.status != "ok"] == ["friction"]
+    # This home has neither the friction report nor the runtime read overlay.
+    assert [s.name for s in result.steps if s.status != "ok"] == [
+        "friction",
+        "runner_fleet",
+    ]
 
 
 def test_refresh_a_step_with_a_fresh_output_is_skipped_and_a_stale_one_runs(
@@ -468,7 +472,7 @@ def test_refresh_an_optional_step_failing_is_published_as_failed_without_its_out
         _refresh_request(tmp_path), environ=PLUGIN
     )
     failed = {s.name: s for s in result.steps if s.status == "failed"}
-    assert set(failed) == {"hosts", "friction"}
+    assert set(failed) == {"hosts", "friction", "runner_fleet"}
     assert failed["hosts"].detail == "exit 1"
     assert "refused" in failed["hosts"].diagnostic
     status = json.loads((tmp_path / "site/publish-status.json").read_text())
@@ -1006,6 +1010,93 @@ def test_page_draws_the_delegation_card_from_its_file() -> None:
     assert "9 completed" in out["delegBody"]
     assert "9 of 9" in out["delegBody"]
     assert "A reason the file states." in out["delegBody"]
+
+
+def test_floor_draws_the_projection_report_windows_without_inventing_calls() -> None:
+    from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+        delegation_report,
+    )
+
+    delegation = delegation_report(
+        {
+            "now": "2099-01-01T07:12:00Z",
+            "total_rows": 8,
+            "rows": [
+                {
+                    "correlation_id": "run-a",
+                    "timestamp": "2099-01-01T06:12:00Z",
+                    "data_source": "real",
+                    "attempt_history": [
+                        {
+                            "backend_id": "local-coder",
+                            "tier": "local",
+                            "model_id": "model-a",
+                            "host": "gpu-a",
+                            "acceptance_decision": "accept",
+                        }
+                    ],
+                }
+            ],
+        },
+        [],
+    )
+    body = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )["delegBody"]
+    assert "2h: 1 local / 1 delegated runs" in body
+    assert "24h: 1 local / 1 delegated runs" in body
+    assert "1 accepted" in body
+    assert "delegation calls" not in body
+
+
+def test_floor_keeps_a_failed_projection_read_unread_and_escapes_its_cause() -> None:
+    from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+        HandlerDelegationReport,
+    )
+    from omnimarket.nodes.node_factory_floor_publish_effect.models.model_delegation_report import (
+        ModelDelegationReportRequest,
+    )
+
+    delegation = (
+        HandlerDelegationReport()
+        .handle(ModelDelegationReportRequest(), environ={})
+        .report
+    )
+    assert delegation["status"] == "unread"
+    delegation["reason"] = "projection <unavailable>"
+    body = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )["delegBody"]
+    assert "Unread" in body
+    assert "projection &lt;unavailable&gt;" in body
+    assert 'class="stack unread"' in body
+    assert "delegation calls" not in body
+
+
+def test_floor_preserves_a_quiet_projection_window_as_zero() -> None:
+    from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_delegation_report import (
+        delegation_report,
+    )
+
+    delegation = delegation_report(
+        {"now": "2099-01-01T07:12:00Z", "total_rows": 8, "rows": []}, []
+    )
+    body = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )["delegBody"]
+    assert "2h: 0 local / 0 delegated runs" in body
+    assert "24h: 0 local / 0 delegated runs" in body
+    assert "8 stored events" in body
+
+
+def test_floor_preserves_zero_calls_in_a_legacy_count_file() -> None:
+    body = _run_floor(
+        {
+            "factory-floor.json": FLOOR_RECORD,
+            "delegation.json": {"generated_at": "2099-01-01T07:12:00Z", "outcomes": []},
+        }
+    )["delegBody"]
+    assert "0 delegation calls" in body
 
 
 # ---- The tab page (OMN-21733): a dashboard and four tabs on one page.
