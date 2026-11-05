@@ -1,6 +1,6 @@
 name: node_host_installer_registry_units
 version: "1.0.0"
-description: "Renders and installs registry module tick units including host alarms, with a project path override for branch checkouts"
+description: "Renders and installs registry module tick units with branch checkouts, prepared timer environments and declared runtime inputs"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

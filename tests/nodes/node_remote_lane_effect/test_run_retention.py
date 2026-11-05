@@ -5,11 +5,236 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_remote_lane_effect.run_retention import _FINAL, retain_run
+
+
+def _git(tree: Path, *args: str) -> str:
+    """Exercise real repositories without inheriting the lane's git routing."""
+    done = subprocess.run(
+        ["git", "-C", str(tree), *args],
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    return done.stdout
+
+
+@pytest.fixture
+def clone(run, tmp_path):
+    root, tree, ctx, receipt, ledger = run
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    _git(seed, "init", "--initial-branch=main")
+    (seed / "report.md").write_text("measured result")
+    _git(seed, "add", "report.md")
+    _git(
+        seed,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        "seed",
+    )
+    (tree / "report.md").unlink()
+    _git(root, "clone", str(seed), str(tree))
+    assert not _git(tree, "status", "--porcelain")
+    assert (
+        _git(tree, "rev-list", "--count", "HEAD", "--not", "--remotes").strip() == "0"
+    )
+    return root, tree, ctx, receipt, ledger
+
+
+@pytest.mark.parametrize(
+    "state", ["clean", "modified", "staged", "untracked", "unpushed", "unfinished"]
+)
+def test_finished_clone_retention_checks_work_and_remote_commits(clone, state):
+    root, tree, ctx, receipt, ledger = clone
+    if state in {"modified", "staged", "unpushed"}:
+        (tree / "report.md").write_text("local work")
+    if state in {"staged", "unpushed"}:
+        _git(tree, "add", "report.md")
+    if state == "unpushed":
+        _git(
+            tree,
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "local",
+        )
+    if state == "untracked":
+        (tree / "draft.txt").write_text("local work")
+    if state == "unfinished":
+        with pytest.raises(ValueError, match="ownership"):
+            retain_run(root, receipt, ledger.splitlines()[0], delete=True)
+        assert tree.exists()
+        assert ctx.exists()
+        return
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert Path(result["archive"], "receipt.json").is_file()
+    if state == "clean":
+        assert result["removed"] == ["run-1", "run-1.ctx"]
+        assert not tree.exists()
+        assert not ctx.exists()
+    else:
+        assert result["removed"] == []
+        reason = "unpushed-commits" if state == "unpushed" else "uncommitted-changes"
+        assert reason in result["kept"]["run-1"]
+        assert tree.exists()
+        assert ctx.exists()
+
+
+@pytest.mark.parametrize("head", ["detached", "no-upstream"])
+def test_remote_reachable_clone_needs_no_tracking_branch(clone, head):
+    root, tree, _ctx, receipt, ledger = clone
+    if head == "detached":
+        _git(tree, "checkout", "--detach", "HEAD")
+    else:
+        _git(tree, "branch", "--unset-upstream")
+    assert retain_run(root, receipt, ledger, delete=True)["removed"] == [
+        "run-1",
+        "run-1.ctx",
+    ]
+
+
+def test_unpushed_commit_on_another_branch_is_kept(clone):
+    root, tree, ctx, receipt, ledger = clone
+    _git(tree, "checkout", "-b", "local")
+    _git(
+        tree,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "local",
+    )
+    _git(tree, "checkout", "main")
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert "unpushed-commits" in result["kept"]["run-1"]
+    assert tree.exists()
+    assert ctx.exists()
+
+
+def test_clone_holding_a_peer_worktree_git_dir_is_kept(clone, tmp_path):
+    root, tree, ctx, receipt, ledger = clone
+    peer = tmp_path / "peer"
+    _git(tree, "worktree", "add", "--detach", str(peer), "HEAD")
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert "holds-worktree-git-dir" in result["kept"]["run-1"]
+    assert tree.exists()
+    assert ctx.exists()
+    assert _git(peer, "rev-parse", "HEAD") == _git(tree, "rev-parse", "HEAD")
+
+
+def test_clean_linked_tree_with_git_metadata_outside_the_run_is_removed(
+    clone, tmp_path
+):
+    root, tree, ctx, receipt, ledger = clone
+    primary = tmp_path / "primary"
+    tree.rename(primary)
+    _git(primary, "worktree", "add", "--detach", str(tree), "HEAD")
+    assert (tree / ".git").is_file()
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert result["removed"] == ["run-1", "run-1.ctx"]
+    assert not tree.exists()
+    assert not ctx.exists()
+    assert _git(primary, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize("state", ["clean", "dirty", "unpushed"])
+def test_ignored_nested_clone_is_checked_before_either_tree_is_removed(clone, state):
+    root, tree, ctx, receipt, ledger = clone
+    nested = tree / "nested"
+    _git(root, "clone", str(tree), str(nested))
+    (tree / ".git/info/exclude").write_text("nested/\n")
+    if state == "dirty":
+        (nested / "report.md").write_text("nested work")
+    if state == "unpushed":
+        _git(
+            nested,
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "nested",
+        )
+    assert not _git(tree, "status", "--porcelain")
+    result = retain_run(root, receipt, ledger, delete=True)
+    if state == "clean":
+        assert result["removed"] == ["run-1", "run-1.ctx"]
+    else:
+        assert result["removed"] == []
+        assert "run-1/nested" in result["kept"]["run-1"]
+        assert tree.exists()
+        assert ctx.exists()
+
+
+def test_clone_without_remote_refs_is_kept(clone):
+    root, tree, ctx, receipt, ledger = clone
+    _git(tree, "remote", "remove", "origin")
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert "unpushed-commits" in result["kept"]["run-1"]
+    assert tree.exists()
+    assert ctx.exists()
+
+
+def test_clone_with_hidden_untracked_files_is_kept(clone):
+    root, tree, ctx, receipt, ledger = clone
+    _git(tree, "config", "status.showUntrackedFiles", "no")
+    (tree / "draft.txt").write_text("local work")
+    assert not _git(tree, "status", "--porcelain")
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert "uncommitted-changes" in result["kept"]["run-1"]
+    assert tree.exists()
+    assert ctx.exists()
+
+
+def test_context_git_symlink_preserves_both_trees(clone):
+    root, tree, ctx, receipt, ledger = clone
+    metadata = ctx / "git-common"
+    metadata.mkdir()
+    (metadata / ".git").symlink_to(tree / ".git", target_is_directory=True)
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert result["removed"] == []
+    assert "symlink" in result["kept"]["run-1"]
+    assert tree.exists()
+    assert ctx.exists()
+    assert _git(tree, "rev-parse", "HEAD")
+
+
+def test_unreadable_git_status_preserves_both_trees(clone, monkeypatch):
+    from omnimarket.nodes.node_remote_lane_effect.handlers import retention_tree_safety
+
+    root, tree, ctx, receipt, ledger = clone
+
+    def timeout(*args):
+        raise subprocess.TimeoutExpired("git", 30)
+
+    monkeypatch.setattr(retention_tree_safety, "_git", timeout)
+    result = retain_run(root, receipt, ledger, delete=True)
+    assert result["removed"] == []
+    assert "status-unreadable" in result["kept"]["run-1"]
+    assert tree.exists()
+    assert ctx.exists()
 
 
 @pytest.fixture
@@ -146,13 +371,13 @@ def test_prunes_only_expired_managed_reports_of_closed_lanes(run):
     assert result["pruned"] == ["lane-1/run-1"]
 
 
-def test_retention_operation_resolves_from_the_packaged_contract(run):
+def test_retention_operation_resolves_from_the_packaged_contract(clone):
     import importlib
     from importlib.resources import files
 
     import yaml
 
-    root, tree, ctx, receipt, ledger = run
+    root, tree, ctx, receipt, ledger = clone
     contract = yaml.safe_load(
         files("omnimarket.nodes.node_remote_lane_effect")
         .joinpath("contract.yaml")
@@ -176,22 +401,49 @@ def test_retention_operation_resolves_from_the_packaged_contract(run):
     assert not ctx.exists()
 
 
-def test_standalone_host_payload_uses_the_tested_implementation(run):
+@pytest.mark.parametrize("state", ["clean", "dirty", "unpushed", "peer-worktree"])
+def test_standalone_host_payload_uses_the_tested_implementation(clone, state, tmp_path):
     import subprocess
 
     from omnimarket.nodes.node_remote_lane_effect.run_retention import retention_script
 
-    root, tree, ctx, receipt, ledger = run
+    root, tree, ctx, receipt, ledger = clone
+    if state == "dirty":
+        (tree / "report.md").write_text("local work")
+    elif state == "unpushed":
+        _git(
+            tree,
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "local",
+        )
+    elif state == "peer-worktree":
+        _git(tree, "worktree", "add", "--detach", str(tmp_path / "peer"), "HEAD")
     done = subprocess.run(
         ["/bin/sh", "-c", retention_script(str(root), receipt, ledger, delete=True)],
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         timeout=30,
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout.startswith("LANE-RETENTION ")
-    assert not tree.exists()
-    assert not ctx.exists()
+    result = json.loads(done.stdout.removeprefix("LANE-RETENTION "))
+    assert Path(result["archive"], "receipt.json").is_file()
+    if state == "clean":
+        assert result["removed"] == ["run-1", "run-1.ctx"]
+        assert not tree.exists()
+        assert not ctx.exists()
+    else:
+        assert result["removed"] == []
+        assert result["kept"]["run-1"]
+        assert tree.exists()
+        assert ctx.exists()
 
 
 def test_expiration_uses_final_archive_receipt_after_ledger_rollover(run):
