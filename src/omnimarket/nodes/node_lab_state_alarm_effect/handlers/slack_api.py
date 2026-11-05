@@ -25,10 +25,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol
 
-from omnimarket.config.service_endpoints import (
-    SLACK_CHAT_POST_MESSAGE_URL,
-    SLACK_CONVERSATIONS_HISTORY_URL,
-)
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
     AlarmSendRefusedError,
     ProtocolSlackApi,
@@ -157,6 +153,10 @@ class SlackWebApi:
         return body
 
     def post(self, text: str) -> str:
+        # Imported where used: the endpoint authority pulls in the settings package, which the overlay check and the
+        # hosted canary (pydantic and yaml only) neither need nor install.
+        from omnimarket.config.service_endpoints import SLACK_CHAT_POST_MESSAGE_URL
+
         token, channel = self._resolve()
         body = self._call(
             SLACK_CHAT_POST_MESSAGE_URL, {"channel": channel, "text": text}, token
@@ -173,6 +173,10 @@ class SlackWebApi:
         return stamp
 
     def exists(self, message_ts: str) -> bool | None:
+        from omnimarket.config.service_endpoints import (
+            SLACK_CONVERSATIONS_HISTORY_URL,
+        )
+
         try:
             token, channel = self._resolve()
             body = self._call(
