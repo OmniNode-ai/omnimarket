@@ -103,6 +103,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
+  - id: req-omn19998-prepush-missing-base
+    statement: The ticket-contract hook resolves its comparison base before checking the outgoing commit, fetching only an absent configured remote branch.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -118,6 +123,22 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-prepush-missing-base
+    description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-prepush-missing-base-deploy
+    description: Hosted hook-adapter smoke invokes the contract-backed node CLI as a subprocess in a real worker clone, observes the fetched tracking ref and unchanged head and worktree, and needs no credential. Host hook installation remains the publishing runner's responsibility.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly -k missing_remote_base_is_fetched
+        cwd: .
   - id: dod-omn19998-lane-dispatch-contract
     description: Frozen model, canonical record, policy refusals and runner arguments are exercised in the focused dispatch suite. This does not assert the original controller timer criteria or a live broker grant.
     source: manual
