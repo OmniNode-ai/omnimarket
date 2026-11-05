@@ -615,3 +615,11 @@ dod_evidence:
     - check_type: test_passes
       check_value: uv run --frozen pytest tests/unit/nodes/node_error_rule_match_compute/test_cli.py -q --no-cov
       cwd: .
+  - id: dod-omn19998-error-profiles-package-collection
+    description: Both profile modules collect under distinct test package names and run their canonical in-memory bus adapters together. The combined command fails with an import-file mismatch without the package markers. This hosted deployment smoke requires no broker credentials and makes no claim about Redpanda authorization.
+    source: manual
+    binds_ac: [AC10, AC14]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_error_class_normalize_compute/test_profiles.py tests/unit/nodes/node_error_rule_match_compute/test_profiles.py -q --no-cov -p no:randomly
+        cwd: .
