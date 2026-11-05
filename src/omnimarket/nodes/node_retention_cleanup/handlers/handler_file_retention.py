@@ -46,101 +46,36 @@ from pathlib import Path
 from typing import IO, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-MIN_KEEP_DAYS = 7
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_references import (
+    HandlerRetentionReferences,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_file_retention import (
+    MIN_KEEP_DAYS as MIN_KEEP_DAYS,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_file_retention import (
+    FileRetentionEntry as FileRetentionEntry,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_file_retention import (
+    FileRetentionItemResult as FileRetentionItemResult,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_file_retention import (
+    FileRetentionPolicy as FileRetentionPolicy,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_file_retention import (
+    FileRetentionRequest as FileRetentionRequest,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_file_retention import (
+    FileRetentionResult as FileRetentionResult,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_retention_references import (
+    ModelRetentionReferencesRequest,
+)
+
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _PROTECTED_NAMES: frozenset[str] = frozenset({"memory", "MEMORY.md"})
 _PROTECTED_PREFIX = "ROLLING_WORK_LEDGER"
 _CHUNK = 1 << 20
-
-
-class FileRetentionEntry(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    path: str
-    pattern: str = "*"
-    keep_days: int
-    action: Literal["delete", "archive"]
-    exclude: tuple[str, ...] = Field(default_factory=tuple)
-    readers: tuple[str, ...] = Field(default_factory=tuple)
-    enabled: bool = True
-    consent_ref: str = ""
-
-    @field_validator("keep_days")
-    @classmethod
-    def _floor(cls, value: int) -> int:
-        if value < MIN_KEEP_DAYS:
-            msg = f"keep_days {value} is under the {MIN_KEEP_DAYS}-day floor"
-            raise ValueError(msg)
-        return value
-
-
-class FileRetentionPolicy(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    archive_root_env: str
-    synced_marker_xattr: str = ""
-    entries: list[FileRetentionEntry]
-
-
-class FileRetentionRequest(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    entries: list[FileRetentionEntry]
-    now: dt.datetime
-    dry_run: bool = False
-    host: str = ""
-    archive_root: str = ""
-    synced_marker: str = Field(
-        default="",
-        description=(
-            "Extended attribute the archive tree's sync client sets on a file once "
-            "it has registered it; an archive copy without it keeps its local unit"
-        ),
-    )
-    only: tuple[str, ...] = Field(
-        default_factory=tuple, description="Entry names to run; empty runs all"
-    )
-
-
-class FileRetentionItemResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    status: Literal[
-        "ok", "dry_run", "absent", "disabled", "archive_unavailable", "error"
-    ]
-    action: str = ""
-    files_eligible: int = 0
-    bytes_eligible: int = 0
-    files_verified: int = 0
-    units_removed: int = 0
-    files_removed: int = 0
-    bytes_removed: int = 0
-    files_archived: int = 0
-    bytes_archived: int = 0
-    bytes_before: int = 0
-    bytes_after: int = 0
-    units_pending_sync: int = 0
-    bytes_pending_sync: int = 0
-    error: str = ""
-    note: str = ""
-
-
-class FileRetentionResult(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    host: str
-    dry_run: bool
-    items: list[FileRetentionItemResult] = Field(default_factory=list)
-    files_eligible: int = 0
-    files_verified: int = 0
-    files_removed: int = 0
-    bytes_removed: int = 0
-    files_archived: int = 0
-    bytes_archived: int = 0
 
 
 def load_file_policy(contract_path: Path = _CONTRACT_PATH) -> FileRetentionPolicy:
@@ -433,6 +368,27 @@ class NodeFileRetention:
         cutoff = (request.now - dt.timedelta(days=entry.keep_days)).timestamp()
         units = _units(root, entry)
         before = sum(u.bytes for u in units)
+        try:
+            references = (
+                HandlerRetentionReferences().handle(
+                    ModelRetentionReferencesRequest(
+                        patterns=entry.reference_paths,
+                        names=tuple(file.name for unit in units for file in unit.files),
+                    )
+                )
+                if entry.reference_paths
+                else None
+            )
+        except OSError as exc:
+            return FileRetentionItemResult(
+                name=entry.name,
+                status="error",
+                action=entry.action,
+                bytes_before=before,
+                bytes_after=before,
+                error=f"reference readers: {exc}",
+            )
+        referenced = 0
         counts = {
             "units": 0,
             "files": 0,
@@ -447,6 +403,11 @@ class NodeFileRetention:
         }
         error = ""
         for unit in units:
+            if references is not None and any(
+                file.name in references.cited_names for file in unit.files
+            ):
+                referenced += 1
+                continue
             if unit.newest >= cutoff:
                 continue
             counts["eligible"] += len(unit.files)
@@ -492,6 +453,13 @@ class NodeFileRetention:
                     _verify_archive(unit.path, dest)
                     counts["verified"] += len(unit.files)
                 if not request.dry_run:
+                    if references is not None:
+                        HandlerRetentionReferences().handle(
+                            ModelRetentionReferencesRequest(
+                                patterns=entry.reference_paths,
+                                expected_snapshot=references.snapshot,
+                            )
+                        )
                     for file in _remove_verified(unit, snapshots):
                         counts["files"] += 1
                         counts["bytes"] += snapshots[file][2]
@@ -517,6 +485,7 @@ class NodeFileRetention:
             bytes_before=before,
             bytes_after=before - counts["bytes"],
             units_pending_sync=counts["pending"],
+            units_referenced=referenced,
             bytes_pending_sync=counts["pbytes"],
             error=error,
             note=note,
