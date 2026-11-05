@@ -133,6 +133,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-closer-dod-verify
+    statement: The triage closer reads runtime proof from the same cached dod_verify verdict as the Done-write gate.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the default closer closes the recorded merged ticket on a verified readback from its repository at a revision containing the squash merge; absent, failed, behavior-only, wrong-repository and non-containing proof stays held, and verdicts are cached once per ticket per pass -- falsifier: uv run --frozen pytest tests/nodes/node_linear_triage/test_omn_19998_closer_dod_verify_runtime_proof.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -179,6 +184,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
+        cwd: .
+  - id: dod-omn19998-closer-dod-verify
+    description: The existing focused regressions exercise the recorded merged-ticket readback, fail-closed cases and per-pass verdict cache. The recorded-case test fails with the merge-base handler because marked_done is zero. This scoped proof does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_triage/test_omn_19998_closer_dod_verify_runtime_proof.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-closer-dod-verify-deploy
+    description: Hosted handler wiring smoke invokes HandlerLinearTriage.handle with its default runtime-proof source and a recorded verdict over a real local Git history. Only the external ticket and PR clients and verdict reader are injected; no live ticket write or host service installation is asserted.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_triage/test_omn_19998_closer_dod_verify_runtime_proof.py -q --no-cov -n 0 -p no:randomly -k test_merged_ticket_with_running_proof_in_dod_verify_closes
         cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.

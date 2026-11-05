@@ -90,6 +90,13 @@ class _Probe:
         )
 
 
+class _NoVerdict:
+    """No dod_verify verdict, so the default runtime-proof source finds no receipt."""
+
+    def verdict_for(self, *, ticket_id: str) -> tuple[None, str]:
+        return None, "no verdict"
+
+
 def _lab_pass(revision: str) -> ModelRuntimeReceipt:
     return ModelRuntimeReceipt(
         kind=EnumRuntimeReceiptKind.LAB_PASS,
@@ -110,7 +117,9 @@ class TestMergedOnlyDoesNotClose:
     async def test_merged_only_does_not_close_leaves_ticket_with_reason(self) -> None:
         client = _linear(_issue())
         handler = HandlerLinearTriage(
-            client=client, github_client=_github_with_merged_implementing_pr()
+            client=client,
+            github_client=_github_with_merged_implementing_pr(),
+            dod_verdict_probe=_NoVerdict(),
         )
         result = await _run(handler)
 

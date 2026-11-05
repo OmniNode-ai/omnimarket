@@ -72,6 +72,10 @@ from omnimarket.nodes.node_linear_triage.services.local_github_pr_reads import (
     LocalGitHubPrReads,
     LocalGitHubStateError,
 )
+from omnimarket.nodes.node_linear_triage.services.runtime_proof_from_dod_verify import (
+    CachedDodVerdictProbe,
+    DodVerifyRuntimeProofProbe,
+)
 
 # Known OmniNode repos used for PR lookup
 KNOWN_REPOS = [
@@ -1403,9 +1407,15 @@ class HandlerLinearTriage:
     def _runtime_proof_for(
         self, ticket: ModelLinearTicket, merged_pr: Mapping[str, str]
     ) -> ModelProofCloseDecision | None:
-        """The runtime-proof verdict for a merge-delivered close; none without a probe (OMN-22334)."""
+        """The runtime-proof verdict for a merge-delivered close (OMN-22334).
+
+        With no probe injected, the proof is read from the ticket's dod_verify verdict,
+        the one the Done-write gate reads (OMN-19998).
+        """
         if self._runtime_proof_probe is None:
-            return None
+            self._runtime_proof_probe = DodVerifyRuntimeProofProbe(
+                self._get_dod_verdict_probe()
+            )
         return self._runtime_proof_probe.proof_for(
             ticket_id=ticket.identifier, merged_pr=merged_pr
         )
@@ -1418,6 +1428,9 @@ class HandlerLinearTriage:
         """
         if self._dod_verdict_probe is None:
             self._dod_verdict_probe = DodVerifySubprocessProbe()
+        if not isinstance(self._dod_verdict_probe, CachedDodVerdictProbe):
+            # OMN-19998: the runtime-proof source and the Done-write gate read one run.
+            self._dod_verdict_probe = CachedDodVerdictProbe(self._dod_verdict_probe)
         return self._dod_verdict_probe
 
     async def handle(
@@ -1438,6 +1451,8 @@ class HandlerLinearTriage:
         ``LocalRuntimeBusAdapter`` detects the awaitable return and ``await``s it
         automatically (OMN-13710).
         """
+        if isinstance(self._dod_verdict_probe, CachedDodVerdictProbe):
+            self._dod_verdict_probe.clear()  # a verdict is read fresh each pass
         project_id: str | None = None
         if request.scope == "sprint":
             contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
