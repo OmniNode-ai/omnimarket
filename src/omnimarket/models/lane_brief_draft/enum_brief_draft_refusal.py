@@ -16,3 +16,6 @@ class EnumBriefDraftRefusal(StrEnum):
     MULTILINE_TITLE = "multiline_title"
     SHELL_PART_IN_DRAFT = "shell_part_in_draft"
     UNGROUNDED_IDENTIFIER = "ungrounded_identifier"
+    # The pasted 3a block names a lane or ticket other than the request's one lane and ticket.
+    LANE_NAME_MISMATCH = "lane_name_mismatch"
+    TICKET_MISMATCH = "ticket_mismatch"
