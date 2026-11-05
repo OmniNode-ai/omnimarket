@@ -108,6 +108,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
+  - id: req-omn19998-floor-publish-interval
+    statement: The existing floor publisher keeps large process series off the shared floor payload, retains lossless report detail, and renders a prepared timer environment with its declared projection host.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: an oversized recorded-shape series publishes a bounded summary and lossless compressed detail; the browser rejects mixed generations; the timer avoids sync and persists its declared runtime SSH host; a floor refresh refusal still permits shared report pages -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-merge-declared-clone
     statement: The merge consumer refreshes the current host's declared repository clone when the registry scan finds none.
     acceptance:
@@ -159,6 +164,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly -k missing_remote_base_is_fetched
+        cwd: .
+  - id: dod-omn19998-floor-publish-interval
+    description: Scoped regression over the measured large process-health series, report-reader boundary, missing timer environment, and independent report publication. Five cases failed before the change. This does not assert the original landing-controller criteria or a live installed timer tick.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-floor-publish-wiring
+    description: Hosted wiring smoke renders the timer from its installer contract and passes that rendered environment through the projection report handler. Live installation and next-tick observation remain required on the publishing host.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_publish_interval_regression.py -q --no-cov -n 0 -p no:randomly -k timer_persists
         cwd: .
   - id: dod-omn19998-publish-recovery
     description: Local bare remotes reproduce the recorded head-moved, non-fast-forward and generic push-failed interleavings, conflicts, repeated overlapping phase commits, branch collisions and bounded head movement. These tests exercise publish recovery and do not assert the controller timer criteria.
