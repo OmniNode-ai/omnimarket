@@ -11,8 +11,8 @@ quota-capped tier expensive:
 * a **billing/entitlement gap** (z.ai code ``1113``) has no reset at all. It
   clears only when a human funds the account, so retries are pure waste and the
   correct output is an operator alert.
-* an **ordinary throttle** (the OpenRouter free tier) clears by itself and
-  should stay retryable.
+* an **ordinary throttle** clears after a short model cooldown, while a
+  daily cap bars every model spending that credential until the daily reset.
 
 Which code means which is DECLARED in ``bifrost_delegation.yaml``'s
 ``provider_quota_policy`` block, not encoded here: adding a provider or
@@ -39,6 +39,11 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.handler_provider_quota_reset import (
+    HandlerProviderQuotaReset,
+    error_metadata,
+    parse_retry_delay,
+)
 from omnimarket.inference.provider_surfaces import (
     load_provider_surfaces,
     provider_surface_for_endpoint,
@@ -46,6 +51,9 @@ from omnimarket.inference.provider_surfaces import (
 from omnimarket.models.delegation.model_provider_quota_limit import (
     ModelProviderQuotaLimit,
     ModelProviderQuotaLimits,
+)
+from omnimarket.models.delegation.model_provider_quota_reset import (
+    ModelProviderQuotaResetRequest,
 )
 
 # OMN-16891: the config SHAPES live with the other bifrost wire DTOs — the
@@ -65,19 +73,6 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 _CONTRACT_FILENAME = "bifrost_delegation.yaml"
 _POLICY_KEY = "provider_quota_policy"
 _QUOTA_LIMITS_FILENAME = "provider_quota_limits.v1.yaml"
-
-# z.ai states the reset inline: "Your limit will reset at 2026-08-30 20:32:52".
-_RESET_PATTERN = re.compile(
-    r"reset\s+at\s+(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})", re.IGNORECASE
-)
-
-# Gemini states a relative delay instead: "Please retry in 27.024259969s."
-# (OMN-16932). Same information, different shape, so it needs its own
-# contract-selectable ``reset_from`` mode rather than being crammed into the
-# absolute-instant parser above.
-_RETRY_DELAY_PATTERN = re.compile(
-    r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s(?:econds?)?\b", re.IGNORECASE
-)
 
 
 class ModelQuotaVerdict(BaseModel):
@@ -150,7 +145,8 @@ def _provider_for(
 
 
 def _rule_for(
-    provider: ModelQuotaProviderRule, *candidates: str | None
+    provider: ModelQuotaProviderRule,
+    *candidates: str | None,
 ) -> ModelQuotaCodeRule | None:
     """First declared rule matching any candidate, in candidate order.
 
@@ -159,10 +155,18 @@ def _rule_for(
     so the more specific status string is offered first.
     """
     for candidate in candidates:
-        if candidate is None:
+        if not isinstance(candidate, str):
             continue
         for rule in provider.codes:
-            if rule.code == candidate:
+            # A native symbolic marker can include a provider suffix (for
+            # example free-models-per-day-high-balance). Numeric codes stay exact.
+            if candidate == rule.code or (
+                not rule.code.isdecimal()
+                and (
+                    candidate.casefold() == rule.code.casefold()
+                    or candidate.casefold().startswith(rule.code.casefold() + "-")
+                )
+            ):
                 return rule
     return None
 
@@ -300,27 +304,6 @@ def _extract_error_message(body: dict[str, Any] | None) -> str:
     return str(error.get("message") or "")
 
 
-def _parse_reset_instant(message: str) -> datetime | None:
-    """Parse the reset instant the provider states inline.
-
-    The provider reports a naive wall-clock stamp with no offset. It is read as
-    UTC so the value is comparable and unambiguous; the cost of being wrong is
-    bounded either way (a slightly early retry re-trips the same 429, a
-    slightly late one waits a little longer).
-    """
-    match = _RESET_PATTERN.search(message)
-    if not match:
-        return None
-    stamp = match.group(1).replace(" ", "T")
-    try:
-        parsed = datetime.fromisoformat(stamp)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed
-
-
 def _with_hint(rule: ModelQuotaCodeRule, reason: str) -> str:
     """Append the contract-declared operator hint, when the rule carries one.
 
@@ -333,26 +316,6 @@ def _with_hint(rule: ModelQuotaCodeRule, reason: str) -> str:
     if not rule.alert_hint:
         return reason
     return f"{reason} {rule.alert_hint.strip()}"
-
-
-def _parse_retry_delay(message: str, *, reference: datetime) -> datetime | None:
-    """Parse a provider-stated relative retry delay into an absolute instant.
-
-    Gemini reports "Please retry in 27.024259969s." rather than a wall-clock
-    reset. Reading it against ``reference`` (the moment the 429 was observed)
-    keeps the resulting instant comparable with the absolute-stamp path, so both
-    ``reset_from`` modes produce the same downstream shape.
-    """
-    match = _RETRY_DELAY_PATTERN.search(message)
-    if not match:
-        return None
-    try:
-        seconds = float(match.group(1))
-    except ValueError:  # pragma: no cover - regex already constrains the shape
-        return None
-    if seconds < 0:
-        return None
-    return reference + timedelta(seconds=seconds)
 
 
 def classify_quota_response(
@@ -387,7 +350,15 @@ def classify_quota_response(
             ),
         )
 
-    rule = _rule_for(provider, _extract_error_status(body), code)
+    rule = _rule_for(
+        provider,
+        _extract_error_status(body),
+        error_metadata(body).get("limit_source"),
+        *re.findall(
+            r"[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)+", _extract_error_message(body)
+        ),
+        code,
+    )
     if rule is None:
         return ModelQuotaVerdict(
             disposition=active.default_disposition,
@@ -408,7 +379,7 @@ def classify_quota_response(
         disabled_until = parse_retry_after(headers, reference=reference)
         source = "Retry-After header"
         if disabled_until is None:
-            disabled_until = _parse_retry_delay(
+            disabled_until = parse_retry_delay(
                 _extract_error_message(body), reference=reference
             )
             source = "provider-stated retry delay"
@@ -452,13 +423,19 @@ def classify_quota_response(
 
     if rule.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET:
         reference = now or datetime.now(UTC)
-        disabled_until = None
-        if rule.reset_from == "message_reset_timestamp":
-            disabled_until = _parse_reset_instant(_extract_error_message(body))
-        elif rule.reset_from == "message_retry_delay":
-            disabled_until = _parse_retry_delay(
-                _extract_error_message(body), reference=reference
+        disabled_until = (
+            HandlerProviderQuotaReset()
+            .handle(
+                ModelProviderQuotaResetRequest(
+                    reset_from=rule.reset_from,
+                    reference=reference,
+                    message=_extract_error_message(body),
+                    body=body,
+                    headers=dict(headers) if headers is not None else None,
+                )
             )
+            .reset_at
+        )
         if disabled_until is None:
             # Fail CLOSED: a cap we cannot time is still a cap.
             disabled_until = reference + timedelta(
