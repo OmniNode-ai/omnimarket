@@ -93,6 +93,11 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
+  - id: req-omn19998-item-state-contract-terminals
+    statement: The existing shadow item-state nodes advertise reachable terminals and dispatch typed snapshots through their packaged contracts.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: the four item-state nodes auto-wire through the installed runtime and return correlated completed events; the effect resolves its packaged isolated overlay and stays shadow without a measured promotion -- falsifier: uv run --frozen pytest tests/test_golden_chain_item_state_check.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -377,4 +382,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_compute/tests/test_process_health.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-item-state-contract-terminals
+    description: Focused item-state regressions cover unanswered items, ended lanes, revision claims, queue delivery, shadow behavior and the four contract-driven runtime commands. Earlier controller timer criteria are not asserted by this slice.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_item_state_check.py -q --no-cov -n 0 -p no:randomly --tb=short
+        cwd: .
+  - id: dod-omn19998-item-state-contract-terminals-deploy
+    description: Hosted installed-package smoke auto-wires all four packaged contracts through infra and an isolated in-memory bus, then reads a correlated typed terminal. The effect uses its packaged in-memory dependency overlay with no promotion. No live tick, broker or host unit is claimed.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_golden_chain_item_state_check.py -q --no-cov -n 0 -p no:randomly --tb=short -k runtime_command
         cwd: .

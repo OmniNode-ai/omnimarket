@@ -39,12 +39,10 @@ event_bus:
   - onex.cmd.omnimarket.item-lane-miss-compute-requested.v1
   publish_topics:
   - onex.evt.omnimarket.item-lane-miss-compute-completed.v1
-  - onex.evt.omnimarket.item-lane-miss-compute-failed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.item-lane-miss-compute-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.item-lane-miss-compute-completed.v1
-    failure: onex.evt.omnimarket.item-lane-miss-compute-failed.v1
 descriptor:
   node_archetype: compute
   purity: pure

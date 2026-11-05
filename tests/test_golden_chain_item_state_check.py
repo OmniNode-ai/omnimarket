@@ -362,3 +362,130 @@ def test_item_state_check_durable_ack_cannot_resurrect_ended_lane(runner):
     result = handler.handle(tick([ended], tick_id="retry"))
     assert len(result.started) == 1
     assert result.started[0].lane != initial.started[0].lane
+
+
+@pytest.mark.parametrize(
+    ("node_name", "completed_topic"),
+    [
+        (
+            "node_item_unanswered_compute",
+            "onex.evt.omnimarket.item-unanswered-compute-completed.v1",
+        ),
+        (
+            "node_item_lane_miss_compute",
+            "onex.evt.omnimarket.item-lane-miss-compute-completed.v1",
+        ),
+        (
+            "node_item_recovery_plan_compute",
+            "onex.evt.omnimarket.item-recovery-plan-compute-completed.v1",
+        ),
+        (
+            "node_item_state_check_effect",
+            "onex.evt.omnimarket.item-state-check-effect-completed.v1",
+        ),
+    ],
+)
+async def test_item_state_check_runtime_command(
+    node_name, completed_topic, monkeypatch
+):
+    """Recorded contracts must advertise only terminals their handlers return."""
+    import asyncio
+    import importlib.resources
+    import json
+    from uuid import uuid4
+
+    import yaml
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.runtime.auto_wiring.discovery import (
+        discover_contracts_from_paths,
+    )
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+    from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
+    from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+
+    from omnimarket.handlers.container.container_overlay_dependencies import (
+        bind_overlay,
+        installed_overlay,
+        load_overlay_bindings,
+    )
+
+    package = importlib.resources.files(f"omnimarket.nodes.{node_name}")
+    contract_path = package.joinpath("contract.yaml")
+    contract = yaml.safe_load(contract_path.read_text())
+    assert contract["event_bus"]["publish_topics"] == [completed_topic]
+    assert contract["runtime_dispatch"]["terminal_events"] == {
+        "success": completed_topic
+    }
+    previous_overlay = installed_overlay()
+    effect_package = importlib.resources.files(
+        "omnimarket.nodes.node_item_state_check_effect"
+    )
+    from pathlib import Path
+
+    bind_overlay(
+        load_overlay_bindings(
+            Path(str(effect_package.joinpath("inmemory.overlay.yaml")))
+        )
+    )
+    monkeypatch.delenv("ONEX_ACTIVE_RUNTIME_PACKAGES", raising=False)
+    bus = EventBusInmemory(environment="local", group="item-state-check-wiring")
+    await bus.start()
+    completed = asyncio.Queue()
+
+    async def collect(message):
+        await completed.put(json.loads(message.value))
+
+    try:
+        await bus.subscribe(
+            completed_topic, group_id="item-results", on_message=collect
+        )
+        discovered = discover_contracts_from_paths([Path(str(contract_path))])
+        assert not discovered.errors
+        engine = MessageDispatchEngine()
+        report = await wire_from_manifest(
+            ModelAutoWiringManifest(contracts=tuple(discovered.contracts)),
+            engine,
+            event_bus=bus,
+            environment="local",
+        )
+        assert report.total_wired == 1
+        assert not report.quarantined_handlers
+        engine.freeze()
+        sample = item(
+            ended_lane=ModelItemLane(lane="ended-lane", outcome="blocked", attempt=0)
+        )
+        snapshot = ModelItemSnapshot(items=(sample,), now=NOW)
+        if node_name == "node_item_recovery_plan_compute":
+            request = ModelItemRecoveryRequest(
+                item=sample,
+                findings=NodeItemUnansweredCompute().handle(snapshot).findings,
+            )
+        elif node_name == "node_item_state_check_effect":
+            request = tick([sample], promotions=False)
+        else:
+            request = snapshot
+        correlation_id = uuid4()
+        command_topic = contract["runtime_dispatch"]["command_topic"]
+        envelope = ModelEventEnvelope[object](
+            payload=request.model_dump(mode="json"),
+            correlation_id=correlation_id,
+            event_type=command_topic.removeprefix("onex.cmd.").removesuffix(".v1"),
+        )
+        await bus.publish(
+            command_topic, None, envelope.model_dump_json().encode(), None
+        )
+        event = await asyncio.wait_for(completed.get(), timeout=5)
+        assert event["correlation_id"] == str(correlation_id)
+        payload = event["payload"]
+        if node_name == "node_item_recovery_plan_compute":
+            assert payload["item_id"] == "item-1"
+            assert payload["action"] == "fill-backlog-item"
+        elif node_name == "node_item_state_check_effect":
+            assert payload["started"] == []
+            assert "would-have-sent" in payload["lines"][0]
+        else:
+            assert payload["findings"][0]["item_id"] == "item-1"
+    finally:
+        await bus.close()
+        bind_overlay(previous_overlay)
