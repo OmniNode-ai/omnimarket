@@ -4,7 +4,9 @@
 
 If a restore in the old clone makes an old name a regular file again, a writer still configured
 with that name writes one file while readers of the new name read another, and nothing else sees
-it. Named break: replace an old name with a regular file.
+it. A commit attempt makes that restore: its hook stashes the tree and writes back whatever the
+index holds, so an index that holds a file at an old name reads NOT WORKING while the name is still
+a link. Named breaks: replace an old name with a regular file; stage a regular file at an old name.
 
 REMOVABLE. The ledger's move to the event bus ends every file ledger, and this probe then has
 nothing to read. At that cutover delete this file, its test file, the ``old_names`` section of the
@@ -26,6 +28,7 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
 )
 
 _PROBE = EnumHostProbe.LEDGER_OLD_NAMES
+_GIT_LINK_MODE = "120000"
 
 
 def _unknown(reason: str) -> ModelProbeReading:
@@ -51,6 +54,7 @@ def read_old_names(
     root = Path(root_text)
     configured = Path(configured_text)
     reasons: list[str] = []
+    rewriting = 0
     configured_kind = files.kind(configured)
     if configured_kind == "link":
         reasons.append("configured-path-is-a-link")
@@ -68,6 +72,14 @@ def read_old_names(
             configured.parent / link.ledger_relative
         ):
             reasons.append(f"old-name-wrong-target-{token}")
+        staged = [
+            entry
+            for entry in files.index_entries(root, link.name)
+            if entry != (_GIT_LINK_MODE, link.name)
+        ]
+        if staged:
+            reasons.append(f"old-name-index-would-rewrite-{token}")
+            rewriting += len(staged)
     return ModelProbeReading(
         probe=_PROBE,
         verdict=EnumReadingVerdict.NOT_WORKING
@@ -75,5 +87,5 @@ def read_old_names(
         else EnumReadingVerdict.WORKING,
         outcome=EnumReadingOutcome.READ,
         reasons=tuple(reasons) or ("old-names-link-to-the-configured-ledger",),
-        cells={"names": str(len(settings.links))},
+        cells={"names": str(len(settings.links)), "index_entries": str(rewriting)},
     )

@@ -5,10 +5,13 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_host_reading_effect.adapters.host_files import (
     InMemoryHostFiles,
@@ -109,6 +112,27 @@ class World:
             return
         old.unlink()
         old.symlink_to(other)
+
+    def break_stage_regular_file_at_old_name(self) -> None:
+        """The name stays a link on disk; only the index holds a file there."""
+        if self.memory is not None:
+            self.memory.index[OLD_LEDGER] = "100644"
+            return
+        old = self.root / OLD_LEDGER
+        subprocess.run(
+            ["git", "init", "-q", str(self.root)],
+            check=True,
+            env=scrub_git_location_env(os.environ),
+        )
+        old.unlink()
+        old.write_text("# staged\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "-C", str(self.root), "add", OLD_LEDGER],
+            check=True,
+            env=scrub_git_location_env(os.environ),
+        )
+        old.unlink()
+        old.symlink_to(self.ledger)
 
     def break_plant_stale_queued_request(self, age_seconds: int = 901) -> None:
         self.write(self.outbox / "0001_r1.json", queued(age_seconds))

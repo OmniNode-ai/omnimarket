@@ -23,5 +23,12 @@ class ProtocolHostFiles(Protocol):
 
     def read_text(self, path: Path) -> str: ...
 
+    def index_entries(self, root: Path, name: str) -> tuple[tuple[str, str], ...]:
+        """(mode, path) of each entry a git index under ``root`` holds at or below ``name``.
+
+        None when ``root`` is not a work tree: no restore can rewrite the name there.
+        """
+        ...
+
 
 __all__ = ["PathKind", "ProtocolHostFiles"]

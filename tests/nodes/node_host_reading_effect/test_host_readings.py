@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.models.model_host_reading import (
     EnumHostProbe,
@@ -74,6 +77,10 @@ def test_healthy_old_names_read_working(world: World) -> None:
             World.break_point_old_name_elsewhere,
             "old-name-wrong-target-docs-old-ledger-md",
         ),
+        (
+            World.break_stage_regular_file_at_old_name,
+            "old-name-index-would-rewrite-docs-old-ledger-md",
+        ),
     ],
 )
 def test_named_break_fails_the_old_names_reading(
@@ -84,6 +91,25 @@ def test_named_break_fails_the_old_names_reading(
     assert reading.verdict is EnumReadingVerdict.NOT_WORKING
     assert reading.outcome is EnumReadingOutcome.READ
     assert reason in reading.reasons
+
+
+def test_a_staged_link_at_the_old_name_does_not_fail_the_reading(world: World) -> None:
+    """The remedy for the staged break: an index holding the link restores the link."""
+    if world.memory is not None:
+        world.memory.index["docs/old/LEDGER.md"] = "120000"
+    else:
+        subprocess.run(
+            ["git", "init", "-q", str(world.root)],
+            check=True,
+            env=scrub_git_location_env(os.environ),
+        )
+        subprocess.run(
+            ["git", "-C", str(world.root), "add", "docs/old/LEDGER.md"],
+            check=True,
+            env=scrub_git_location_env(os.environ),
+        )
+    reading = _read(world, EnumHostProbe.LEDGER_OLD_NAMES)
+    assert reading.verdict is EnumReadingVerdict.WORKING, reading.reasons
 
 
 def test_configured_path_that_is_an_old_name_cannot_pass(world: World) -> None:

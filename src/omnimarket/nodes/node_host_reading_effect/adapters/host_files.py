@@ -5,10 +5,16 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
 from omnimarket.nodes.node_host_reading_effect.protocols import PathKind
+
+_GIT_NOT_A_REPOSITORY = 128
+_GIT_TIMEOUT_SECONDS = 30
 
 
 class LocalHostFiles:
@@ -38,6 +44,29 @@ class LocalHostFiles:
     def read_text(self, path: Path) -> str:
         return path.read_text(encoding="utf-8")
 
+    def index_entries(self, root: Path, name: str) -> tuple[tuple[str, str], ...]:
+        """``git ls-files`` reads the index and writes nothing."""
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "-s", "--", name],
+                env=scrub_git_location_env(os.environ),
+                capture_output=True,
+                text=True,
+                timeout=_GIT_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise OSError(f"git ls-files timed out under {root}") from exc
+        if done.returncode == _GIT_NOT_A_REPOSITORY:
+            return ()
+        if done.returncode != 0:
+            raise OSError(f"git ls-files exited {done.returncode} under {root}")
+        entries = []
+        for line in done.stdout.splitlines():
+            stage, _, path = line.partition("\t")
+            entries.append((stage.split(" ", 1)[0], path))
+        return tuple(entries)
+
 
 class InMemoryHostFiles:
     """The same port over dicts. ``read_error`` injects a failed read."""
@@ -46,6 +75,8 @@ class InMemoryHostFiles:
         self.links: dict[Path, Path] = {}
         self.files: dict[Path, str] = {}
         self.directories: set[Path] = set()
+        #: path, relative to its work tree, to its index mode.
+        self.index: dict[str, str] = {}
         self.read_error: str | None = None
 
     def add_file(self, path: Path, text: str = "") -> None:
@@ -88,6 +119,14 @@ class InMemoryHostFiles:
             return self.files[path]
         except KeyError as exc:
             raise FileNotFoundError(str(path)) from exc
+
+    def index_entries(self, root: Path, name: str) -> tuple[tuple[str, str], ...]:
+        self._check()
+        return tuple(
+            (mode, path)
+            for path, mode in sorted(self.index.items())
+            if path == name or path.startswith(f"{name}/")
+        )
 
     def _check(self) -> None:
         if self.read_error is not None:
