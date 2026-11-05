@@ -21,7 +21,6 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from ..handlers.handler_morning_runtime_probe import RUNTIME_PROBE_TOOL
 from .base import (
     BAR_ROW_RE,
     LANE_PATTERN,
@@ -45,6 +44,7 @@ from .context import ModelMorningToolContext
 from .effects import EFFECT_TOOLS
 from .linear_tools import LINEAR_TOOLS
 from .local_reads import READ_TOOLS
+from .runtime_probe import RUNTIME_PROBE_TOOL
 
 
 class ModelLedgerLaneRowsInput(BaseModel):

@@ -17,18 +17,17 @@ import shlex
 import socket
 import time
 from datetime import UTC, datetime
-from typing import TypedDict, cast
+from typing import TypedDict
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, JsonValue
+from pydantic import JsonValue
 
 from ..models.model_morning_runtime_probe import (
     ModelMorningRuntimeProbeCommand,
-    ModelMorningRuntimeProbeRequest,
     ModelMorningRuntimeProbeResult,
 )
-from ..tools.base import MorningTool, MorningToolRefusalError, Result
+from ..tools.base import MorningToolRefusalError
 from ..tools.context import ModelMorningToolContext
 from ..tools.local_reads import read_source_document
 
@@ -268,24 +267,3 @@ class HandlerMorningRuntimeProbe:
                 stdout="",
                 stderr=str(exc),
             )
-
-
-def runtime_probe(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
-    result = HandlerMorningRuntimeProbe().handle(
-        ModelMorningRuntimeProbeCommand(
-            context=ctx, **cast(ModelMorningRuntimeProbeRequest, params).model_dump()
-        )
-    )
-    return cast(Result, result.model_dump(mode="json"))
-
-
-RUNTIME_PROBE_TOOL = MorningTool(
-    "runtime_probe",
-    "Execute the declared source row's HTTP Done-proof readback on the declared dev "
-    "runtime host. Select a document key, source_sha256 and one-based table-row line. Returns "
-    "fresh output, source hashes and execution context; never infers a ladder stage. "
-    "Supports curl GET and JSON field/equality readbacks; refuses other commands.",
-    ModelMorningRuntimeProbeRequest,
-    "read",
-    runtime_probe,
-)

@@ -78,8 +78,10 @@ def test_golden_chain_morning_ground_state_orchestrator() -> None:
 
 def test_runtime_probe_contract_resolves_the_phase_tool_handler() -> None:
     from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_runtime_probe import (
-        RUNTIME_PROBE_TOOL,
         HandlerMorningRuntimeProbe,
+    )
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.tools.runtime_probe import (
+        RUNTIME_PROBE_TOOL,
     )
 
     routing = cast(dict[str, JsonValue], _contract()["handler_routing"])

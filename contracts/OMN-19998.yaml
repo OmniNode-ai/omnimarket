@@ -555,3 +555,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-import
+    description: The phase catalog imports the runtime probe adapter, which imports and invokes the typed handler. The unchanged unimported-handler gate refuses the previous same-module binding; the hosted loopback smoke exercises the adapter through the phase tool server.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -k row_probe_runs_through_the_phase_server_with_fresh_output
+        cwd: .
