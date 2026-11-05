@@ -552,8 +552,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Deployment Fact Gate",
     "Ecosystem Integration Validation",
     "Enforce validator-requirements.yaml (OMN-13291)",
-    "Hostile Review Gate",
-    "Hostile Reviewer (adversarial gate)",
     "Leaked Literals Gate",
     "Legacy Compatibility Check",
     "No Faked Boundary Gate",
