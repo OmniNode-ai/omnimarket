@@ -138,11 +138,21 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-delegation-daily-cap
+    statement: A recorded daily provider cap blocks the credential until reset, and delegation moves past the blocked route without spending its transient retry allowance.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: recorded OpenRouter daily-cap fields select a provider-scoped reset block, ordinary model throttles keep their existing cooldown, capped BYOK routes make one attempt before the next registered key, and transient failures retain their existing bounded retries -- falsifier: uv run --frozen pytest tests/unit/delegation/test_openrouter_daily_cap.py tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q --no-cov'
   - id: req-omn19998-lab-host-toolchain
     statement: The existing toolchain nodes declare build and script tools and reject masked missing-command results.
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
+  - id: req-omn19998-remote-ref-before-send
+    statement: Remote lane ref resolution checks the default branch and requested branch before send and returns typed refusals.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: an unpushed lane branch is refused as BRANCH_NOT_PUSHED with the default branch named, the same branch resolves once pushed, and an empty remote is refused as NO_DEFAULT_BRANCH through the contract-bound handler and real Git -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -158,6 +168,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-remote-ref-before-send
+    description: Replay the unpushed branch case through the contract-bound ref handler and local Git adapter. The default branch and typed refusal assertions fail against the base handler; the pushed branch is the positive control. This scoped proof does not assert the controller timer criteria or adoption by an external caller.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_branch_check_before_send.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual
@@ -581,4 +599,28 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-delegation-daily-cap
+    description: Replay the recorded daily-cap fields through the production classifier and observation snapshot, checking cross-model exclusion until reset, credential isolation, malformed reset fallback and the ordinary minute-throttle control.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/delegation/test_openrouter_daily_cap.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-delegation-daily-cap-dispatch
+    description: Hosted dispatch smoke uses the real local routing chain and bus workflow handler with provider calls simulated. It checks that a just-observed cap prevents a same-route retry, skips the capped key's other models and reaches the next key in order; ordinary transient failures retain their bounded retry control. This does not assert a live runtime installation or the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q --no-cov
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_chosen_model_omn21059.py -q --no-cov
         cwd: .
