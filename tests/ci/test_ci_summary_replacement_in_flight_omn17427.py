@@ -29,6 +29,7 @@ import yaml
 from scripts.ci.ci_summary_gate import (
     EXIT_FAILURE,
     EXIT_PENDING,
+    EXPECTED_EXTERNAL_CONTEXTS,
     CheckRunState,
     check_run_workflow_run_id,
     evaluate_external,
@@ -126,6 +127,15 @@ def _snapshot() -> tuple[list[dict[str, object]], list[dict[str, object]], datet
     return snap["check_runs"], snap["workflow_runs"], now
 
 
+# OMN-22478: the recorded head predates the reviewer leaving the asserted tuple,
+# so the replay asserts the tuple that head was gated by.
+RECORDED_EXPECTED = (
+    *EXPECTED_EXTERNAL_CONTEXTS,
+    "Hostile Review Gate",
+    "Hostile Reviewer (adversarial gate)",
+)
+
+
 def test_replay_of_omnimarket_2913_is_a_negative_control() -> None:
     """CI run 36349798545 attempt 1 logged ``external-context failures: Hostile
     Review Gate, Hostile Reviewer (adversarial gate)`` at 21:17:34Z. Reconstructed
@@ -138,9 +148,15 @@ def test_replay_of_omnimarket_2913_is_a_negative_control() -> None:
         "external-context failures: Hostile Review Gate, "
         "Hostile Reviewer (adversarial gate)"
     )
-    old_code, old_report = evaluate_external(check_runs, actor=ACTOR, now=now)
+    old_code, old_report = evaluate_external(
+        check_runs, actor=ACTOR, now=now, expected=RECORDED_EXPECTED
+    )
     new_code, new_report = evaluate_external(
-        check_runs, actor=ACTOR, now=now, head_workflow_runs=runs
+        check_runs,
+        actor=ACTOR,
+        now=now,
+        head_workflow_runs=runs,
+        expected=RECORDED_EXPECTED,
     )
     assert old_code == new_code == EXIT_FAILURE
     assert expected in old_report
@@ -156,7 +172,11 @@ def test_the_same_head_with_a_queued_replacement_is_pending() -> None:
     queued = copy.deepcopy(base)
     queued.update(id=RED_ROW_RUN + 1000, status="queued", conclusion=None)
     code, report = evaluate_external(
-        check_runs, actor=ACTOR, now=now, head_workflow_runs=[*runs, queued]
+        check_runs,
+        actor=ACTOR,
+        now=now,
+        head_workflow_runs=[*runs, queued],
+        expected=RECORDED_EXPECTED,
     )
     assert code == EXIT_PENDING, report
     assert "running again on this head" in report

@@ -165,6 +165,7 @@ from omnimarket.inference.provider_quota_observation import (
 )
 from omnimarket.inference.provider_quota_state import (
     ProtocolProviderQuotaReader,
+    quota_block_for_backend,
     quota_domain_for_endpoint,
     read_provider_quota_snapshot,
 )
@@ -4527,6 +4528,23 @@ class HandlerDelegationWorkflow:
         backend_ref = (workflow.routing_decision.selected_backend_ref or "").strip()
         max_retries = byok_backend_max_retries(backend_ref)
         if max_retries is None:
+            return None
+
+        if self._quota_reader is None:
+            self._quota_reader = provider_quota_state.resolve_provider_quota_reader()
+        quota = read_provider_quota_snapshot(
+            self._quota_reader, tenant_id=_resolve_tenant_id(workflow)
+        ).with_observation(workflow.current_attempt_observation)
+        route = workflow.routing_decision
+        if (
+            quota_block_for_backend(
+                quota,
+                endpoint_url=route.endpoint_url,
+                api_key_ref=route.api_key_ref,
+                model_name=route.selected_model,
+            )
+            is not None
+        ):
             return None
 
         # Per-route budget: a route change resets the count, so two different
