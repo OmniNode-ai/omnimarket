@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Factory floor</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 32px}
+.now{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--grey);border-radius:8px;padding:16px 18px}
+.now.red{border-left-color:var(--red)}.now.amber{border-left-color:var(--amber)}.now.green{border-left-color:var(--green)}
+.now h1{font-size:22px;line-height:1.3;margin:0 0 6px;font-weight:650}.now p{margin:0;color:var(--mute)}
+.frozen{background:var(--red);color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-weight:650}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.num{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.num b{display:block;font-size:26px;font-weight:650;line-height:1.1}.num span{font-size:13px;color:var(--mute)}
+.num.unread b{color:var(--red)}
+h2{font-size:14px;font-weight:650;margin:20px 0 8px}
+.row{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
+.dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--grey)}
+.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}
+.row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+.strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
+.p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center}
+.p.cur{background:var(--blue);color:#fff;font-weight:650}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
+.piece{margin-top:8px;font-size:14px;color:var(--mute)}.piece b{color:var(--ink);font-weight:600}
+.line{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.line .n{flex:none;width:1.8em;color:var(--mute);text-align:right}.line .t{flex:1}.line .t small{color:var(--mute)}.line .a{flex:none;color:var(--mute);font-size:12px}
+.line.red .t b{color:var(--red)}.line.amber .t b{color:var(--amber)}.line.grey{color:var(--mute)}
+.rule{margin-top:14px;font-size:13px;color:var(--mute)}.rule.bad{color:var(--red);font-weight:650}
+a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
+@media(max-width:480px){.now h1{font-size:19px}.num b{font-size:22px}.nums{gap:6px}.num{padding:10px}}
+</style></head><body><main id="app"><div class="frozen">Reading the floor...</div></main>
+<script>
+"use strict";
+const DATA = "floor-simple.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000;
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
+let doc = null, failure = "";
+async function load(){
+  try {
+    const r = await fetch(DATA, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    doc = await r.json(); failure = "";
+  } catch (e) { failure = String(e.message || e); }
+  draw();
+}
+function draw(){
+  const app = document.getElementById("app");
+  if (!doc) { app.innerHTML = `<div class="frozen">The floor record cannot be read (${esc(failure)}). Nothing below can be trusted.</div><div class="more"><a href="detail.html">Details: lines, machines, shipping, delegation</a></div>`; return; }
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  const limit = doc.freshness_max_age_s || FALLBACK_MAX_AGE_S;
+  let h = "";
+  if (failure) h += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
+  else if (age > limit) h += `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p></section>`;
+  h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
+  for (const a of doc.alarms) if (a.delivery !== "delivered") h += `<div class="row"><span class="dot red"></span><div><b>Alarm: ${esc(a.title)}</b><small>${a.delivery === "undelivered" ? "No delivery receipt on any channel; it needs you." : "Waiting for a delivery receipt."} Raised ${ago(Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))}.</small></div></div>`;
+  const listed = doc.causes.filter(c => c.listed);
+  h += `<h2>What's holding things up, biggest first</h2>`;
+  if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
+  for (const c of listed.slice(0, doc.causes_shown)) {
+    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
+    h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
+  }
+  if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
+  const cur = doc.rebuild.current_piece;
+  h += `<h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<div class="p ${p.piece === cur ? "cur" : p.status === "not_started" ? "" : esc(p.draw)}" title="${esc(p.name)}">${p.piece}</div>`).join("") + `</div>`;
+  h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div>`;
+  h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
+  for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
+  h += `<h2>The 18 pieces, with their joins</h2>`;
+  for (const p of doc.pieces) {
+    const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
+    h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n">${p.piece}</span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
+  }
+  const r = doc.red_rule;
+  h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
+  if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
+  h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
+  app.innerHTML = h;
+}
+load(); setInterval(load, REFRESH_MS); setInterval(draw, 10000);
+</script></body></html>

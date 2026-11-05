@@ -110,7 +110,12 @@ runtime:
   overlay_file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY
   # The site's page is the tab page (the dashboard and the four tabs); the factory floor artwork is its own page, drawn
   # inside the Factory floor tab, so both are packaged and both are published.
-  page_relpath: page/index.html
+  # OMN-19998: the site's address shows the simple floor (page/simple.html, published as index.html); the tab page with
+  # every line, machine and report is page/detail.html, published as detail.html, and is the simple page's one link.
+  page_relpath: page/detail.html
+  simple_page_relpath: page/simple.html
+  simple_data_relpath: .claude_scratch/factory-floor/floor-simple.json
+  simple_reads_relpath: .claude_scratch/factory-floor/floor-simple-reads.json
   floor_page_relpath: page/floor/index.html
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
@@ -195,8 +200,19 @@ runtime:
     timeout_seconds: 600
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
+  # OMN-19998 (17a): the simple floor is built from the record just written and from the lab's own readings. It is not
+  # required: when it fails the previous floor-simple.json stays and the page draws its own age, red past 15 minutes.
+  - name: floor_simple
+    kind: module
+    required: false
+    timeout_seconds: 120
+    module: omnimarket.nodes.node_floor_simple_effect
+    args: ["--home", "{home}"]
   names:
-    page: index.html
+    page: detail.html
+    simple_page: index.html
+    simple_data: floor-simple.json
+    simple_reads: floor-simple-reads.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json

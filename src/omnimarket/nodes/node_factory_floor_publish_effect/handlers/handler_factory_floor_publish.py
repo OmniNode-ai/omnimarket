@@ -260,6 +260,9 @@ class HandlerFactoryFloorPublish:
             results, rt, self._declared_fragments(rt, env), record["lines"]
         )
         page = (NODE_DIR / rt.page_relpath).read_bytes()
+        simple_page = (NODE_DIR / rt.simple_page_relpath).read_bytes()
+        simple_data = self._read_simple(home / rt.simple_data_relpath)
+        simple_reads = self._read_simple(home / rt.simple_reads_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         theme_css = [
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
@@ -283,6 +286,7 @@ class HandlerFactoryFloorPublish:
             {
                 "published_at": now.astimezone(UTC).isoformat(),
                 "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
+                "simple_floor": "published" if simple_data is not None else "absent",
                 "process_health": "published" if health is not None else "absent",
                 "process_health_reason": health_payload.reason,
                 "delegation": "published" if delegation is not None else "absent",
@@ -296,8 +300,13 @@ class HandlerFactoryFloorPublish:
             *theme_css,
             (rt.names.floor_page, floor_page),
             (rt.names.page, page),
+            (rt.names.simple_page, simple_page),
             (rt.names.status, status),
         ]
+        if simple_reads is not None:
+            files.append((rt.names.simple_reads, simple_reads))
+        if simple_data is not None:
+            files.append((rt.names.simple_data, simple_data))
         if health is not None:
             if health_payload.detail is not None:
                 files.append((health_payload.detail_file, health_payload.detail))
@@ -514,6 +523,16 @@ class HandlerFactoryFloorPublish:
             raise PublishRefusedError(
                 f"the factory floor record {path} lacks generated_at or lines; refusing to publish it"
             )
+        return data
+
+    @staticmethod
+    def _read_simple(path: Path) -> bytes | None:
+        """A file of the simple floor, or ``None`` when absent or not JSON (the page then draws it as absent, in red)."""
+        try:
+            data = path.read_bytes()
+            json.loads(data)
+        except (OSError, ValueError):
+            return None
         return data
 
     @staticmethod

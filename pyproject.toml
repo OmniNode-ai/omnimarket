@@ -306,7 +306,11 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
+node_floor_emission_compute = "omnimarket.nodes.node_floor_emission_compute"
+node_floor_simple_compute = "omnimarket.nodes.node_floor_simple_compute"
+node_floor_simple_effect = "omnimarket.nodes.node_floor_simple_effect"
 node_host_state_effect = "omnimarket.nodes.node_host_state_effect"
+node_lab_state_alarm_effect = "omnimarket.nodes.node_lab_state_alarm_effect"
 node_pr_handoff_dod_receipt_effect = "omnimarket.nodes.node_pr_handoff_dod_receipt_effect"
 node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
 node_network_graph_compute = "omnimarket.nodes.node_network_graph_compute"

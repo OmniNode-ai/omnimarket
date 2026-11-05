@@ -1,0 +1,25 @@
+# Overlay of node_floor_simple_effect (OMN-19998, 17a): the lab sources the floor reads and the line each must stay inside.
+# Loaded into ModelLabStateOverlay. Every source has a reading with a 15-minute maximum age (plan 3.5, W23): a source that
+# is unread, failing or older than max_age_s draws NOT WORKING, never blank.
+#
+# The limits below are proposals of the 17a lane, not rulings: disk 10 GB is the admission floor the pool read already
+# applies; queue age 60 minutes is the plan's "no eligible head older than an hour"; deploy lag 1440 minutes is a day.
+sources:
+  - {id: hosts, title: Lab hosts, kind: hosts, max_age_s: 900}
+  - {id: runner_groups, title: CI runner groups, kind: runner_groups, max_age_s: 900, limit: 0, unit: offline runners}
+  - {id: disk, title: Host disk, kind: disk, max_age_s: 900, limit: 10, unit: GB free}
+  - {id: queue_age, title: Merge queue age, kind: queue_age, max_age_s: 900, limit: 60, unit: minutes}
+  - {id: deploy_lag, title: Deploy lag, kind: deploy_lag, max_age_s: 900, limit: 1440, unit: minutes}
+  - {id: broker_lag, title: Broker lag, kind: broker_lag, max_age_s: 900}
+
+# Which disk figures of the pool read count (the lowest free figure of these decides).
+disk_keys: [disk_workdir, disk_lanetmp]
+# Which conditions of the lab alarm's last run make up the broker reading.
+broker_conditions: [consumer_group_lag, broker_listener]
+# Which watcher classes count as green and waiting for the queue age.
+queue_age_classes: [green-unarmed, queue-stuck]
+deploy_lag_lookback_days: 2
+# The runner fleet producer does not report a runner version yet; when it does, set this true and a missing version fails.
+require_runner_version: false
+# A host the operator declared out or in repair is not a failing host.
+declared_host_states: [out, repair]
