@@ -21,17 +21,13 @@ from omnimarket.models.ci_red_triage import (
     ci_run_failed_event_id,
 )
 from omnimarket.models.model_agent_review_command import ModelAgentReviewRequest
-from omnimarket.nodes.node_agent_review_trigger_effect.handlers.handler_dispatch_journal import (
-    FileDispatchJournal,
-)
 from omnimarket.nodes.node_agent_review_trigger_effect.handlers.handler_review_trigger import (
+    FileDispatchJournal,
     HandlerAgentReviewTrigger,
-    command_for,
-    no_voter_verdict,
-)
-from omnimarket.nodes.node_agent_review_trigger_effect.handlers.handler_review_trigger_bus import (
     ReviewTriggerBus,
     ScmReviewTriggerSource,
+    command_for,
+    no_voter_verdict,
 )
 from omnimarket.nodes.node_agent_review_trigger_effect.models.model_review_trigger import (
     ModelReviewTriggerConfig,
@@ -635,6 +631,14 @@ async def test_canonical_runtime_wiring_dispatches_the_recorded_event(
     bus = EventBusInmemory(environment="trigger-probe", group="trigger-probe")
     await bus.start()
     try:
+        decisions: list[dict[str, Any]] = []
+
+        async def decided(message: Any) -> None:
+            decisions.append(json.loads(message.value)["payload"])
+
+        await bus.subscribe_ungrouped(
+            "onex.evt.omnimarket.agent-review-trigger-decided.v1", decided
+        )
         engine = MessageDispatchEngine()
         report = await wire_from_manifest(
             manifest, engine, event_bus=bus, environment="local"
@@ -648,8 +652,15 @@ async def test_canonical_runtime_wiring_dispatches_the_recorded_event(
                 correlation_id=uuid4(),
                 event_type=event_type_for(topic),
             )
-            result = await engine.dispatch(topic=topic, envelope=envelope)
-            assert result.status.value == "success"
+            await bus.publish(topic, None, envelope.model_dump_json().encode())
         assert len(publisher.commands) == 1
+        assert [item["outcome"] for item in decisions] == ["emitted", "unchanged"]
+        assert [item["reason"] for item in decisions] == [
+            "no_voter_verdict",
+            "already_requested",
+        ]
+        assert {item["command_id"] for item in decisions} == {
+            publisher.commands[0].command_id
+        }
     finally:
         await bus.close()
