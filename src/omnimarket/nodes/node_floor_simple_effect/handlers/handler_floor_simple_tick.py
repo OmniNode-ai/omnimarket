@@ -30,6 +30,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.floor_17a import (
     ModelAlarmOverlay,
     ModelAlarmState,
+    ModelCanaryStatus,
     ModelFloorAlarmLine,
     ModelFloorReceiptInput,
     ModelFloorReceipts,
@@ -38,12 +39,14 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleOverlay,
     ModelFloorSimpleTickRequest,
     ModelFloorSimpleTickResult,
+    ModelGoalScope,
     ModelLabSourceRead,
     ModelLabStateAlarmRequest,
     ModelLabStateInput,
     ModelLabStateOutput,
     ModelLabStateOverlay,
     ModelNodeEmission,
+    ModelOutsideGoal,
     ModelReadingRow,
 )
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
@@ -75,12 +78,19 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     record_slots,
     record_stoppages,
 )
+from omnimarket.nodes.node_lab_state_alarm_effect.handlers.canary_publisher import (
+    GitCanaryPublisher,
+)
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.channels import (
     ProtocolAlarmChannel,
+    ProtocolSlackApi,
     build_channels,
 )
 from omnimarket.nodes.node_lab_state_alarm_effect.handlers.handler_lab_state_alarm import (
     HandlerLabStateAlarm,
+)
+from omnimarket.nodes.node_lab_state_alarm_effect.handlers.slack_api import (
+    build_slack_api,
 )
 
 NODE_NAME = "node_floor_simple_effect"
@@ -134,6 +144,7 @@ class ModelStatePaths(BaseModel):
     history: str
     history_keep_minutes: int
     emission_window_hours: int
+    canary_clone: str
 
 
 class ModelFloorSimpleRuntime(BaseModel):
@@ -143,6 +154,7 @@ class ModelFloorSimpleRuntime(BaseModel):
     floor_overlay: ModelOverlayRef
     lab_overlay: ModelOverlayRef
     alarm_overlay: ModelOverlayRef
+    goal_scope_overlay: ModelOverlayRef
     serve_overlay: ModelOverlayRef
     served_record_name: str
     served_fetch_timeout_seconds: int
@@ -173,6 +185,20 @@ def fetch_served_alarm_ids(url: str, timeout: int) -> set[str] | None:
         return None
 
 
+def fetch_served_times(
+    url: str, timeout: int
+) -> tuple[datetime | None, datetime | None] | None:
+    """What the served floor page says about itself: when it was generated and the alarm heartbeat. ``None`` if unread."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            body = json.loads(response.read())
+        generated = parse_time(body["generated_at"])
+        beat = body.get("alarm_heartbeat_at")
+        return generated, parse_time(beat) if beat else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 class HandlerFloorSimpleTick:
     """The cycle. Everything outside the process (the clock, the sink, the channels, the served read-back) is injected."""
 
@@ -183,11 +209,18 @@ class HandlerFloorSimpleTick:
         channels: Mapping[str, ProtocolAlarmChannel] | None = None,
         served_alarm_ids: Callable[[], set[str] | None] | None = None,
         clock: Callable[[], datetime] | None = None,
+        slack_apis: Mapping[str, ProtocolSlackApi] | None = None,
+        canary_publisher: Callable[[ModelCanaryStatus], None] | None = None,
+        served_times: Callable[[], tuple[datetime | None, datetime | None] | None]
+        | None = None,
     ) -> None:
         self._sink = sink
         self._channels = channels
         self._served = served_alarm_ids
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._slack_apis = slack_apis
+        self._canary_publisher = canary_publisher
+        self._served_times = served_times
 
     def run(
         self,
@@ -221,6 +254,7 @@ class HandlerFloorSimpleTick:
             env,
             file_env=rt.alarm_overlay.file_env,
         )
+        goal_scope = self._load_goal_scope(rt, env)
         state_dir = home / rt.state.dir_relpath
         sink = self._sink or JsonlEmissionSink(state_dir / rt.state.emissions)
         piece = floor_ov.rebuild.lab_state_piece
@@ -289,8 +323,17 @@ class HandlerFloorSimpleTick:
         started = self._clock()
         emit(EMIT_CYCLE, "start", started)
         try:
-            doc = self._cycle(
-                rt, home, env, floor_ov, lab_ov, alarm_ov, sink, step, request
+            doc, canary = self._cycle(
+                rt,
+                home,
+                env,
+                floor_ov,
+                lab_ov,
+                alarm_ov,
+                goal_scope,
+                sink,
+                step,
+                request,
             )
         except FloorSourceError as exc:
             emit(
@@ -330,7 +373,23 @@ class HandlerFloorSimpleTick:
             level=doc.level,
             red_rule=doc.red_rule.state,
             emitted=emitted,
+            canary=canary,
         )
+
+    @staticmethod
+    def _load_goal_scope(
+        rt: ModelFloorSimpleRuntime, env: Mapping[str, str]
+    ) -> ModelGoalScope | None:
+        """The landing goal's scope, or ``None`` when it cannot be read: an unread scope puts nothing in scope."""
+        try:
+            return load_structured_overlay(
+                rt.goal_scope_overlay.overlay_id,
+                ModelGoalScope,
+                env,
+                file_env=rt.goal_scope_overlay.file_env,
+            )
+        except NodeOverlayError:
+            return None
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -342,10 +401,11 @@ class HandlerFloorSimpleTick:
         floor_ov: ModelFloorSimpleOverlay,
         lab_ov: ModelLabStateOverlay,
         alarm_ov: ModelAlarmOverlay,
+        goal_scope: ModelGoalScope | None,
         sink: ProtocolEmissionSink,
         step: Callable[..., Any],
         request: ModelFloorSimpleTickRequest,
-    ) -> ModelFloorSimple:
+    ) -> tuple[ModelFloorSimple, str]:
         now = request.now or self._clock()
         state_dir = home / rt.state.dir_relpath
         piece = floor_ov.rebuild.lab_state_piece
@@ -379,6 +439,7 @@ class HandlerFloorSimpleTick:
                 excluded_classes=floor_ov.numbers.excluded_pr_classes,
                 queue_classes=lab_ov.queue_age_classes,
                 merge_window_minutes=floor_ov.numbers.merge_window_minutes,
+                scope=goal_scope,
             )
             lane_dir = Path(
                 env.get(rt.sources.remote_lane_dir_env, "").strip()
@@ -392,6 +453,13 @@ class HandlerFloorSimpleTick:
                 read_deploy_lag(record, now, lab_ov),
                 read_broker_lag(home / rt.sources.lab_alarm_runs_relpath, lab_ov),
             ]
+            if request.drill_offline is not None:
+                reads = [self._planted_offline(r, request.drill_offline) for r in reads]
+                if all(r.id != request.drill_offline for r in reads):
+                    raise FloorSourceError(
+                        "drill_unknown_source",
+                        f"the lab declares no source {request.drill_offline}",
+                    )
             return record, reads, watcher
 
         record, reads, watcher = step(
@@ -414,7 +482,9 @@ class HandlerFloorSimpleTick:
         )
         alarm_state = self._load_alarm_state(state_dir / rt.state.alarm_state)
         channels = self._channels or build_channels(
-            alarm_ov.channels, served_alarm_ids=self._served_reader(rt, env)
+            alarm_ov.channels,
+            served_alarm_ids=self._served_reader(rt, env),
+            slack=self._slack_apis or self._slack_from_overlay(alarm_ov, env),
         )
         outcome = step(
             "node_lab_state_alarm_effect:alarm_lab_state",
@@ -424,6 +494,7 @@ class HandlerFloorSimpleTick:
                     verdicts=lab.verdicts,
                     state=alarm_state,
                     overlay=alarm_ov,
+                    is_test=request.drill_offline is not None,
                 )
             ),
             lambda out: {
@@ -455,9 +526,11 @@ class HandlerFloorSimpleTick:
         floor_input = ModelFloorSimpleInput(
             now=now,
             overlay=floor_ov,
-            open_prs=watcher.open_prs if watcher else None,
+            open_prs=watcher.open_prs if watcher and watcher.scoped else None,
             open_prs_before=history,
-            merges_in_window=watcher.merges_in_window if watcher else None,
+            merges_in_window=watcher.merges_in_window
+            if watcher and watcher.scoped
+            else None,
             watcher_read_at=watcher.last_tick if watcher else None,
             slots_working=slots_working,
             slots_total=slots_total,
@@ -474,8 +547,10 @@ class HandlerFloorSimpleTick:
             sources_read={
                 "floor_record": record is not None,
                 "pull_request_watcher": watcher is not None,
+                "goal_scope": goal_scope is not None,
             },
             alarm_heartbeat_at=outcome.state.heartbeat_at,
+            outside_goal=self._outside_goal(goal_scope, watcher),
         )
         doc: ModelFloorSimple = step(
             "node_floor_simple_compute:compute_floor_simple",
@@ -496,7 +571,10 @@ class HandlerFloorSimpleTick:
         write_atomic(
             home / rt.output.relpath, doc.model_dump_json(indent=1).encode("utf-8")
         )
-        return doc
+        canary = self._publish_canary(
+            rt, env, alarm_ov, home, step, skip=request.drill_offline is not None
+        )
+        return doc, canary
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -542,21 +620,129 @@ class HandlerFloorSimpleTick:
             return self._served
 
         def read() -> set[str] | None:
-            try:
-                serve = load_structured_overlay(
-                    rt.serve_overlay.overlay_id,
-                    ModelServeOverlay,
-                    env,
-                    file_env=rt.serve_overlay.file_env,
-                )
-            except NodeOverlayError:
+            url = self._served_url(rt, env)
+            if url is None:
                 return None
-            return fetch_served_alarm_ids(
-                serve.serve_url.rstrip("/") + "/" + rt.served_record_name,
-                rt.served_fetch_timeout_seconds,
-            )
+            return fetch_served_alarm_ids(url, rt.served_fetch_timeout_seconds)
 
         return read
+
+    @staticmethod
+    def _served_url(rt: ModelFloorSimpleRuntime, env: Mapping[str, str]) -> str | None:
+        try:
+            serve = load_structured_overlay(
+                rt.serve_overlay.overlay_id,
+                ModelServeOverlay,
+                env,
+                file_env=rt.serve_overlay.file_env,
+            )
+        except NodeOverlayError:
+            return None
+        return serve.serve_url.rstrip("/") + "/" + rt.served_record_name
+
+    @staticmethod
+    def _planted_offline(
+        read: ModelLabSourceRead, source_id: str
+    ) -> ModelLabSourceRead:
+        """A planted fault: the named source reads as offline, through the same unread path a real outage takes."""
+        if read.id != source_id:
+            return read
+        return ModelLabSourceRead(
+            id=read.id,
+            status="unread",
+            reason="planted offline for a drill: the source did not answer",
+        )
+
+    @staticmethod
+    def _slack_from_overlay(
+        alarm_ov: ModelAlarmOverlay, env: Mapping[str, str]
+    ) -> dict[str, ProtocolSlackApi]:
+        return {
+            c.id: build_slack_api(
+                environ=env,
+                token_ref=c.token_ref or "",
+                channel_ref=c.channel_ref or "",
+                env_file_env=c.env_file_env,
+                timeout_s=c.timeout_s,
+            )
+            for c in alarm_ov.channels
+            if c.kind == "slack"
+        }
+
+    @staticmethod
+    def _outside_goal(
+        scope: ModelGoalScope | None, watcher: WatcherReading | None
+    ) -> ModelOutsideGoal:
+        if scope is None or watcher is None or not watcher.scoped:
+            return ModelOutsideGoal(
+                read=False,
+                text="The landing goal's scope is not read, so nothing is counted in or out of it.",
+            )
+        return ModelOutsideGoal(
+            read=True,
+            open_prs=watcher.open_outside,
+            merges_in_window=watcher.merges_outside,
+            paused_open=watcher.paused_open,
+            ruling=scope.ruling,
+            text=(
+                f"Outside the goal and not counted above: {watcher.open_outside} open pull requests "
+                f"({watcher.paused_open} of them on the paused list) and {watcher.merges_outside} merges in the window."
+            ),
+        )
+
+    def _publish_canary(
+        self,
+        rt: ModelFloorSimpleRuntime,
+        env: Mapping[str, str],
+        alarm_ov: ModelAlarmOverlay,
+        home: Path,
+        step: Callable[..., Any],
+        *,
+        skip: bool,
+    ) -> str:
+        """Publish what the served page says about itself for the hosted canary; its own chain, never the cycle's."""
+        canary = alarm_ov.canary
+        if canary is None:
+            return "not_configured"
+        if skip:
+            return "skipped_drill"
+        read = self._served_times
+        if read is None:
+            url = self._served_url(rt, env)
+            if url is None:
+                return "unpublished_no_serve_address"
+
+            def read_served() -> tuple[datetime | None, datetime | None] | None:
+                return fetch_served_times(url, rt.served_fetch_timeout_seconds)
+
+            read = read_served
+        times = read()
+        if times is None:
+            # Nothing new is published: the canary then reads the old status as silent once it is older than its bound.
+            return "unpublished_served_page_unread"
+        publisher = (
+            self._canary_publisher
+            or GitCanaryPublisher(
+                canary, home / rt.state.dir_relpath / rt.state.canary_clone
+            ).publish
+        )
+        status = ModelCanaryStatus(
+            floor_generated_at=times[0],
+            alarm_heartbeat_at=times[1],
+            published_at=self._clock(),
+            floor_max_age_s=canary.floor_max_age_s,
+            heartbeat_max_age_s=canary.heartbeat_max_age_s,
+        )
+        try:
+            step(
+                "node_lab_state_alarm_effect:publish_canary",
+                lambda: publisher(status),
+                lambda _out: {"published": 1},
+                cid_override=uuid4().hex,
+            )
+        except FloorSourceError as exc:
+            return f"failed_{exc.code}"
+        return "published"
 
     @staticmethod
     def _load_alarm_state(path: Path) -> ModelAlarmState:
@@ -621,7 +807,7 @@ class HandlerFloorSimpleTick:
             kept = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             kept = []
-        if watcher is None:
+        if watcher is None or watcher.open_prs is None:
             return None
         cutoff = now - timedelta(minutes=rt.state.history_keep_minutes)
         entries = [

@@ -11,6 +11,8 @@ when a read-back proves it, never because the send call returned. Three kinds ex
   alarm goes to the second channel at once. This is the primary channel until the operator names one.
 * ``floor_banner``: the alarm is drawn on the floor page. Its read-back fetches the served floor record and looks for
   the alarm id there, so "delivered" means the page a person reads shows the alarm.
+* ``slack``: the alert channel the existing alert path posts to. The post's response is checked and the read-back asks
+  the channel whether the message is there, so "delivered" means Slack has it.
 
 The protocol belongs in omnibase_spi once a release of it is cut; until then it is declared here, beside its only users.
 """
@@ -28,6 +30,16 @@ Delivery = Literal["pending", "delivered", "failed"]
 
 class AlarmSendRefusedError(RuntimeError):
     """A channel could not take the alarm; the message is the typed reason."""
+
+
+class ProtocolSlackApi(Protocol):
+    def post(self, text: str) -> str:
+        """Post the text to the alarm channel and return the message timestamp; raises ``AlarmSendRefusedError``."""
+        ...
+
+    def exists(self, message_ts: str) -> bool | None:
+        """``True`` when the channel has the message, ``False`` when it does not, ``None`` when it cannot be read."""
+        ...
 
 
 class ProtocolAlarmChannel(Protocol):
@@ -93,13 +105,38 @@ class FloorBannerAlarmChannel:
         return "delivered" if receipt_id in served else "pending"
 
 
+def alarm_text(alarm: ModelAlarm) -> str:
+    """The words of an alarm message: what is wrong and nothing else; a drill says so first."""
+    body = f"{alarm.title}. {alarm.detail}".strip()
+    if alarm.is_test:
+        return f"TEST, not a real fault (floor alarm drill): {body}"
+    return f"Lab alarm: {body}"
+
+
+class SlackAlarmChannel:
+    """The existing alert channel in Slack. A receipt is the message timestamp; a read-back asks the channel for it."""
+
+    def __init__(self, api: ProtocolSlackApi) -> None:
+        self._api = api
+
+    def send(self, alarm: ModelAlarm, now: datetime) -> str:
+        return self._api.post(alarm_text(alarm))
+
+    def read_receipt(self, receipt_id: str, now: datetime) -> Delivery:
+        # A message the channel does not show yet, or a channel that cannot be read, is still pending: the handler
+        # moves the alarm to the second channel when the read-back window ends without a receipt.
+        return "delivered" if self._api.exists(receipt_id) is True else "pending"
+
+
 def build_channels(
     definitions: tuple[ModelAlarmChannelDef, ...],
     *,
     served_alarm_ids: Callable[[], set[str] | None],
     in_memory: Mapping[str, InMemoryAlarmChannel] | None = None,
+    slack: Mapping[str, ProtocolSlackApi] | None = None,
 ) -> dict[str, ProtocolAlarmChannel]:
-    """One channel object per overlay definition. An ``in_memory`` channel is taken from ``in_memory`` when given."""
+    """One channel object per overlay definition. An ``in_memory`` channel is taken from ``in_memory`` when given, and a
+    ``slack`` channel is built over the Slack API object ``slack`` holds for its id (a channel without one is refused)."""
     built: dict[str, ProtocolAlarmChannel] = {}
     for definition in definitions:
         if definition.kind == "in_memory":
@@ -108,6 +145,8 @@ def build_channels(
             )
         elif definition.kind == "floor_banner":
             built[definition.id] = FloorBannerAlarmChannel(served_alarm_ids)
+        elif definition.kind == "slack" and definition.id in (slack or {}):
+            built[definition.id] = SlackAlarmChannel((slack or {})[definition.id])
         else:
             built[definition.id] = UnconfiguredAlarmChannel(definition.id)
     return built

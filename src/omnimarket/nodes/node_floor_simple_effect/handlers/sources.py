@@ -19,6 +19,7 @@ from typing import Any
 from omnimarket.models.floor_17a import (
     ModelFloorCauseIn,
     ModelFloorLane,
+    ModelGoalScope,
     ModelLabSourceDef,
     ModelLabSourceRead,
     ModelLabStateOverlay,
@@ -144,9 +145,20 @@ def record_slots(
 
 @dataclass(frozen=True)
 class WatcherReading:
+    """The pull request watcher, read against the landing goal's scope.
+
+    ``scoped`` is false when the goal scope could not be read: the in-scope counts are then ``None`` and the queue ages
+    are empty, because an unread scope is never everything in scope. The ``*_outside`` counts are the pull requests the
+    goal does not count, kept so the page can say how many sit outside.
+    """
+
     last_tick: datetime
-    open_prs: int
-    merges_in_window: int
+    scoped: bool
+    open_prs: int | None
+    merges_in_window: int | None
+    open_outside: int | None = None
+    merges_outside: int | None = None
+    paused_open: int | None = None
     class_counts: dict[str, int] = field(default_factory=dict)
     class_tickets: dict[str, tuple[str, ...]] = field(default_factory=dict)
     queue_ages: tuple[tuple[str, int], ...] = ()
@@ -159,6 +171,7 @@ def read_watcher(
     excluded_classes: tuple[str, ...],
     queue_classes: tuple[str, ...],
     merge_window_minutes: int,
+    scope: ModelGoalScope | None,
 ) -> WatcherReading | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -167,13 +180,27 @@ def read_watcher(
         merges = data.get("merges", {})
     except (OSError, ValueError, KeyError, TypeError):
         return None
+    if scope is None:
+        return WatcherReading(
+            last_tick=last_tick, scoped=False, open_prs=None, merges_in_window=None
+        )
     counts: dict[str, int] = {}
     tickets: dict[str, list[str]] = {}
-    open_prs = 0
+    open_prs = outside = paused = 0
     ages: list[tuple[str, int]] = []
     for key, value in prs.items():
         facts = value.get("facts", {})
         if facts.get("state") != "OPEN":
+            continue
+        where = scope.classify(
+            str(key),
+            str(facts.get("title", "")),
+            str(facts.get("head_ref", "")),
+            str(facts.get("body", "")),
+        )
+        if where != "in_scope":
+            outside += 1
+            paused += where == "paused"
             continue
         cls = str(value.get("cls", ""))
         if cls not in excluded_classes:
@@ -191,17 +218,31 @@ def read_watcher(
             if done:
                 ages.append((key, max(int((now - max(done)).total_seconds() // 60), 0)))
     cutoff = now - timedelta(minutes=merge_window_minutes)
-    recent = 0
-    for value in merges.values():
+    recent = recent_outside = 0
+    for key, value in merges.items():
         try:
-            if parse_time(value.get("merged_at")) >= cutoff:
-                recent += 1
+            merged_at = parse_time(value.get("merged_at"))
         except ValueError:
             continue
+        if merged_at < cutoff:
+            continue
+        if (
+            scope.classify(
+                str(key), str(value.get("title", "")), str(value.get("head_ref", ""))
+            )
+            == "in_scope"
+        ):
+            recent += 1
+        else:
+            recent_outside += 1
     return WatcherReading(
         last_tick=last_tick,
+        scoped=True,
         open_prs=open_prs,
         merges_in_window=recent,
+        open_outside=outside,
+        merges_outside=recent_outside,
+        paused_open=paused,
         class_counts=counts,
         class_tickets={k: tuple(dict.fromkeys(v)) for k, v in tickets.items()},
         queue_ages=tuple(sorted(ages, key=lambda a: -a[1])),
@@ -371,6 +412,11 @@ def read_queue_age(
     source = _by_kind(overlay, "queue_age")
     if watcher is None:
         return _unread(source.id, "the pull request watcher is not read")
+    if not watcher.scoped:
+        return _unread(
+            source.id,
+            "the landing goal's scope is not read, so no pull request can be judged in or out of it",
+        )
     limit = source.limit if source.limit is not None else 0.0
     oldest = watcher.queue_ages[:3]
     subjects = [
@@ -387,9 +433,9 @@ def read_queue_age(
         status="read",
         read_at=watcher.last_tick,
         summary=(
-            f"oldest green pull request waits {oldest[0][1]} min"
+            f"oldest in-scope green pull request waits {oldest[0][1]} min"
             if oldest
-            else "no green pull request is waiting"
+            else "no in-scope green pull request is waiting"
         ),
         subjects=tuple(subjects),
     )

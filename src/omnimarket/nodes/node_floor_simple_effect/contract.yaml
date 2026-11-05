@@ -43,7 +43,9 @@ descriptor:
   side_effects:
     - reads the floor record, the pull request watcher state, the runner fleet file, the pool receipt and the lab alarm run record under the registry home
     - appends emission events to the journal under the state directory
-    - reads the served floor record over HTTP to read an alarm delivery back
+    - reads the served floor record over HTTP to read an alarm delivery back and to learn the age the hosted canary should see
+    - posts a lab alarm to the alert channel the overlay names, and reads the post back from that channel
+    - pushes the canary status (three times and two bounds, nothing else) to the branch the alarm overlay names
     - writes the simple floor, its reads, the alarm state and the open-pull-request history
 
 input_model:
@@ -71,6 +73,9 @@ runtime:
   floor_overlay: {overlay_id: node_floor_simple_compute, file_env: ONEX_FLOOR_SIMPLE_OVERLAY}
   lab_overlay: {overlay_id: node_floor_simple_effect, file_env: ONEX_LAB_STATE_OVERLAY}
   alarm_overlay: {overlay_id: node_lab_state_alarm_effect, file_env: ONEX_LAB_STATE_ALARM_OVERLAY}
+  # The landing goal's scope: owned by the landing tick and read here only to count what the goal counts. When it cannot
+  # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
+  goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
   # Read only to find where the floor answers, for the alarm's delivery read-back.
   serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
   served_record_name: floor-simple.json
@@ -95,3 +100,4 @@ runtime:
     history: open-pr-history.json
     history_keep_minutes: 180
     emission_window_hours: 48
+    canary_clone: canary-publish

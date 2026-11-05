@@ -112,6 +112,9 @@ def watcher(**over: Any) -> dict[str, Any]:
             "facts": {"state": "OPEN", "draft": False, "title": title, "head_ref": "x"},
         }
 
+    # The goal_scope fixture counts r#1, r#3 and r#9 in scope, r#7 as a landing prerequisite, and lists r#2 and r#6 as
+    # paused. r#4 and r#6 are outside the goal; r#6 is a green pull request that has waited five hours, so a queue age
+    # that counted it would read the lab as down.
     state: dict[str, Any] = {
         "last_tick": iso(NOW - timedelta(minutes=1)),
         "prs": {
@@ -120,10 +123,13 @@ def watcher(**over: Any) -> dict[str, Any]:
             "r#3": pr("green-unarmed", "fix(OMN-22000): c", 20),
             "r#4": pr("held-excluded", "x"),
             "r#5": {"cls": "merged", "facts": {"state": "MERGED"}},
+            "r#6": pr("queue-stuck", "fix(OMN-22001): d", 300),
         },
         "merges": {
             "r#9": {"merged_at": iso(NOW - timedelta(minutes=10)), "title": "t"},
             "r#8": {"merged_at": iso(NOW - timedelta(minutes=90)), "title": "t"},
+            "r#7": {"merged_at": iso(NOW - timedelta(minutes=20)), "title": "t"},
+            "r#10": {"merged_at": iso(NOW - timedelta(minutes=30)), "title": "t"},
         },
     }
     state.update(over)

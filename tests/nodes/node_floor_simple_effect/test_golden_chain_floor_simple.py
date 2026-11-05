@@ -111,10 +111,11 @@ def test_golden_the_three_numbers_come_from_reads_a_checker_can_repeat(
     run(home)
     doc = written(home)
     merges, prs, slots = doc.numbers
-    # r#9 merged 10 minutes before the cycle; r#8 merged 90 minutes before it.
-    assert (merges.key, merges.value, merges.read) == ("merges", "1", True)
-    # Three open pull requests that are not held-excluded; the merged one and the held-excluded one are not counted.
-    assert (prs.key, prs.value) == ("open_prs", "3")
+    # r#9 (in scope) and r#7 (a landing prerequisite) merged inside the hour; r#10 merged inside it too but is outside
+    # the goal, and r#8 merged 90 minutes before the cycle.
+    assert (merges.key, merges.value, merges.read) == ("merges", "2", True)
+    # Two open pull requests of the goal (r#1 and r#3); r#2 is paused, r#4 and r#6 are unlisted, r#5 is merged.
+    assert (prs.key, prs.value) == ("open_prs", "2")
     # 8 + 6 running of 32 + 16 slots; h105's bay is stale and is named, not counted.
     assert (slots.key, slots.value) == ("slots", "14 of 48")
     assert "1 hosts unread" in slots.label

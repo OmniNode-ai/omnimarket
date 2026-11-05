@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The command line of the 17a cycle: ``--home`` for the registry home, ``--drill-error`` for the defined fault,
+"""The command line of the 17a cycle: ``--home`` for the registry home, ``--drill-error`` for the defined fault, ``--drill-offline SOURCE`` for a planted offline source,
 ``--check-overlays ROOT`` to load the three overlays from a root and say which is invalid (exit 1)."""
 
 from __future__ import annotations
@@ -32,6 +32,11 @@ def main(argv: list[str] | None = None) -> int:
         help="run the defined fault through the real reader and emit its typed failure",
     )
     ap.add_argument(
+        "--drill-offline",
+        metavar="SOURCE",
+        help="plant one lab source as offline and mark every alarm it raises as a test; use it with a scratch --home",
+    )
+    ap.add_argument(
         "--check-overlays", metavar="ROOT", help="load the overlays under ROOT and exit"
     )
     args = ap.parse_args(argv)
@@ -45,7 +50,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         result = HandlerFloorSimpleTick().run(
-            ModelFloorSimpleTickRequest(home=args.home, drill_error=args.drill_error)
+            ModelFloorSimpleTickRequest(
+                home=args.home,
+                drill_error=args.drill_error,
+                drill_offline=args.drill_offline,
+            )
         )
     except NodeOverlayError as exc:
         sys.stderr.write(f"REFUSED floor-simple: {exc}\n")

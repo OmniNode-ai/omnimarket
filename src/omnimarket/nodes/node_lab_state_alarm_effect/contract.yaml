@@ -7,7 +7,10 @@
 #                    needs a delivery receipt read back inside the overlay's readback window, or it goes to the second
 #                    channel as well; it clears only when the source reads WORKING; every run stamps a heartbeat.
 #   canary_verdict:  the verdict of the hosted canary that runs outside the lab (floor record age, alarm heartbeat age).
-# Channels are chosen by the overlay (in_memory by default; a real backend is a channel and a sender the operator names).
+# Channels are chosen by the overlay (in_memory by default). The slack channel posts to the alert channel the existing
+# alert path uses; the overlay names, by reference, the secrets that hold the bot token and the channel id, and the
+# values are resolved at the effect boundary and appear nowhere. The canary status (floor age and alarm heartbeat, three
+# times and two bounds) is published by the 17a cycle to the branch the overlay names, for the hosted canary to read.
 name: node_lab_state_alarm_effect
 contract_name: node_lab_state_alarm_effect
 node_name: node_lab_state_alarm_effect
@@ -47,6 +50,9 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 30000
+  side_effects:
+    - posts one message per raised alarm to the Slack alert channel and asks Slack whether the channel has it (chat.postMessage, chat.getPermalink)
+    - pushes the canary status to the repository branch the overlay names (git push, one replaced commit)
 
 input_model:
   name: ModelLabStateAlarmRequest

@@ -8,6 +8,7 @@ overlay document validated by the ``Overlay`` models here; no value of that kind
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -222,6 +223,65 @@ class ModelLabStateOutput(_Frozen):
     verdicts: tuple[ModelLabSourceVerdict, ...]
 
 
+# --- the landing goal's scope ------------------------------------------------------------------------------------------
+
+CLOSES_TICKET = re.compile(r"\bCloses\s+(OMN-\d+)\b", re.IGNORECASE)
+ANY_TICKET = re.compile(r"\bOMN-\d+\b")
+GoalScopeClass = Literal["in_scope", "paused", "unlisted"]
+
+
+class ModelGoalScope(BaseModel):
+    """The ``goal_scope`` overlay: which pull requests the operator's landing goal counts.
+
+    The overlay is owned by the landing tick, so keys this floor does not read are ignored here and checked there. A
+    pull request is in scope when it is listed (as in scope or as a landing prerequisite), when its repository is in
+    scope whole, or when it names a kept ticket in its title, its head branch or a ``Closes OMN-n`` line of its body.
+    One that is only in the paused list is paused; one nobody named is outside the goal as well.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    ruling: str = Field(min_length=1)
+    in_scope_repos: tuple[str, ...] = ()
+    in_scope_tickets: tuple[str, ...] = ()
+    in_scope_prs: tuple[str, ...] = ()
+    prerequisite_prs: tuple[str, ...] = ()
+    paused_prs: tuple[str, ...] = ()
+
+    def classify(
+        self, ref: str, title: str = "", head_ref: str = "", body: str = ""
+    ) -> GoalScopeClass:
+        repo = ref.partition("#")[0]
+        if (
+            ref in self.in_scope_prs
+            or ref in self.prerequisite_prs
+            or repo in self.in_scope_repos
+            or "*" in self.in_scope_repos
+        ):
+            return "in_scope"
+        named = {
+            t.upper()
+            for t in (
+                *ANY_TICKET.findall(f"{title} {head_ref}"),
+                *CLOSES_TICKET.findall(body),
+            )
+        }
+        if named & set(self.in_scope_tickets):
+            return "in_scope"
+        return "paused" if ref in self.paused_prs else "unlisted"
+
+
+class ModelOutsideGoal(_Frozen):
+    """What the landing goal does not count, so the top numbers can be read against the whole watcher."""
+
+    read: bool
+    open_prs: int | None = None
+    merges_in_window: int | None = None
+    paused_open: int | None = None
+    ruling: str = ""
+    text: str = ""
+
+
 # --- the simple floor --------------------------------------------------------------------------------------------------
 
 
@@ -350,6 +410,9 @@ class ModelFloorSimple(_Frozen):
     details_href: str
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
+    outside_goal: ModelOutsideGoal = Field(
+        default_factory=lambda: ModelOutsideGoal(read=False)
+    )
 
 
 class ModelRebuildOverlay(_Frozen):
@@ -428,15 +491,68 @@ class ModelFloorSimpleInput(_Frozen):
     alarms: tuple[ModelFloorAlarmLine, ...] = ()
     sources_read: dict[str, bool] = Field(default_factory=dict)
     alarm_heartbeat_at: datetime | None = None
+    outside_goal: ModelOutsideGoal = Field(
+        default_factory=lambda: ModelOutsideGoal(read=False)
+    )
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------
 
 
 class ModelAlarmChannelDef(_Frozen):
+    """One alarm channel. A ``slack`` channel names, by reference, the secrets it resolves at the effect boundary.
+
+    ``token_ref`` and ``channel_ref`` are the names of the secrets (never their values); ``env_file_env`` names the
+    environment variable that holds the path of the operator's bootstrap env file, from which the two named keys are
+    read when the process environment does not hold them. The values appear nowhere in a model, a log line or a receipt.
+    """
+
     id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
-    kind: Literal["unconfigured", "in_memory", "floor_banner"]
+    kind: Literal["unconfigured", "in_memory", "floor_banner", "slack"]
     role: Literal["primary", "second"]
+    token_ref: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$")
+    channel_ref: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$")
+    env_file_env: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]*$")
+    timeout_s: int = Field(default=10, gt=0)
+
+    @model_validator(mode="after")
+    def _slack_refs(self) -> ModelAlarmChannelDef:
+        if self.kind == "slack" and not (self.token_ref and self.channel_ref):
+            raise ValueError("a slack channel names its token_ref and channel_ref")
+        return self
+
+
+class ModelCanaryPublishOverlay(_Frozen):
+    """Where the floor's age and the alarm heartbeat are published for the hosted canary, and the bounds it holds them to.
+
+    The canary runs outside the lab and cannot reach the tailnet, so the cycle publishes two timestamps (and nothing
+    else) to a branch the canary checks out. ``remote`` is the repository the branch lives in.
+    """
+
+    remote: str = Field(min_length=1)
+    branch: str = Field(min_length=1)
+    file_name: str = Field(min_length=1)
+    clone_relpath: str = Field(min_length=1)
+    floor_max_age_s: int = Field(gt=0)
+    heartbeat_max_age_s: int = Field(gt=0)
+    committer_name: str = Field(min_length=1)
+    committer_email: str = Field(min_length=1)
+    timeout_s: int = Field(default=60, gt=0)
+
+
+class ModelCanaryStatus(_Frozen):
+    """The whole of what is published for the hosted canary: three times and the two bounds, and nothing internal.
+
+    ``floor_generated_at`` and ``alarm_heartbeat_at`` are what the served floor page says about itself. A ``None`` time
+    reads as silent to the canary. ``published_at`` is when the cycle published, so a dead publisher is silent too.
+    """
+
+    schema_id: Literal["omni.floor-canary-status/1"] = "omni.floor-canary-status/1"
+    floor_generated_at: datetime | None
+    alarm_heartbeat_at: datetime | None
+    published_at: datetime
+    floor_max_age_s: int = Field(gt=0)
+    heartbeat_max_age_s: int = Field(gt=0)
 
 
 class ModelAlarmOverlay(_Frozen):
@@ -444,6 +560,7 @@ class ModelAlarmOverlay(_Frozen):
     renotify_s: int = Field(gt=0)
     heartbeat_max_age_s: int = Field(gt=0)
     channels: tuple[ModelAlarmChannelDef, ...] = Field(min_length=2)
+    canary: ModelCanaryPublishOverlay | None = None
 
     @model_validator(mode="after")
     def _roles(self) -> ModelAlarmOverlay:
@@ -459,6 +576,7 @@ class ModelAlarm(_Frozen):
     title: str
     detail: str
     raised_at: datetime
+    is_test: bool = False
 
 
 class ModelAlarmSend(_Frozen):
@@ -489,6 +607,7 @@ class ModelLabStateAlarmRequest(_Frozen):
     verdicts: tuple[ModelLabSourceVerdict, ...]
     state: ModelAlarmState
     overlay: ModelAlarmOverlay
+    is_test: bool = False
 
 
 class ModelLabStateAlarmResult(_Frozen):
@@ -505,10 +624,14 @@ class ModelCanaryInput(_Frozen):
     heartbeat_at: datetime | None
     floor_max_age_s: int = Field(gt=0)
     heartbeat_max_age_s: int = Field(gt=0)
+    published_at: datetime | None = None
+    check_publisher: bool = False
 
 
 class ModelCanaryVerdict(_Frozen):
-    state: Literal["ok", "floor_silent", "alarm_silent", "both_silent"]
+    state: Literal[
+        "ok", "floor_silent", "alarm_silent", "both_silent", "publisher_silent"
+    ]
     notify: bool
     message: str
     floor_age_s: int | None
@@ -524,6 +647,7 @@ class ModelFloorSimpleTickRequest(_Frozen):
     home: str | None = None
     now: datetime | None = None
     drill_error: bool = False
+    drill_offline: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
     check_overlays_root: str | None = None
 
 
@@ -537,3 +661,4 @@ class ModelFloorSimpleTickResult(_Frozen):
     failure_code: str | None = None
     failure_detail: str = ""
     emitted: int = 0
+    canary: str | None = None

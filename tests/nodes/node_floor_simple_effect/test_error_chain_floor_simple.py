@@ -15,10 +15,10 @@ import pytest
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.floor_17a import (
+    ModelFloorCause,
     ModelFloorSimpleInput,
     ModelFloorSimpleTickRequest,
 )
-from omnimarket.nodes.node_floor_simple_compute.handlers import handler_floor_simple
 from omnimarket.nodes.node_floor_simple_compute.handlers.handler_floor_simple import (
     HandlerFloorSimple,
     check_red_rule,
@@ -143,7 +143,7 @@ def test_error_a_builder_that_ignores_the_lanes_fails_the_colour_rule_on_a_plant
         "_causes",
         staticmethod(
             lambda cands, _r: tuple(
-                handler_floor_simple.ModelFloorCause.model_validate(
+                ModelFloorCause.model_validate(
                     {
                         "id": c.id,
                         "title": c.title,

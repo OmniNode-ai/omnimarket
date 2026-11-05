@@ -58,7 +58,7 @@ class HandlerLabStateAlarm:
 
         for source_id, verdict in verdicts.items():
             if verdict.state != "WORKING" and source_id not in open_alarms:
-                alarm = self._alarm(verdict, now)
+                alarm = self._alarm(verdict, now, request.is_test)
                 send = self._send(primary, alarm, now)
                 open_alarms[source_id] = ModelOpenAlarm(
                     alarm=alarm, sends=(send,), last_notified_at=now
@@ -87,13 +87,16 @@ class HandlerLabStateAlarm:
         )
 
     @staticmethod
-    def _alarm(verdict: ModelLabSourceVerdict, now: datetime) -> ModelAlarm:
+    def _alarm(
+        verdict: ModelLabSourceVerdict, now: datetime, is_test: bool
+    ) -> ModelAlarm:
         return ModelAlarm(
             alarm_id=f"{verdict.id}@{_stamp(now)}",
             source_id=verdict.id,
             title=f"{verdict.title}: {verdict.state}",
             detail=verdict.reason,
             raised_at=now,
+            is_test=is_test,
         )
 
     def _send(

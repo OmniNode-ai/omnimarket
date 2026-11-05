@@ -25,7 +25,13 @@ class HandlerFloorCanary:
         beat_age = _age(request.now, request.heartbeat_at)
         floor_silent = floor_age is None or floor_age > request.floor_max_age_s
         alarm_silent = beat_age is None or beat_age > request.heartbeat_max_age_s
-        if floor_silent and alarm_silent:
+        publish_age = _age(request.now, request.published_at)
+        publisher_silent = request.check_publisher and (
+            publish_age is None or publish_age > request.floor_max_age_s
+        )
+        if publisher_silent:
+            state = "publisher_silent"
+        elif floor_silent and alarm_silent:
             state = "both_silent"
         elif floor_silent:
             state = "floor_silent"
@@ -34,6 +40,11 @@ class HandlerFloorCanary:
         else:
             state = "ok"
         parts = []
+        if publisher_silent:
+            parts.append(
+                "nothing has been published for the canary "
+                + ("ever" if publish_age is None else f"in {publish_age // 60} min")
+            )
         if floor_silent:
             parts.append(
                 "the floor record is "

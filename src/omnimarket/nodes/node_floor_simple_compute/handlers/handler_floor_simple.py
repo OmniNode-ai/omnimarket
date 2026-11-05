@@ -154,6 +154,7 @@ class HandlerFloorSimple:
                 "details_href": ov.details_href,
                 "sources_read": request.sources_read,
                 "alarm_heartbeat_at": request.alarm_heartbeat_at,
+                "outside_goal": request.outside_goal,
             }
         )
         return document.model_copy(
@@ -179,9 +180,9 @@ class HandlerFloorSimple:
             trend = (
                 "flat" if diff == 0 else (f"up {diff}" if diff > 0 else f"down {-diff}")
             )
-            prs_label = f"open pull requests, {trend} over the last hour"
+            prs_label = f"open in-scope pull requests, {trend} over the last hour"
         else:
-            prs_label = "open pull requests"
+            prs_label = "open in-scope pull requests"
         slots_label = "lab slots working"
         if r.slots_unread_hosts:
             slots_label += f", {len(r.slots_unread_hosts)} hosts unread"
@@ -190,10 +191,10 @@ class HandlerFloorSimple:
                 {
                     "key": "merges",
                     "value": str(r.merges_in_window) if merges_ok else "unread",
-                    "label": f"merges in the last {n.merge_window_minutes} min, goal {n.landing_goal_per_hour} an hour"
+                    "label": f"in-scope merges in the last {n.merge_window_minutes} min, goal {n.landing_goal_per_hour} an hour"
                     if merges_ok
-                    else "merges: the pull request watcher is not read",
-                    "basis": "merges in the pull request watcher state with merged_at inside the window",
+                    else "merges: the watcher or the goal scope is not read",
+                    "basis": "merges of the goal's scope in the pull request watcher state with merged_at inside the window",
                     "read_at": r.watcher_read_at,
                     "read": merges_ok,
                 }
@@ -204,8 +205,8 @@ class HandlerFloorSimple:
                     "value": str(r.open_prs) if prs_ok else "unread",
                     "label": prs_label
                     if prs_ok
-                    else "open pull requests: the watcher is not read",
-                    "basis": "open pull requests in the watcher state, held-excluded ones left out",
+                    else "open pull requests: the watcher or the goal scope is not read",
+                    "basis": "open pull requests of the goal's scope in the watcher state, held-excluded ones left out",
                     "read_at": r.watcher_read_at,
                     "read": prs_ok,
                 }
