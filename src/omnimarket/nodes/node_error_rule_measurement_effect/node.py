@@ -4,7 +4,7 @@
 
 from pathlib import Path
 
-from .handlers.handler_daily import HandlerErrorRuleMeasurementDaily
+from .handlers import HandlerErrorRuleMeasurementDaily
 
 
 class NodeErrorRuleMeasurementEffect(HandlerErrorRuleMeasurementDaily):

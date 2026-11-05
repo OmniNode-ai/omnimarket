@@ -16,8 +16,10 @@ from omnimarket.models.error_rule_measurement import (
     ModelMeasurementOverlay,
     ModelRestatementLabel,
 )
-from omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily import (
+from omnimarket.nodes.node_error_rule_measurement_effect.handlers import (
     HandlerErrorRuleMeasurement,
+)
+from omnimarket.nodes.node_error_rule_measurement_effect.handlers.handler_daily import (
     artifact_digest,
 )
 

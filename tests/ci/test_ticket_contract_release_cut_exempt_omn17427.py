@@ -26,6 +26,9 @@ from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
 from omnimarket.nodes.node_ticket_contract_prerequisite_effect.handlers import (
     handler_ticket_contract_prerequisite as push,
 )
+from omnimarket.nodes.node_ticket_contract_prerequisite_effect.models.model_ticket_contract_prerequisite_request import (
+    ModelTicketContractPrerequisiteRequest,
+)
 
 pytestmark = pytest.mark.unit
 TICKET = "OMN-18595"
@@ -131,6 +134,19 @@ def test_unreadable_base_keeps_the_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    assert _check(monkeypatch, tmp_path, head, "no-such-base") == (
-        missing_contract_message(TICKET),
+    # Base resolution errors propagate from check(); the deployed typed handler
+    # turns them into a refusal before considering the release-cut exemption.
+    with pytest.raises(subprocess.CalledProcessError) as raised:
+        _check(monkeypatch, tmp_path, head, "no-such-base")
+    assert raised.value.cmd == ["git", "rev-parse", "--verify", "no-such-base^{commit}"]
+    result = push.HandlerTicketContractPrerequisite().handle(
+        ModelTicketContractPrerequisiteRequest(
+            head=head, base="no-such-base", title=TITLE
+        )
     )
+    assert not result.passed
+    assert len(result.failures) == 1
+    assert result.failures[0].startswith(
+        "ticket contract preflight could not read the pushed commit:"
+    )
+    assert "no-such-base^{commit}" in result.failures[0]
