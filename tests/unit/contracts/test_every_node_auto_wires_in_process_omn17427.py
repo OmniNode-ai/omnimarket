@@ -231,8 +231,33 @@ def test_every_derived_dispatch_identifier_fits_the_runtime_limits() -> None:
     )
 
 
+def _wiring_batches() -> list[ModelAutoWiringManifest]:
+    """Keep every discovered contract under the per-test runtime budget.
+
+    Wiring the growing catalogue in one pytest item exceeds CI's 300-second
+    timeout before its assertions run. Each batch uses the same real runtime,
+    topology, container and bus; no contract or refusal is exempted.
+    """
+    contracts = _manifest().contracts
+    names = {contract.name for contract in contracts}
+    assert len(names) == len(contracts), "duplicate canonical contract names"
+    removed = set(_CANNOT_WIRE_IN_PROCESS) - names
+    assert not removed, f"listed contracts no longer discovered; remove them: {removed}"
+    batch_size = 32
+    return [
+        ModelAutoWiringManifest(contracts=contracts[start : start + batch_size])
+        for start in range(0, len(contracts), batch_size)
+    ]
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    _wiring_batches(),
+    ids=lambda manifest: manifest.contracts[0].name,
+)
 async def test_every_node_auto_wires_in_process(
     monkeypatch: pytest.MonkeyPatch,
+    manifest: ModelAutoWiringManifest,
 ) -> None:
     topology = load_topology_profile(_TOPOLOGY_PROFILE)
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", _TOPOLOGY_PROFILE)
@@ -252,7 +277,7 @@ async def test_every_node_auto_wires_in_process(
     await container.service_registry.register_instance(ProtocolEventBusSubscriber, bus)
     try:
         report = await wire_from_manifest(
-            _manifest(),
+            manifest,
             MessageDispatchEngine(),
             event_bus=bus,
             environment=_TOPOLOGY_PROFILE,
@@ -275,7 +300,11 @@ async def test_every_node_auto_wires_in_process(
     assert report.total_wired > 0
     _shrink_only(
         failing,
-        _CANNOT_WIRE_IN_PROCESS,
+        {
+            name: reason
+            for name, reason in _CANNOT_WIRE_IN_PROCESS.items()
+            if name in {contract.name for contract in manifest.contracts}
+        },
         "contracts that fail infra auto-wiring in-process (a crash loop under "
         "ONEX_WIRING_STRICT_MODE=1, the dev lane's setting)",
     )

@@ -138,6 +138,11 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
+  - id: req-omn19998-node-wiring-budget
+    statement: Every discovered node is checked through the real runtime within the per-test wiring budget.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: every discovered contract is included exactly once in bounded wiring batches; failed or quarantined handlers and stale baseline entries are still refused, with the same real topology, container and in-memory bus -- falsifier: uv run --frozen pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov --timeout=300 --timeout-method=thread'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -557,4 +562,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-node-wiring-budget
+    description: Run every discovered contract through real infra wiring in bounded batches under the unchanged 300-second per-test timeout. Preserve resolution failure, quarantine and shrink-only baseline assertions. This check-only change makes no deployment claim.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov --timeout=300 --timeout-method=thread
         cwd: .
