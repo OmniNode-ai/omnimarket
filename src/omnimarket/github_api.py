@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
-from omnimarket.github_api_pr_graphql import (
+from omnimarket.handlers.handler_github_pr_graphql import (
     PR_GRAPHQL_QUERY,
     normalize_open_pr_rollup,
     normalize_review_threads,
