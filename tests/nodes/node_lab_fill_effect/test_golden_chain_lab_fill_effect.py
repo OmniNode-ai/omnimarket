@@ -44,6 +44,7 @@ from .fakes import (
 
 NAME = "node_lab_fill_effect"
 OPERATIONS = (
+    "read_lab_fill_enumeration",
     "probe_lab_fill_hosts",
     "read_lab_fill_owner_facts",
     "launch_lab_fill_lane",

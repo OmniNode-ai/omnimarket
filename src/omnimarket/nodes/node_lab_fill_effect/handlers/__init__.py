@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Handlers of the lab-fill effect node (OMN-20668)."""
 
+from .handler_lab_fill_enumeration import HandlerLabFillEnumeration
 from .handler_lab_fill_fallback_host import HandlerLabFillFallbackHost
 from .handler_lab_fill_launch import HandlerLabFillLaunch
 from .handler_lab_fill_owner_facts import HandlerLabFillOwnerFacts
@@ -11,6 +12,7 @@ from .handler_lab_fill_status import HandlerLabFillStatus
 from .handler_lab_fill_tick import HandlerLabFillTick
 
 __all__ = [
+    "HandlerLabFillEnumeration",
     "HandlerLabFillFallbackHost",
     "HandlerLabFillLaunch",
     "HandlerLabFillOwnerFacts",

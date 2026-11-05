@@ -53,6 +53,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: 'AC6: the report manifest publishes delegation data and the read-only tick entry never enters publishing -- falsifier: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov'
+  - id: req-omn19998-enumeration-full-read-bound
+    statement: Lab-fill enumeration returns a typed UNREAD result for an incomplete source read instead of selecting candidates from it.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the recorded exit-124, no-JSON, empty-stderr enumeration failure returns typed UNREAD before the outer deadline; a complete empty read is READ; source failures never select candidates from unread kinds; the packaged operation publishes READ and UNREAD terminals on the declared completed topic -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly'
   - id: req-omn19998-checkpoint-prior-drivers
     statement: A checkpoint read names the running workflows of the session that stopped before the current one.
     acceptance:
@@ -407,6 +412,24 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py -q --no-cov --tb=line -k runner_annotations
+        cwd: .
+  - id: dod-omn19998-enumeration-full-read-bound
+    description: The process-fix slice reproduces the recorded exit-124, no-JSON, empty-stderr enumeration failure and returns typed UNREAD before the outer deadline. A complete empty read is the positive control. Source failures never select candidates from unread kinds, and the existing idle alarm remains visible. The tests fail at the merge base because the enumeration handler module does not exist there. This evidence does not assert the landing-controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-enumeration-bus-deployment-smoke
+    description: Hosted smoke resolves the packaged enumeration operation and uses the host runtime bus adapter to publish READ and UNREAD terminals on the declared completed topic. This is a wiring smoke, not a live branch installation readback.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_enumeration.py -q --no-cov -n 0 -p no:randomly -k bus_adapter
         cwd: .
   - id: dod-omn19998-checkpoint-prior-drivers
     description: The checkpoint tests build the recorded case of two drain drivers and one lane, then a resumer that relaunches the lane; the read names both drivers. The tests fail at the merge base because the read has no PRIOR lines.
