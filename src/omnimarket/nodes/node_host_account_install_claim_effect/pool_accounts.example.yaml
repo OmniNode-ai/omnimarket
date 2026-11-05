@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+hosts:
+- host: lab
+  auth_read:
+  - claude
+  - auth
+  - status
+  - --json
+  revision_read:
+  - git
+  - rev-parse
+  - HEAD
+  contains_read:
+  - git
+  - merge-base
+  - --is-ancestor
+  - '{sha}'
+  - '{revision}'
+  principals_read:
+  - cat
+  - service-principal-readback.json
+account_identities: []
+pool_accounts:
+- pool-a
+install_principals:
+- install-service
+check_principal: goal-check-service
+token_switch_fix: 'Credential owner: cite durable credential consent and use onex
+  lab claude-token set --host <host> --account <pool-label> with hidden input; read
+  back the login label and run the declared probe. Agents must not write credentials.'
+install_claim_fix: Use the install workflow service principal to install the branch,
+  read the host revision and its ancestry, then append the installed claim through
+  the broker-attributed ledger append service.
+ledger_path: ledger.md
+exception_state_dir: exception-queue
+read_timeout_seconds: 20
+interval_seconds: 60
+liveness_entries:
+  S7:
+    process_id: host-check-s7
+    owner_repo: omnimarket
+    host: lab-monitor
+    trigger:
+      kind: systemd-timer
+      native_id: durable-goal-tick
+    expected_interval_seconds: 60
+    alarm_deadline_seconds: 600
+    max_runtime_seconds: 120
+    emitter: self
+    run_record: per-run
+    real_work: cursor row recorded
+    demand: none
+    positive_control:
+      kind: replay_fixture
+      ref: tests/nodes/test_host_account_install_claim.py
+  S9:
+    process_id: host-check-s9
+    owner_repo: omnimarket
+    host: lab-monitor
+    trigger:
+      kind: systemd-timer
+      native_id: durable-goal-tick
+    expected_interval_seconds: 60
+    alarm_deadline_seconds: 600
+    max_runtime_seconds: 120
+    emitter: self
+    run_record: per-run
+    real_work: cursor row recorded
+    demand: none
+    positive_control:
+      kind: replay_fixture
+      ref: tests/nodes/test_host_account_install_claim.py

@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-host-account-install-claim
+    statement: Read-only host state nodes compare pool labels and broker-attributed installed claims, persist both tick cursors and queue each persistent finding once.
+    acceptance:
+      - id: AC8
+        statement: 'Host state fixtures distinguish allowed, outside-pool and unread logins; reject lane and forged-actor installed claims; accept workflow claims only after host readback; deduplicate exceptions across restart; and report a stopped cursor through the watchdog.'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +514,20 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-host-account-install-claim
+    description: Scoped host state falsifiers only. Exercises both journals, real queue replay, broker-stamping at the ledger append handler, R8 refusal, overlay refresh and stopped-cursor watchdog detection. Live pool and Redpanda readback, external handoff integration and original controller criteria remain unproven by this evidence.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_host_account_install_claim.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-host-account-install-claim-deploy
+    description: Hosted wiring smoke discovers the packaged state-check effect, invokes its declared command through the installed runtime and observes its typed terminal receipt. This does not claim a live scheduler, broker service-principal allocation or host installation.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_host_account_install_claim.py -q --no-cov -n 0 -p no:randomly -k installed_runtime_bus_roundtrip
         cwd: .

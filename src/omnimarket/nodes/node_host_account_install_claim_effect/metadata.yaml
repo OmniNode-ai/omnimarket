@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_account_install_claim_effect
+version: 1.0.0
+description: Read host facts on every durable goal tick, commit both cursors and an
+  exception outbox; never repair credentials.
+pack: operator_tooling
+node_role: effect
+display_name: Host Account Install Claim Effect
+omnibase_core_compat: '>=0.47.60,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_account_install_claim_effect: omnimarket.nodes.node_host_account_install_claim_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnibase_core>=0.47.60
+- confluent-kafka>=2.12.0,<3.0.0
+- omnimarket.nodes.node_host_account_check_compute
+- omnimarket.nodes.node_install_claim_check_compute
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- host-state

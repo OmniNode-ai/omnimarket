@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+dependencies:
+- protocol: omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+  implementation: memory_overlay_documents
+  config:
+    host_checks: "account_identities: []\ncheck_principal: goal-check-service\nexception_state_dir:\
+      \ exception-queue\nhosts:\n- auth_read:\n  - claude\n  - auth\n  - status\n\
+      \  - --json\n  contains_read:\n  - git\n  - merge-base\n  - --is-ancestor\n\
+      \  - '{sha}'\n  - '{revision}'\n  host: lab\n  principals_read:\n  - cat\n \
+      \ - service-principal-readback.json\n  revision_read:\n  - git\n  - rev-parse\n\
+      \  - HEAD\ninstall_claim_fix: Use the install workflow service principal to\
+      \ install the branch,\n  read the host revision and its ancestry, then append\
+      \ the installed claim through\n  the broker-attributed ledger append service.\n\
+      install_principals:\n- install-service\ninterval_seconds: 60\nledger_path: ledger.md\n\
+      liveness_entries:\n  S7:\n    alarm_deadline_seconds: 600\n    demand: none\n\
+      \    emitter: self\n    expected_interval_seconds: 60\n    host: lab-monitor\n\
+      \    max_runtime_seconds: 120\n    owner_repo: omnimarket\n    positive_control:\n\
+      \      kind: replay_fixture\n      ref: tests/nodes/test_host_account_install_claim.py\n\
+      \    process_id: host-check-s7\n    real_work: cursor row recorded\n    run_record:\
+      \ per-run\n    trigger:\n      kind: systemd-timer\n      native_id: durable-goal-tick\n\
+      \  S9:\n    alarm_deadline_seconds: 600\n    demand: none\n    emitter: self\n\
+      \    expected_interval_seconds: 60\n    host: lab-monitor\n    max_runtime_seconds:\
+      \ 120\n    owner_repo: omnimarket\n    positive_control:\n      kind: replay_fixture\n\
+      \      ref: tests/nodes/test_host_account_install_claim.py\n    process_id:\
+      \ host-check-s9\n    real_work: cursor row recorded\n    run_record: per-run\n\
+      \    trigger:\n      kind: systemd-timer\n      native_id: durable-goal-tick\n\
+      pool_accounts:\n- pool-a\nread_timeout_seconds: 20\ntoken_switch_fix: 'Credential\
+      \ owner: cite durable credential consent and use onex\n  lab claude-token set\
+      \ --host <host> --account <pool-label> with hidden input; read\n  back the login\
+      \ label and run the declared probe. Agents must not write credentials.'\n"
+- protocol: omnimarket.protocols.protocol_host_checks.ProtocolHostCheckFacts
+  implementation: memory_host_check_facts
+  config:
+    snapshot: '{"hosts": [{"host": "lab", "account_label": "pool-a", "installed_revision":
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "contains": {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":
+      false}}], "claims": [{"row_id": "recorded-false-claim", "host": "lab", "sha":
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "writer_principal": "lane-service",
+      "actor": "install-service"}], "ledger_readable": true}'
+- protocol: omnimarket.protocols.protocol_host_checks.ProtocolHostCheckJournal
+  implementation: memory_host_check_journal
+  config: {}
+- protocol: omnimarket.protocols.protocol_host_checks.ProtocolHostCheckEvents
+  implementation: memory_host_check_events
+  config:
+    principal: goal-check-service
+announcer_bus:
+  protocol: announcer_bus
+  implementation: unbuilt_announcer_bus
+catalog_store:
+  protocol: catalog_store
+  implementation: unbuilt_catalog_store
+lazy_start_budget_seconds: 30

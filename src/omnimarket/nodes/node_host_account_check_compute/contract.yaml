@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_account_check_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read-only host account state.
+input_model:
+  name: ModelHostAccountRequest
+  module: omnimarket.models.host_checks
+output_model:
+  name: ModelHostCheckFinding
+  module: omnimarket.models.host_checks
+handler:
+  module: omnimarket.nodes.node_host_account_check_compute.handlers.handler_host_account_check
+  class: HandlerHostAccountCheck
+  input_model: omnimarket.models.host_checks.ModelHostAccountRequest
+  output_model: omnimarket.models.host_checks.ModelHostCheckFinding
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_account_check_compute.handlers.handler_host_account_check:HandlerHostAccountCheck
+  handlers:
+  - operation: evaluate_host_account_check_compute
+    handler:
+      name: HandlerHostAccountCheck
+      module: omnimarket.nodes.node_host_account_check_compute.handlers.handler_host_account_check
+    input_model: omnimarket.models.host_checks.ModelHostAccountRequest
+    output_model: omnimarket.models.host_checks.ModelHostCheckFinding
+    topic: onex.cmd.omnimarket.host-account-check-compute-requested.v1
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-account-check-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.host-account-check-compute-completed.v1
+terminal_event: onex.evt.omnimarket.host-account-check-compute-completed.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-account-check-compute-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-account-check-compute-completed.v1
+published_events:
+- event_type: ModelHostCheckFinding
+  topic: onex.evt.omnimarket.host-account-check-compute-completed.v1
+  description: Typed state check receipt.
+externally_consumed_topics:
+- onex.evt.omnimarket.host-account-check-compute-completed.v1
+metadata:
+  transport_type: kafka
+  description: Host state check
+  author: OmniNode Team
+  tags:
+  - compute
+  - host-state
+entrypoint:
+  name: NodeHostAccountCheckCompute
+  module: omnimarket.nodes.node_host_account_check_compute.node

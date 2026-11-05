@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+dependencies:
+- protocol: omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+  implementation: file_overlay_documents
+  config:
+    host_checks: pool_accounts.yaml
+- protocol: omnimarket.protocols.protocol_host_checks.ProtocolHostCheckFacts
+  implementation: host_check_facts
+  config: {}
+- protocol: omnimarket.protocols.protocol_host_checks.ProtocolHostCheckJournal
+  implementation: sqlite_host_check_journal
+  config:
+    path: host-check-journal.sqlite3
+    timeout_seconds: '30'
+- protocol: omnimarket.protocols.protocol_host_checks.ProtocolHostCheckEvents
+  implementation: kafka_host_check_events
+  config:
+    bootstrap.servers: lab-broker:9092
+    message.timeout.ms: '30000'
+    security.protocol: SASL_PLAINTEXT
+    sasl.mechanism: SCRAM-SHA-256
+    sasl.username.env: GOAL_CHECK_SASL_USERNAME
+    sasl.password.env: GOAL_CHECK_SASL_PASSWORD
+announcer_bus:
+  protocol: announcer_bus
+  implementation: unbuilt_announcer_bus
+catalog_store:
+  protocol: catalog_store
+  implementation: unbuilt_catalog_store
+lazy_start_budget_seconds: 30

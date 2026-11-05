@@ -24,6 +24,13 @@
 repos:
   - repo: local
     hooks:
+      - id: host-account-install-claim
+        name: Host account and broker-attributed installed claim falsifiers
+        entry: uv run --frozen pytest tests/nodes/test_host_account_install_claim.py -q --no-cov -n 0 -p no:randomly
+        language: system
+        files: ^(src/omnimarket/(models/host_checks\.py|protocols/protocol_host_checks\.py|nodes/node_(host_account_check_compute|install_claim_check_compute|host_account_install_claim_effect)/.*|handlers/container/container_overlay_dependencies\.py)|tests/nodes/test_host_account_install_claim\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: github-webhook-http
         name: GitHub webhook runtime HTTP boundary
         entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov
