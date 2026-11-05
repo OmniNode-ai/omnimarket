@@ -31,7 +31,12 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.nodes.node_dev_tag_pin_mover_compute.handlers.handler_dev_tag_green_verdict import (
-    required_checks_verdict,
+    HandlerDevTagGreenVerdict,
+)
+from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_green_verdict import (
+    EnumDevTagGreenVerdict,
+    ModelDevTagCheckRun,
+    ModelDevTagGreenVerdictRequest,
 )
 from omnimarket.nodes.node_dev_tag_pin_mover_compute.models.model_dev_tag_pin_set import (
     ModelPinSetCandidate,
@@ -58,6 +63,11 @@ _RULES_JQ = (
 )
 _RUNS_JQ = r'.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion // "")"'
 Runner = Callable[..., "subprocess.CompletedProcess[str]"]
+_VERDICT_OF: dict[EnumDevTagGreenVerdict, bool | None] = {
+    EnumDevTagGreenVerdict.GREEN: True,
+    EnumDevTagGreenVerdict.RED: False,
+    EnumDevTagGreenVerdict.UNREAD: None,
+}
 
 
 def _env() -> dict[str, str]:
@@ -160,8 +170,14 @@ def github_check_runs_green(
     if lines is None:
         return None
     fields = [[*line.split("\t"), "", ""][:3] for line in lines]
-    runs = [(name, status, done) for name, status, done in fields]
-    return required_checks_verdict(runs, required)
+    request = ModelDevTagGreenVerdictRequest(
+        runs=tuple(
+            ModelDevTagCheckRun(name=name, status=status, conclusion=done)
+            for name, status, done in fields
+        ),
+        required_contexts=required,
+    )
+    return _VERDICT_OF[HandlerDevTagGreenVerdict().handle(request).verdict]
 
 
 def assume_unread(repo: str, sha: str) -> bool | None:

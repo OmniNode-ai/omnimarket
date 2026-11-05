@@ -48,3 +48,13 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-22497 -- uv run --frozen python -c 'import sys; from omnimarket.nodes.node_dev_tag_pin_mover_compute.train_sources import github_check_runs_green as g; sys.exit(0 if g(\"omnimarket\", \"4f751fb962c144d56fcf77f801b3620b4d460aa3\") is True else 1)'"
         cwd: "."
+  - id: "dod-omn22497-deploy-probe"
+    description: "Deploy probe: the handler module GitHub serves at the checked-out commit defines HandlerDevTagGreenVerdict, and the checked-out train_sources calls it. The module is absent at the merge base, so the content read fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_tag_pin_mover_compute/handlers/handler_dev_tag_green_verdict.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"class HandlerDevTagGreenVerdict\" > /dev/null'"
+        cwd: "."
+      - check_type: "command"
+        check_value: "grep -F 'HandlerDevTagGreenVerdict().handle(' src/omnimarket/nodes/node_dev_tag_pin_mover_compute/train_sources.py"
+        cwd: "."
