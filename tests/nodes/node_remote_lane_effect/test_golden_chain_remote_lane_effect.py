@@ -110,7 +110,7 @@ def test_a_named_branch_or_tag_resolves_and_a_named_sha_passes(
             repo="repo_a", owner="owner_a", ref="feature", omni_home=str(home)
         )
     )
-    assert (branch.sha, branch.landing_branch) == (feature, None)
+    assert (branch.sha, branch.landing_branch) == (feature, "dev")
     tag = handler.handle(
         ModelRemoteLaneRefRequest(
             repo="repo_a", owner="owner_a", ref="v1", omni_home=str(home)
