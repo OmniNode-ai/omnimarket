@@ -184,7 +184,7 @@ def test_golden_a_red_source_with_a_lane_on_it_draws_amber_not_red(
     shutil.copytree(OVERLAYS, roots)
     path = roots / "node_floor_simple_compute" / "overlay.yaml"
     overlay = yaml.safe_load(path.read_text())
-    overlay["causes"]["owners"]["lab:runner_groups"] = ["OMN-19998"]
+    overlay["causes"]["owners"]["lab:runner_groups"] = ["OMN-30001"]
     path.write_text(yaml.safe_dump(overlay), encoding="utf-8")
     home = build_home(
         tmp_path, fleet_doc={"status": "unread", "reason": "ssh host unset"}
