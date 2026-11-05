@@ -22,7 +22,7 @@ output_model:
   module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile
   description: Records read, calls spent, flips applied and the full-pass bound in ticks.
 handler:
-  module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_tick
+  module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile
   class: HandlerPrWatcherClosureTick
   input_model: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile.ModelPrWatcherClosureTickRequest
 # The call budget. Per tick: at most max_batches_per_tick GraphQL calls and batch_size * max_batches_per_tick
@@ -43,7 +43,7 @@ handler_routing:
       topic: onex.cmd.omnimarket.pr-watcher-closure-reconcile-requested.v1
       handler:
         name: HandlerPrWatcherClosureTick
-        module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_tick
+        module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile
     - operation: closure_observation
       topic: onex.evt.omnimarket.pr-state-observed.v1
       message_category: event
@@ -52,7 +52,7 @@ handler_routing:
         module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile
       handler:
         name: HandlerPrWatcherClosureObservation
-        module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_tick
+        module: omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile
 input_subscriptions:
   - topic: onex.evt.omnimarket.pr-state-observed.v1
     operation: closure_observation

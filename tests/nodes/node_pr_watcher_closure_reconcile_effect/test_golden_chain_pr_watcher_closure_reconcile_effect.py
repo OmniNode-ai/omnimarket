@@ -23,13 +23,12 @@ from pydantic import SecretStr
 
 from omnimarket import github_api
 from omnimarket.events.pr_state import EnumPrState, ModelPrStateObservedEvent
+from omnimarket.nodes import node_pr_watcher_closure_reconcile_effect as closure_node
 from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect import (
     NodePrWatcherClosureReconcileEffect,
 )
 from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile import (
     CONTRACT_PATH,
-)
-from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_tick import (
     HandlerPrWatcherClosureTick,
 )
 from omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.models.model_pr_watcher_closure_reconcile import (
@@ -42,7 +41,7 @@ from tests.node_overlay_support import install_node_overlay
 KEY = "omnibase_infra#5555"
 NOW = "2026-11-04T23:18:07Z"
 NODE = "node_pr_watcher_closure_reconcile_effect"
-TICK_MODULE = "omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_tick"
+TICK_MODULE = "omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile"
 
 
 def _state(tmp_path: Path) -> Path:
@@ -112,7 +111,12 @@ def _observation() -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-@pytest.mark.parametrize("source", ["command", "observation"])
+def test_bus_handlers_are_available_from_the_node_entrypoint() -> None:
+    assert closure_node.HandlerPrWatcherClosureTick is HandlerPrWatcherClosureTick
+    assert callable(closure_node.HandlerPrWatcherClosureObservation().handle)
+
+
+@pytest.mark.parametrize("source", ["command", "observation", "missing-snapshot"])
 async def test_bus_observation_reconciles_record_once_per_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
 ) -> None:
@@ -127,7 +131,7 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
         },
     )
     monkeypatch.setattr(
-        "omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_tick.utc_now",
+        "omnimarket.nodes.node_pr_watcher_closure_reconcile_effect.handlers.handler_pr_watcher_closure_reconcile.utc_now",
         lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
     )
     # Patch only the external effects. The contract, dispatch, handler, overlay,
@@ -158,18 +162,27 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
     contract = yaml.safe_load(CONTRACT_PATH.read_text())
     command = contract["runtime_dispatch"]["command_topic"]
     topic = (
-        command if source == "command" else contract["input_subscriptions"][0]["topic"]
+        command
+        if source != "observation"
+        else contract["input_subscriptions"][0]["topic"]
     )
-    terminal = contract["runtime_dispatch"]["terminal_events"]["success"]
+    missing_snapshot = source == "missing-snapshot"
+    terminal = contract["runtime_dispatch"]["terminal_events"][
+        "failure" if missing_snapshot else "success"
+    ]
+    if missing_snapshot:
+        path.unlink()
     manifest = discover_contracts_from_paths([CONTRACT_PATH])
     assert not manifest.errors, manifest.errors
     bus = EventBusInmemory(environment="closure-probe", group="closure-probe")
     await bus.start()
     seen: list[dict[str, Any]] = []
+    topics: list[str] = []
     arrived = asyncio.Event()
 
     async def collect(message: Any) -> None:
         seen.append(json.loads(bytes(message.value)))
+        topics.append(message.topic)
         arrived.set()
 
     try:
@@ -187,17 +200,28 @@ async def test_bus_observation_reconciles_record_once_per_snapshot(
         correlation = uuid4()
         payload = (
             {"correlation_id": str(correlation)}
-            if source == "command"
+            if source != "observation"
             else _observation()
         )
         envelope = ModelEventEnvelope[object](
             payload=payload, correlation_id=correlation
         )
         wire = envelope.model_dump_json().encode()
-        for _ in range(2):
+        for _ in range(1 if missing_snapshot else 2):
             arrived.clear()
             await bus.publish(str(topic), None, wire, None)
             await asyncio.wait_for(arrived.wait(), timeout=5)
+        if missing_snapshot:
+            assert topics == [
+                "onex.evt.omnimarket.pr-watcher-closure-reconcile-failed.v1"
+            ]
+            assert "closure snapshot is missing" in json.dumps(seen[0])
+            assert calls == []
+            return
+        assert (
+            topics
+            == ["onex.evt.omnimarket.pr-watcher-closure-reconcile-completed.v1"] * 2
+        )
         assert len(calls) == 1
         assert len(seen) == 2
         record = json.loads(path.read_text())["prs"][KEY]
