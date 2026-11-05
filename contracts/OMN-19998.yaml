@@ -103,6 +103,11 @@ requirements:
     acceptance:
       - id: AC10
         statement: 'AC10: a single-branch worker clone missing origin/dev fetches its base through the shipped hook adapter; explicit titles and alternate remote refs work, existing bases work offline, and missing contracts, missing runtime proof, unreadable heads, local-only missing refs and fetch errors remain refusals -- falsifier: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-finished-clone-retention
+    statement: Final remote run retention archives reports before removing a clean clone whose commits are reachable on remote refs.
+    acceptance:
+      - id: AC8
+        statement: 'A finished clean clone is removed; uncommitted work, unpushed commits, unfinished ownership, unsafe paths and repositories holding a peer worktree git directory are preserved with a reason -- falsifier: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0'
   - id: req-omn19998-inbox-spool-release-hold
     statement: The per-host inbox spool delivers a RELEASE or HOLD row addressed to a lane, as it does a MSG row, so a running lane receives a row appended after its launch.
     acceptance:
@@ -417,6 +422,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_events/test_redacted_working_directory_omn19513.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-finished-clone-retention
+    description: Scoped retention regression checks clean, dirty, staged, untracked, unpushed and unfinished runs, nested repositories, remote refs and peer worktree metadata. The clean-clone case fails before this change because every git-bearing tree is kept. Original controller timer criteria remain outside this slice.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-finished-clone-retention-deploy
+    description: Hosted wiring smoke resolves the packaged retention operation and typed handler against a real clean clone, and executes the generated standalone host payload against another clean clone. No live cleanup or host installer change is asserted.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -n 0 -k 'retention_operation or standalone_host_payload'
         cwd: .
   - id: dod-omn19998-inbox-spool-release-hold
     description: The new spool test publishes a HOLD at launch and a RELEASE addressed to the lane while it runs, and reads both back from the lane's spool. It fails at the merge base because the spool reads only the MSG topic and refuses every row that is not a MSG. The rows are synthetic in the landing controller's RELEASE shape; no lane-side hook shim or live broker is exercised.
