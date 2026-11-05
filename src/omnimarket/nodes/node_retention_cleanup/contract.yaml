@@ -58,6 +58,7 @@ handler_routing:
         the last scheduled run; when due, run retention_cleanup against the
         database in retention_policy.schedule.database_url_env.
     - operation: lane_worktree_retention
+      topic: onex.cmd.omnimarket.retention-cleanup-requested.v1
       handler:
         name: HandlerLaneWorktreeRetention
         module: omnimarket.nodes.node_retention_cleanup.handlers.handler_lane_worktree_retention

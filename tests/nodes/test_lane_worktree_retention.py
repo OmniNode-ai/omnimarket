@@ -145,6 +145,37 @@ def test_a_clean_pushed_idle_worktree_and_its_old_ctx_are_removed(
     assert "rlane-a" not in _git(lab["clone"], "worktree", "list")
 
 
+def test_lane_retention_route_owns_only_cleanup_command() -> None:
+    """The host cleanup operation must never consume the runtime tick."""
+    import yaml
+    from omnibase_infra.runtime.auto_wiring.discovery import (
+        discover_contracts_from_paths,
+    )
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        _topics_for_handler_entry,
+    )
+
+    contract_path = (
+        Path(__file__).resolve().parents[2]
+        / "src/omnimarket/nodes/node_retention_cleanup/contract.yaml"
+    )
+    raw = yaml.safe_load(contract_path.read_text())
+    manifest = discover_contracts_from_paths([contract_path])
+    assert len(manifest.contracts) == 1
+    contract = manifest.contracts[0]
+    assert contract.handler_routing is not None
+    entries = {entry.operation: entry for entry in contract.handler_routing.handlers}
+    command_topic = raw["runtime_dispatch"]["command_topic"]
+    tick_topic = raw["input_subscriptions"][0]["topic"]
+
+    assert _topics_for_handler_entry(contract, entries["lane_worktree_retention"]) == (
+        command_topic,
+    )
+    assert _topics_for_handler_entry(
+        contract, entries["retention_cleanup.scheduled_run"]
+    ) == (tick_topic,)
+
+
 @pytest.mark.asyncio
 async def test_lane_retention_runs_through_its_contract_bus_route(
     tmp_path: Path,
