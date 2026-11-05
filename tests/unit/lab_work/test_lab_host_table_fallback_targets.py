@@ -13,6 +13,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
+from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
+    EnumDodEvidenceExecutionScope,
+)
+from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
@@ -223,3 +228,18 @@ def test_a_fallback_route_cell_ssh_would_read_as_an_option_is_refused(
 ) -> None:
     with pytest.raises(ValidationError):
         ModelLabHostRow(name="h1", target="host-1", **{column: value})
+
+
+def test_fallback_route_evidence_is_bound_for_the_hosted_control() -> None:
+    """The recorded control failed despite a red test because no check was bound."""
+    root = Path(__file__).resolve().parents[3]
+    contract = ModelTicketContract.model_validate(
+        yaml.safe_load((root / "contracts" / "OMN-21984.yaml").read_text())
+    )
+    [evidence] = [
+        item
+        for item in contract.dod_evidence
+        if item.id == "dod-omn21984-fallback-route-columns"
+    ]
+    assert evidence.execution_scope is EnumDodEvidenceExecutionScope.HOSTED_AND_LOCAL
+    assert evidence.binds_ac == ("AC1",)
