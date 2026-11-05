@@ -17,7 +17,7 @@ output_model:
   module: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick
 handler:
   class: HandlerItemTick
-  module: omnimarket.nodes.node_item_tick_orchestrator.handlers
+  module: omnimarket.nodes.node_item_tick_orchestrator.handlers.handler_item_tick
   input_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickRequest
   output_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickResult
 entrypoint:
@@ -30,7 +30,7 @@ handler_routing:
       topic: onex.cmd.omnimarket.item-tick-requested.v1
       handler:
         name: HandlerItemTick
-        module: omnimarket.nodes.node_item_tick_orchestrator.handlers
+        module: omnimarket.nodes.node_item_tick_orchestrator.handlers.handler_item_tick
       input_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickRequest
       output_model: omnimarket.nodes.node_item_tick_orchestrator.models.model_item_tick.ModelItemTickResult
 runtime_dispatch:
