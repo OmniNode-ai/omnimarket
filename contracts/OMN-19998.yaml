@@ -138,6 +138,18 @@ requirements:
     acceptance:
       - id: AC11
         statement: 'AC11: every declared lab host requires make, jq and python alongside node, pnpm, onex and pyright; missing tools are named, overlay installers are re-probed and idempotent, and both shell missing-command diagnostics fail even at exit zero -- falsifier: uv run --frozen pytest tests/nodes/node_lane_toolchain_provision_effect/test_lab_host_tools.py -q --no-cov -n 0'
+  - id: req-omn19998-dispatch-repo-grant
+    statement: The dispatch grant compute names every concrete change-bearing repository in the brief and preserves existing grants.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the recorded cross-repository brief adds the fix repository to the dispatch grant with evidence; existing grants, brief order, deduplication, placeholders and quoted ticket text retain their declared behavior -- falsifier: uv run --frozen pytest tests/nodes/node_dispatch_repo_grant_compute/test_dispatch_repo_grant.py -q --no-cov -n 0 -k "not runtime_command"'
+      - id: AC12
+        statement: 'AC12: installed entry-point discovery and runtime auto-wiring route a recorded cross-repository brief over the contract command topic and publish its grant on the declared terminal topic with the request correlation -- falsifier: uv run --frozen pytest tests/nodes/node_dispatch_repo_grant_compute/test_dispatch_repo_grant.py -q --no-cov -n 0 -k runtime_command'
+  - id: req-omn19998-unreadable-local-base
+    statement: An unresolved local base preserves the ordinary missing-contract refusal without fetching a guessed remote branch.
+    acceptance:
+      - id: AC13
+        statement: 'AC13: an unreadable local base refuses a contractless release cut normally; absent configured remote bases are repaired, failed fetches refuse, and runtime changes still require integration proof -- falsifier: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -557,4 +569,31 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-unreadable-local-base
+    description: Replay the failing unreadable-base release-cut case through the shipped prerequisite function and exercise its installed CLI against real single-branch clones. Missing contracts, failed fetches and runtime changes without integration proof retain their refusals. No required check or release exemption is changed.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-dispatch-repo-grant
+    description: Scoped compute regression replays the recorded cross-repository brief and checks existing grants, change signals, deduplication, ordering and ignored text. This does not assert the landing-controller timer criteria or dispatch caller integration.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dispatch_repo_grant_compute/test_dispatch_repo_grant.py -q --no-cov -n 0 -k "not runtime_command"
+        cwd: .
+  - id: dod-omn19998-dispatch-repo-grant-deploy
+    description: Hosted deployment wiring smoke discovers the installed compute entry point, wires its contract through the runtime in-memory bus, and observes the correlated terminal grant for the recorded brief. Live dispatch caller installation remains separate evidence.
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dispatch_repo_grant_compute/test_dispatch_repo_grant.py -q --no-cov -n 0 -k runtime_command
         cwd: .
