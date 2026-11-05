@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Any
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     InMemoryLedger,
     evidence_row_from_text,
@@ -70,7 +73,7 @@ def _command(**changes: object) -> bytes:
 class _Case:
     ledger: InMemoryLedger
     payload: bytes
-    at: object = RUN_AT
+    at: datetime = RUN_AT
     writer_type: type[HandlerReadingWriter] = HandlerReadingWriter
 
 
@@ -80,19 +83,19 @@ async def _publish(case: _Case) -> list[tuple[str, dict[str, object]]]:
         overlay=overlay(),
         source=case.ledger,
         appender=case.ledger,
-        clock=lambda: case.at,  # type: ignore[arg-type,return-value]
+        clock=lambda: case.at,
     )
     bus = EventBusInmemory()
     seen: list[tuple[str, dict[str, object]]] = []
     done = asyncio.Event()
 
-    async def on_command(message: object) -> None:
-        for topic, body in answer_command(message.value, writer, TOPICS):  # type: ignore[attr-defined]
+    async def on_command(message: Any) -> None:
+        for topic, body in answer_command(message.value, writer, TOPICS):
             await bus.publish(topic, key=None, value=body)
 
-    def collector(topic: str):  # type: ignore[no-untyped-def]
-        async def collect(message: object) -> None:
-            seen.append((topic, json.loads(message.value)))  # type: ignore[attr-defined]
+    def collector(topic: str) -> Callable[[Any], Awaitable[None]]:
+        async def collect(message: Any) -> None:
+            seen.append((topic, json.loads(message.value)))
             if topic in (
                 TOPICS["reading_window_completed"],
                 TOPICS["reading_window_failed"],
@@ -294,7 +297,9 @@ def test_break_a_reordered_chain_turns_the_golden_chain_red() -> None:
 class _WriterWithoutReplayCheck(HandlerReadingWriter):
     """The injected break: the replay check is skipped, as if the key were never compared."""
 
-    def _existing(self, piece, window_start, window_end, now):  # type: ignore[no-untyped-def]
+    def _existing(
+        self, piece: int, window_start: datetime, window_end: datetime, now: datetime
+    ) -> tuple[tuple[ModelLedgerEvidenceRow, ...], str | None]:
         return (), None
 
 
