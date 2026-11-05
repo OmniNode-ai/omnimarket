@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import re
+import shlex
 import sys
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.handlers import ledger_row_grammar as grammar
 from omnimarket.models.model_reading import (
@@ -31,6 +33,7 @@ from omnimarket.nodes.node_reading_writer_effect.handlers.handler_reading_writer
     load_revision,
     window_for,
 )
+from omnimarket.nodes.node_reading_writer_effect.overlay import ModelReadingOverlay
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelLedgerQuery
 from tests.nodes.node_reading_writer_effect.reading_support import (
     END,
@@ -39,6 +42,7 @@ from tests.nodes.node_reading_writer_effect.reading_support import (
     delegation_row,
     healthy_ledger,
     overlay,
+    overlay_document,
     parity_row,
 )
 
@@ -385,3 +389,48 @@ def test_the_command_appender_maps_the_receipt(
     )
     outcome = appender.append("row\n", "11111111-1111-1111-1111-111111111111")
     assert outcome.status == expected
+
+
+def test_overlay_selects_and_builds_the_command_transport() -> None:
+    document = overlay_document()
+    document["ledger_read"] = {
+        "route": "command",
+        "command_env": "READING_TEST_READ",
+        "timeout_seconds": 30,
+        "row_limit": 1000,
+    }
+    route = ModelReadingOverlay.model_validate(document).ledger_read
+    script = _STUB_READ.format(mode="ok", row=parity_row(START - timedelta(hours=1)))
+    source = build_row_source(
+        route, {"READING_TEST_READ": shlex.join([sys.executable, "-c", script])}
+    )
+    read = source.read(_query())
+    assert read.error is None
+    assert len(read.rows) == 1
+    assert read.rows[0].ingested_at is not None
+    with pytest.raises(LedgerRouteError, match="READING_TEST_READ"):
+        build_row_source(route, {})
+
+
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        {"route": "file"},
+        {"route": "file", "path_env": ""},
+        {"route": "command"},
+        {"route": "command", "command_env": ""},
+        {"route": "unknown"},
+        {"route": "file", "path_env": "LEDGER", "command_env": "READ"},
+    ],
+)
+def test_overlay_refuses_incomplete_or_ambiguous_ledger_transports(
+    configuration: dict[str, str],
+) -> None:
+    document = overlay_document()
+    document["ledger_read"] = {
+        **configuration,
+        "timeout_seconds": 30,
+        "row_limit": 1000,
+    }
+    with pytest.raises(ValidationError):
+        ModelReadingOverlay.model_validate(document)

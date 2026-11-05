@@ -135,6 +135,10 @@ def assert_golden_chain(
     assert topics == [TOPICS["reading_piece_written"]] * len(pieces) + [
         TOPICS["reading_window_completed"]
     ], topics
+    assert topics[-1] == "onex.evt.omnimarket.reading-window-completed.v1"
+    assert all(
+        topic == "onex.evt.omnimarket.reading-piece-written.v1" for topic in topics[:-1]
+    )
     assert {body["correlation_id"] for _, body in events} == {CORRELATION}
     assert [body["piece"] for _, body in events[:-1]] == pieces
     assert events[-1][1]["failed"] == 0
@@ -153,6 +157,9 @@ def assert_failed_piece_chain(
     failures = [
         body for topic, body in events if topic == TOPICS["reading_piece_failed"]
     ]
+    assert any(
+        topic == "onex.evt.omnimarket.reading-piece-failed.v1" for topic, _ in events
+    )
     assert [f["piece"] for f in failures] == [piece], events
     assert failures[0]["outcome"] == outcome
     assert events[-1][0] == TOPICS["reading_window_completed"]
@@ -190,6 +197,7 @@ def test_error_chain_a_bad_payload_ends_in_the_typed_window_failure() -> None:
     case = _Case(InMemoryLedger(healthy_ledger()), b'{"window_start": "not a time"}')
     events = asyncio.run(_publish(case))
     assert [topic for topic, _ in events] == [TOPICS["reading_window_failed"]]
+    assert events[0][0] == "onex.evt.omnimarket.reading-window-failed.v1"
     assert str(events[0][1]["failure"]).startswith("bad-payload:")
     assert _reading_rows(case.ledger) == []
 

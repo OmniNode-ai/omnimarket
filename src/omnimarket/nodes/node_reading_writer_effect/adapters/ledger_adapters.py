@@ -15,11 +15,14 @@ import shlex
 import subprocess
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from functools import singledispatch
 from pathlib import Path
 
 from omnimarket.handlers import ledger_row_grammar as grammar
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
+    ModelFileLedgerReadRoute,
     ModelLedgerAppendRoute,
     ModelLedgerReadRoute,
 )
@@ -276,16 +279,31 @@ def _required_env(name: str, environ: Mapping[str, str]) -> str:
     return value
 
 
+@singledispatch
 def build_row_source(
     route: ModelLedgerReadRoute, environ: Mapping[str, str] | None = None
 ) -> ProtocolLedgerRowSource:
+    """Build the transport selected and validated by the overlay's tagged schema."""
+    raise LedgerRouteError(
+        f"unsupported ledger read configuration: {type(route).__name__}"
+    )
+
+
+@build_row_source.register
+def _file_row_source(
+    route: ModelFileLedgerReadRoute, environ: Mapping[str, str] | None = None
+) -> ProtocolLedgerRowSource:
     env = os.environ if environ is None else environ
-    if route.route == "file":
-        assert route.path_env is not None
-        live = Path(_required_env(route.path_env, env))
-        archive = live.parent / route.archive_subdir if route.archive_subdir else None
-        return FileLedgerRowSource(live, archive)
-    assert route.command_env is not None
+    live = Path(_required_env(route.path_env, env))
+    archive = live.parent / route.archive_subdir if route.archive_subdir else None
+    return FileLedgerRowSource(live, archive)
+
+
+@build_row_source.register
+def _command_row_source(
+    route: ModelCommandLedgerReadRoute, environ: Mapping[str, str] | None = None
+) -> ProtocolLedgerRowSource:
+    env = os.environ if environ is None else environ
     return CommandLedgerRowSource(
         shlex.split(_required_env(route.command_env, env)),
         route.timeout_seconds,

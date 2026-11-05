@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,22 +27,23 @@ class ModelLedgerReadRoute(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    route: Literal["file", "command"]
-    #: ``file``: the variable naming the live ledger file. The file's own directory holds the rolls.
-    path_env: str | None = None
-    archive_subdir: str | None = None
-    #: ``command``: the variable holding the read command (one typed query JSON on stdin).
-    command_env: str | None = None
     timeout_seconds: int = Field(ge=1)
     row_limit: int = Field(ge=1)
 
-    @model_validator(mode="after")
-    def _shape(self) -> ModelLedgerReadRoute:
-        if self.route == "file" and not self.path_env:
-            raise ValueError("route file needs path_env")
-        if self.route == "command" and not self.command_env:
-            raise ValueError("route command needs command_env")
-        return self
+
+class ModelFileLedgerReadRoute(ModelLedgerReadRoute):
+    """Read a live ledger file and optionally its sibling archive directory."""
+
+    route: Literal["file"]
+    path_env: str = Field(min_length=1)
+    archive_subdir: str | None = None
+
+
+class ModelCommandLedgerReadRoute(ModelLedgerReadRoute):
+    """Read typed query responses from the command named in the overlay."""
+
+    route: Literal["command"]
+    command_env: str = Field(min_length=1)
 
 
 class ModelLedgerAppendRoute(BaseModel):
@@ -84,7 +85,10 @@ class ModelReadingScheduleHost(BaseModel):
 class ModelReadingOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    ledger_read: ModelLedgerReadRoute
+    ledger_read: Annotated[
+        ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute,
+        Field(discriminator="route"),
+    ]
     ledger_append: ModelLedgerAppendRoute
     window: ModelReadingWindowSettings
     publish: ModelReadingPublish

@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
@@ -195,3 +197,20 @@ def test_a_window_whose_cutoff_precedes_its_end_is_refused() -> None:
     )
     with pytest.raises(ValueError, match="cutoff"):
         HandlerReadingCompute().handle(bad)
+
+
+def test_successful_compute_has_the_contracts_published_terminal() -> None:
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_reading_compute/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    result = _read(6, [parity_row(START - timedelta(hours=1))])
+    assert result.outcome is EnumReadingOutcome.READ
+    assert result.verdict is EnumReadingVerdict.WORKING
+    assert contract["terminal_event"] == "onex.evt.omnimarket.reading-computed.v1"
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["success"]
+        == contract["terminal_event"]
+    )
+    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]

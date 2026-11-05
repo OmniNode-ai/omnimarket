@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_reading_writer_effect.cli import main
 from omnimarket.nodes.node_reading_writer_effect.overlay import load_overlay
+from omnimarket.nodes.node_reading_writer_effect.runtime_reading_writer import main
 from tests.nodes.node_reading_writer_effect.reading_support import (
     START,
     healthy_ledger,
