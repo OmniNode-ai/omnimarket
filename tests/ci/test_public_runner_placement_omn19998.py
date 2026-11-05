@@ -162,3 +162,17 @@ def test_the_hostile_review_gate_job_is_github_hosted() -> None:
     assert gate["runs-on"] == "ubuntu-latest"
     assert gate["needs"] == ["hostile-review"]
     assert gate["if"] == "always()"
+
+
+def test_the_lab_selection_refusal_is_in_the_required_job() -> None:
+    """The refusal runs in the job CI Summary sweeps, with its failing control first."""
+    steps = _ci_job()["steps"]
+    assert isinstance(steps, list)
+    runs = [str(step.get("run", "")) for step in steps]
+    control = next(i for i, run in enumerate(runs) if "FAILING CONTROL FAILED" in run)
+    refusal = next(
+        i
+        for i, run in enumerate(runs)
+        if "validator_public_lab_selection" in run and "--variables-json" in run
+    )
+    assert control < refusal
