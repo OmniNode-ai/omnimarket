@@ -117,14 +117,17 @@ def dev_tags_newest_first(clone: Path) -> list[tuple[str, str]]:
 
 
 def _gh_lines(run: Runner, path: str, jq: str) -> list[str] | None:
-    """Non-blank lines of one paginated gh api read, or None when it fails."""
-    result = run(
-        ["gh", "api", "--paginate", path, "--jq", jq],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=60,
-    )
+    """Non-blank lines of one paginated gh api read, or None when it fails or hangs."""
+    try:
+        result = run(
+            ["gh", "api", "--paginate", path, "--jq", jq],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
     if result.returncode != 0:
         return None
     return [line for line in result.stdout.splitlines() if line.strip()]

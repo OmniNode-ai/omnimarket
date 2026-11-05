@@ -171,6 +171,22 @@ def test_required_checks_only_unreadable_check_runs_read_unread() -> None:
     )
 
 
+@pytest.mark.parametrize("hang_on", [_PROTECTION, _RUNS])
+def test_required_checks_only_a_gh_read_that_hangs_never_reads_green(hang_on) -> None:
+    runs = "CI Summary\tcompleted\tsuccess\n"
+    answering = _fake_gh(_answers(runs))
+
+    def run(argv, **kwargs):
+        if argv[3].startswith(hang_on):
+            raise subprocess.TimeoutExpired(argv, 60)
+        return answering(argv, **kwargs)
+
+    verdict = train_sources.github_check_runs_green(
+        "omnimarket", "4f751fb962c1", run=run
+    )
+    assert verdict is (False if hang_on == _PROTECTION else None)
+
+
 @pytest.mark.parametrize(
     ("status", "conclusion", "expected"),
     [
