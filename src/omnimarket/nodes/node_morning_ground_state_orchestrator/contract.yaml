@@ -60,6 +60,14 @@ env_dependencies:
   ONEX_ENVIRONMENT: {required: true, description: Explicit runtime environment for canonical bus wiring.}
   OMNIMARKET_MORNING_GROUND_STATE_OVERLAY: {required: false, description: Path to the deployment overlay.yaml; when unset the first node_morning_ground_state_orchestrator/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS is used, and a run with neither refuses to start.}
   ONEX_PR_WATCHER_STATE: {required: false, description: Explicit PR watcher snapshot for the open-PR census; unset or unreadable is reported as UNREADABLE evidence and never polled from the hosting service.}
+endpoints:
+  runtime_done_proof:
+    method: GET
+    description: >
+      Read-only HTTP(S) URL parsed from the selected source row's Done-proof,
+      bound to the source document hash and restricted to the declared dev
+      runtime host. Redirects are refused; responses are bounded to 32000 bytes
+      and a 10-second readback budget. No caller-supplied URL is accepted.
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.morning-ground-state-start.v1

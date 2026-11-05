@@ -485,6 +485,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov
         cwd: .
+  - id: dod-omn19998-source-row-runtime-probe-transport
+    description: The unchanged compliance sweep scans the packaged morning handlers and refuses an HTTP import without a declared endpoint. The transport regression failed before the runtime Done-proof GET endpoint was declared and passes with it present.
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov -k transport_is_declared
+        cwd: .
   - id: dod-omn19998-capture-provenance
     description: Focused handler and snapshot regression over the recorded shape-only session-started wire and each contract-declared hook route. Four cases failed with missing principal before the change. This scoped capture check does not assert host installation or the landing-controller timer criteria.
     source: manual

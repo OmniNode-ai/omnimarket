@@ -98,6 +98,22 @@ def test_runtime_probe_contract_resolves_the_phase_tool_handler() -> None:
     assert annotations["request"] is RUNTIME_PROBE_TOOL.input_model
 
 
+def test_runtime_probe_transport_is_declared_in_the_packaged_contract() -> None:
+    from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
+        ComplianceSweepRequest,
+        NodeComplianceSweep,
+    )
+
+    result = NodeComplianceSweep().handle(
+        ComplianceSweepRequest(
+            target_dirs=[str(files(PACKAGE))], checks=["undeclared-transport"]
+        )
+    )
+    assert result.handlers_scanned > 0
+    assert result.status == "compliant", result.new_violations
+    assert not result.violations
+
+
 def test_contract_declares_every_topic_and_the_terminal() -> None:
     contract = _contract()
     bus = cast(dict[str, JsonValue], contract["event_bus"])
