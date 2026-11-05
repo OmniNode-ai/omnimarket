@@ -35,6 +35,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     runtime_ssh_host: str = Field(
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.@-]*)?$"
     )
+    # The Phoenix base URL a unit that declares this input persists for its tick (the factory floor reads its trace
+    # count and newest span age there). Persisted for the same reason as runtime_ssh_host; empty defers to the shell.
+    phoenix_url: str = Field(default="", pattern=r"^(?:https?://[^\s/]+(?:/\S*)?)?$")
 
 
 class ModelRegistryUnitsResult(BaseModel):
