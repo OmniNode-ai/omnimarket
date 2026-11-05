@@ -17,7 +17,9 @@ plans, from the decision's merge and update-branch actions:
 * a PR whose checks failed on two fresh heads in a row, each produced by our update, yields the update slot
   until its head changes (the strict-slot memory, carried in the request and returned as ``slot``);
 * the M4 delegation PRs' actions of each kind move ahead of the others of that kind, except where a strict
-  base ranked them already.
+  base ranked them already;
+* an update-branch of a head that carries a fresh review receipt waits when its base needs no update to merge
+  (read as not strict, or a merge queue): a receipt is bound to one head, so the update would void it (OMN-19998).
 
 The read of a base's setting is an effect and stays with the caller: ``bases_to_read`` names the bases the
 plan looked up, and one the caller has not read is ordered like a strict one.
@@ -208,6 +210,29 @@ def _rank(
     return 1 if short in m4 else 2
 
 
+def receipt_update_deferred(
+    short: str,
+    live: Mapping[str, ModelStrictLivePr],
+    receipted: Mapping[str, str],
+    strict_of: Mapping[str, bool | None],
+    queue_bases: Iterable[str],
+) -> str:
+    """The ``repo:base`` key when this PR's update-branch waits because it voids a fresh review receipt for nothing
+    (OMN-19998), else ''. The update waits only when the live head is the receipted head, the base is read as not
+    requiring branches up to date (or lands through a merge queue, which tests the merged result itself) and the head
+    does not conflict (an update cannot apply a conflict, its conflict worker rewrites the head regardless). An
+    unread base, a strict base and a head without a receipt keep the update."""
+    lv = live.get(short)
+    if lv is None or not lv.head or receipted.get(short) != lv.head:
+        return ""
+    if lv.merge_state == "DIRTY" or lv.mergeable == "CONFLICTING":
+        return ""
+    key = _base_key(live, short)
+    if key and (key in set(queue_bases) or strict_of.get(key) is False):
+        return key
+    return ""
+
+
 def plan_strict_order(
     request: ModelLandingStrictPlanRequest,
 ) -> ModelLandingStrictPlanResult:
@@ -302,6 +327,22 @@ def plan_strict_order(
         ]
         for i in updates[strict_update_slots(merge_count) :]:
             deferred[i] = key
+    for i, a in enumerate(acts):
+        if a.kind != "update_branch" or i in deferred or "#" not in a.subject:
+            continue
+        key = receipt_update_deferred(
+            short_key(a.subject),
+            live,
+            request.receipted,
+            request.strict_of,
+            request.queue_bases,
+        )
+        if key:
+            deferred[i] = key
+            details[i] = (
+                f"base {key} needs no update to merge ({'merge queue' if key in request.queue_bases else 'strict=false'}): "
+                f"{short_key(a.subject)} holds a review receipt at its head and an update would void it"
+            )
     order = m4_order(acts, order, pinned=set(base_of), m4=m4)
     return ModelLandingStrictPlanResult(
         base_of=base_of,
@@ -331,6 +372,7 @@ __all__: list[str] = [
     "HandlerPrLandingStrictPlan",
     "m4_order",
     "plan_strict_order",
+    "receipt_update_deferred",
     "strict_merge_plan",
     "strict_slot_observe",
     "strict_update_slots",

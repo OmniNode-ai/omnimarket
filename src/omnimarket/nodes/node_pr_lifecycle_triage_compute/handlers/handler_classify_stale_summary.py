@@ -7,6 +7,12 @@ skipped (omnimarket#3423, #3424, omniclaude#2551 landed 4 to 25 minutes after a 
 rerun per head, then one update-branch per head; a skipped matrix row whose name was never expanded
 (omnibase_infra#4576) clears only on a fresh head, so it starts at the update-branch, then the one rerun when that
 left the head unchanged (omnibase_infra#4745, OMN-20413). Update-branches are counted per PR, so new heads cannot loop.
+
+``gates_flipped`` (OMN-19998): ``CI Summary`` read the hostile-review gates as failed at its run time and does not
+poll, so when a review receipt later turns ``Hostile Reviewer`` and ``Hostile Review Gate`` to success at the same
+head the summary stays red until something reruns it (measured 2026-11-05: 7, 7, 13, 15, 22, 24 and 32 minutes after
+the gates flipped, and never for omnimarket#5076 and #5103). Its remedy is the one failed-jobs rerun and never an
+update-branch: a new head voids the receipt that just flipped the gates.
 """
 
 from __future__ import annotations
@@ -16,6 +22,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_classify_cascade_checks import (
+    REVIEWER_POOL_RE,
     SUMMARY_CHECK_RE,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_stale_summary_kind import (
@@ -58,8 +65,37 @@ def _newest_copies(runs: Iterable[Any]) -> dict[str, list[tuple[str, str]]]:
     return out
 
 
+def _newest_stamps(runs: Iterable[Any]) -> dict[str, str]:
+    """Per check name, the newest completion stamp (ISO UTC strings order as times)."""
+    out: dict[str, str] = {}
+    for r in runs:
+        if isinstance(r, (list, tuple)) and len(r) >= 4:
+            name, stamp = str(r[0]), str(r[3] or "")
+            if stamp > out.get(name, ""):
+                out[name] = stamp
+    return out
+
+
+def _gates_flipped(
+    red: Iterable[str],
+    copies: Mapping[str, list[tuple[str, str]]],
+    stamps: Mapping[str, str],
+) -> bool:
+    """CI Summary is the only red, it completed before the hostile-review family last turned success, and every
+    copy of that family at its newest stamp is a success."""
+    summaries = [n for n in red if SUMMARY_CHECK_RE.match(n)]
+    gates = {n: cs for n, cs in copies.items() if REVIEWER_POOL_RE.search(n)}
+    if not summaries or len(summaries) != len(list(red)) or not gates:
+        return False
+    if any(c != "success" for cs in gates.values() for _s, c in cs):
+        return False
+    summary_at = max((stamps.get(n, "") for n in summaries), default="")
+    flipped_at = max((stamps.get(n, "") for n in gates), default="")
+    return bool(summary_at) and flipped_at > summary_at
+
+
 def stale_summary_of(ci: Mapping[str, Any], head: str) -> str | None:
-    """``rerun``, ``refresh``, ``refresh_first`` or None: whether this head's red is only a CI Summary left red by
+    """``rerun``, ``refresh``, ``refresh_first``, ``gates_flipped`` or None: whether this head's red is only a CI Summary left red by
     cancelled or skipped siblings, read from the watcher record at ``head`` (any other head is never guessed at).
     ``refresh_first``: ``INCIDENT_MIN_RUNS`` or more checks were cancelled or had no runner, a provider incident
     the one rerun can itself land inside, so the update-branch goes first and the rerun is kept behind it."""
@@ -90,6 +126,8 @@ def stale_summary_of(ci: Mapping[str, Any], head: str) -> str | None:
             n in others and all(c in stale_conclusions for _s, c in others[n])
         ):
             return None
+    if _gates_flipped(red, copies, _newest_stamps(ci.get("runs") or ())):
+        return "gates_flipped"  # before the cancelled or skipped test: the rerun is the same, the update-branch is not
     stale = [
         n for n, cs in others.items() if any(c in stale_conclusions for _s, c in cs)
     ]

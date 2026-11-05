@@ -96,6 +96,17 @@ class ModelLandingStrictPlanRequest(BaseModel):
     fix_why: dict[str, str] = Field(default_factory=dict)
     cause_fix_claims: tuple[ModelStrictCauseFixClaim, ...] = ()
     m4: tuple[str, ...] = ()
+    receipted: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per watcher key, repo#n, the head that carries a fresh review receipt (OMN-19998). A receipt is bound to "
+            "that one head, so an update-branch of it voids the receipt."
+        ),
+    )
+    queue_bases: tuple[str, ...] = Field(
+        default=(),
+        description="The repo:base keys that land through a merge queue, which tests the merged result itself.",
+    )
 
     @field_validator("now")
     @classmethod
