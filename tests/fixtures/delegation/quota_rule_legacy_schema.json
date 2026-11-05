@@ -1,0 +1,89 @@
+{
+  "base_sha": "11dc9c51bcaea463fc4097d26a89b6c1dc94c18d",
+  "schema": {
+    "$defs": {
+      "EnumQuotaDisposition": {
+        "description": "What to do with the tier that produced a quota response.",
+        "enum": [
+          "retryable",
+          "disable_until_reset",
+          "disable_until_billing",
+          "cooldown"
+        ],
+        "title": "EnumQuotaDisposition",
+        "type": "string"
+      },
+      "EnumQuotaScope": {
+        "description": "Which part of the quota key a rule's refusal bars (OMN-20154).\n\nThe key is (tenant, credential_ref, provider, model). ``provider`` bars\nevery model behind that credential, because the provider pools one counter\nacross models (the z.ai Coding Plan). ``model`` bars only the model that\nanswered, because the provider counts per model (OpenRouter free models,\nthe Gemini free tier).",
+        "enum": [
+          "provider",
+          "model"
+        ],
+        "title": "EnumQuotaScope",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "One provider error code and the disposition it maps to.",
+    "properties": {
+      "code": {
+        "description": "Provider-native error code, as a string.",
+        "title": "Code",
+        "type": "string"
+      },
+      "disposition": {
+        "$ref": "#/$defs/EnumQuotaDisposition"
+      },
+      "reset_from": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "How to source the reset instant. 'message_reset_timestamp' reads an absolute stamp the provider states inline (z.ai); 'message_retry_delay' reads a relative 'retry in <N>s' delay (Gemini, OMN-16932). Anything else falls back to the cooldown.",
+        "title": "Reset From"
+      },
+      "fallback_cooldown_seconds": {
+        "default": 0,
+        "description": "Cooldown applied when a declared reset cannot be parsed.",
+        "minimum": 0,
+        "title": "Fallback Cooldown Seconds",
+        "type": "integer"
+      },
+      "alert": {
+        "default": false,
+        "description": "Whether this condition needs an operator, not a retry.",
+        "title": "Alert",
+        "type": "boolean"
+      },
+      "scope": {
+        "$ref": "#/$defs/EnumQuotaScope",
+        "default": "provider",
+        "description": "OMN-20154. Whether the refusal bars the whole provider behind the credential or only the model that answered."
+      },
+      "alert_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Operator-facing cause for this code, declared in the contract and appended verbatim to the verdict reason. Exists because a provider's own error text can name the wrong cause: z.ai 1113 reads 'Insufficient balance' but on a Coding-Plan key it means the request hit the pay-as-you-go surface (OMN-6790).",
+        "title": "Alert Hint"
+      }
+    },
+    "required": [
+      "code",
+      "disposition"
+    ],
+    "title": "ModelQuotaCodeRule",
+    "type": "object"
+  }
+}
