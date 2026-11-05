@@ -133,6 +133,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-daily-linear-snapshot
+    statement: The existing throughput tick maintains the daily Linear snapshot through its node, and missing or stale reads stay distinguishable from an observed empty backlog.
+    acceptance:
+      - id: AC10
+        statement: 'AC10: the recorded November 1/November 4 gap and stale or malformed snapshots report MISSING with age, a fresh empty snapshot reports zero, the default tick refreshes without headroom while read-only calls never write, and the writer resolves once across pages, omits transport text and preserves the prior file on flush failure -- falsifier: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_durable_snapshot.py -q'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -536,4 +541,22 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-daily-linear-snapshot
+    description: The recorded stale-source case, fresh-empty control, tick refresh and read-only paths, store credential resolution across pages, error redaction and durable replacement are exercised in one focused file. This scope does not assert the ticket's original controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC10
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_durable_snapshot.py -q
+        cwd: .
+  - id: dod-omn19998-daily-linear-snapshot-deploy
+    description: Hosted wiring smoke calls the existing throughput effect with no headroom, routes the default snapshot through the real snapshot handler using an injected external Linear transport, reads the written file, and checks the read-only positive control. Live branch CLI evidence belongs in the PR lab line.
+    source: manual
+    binds_ac:
+      - AC10
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_linear_snapshot_effect/test_durable_snapshot.py -q -k tick_refreshes
         cwd: .

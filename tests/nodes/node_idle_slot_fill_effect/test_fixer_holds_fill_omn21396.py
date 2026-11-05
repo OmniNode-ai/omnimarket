@@ -141,6 +141,8 @@ def test_generated_tickets_readbacks_and_designs_cannot_bypass_holds(
     snapshot.write_text(
         json.dumps(
             {
+                "operator": "fixture-operator",
+                "generated_at": NOW,
                 "issues": [
                     {
                         "id": ticket,
@@ -150,7 +152,7 @@ def test_generated_tickets_readbacks_and_designs_cannot_bypass_holds(
                         "status": "Todo",
                     }
                     for ticket in ("OMN-301", "OMN-302")
-                ]
+                ],
             }
         )
     )
@@ -238,3 +240,30 @@ def test_hold_skips_do_not_consume_capacity_and_all_holds_cover_repository_work(
     )
     assert not result.sends
     assert len(result.dropped) == 2
+
+
+@pytest.mark.parametrize("payload", [None, "{", "{}", '{"operator":"me","issues":[]}'])
+def test_unread_snapshot_does_not_dispatch_readbacks_without_repository_context(
+    tmp_path: Path, payload: str | None
+) -> None:
+    path = tmp_path / "linear-2026-10-26.json"
+    path.write_text(
+        json.dumps({"operator": "fixture-operator", "issues": [], "generated_at": NOW})
+    )
+    sources = ModelBacklogSources(
+        linear_snapshot=path,
+        ledger_tickets=lambda: (set(), {"OMN-302": "missing readback"}),
+        ticket_rule=lambda _: {"items": [], "drops": []},
+    )
+    # A readable snapshot permits the independent ledger readback source.
+    items, line = fill.read_generated(sources, {}, {}, NOW)
+    assert [item["key"] for item in items] == ["readback:OMN-302"]
+    assert "readbacks=1" in line
+    if payload is None:
+        path.unlink()
+    else:
+        path.write_text(payload)
+    items, line = fill.read_generated(sources, {}, {}, NOW)
+    assert items == []
+    assert "tickets=MISSING" in line
+    assert "readbacks=0" in line

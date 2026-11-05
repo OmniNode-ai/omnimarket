@@ -12,6 +12,7 @@ subject's open issues, so every issue's ``assignee`` is the ``operator``.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from pydantic import (
@@ -20,6 +21,10 @@ from pydantic import (
     Field,
     StringConstraints,
     model_validator,
+)
+
+from omnimarket.models.model_linear_snapshot_request import (
+    ModelLinearSnapshotRequest as ModelLinearSnapshotRequest,
 )
 
 NonEmpty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -51,6 +56,7 @@ class ModelLinearSnapshot(BaseModel):
 
     operator: NonEmpty
     issues: tuple[ModelSnapshotIssue, ...]
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
     def _read_as_a_resolved_subject(self) -> ModelLinearSnapshot:
@@ -64,19 +70,6 @@ class ModelLinearSnapshot(BaseModel):
                 f"issues not assigned to the operator: {', '.join(foreign)}"
             )
         return self
-
-
-class ModelLinearSnapshotRequest(BaseModel):
-    """One write: the directory to write into and the UTC date in the file name (``None``: today)."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    out_dir: NonEmpty
-    date: Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = (
-        None
-    )
-    page_size: int = Field(default=100, ge=1, le=250)
-    max_pages: int = Field(default=60, ge=1)
 
 
 class ModelLinearSnapshotResult(BaseModel):

@@ -5,8 +5,8 @@
 The lab fill generator reads the file for the operator's open tickets and plans-today reads it as the
 identity sidecar. Until now only the compact ``.txt`` was written by code; the JSON was a prose step an
 agent could skip, and with it absent the tick's ``lab-fill-generator`` line read ``linear_snapshot
-unread`` and no ticket was generated. The read uses the ``LINEAR_API_KEY`` of the environment (never
-printed) through Linear's GraphQL endpoint, pages with the cursor until ``hasNextPage`` is false and
+unread`` and no ticket was generated. The read resolves its contract-declared key once through the
+secret store, pages with the cursor until ``hasNextPage`` is false and
 refuses a page limit that would cut the list short. The result carries counts only.
 """
 
@@ -17,10 +17,14 @@ import os
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
+from pydantic import SecretStr
+
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot import (
     ModelLinearSnapshot,
     ModelLinearSnapshotRequest,
@@ -29,6 +33,7 @@ from omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot i
 )
 
 KEY_ENV = "LINEAR_API_KEY"
+_CONTRACT = Path(__file__).parents[1] / "contract.yaml"
 HTTP_TIMEOUT_S = 60.0
 
 QUERY = """
@@ -67,25 +72,48 @@ Post = Callable[[str, dict[str, Any]], dict[str, Any]]
 class SnapshotReadError(RuntimeError):
     """The Linear read could not produce a complete snapshot."""
 
+    def __init__(self, message: str, *, code: str = "read_failed") -> None:
+        super().__init__(message)
+        self.code = code
 
-def http_post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
-    """The production transport: one GraphQL POST with the environment's key."""
+
+def resolve_key() -> SecretStr:
+    """Resolve once per snapshot at the existing synchronous effect boundary."""
+    from omnimarket.inference.secret_store_resolver import (
+        SecretStoreConfigurationError,
+        resolve_api_key_loop_safe,
+    )
+    from omnimarket.models.secret_store.model_secret_resolution_error import (
+        SecretResolutionError,
+    )
+
+    try:
+        key = resolve_api_key_loop_safe(contract_secret_ref(_CONTRACT, KEY_ENV))
+    except (SecretResolutionError, SecretStoreConfigurationError):
+        raise SnapshotReadError(
+            "Linear key is unavailable", code="key_unavailable"
+        ) from None
+    if key is None or not key.get_secret_value().strip():
+        raise SnapshotReadError("Linear key is unavailable", code="key_unavailable")
+    return key
+
+
+def http_post(
+    query: str, variables: dict[str, Any], *, key: SecretStr
+) -> dict[str, Any]:
+    """The production transport: one GraphQL POST with the store-resolved key."""
     import httpx
 
-    key = os.environ.get(KEY_ENV, "").strip()
-    if not key:
-        raise SnapshotReadError(f"{KEY_ENV} is not set")
     response = httpx.post(
         LINEAR_GRAPHQL_URL,
         json={"query": query, "variables": variables},
-        headers={"Authorization": key},
+        headers={"Authorization": key.get_secret_value()},
         timeout=HTTP_TIMEOUT_S,
     )
     response.raise_for_status()
     body = response.json()
     if body.get("errors"):
-        messages = "; ".join(str(e.get("message", e)) for e in body["errors"])
-        raise SnapshotReadError(f"Linear refused the read: {messages[:200]}")
+        raise SnapshotReadError("Linear refused the GraphQL read")
     data = body.get("data")
     if not isinstance(data, dict):
         raise SnapshotReadError("Linear answered with no data")
@@ -128,7 +156,8 @@ def read_snapshot(post: Post, page_size: int, max_pages: int) -> ModelLinearSnap
             return ModelLinearSnapshot(operator=viewer, issues=tuple(issues))
         cursor = info.get("endCursor")
     raise SnapshotReadError(
-        f"the read still had a next page after {max_pages} pages of {page_size}"
+        f"the read still had a next page after {max_pages} pages of {page_size}",
+        code="pagination_incomplete",
     )
 
 
@@ -143,7 +172,14 @@ def _write_atomic(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(tmp, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
@@ -153,13 +189,14 @@ class HandlerLinearSnapshot:
     """Writes the snapshot; ``post`` is the injectable Linear transport."""
 
     def __init__(self, post: Post | None = None) -> None:
-        self._post = post or http_post
+        self._post = post
 
     def handle(self, request: ModelLinearSnapshotRequest) -> ModelLinearSnapshotResult:
         date = request.date or datetime.now(UTC).strftime("%Y-%m-%d")
         path = Path(request.out_dir) / f"linear-{date}.json"
         try:
-            snapshot = read_snapshot(self._post, request.page_size, request.max_pages)
+            post = self._post or partial(http_post, key=resolve_key())
+            snapshot = read_snapshot(post, request.page_size, request.max_pages)
             _write_atomic(path, render(snapshot))
         except (
             Exception
@@ -169,7 +206,16 @@ class HandlerLinearSnapshot:
                 path=str(path),
                 issue_count=0,
                 with_description=0,
-                reason=" ".join(f"{type(exc).__name__}: {exc}".split())[:300],
+                # A transport exception can contain headers or ticket text. Only
+                # controlled diagnostics and type names cross the result boundary.
+                reason=(
+                    {
+                        "pagination_incomplete": "Linear still had a next page at the page limit",
+                        "key_unavailable": "LINEAR_API_KEY is unavailable in the secret store",
+                    }.get(exc.code, "SnapshotReadError")
+                    if isinstance(exc, SnapshotReadError)
+                    else type(exc).__name__
+                ),
             )
         return ModelLinearSnapshotResult(
             status="written",
