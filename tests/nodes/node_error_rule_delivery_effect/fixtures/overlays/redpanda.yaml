@@ -1,0 +1,10 @@
+transport: redpanda
+lane_declaration: config/test_bus_lane.yaml
+lane_overlay: config/ci_bus_lanes.yaml
+delivery:
+  mode: hint
+  queue_context: false
+  window_seconds: 60
+  probe_interval_seconds: 30
+  probe_timeout_seconds: 5
+  latency_budget_ms: 250

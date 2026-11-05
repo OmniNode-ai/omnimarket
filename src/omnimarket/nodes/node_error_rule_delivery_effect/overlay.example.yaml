@@ -1,0 +1,28 @@
+# Deployment data: bind these factories and installed entrypoints on the host.
+# The matcher factory supplies normalization and the rule table; delivery does
+# not carry a second normalizer, table, validator or action policy.
+state_dir: .onex_state/error-rule-delivery
+exception_dir: .onex_state/exception-queue
+mode: hint
+queue_context: true
+window_seconds: 60
+probe_interval_seconds: 30
+probe_timeout_seconds: 5
+latency_budget_ms: 250
+exception_class: unmatched-error
+matcher: null
+# A missing matcher emits UNREAD and alarms. Omitted paths also alarm.
+delivery_paths: {}
+probes:
+  - surface: tool_failure
+    session_id: delivery-probe
+    tool_use_id: tool-probe
+    tool_name: Read
+    error_text: synthetic recorded-class failure
+    hook_event_name: PostToolUseFailure
+  - surface: guard_refusal
+    session_id: delivery-probe
+    tool_use_id: guard-probe
+    tool_name: guard
+    error_text: synthetic recorded-class refusal
+    hook_event_name: PostToolUseFailure

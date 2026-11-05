@@ -128,6 +128,17 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-error-rule-delivery
+    statement: Error delivery preserves hints, unmatched occurrences and independent surface liveness through typed node boundaries.
+    acceptance:
+      - id: AC10
+        statement: 'Recorded tool failures and guard refusals return RULE hints in hint mode, suppress matched hints in shadow and deliver queued non-Bash context through the next PreToolUse; the same tool-use id is handled once across failure and fallback events.'
+      - id: AC11
+        statement: 'A flushed no-match outbox survives process death before or after the queue write, replay acknowledges one occurrence once, and two distinct failures of one class coalesce into one open exception row.'
+      - id: AC12
+        statement: 'Missing delivery probes alarm with no surface traffic, real traffic with zero real matcher calls alarms despite synthetic calls, unread matching returns UNREAD, and the injected fixture p95 stays below the overlay budget.'
+      - id: AC13
+        statement: 'The declared delivery command routes to a correlated result through the in-memory and authorized Redpanda overlay bindings; a selected unavailable broker fails without a skip.'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +520,21 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-error-rule-delivery
+    description: Focused replay and process-kill tests exercise typed delivery, local durable outbox replay, quiet probes, unread handling and the injected matcher fixture latency budget. Installed harness transcripts and occurrence-aware triage dispatch are separate pending integration evidence.
+    source: manual
+    binds_ac: [AC10, AC11, AC12]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_error_rule_delivery_effect/test_delivery_hook.py -k delivery_hook -q --no-cov -n 0
+        cwd: .
+  - id: dod-omn19998-error-rule-delivery-wiring
+    description: The in-memory hosted smoke discovers the shipped contract and routes hint, shadow, unmatched and drain operations through auto-wiring. Live Redpanda authorization is required for the marked durable-bus leg.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_error_rule_delivery_effect/test_golden_chain_delivery_hook_bus.py -k inmemory -q --no-cov -n 0
         cwd: .

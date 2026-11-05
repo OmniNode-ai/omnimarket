@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_error_rule_delivery_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+lifecycle: experimental
+description: >
+  Match tool failures and guard refusals in process. Deliver RULE hints directly or
+  through the next PreToolUse, with shadow silence and tool-use-id deduplication.
+  Fsync each NO-MATCH to a local outbox before returning. Tick and background drain
+  use the exception queue's durable idempotency receipt before acknowledging entries.
+  Inject synthetic failures through both installed delivery paths on the overlay
+  interval; missing probes, zero matcher calls with traffic, unread tables and
+  over-budget matches raise the existing silent-failure alarm.
+input_model:
+  name: ModelDeliveryRequest
+  module: omnimarket.models.error_rule_delivery
+output_model:
+  name: ModelDeliveryResult
+  module: omnimarket.models.error_rule_delivery
+handler:
+  module: omnimarket.nodes.node_error_rule_delivery_effect.handlers.handler_delivery_hook
+  class: HandlerDeliveryHookRuntime
+  input_model: omnimarket.models.error_rule_delivery.ModelDeliveryRequest
+  output_model: omnimarket.models.error_rule_delivery.ModelDeliveryResult
+entrypoint:
+  name: NodeErrorRuleDeliveryEffect
+  module: omnimarket.nodes.node_error_rule_delivery_effect.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - topic: onex.cmd.omnimarket.error-rule-delivery-requested.v1
+      event_model:
+        name: ModelDeliveryRequest
+        module: omnimarket.models.error_rule_delivery
+      handler:
+        name: HandlerDeliveryHookRuntime
+        module: omnimarket.nodes.node_error_rule_delivery_effect.handlers.handler_delivery_hook
+terminal_event: onex.evt.omnimarket.error-rule-delivery-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.error-rule-delivery-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.error-rule-delivery-requested.v1]
+  publish_topics:
+    - onex.evt.omnimarket.error-rule-delivery-completed.v1
+externally_consumed_topics: [onex.evt.omnimarket.error-rule-delivery-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-19998]
