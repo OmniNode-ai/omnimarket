@@ -6,7 +6,8 @@ The model drafts a title, the premises prose and the task. Everything the brief 
 fixed form is filled here from the request, byte for byte: the header, the ticket-state
 acknowledgements, the quoted criteria, the out-of-scope line, the standing rules and the 3a block.
 A draft that wrote one of those, or states an identifier its fact table does not hold, is refused
-before the checker sees it. Assembling is not accepting: the checker's result goes to
+before the checker sees it. The request takes the lane name and the ticket once: a 3a block whose
+inbox check, CLAIM template or delegation command names another lane or ticket is refused too. Assembling is not accepting: the checker's result goes to
 ``HandlerLaneBriefGate``.
 """
 
@@ -40,6 +41,20 @@ _SHELL_LINE = re.compile(
     re.MULTILINE,
 )
 _SHELL_TOKEN = re.compile(r"ticket-state-ack=|consent=")
+# Where the 3a block names THIS brief's lane: its inbox check, its CLAIM template and its delegation
+# command. Quoted ledger rows of other lanes (rulings, holds) are not read.
+_BLOCK_LANE = re.compile(
+    r"\binbox\.sh[ \t]+(?P<a>[^\s,)]+)"
+    r"|^inbox[ \t]+(?P<b>[^\s:]+):"
+    r"|\|[ \t]*CLAIM[ \t]*\|[ \t]*lane=(?P<c>[^\s|]+)"
+    r"|--caller-lane[ \t]+(?P<d>[^\s\"']+)",
+    re.MULTILINE,
+)
+_BLOCK_TICKET = re.compile(
+    r"\|[ \t]*CLAIM[ \t]*\|[^\n]*?\|[ \t]*ticket=(?P<a>OMN-[0-9]+)"
+    r"|--ticket[ \t]+(?P<b>OMN-[0-9]+)"
+    r"|Delegation \(required, (?P<c>OMN-[0-9]+)\)"
+)
 _IDENTIFIER = re.compile(r"\bOMN-[0-9]+\b|\b[A-Za-z][A-Za-z0-9_-]*#[0-9]+\b")
 
 
@@ -51,6 +66,29 @@ def _shell_offenders(text: str) -> list[str]:
     found = [m.group(0).strip() for m in _SHELL_LINE.finditer(text)]
     found.extend(m.group(0) for m in _SHELL_TOKEN.finditer(text))
     return found
+
+
+def _named(pattern: re.Pattern[str], text: str) -> set[str]:
+    return {
+        value for match in pattern.finditer(text) for value in match.groups() if value
+    }
+
+
+def _block_mismatches(
+    request: ModelLaneBriefAssembleRequest,
+) -> list[ModelBriefDraftIssue]:
+    block = request.shell.constraints_block
+    issues = [
+        ModelBriefDraftIssue(
+            refusal=EnumBriefDraftRefusal.LANE_NAME_MISMATCH, detail=lane
+        )
+        for lane in sorted(_named(_BLOCK_LANE, block) - {request.lane})
+    ]
+    issues.extend(
+        ModelBriefDraftIssue(refusal=EnumBriefDraftRefusal.TICKET_MISMATCH, detail=t)
+        for t in sorted(_named(_BLOCK_TICKET, block) - {request.ticket})
+    )
+    return issues
 
 
 def _render(
@@ -89,7 +127,7 @@ class HandlerLaneBriefAssemble:
     def handle(
         self, request: ModelLaneBriefAssembleRequest
     ) -> ModelLaneBriefAssembleResult:
-        issues: list[ModelBriefDraftIssue] = []
+        issues = _block_mismatches(request)
         counts = Counter(s.slot for s in request.drafted_slots)
         slots: dict[EnumBriefDraftSlot, str] = {}
         for slot in EnumBriefDraftSlot:

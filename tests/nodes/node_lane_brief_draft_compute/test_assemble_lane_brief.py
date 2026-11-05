@@ -171,3 +171,55 @@ def test_refuses_a_title_over_one_line() -> None:
     assert _refusals(_request(_slots(title="Wire it\nand more"))) == {
         EnumBriefDraftRefusal.MULTILINE_TITLE
     }
+
+
+def _constraints_for(lane: str, ticket: str) -> str:
+    """A 3a block shaped as ``lane_brief.py constraints`` prints it for ``lane`` and ``ticket``."""
+    return (
+        "## 3a. Constraints (pasted, never paraphrased)\n\n"
+        f"### 3a.1 Inbox (inbox.sh {lane}, rc=0)\n\n```text\ninbox {lane}: 0 open item(s)\n```\n\n"
+        "### 3a.4 Standing rulings (step 1.5 grep, newest 15)\n\n```text\n"
+        "ROLLING_WORK_LEDGER.md:9:2026-11-04T23:04:57Z | RULING | lane=orchestrator-31d9 "
+        '| ticket=OMN-19998 | "Go." | kind=decision\n```\n\n'
+        "### 3a.8 CLAIM template\n\n```bash\n"
+        'python3 onex_ledger.py "$L" --append "$(date -u +%Y-%m-%dT%H:%M:%SZ) | CLAIM '
+        f"| lane={lane} | actor=<who> | model=sonnet | ticket={ticket} | parent=orchestrator-bb1a "
+        '| band=B3 | repo=omnimarket | scope=<one line>"\n```\n\n'
+        f"### 3a.9 Delegation (required, {ticket})\n\n"
+        f'    onex delegate "<prompt>" --task-type document --ticket {ticket} '
+        f"--caller-lane {lane} --bus kafka\n"
+    )
+
+
+def _request_with_constraints(constraints: str) -> ModelLaneBriefAssembleRequest:
+    shell = _shell().model_copy(update={"constraints_block": constraints})
+    return _request().model_copy(update={"shell": shell})
+
+
+def test_accepts_a_3a_block_printed_for_the_request_lane_and_ticket() -> None:
+    request = _request_with_constraints(_constraints_for("demo-lane", "OMN-17427"))
+    result = HandlerLaneBriefAssemble().handle(request)
+    assert result.assembled is True, result.issues
+    # Another lane's ledger row quoted in 3a.4 is not a second lane name of this brief.
+    assert "lane=orchestrator-31d9" in result.brief
+
+
+def test_refuses_a_3a_block_printed_for_another_lane() -> None:
+    # The recorded case: the 3a block was printed under a second spelling of the lane name, so
+    # the brief named two lanes and the lane's CLAIM and inbox check disagreed with its header.
+    request = _request_with_constraints(_constraints_for("demo-lane-0205", "OMN-17427"))
+    result = HandlerLaneBriefAssemble().handle(request)
+    assert result.assembled is False
+    assert result.brief == ""
+    assert {(i.refusal, i.detail) for i in result.issues} == {
+        (EnumBriefDraftRefusal.LANE_NAME_MISMATCH, "demo-lane-0205")
+    }
+
+
+def test_refuses_a_3a_block_printed_for_another_ticket() -> None:
+    request = _request_with_constraints(_constraints_for("demo-lane", "OMN-19998"))
+    result = HandlerLaneBriefAssemble().handle(request)
+    assert result.assembled is False
+    assert {(i.refusal, i.detail) for i in result.issues} == {
+        (EnumBriefDraftRefusal.TICKET_MISMATCH, "OMN-19998")
+    }
