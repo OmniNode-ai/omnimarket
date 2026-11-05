@@ -5759,6 +5759,7 @@
         "node_compaction_arm_assignment_compute",
         "node_delegation_hook_followup_compute",
         "node_hook_event_capture",
+        "node_hook_events_by_correlation_read_effect",
         "node_lab_job_check_effect",
         "node_lane_liveness_compute",
         "node_projection_hook_ledger",
