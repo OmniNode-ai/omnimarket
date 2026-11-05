@@ -72,6 +72,27 @@ def test_environment_is_built_from_the_overlay_alone(tmp_path: Path) -> None:
     assert not any("KEY" in k and v not in ("keyless",) for k, v in env.items())
 
 
+def test_extraction_and_summarization_route_to_their_own_endpoint_when_set(
+    tmp_path: Path,
+) -> None:
+    base = _overlay(tmp_path)
+    routed = ModelMemoryPilotOverlay.model_validate(
+        {
+            **base.model_dump(),
+            "chat_extraction": {
+                "base_url": "http://lab-chat.example.test:8100/v1",
+                "model": "chat-m",
+                "timeout_seconds": 5,
+            },
+        }
+    )
+    env = cognee_environment(routed)
+    for stage in ("EXTRACTION", "SUMMARIZATION"):
+        assert env[f"LLM_{stage}_ENDPOINT"] == "http://lab-chat.example.test:8100/v1"
+    assert env["LLM_ENDPOINT"] == "http://lab-chat.example.test:8000/v1"
+    assert "LLM_EXTRACTION_ENDPOINT" not in cognee_environment(base)
+
+
 def test_a_secret_shaped_placeholder_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="never a key"):
         ModelMemoryPilotOverlay.model_validate(

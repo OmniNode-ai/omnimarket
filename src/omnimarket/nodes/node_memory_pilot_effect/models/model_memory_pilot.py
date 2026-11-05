@@ -146,6 +146,7 @@ class ModelMemoryPilotOverlay(BaseModel):
     telemetry_disabled: bool
     allowed_hosts: tuple[str, ...] = Field(min_length=1)
     chat: ModelLabEndpoint | None = None
+    chat_extraction: ModelLabEndpoint | None = None
     embeddings: ModelLabEndpoint | None = None
     embedding_dimensions: int | None = Field(default=None, gt=0)
     api_key_placeholder: str = "keyless"
@@ -187,7 +188,11 @@ class ModelMemoryPilotOverlay(BaseModel):
         return self
 
     def endpoints(self) -> tuple[ModelLabEndpoint, ...]:
-        return tuple(e for e in (self.chat, self.embeddings) if e is not None)
+        return tuple(
+            e
+            for e in (self.chat, self.chat_extraction, self.embeddings)
+            if e is not None
+        )
 
 
 __all__ = [

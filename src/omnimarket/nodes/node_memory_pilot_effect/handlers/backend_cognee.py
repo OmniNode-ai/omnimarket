@@ -43,7 +43,7 @@ def cognee_environment(overlay: ModelMemoryPilotOverlay) -> dict[str, str]:
     ):
         raise ValueError("cognee overlay incomplete")
     root = overlay.storage_root
-    return {
+    env = {
         "TELEMETRY_DISABLED": "1",
         "DO_NOT_TRACK": "1",
         "LITELLM_LOCAL_MODEL_COST_MAP": "True",
@@ -64,6 +64,13 @@ def cognee_environment(overlay: ModelMemoryPilotOverlay) -> dict[str, str]:
         "SYSTEM_ROOT_DIRECTORY": str(root / "system"),
         "CACHE_ROOT_DIRECTORY": str(root / "cache"),
     }
+    if overlay.chat_extraction is not None:
+        for stage in ("EXTRACTION", "SUMMARIZATION"):
+            env[f"LLM_{stage}_PROVIDER"] = "custom"
+            env[f"LLM_{stage}_MODEL"] = f"openai/{overlay.chat_extraction.model}"
+            env[f"LLM_{stage}_ENDPOINT"] = overlay.chat_extraction.base_url
+            env[f"LLM_{stage}_API_KEY"] = overlay.api_key_placeholder
+    return env
 
 
 def _is_connection_failure(exc: BaseException) -> bool:
