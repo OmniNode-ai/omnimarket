@@ -14,6 +14,8 @@ else.
    its own resolution. The golden is ``fixtures/omn20558_workflow_action_refs.json``,
    captured at ``b181b79a6``. Pinning a tag to the commit it already resolves to
    keeps this green; pinning it to any other commit, or bumping a major, fails.
+   New workflows may reuse action/commit pairs already in the golden; original
+   workflows retain their minimum invocation counts and their own pin identities.
 
 2. Transport-mock lint with no baseline. The lint over every committed
    ``test_*.py`` finds zero bare transport mocks, so its frozen baseline grants
@@ -29,6 +31,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -107,7 +110,9 @@ def _ref_diff(
     line-keyed golden failed every pull request once ``ci.yml`` gained a step.
     Additional uses of an existing pin in the same workflow are also accepted:
     adding a job does not change the action's resolved commit. The minimum
-    golden counts still apply, and an unfamiliar action or commit is refused.
+    golden counts still apply, and an unfamiliar action or commit is refused. A
+    workflow file the golden never saw is accepted when every pin it uses is one
+    the golden already holds.
     """
 
     def key(row: list[object]) -> tuple[object, object, object]:
@@ -116,7 +121,14 @@ def _ref_diff(
     expected_count = Counter(key(row) for row in expected)
     actual_count = Counter(key(row) for row in actual)
     missing_keys = expected_count - actual_count
-    extra_keys = actual_count.keys() - expected_count.keys()
+    known_pins = {(row[2], row[3]) for row in expected}
+    known_workflows = {row[0] for row in expected}
+    # A workflow file absent from the golden may use any pin the golden already holds.
+    extra_keys = {
+        k
+        for k in actual_count.keys() - expected_count.keys()
+        if k[0] in known_workflows or (k[1], k[2]) not in known_pins
+    }
     missing = [row for row in expected if key(row) in missing_keys]
     extra = [row for row in actual if key(row) in extra_keys]
     return missing, extra
@@ -131,6 +143,46 @@ def test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit() -> None
     missing, extra = _ref_diff(expected, _resolved_refs(_WORKFLOWS))
     assert not missing, f"golden refs no longer present: {missing[:10]}"
     assert not extra, f"refs not in the b181b79a6 golden: {extra[:10]}"
+
+
+@pytest.mark.unit
+def test_action_ref_diff_accepts_recorded_test_durations_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replay the new workflow's uses lines at ee0e40d9cd83 without editing the golden."""
+    workflows = shutil.copytree(_WORKFLOWS, tmp_path / "workflows")
+    (workflows / "test-durations-refresh.yml").write_text(
+        "steps:\n"
+        "  - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0\n"
+        "  - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9\n"
+        "  - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "_WORKFLOWS", workflows)
+    test_every_workflow_action_ref_resolves_to_its_pre_burndown_commit()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("action", "commit"),
+    [
+        ("actions/checkout", "b" * 40),
+        ("actions/unknown", "a" * 40),
+        ("actions/checkout", "c" * 40),
+    ],
+    ids=["changed-commit", "unknown-action", "known-commit-wrong-action"],
+)
+def test_action_ref_diff_refuses_unrecognized_pins_in_new_workflow(
+    action: str,
+    commit: str,
+) -> None:
+    golden = [
+        ["ci.yml", 10, "actions/checkout", "a" * 40],
+        ["lint.yml", 10, "astral-sh/setup-uv", "c" * 40],
+    ]
+    extra = ["new.yml", 20, action, commit]
+    assert _ref_diff(golden, [*golden, extra]) == ([], [extra])
 
 
 @pytest.mark.unit
@@ -158,7 +210,10 @@ def test_action_ref_diff_accepts_added_jobs_using_existing_pins() -> None:
     unknown = ["ci.yml", 20, "actions/unknown", "a" * 40]
     assert _ref_diff(golden, [*golden, unknown]) == ([], [unknown])
     other_workflow = ["new.yml", 20, "actions/checkout", "a" * 40]
-    assert _ref_diff(golden, [*golden, other_workflow]) == ([], [other_workflow])
+    # A workflow the golden never saw may use a pin the golden holds, never a new one.
+    assert _ref_diff(golden, [*golden, other_workflow]) == ([], [])
+    new_pin = ["new.yml", 20, "actions/checkout", "b" * 40]
+    assert _ref_diff(golden, [*golden, new_pin]) == ([], [new_pin])
     # Removing one of several original invocations remains a mismatch.
     assert _ref_diff([*golden, added], golden) == ([*golden, added], [])
     # Multiplicity still detects a changed use when the pin is used twice.

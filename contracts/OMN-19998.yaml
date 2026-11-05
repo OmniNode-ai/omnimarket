@@ -128,6 +128,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-new-workflow-known-pins
+    statement: The action-ref characterization accepts a new workflow using existing golden action and commit pairs while retaining original workflow pin identities and minimum counts.
+    acceptance:
+      - id: AC11
+        statement: 'AC11: the recorded test-durations-refresh workflow pins pass without a golden update; changed commits, unknown actions, mismatched action and commit pairs, and removed original uses remain refused -- falsifier: uv run --frozen pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -143,6 +148,14 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn19998-new-workflow-known-pins
+    description: Replay the three uses lines recorded at ee0e40d9cd83 through the existing characterization test with the unchanged golden. The regression failed before the source branch fix. Negative controls retain pin-pair and minimum-count refusals. This scoped check-only proof does not assert the original landing-controller timer criteria.
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn20558_ratchet_burndown_characterization.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn19998-ledger-detail-reference-retention
     description: Scoped retention regression only. Declared reader globs preserve cited old details, unreadable readers prevent removal, and reader changes during archive verification prevent removal. This does not assert a ledger writer fix, a live cleanup installation, or the controller timer criteria.
     source: manual
