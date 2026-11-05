@@ -93,8 +93,10 @@ class HandlerLaneToolchainProvision:
                 "OMNI_HOME": host.registry_root,
             },
         )
-        # A lab run once printed "command not found" and exited 0: the words count as much as the status.
-        working = status == 0 and "command not found" not in tail.lower()
+        # Both bash and POSIX sh diagnostics count even when a later command masks the status.
+        working = status == 0 and not any(
+            marker in tail.lower() for marker in ("command not found", ": not found")
+        )
         return working, f"`{' '.join(spec.probe)}` exit {status}: {tail}"
 
     def _tool(
