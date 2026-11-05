@@ -83,7 +83,30 @@ requirements:
     acceptance:
       - id: AC8
         statement: 'AC8: the packaged contract resolves the phase tool handler and its request/result models; real loopback HTTP readbacks preserve source binding, reject mismatches and refuse unsafe commands -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov'
+  - id: req-omn19998-capture-provenance
+    statement: The work-event projection retains supplied capture attribution and explicit causal edges alongside the governed directory shape.
+    acceptance:
+      - id: AC8
+        statement: 'Supplied principal, correlation_id and causation_id survive the four hook projection routes and their snapshot deltas; absent attribution and causation stay absent, replay is idempotent and distinct provenance does not collapse.'
+  - id: req-omn19998-morning-readme-heading
+    statement: The morning README tool selects a unique exact heading before considering substring matches and refuses ambiguous matches.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: through the registered morning_readme tool, a normalized exact heading wins in either document order, ambiguous substring and duplicate exact matches are refused, and unique substring, missing-heading, listing and section-boundary behavior are covered -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -k readme'
+  - id: req-omn19998-plan-ticket-window
+    statement: The plan-state tool reads every tracked plan before filtering its date window and paginating the results.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: registered plan_ticket_states requests for 30 and 120 days return every eligible plan and resolved ticket state across all pages from a committed Git listing larger than 4,000 characters, including October 2-8; future and invalid dates are excluded and command reports stay bounded -- falsifier: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov'
+  - id: req-omn19998-host-model-serving
+    statement: A typed lab host declares model serving independently of lane and unit placement, defaulting to its existing availability when omitted.
+    acceptance:
+      - id: AC8
+        statement: 'AC8: the typed host resolver accepts separate model_serving booleans; omitted values inherit available, including its true default; enabling serving never admits an unavailable host to placement; malformed and unknown fields remain refused -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov'
 evidence_requirements:
+  - kind: tests
+    description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
+    command: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
   - kind: tests
     description: The retry tests and the existing heal decision, collection and CLI tests run at the pushed head.
     command: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov
@@ -112,6 +135,51 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_publish_recovery.py -q --no-cov --tb=line -k canonical_runtime_bus
+        cwd: .
+  - id: dod-omn19998-morning-readme-heading
+    description: Focused registered-tool regressions cover exact-match precedence, ambiguity refusal, unique substring fallback, missing headings, heading listing and section boundaries. They do not assert the controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -k readme
+        cwd: .
+  - id: dod-omn19998-plan-ticket-window
+    description: The November 1 recorded 30/120-day requests run through the registered tool server against a committed plan tree exceeding the command-report tail. October 2–8 plans are returned, the larger window adds older plans, page totals and ticket states remain complete, and command reports retain their output bound. This proof does not assert the controller timer criteria or a live host installation.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-plan-ticket-window-deploy
+    description: Hosted runtime smoke calls plan_ticket_states through the registered tool server against a committed Git tree exceeding the command-report tail, with only Linear GraphQL replaced at its boundary. Both requested windows, pagination and resolved ticket states are checked. No lab endpoint, credential or live installation is required or asserted.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_plan_ticket_states_window.py -q --no-cov -k test_plan_ticket_states_reads_every_plan_before_filtering_and_paging
+        cwd: .
+  - id: dod-omn19998-host-model-serving
+    description: The recorded two-host reproducer loads through both production resolver paths. The focused tests cover inherited defaults, independent serving and placement values, frozen rows, malformed serving values and unknown-field refusal. This does not assert the unrelated controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-host-model-serving-deploy
+    description: Hosted wiring smoke reads the recorded serving rows through the real overlay and explicit-file resolvers, then exercises the existing placement handler and observes both unavailable hosts refused. It needs no live model endpoint and does not assert a runtime installation or unpinned delegation.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/lab_work/test_lab_host_model_serving.py -q --no-cov -k recorded_serving_hosts
         cwd: .
   - id: dod-omn19998-snapshot-record-boundary
     description: Recorded delegation-writer retry sizes are refused before producer creation using the driver's complete record-size calculation. The exact-limit control remains accepted and oversized keys and headers are refused. The runner records an error and durably quarantines before committing the source. This focused proof does not assert the controller timer criteria or a live installation.
@@ -343,4 +411,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_morning_ground_state_orchestrator/test_golden_chain_morning_ground_state_orchestrator.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-capture-provenance
+    description: Focused handler and snapshot regression over the recorded shape-only session-started wire and each contract-declared hook route. Four cases failed with missing principal before the change. This scoped capture check does not assert host installation or the landing-controller timer criteria.
+    source: manual
+    binds_ac:
+      - AC8
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_projection_work_events/test_redacted_working_directory_omn19513.py -q --no-cov
         cwd: .
