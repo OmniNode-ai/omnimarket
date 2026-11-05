@@ -24,6 +24,7 @@ import httpx
 from pydantic import BaseModel, JsonValue
 
 from ..models.model_morning_runtime_probe import (
+    ModelMorningRuntimeProbeCommand,
     ModelMorningRuntimeProbeRequest,
     ModelMorningRuntimeProbeResult,
 )
@@ -163,13 +164,11 @@ def _compile(command: str) -> tuple[str, str | None, JsonValue, bool]:
 
 
 class HandlerMorningRuntimeProbe:
-    def __init__(self, context: ModelMorningToolContext) -> None:
-        self.context = context
-
     def handle(
-        self, request: ModelMorningRuntimeProbeRequest
+        self, request: ModelMorningRuntimeProbeCommand
     ) -> ModelMorningRuntimeProbeResult:
-        resolution, text = read_source_document(self.context, request.doc)
+        context = request.context
+        resolution, text = read_source_document(context, request.doc)
         if text is None:
             raise MorningToolRefusalError(
                 "source document is unreadable; probe is UNKNOWN"
@@ -185,7 +184,7 @@ class HandlerMorningRuntimeProbe:
                 "production rows are outside the dev probe scope"
             )
         url, field, expected, assertion = _compile(command)
-        if urlsplit(url).hostname not in _dev_hosts(self.context):
+        if urlsplit(url).hostname not in _dev_hosts(context):
             raise MorningToolRefusalError(
                 "readback target is not the declared dev runtime host"
             )
@@ -272,8 +271,10 @@ class HandlerMorningRuntimeProbe:
 
 
 def runtime_probe(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
-    result = HandlerMorningRuntimeProbe(ctx).handle(
-        cast(ModelMorningRuntimeProbeRequest, params)
+    result = HandlerMorningRuntimeProbe().handle(
+        ModelMorningRuntimeProbeCommand(
+            context=ctx, **cast(ModelMorningRuntimeProbeRequest, params).model_dump()
+        )
     )
     return cast(Result, result.model_dump(mode="json"))
 

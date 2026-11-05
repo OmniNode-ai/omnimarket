@@ -95,23 +95,86 @@ def test_runtime_probe_contract_resolves_the_phase_tool_handler() -> None:
         module, _, name = str(entry[field]).rpartition(".")
         model_type = getattr(importlib.import_module(module), name)
         assert model_type is annotations[annotation]
-    assert annotations["request"] is RUNTIME_PROBE_TOOL.input_model
+    assert issubclass(annotations["request"], RUNTIME_PROBE_TOOL.input_model)
+    assert "context" in annotations["request"].model_fields
+    assert "context" not in RUNTIME_PROBE_TOOL.input_model.model_fields
 
 
-def test_runtime_probe_transport_is_declared_in_the_packaged_contract() -> None:
+def test_runtime_probe_transport_is_declared_in_the_packaged_contract(
+    tmp_path: Path,
+) -> None:
+    import os
+    import shutil
+    import subprocess
+
+    from omnibase_core.validators.no_unguarded_git_subprocess import (
+        scrub_git_location_env,
+    )
+
     from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
         ComplianceSweepRequest,
         NodeComplianceSweep,
     )
 
+    # A scan of the merge base without the probe is also compliant. Require
+    # the actual transport declaration before treating the scan as evidence.
+    endpoints = cast(dict[str, dict[str, JsonValue]], _contract()["endpoints"])
+    assert endpoints["runtime_done_proof"]["method"] == "GET"
+    # Sweep a git corpus containing the packaged source. Deployment worktrees
+    # are excluded from sweeps, and an installed wheel has no git metadata.
+    corpus = tmp_path / NODE
+    shutil.copytree(str(files(PACKAGE)), corpus)
+    for args in (["init", "--quiet"], ["add", "."]):
+        subprocess.run(
+            ["git", "-C", str(corpus), *args],
+            env=scrub_git_location_env(os.environ),
+            check=True,
+            timeout=30,
+        )
     result = NodeComplianceSweep().handle(
         ComplianceSweepRequest(
-            target_dirs=[str(files(PACKAGE))], checks=["undeclared-transport"]
+            target_dirs=[str(corpus)], checks=["undeclared-transport"]
         )
     )
     assert result.handlers_scanned > 0
     assert result.status == "compliant", result.new_violations
     assert not result.violations
+
+
+async def test_runtime_probe_auto_wires_without_injected_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replay the strict runtime boot that refused the required context argument."""
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.runtime.auto_wiring.discovery import (
+        discover_contracts_from_paths,
+    )
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+    from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+
+    routing = cast(dict[str, JsonValue], _contract()["handler_routing"])
+    entries = cast(list[dict[str, JsonValue]], routing["handlers"])
+    assert any(entry["operation"] == "morning_runtime_probe" for entry in entries)
+    monkeypatch.setenv("ONEX_WIRING_STRICT_MODE", "1")
+    manifest = discover_contracts_from_paths(
+        [Path(str(files(PACKAGE).joinpath("contract.yaml")))]
+    )
+    assert manifest.total_discovered == 1
+    assert not manifest.errors
+    bus = EventBusInmemory()
+    try:
+        report = await wire_from_manifest(
+            manifest,
+            MessageDispatchEngine(),
+            event_bus=bus,
+            materialized_explicit_dependencies={
+                "HandlerMorningGroundState": {"event_bus": bus}
+            },
+        )
+        assert report.total_wired == 1
+        assert not report.quarantined_handlers
+    finally:
+        await bus.close()
 
 
 def test_contract_declares_every_topic_and_the_terminal() -> None:

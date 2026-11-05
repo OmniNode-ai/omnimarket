@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..tools.context import ModelMorningToolContext
+
 
 class ModelMorningRuntimeProbeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -18,6 +20,12 @@ class ModelMorningRuntimeProbeRequest(BaseModel):
     source_line: int = Field(
         ge=1, le=100_000, description="one-based line of the source table's row"
     )
+
+
+class ModelMorningRuntimeProbeCommand(ModelMorningRuntimeProbeRequest):
+    """The phase server supplies trusted context outside the agent's tool input."""
+
+    context: ModelMorningToolContext
 
 
 class ModelMorningRuntimeProbeResult(BaseModel):

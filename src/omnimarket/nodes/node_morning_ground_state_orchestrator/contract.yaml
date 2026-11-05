@@ -44,7 +44,7 @@ handler_routing:
       handler:
         name: HandlerMorningRuntimeProbe
         module: omnimarket.nodes.node_morning_ground_state_orchestrator.handlers.handler_morning_runtime_probe
-      input_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_runtime_probe.ModelMorningRuntimeProbeRequest
+      input_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_runtime_probe.ModelMorningRuntimeProbeCommand
       output_model: omnimarket.nodes.node_morning_ground_state_orchestrator.models.model_morning_runtime_probe.ModelMorningRuntimeProbeResult
 terminal_event: onex.evt.omnimarket.morning-ground-state-completed.v1
 terminal_events:
