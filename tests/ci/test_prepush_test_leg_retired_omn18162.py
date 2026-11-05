@@ -75,10 +75,20 @@ RETIRED_HOOK_ID = "prepush-smart-tests"
 # OMN-17427 moved the two whole-repo scans that ci.yml already runs on every PR
 # (direct model call, topic naming lint) from every commit to every push; neither
 # runs a test runner.
+# Residual non-test full-tree audits also run at push. Test-running audits
+# remain manual with a required CI twin, or retain their commit stage.
 EXPECTED_PRE_PUSH_HOOK_IDS: tuple[str, ...] = (
     "check-direct-model-call",
+    "handwritten-event-payload",
+    "no-literal-event-type-in-tests",
+    "projection-writer-contract",
     "topic-naming-lint",
+    "onex-validate-runtime-profiles",
+    "projection-typed-entry",
+    "migration-base-before-view",
     "ticket-contract-prerequisite",
+    "normalization-symmetry",
+    "workflow-module-refs",
     "mypy-type-check",
     "main-target-guard",
 )

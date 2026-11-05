@@ -38,13 +38,16 @@ uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 uv run python scripts/ci/check_node_metadata_dependencies.py
 ```
 
-## Pre-push runs no tests (retired 2026-09-10)
+## Commit and push checks
 
 The pre-push test leg was retired in this repo on 2026-09-10 under OMN-18162,
-phase 1 of the CI runner placement and pre-push retirement plan. Pre-push is now
-a strict mypy type check and nothing else, and finishes in seconds. Hosted CI is
-the enforced merge gate and the test surface. Run tests locally when you want
-them, with the commands above; nothing runs them for you at `git push`.
+phase 1 of the CI runner placement and pre-push retirement plan. Pre-push runs
+strict mypy and non-test full-tree validation hooks. It runs no test runner.
+Test-running audits with registered required CI twins are manual-only; the
+remaining test audits retain their commit stage. Staged-file checks stay at
+commit. CI-backed manual hooks retain their required CI jobs. Hosted CI is
+the enforced merge gate and the general test surface. Run feature tests locally
+with the commands above.
 
 The impacted-test selector itself is retained at
 `scripts/hooks/prepush_smart_tests.sh` for manual invocation. Rollback is a

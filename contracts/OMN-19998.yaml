@@ -133,6 +133,11 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-residual-hook-stage
+    statement: Residual non-test full-tree scans run at push; test-running audits use registered required CI homes or retain their commit stage, with commands and filename triggers unchanged.
+    acceptance:
+      - id: AC10
+        statement: 'Eight residual non-test scan hooks run only at pre-push, installed by default; five test audits are manual with required CI homes; ticket-contract-schema and single-arm-path-policy-gate stay at commit; no push hook runs tests -- falsifier: uv run --frozen pytest tests/ci/test_precommit_commit_budget.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -179,6 +184,15 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/test_ruling_recovery.py -q --no-cov -n 0 -k recorded_failed_mechanism
+        cwd: .
+  - id: dod-omn19998-residual-hook-stage
+    description: Pin eight non-test push audits and default push-hook installation, five additional manual audits with required CI homes, and two retained commit audits. The retirement suite separately enforces the unchanged ban on push test runners.
+    source: manual
+    binds_ac:
+      - AC10
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_precommit_commit_budget.py tests/ci/test_prepush_test_leg_retired_omn18162.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn19998-prepush-missing-base
     description: Replay the recorded exit-128 origin/dev resolution failure with a real single-branch clone and local git remote through the shipped CLI, including negative controls. This scoped hook proof does not assert the controller timer criteria.
@@ -536,4 +550,24 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-base-refusal
+    description: The recorded failing release-cut case retains its missing-contract refusal when the base is unreadable. The shipped hook adapter also refuses an unresolved local base with a valid contract and preserves the missing-contract message with an explicit title. This does not assert the original controller timer criteria.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-base-refusal-deploy
+    description: Hosted adapter smoke invokes the installed module in real worker clones with an unreadable local base, both with and without a contract. The valid-contract case refuses rather than accepting an unknown diff. Live committed-head host readback remains the publishing runner's responsibility.
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py -q --no-cov -n 0 -p no:randomly -k 'missing_local_base or explicit_title_preserves'
         cwd: .

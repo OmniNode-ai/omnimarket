@@ -1,6 +1,10 @@
 ---
 # ONEX Pre-commit Configuration — omnimarket
 #
+# Non-test full-tree scans run at pre-push; test-running audits with a
+# registered required CI twin run manually. Other test audits stay at commit.
+# Hook commands, filters and required CI enforcement are unchanged.
+#
 # Hooks:
 #   - ruff format + lint (check-only)
 #   - Check-only commit hooks (from omnibase_core: hook-writes, commit-hygiene)
@@ -631,7 +635,7 @@ repos:
         entry: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
         files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       - id: hook-projection-freshness
         name: Hook freshness alarm survives a shared projection outage (OMN-19513)
@@ -717,7 +721,7 @@ repos:
         entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
         files: ^(tests/.*\.py|src/omnimarket/nodes/node_projection_[^/]+/tests/.*\.py|src/omnimarket/nodes/node_handwritten_event_payload_check_effect/.*\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
       # the topic and deriving the event type proves the edge exists; hand-typing the
@@ -729,7 +733,7 @@ repos:
         entry: uv run python -m omnimarket.validators.no_literal_event_type_in_tests
         files: ^(tests/.*\.py|src/omnimarket/(validators/no_literal_event_type_in_tests\.py|testing/publisher_contract_fixture\.py))$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # OMN-18908: a projection exposure declares whether its key grain is immutable or
       # mutable, with no default, because a default is how the next handler inherits an
@@ -759,7 +763,7 @@ repos:
         entry: uv run python -m omnimarket.validators.projection_writer_contract
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/projection_writer_contract\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
@@ -1247,7 +1251,7 @@ repos:
         entry: uv run python scripts/ci/run_runtime_profiles_validator.py
         files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # OMN-15833: bare AIOKafkaConsumer/AIOKafkaProducer construction (zero auth
       # kwargs) silently connects PLAINTEXT against a SASL/IAM-only MSK broker —
@@ -1308,7 +1312,7 @@ repos:
         entry: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule typed-entry
         files: ^src/omnimarket/(nodes/.*/(contract\.yaml|.*\.py)|models/contract_projection_check/.*\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # OMN-14768 / F-11: renaming an OPEN PR's head branch closes the PR. Scan
       # the whole merge-controller tree whenever any of its files (or the gate
@@ -1459,7 +1463,7 @@ repos:
         entry: uv run python scripts/ci/check_migration_base_before_view.py
         files: ^(src/omnimarket/nodes/.*/migrations/.*\.sql|scripts/ci/check_migration_base_before_view\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # OMN-13290: backend secret-ref / credential-ref discipline gate. Fails if a
       # literal credential value (PEM key, service-account JSON, bearer/api-key)
@@ -1639,7 +1643,7 @@ repos:
         files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         require_serial: true
-        stages: [pre-commit]
+        stages: [manual]
       # SYNC with ci.yml's typed decision shadow calibration gate.
       - id: typed-decision-shadow-calibration
         name: Typed decision shadow calibration (OMN-19136)
@@ -1696,7 +1700,7 @@ repos:
         entry: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
         files: ^(\.github/workflows/[^/]+\.ya?ml|tests/ci/test_hostile_reviewer_voters_overlay_omn20910\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-20910: a contract's container check is a command on a PR writer with
       # no docker. SYNC with the ci.yml lint step "Container checks pass the
@@ -1707,7 +1711,7 @@ repos:
         entry: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
         files: ^(contracts/[^/]+\.yaml|src/omnimarket/nodes/node_dod_verify/services/(contract_prerequisite|evidence_collector)\.py|tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-17427: every ticket contract loads as omnibase_core's ModelTicketContract.
       # SYNC with ci.yml "Contract Compliance Check" and contract-validation.yml.
@@ -1727,7 +1731,7 @@ repos:
         entry: uv run pytest tests/ci/test_anthropic_key_prefix_workflows_omn20967.py -q -n 0
         files: ^(\.github/workflows/|tests/ci/test_anthropic_key_prefix_workflows_omn20967\.py$|\.pre-commit-config\.yaml$)
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [manual]
 
       # OMN-20601: the house routing-overlay write command has a producer and
       # the node contract declares its runtime profile. SYNC with the ci.yml
@@ -2373,6 +2377,7 @@ repos:
         entry: uv run python -m omnibase_core.nodes.node_normalization_symmetry_check_compute.runtime_normalization_symmetry_check
         language: system
         pass_filenames: false
+        stages: [pre-push]
 
 
       # OMN-11040: Dependency health gate — blocks new CRITICAL/MAJOR dependency
@@ -2419,7 +2424,7 @@ repos:
         entry: uv run python scripts/ci/check_workflow_module_refs.py
         files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/check_workflow_module_refs\.py)$
         pass_filenames: false
-        stages: [pre-commit]
+        stages: [pre-push]
 
       # Skip-token rejection gate (OMN-11412 / OMN-10414)
       # Blocks [skip-*] bypass tokens in staged markdown/yaml/txt files.
