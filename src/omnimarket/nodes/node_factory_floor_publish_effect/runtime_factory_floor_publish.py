@@ -123,23 +123,25 @@ def main(argv: list[str] | None = None) -> int:
         skip_refresh=a.skip_refresh,
         refresh_delegation=a.refresh_delegation,
     )
+    floor_refused = False
     try:
         result = HandlerFactoryFloorPublish().handle(request)
     except (PublishRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor-publish: {exc}\n")
-        return 2
-    for step in result.steps:
-        if step.status == "failed":
-            sys.stderr.write(
-                f"factory-floor-publish: step {step.name} failed ({step.detail}): {step.diagnostic}\n"
-            )
-    sys.stdout.write(
-        f"factory-floor-publish: published={','.join(result.published)} "
-        f"record={result.generated_at} sha256={result.data_sha256[:12]} "
-        f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
-    )
+        floor_refused = True
+    else:
+        for step in result.steps:
+            if step.status == "failed":
+                sys.stderr.write(
+                    f"factory-floor-publish: step {step.name} failed ({step.detail}): {step.diagnostic}\n"
+                )
+        sys.stdout.write(
+            f"factory-floor-publish: published={','.join(result.published)} "
+            f"record={result.generated_at} sha256={result.data_sha256[:12]} "
+            f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
+        )
     if a.skip_reports:
-        return 2 if gate_refused else 0
+        return 2 if gate_refused or floor_refused else 0
     try:
         reports = HandlerReportsPublish().handle(
             ModelReportsPublishRequest(home=a.registry_home)
@@ -152,4 +154,4 @@ def main(argv: list[str] | None = None) -> int:
         f"unread={','.join(reports.unread) or 'none'} manifest={reports.manifest_sha256[:12]} "
         f"index={reports.index_url}\n"
     )
-    return 2 if gate_refused else 0
+    return 2 if gate_refused or floor_refused else 0
