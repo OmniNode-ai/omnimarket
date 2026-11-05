@@ -44,6 +44,12 @@ handler_routing:
         name: "HandlerShadowReview"
         module: "omnimarket.nodes.node_shadow_review_effect.handlers.handler_shadow_review"
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_shadow_review_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: "onex.cmd.omnimarket.shadow-review-tick-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.shadow-review-tick-completed.v1"

@@ -42,6 +42,12 @@ event_bus:
     - onex.cmd.omnibase-infra.coding-agent-effect-invoke.v1
     - onex.cmd.omnibase-infra.coding-agent-workspace-validate.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via runtime_architecture_discovery_cli.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omnimarket.architecture-discovery-requested.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.architecture-discovery-completed.v1

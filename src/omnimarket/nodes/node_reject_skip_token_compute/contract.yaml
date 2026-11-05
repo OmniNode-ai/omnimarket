@@ -50,6 +50,12 @@ handler_routing:
         name: "HandlerRejectSkipToken"
         module: "omnimarket.nodes.node_reject_skip_token_compute.handlers.handler_reject_skip_token"
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_reject_skip_token_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.reject-skip-token-scan-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.reject-skip-token-scan-completed.v1"

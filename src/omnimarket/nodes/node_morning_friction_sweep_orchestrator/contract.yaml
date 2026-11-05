@@ -60,6 +60,12 @@ event_bus:
         timeout_seconds: 7200
         consumer_group_mode: per_instance
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_morning_friction_sweep_orchestrator
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   # The host scheduler (CLI dispatcher) is this node's producer; declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.morning-friction-sweep-start.v1
 

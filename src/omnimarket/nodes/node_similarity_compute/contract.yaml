@@ -27,6 +27,12 @@ output_model:
   description: "Distance, similarity, and optional is_match flag."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_similarity_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimemory.similarity-compute.v1
   terminal_events:
     success: onex.evt.omnimemory.similarity-compute-completed.v1

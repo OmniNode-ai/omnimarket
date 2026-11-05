@@ -72,4 +72,10 @@ metadata:
   transport_type: kafka
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegation_dod_verify_request_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.evt.omnimarket.delegate-skill-completed.v1

@@ -39,6 +39,13 @@ models:
     class: ModelDispatchQueueDrainerResult
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via skill dispatch_queue_drainer
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
+    automatic_required: true
   command_topic: onex.cmd.omnimarket.dispatch-queue-drain.v1
   terminal_events:
     success: onex.evt.omnimarket.dispatch-queue-drain-completed.v1

@@ -105,6 +105,12 @@ metadata:
     - compose
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_session_compose
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.session-compose.v1
 

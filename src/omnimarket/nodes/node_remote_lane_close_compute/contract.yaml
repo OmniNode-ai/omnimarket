@@ -41,6 +41,12 @@ event_bus:
   - onex.evt.omnimarket.remote-lane-close-decided.v1
 terminal_event: onex.evt.omnimarket.remote-lane-close-decided.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex_remote_lane.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omnimarket.remote-lane-close-requested.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.remote-lane-close-decided.v1

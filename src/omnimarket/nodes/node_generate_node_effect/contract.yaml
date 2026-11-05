@@ -58,6 +58,12 @@ metadata:
   related_tickets: ["OMN-12230", "OMN-12363"]
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via handler_contract_steps.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.generate-node-start.v1
 

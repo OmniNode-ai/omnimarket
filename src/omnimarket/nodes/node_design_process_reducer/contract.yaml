@@ -55,6 +55,12 @@ output_model:
 terminal_event: onex.evt.omnimarket.design-process-transitioned.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_design_process_reducer
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.design-process-transition-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.design-process-transitioned.v1

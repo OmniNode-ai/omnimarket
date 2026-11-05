@@ -50,6 +50,12 @@ outputs:
 # no events itself. Tier selection integration is a separate change.
 terminal_event: onex.evt.omnimarket.routing-complexity-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_routing_complexity_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.routing-complexity-requested.v1
 event_bus:
   subscribe_topics:

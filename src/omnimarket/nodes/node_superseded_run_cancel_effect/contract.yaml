@@ -47,6 +47,12 @@ operations:
 # `onex run-node` publishes the command and waits for the sweep-completed event;
 # the landing controller calls it once per repository each tick.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via skill landing-controller
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.superseded-run-sweep-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.superseded-run-sweep-completed.v1

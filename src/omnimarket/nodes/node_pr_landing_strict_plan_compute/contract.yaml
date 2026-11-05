@@ -57,6 +57,12 @@ handler_routing:
 # Addressable the way the other directly-invoked compute nodes are; the topics are
 # declared here and no caller publishes the command until the controller switches.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_pr_landing_strict_plan_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.pr-landing-strict-plan-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.pr-landing-strict-plan-completed.v1"

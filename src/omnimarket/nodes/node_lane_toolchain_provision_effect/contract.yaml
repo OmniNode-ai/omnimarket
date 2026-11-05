@@ -42,6 +42,12 @@ event_bus:
   publish_topics:
   - onex.evt.omnimarket.lane-toolchain-provision-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_lane_toolchain_provision_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.lane-toolchain-provision-requested.v1
 terminal_event: onex.evt.omnimarket.lane-toolchain-provision-completed.v1
 externally_consumed_topics:

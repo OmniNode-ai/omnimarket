@@ -69,6 +69,12 @@ event_bus:
     - onex.cmd.omniintelligence.extraction-verified.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_extraction_verify_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omniintelligence.extraction-verify-requested.v1
   terminal_events:
     success: onex.cmd.omniintelligence.extraction-verified.v1

@@ -26,6 +26,12 @@ output_model:
   description: "Updated persona snapshot with processing metadata."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_persona_builder_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimemory.persona-builder.v1
   terminal_events:
     success: onex.evt.omnimemory.persona-builder-completed.v1

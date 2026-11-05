@@ -46,6 +46,12 @@ descriptor:
 # OMN-15756, per the settled 15756/15763 split) — this node is invoked
 # directly via `onex run-node`, whose CLI dispatch target IS command_topic.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via handler_contract_steps.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omnimarket.seam-graph-requested.v1
 
 inputs:

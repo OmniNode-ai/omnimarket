@@ -86,7 +86,9 @@ def test_golden_chain_one_heartbeat_yields_one_sample_event() -> None:
     assert isinstance(event, ModelTopicActivitySampleEvent)
     assert event.total_topic_count == 2
     assert event.empty_topic_count == 1
-    (sample,) = event.topics
+    empty, sample = event.topics
+    assert empty.high_watermark_total == 0
+    assert empty.low_watermark_total == 0
     assert sample.topic == _HOOK_TOPIC
     assert sample.messages_last_hour == 70_000 - 68_791
     assert sample.messages_last_24h == 70_000 - 5_083

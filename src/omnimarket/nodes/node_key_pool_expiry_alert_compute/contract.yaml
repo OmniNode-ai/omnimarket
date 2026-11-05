@@ -51,6 +51,12 @@ outputs:
   alert: {type: object, required: false, nullable: true, description: "Null when no live key expires inside the window."}
 terminal_event: onex.evt.omnimarket.key-pool-expiry-alert-evaluated.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_key_pool_expiry_alert_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.key-pool-expiry-alert-requested.v1
 event_bus:
   subscribe_topics:

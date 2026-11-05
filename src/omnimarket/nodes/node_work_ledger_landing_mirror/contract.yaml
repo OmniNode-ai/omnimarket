@@ -32,6 +32,12 @@ descriptor:
 # and handler_routing absent prevents shared-runtime auto-wiring from racing
 # the ledger host. The topic is the landing decision node's success terminal.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_work_ledger_landing_mirror
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.evt.omnimarket.pr-landing-decision-completed.v1
   subscribe_topics:
     - onex.evt.omnimarket.pr-landing-decision-completed.v1

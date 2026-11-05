@@ -209,6 +209,12 @@ metadata:
 # The package reply no longer has a static topic, so the terminal declaration names the
 # activated receipt, the one static topic the node publishes (on install only).
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via topics.yaml
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omniintelligence.context-compaction-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.context-compaction-activated.v1

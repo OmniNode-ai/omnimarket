@@ -110,6 +110,12 @@ outputs:
 # event_bus.subscribe_topics/publish_topics here would fail the contract
 # topic-graph gate as an orphaned consumer/producer.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_report_anchor_probe_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimarket.report-anchor-probe-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.report-anchor-probe-completed.v1

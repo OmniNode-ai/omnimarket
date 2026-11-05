@@ -18,6 +18,12 @@ description: >
   is supplied by the caller.
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via handler_contract_steps.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omnimarket.event-chain-generator.v1
 
 terminal_event: onex.evt.omnimarket.event-chain-generator-completed.v1

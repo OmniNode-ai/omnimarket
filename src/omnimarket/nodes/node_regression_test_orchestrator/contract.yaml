@@ -109,4 +109,10 @@ metadata:
 # makes that reachability a fact in the contract instead of tribal knowledge, and lets a
 # golden chain build its input from the publisher side rather than hand-typing a topic.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_regression_test_orchestrator
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.regression-suite-start.v1

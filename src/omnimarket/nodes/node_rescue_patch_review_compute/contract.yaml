@@ -41,6 +41,12 @@ event_bus:
     - onex.evt.omnimarket.rescue-patch-review-decided.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_rescue_patch_review_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.rescue-patch-review-requested.v1
 
 externally_consumed_topics:

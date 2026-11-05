@@ -76,6 +76,12 @@ descriptor:
     - queries pull requests and commits
     - appends rows through the ledger writer
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_ledger_reconcile_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.ledger-reconcile-effect-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.ledger-reconcile-effect-completed.v1"

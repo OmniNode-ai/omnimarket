@@ -240,10 +240,9 @@ class HandlerTopicActivitySampler:
             )
         for topic in sorted(visible):
             sample = self._sample_topic(topic, visible[topic], sampled_at, offsets)
-            if sample is None:
+            if sample.high_watermark_total == sample.low_watermark_total:
                 empty_topic_count += 1
-            else:
-                samples.append(sample)
+            samples.append(sample)
 
         self._discard_missing_partition_cache(live_partition_keys)
         events = split_sample_events(
@@ -269,12 +268,11 @@ class HandlerTopicActivitySampler:
         partitions: tuple[int, ...],
         sampled_at: datetime,
         offsets: dict[tuple[str, int], PartitionOffsetSnapshot],
-    ) -> ModelTopicActivitySample | None:
+    ) -> ModelTopicActivitySample:
         high_total = 0
         low_total = 0
         last_hour = 0
         last_day = 0
-        newest_changed = False
         truncated = False
 
         for partition in partitions:
@@ -301,12 +299,8 @@ class HandlerTopicActivitySampler:
                 truncated = True
             self._low_watermarks[key] = low
 
-            if self._high_watermarks.get(key) != high:
-                newest_changed = True
             self._high_watermarks[key] = high
 
-        if high_total <= low_total:
-            return None
         cached_newest = [
             timestamp
             for (cached_topic, _), timestamp in self._newest_timestamps.items()
@@ -319,9 +313,7 @@ class HandlerTopicActivitySampler:
             messages_last_hour=last_hour,
             messages_last_24h=last_day,
             retention_truncated=truncated,
-            newest_message_at=(
-                max(cached_newest) if newest_changed and cached_newest else None
-            ),
+            newest_message_at=(max(cached_newest) if cached_newest else None),
         )
 
     def _discard_missing_partition_cache(

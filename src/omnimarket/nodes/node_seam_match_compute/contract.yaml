@@ -48,6 +48,12 @@ descriptor:
 # subscribe) is what makes the contract-topic-graph gate treat this as a
 # real CLI entry point instead of an accidental dead-consumer shape.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via handler_contract_steps.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omnimarket.seam-match-requested.v1
 
 inputs:

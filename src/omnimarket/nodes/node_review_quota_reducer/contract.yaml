@@ -58,6 +58,12 @@ handler_routing:
 # A producer asks before each covered model call; the decided event is what the
 # collection report counts admissions and refusals from.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_review_quota_reducer
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.review-quota-decide-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.review-quota-decided.v1"

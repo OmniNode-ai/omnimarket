@@ -9,9 +9,8 @@
 # operation, its canonical `shape` or the named `gap` that stands in for one (a seam with a gap
 # reads as unbound), and, where it has one, `bound_minutes`.
 #
-# This task writes the contract and a pure handler that lists the seam readings in line order;
-# walking the graph and the node that gathers the facts arrive with the tasks that read the
-# seams, so this node has no topic yet.
+# HandlerSeamReadPlan remains the pure planner. The standing command census is
+# triggered by the existing broker sampler; the runtime publishes its typed facts.
 #
 # The graph is not the `seams:` declaration that node_seam_graph_compute extracts or the
 # projection that node_seam_match_compute compares: those are code seams between repositories
@@ -27,8 +26,12 @@ lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Read every seam of the factory line from backlog to running, in line order. The execution
-  graph below is the registry of the line: 14 seam readings between 13 stations and the backlog.
+  On each complete broker sampler observation, join loaded command subscriptions,
+  hash-matched installed invocation declarations, rooted publisher paths and the
+  existing activity projection's last-known timestamps. Publish bounded command
+  seam facts for the existing seam reading compute node. The pure planner still
+  lists the 14 factory-line seams below; this census does not assert handler
+  execution, durable results or seven-day absence from publication timestamps.
 
 descriptor:
   node_archetype: orchestrator
@@ -37,21 +40,41 @@ descriptor:
   timeout_ms: 60000
 
 handler:
-  module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_seam_read_plan
-  class: HandlerSeamReadPlan
-  input_model: omnimarket.nodes.node_seam_read_orchestrator.models.model_seam_read_plan.ModelSeamReadPlanRequest
+  module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_command_seam_census
+  class: HandlerCommandSeamCensus
+  input_model: omnimarket.events.topic_activity.ModelTopicActivitySampleEvent
 
-# Bindings: the event bus and the clock. The seam readers it calls take facts and `now` and
-# depend on no protocol.
-protocol_dependencies:
-  - name: BUS
-    protocol: omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus
-    bind_as: bus
-    required: true
-  - name: CLK
-    protocol: omnimarket.protocols.protocol_clock:ProtocolClock
-    bind_as: clock
-    required: true
+input_model: omnimarket.events.topic_activity.ModelTopicActivitySampleEvent
+
+handler_routing:
+  routing_strategy: topic_pattern
+  handlers:
+    - operation: command_seam_census
+      topic: onex.evt.omnimarket.topic-activity-sampled.v1
+      handler:
+        name: HandlerCommandSeamCensus
+        module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_command_seam_census
+      event_model:
+        name: ModelTopicActivitySampleEvent
+        module: omnimarket.events.topic_activity
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.topic-activity-sampled.v1
+  publish_topics:
+    - onex.evt.omnimarket.command-seam-facts.v1
+
+published_events:
+  - event_type: ModelCommandSeamFacts
+    topic: onex.evt.omnimarket.command-seam-facts.v1
+
+terminal_event: onex.evt.omnimarket.command-seam-facts.v1
+
+deployment_overlay:
+  model: omnimarket.models.model_command_seam.ModelCommandSeamOverlay
+  root_environment: ONEX_SKILL_OVERLAY_ROOTS
+  example: overlay.example.yaml
+  required: true
 
 workflow_coordination:
   workflow_definition:
@@ -197,4 +220,4 @@ config:
 
 metadata:
   ticket: OMN-21459
-  transport_type: inmemory
+  transport_type: kafka

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_seam_read_orchestrator
 version: 1.0.0
-description: The factory line as a graph contract - every station and every seam reading, backlog to running.
+description: Standing command-publication census driven by the existing topic sampler, alongside the pure factory-line planner.
 pack: operator_tooling
 node_role: orchestrator
 display_name: Seam Read Orchestrator
@@ -12,14 +12,17 @@ entry_points:
     node_seam_read_orchestrator: omnimarket.nodes.node_seam_read_orchestrator
 capabilities:
   standalone: true
-  full_runtime: false
-  requires_network: false
+  full_runtime: true
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: none
+  side_effect_class: read_only
 dependencies:
 - pyyaml>=6.0
+- pydantic>=2.0
+- httpx>=0.27
+- omnibase-core>=0.47.62
 authors:
 - OmniNode Platform Team
 license: MIT

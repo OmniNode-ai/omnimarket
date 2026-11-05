@@ -13,6 +13,12 @@ descriptor:
   timeout_ms: 5000
   runtime_profiles: [effects]
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_context_source_repo_doctrine_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.context-source-repo-doctrine-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.context-source-repo-doctrine-completed.v1

@@ -75,6 +75,12 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.lab-job-checked.v1
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: schedule_or_hook
+    sender: node_lab_job_check_schedule_compute
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/schedule or hook
   command_topic: onex.cmd.omnimarket.lab-job-check-requested.v1
 # The orchestrator (plan M3) subscribes to this; until it exists the topic leaves the graph here.
 externally_consumed_topics:

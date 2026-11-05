@@ -69,6 +69,12 @@ outputs:
   fingerprint:
     type: str
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_pytest_failure_digest_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.pytest-failure-digest-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.pytest-failure-digest-completed.v1"

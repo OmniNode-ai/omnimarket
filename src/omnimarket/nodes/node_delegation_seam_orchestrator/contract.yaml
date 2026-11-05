@@ -46,6 +46,12 @@ output_model:
 terminal_event: onex.evt.omnimarket.delegation-seam-reads-planned.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegation_seam_orchestrator
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.delegation-seam-reads-plan-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.delegation-seam-reads-planned.v1

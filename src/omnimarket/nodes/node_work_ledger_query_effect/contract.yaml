@@ -10,6 +10,12 @@ node_version: {major: 1, minor: 2, patch: 0}
 runtime_profiles: [main]
 runtime_lanes: [compose-dev, onex-lab, onex-lab-k3s]
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: work_ledger_query_client
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.work-ledger-query-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.work-ledger-query-completed.v1

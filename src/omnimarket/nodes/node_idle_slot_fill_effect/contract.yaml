@@ -73,6 +73,12 @@ handler_routing:
       module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill
 terminal_event: onex.evt.omnimarket.idle-slot-fill-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_idle_slot_fill_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimarket.idle-slot-fill-requested.v1
 descriptor:
   node_archetype: effect

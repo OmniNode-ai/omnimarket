@@ -62,6 +62,12 @@ event_bus:
 metadata:
   transport_type: kafka
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_standup_draft_check_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.standup-draft-check-requested.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.standup-draft-checked.v1

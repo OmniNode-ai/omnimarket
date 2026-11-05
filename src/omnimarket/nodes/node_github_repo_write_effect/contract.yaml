@@ -211,6 +211,12 @@ handler_routing:
 terminal_event: onex.evt.omnimarket.github-repo-write-completed.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via handler_scm_dispatch.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   # The CLI/skill dispatcher (slice 2, onex scm) is this node's producer.
   command_topic: onex.cmd.omnimarket.github-repo-write-requested.v1
   # ModelRepoWriteFailed carries terminal_failure_cause, so the runtime's

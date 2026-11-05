@@ -115,6 +115,12 @@ outputs:
   value: {type: str}
 terminal_event: onex.evt.omnimarket.entrypoint-lib-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_entrypoint_lib_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimarket.entrypoint-lib-requested.v1
 event_bus:
   subscribe_topics:

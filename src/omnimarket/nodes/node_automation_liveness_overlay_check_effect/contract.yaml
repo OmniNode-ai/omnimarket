@@ -50,6 +50,13 @@ event_bus:
 
 terminal_event: onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_automation_liveness_overlay_check_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
+    automatic_required: true
   command_topic: onex.cmd.omnimarket.automation-liveness-overlay-check-run-requested.v1
   external_trigger: "The onex-automation-liveness-check console script builds the request from its flags and prints the result."
 externally_consumed_topics: [onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1]

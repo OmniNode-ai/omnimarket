@@ -244,4 +244,6 @@ def test_the_contract_publishes_the_rendered_event_on_its_terminal_topic() -> No
         )
     )
     assert raw["terminal_event"] == "onex.evt.omnimarket.seam-reading-rendered.v1"
-    assert raw["event_bus"]["publish_topics"] == [raw["terminal_event"]]
+    assert raw["terminal_event"] in raw["event_bus"]["publish_topics"]
+    routes = {row["event_type"]: row["topic"] for row in raw["published_events"]}
+    assert routes["ModelSeamReadingResult"] == raw["terminal_event"]

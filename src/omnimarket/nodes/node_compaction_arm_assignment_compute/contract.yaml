@@ -35,6 +35,12 @@ descriptor:
   timeout_ms: 5000
 terminal_event: onex.evt.omnimarket.compaction-arms-assigned.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_compaction_arm_assignment_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.compaction-arms-assign.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.compaction-arms-assign.v1]

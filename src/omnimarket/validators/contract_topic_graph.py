@@ -1,104 +1,24 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Static contract topic graph — the producer/consumer oracle (OMN-14527).
+"""Static producer/consumer contract graph, hard-scoped with no baseline.
 
-Every runtime wiring check the platform had before this asked the RUNTIME
-"are you alive?" -- consumer groups, row counts, wiring reports. That diagnoses
-from the effect side, one node at a time, and it only ever sees nodes that
-someone remembered to look at.
+Contract edges cover all GRAPH_PACKAGES; only ACTIVE_RUNTIME_PACKAGES can be
+runtime-loaded and defect-checked. build_graph fails closed on missing roots.
+Installed packages resolve through importlib; checkout-tier packages are read
+as YAML under CONTRACT_GRAPH_CHECKOUT_ROOT, without importing their code.
 
-This asks the opposite, and it asks it of every node at once:
+A command target proves dispatchability. Without a contract/external producer,
+reachability additionally requires runtime_dispatch.invocation naming an
+automatic sender or an explicit on_demand human/skill and its reason. Existing
+interfaces carry this same declaration; no blanket default or baseline applies.
+On-demand reachability does not establish automatic operation or execution.
 
-    who is SUPPOSED to talk to whom -- and do they?
+ORPHANED_CONSUMER, ORPHANED_PRODUCER, DECLARED_BUT_UNWIRED and disconnected
+component checks remain conjoined. Scope fences remain owned, exact and
+self-removing when their finding clears. The existing gate and hook are unchanged.
 
-Nodes are contracts. Edges are topics. A producer declares ``publish_topics``;
-a consumer declares ``subscribe_topics``. An edge exists when the topic names
-match. Everything below falls out of that one relation, statically, with no
-broker and no deploy.
-
-The motivating defect (OMN-14134 / 13532 / 4828 / 13989 / 13997 -- five merged,
-CI-green, ``Done`` tickets that were 100% runtime no-ops):
-``node_ledger_write_effect`` has a fully wired ``handler_routing``
-(HandlerLedgerAppend + HandlerLedgerQuery, topic-routed) and subscribes to
-``onex.cmd.platform.ledger-append.v1``. No contract anywhere publishes that
-topic, and the node declares no ``runtime_dispatch`` entry point -- so there is
-no producer and no CLI dispatch path. The handler was alive, healthy, and
-starved for its entire life. Five green CI runs never noticed, because CI was
-never asked this question.
-
-Soundness requires the WHOLE graph -- and "whole" serves two different jobs
-----------------------------------------------------------------------------
-A partial graph invents false orphans: a topic whose producer lives in a repo
-you cannot see looks exactly like a topic nobody produces. That constraint
-means two different things depending on what the graph is being asked:
-
-1. **Defect-flagging soundness.** Per ``omnibase_infra/docker/runtime-policy.env``
-   the runtime only ever loads ``ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket``
-   (:data:`ACTIVE_RUNTIME_PACKAGES`), and omnimarket is the only repo that
-   depends on omnibase_infra -- so omnimarket's CI is where THOSE two packages'
-   nodes can be soundly flagged ``runtime_loaded`` and defect-checked.
-   :func:`build_graph` FAILS CLOSED if either is missing.
-2. **Census / edge-visibility completeness.** A topic produced only by a
-   package outside the graph looks exactly like an orphan to every consumer
-   the graph CAN see -- regardless of whether that outside package is itself
-   runtime-loaded. OMN-14527 shipped with only 3 of the ~9 topic-declaring
-   repos in :data:`GRAPH_PACKAGES` (``omnibase_infra``, ``omnibase_core``,
-   ``omnimarket``), which left ~410 of ~1,491 statically-declared topics
-   invisible (``omniclaude``, ``omniintelligence``) -- OMN-14568 closed that
-   gap. Packages added for census completeness are NEVER added to
-   :data:`ACTIVE_RUNTIME_PACKAGES`; they contribute producer/consumer edges
-   only and are never eligible for ``runtime_loaded`` / defect-flagging.
-
-:func:`discover_contract_roots` resolves :data:`ACTIVE_RUNTIME_PACKAGES` and
-the rest of the already-installed :data:`GRAPH_PACKAGES` from installed
-distributions (the same way ``runtime_host_process`` does -- these are all
-pip/uv dependencies of omnimarket, so CI pays nothing extra for them).
-``omniclaude`` and ``omniintelligence`` are NOT pip dependencies of
-omnimarket -- adding them as such would invert the repo-layering (omnimarket
-owns portable workflow packages; omniclaude is a Claude Code agent plugin)
-purely to read YAML text out of packaged ``contract.yaml`` files. Since
-:func:`parse_contract` only ever reads YAML -- it never imports or executes
-the package -- a checked-out source tree is sufficient. Those two resolve via
-``CONTRACT_GRAPH_CHECKOUT_ROOT``, an env var pointing at a directory
-containing a checkout of each (see :func:`discover_contract_roots`).
-:func:`build_graph` FAILS CLOSED if ANY package in :data:`GRAPH_PACKAGES` --
-installed or checkout-tier -- cannot be resolved, rather than silently
-reporting a smaller graph as clean. A silent partial is exactly how this
-census went blind the first time.
-
-HARD mode, zero baseline, scoped per repo
------------------------------------------
-There is NO baseline file and no flag that can write one. Every defect owned by
-a ``--scope`` package is a hard failure that must be fixed IN THE CONTRACT:
-give the topic a publisher, give it a subscriber, or declare the edge
-explicitly (``event_bus.externally_consumed_topics`` on the publish side,
-``externally_produced_topics`` on the subscribe side -- which must NAME the
-producer -- ``runtime_dispatch.command_topic``, or
-``runtime_dispatch.external_trigger``).
-
-What makes that survivable without a baseline is ``--scope``, which is
-REQUIRED. The graph is still built from every package (a partial graph invents
-false orphans), but only defects OWNED by a scoped package are judged; the rest
-contribute edges only. That is what lets one repo be closed while another is
-still dirty -- without it no repo could turn the gate hard until every repo had.
-
-The one softening surface is :data:`SCOPE_FENCE`, and it is deliberately not a
-baseline: it lives in CODE, every entry names an owner and a reason, and a fence
-entry that stops matching any defect FAILS the gate instead of sitting there
-(see :func:`_evaluate_fence`). A baseline rots silently; this one forces its own
-removal the moment its blocker clears.
-
-Usage::
-
-    # gate -- HARD, --scope is required and repeatable
+Usage: env -u PYTHONPATH CONTRACT_GRAPH_CHECKOUT_ROOT=/path/to/checkouts \
     python -m omnimarket.validators.contract_topic_graph --scope omnimarket
-    python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report
-
-    # Full coverage requires the checkout-tier packages (see CHECKOUT_PACKAGES).
-    # Also run with `env -u PYTHONPATH`: an ambient PYTHONPATH reroutes package
-    # resolution away from the pinned wheels and the gate refuses to run.
-    CONTRACT_GRAPH_CHECKOUT_ROOT=/path/to/checkouts \\
-        python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report
 """
 
 from __future__ import annotations
@@ -114,6 +34,8 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.models.model_command_invocation import ModelCommandInvocation
 
 # The active runtime surface (omnibase_infra/docker/runtime-policy.env:64).
 # These are the packages whose contracts the runtime host actually loads, and
@@ -188,6 +110,7 @@ class ModelContractNode(BaseModel):
     publish_topics: tuple[str, ...] = ()
     subscribe_topics: tuple[str, ...] = ()
     command_topic: str | None = None
+    invocation: ModelCommandInvocation | None = None
     terminal_topics: tuple[str, ...] = ()
     externally_consumed: tuple[str, ...] = ()
     # OMN-18013: the mirror of externally_consumed, on the PRODUCE side, and the
@@ -264,14 +187,16 @@ class ModelTopicGraph(BaseModel):
         return out
 
     def is_reachable(self, topic: str) -> bool:
-        """Can anything, anywhere, ever put a message on this topic?"""
+        """Is there a producer or an explicit named invocation policy?"""
         if self.producers.get(topic):
             return True
         if topic in self.external_producers:
             return True
-        # A node's runtime_dispatch.command_topic is the CLI's publish target,
-        # so declaring one IS an entry point even with no contract producer.
-        return any(n.command_topic == topic for n in self.nodes)
+        # An address only proves dispatchability. Its contract must also name
+        # the automatic sender or explicitly retain an on-demand interface.
+        return any(
+            n.command_topic == topic and n.invocation is not None for n in self.nodes
+        )
 
 
 def _collect_topics(value: object) -> list[str]:
@@ -478,6 +403,13 @@ def parse_contract(
         publish_topics=tuple(sorted(set(published))),
         subscribe_topics=tuple(sorted(set(subscribed))),
         command_topic=command_topic,
+        invocation=(
+            ModelCommandInvocation.model_validate(
+                _dig(data, "runtime_dispatch", "invocation")
+            )
+            if _dig(data, "runtime_dispatch", "invocation") is not None
+            else None
+        ),
         terminal_topics=terminal_topics,
         externally_consumed=tuple(
             sorted(set(_collect_topics(data.get("externally_consumed_topics"))))
@@ -740,8 +672,8 @@ def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
                     package=consumer_node.package,
                     detail=(
                         "subscribes to a topic that NO contract publishes, that is not "
-                        "declared as an external producer, and that is no node's "
-                        "runtime_dispatch.command_topic — nothing can ever send it a message"
+                        "declared as an external producer, and has no command target "
+                        "with a named automatic or explicit on_demand sender"
                     ),
                 )
             )
@@ -877,7 +809,10 @@ def _find_disconnected_subgraphs(
             member_node = member_candidates[0] if member_candidates else None
             if member_node is None:
                 continue
-            if member_node.command_topic is not None:
+            if (
+                member_node.command_topic is not None
+                and member_node.invocation is not None
+            ):
                 has_entry = True
                 break
             # OMN-14591: an on-demand ingress root -- no subscriptions to ever
@@ -1168,7 +1103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "give the topic a publisher, give it a subscriber, or declare the edge",
             "explicitly -- event_bus.externally_consumed_topics (publish side),",
             "externally_produced_topics (subscribe side, must NAME the producer),",
-            "runtime_dispatch.command_topic, or runtime_dispatch.external_trigger.",
+            "a named runtime_dispatch.invocation, or a declared external trigger.",
             "",
         ]
         for finding in unfenced:

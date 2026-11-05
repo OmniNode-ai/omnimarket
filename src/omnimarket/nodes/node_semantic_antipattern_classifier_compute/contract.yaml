@@ -69,5 +69,11 @@ metadata:
   transport_type: kafka
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_semantic_antipattern_validator_orchestrator
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.antipattern-classify.v1

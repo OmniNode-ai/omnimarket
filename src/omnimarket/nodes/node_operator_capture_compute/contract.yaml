@@ -35,6 +35,12 @@ output_model:
   module: "omnimarket.models.operator_capture"
   description: "The message's items, who classified them and why."
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_operator_capture_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.operator-capture-decision-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.operator-capture-decision-completed.v1"

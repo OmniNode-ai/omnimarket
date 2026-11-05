@@ -55,6 +55,12 @@ handler_routing:
 # The harness rung of the escalation chain publishes the command before it runs a GLM call; the evaluated
 # event is what the liveness projection shows (allowance left, GLM skipped and why).
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_glm_allowance_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.glm-allowance-evaluate-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.glm-allowance-evaluated.v1"

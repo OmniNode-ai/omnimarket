@@ -59,6 +59,12 @@ metadata:
   transport_type: inmemory
 terminal_event: onex.evt.omnimarket.handwritten-event-payload-check-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_handwritten_event_payload_check_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.handwritten-event-payload-check-requested.v1
 event_bus:
   subscribe_topics:

@@ -1,10 +1,10 @@
 schema_version: 1.0.0
 ticket_id: OMN-19998
-title: A plain ledger append names no optional field it does not use
-summary: Ledger append requests omit optional fields whose value is None, so an older host can validate a plain append from a newer writer. Set fields remain on the wire and are refused by a host that cannot honor them. Queued requests and the bus caller use the same serialization. Earlier heal-read retry criteria and evidence remain unchanged.
+title: Explicit command senders and standing command seam readings
+summary: The existing seam reader consumes the running sampler, joins loaded contracts and historical topic activity, and publishes bounded command-publication readings. Command targets require a named automatic sender or an explicit on-demand policy. Earlier requirements and evidence remain unchanged; the original controller timer criteria are not asserted by this slice.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched: [public_api]
 requirements:
   - id: req-omn19998-heal-read-retry
     statement: A heal read answered with a gateway error is retried a bounded number of times, and nothing else is.
@@ -128,6 +128,21 @@ requirements:
     acceptance:
       - id: AC12
         statement: 'AC12: declared reader globs preserve cited old details, unreadable or changing readers prevent removal, and the shipped cleanup node reports cited units kept and uncited units eligible -- falsifier: uv run --frozen pytest tests/nodes/test_omn17427_file_retention.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-command-invocation-policy
+    statement: A runtime command address alone never establishes a sender.
+    acceptance:
+      - id: AC13
+        statement: 'The recorded review target without a sender is orphaned; an explicit named on-demand policy and a real contract publisher remain reachable, and malformed policies fail closed.'
+  - id: req-omn19998-standing-command-seams
+    statement: Existing seam nodes consume the broker sampler and publish scoped, expiring command-publication readings.
+    acceptance:
+      - id: AC14
+        statement: 'The runtime typed dispatch adapter carries sampler input to census facts and per-command readings on contract-declared output routes; an untriggered publisher cycle supplies no automatic root and stale or unreadable sources remain unknown.'
+  - id: req-omn19998-empty-topic-observation
+    statement: Empty logs and retained historical timestamps are distinct observations.
+    acceptance:
+      - id: AC15
+        statement: 'Empty topics retain explicit observed offsets, unchanged topics retain cached crossing timestamps, and projection history preserves a labelled last-known crossing without asserting handler execution or seven-day absence.'
 evidence_requirements:
   - kind: tests
     description: The registered plan-state tool reads a Git directory larger than the command-report tail before applying the requested date window and pagination.
@@ -509,4 +524,28 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_phoenix_timer_environment.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-command-invocation-policy
+    description: Recorded review-case regression was red before the rule change. This scoped static proof does not assert host installation or the original landing-controller criteria.
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/validators/test_command_sender.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-standing-command-seams
+    description: Runtime discovery, typed payload adaptation, multipart assembly, rooted publication and stale/error readings through the existing seam handlers. No external service or live installation is asserted by this hosted smoke.
+    source: manual
+    binds_ac: [AC14, AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_seam_read_orchestrator/test_golden_chain_command_census.py -q --no-cov
+        cwd: .
+  - id: dod-omn19998-empty-topic-observation
+    description: Focused broker sampler checks with a hermetic reader preserve observed empty offsets and cached last timestamps. This is no negative seven-day history claim.
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_omn19716_topic_activity_sampler.py -q --no-cov
         cwd: .

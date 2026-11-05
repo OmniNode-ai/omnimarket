@@ -52,6 +52,12 @@ event_bus:
   publish_topics:
     - onex.cmd.omniintelligence.tool-result-reduce-compute-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_tool_result_reduce_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omniintelligence.tool-result-reduce-compute-requested.v1
   terminal_events:
     success: onex.cmd.omniintelligence.tool-result-reduce-compute-completed.v1

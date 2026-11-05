@@ -103,7 +103,14 @@ def test_healthy_producer_consumer_pair_is_clean(tmp_path: Path) -> None:
         "node_emitter",
         {
             "name": "node_emitter",
-            "runtime_dispatch": {"command_topic": "onex.cmd.omnimarket.emit.v1"},
+            "runtime_dispatch": {
+                "command_topic": "onex.cmd.omnimarket.emit.v1",
+                "invocation": {
+                    "mode": "on_demand",
+                    "sender": "test operator via emit skill",
+                    "reason": "Explicit manual entry for the healthy fixture.",
+                },
+            },
             "event_bus": {"publish_topics": ["onex.evt.omnimarket.thing-happened.v1"]},
             "handler_routing": {
                 "handlers": [

@@ -62,6 +62,12 @@ outputs:
   reason:
     type: str
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegated_test_control_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.delegated-test-control-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.delegated-test-control-completed.v1"

@@ -75,5 +75,11 @@ metadata:
     - "OMN-12130"
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_handler_correctness_gate
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.handler-correctness-check.v1

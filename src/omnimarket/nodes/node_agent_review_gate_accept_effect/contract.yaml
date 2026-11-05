@@ -74,6 +74,12 @@ config:
         - '^could not read the served model id from \S+: (?:HTTP Error (?:502|503|504): |<urlopen error \[Errno \d+\] (?:Connection refused|No route to host|Network is unreachable|Connection reset by peer)>\. |<urlopen error timed out>\. |timed out\. |\[Errno \d+\] Connection reset by peer\. |Remote end closed connection without response\. )'
 terminal_event: onex.evt.omnimarket.agent-review-gate-accept-decided.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_agent_review_gate_accept_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.agent-review-gate-accept-requested.v1
 event_bus:
   subscribe_topics:

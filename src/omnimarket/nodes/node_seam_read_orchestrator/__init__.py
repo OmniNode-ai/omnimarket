@@ -1,6 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""node_seam_read_orchestrator: the factory line graph contract (OMN-21459).
+"""Standing command census alongside the factory-line seam plan."""
 
-Contract only; the handler that walks the graph arrives with the seam reader tasks.
-"""
+from omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_command_seam_census import (
+    HandlerCommandSeamCensus,
+)
+
+__all__ = ["HandlerCommandSeamCensus", "NodeSeamReadOrchestrator"]
+
+
+class NodeSeamReadOrchestrator(HandlerCommandSeamCensus):
+    """Declarative runtime entry point; the contract owns its trigger and routes."""

@@ -31,6 +31,12 @@ output_model:
   description: "Embedding, entities, topics, scores, and metadata."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_semantic_analyzer_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimemory.semantic-analyzer.v1
   terminal_events:
     success: onex.evt.omnimemory.semantic-analyzer-completed.v1

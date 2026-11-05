@@ -54,6 +54,12 @@ handler_routing:
 # The harness delegate publishes the command after each run; the terminal event carries the usage and,
 # when the run met a cap refusal, the refusal, which is what the liveness projection shows.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_glm_usage_record_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.glm-usage-record-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.glm-usage-recorded.v1"

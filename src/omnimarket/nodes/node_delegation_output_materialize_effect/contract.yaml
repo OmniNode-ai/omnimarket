@@ -42,6 +42,12 @@ handler_routing:
         name: "HandlerDelegationOutputMaterialize"
         module: "omnimarket.nodes.node_delegation_output_materialize_effect.handlers.handler_delegation_output_materialize"
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegation_output_materialize_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.delegation-output-materialize-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.delegation-output-materialize-completed.v1"

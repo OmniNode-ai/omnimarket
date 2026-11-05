@@ -56,6 +56,12 @@ descriptor:
   idempotent: true
   timeout_ms: 320000
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_dev_cause_lane_receiver_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.dev-cause-lane-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.dev-cause-lane-start-completed.v1"

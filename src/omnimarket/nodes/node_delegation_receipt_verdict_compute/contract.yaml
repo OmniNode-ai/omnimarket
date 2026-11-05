@@ -37,6 +37,13 @@ descriptor:
   idempotent: true
   timeout_ms: 500
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegation_receipt_verdict_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
+    automatic_required: true
   command_topic: onex.cmd.omnimarket.delegation-receipt-verdict-requested.v1
 event_bus:
   subscribe_topics:

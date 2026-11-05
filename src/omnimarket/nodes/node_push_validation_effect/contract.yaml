@@ -212,6 +212,12 @@ handler_routing:
 # submission path, plan §3.3e.4); its command/terminal topics are declared
 # in event_bus below, which is what the generic runtime consumes.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_push_validation_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: "onex.cmd.omnimarket.push-validation-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.push-validation-completed.v1"

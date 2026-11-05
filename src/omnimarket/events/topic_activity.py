@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelTopicActivitySample(BaseModel):
-    """One non-empty broker topic observed at one sample time."""
+    """One observed broker topic, including an empty log."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

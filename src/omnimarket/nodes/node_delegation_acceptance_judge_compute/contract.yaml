@@ -144,6 +144,12 @@ metadata:
   transport_type: kafka
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_delegation_acceptance_judge_request_compute
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1
 
 externally_consumed_topics:

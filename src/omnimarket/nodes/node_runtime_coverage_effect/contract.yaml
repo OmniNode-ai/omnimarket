@@ -40,6 +40,12 @@ event_bus:
   - onex.evt.omnimarket.runtime-coverage-effect-completed.v1
 terminal_event: onex.evt.omnimarket.runtime-coverage-effect-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_runtime_coverage_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.runtime-coverage-effect-requested.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.runtime-coverage-effect-completed.v1

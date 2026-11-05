@@ -72,6 +72,12 @@ outputs:
   need_exists: {type: list}
 terminal_event: onex.evt.omnimarket.skill-exec-decision-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_skill_exec_decision_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.skill-exec-decision-requested.v1
 event_bus:
   subscribe_topics:

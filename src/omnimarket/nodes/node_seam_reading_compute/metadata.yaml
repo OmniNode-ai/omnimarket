@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_seam_reading_compute
 version: 1.0.0
-description: Render seam readings as SEAM lines and verdict lines, unknown for an empty, unreadable or under-minimum window.
+description: Classify standing command-publication facts and render supplied factory-line seam readings.
 pack: operator_tooling
 node_role: compute
 display_name: Seam Reading Compute
@@ -12,7 +12,7 @@ entry_points:
     node_seam_reading_compute: omnimarket.nodes.node_seam_reading_compute
 capabilities:
   standalone: true
-  full_runtime: false
+  full_runtime: true
   requires_network: false
   requires_repo: false
   requires_secrets: false

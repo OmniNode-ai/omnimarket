@@ -78,6 +78,12 @@ metadata:
   transport_type: kafka
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: schedule_or_hook
+    sender: node_audit_trail_compact_schedule_compute
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/schedule or hook
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.audit-trail-compact.v1
 

@@ -52,6 +52,12 @@ handler_routing:
         name: "HandlerPrLandingTickObserve"
         module: "omnimarket.nodes.node_pr_landing_tick_observe_compute.handlers.handler_pr_landing_tick_observe"
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_pr_landing_tick_observe_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.pr-landing-tick-observe-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.pr-landing-tick-observe-completed.v1"

@@ -72,6 +72,13 @@ endpoints:
     description: "Slack Web API chat.postMessage endpoint."
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: schedule_or_hook
+    sender: capture_silence_watch_effect, consumer_flow_stall_alert_effect, host_reconcile_effect, node_lab_sli_alert_effect,
+      node_work_progress_alert_effect, projection_freshness_alert_effect
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/schedule or hook
   command_topic: onex.cmd.omnimarket.slack-publish.v1
   terminal_events:
     success: onex.evt.omnimarket.slack-published.v1

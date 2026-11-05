@@ -63,6 +63,12 @@ event_bus:
     - onex.evt.omnimarket.automation-liveness-watchdog-evaluated.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_automation_liveness_watchdog_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.automation-liveness-watchdog-evaluate-requested.v1
 
 # The effect half consumes the evaluated result and publishes the seam's

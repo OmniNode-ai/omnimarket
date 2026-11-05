@@ -203,6 +203,12 @@ config:
       offset_seconds: 600
 terminal_event: onex.evt.omnimarket.lab-fill-plan-decided.v1
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_lab_fill_orchestrator
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.lab-fill-plan-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.lab-fill-plan-decided.v1

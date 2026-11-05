@@ -67,6 +67,12 @@ descriptor:
     - effects
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_house_routing_overlay_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.house-routing-overlay-write.v1
   terminal_events:
     success: onex.evt.omnimarket.house-routing-overlay-written.v1

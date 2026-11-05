@@ -35,6 +35,12 @@ handler_routing:
         module: omnimarket.nodes.node_code_edit_scope_compute.handler
 terminal_event: onex.evt.omnimarket.code-edit-scope-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_code_edit_scope_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimarket.code-edit-scope-requested.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.code-edit-scope-requested.v1]

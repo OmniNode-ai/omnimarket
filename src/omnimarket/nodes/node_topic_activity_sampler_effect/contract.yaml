@@ -35,7 +35,7 @@ golden_path:
   - "Consume the existing runtime heartbeat as a clock carrier"
   - "Throttle to the contract-declared sample interval with monotonic process-local state"
   - "Read broker metadata and offsets with the runtime Kafka configuration and auth builder"
-  - "Skip internal and empty topics, and publish one or more bounded typed sample parts"
+  - "Skip internal topics, record empty observations, and publish one or more bounded typed sample parts"
   - "The projection reducer consumes every part and materializes topic_activity"
 
 dod_evidence:

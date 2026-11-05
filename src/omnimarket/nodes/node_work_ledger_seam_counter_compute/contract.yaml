@@ -68,6 +68,12 @@ terminal_event: onex.evt.omnimarket.work-ledger-seam-counted.v1
 externally_consumed_topics:
 - onex.evt.omnimarket.work-ledger-seam-counted.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_work_ledger_seam_counter_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimarket.work-ledger-seam-count.v1
   external_trigger: A seam-count command with a window, from the parity probe on the bus or in process;
     sources and publisher are injected by keyword or resolved from the container.

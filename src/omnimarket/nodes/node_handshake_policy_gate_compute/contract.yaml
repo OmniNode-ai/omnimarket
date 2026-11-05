@@ -71,6 +71,12 @@ outputs:
   exit_code: {type: int}
 terminal_event: onex.evt.omnimarket.handshake-policy-gate-decided.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_handshake_policy_gate_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.handshake-policy-gate-decide-requested.v1
 event_bus:
   subscribe_topics:

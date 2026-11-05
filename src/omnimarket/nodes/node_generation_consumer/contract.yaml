@@ -154,6 +154,12 @@ terminal_event: onex.evt.omnimarket.node-generation-completed.v1
 # runtime-skill edge. Declaring that address here makes the command topic a
 # first-class producer/consumer seam instead of an unowned external string.
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_generation_consumer
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.node-generation-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.node-generation-completed.v1

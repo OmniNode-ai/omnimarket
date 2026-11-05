@@ -161,6 +161,12 @@ metadata:
     - "deterministic"
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_metering_summary_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.metering-summary-requested.v1
 
 # Explicit SINK declaration (contract topic graph closure). No node contract

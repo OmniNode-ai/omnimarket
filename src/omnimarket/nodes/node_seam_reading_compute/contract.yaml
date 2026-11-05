@@ -27,15 +27,28 @@ handler:
   input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingRequest
 
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_pattern
   handlers:
     - operation: render_seam_readings
       topic: onex.cmd.omnimarket.seam-reading-render-requested.v1
       handler:
         name: HandlerSeamReading
         module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_reading
+      event_model:
+        name: ModelSeamReadingRequest
+        module: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request
       input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingRequest
       output_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingResult
+    - operation: command_seam_reading
+      topic: onex.evt.omnimarket.command-seam-facts.v1
+      handler:
+        name: HandlerCommandSeamReading
+        module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_command_seam_reading
+      event_model:
+        name: ModelCommandSeamFacts
+        module: omnimarket.models.model_command_seam
+      input_model: omnimarket.models.model_command_seam.ModelCommandSeamFacts
+      output_model: omnimarket.models.model_command_seam.ModelCommandSeamReadings
 
 descriptor:
   node_archetype: compute
@@ -56,6 +69,12 @@ output_model:
 terminal_event: onex.evt.omnimarket.seam-reading-rendered.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via skill lean_contract_seams, lean_seam_read
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.seam-reading-render-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.seam-reading-rendered.v1
@@ -63,12 +82,21 @@ runtime_dispatch:
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.seam-reading-render-requested.v1
+    - onex.evt.omnimarket.command-seam-facts.v1
   publish_topics:
     - onex.evt.omnimarket.seam-reading-rendered.v1
+    - onex.evt.omnimarket.command-seam-readings.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.seam-reading-rendered.v1
+  - onex.evt.omnimarket.command-seam-readings.v1
 
 metadata:
   ticket: OMN-21459
-  transport_type: inmemory
+  transport_type: kafka
+
+published_events:
+  - event_type: ModelSeamReadingResult
+    topic: onex.evt.omnimarket.seam-reading-rendered.v1
+  - event_type: ModelCommandSeamReadings
+    topic: onex.evt.omnimarket.command-seam-readings.v1

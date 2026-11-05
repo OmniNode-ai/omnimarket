@@ -82,7 +82,7 @@ class _FakeReader:
         }
 
 
-def test_sampler_counts_offsets_throttles_and_skips_internal_and_empty_topics() -> None:
+def test_sampler_counts_offsets_throttles_and_records_empty_topics() -> None:
     clock = _Clock()
     reader = _FakeReader()
     handler = HandlerTopicActivitySampler(
@@ -97,8 +97,12 @@ def test_sampler_counts_offsets_throttles_and_skips_internal_and_empty_topics() 
     assert event.total_topic_count == 2
     assert event.empty_topic_count == 1
     assert event.broker_topics == ("empty.topic", "onex.evt.active.v1")
-    assert len(event.topics) == 1
-    sample = event.topics[0]
+    assert len(event.topics) == 2
+    empty, sample = event.topics
+    assert empty.topic == "empty.topic"
+    assert empty.high_watermark_total == 5
+    assert empty.low_watermark_total == 5
+    assert empty.newest_message_at is None
     assert sample.topic == "onex.evt.active.v1"
     assert sample.messages_last_hour == 10
     assert sample.messages_last_24h == 18
@@ -124,7 +128,7 @@ def test_unchanged_high_watermarks_do_not_reread_newest_records() -> None:
     assert reader.timestamp_reads == first_reads
     event = second.events[0]
     assert isinstance(event, ModelTopicActivitySampleEvent)
-    assert event.topics[0].newest_message_at is None
+    assert event.topics[1].newest_message_at == _NOW - timedelta(seconds=5)
 
 
 def test_event_splitting_keeps_every_part_under_the_contract_bound() -> None:

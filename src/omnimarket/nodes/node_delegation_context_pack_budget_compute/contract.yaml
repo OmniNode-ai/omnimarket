@@ -62,6 +62,12 @@ outputs:
   reason: {type: str}
 terminal_event: onex.evt.omnimarket.delegation-context-pack-budget-decided.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegation_context_pack_budget_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.delegation-context-pack-budget-requested.v1
 event_bus:
   subscribe_topics:

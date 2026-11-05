@@ -132,6 +132,12 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.merge-sweep-run-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_merge_sweep_request_compute
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.merge-sweep-run-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.merge-sweep-run-completed.v1

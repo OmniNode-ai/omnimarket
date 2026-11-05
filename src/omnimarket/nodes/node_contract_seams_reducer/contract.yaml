@@ -58,6 +58,12 @@ output_model:
 terminal_event: onex.evt.omnimarket.contract-seams-transitioned.v1
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_contract_seams_orchestrator
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.contract-seams-transition-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.contract-seams-transitioned.v1

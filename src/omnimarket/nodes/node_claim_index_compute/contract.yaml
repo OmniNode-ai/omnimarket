@@ -56,6 +56,12 @@ outputs:
   sources: {type: list}
 terminal_event: onex.evt.omnimarket.claim-index-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_claim_index_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.claim-index-requested.v1
 event_bus:
   subscribe_topics:

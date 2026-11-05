@@ -65,6 +65,12 @@ outputs:
   metrics: {type: object}
 terminal_event: onex.evt.omnimarket.linear-comments-decision-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_linear_comments_sweep_orchestrator
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.linear-comments-decision-requested.v1
 event_bus:
   subscribe_topics:

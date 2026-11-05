@@ -66,6 +66,12 @@ descriptor:
   idempotent: true
   timeout_ms: 120000
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_migration_sync_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.migration-sync-effect-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.migration-sync-effect-completed.v1"

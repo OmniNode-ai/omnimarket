@@ -54,6 +54,13 @@ event_bus:
     - onex.evt.omnimarket.automation-liveness-deadman-recorded.v1
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_automation_liveness_deadman_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
+    automatic_required: true
   command_topic: onex.cmd.omnimarket.automation-liveness-deadman-record-requested.v1
 
 externally_consumed_topics:

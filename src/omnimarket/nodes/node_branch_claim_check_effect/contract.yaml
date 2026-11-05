@@ -14,6 +14,12 @@ node_version: {major: 1, minor: 0, patch: 0}
 runtime_profiles: [main]
 runtime_lanes: [compose-dev, onex-lab, onex-lab-k3s]
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: pr_watcher_effect
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.branch-claim-check-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.branch-claim-check-completed.v1

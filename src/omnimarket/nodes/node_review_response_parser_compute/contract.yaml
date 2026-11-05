@@ -51,6 +51,12 @@ descriptor:
     - effects
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_review_response_parser_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.review-response-parse.v1
   terminal_events:
     success: onex.evt.omnimarket.review-response-parsed.v1

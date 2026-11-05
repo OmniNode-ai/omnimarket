@@ -63,6 +63,12 @@ published_events:
     description: "One onboarding walk: the completed steps, or the failed step with its fix."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_onex_setup_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.onex-setup-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.onex-setup-completed.v1

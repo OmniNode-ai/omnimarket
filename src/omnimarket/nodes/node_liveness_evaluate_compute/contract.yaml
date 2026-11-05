@@ -72,6 +72,12 @@ descriptor:
 # CLI dispatcher's own command/result seam (exempt from orphan detection) and
 # carry no bus producer/consumer today.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_liveness_evaluate_compute
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.liveness-evaluate-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.liveness-evaluated.v1"

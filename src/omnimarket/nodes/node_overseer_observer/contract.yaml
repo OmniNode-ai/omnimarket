@@ -42,6 +42,12 @@ descriptor:
   timeout_ms: 5000
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_overseer_observer
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.overseer-observer.v1
   terminal_events:
     success: onex.evt.omnimarket.overseer-observer-completed.v1

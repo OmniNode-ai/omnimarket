@@ -54,6 +54,12 @@ standalone_targets:
   - compose_file: docker/docker-compose.factory-floor-web.yml
     service: factory-floor-web
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_standalone_service_redeploy_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.standalone-service-redeploy-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.standalone-service-redeploy-published.v1"

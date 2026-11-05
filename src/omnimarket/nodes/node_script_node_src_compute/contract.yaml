@@ -34,6 +34,12 @@ handler_routing:
         module: omnimarket.nodes.node_script_node_src_compute.handler
 terminal_event: onex.evt.omnimarket.script-node-src-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_script_node_src_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.script-node-src-requested.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.script-node-src-requested.v1]

@@ -59,6 +59,12 @@ outputs:
   timeout_stderr: {type: str}
 terminal_event: onex.evt.omnimarket.onex-ledger-admission-completed.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_onex_ledger_admission_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.onex-ledger-admission-requested.v1
 event_bus:
   subscribe_topics:

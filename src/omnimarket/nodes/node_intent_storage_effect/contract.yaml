@@ -123,6 +123,12 @@ event_type:
   invocation_mode: "orchestrator"
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_intent_storage_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimemory.intent-storage.v1
   terminal_events:
     success: onex.evt.omnimemory.intent-storage-completed.v1

@@ -101,6 +101,12 @@ metadata:
   transport_type: kafka
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_delegation_eval_sample_compute
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.delegation-eval-sample-requested.v1
 
 externally_consumed_topics:

@@ -94,6 +94,12 @@ env_dependencies:
     required: true
     description: "Lab/runtime Kafka target, resolved through ModelKafkaEventBusConfig when pending merges need publication."
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: schedule_or_hook
+    sender: node_git_mirror_sync_schedule_compute
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/schedule or hook
   command_topic: "onex.cmd.omnimarket.git-query-mirror-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.git-query-mirror-completed.v1"

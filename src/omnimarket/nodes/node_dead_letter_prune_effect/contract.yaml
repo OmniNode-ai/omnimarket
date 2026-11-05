@@ -144,6 +144,12 @@ config:
         requires_encryption: true
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_dead_letter_prune_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: onex.cmd.omnimarket.dead-letter-prune-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.dead-letter-prune-completed.v1

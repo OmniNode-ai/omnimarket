@@ -104,6 +104,12 @@ handler_routing:
       description: "One hourly tick; answered by the events it observed."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_github_schedule_observer_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   # The runtime tick is this node's producer.
   command_topic: onex.cmd.omnimarket.github-schedule-observer-tick-requested.v1
 

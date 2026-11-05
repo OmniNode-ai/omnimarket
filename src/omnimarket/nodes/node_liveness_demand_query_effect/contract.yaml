@@ -47,6 +47,12 @@ handler_routing:
 # Directly-invoked only (no Kafka producer/consumer) -- matches
 # node_occ_observation_source_effect's own runtime_dispatch-only declaration.
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_liveness_demand_query_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.liveness-demand-query-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.liveness-demand-query-completed.v1"

@@ -335,6 +335,12 @@ db_io:
       role: delegate_skill_claim
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via cli_delegate.py
+    reason: Census found a conditional code caller, not a verified standing automatic trigger; explicitly retain manual
+      invocation.
+    evidence: seam-census/2026-11-05T0716Z/code publisher outside tests
   command_topic: onex.cmd.omnimarket.delegate-skill.v1
   terminal_events:
     success: onex.evt.omnimarket.delegate-skill-completed.v1

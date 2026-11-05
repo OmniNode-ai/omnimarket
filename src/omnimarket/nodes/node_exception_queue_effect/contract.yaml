@@ -80,6 +80,12 @@ handler_routing:
         input_model: omnimarket.models.model_andon_ledger_holds.ModelAndonLedgerHoldsRequest
 terminal_event: onex.evt.omnimarket.exception-queued.v1
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via skill queue-status
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.exception-emit-requested.v1
 descriptor:
   node_archetype: effect

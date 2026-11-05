@@ -133,6 +133,12 @@ externally_consumed_topics:
   - onex.cmd.omniintelligence.context-pack-failed.v1
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_context_compaction_orchestrator
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omniintelligence.context-pack-requested.v1
   terminal_events:
     success: onex.cmd.omniintelligence.context-pack-built.v1

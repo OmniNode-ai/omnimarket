@@ -132,6 +132,12 @@ event_bus:
     - onex.evt.omnimarket.hook-chain-probe-failed.v1
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: schedule_or_hook
+    sender: node_hook_chain_probe_trigger_effect
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/schedule or hook
   command_topic: onex.cmd.omnimarket.hook-chain-probe-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.hook-chain-probe-completed.v1

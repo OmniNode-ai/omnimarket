@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Installer template, never a runtime fallback. Replace these deployment facts
+# and install as <overlay-root>/node_seam_read_orchestrator/overlay.yaml under
+# ONEX_SKILL_OVERLAY_ROOTS. package_roots must contain the exact deployed files:
+# a different contract hash reads UNKNOWN, not the candidate branch's policy.
+scope: lab-example/dev
+manifest_urls:
+  - https://main-runtime.example.invalid/v1/introspection/manifest
+  - https://effects-runtime.example.invalid/v1/introspection/manifest
+projection_url: https://projection.example.invalid/projection/onex.snapshot.projection.topic-activity.v1
+package_roots:
+  omnimarket: installed-packages/omnimarket
+  omnibase_infra: installed-packages/omnibase_infra
+root_topics:
+  - onex.evt.platform.node-heartbeat.v1
+  - onex.intent.platform.runtime-tick.v1
+max_age_seconds: 90
+manifest_refresh_seconds: 60
+request_timeout_seconds: 15
+max_projection_pages: 32
+max_facts_per_event: 100

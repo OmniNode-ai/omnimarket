@@ -44,6 +44,12 @@ handler_routing:
         name: "HandlerBusBindingReducer"
         module: "omnimarket.nodes.node_bus_binding_reducer.handlers.handler_bus_binding_reducer"
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_bus_binding_reducer
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   command_topic: "onex.cmd.omnimarket.bus-binding-decide-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.bus-binding-decided.v1"

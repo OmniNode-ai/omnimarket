@@ -107,6 +107,12 @@ append_if_absent:
   lock_suffix: ".work-ledger-append.lock"
   lock_wait_seconds: 60
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_work_ledger_append_effect
+    reason: Outside the loaded census surface; no automatic sender verified. Explicit operator diagnostic invocation
+      only.
+    evidence: seam-census/2026-11-05T0716Z/outside loaded census
   # UNATTRIBUTED legacy topic: serve answers parsed requests with a refusal.
   command_topic: "onex.cmd.omnimarket.work-ledger-append-requested.v1"
   terminal_events:

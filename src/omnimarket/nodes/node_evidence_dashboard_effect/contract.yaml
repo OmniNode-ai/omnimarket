@@ -160,4 +160,10 @@ metadata:
 # makes that reachability a fact in the contract instead of tribal knowledge, and lets a
 # golden chain build its input from the publisher side rather than hand-typing a topic.
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: contract
+    sender: node_redeploy_orchestrator
+    reason: Census found a contract publisher. Upstream triggering and live crossing are separate readings.
+    evidence: seam-census/2026-11-05T0716Z/contract publisher
   command_topic: onex.cmd.omnimarket.evidence-pipeline-start.v1

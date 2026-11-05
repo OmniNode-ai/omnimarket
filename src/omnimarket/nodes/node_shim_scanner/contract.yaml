@@ -69,6 +69,12 @@ event_bus:
     - onex.evt.omnimarket.shim-scan-completed.v1
 
 runtime_dispatch:
+  invocation:
+    mode: automatic
+    trigger: schedule_or_hook
+    sender: check-expired-shims
+    reason: Census found a specific schedule or hook caller; deployment scope and crossing remain separately measured.
+    evidence: seam-census/2026-11-05T0716Z/schedule or hook
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.shim-scan-start.v1
 

@@ -80,6 +80,12 @@ published_events:
     description: "The reviewer's document with the findings a parse disproved removed."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_review_finding_veto_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.review-finding-veto-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.review-finding-veto-completed.v1

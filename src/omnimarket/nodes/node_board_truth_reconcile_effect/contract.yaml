@@ -35,6 +35,12 @@ node_version: "1.0.0"
 description: "Effect node: dry-run board reconciliation — reads the ledger, derives board truth, renders the diff table. No writes."
 
 runtime_dispatch:
+  invocation:
+    mode: on_demand
+    sender: operator via onex node node_board_truth_reconcile_effect
+    reason: Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain
+      operator invocation.
+    evidence: seam-census/2026-11-05T0716Z/skill or person only
   command_topic: onex.cmd.omnimarket.board-truth-reconcile.v1
 
 # The runtime publishes the terminal event on the handler's behalf when a

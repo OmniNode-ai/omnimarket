@@ -62,7 +62,13 @@
     ]
   },
   "runtime_dispatch": {
-    "command_topic": "onex.cmd.omnimarket.lane-report-relay-requested.v1"
+    "command_topic": "onex.cmd.omnimarket.lane-report-relay-requested.v1",
+    "invocation": {
+      "mode": "on_demand",
+      "sender": "operator via skill remote-lane",
+      "reason": "Census found only an on-demand entry capability, with no verified automatic sender; explicitly retain operator invocation.",
+      "evidence": "seam-census/2026-11-05T0716Z/skill or person only"
+    }
   },
   "descriptor": {
     "node_archetype": "effect",
