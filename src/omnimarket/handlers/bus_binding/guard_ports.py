@@ -5,7 +5,7 @@
 The names come from ``refused_request_settlement`` in the bus binding reducer's contract: the environment
 variable that points at the ledger, the glob of its archive rolls beside it, and the environment variable of
 the root a relative worktree cell is resolved under. A corrected request is not sent from here: it is queued
-to the local outbox as a new request, so the replay that runs next sends it and a refusal of it is reported
+to the local outbox under its original id, so the next replay sends it and a refusal is reported
 like any other.
 """
 
@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import json
 import os
-import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
@@ -90,13 +88,12 @@ class _LocalGuardPorts:
     def append(self, rows: str) -> bool:
         body = self._bodies.get(rows, {})
         try:
-            request = ModelWorkLedgerAppendRequest(
-                request_id=uuid.uuid4(),
-                ledger_id=str(body.get("ledger_id") or "rolling-work-ledger"),
-                rows=rows,
-                requested_by_lane=str(body.get("requested_by_lane") or "unknown"),
-                requesting_host=str(body.get("requesting_host") or "unknown"),
-                requested_at=datetime.now(tz=UTC),
+            request = ModelWorkLedgerAppendRequest.model_validate(
+                {
+                    key: value
+                    for key, value in body.items()
+                    if key not in {"refusal", "reported_at", "settled"}
+                }
             )
             outbox.queue_request(self._state_dir, request)
         except (OSError, ValueError):

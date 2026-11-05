@@ -10,7 +10,7 @@ and the worktree cell guard (OMN-20148). Whether the row can be appended again i
 * every row the refusal lost is already in the ledger (replayed by hand with its own stamp), or the lane's CLAIM
   is already closed by a TERMINAL: the lost row is superseded, nothing is appended;
 * the cause has since been made good (the lane has a FRICTION row, the removed tree is gone, the cell names the
-  CLAIM's worktree): the refused rows are appended again, unchanged, as a new request;
+  CLAIM's worktree): the refused rows are retried unchanged under the original request id;
 * anything else needs a fact only the lane has (a cost, which of two worktrees was used): the case stays open
   with that fact named. Code never invents it.
 
@@ -125,7 +125,7 @@ def _again(ports: GuardPorts, body: str, held: str) -> tuple[bool, str]:
     if ports.append(body):
         return (
             True,
-            f"{held}; appended the refused rows again, unchanged, as a new request",
+            f"{held}; queued the refused rows unchanged for replay under the original request id",
         )
     return False, f"{held}, but the ledger refused the append again"
 

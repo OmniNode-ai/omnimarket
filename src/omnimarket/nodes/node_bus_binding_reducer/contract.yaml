@@ -76,7 +76,9 @@ exception_settlement:
 # OMN-21959: a ledger guard's refusal of a replayed append is settled in code by the replay that finds it
 # when its cause is gone; only a case the guard actor cannot settle reaches the exception queue. The actor's
 # ports are bound from these names: the ledger and its archive rolls are read where the environment points,
-# a worktree cell is resolved under the registry root, and a corrected request is queued to the local outbox.
+# a worktree cell is resolved under the registry root, and the original request is queued to the local outbox.
+# Retries preserve the request id, row req cells, attribution, timestamp and conditional-append operation;
+# the append host still checks writer identity, row content and every ledger guard on delivery.
 refused_request_settlement:
   ledger_path_env: ONEX_LEDGER_PATH
   ledger_archive_glob: "archive/ROLLING_WORK_LEDGER*.md"
