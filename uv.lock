@@ -3242,6 +3242,7 @@ dev = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+    { name = "temporalio" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
 ]
@@ -3297,6 +3298,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.3.0,<3.0.0" },
     { name = "pytest-xdist", specifier = ">=3.5.0,<4.0.0" },
     { name = "ruff", specifier = ">=0.14.13,<0.16.0" },
+    { name = "temporalio", specifier = ">=1.35.0,<2.0.0" },
     { name = "types-jsonschema", specifier = ">=4.25.1.20251222" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250822" },
 ]
